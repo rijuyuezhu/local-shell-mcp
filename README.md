@@ -1,40 +1,47 @@
 # local-shell-mcp
 
-A ChatGPT-compatible OAuth MCP server that gives AI coding agents controlled shell, filesystem, git, and Playwright access inside a local container.
+`local-shell-mcp` is an OAuth-enabled MCP server for giving ChatGPT Developer Mode,
+Codex-like agents, or other MCP clients controlled access to a dedicated local
+container.
 
-Version 0.2 uses built-in OAuth 2.1 for ChatGPT custom connectors. Cloudflare Tunnel can still expose the service, but Cloudflare Access is no longer required. See [OAUTH_SETUP.md](OAUTH_SETUP.md).
-
-# local-shell-mcp
-
-`local-shell-mcp` is a Cloudflare Access protected MCP server that lets ChatGPT, Claude, Codex-like agents, or other MCP clients control a **dedicated local container** with shell, filesystem, Git, todo, and Playwright tools.
-
-The intended deployment pattern is:
+The container exposes shell, filesystem, Git, todo, Playwright, and diagnostic
+tools inside `/workspace`. The intended safety boundary is the container, not the
+host.
 
 ```text
 ChatGPT / MCP client
-  -> Cloudflare Access protected HTTPS endpoint
-  -> local-shell-mcp running inside a disposable container
+  -> public HTTPS endpoint, commonly Cloudflare Tunnel
+  -> local-shell-mcp container
   -> /workspace mounted volume
-  -> git / python / node / playwright / tmux / ripgrep
 ```
 
-It is designed for the use case: “give an AI coding assistant full control over a container, but not the host.”
+## Features
 
-## Tool coverage
+- Built-in OAuth 2.1 flow for ChatGPT custom connectors.
+- Streamable HTTP MCP endpoint at `/mcp`.
+- Read-only `search` and `fetch` tools for regular ChatGPT connectors.
+- Full coding-agent tools for ChatGPT Developer Mode / Full MCP clients.
+- Docker image with Python, Git, tmux, ripgrep, and Playwright.
+- Audit log at `/workspace/.local-shell-mcp/audit.jsonl`.
 
-The tool set is deliberately close to Codex / Claude Code style workflows:
+## Tools
 
-### Shell
+Read-only connector tools:
 
-- `run_shell_tool` — one-shot shell command
-- `run_python_tool` — write and run temporary Python
-- `shell_start` — start persistent tmux shell
-- `shell_send` — send input to a persistent shell
-- `shell_read` — read persistent shell output
-- `shell_kill` — kill persistent shell
-- `shell_list` — list shell sessions
+- `search`
+- `fetch`
 
-### Filesystem
+Shell:
+
+- `run_shell_tool`
+- `run_python_tool`
+- `shell_start`
+- `shell_send`
+- `shell_read`
+- `shell_kill`
+- `shell_list`
+
+Filesystem:
 
 - `list_files`
 - `tree_view`
@@ -48,7 +55,7 @@ The tool set is deliberately close to Codex / Claude Code style workflows:
 - `delete_file_or_dir`
 - `apply_patch`
 
-### Git
+Git:
 
 - `git_clone_tool`
 - `git_status_tool`
@@ -64,12 +71,7 @@ The tool set is deliberately close to Codex / Claude Code style workflows:
 - `git_reset_tool`
 - `secret_scan`
 
-### Task state
-
-- `todo_read_tool`
-- `todo_write_tool`
-
-### Playwright
+Playwright and diagnostics:
 
 - `playwright_install_tool`
 - `browser_screenshot_tool`
@@ -77,164 +79,217 @@ The tool set is deliberately close to Codex / Claude Code style workflows:
 - `browser_eval_tool`
 - `browser_pdf_tool`
 - `playwright_run_script_tool`
-
-### Diagnostics
-
 - `environment_info`
 - `audit_tail`
+- `todo_read_tool`
+- `todo_write_tool`
 
-## Security model
+## Security
 
-This project intentionally exposes powerful tools. Treat the container as controlled by the connected model.
+This project intentionally exposes powerful tools. Treat the container as
+controlled by the connected model.
 
 Default protections:
 
-- All paths are restricted to `/workspace` unless `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true`.
-- Cloudflare Access JWT verification is supported at the origin.
+- Paths are restricted to `/workspace` unless `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true`.
 - Commands have timeout and output limits.
 - Sensitive path fragments are denied by default.
-- Dangerous host-control fragments such as `/var/run/docker.sock` are denied by default.
+- Host-control fragments such as `/var/run/docker.sock` are denied by default.
 - Audit logs are written to `/workspace/.local-shell-mcp/audit.jsonl`.
 
-Hard rules for safe deployment:
+Hard rules:
 
 1. Do not mount `/var/run/docker.sock`.
 2. Do not mount the host root filesystem.
-3. Do not put long-lived GitHub PATs into environment variables visible to the model.
-4. Prefer a single-repository GitHub deploy key or GitHub App installation token.
-5. Run this in a disposable container or VM.
-6. Protect the endpoint with Cloudflare Access or equivalent authentication.
-7. Keep `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=false` unless the whole container is disposable.
+3. Do not expose the service with `LOCAL_SHELL_MCP_AUTH_MODE=none`.
+4. Do not put long-lived GitHub PATs in environment variables visible to the model.
+5. Prefer a single-repository deploy key or short-lived GitHub App token.
+6. Run this in a disposable container or VM.
 
-## Quick start with Docker Compose
+## Quick Start
 
-```bash
-cp .env.example .env
-# Edit .env with your Cloudflare Access team domain and AUD tag.
-docker compose up -d --build
-```
-
-Local health check:
-
-```bash
-curl http://127.0.0.1:8765/healthz
-```
-
-Or pull the published Docker image:
-
-```bash
-docker pull fwerkor/local-shell-mcp:latest
-docker run --rm -p 8765:8765 -v "$PWD/workspace:/workspace" fwerkor/local-shell-mcp:latest
-```
-
-To run the published image with Docker Compose:
+Copy the example environment file and edit it:
 
 ```bash
 cp .env.example .env
-# Edit .env, then:
+```
+
+Important values:
+
+```env
+LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+LOCAL_SHELL_MCP_AUTH_MODE=oauth
+LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
+LOCAL_SHELL_MCP_OAUTH_JWT_SECRET=change-me-64-hex-random-secret
+CLOUDFLARE_TUNNEL_TOKEN=
+```
+
+Run the published Docker image:
+
+```bash
+mkdir -p workspaces/default
 docker compose up -d
 ```
 
-To also start the Cloudflare Tunnel sidecar, set `CLOUDFLARE_TUNNEL_TOKEN` in `.env` and run:
+Start the Cloudflare Tunnel sidecar too:
 
 ```bash
 docker compose --profile tunnel up -d
 ```
 
-If the container restarts with `Permission denied: '/workspace/.local-shell-mcp'`, fix the host workspace ownership:
+Check the service:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 local-shell-mcp
+curl -i http://127.0.0.1:8765/healthz
+```
+
+If the container cannot write `/workspace/.local-shell-mcp`, fix the host
+workspace ownership:
 
 ```bash
 sudo mkdir -p workspaces/default/.local-shell-mcp
 sudo chown -R 10001:10001 workspaces/default
+docker compose --profile tunnel restart local-shell-mcp
+```
+
+## Cloudflare Tunnel
+
+The bundled Compose file has a `cloudflared` sidecar profile:
+
+```yaml
+cloudflared:
+  image: cloudflare/cloudflared:latest
+  command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+```
+
+Create a tunnel in Cloudflare Zero Trust, add a Public Hostname, and point it to:
+
+```text
+http://local-shell-mcp:8765
+```
+
+Put the tunnel token in `.env`:
+
+```env
+CLOUDFLARE_TUNNEL_TOKEN=...
+```
+
+Then run:
+
+```bash
 docker compose --profile tunnel up -d
 ```
 
-The MCP endpoint is served by the process on port `8765`. For ChatGPT custom connectors, expose it as HTTPS, commonly:
+The public MCP endpoint should be:
 
 ```text
-https://mcp.example.com/mcp
+https://your-public-host.example.com/mcp
 ```
 
-Actual path depends on the installed MCP Python SDK transport. This project attempts to use the SDK's streamable HTTP app when available, otherwise falls back to FastMCP's built-in streamable HTTP/SSE transport.
+## ChatGPT Setup
 
-## Cloudflare Access setup
+For full shell, filesystem, Git, and Playwright tools, enable ChatGPT Developer
+Mode:
 
-1. Create a Cloudflare Tunnel to the container:
+1. Open ChatGPT settings.
+2. Go to Connectors.
+3. Enable Developer Mode under Advanced.
+4. Add a custom MCP connector.
+5. Use `https://your-public-host.example.com/mcp`.
+6. Complete the OAuth flow using `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN`.
+7. Refresh the connector tool list if you have changed the server.
+
+Regular ChatGPT connectors and Deep Research expect read-only `search` and
+`fetch` tools. This project exposes those too, but write/execute actions require
+Developer Mode / Full MCP.
+
+After connecting, test with:
+
+```text
+Use local-shell-mcp to run pwd and tell me the output.
+```
+
+Watch server-side activity:
 
 ```bash
-cloudflared tunnel create local-shell-mcp
-cloudflared tunnel route dns local-shell-mcp mcp.example.com
-cloudflared tunnel run local-shell-mcp
+docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit.jsonl
 ```
 
-Tunnel ingress should point to:
+A successful tool call should produce audit events such as `run_shell_start` and
+`run_shell_end`.
 
-```text
-http://localhost:8765
+## Docker Commands
+
+Pull and run without Compose:
+
+```bash
+docker pull fwerkor/local-shell-mcp:latest
+mkdir -p workspace
+docker run -d \
+  --name local-shell-mcp \
+  --restart unless-stopped \
+  --env-file .env \
+  -p 127.0.0.1:8765:8765 \
+  -v "$PWD/workspace:/workspace" \
+  fwerkor/local-shell-mcp:latest
 ```
 
-2. Create a Cloudflare Access self-hosted application:
+Check restart policy:
 
-```text
-Application domain: mcp.example.com
-Policy: allow your email or identity group
+```bash
+docker inspect local-shell-mcp --format '{{.HostConfig.RestartPolicy.Name}}'
 ```
 
-3. Copy the Application Audience (AUD) tag into `.env`:
+It should be `unless-stopped`.
 
-```env
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
-LOCAL_SHELL_MCP_CF_ACCESS_AUDIENCE=<AUD tag>
-LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
+## Configuration
+
+Environment variables use the `LOCAL_SHELL_MCP_` prefix.
+
+| Variable | Default | Meaning |
+|---|---:|---|
+| `LOCAL_SHELL_MCP_WORKSPACE_ROOT` | `/workspace` | Root for file and command operations |
+| `LOCAL_SHELL_MCP_AUTH_MODE` | `oauth` | `oauth`, `cloudflare_access`, or `none` |
+| `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` | unset | Public HTTPS origin used for OAuth metadata |
+| `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | unset | PIN required to approve OAuth authorization |
+| `LOCAL_SHELL_MCP_OAUTH_JWT_SECRET` | `dev-change-me` | Secret used to sign bearer tokens |
+| `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` | Allow paths outside workspace |
+| `LOCAL_SHELL_MCP_MAX_TIMEOUT_S` | `3600` | Max command timeout |
+| `LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES` | `200000` | Output truncation limit |
+
+You can also pass YAML:
+
+```bash
+local-shell-mcp --config config.example.yaml --mode mcp
 ```
 
-Cloudflare Access forwards a `Cf-Access-Jwt-Assertion` header to your origin. `local-shell-mcp` validates this token using Cloudflare's JWKS endpoint as defense in depth. Cloudflare Access should still be configured to block unauthenticated requests before they reach the origin.
-
-## Connecting to ChatGPT
-
-In ChatGPT development mode / custom connector UI:
-
-1. Add a new connector.
-2. Use the public HTTPS MCP endpoint.
-3. If Cloudflare Access prompts for login, authenticate with your allowed account.
-4. Inspect the listed tools before enabling.
-
-ChatGPT has two relevant MCP paths:
-
-- Regular connectors / Deep Research expect `search` and `fetch` tools. This project exposes read-only `search` and `fetch` wrappers for workspace files.
-- Full MCP / Developer Mode is required for the coding-agent tools such as shell execution, file writes, git operations, and Playwright actions. Regular connectors may connect successfully but still not expose those write/execute tools in chat.
-
-## Using GitHub safely
+## Git Access
 
 Preferred options:
 
-### Option A: deploy key for one repository
+### Deploy Key
 
-On the host, create a deploy key restricted to one repo:
+Create a deploy key restricted to one repository:
 
 ```bash
-ssh-keygen -t ed25519 -f ./deploy_key_framediff -C local-shell-mcp-framediff
+ssh-keygen -t ed25519 -f ./deploy_key_project -C local-shell-mcp-project
 ```
 
-Add the public key to GitHub repository deploy keys with write access.
-
-Mount it into the container as a read-only file only if you accept that the model-controlled container can use it:
+Add the public key to the GitHub repository deploy keys with the minimum required
+permissions. Mount the private key only if you accept that the model-controlled
+container can use it:
 
 ```yaml
 volumes:
-  - ./deploy_key_framediff:/home/agent/.ssh/id_ed25519:ro
+  - ./deploy_key_project:/home/agent/.ssh/id_ed25519:ro
 ```
 
-Inside the container:
+### SSH Agent Socket
 
-```bash
-chmod 600 ~/.ssh/id_ed25519
-git clone git@github.com:fwerkor/FrameDiff.git
-```
-
-### Option B: ssh-agent socket
-
-This avoids copying the private key into the container, but the container can still ask the agent to sign Git operations.
+This avoids copying a private key into the container, but the container can still
+ask the agent to sign Git operations:
 
 ```yaml
 volumes:
@@ -243,28 +298,17 @@ environment:
   SSH_AUTH_SOCK: ${SSH_AUTH_SOCK}
 ```
 
-Use a key that only has access to the repositories you are willing to expose.
+Use a key that only has access to repositories you are willing to expose.
 
-## Playwright
+## REST Debug API
 
-The Dockerfile uses Microsoft's Playwright Python base image, so Chromium dependencies are included. If you install outside Docker:
+The normal MCP server runs with:
 
 ```bash
-pip install -e .
-python -m playwright install --with-deps chromium
+local-shell-mcp --mode mcp
 ```
 
-Example tool usage:
-
-```text
-browser_screenshot_tool(url="https://example.com", output_path="screenshots/example.png")
-browser_get_text_tool(url="https://example.com")
-browser_eval_tool(url="https://example.com", javascript="() => document.title")
-```
-
-## REST debug API
-
-You can run an HTTP-only debug API:
+For local-only debugging, you can start the REST API:
 
 ```bash
 LOCAL_SHELL_MCP_AUTH_MODE=none local-shell-mcp --mode http
@@ -278,27 +322,7 @@ curl -s http://127.0.0.1:8765/tools/run_shell \
   -d '{"command":"pwd && ls -la","cwd":"."}' | jq
 ```
 
-Do not expose HTTP debug mode without authentication.
-
-## Configuration
-
-Environment variables use the `LOCAL_SHELL_MCP_` prefix. You can also pass YAML:
-
-```bash
-local-shell-mcp --config config.example.yaml --mode mcp
-```
-
-Important options:
-
-| Variable | Default | Meaning |
-|---|---:|---|
-| `LOCAL_SHELL_MCP_WORKSPACE_ROOT` | `/workspace` | Root for file and command operations |
-| `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` | Allow absolute paths outside workspace |
-| `LOCAL_SHELL_MCP_AUTH_MODE` | `cloudflare_access` | `cloudflare_access` or `none` |
-| `LOCAL_SHELL_MCP_CF_ACCESS_TEAM_DOMAIN` | unset | Cloudflare Access team domain |
-| `LOCAL_SHELL_MCP_CF_ACCESS_AUDIENCE` | unset | Access application AUD tag |
-| `LOCAL_SHELL_MCP_MAX_TIMEOUT_S` | `3600` | Max command timeout |
-| `LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES` | `200000` | Output truncation limit |
+Do not expose HTTP debug mode publicly.
 
 ## Development
 
@@ -306,42 +330,43 @@ Important options:
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e '.[dev]'
-LOCAL_SHELL_MCP_AUTH_MODE=none local-shell-mcp --mode http
-pytest
+ruff check .
+pytest -q
+LOCAL_SHELL_MCP_AUTH_MODE=none local-shell-mcp --mode mcp
 ```
 
-## Release workflow
+You can verify the MCP endpoint with a standard MCP client:
 
-The repository includes a manual GitHub Actions workflow at `.github/workflows/release.yml`.
-It builds the Python wheel/source distribution, publishes a GitHub Release, and pushes a multi-platform Docker image to Docker Hub as `fwerkor/local-shell-mcp`.
+```python
+import anyio
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
-Before running it, add these repository secrets in GitHub:
+async def main():
+    async with streamablehttp_client("http://127.0.0.1:8765/mcp") as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            print([tool.name for tool in tools.tools])
 
-| Secret | Value |
-|---|---|
-| `DOCKERHUB_USERNAME` | Your Docker Hub username, for example `fwerkor` |
-| `DOCKERHUB_TOKEN` | A Docker Hub access token with permission to push `fwerkor/local-shell-mcp` |
-
-To publish a release:
-
-1. Open GitHub Actions.
-2. Select the `Release` workflow.
-3. Click `Run workflow`.
-4. Enter a tag such as `v0.2.0`.
-5. Keep the default platforms `linux/amd64,linux/arm64` unless you need a narrower build.
-
-For a tag like `v0.2.0`, the workflow publishes these Docker tags:
-
-```text
-fwerkor/local-shell-mcp:v0.2.0
-fwerkor/local-shell-mcp:0.2.0
-fwerkor/local-shell-mcp:latest
+anyio.run(main)
 ```
 
-`latest` is optional and can be disabled when running the workflow.
+## Troubleshooting
 
-## Limitations
+If ChatGPT says it connected but no tools are available:
 
-- MCP HTTP transport APIs have changed over time. This project tries `streamable_http_app`, then `sse_app`, then FastMCP's built-in transport. If your installed `mcp` package changes names again, use HTTP debug mode to validate the core tools and adjust `main.py` transport wiring.
-- This is intentionally powerful. Do not run it against host-mounted secrets or privileged Docker sockets.
-- It does not implement OpenAI-managed OAuth itself. Cloudflare Access is the intended auth layer.
+1. Confirm Developer Mode is enabled for full MCP tools.
+2. Delete and re-add the connector after server changes.
+3. Check `/mcp` with the standard MCP client snippet above.
+4. Watch `/workspace/.local-shell-mcp/audit.jsonl`.
+5. Confirm `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` exactly matches the public HTTPS origin.
+
+If OAuth succeeds but tool listing fails, check container logs:
+
+```bash
+docker compose logs --tail=200 local-shell-mcp
+```
+
+If you see `Task group is not initialized`, update to a newer image that includes
+the MCP lifespan fix.
