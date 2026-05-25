@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from contextlib import asynccontextmanager
 
 import uvicorn
 from starlette.applications import Starlette
@@ -24,6 +25,11 @@ from .tools import build_mcp
 
 
 def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
+    @asynccontextmanager
+    async def lifespan(app):  # noqa: ANN001
+        async with inner_app.router.lifespan_context(inner_app):
+            yield
+
     return Starlette(
         routes=[
             Route("/healthz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
@@ -36,7 +42,8 @@ def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
             Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
             Route("/oauth/token", oauth_token, methods=["POST"]),
             Mount("/", app=inner_app),
-        ]
+        ],
+        lifespan=lifespan,
     )
 
 
