@@ -1,0 +1,33 @@
+host: 0.0.0.0
+port: 8765
+mode: mcp
+workspace_root: /workspace
+audit_log_path: /workspace/.local-shell-mcp/audit.jsonl
+state_dir: /workspace/.local-shell-mcp
+allow_full_container: false
+auth_mode: cloudflare_access
+cf_access_team_domain: your-team.cloudflareaccess.com
+cf_access_audience: your-access-aud-tag
+cf_access_allowed_emails:
+  - you@example.com
+cf_access_allowed_email_domains: []
+max_timeout_s: 3600
+max_output_bytes: 200000
+max_file_read_bytes: 512000
+max_file_write_bytes: 5000000
+command_denylist:
+  - docker.sock
+  - /var/run/docker.sock
+  - mkfs
+  - 'mount '
+  - 'umount '
+  - shutdown
+  - reboot
+  - 'systemctl '
+path_denylist:
+  - .ssh/id_rsa
+  - .ssh/id_ed25519
+  - .env
+  - secrets
+  - credentials
+  - .git/config

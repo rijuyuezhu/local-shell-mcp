@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "local-shell-mcp"
+version = "0.1.0"
+description = "A Cloudflare Access protected MCP server that gives AI coding agents controlled shell, filesystem, git, and Playwright access inside a local container."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "local-shell-mcp contributors" }]
+keywords = ["mcp", "chatgpt", "cloudflare-access", "shell", "playwright", "coding-agent"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Web Environment",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "mcp>=1.9.0",
+  "fastapi>=0.111.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.3.0",
+  "PyYAML>=6.0.1",
+  "PyJWT[crypto]>=2.8.0",
+  "httpx>=0.27.0",
+  "aiofiles>=23.2.1",
+  "python-multipart>=0.0.9",
+  "pathspec>=0.12.1",
+  "playwright>=1.44.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "pytest-asyncio>=0.23.0",
+  "ruff>=0.5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/example/local-shell-mcp"
+Repository = "https://github.com/example/local-shell-mcp"
+
+[project.scripts]
+local-shell-mcp = "local_shell_mcp.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/local_shell_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
