@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from .audit import audit
 from .fs_ops import (
@@ -112,6 +113,62 @@ async def _secret_scan(cwd: str = ".", glob: str | None = None, max_results: int
 def build_mcp() -> FastMCP:
     settings = get_settings()
     mcp = FastMCP("local-shell-mcp")
+    read_only_tool = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
+
+    @mcp.tool(annotations=read_only_tool)
+    async def search(query: str) -> str:
+        """Search workspace files and return ChatGPT connector-compatible results."""
+        try:
+            result = await grep(query, cwd=".", regex=False, case_sensitive=False, max_results=20)
+            seen: set[str] = set()
+            rows = []
+            for match in result.get("matches", []):
+                path = match.get("path")
+                if not path or path in seen:
+                    continue
+                seen.add(path)
+                line = match.get("line")
+                suffix = f":{line}" if line else ""
+                rows.append(
+                    {
+                        "id": path,
+                        "title": f"{path}{suffix}",
+                        "url": f"file:///workspace/{path}",
+                    }
+                )
+            return json.dumps({"results": rows}, ensure_ascii=False)
+        except Exception as exc:
+            audit("tool_error", error=repr(exc))
+            return json.dumps({"results": []})
+
+    @mcp.tool(annotations=read_only_tool)
+    async def fetch(id: str) -> str:
+        """Fetch a workspace file by id returned from search."""
+        try:
+            data = read_text(id)
+            path = data.get("path") or id
+            return json.dumps(
+                {
+                    "id": path,
+                    "title": path,
+                    "text": data.get("content", ""),
+                    "url": f"file:///workspace/{path}",
+                    "metadata": {"source": "workspace"},
+                },
+                ensure_ascii=False,
+            )
+        except Exception as exc:
+            audit("tool_error", error=repr(exc))
+            return json.dumps(
+                {
+                    "id": id,
+                    "title": id,
+                    "text": f"Unable to fetch file: {type(exc).__name__}: {exc}",
+                    "url": f"file:///workspace/{id}",
+                    "metadata": {"source": "workspace", "error": type(exc).__name__},
+                },
+                ensure_ascii=False,
+            )
 
     @mcp.tool()
     async def environment_info() -> dict:

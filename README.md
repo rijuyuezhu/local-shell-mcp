@@ -199,6 +199,11 @@ In ChatGPT development mode / custom connector UI:
 3. If Cloudflare Access prompts for login, authenticate with your allowed account.
 4. Inspect the listed tools before enabling.
 
+ChatGPT has two relevant MCP paths:
+
+- Regular connectors / Deep Research expect `search` and `fetch` tools. This project exposes read-only `search` and `fetch` wrappers for workspace files.
+- Full MCP / Developer Mode is required for the coding-agent tools such as shell execution, file writes, git operations, and Playwright actions. Regular connectors may connect successfully but still not expose those write/execute tools in chat.
+
 ## Using GitHub safely
 
 Preferred options:
