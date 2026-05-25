@@ -127,6 +127,20 @@ docker pull fwerkor/local-shell-mcp:latest
 docker run --rm -p 8765:8765 -v "$PWD/workspace:/workspace" fwerkor/local-shell-mcp:latest
 ```
 
+To run the published image with Docker Compose:
+
+```bash
+cp .env.example .env
+# Edit .env, then:
+docker compose up -d
+```
+
+To also start the Cloudflare Tunnel sidecar, set `CLOUDFLARE_TUNNEL_TOKEN` in `.env` and run:
+
+```bash
+docker compose --profile tunnel up -d
+```
+
 The MCP endpoint is served by the process on port `8765`. For ChatGPT custom connectors, expose it as HTTPS, commonly:
 
 ```text

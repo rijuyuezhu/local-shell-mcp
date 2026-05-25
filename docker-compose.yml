@@ -1,7 +1,6 @@
 services:
   local-shell-mcp:
-    build: .
-    image: local-shell-mcp:latest
+    image: fwerkor/local-shell-mcp:latest
     container_name: local-shell-mcp
     restart: unless-stopped
     ports:
