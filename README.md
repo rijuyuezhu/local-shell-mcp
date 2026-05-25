@@ -120,6 +120,13 @@ Local health check:
 curl http://127.0.0.1:8765/healthz
 ```
 
+Or pull the published Docker image:
+
+```bash
+docker pull fwerkor/local-shell-mcp:latest
+docker run --rm -p 8765:8765 -v "$PWD/workspace:/workspace" fwerkor/local-shell-mcp:latest
+```
+
 The MCP endpoint is served by the process on port `8765`. For ChatGPT custom connectors, expose it as HTTPS, commonly:
 
 ```text
@@ -275,6 +282,36 @@ pip install -e '.[dev]'
 LOCAL_SHELL_MCP_AUTH_MODE=none local-shell-mcp --mode http
 pytest
 ```
+
+## Release workflow
+
+The repository includes a manual GitHub Actions workflow at `.github/workflows/release.yml`.
+It builds the Python wheel/source distribution, publishes a GitHub Release, and pushes a multi-platform Docker image to Docker Hub as `fwerkor/local-shell-mcp`.
+
+Before running it, add these repository secrets in GitHub:
+
+| Secret | Value |
+|---|---|
+| `DOCKERHUB_USERNAME` | Your Docker Hub username, for example `fwerkor` |
+| `DOCKERHUB_TOKEN` | A Docker Hub access token with permission to push `fwerkor/local-shell-mcp` |
+
+To publish a release:
+
+1. Open GitHub Actions.
+2. Select the `Release` workflow.
+3. Click `Run workflow`.
+4. Enter a tag such as `v0.2.0`.
+5. Keep the default platforms `linux/amd64,linux/arm64` unless you need a narrower build.
+
+For a tag like `v0.2.0`, the workflow publishes these Docker tags:
+
+```text
+fwerkor/local-shell-mcp:v0.2.0
+fwerkor/local-shell-mcp:0.2.0
+fwerkor/local-shell-mcp:latest
+```
+
+`latest` is optional and can be disabled when running the workflow.
 
 ## Limitations
 
