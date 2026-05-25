@@ -1,5 +1,11 @@
 # local-shell-mcp
 
+A ChatGPT-compatible OAuth MCP server that gives AI coding agents controlled shell, filesystem, git, and Playwright access inside a local container.
+
+Version 0.2 uses built-in OAuth 2.1 for ChatGPT custom connectors. Cloudflare Tunnel can still expose the service, but Cloudflare Access is no longer required. See [OAUTH_SETUP.md](OAUTH_SETUP.md).
+
+# local-shell-mcp
+
 `local-shell-mcp` is a Cloudflare Access protected MCP server that lets ChatGPT, Claude, Codex-like agents, or other MCP clients control a **dedicated local container** with shell, filesystem, Git, todo, and Playwright tools.
 
 The intended deployment pattern is:
@@ -148,9 +154,9 @@ Policy: allow your email or identity group
 3. Copy the Application Audience (AUD) tag into `.env`:
 
 ```env
-LOCAL_SHELL_MCP_CF_ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
+LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_CF_ACCESS_AUDIENCE=<AUD tag>
-LOCAL_SHELL_MCP_CF_ACCESS_ALLOWED_EMAILS=you@example.com
+LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
 ```
 
 Cloudflare Access forwards a `Cf-Access-Jwt-Assertion` header to your origin. `local-shell-mcp` validates this token using Cloudflare's JWKS endpoint as defense in depth. Cloudflare Access should still be configured to block unauthenticated requests before they reach the origin.

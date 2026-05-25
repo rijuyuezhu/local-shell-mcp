@@ -5,11 +5,39 @@ import os
 import sys
 
 import uvicorn
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
-from .auth import CloudflareAccessMiddleware
+from .auth import AuthMiddleware
 from .http_app import build_http_app
+from .oauth import (
+    oauth_authorize_get,
+    oauth_authorize_post,
+    oauth_protected_resource,
+    oauth_register,
+    oauth_server_metadata,
+    oauth_token,
+)
 from .settings import get_settings
 from .tools import build_mcp
+
+
+def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
+    return Starlette(
+        routes=[
+            Route("/healthz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
+            Route("/readyz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
+            Route("/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
+            Route("/.well-known/oauth-authorization-server", oauth_server_metadata, methods=["GET"]),
+            Route("/.well-known/openid-configuration", oauth_server_metadata, methods=["GET"]),
+            Route("/oauth/register", oauth_register, methods=["POST"]),
+            Route("/oauth/authorize", oauth_authorize_get, methods=["GET"]),
+            Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
+            Route("/oauth/token", oauth_token, methods=["POST"]),
+            Mount("/", app=inner_app),
+        ]
+    )
 
 
 def run_mcp() -> None:
@@ -20,21 +48,20 @@ def run_mcp() -> None:
         mcp.run(transport="stdio")
         return
 
-    # Prefer an ASGI app when the installed MCP SDK exposes one, because then we can add
-    # Cloudflare Access middleware at the origin. If unavailable, fall back to FastMCP's
-    # built-in streamable-http transport; use Cloudflare Access at the edge in that case.
     for attr in ("streamable_http_app", "sse_app"):
         if hasattr(mcp, attr):
-            app = getattr(mcp, attr)()
+            inner = getattr(mcp, attr)()
+            app = _with_oauth_routes(inner)
             if settings.auth_mode != "none":
-                app.add_middleware(CloudflareAccessMiddleware)
+                app.add_middleware(AuthMiddleware)
             uvicorn.run(app, host=settings.host, port=settings.port)
             return
 
+    # Fallback for older MCP SDKs. OAuth metadata cannot be attached in this mode, so this is
+    # suitable only for localhost/stdio-style testing.
     try:
         mcp.run(transport="streamable-http")
     except TypeError:
-        # Older SDKs may use sse.
         mcp.run(transport="sse")
 
 
@@ -60,7 +87,7 @@ def main(argv: list[str] | None = None) -> None:
     elif settings.mode in {"mcp", "stdio"}:
         run_mcp()
     elif settings.mode == "both":
-        raise SystemExit("mode=both is reserved for a future combined ASGI app; run separate mcp/http processes for now")
+        raise SystemExit("mode=both is reserved; run separate mcp/http processes for now")
     else:
         raise SystemExit(f"Unsupported mode: {settings.mode}")
 

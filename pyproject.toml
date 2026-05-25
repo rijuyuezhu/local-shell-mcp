@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "local-shell-mcp"
-version = "0.1.0"
-description = "A Cloudflare Access protected MCP server that gives AI coding agents controlled shell, filesystem, git, and Playwright access inside a local container."
+version = "0.2.0"
+description = "A ChatGPT-compatible OAuth MCP server that gives AI coding agents controlled shell, filesystem, git, and Playwright access inside a local container."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "local-shell-mcp contributors" }]
-keywords = ["mcp", "chatgpt", "cloudflare-access", "shell", "playwright", "coding-agent"]
+keywords = ["mcp", "chatgpt", "shell", "playwright", "coding-agent"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Web Environment",

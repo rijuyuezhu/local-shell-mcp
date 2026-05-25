@@ -11,13 +11,10 @@ services:
       LOCAL_SHELL_MCP_HOST: "0.0.0.0"
       LOCAL_SHELL_MCP_PORT: "8765"
       LOCAL_SHELL_MCP_WORKSPACE_ROOT: "/workspace"
-      LOCAL_SHELL_MCP_AUTH_MODE: "cloudflare_access"
-      # Set these in .env or compose override.
-      LOCAL_SHELL_MCP_CF_ACCESS_TEAM_DOMAIN: "${LOCAL_SHELL_MCP_CF_ACCESS_TEAM_DOMAIN:-}"
-      LOCAL_SHELL_MCP_CF_ACCESS_AUDIENCE: "${LOCAL_SHELL_MCP_CF_ACCESS_AUDIENCE:-}"
-      LOCAL_SHELL_MCP_CF_ACCESS_ALLOWED_EMAILS: "${LOCAL_SHELL_MCP_CF_ACCESS_ALLOWED_EMAILS:-}"
-      LOCAL_SHELL_MCP_CF_ACCESS_ALLOWED_EMAIL_DOMAINS: "${LOCAL_SHELL_MCP_CF_ACCESS_ALLOWED_EMAIL_DOMAINS:-}"
-      # Set to true only inside disposable containers where ChatGPT may access absolute paths.
+      LOCAL_SHELL_MCP_AUTH_MODE: "${LOCAL_SHELL_MCP_AUTH_MODE:-oauth}"
+      LOCAL_SHELL_MCP_PUBLIC_BASE_URL: "${LOCAL_SHELL_MCP_PUBLIC_BASE_URL:-}"
+      LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN: "${LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN:-}"
+      LOCAL_SHELL_MCP_OAUTH_JWT_SECRET: "${LOCAL_SHELL_MCP_OAUTH_JWT_SECRET:-dev-change-me}"
       LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER: "${LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER:-false}"
     volumes:
       - ./workspaces/default:/workspace
@@ -26,7 +23,7 @@ services:
     # environment:
     #   SSH_AUTH_SOCK: ${SSH_AUTH_SOCK}
 
-  # Optional Cloudflare Tunnel sidecar. You can also run cloudflared on the host.
+  # Optional Cloudflare Tunnel sidecar. This does not use Cloudflare Access.
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: local-shell-mcp-cloudflared

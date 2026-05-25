@@ -52,13 +52,24 @@ class Settings(BaseSettings):
     git_bin: str = "git"
     python_bin: str = "python3"
 
-    # Authentication. Cloudflare Access is normally enforced at the edge; this is defense-in-depth.
-    auth_mode: Literal["none", "cloudflare_access"] = "cloudflare_access"
+    # Authentication. OAuth is the default for ChatGPT custom connectors.
+    # "cloudflare_access" is kept for legacy deployments only.
+    auth_mode: Literal["none", "oauth", "cloudflare_access"] = "oauth"
     cf_access_team_domain: str | None = None  # e.g. your-team.cloudflareaccess.com
     cf_access_audience: str | None = None
     cf_access_allowed_emails: list[str] = Field(default_factory=list)
     cf_access_allowed_email_domains: list[str] = Field(default_factory=list)
     auth_bypass_localhost: bool = True
+
+    # Built-in OAuth 2.1 authorization server for ChatGPT MCP connectors.
+    # Set public_base_url to the externally reachable HTTPS origin, e.g. https://local-shell-mcp.example.com
+    public_base_url: str | None = None
+    oauth_issuer: str | None = None
+    oauth_resource: str | None = None
+    oauth_admin_pin: str | None = None
+    oauth_jwt_secret: str = Field(default_factory=lambda: os.getenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET") or "dev-change-me")
+    oauth_access_token_ttl_s: int = 8 * 3600
+    oauth_code_ttl_s: int = 300
 
     # Command policy. Set denylist empty if this container is intentionally disposable.
     command_denylist: list[str] = Field(
