@@ -60,12 +60,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     r-base \
     shellcheck \
     sqlite3 \
+    file \
+    libmagic1 \
+    pandoc \
+    poppler-utils \
+    tesseract-ocr \
+    libreoffice-calc \
+    libreoffice-impress \
+    libreoffice-writer \
   && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g yarn pnpm typescript ts-node
 
 WORKDIR /app
-COPY pyproject.toml README.md LICENSE /app/
+COPY requirements-agent.txt pyproject.toml README.md LICENSE /app/
+RUN pip install --no-cache-dir -r requirements-agent.txt
 COPY src /app/src
 RUN pip install --no-cache-dir -e . "playwright==${PLAYWRIGHT_VERSION}"
 

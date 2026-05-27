@@ -21,8 +21,10 @@ ChatGPT / MCP client
 - Streamable HTTP MCP endpoint at `/mcp`.
 - Read-only `search` and `fetch` tools for regular ChatGPT connectors.
 - Full coding-agent tools for ChatGPT Developer Mode / Full MCP clients.
-- Docker image with Python, Node.js, Go, Rust, Java, Ruby, PHP, Perl, Lua, R,
-  C/C++ build tools, Git, tmux, ripgrep, and Playwright.
+- Docker image with Python, common data/document/file-processing packages
+  including PDF, Word, PowerPoint, Excel, and LibreOffice conversion support,
+  Node.js, Go, Rust, Java, Ruby, PHP, Perl, Lua, R, C/C++ build tools, Git,
+  tmux, ripgrep, and Playwright.
 - Audit log at `/workspace/.local-shell-mcp/audit.jsonl`.
 
 ## Tools
