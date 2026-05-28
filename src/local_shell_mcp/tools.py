@@ -216,13 +216,18 @@ def build_mcp() -> FastMCP:
         try:
             data = read_text(id)
             path = data.get("path") or id
+            binary = bool(data.get("binary"))
             return json.dumps(
                 {
                     "id": path,
                     "title": path,
-                    "text": data.get("content", ""),
+                    "text": data.get("content") if not binary else data.get("message", "Binary file omitted"),
                     "url": f"file:///workspace/{path}",
-                    "metadata": {"source": "workspace"},
+                    "metadata": {
+                        "source": "workspace",
+                        "binary": binary,
+                        "bytes": data.get("bytes"),
+                    },
                 },
                 ensure_ascii=False,
             )
@@ -337,18 +342,30 @@ def build_mcp() -> FastMCP:
             return _handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
-    async def read_file(path: str, start_line: int | None = None, end_line: int | None = None) -> dict:
+    async def read_file(
+        path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        binary_preview: str | None = None,
+        binary_preview_bytes: int = 256,
+    ) -> dict:
         """Read a UTF-8 text file, optionally by line range."""
         try:
-            return _ok(read_text(path, start_line, end_line))
+            return _ok(read_text(path, start_line, end_line, binary_preview, binary_preview_bytes))
         except Exception as exc:
             return _handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
-    async def read_many_files(paths: list[str], start_line: int | None = None, end_line: int | None = None) -> dict:
+    async def read_many_files(
+        paths: list[str],
+        start_line: int | None = None,
+        end_line: int | None = None,
+        binary_preview: str | None = None,
+        binary_preview_bytes: int = 256,
+    ) -> dict:
         """Read multiple UTF-8 text files."""
         try:
-            return _ok({"files": [read_text(p, start_line, end_line) for p in paths]})
+            return _ok({"files": [read_text(p, start_line, end_line, binary_preview, binary_preview_bytes) for p in paths]})
         except Exception as exc:
             return _handled_error(exc)
 

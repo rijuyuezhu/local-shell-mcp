@@ -103,7 +103,13 @@ def build_http_app() -> FastAPI:
 
     @app.post("/tools/read_file")
     async def api_read_file(body: dict, _: Principal = PRINCIPAL_DEP):
-        return read_text(body["path"], body.get("start_line"), body.get("end_line"))
+        return read_text(
+            body["path"],
+            body.get("start_line"),
+            body.get("end_line"),
+            body.get("binary_preview"),
+            body.get("binary_preview_bytes", 256),
+        )
 
     @app.post("/tools/write_file")
     async def api_write_file(body: dict, _: Principal = PRINCIPAL_DEP):

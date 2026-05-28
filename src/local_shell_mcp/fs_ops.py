@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import fnmatch
 import os
 import shutil
 from pathlib import Path
 
 from .settings import get_settings
+
+BINARY_CHECK_BYTES = 8192
+BINARY_CONTROL_RATIO = 0.30
+BINARY_PREVIEW_BYTES = 256
+BINARY_MESSAGE = "Refusing to read binary file as text"
 
 
 def workspace_root() -> Path:
@@ -109,15 +116,79 @@ def glob_paths(pattern: str, cwd: str = ".", max_results: int = 500) -> list[str
     return results
 
 
-def read_text(path: str, start_line: int | None = None, end_line: int | None = None) -> dict:
+def _is_probably_binary(sample: bytes) -> bool:
+    if not sample:
+        return False
+    if b"\x00" in sample:
+        return True
+    try:
+        sample.decode("utf-8")
+    except UnicodeDecodeError:
+        return True
+
+    control_bytes = 0
+    for byte in sample:
+        if byte in (9, 10, 12, 13):
+            continue
+        if byte < 32 or byte == 127:
+            control_bytes += 1
+    return (control_bytes / len(sample)) > BINARY_CONTROL_RATIO
+
+
+def _binary_metadata(p: Path, size: int, preview: str | None = None, preview_bytes: int = BINARY_PREVIEW_BYTES) -> dict:
+    result = {
+        "path": relative_display(p),
+        "bytes": size,
+        "binary": True,
+        "content": None,
+        "message": BINARY_MESSAGE,
+    }
+    if preview:
+        limit = max(0, min(preview_bytes, BINARY_PREVIEW_BYTES))
+        data = p.read_bytes()[:limit]
+        if preview == "hex":
+            result["preview"] = binascii.hexlify(data).decode("ascii")
+            result["preview_encoding"] = "hex"
+            result["preview_bytes"] = len(data)
+        elif preview == "base64":
+            result["preview"] = base64.b64encode(data).decode("ascii")
+            result["preview_encoding"] = "base64"
+            result["preview_bytes"] = len(data)
+        else:
+            raise ValueError("binary_preview must be 'hex' or 'base64'")
+    return result
+
+
+def _assert_text_file(p: Path) -> None:
+    with p.open("rb") as fh:
+        sample = fh.read(BINARY_CHECK_BYTES)
+    if _is_probably_binary(sample):
+        raise ValueError(BINARY_MESSAGE)
+
+
+def read_text(
+    path: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    binary_preview: str | None = None,
+    binary_preview_bytes: int = BINARY_PREVIEW_BYTES,
+) -> dict:
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
-    data = p.read_bytes()
+    size = p.stat().st_size
+    with p.open("rb") as fh:
+        sample = fh.read(BINARY_CHECK_BYTES)
+        if _is_probably_binary(sample):
+            return _binary_metadata(p, size, binary_preview, binary_preview_bytes)
+        fh.seek(0)
+        data = fh.read(settings.max_file_read_bytes + 1)
+
     truncated = False
     if len(data) > settings.max_file_read_bytes:
         data = data[: settings.max_file_read_bytes]
         truncated = True
-    text = data.decode("utf-8", errors="replace")
+    truncated_bytes = max(0, size - len(data))
+    text = data.decode("utf-8")
     lines = text.splitlines()
     total_lines = len(lines)
     if start_line is not None or end_line is not None:
@@ -127,7 +198,10 @@ def read_text(path: str, start_line: int | None = None, end_line: int | None = N
         text = "\n".join(selected)
     return {
         "path": relative_display(p),
-        "bytes": len(data),
+        "bytes": size,
+        "bytes_read": len(data),
+        "truncated_bytes": truncated_bytes,
+        "binary": False,
         "total_lines": total_lines,
         "truncated": truncated,
         "content": text,
@@ -154,7 +228,8 @@ def write_text(path: str, content: str, overwrite: bool = True) -> dict:
 
 def edit_text(path: str, old: str, new: str, replace_all: bool = False) -> dict:
     p = resolve_path(path, must_exist=True)
-    text = p.read_text(encoding="utf-8", errors="replace")
+    _assert_text_file(p)
+    text = p.read_text(encoding="utf-8")
     count = text.count(old)
     if count == 0:
         raise ValueError("old text not found")
@@ -167,7 +242,8 @@ def edit_text(path: str, old: str, new: str, replace_all: bool = False) -> dict:
 
 def multi_edit_text(path: str, edits: list[dict]) -> dict:
     p = resolve_path(path, must_exist=True)
-    text = p.read_text(encoding="utf-8", errors="replace")
+    _assert_text_file(p)
+    text = p.read_text(encoding="utf-8")
     total = 0
     for edit in edits:
         old = str(edit["old"])
