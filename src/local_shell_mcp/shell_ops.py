@@ -13,6 +13,10 @@ from .fs_ops import relative_display, resolve_path
 from .models import CommandResult
 from .settings import get_settings
 
+PUBLIC_RUN_SHELL_TIMEOUT_CAP_S = 60
+GRACEFUL_TERMINATION_TIMEOUT_S = 5
+KILL_TERMINATION_TIMEOUT_S = 2
+
 
 def check_command_policy(command: str) -> None:
     settings = get_settings()
@@ -27,6 +31,12 @@ def clamp_timeout(timeout_s: int | None) -> int:
     return max(1, min(timeout, settings.max_timeout_s))
 
 
+def public_run_shell_timeout(timeout_s: int | None) -> int:
+    if timeout_s is not None and timeout_s > PUBLIC_RUN_SHELL_TIMEOUT_CAP_S:
+        raise ValueError(f"timeout_s must be <= {PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} seconds for public run_shell")
+    return max(1, min(timeout_s or get_settings().default_timeout_s, PUBLIC_RUN_SHELL_TIMEOUT_CAP_S))
+
+
 def clamp_output(stdout: str, stderr: str, max_output_bytes: int | None = None) -> tuple[str, str, bool]:
     settings = get_settings()
     limit = max_output_bytes or settings.max_output_bytes
@@ -37,47 +47,77 @@ def clamp_output(stdout: str, stderr: str, max_output_bytes: int | None = None) 
     return stdout[-half:], stderr[-half:], True
 
 
-async def run_shell(command: str, cwd: str = ".", timeout_s: int | None = None, max_output_bytes: int | None = None) -> CommandResult:
+async def _spawn_process(command: str, cwd: str) -> asyncio.subprocess.Process:
     settings = get_settings()
+    return await asyncio.create_subprocess_exec(
+        settings.shell_executable,
+        "-lc",
+        command,
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+
+
+async def _wait_for_process_exit(proc: asyncio.subprocess.Process, timeout_s: int) -> tuple[bytes, bytes] | None:
+    try:
+        return await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except TimeoutError:
+        return None
+
+
+async def _terminate_process_group(proc: asyncio.subprocess.Process) -> tuple[bytes, bytes]:
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except Exception:
+        proc.terminate()
+
+    output = await _wait_for_process_exit(proc, GRACEFUL_TERMINATION_TIMEOUT_S)
+    if output is not None:
+        return output
+
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except Exception:
+        proc.kill()
+
+    output = await _wait_for_process_exit(proc, KILL_TERMINATION_TIMEOUT_S)
+    if output is not None:
+        return output
+    return b"", b"Process did not exit after SIGKILL"
+
+
+async def run_shell(command: str, cwd: str = ".", timeout_s: int | None = None, max_output_bytes: int | None = None) -> CommandResult:
     check_command_policy(command)
     resolved_cwd = resolve_path(cwd, must_exist=True)
     start = time.time()
     audit("run_shell_start", command=command, cwd=str(resolved_cwd))
 
-    proc = await asyncio.create_subprocess_exec(
-        settings.shell_executable,
-        "-lc",
-        command,
-        cwd=str(resolved_cwd),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        preexec_fn=os.setsid if hasattr(os, "setsid") else None,
-    )
+    proc: asyncio.subprocess.Process | None = None
     timed_out = False
+
+    async def spawn_and_communicate() -> tuple[bytes, bytes]:
+        nonlocal proc
+        proc = await _spawn_process(command, str(resolved_cwd))
+        return await proc.communicate()
+
     try:
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=clamp_timeout(timeout_s))
+        stdout_b, stderr_b = await asyncio.wait_for(spawn_and_communicate(), timeout=clamp_timeout(timeout_s))
     except TimeoutError:
         timed_out = True
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except Exception:
-            proc.terminate()
-        try:
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=5)
-        except TimeoutError:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:
-                proc.kill()
-            stdout_b, stderr_b = await proc.communicate()
+        if proc is None:
+            stdout_b, stderr_b = b"", b"Timed out while starting subprocess"
+        else:
+            stdout_b, stderr_b = await _terminate_process_group(proc)
 
     stdout = stdout_b.decode(errors="replace")
     stderr = stderr_b.decode(errors="replace")
     stdout, stderr, truncated = clamp_output(stdout, stderr, max_output_bytes)
     duration_ms = int((time.time() - start) * 1000)
     result = CommandResult(
-        ok=(proc.returncode == 0 and not timed_out),
-        exit_code=proc.returncode,
+        ok=(proc is not None and proc.returncode == 0 and not timed_out),
+        exit_code=proc.returncode if proc is not None else None,
         timed_out=timed_out,
         duration_ms=duration_ms,
         cwd=relative_display(resolved_cwd),
@@ -90,12 +130,16 @@ async def run_shell(command: str, cwd: str = ".", timeout_s: int | None = None, 
         "run_shell_end",
         command=command,
         cwd=str(resolved_cwd),
-        exit_code=proc.returncode,
+        exit_code=proc.returncode if proc is not None else None,
         timed_out=timed_out,
         duration_ms=duration_ms,
         truncated=truncated,
     )
     return result
+
+
+async def public_run_shell(command: str, cwd: str = ".", timeout_s: int | None = None, max_output_bytes: int | None = None) -> CommandResult:
+    return await run_shell(command, cwd, public_run_shell_timeout(timeout_s), max_output_bytes)
 
 
 def _tmux_session_name(name: str | None = None) -> str:

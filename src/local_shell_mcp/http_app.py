@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 
 from .auth import CloudflareAccessMiddleware, Principal, verify_request
 from .fs_ops import (
@@ -36,7 +36,14 @@ from .playwright_ops import (
 )
 from .search_ops import grep, tree
 from .settings import get_settings
-from .shell_ops import kill_shell, list_shells, read_shell, run_shell, send_shell, start_shell
+from .shell_ops import (
+    kill_shell,
+    list_shells,
+    public_run_shell,
+    read_shell,
+    send_shell,
+    start_shell,
+)
 from .todo_ops import todo_read, todo_write
 
 
@@ -63,7 +70,10 @@ def build_http_app() -> FastAPI:
 
     @app.post("/tools/run_shell")
     async def api_run_shell(body: dict, _: Principal = PRINCIPAL_DEP):
-        return (await run_shell(body["command"], body.get("cwd", "."), body.get("timeout_s"), body.get("max_output_bytes"))).model_dump()
+        try:
+            return (await public_run_shell(body["command"], body.get("cwd", "."), body.get("timeout_s"), body.get("max_output_bytes"))).model_dump()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/tools/shell_start")
     async def api_shell_start(body: dict, _: Principal = PRINCIPAL_DEP):

@@ -49,7 +49,15 @@ from .playwright_ops import (
 )
 from .search_ops import grep, tree
 from .settings import get_settings
-from .shell_ops import kill_shell, list_shells, read_shell, run_shell, send_shell, start_shell
+from .shell_ops import (
+    kill_shell,
+    list_shells,
+    public_run_shell,
+    read_shell,
+    run_shell,
+    send_shell,
+    start_shell,
+)
 from .todo_ops import todo_read, todo_write
 
 
@@ -257,7 +265,7 @@ def build_mcp() -> FastMCP:
     async def run_shell_tool(command: str, cwd: str = ".", timeout_s: int | None = None, max_output_bytes: int | None = None) -> dict:
         """Run a shell command in the controlled container. This is the primary coding-agent tool."""
         try:
-            return _ok((await run_shell(command, cwd, timeout_s, max_output_bytes)).model_dump())
+            return _ok((await public_run_shell(command, cwd, timeout_s, max_output_bytes)).model_dump())
         except Exception as exc:
             return _handled_error(exc)
 
