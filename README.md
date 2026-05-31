@@ -165,6 +165,20 @@ image updates and container recreation. Set
 `LOCAL_SHELL_MCP_PERSISTENT_CREDENTIALS=false` for a fully disposable
 authentication state.
 
+Download a Docker-free all-in-one executable from the GitHub release page when you do not want to run Docker. Release assets are built for Linux, macOS, and Windows on x86_64 and ARM64/aarch64. Start it directly:
+
+```bash
+./local-shell-mcp --mode mcp
+```
+
+On Windows PowerShell:
+
+```powershell
+.\local-shell-mcp.exe --mode mcp
+```
+
+For binary deployments, set `LOCAL_SHELL_MCP_WORKSPACE_ROOT` to the directory you want the tool to control. The binary includes the Python server and dependencies, but not system tools such as Git, tmux, shells, compilers, LibreOffice, or Playwright browser binaries; those are taken from the host system.
+
 Start the Cloudflare Tunnel sidecar too:
 
 ```bash

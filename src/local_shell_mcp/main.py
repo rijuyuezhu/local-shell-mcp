@@ -84,7 +84,7 @@ def run_http() -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    argv = list(argv or [])
+    argv = sys.argv[1:] if argv is None else list(argv)
     if argv and argv[0] == "worker":
         run_worker_cli(argv[1:])
         return

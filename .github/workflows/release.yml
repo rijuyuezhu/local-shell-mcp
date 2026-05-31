@@ -7,11 +7,6 @@ on:
         description: "Release tag, for example v0.2.0"
         required: true
         type: string
-      platforms:
-        description: "Docker platforms to build"
-        required: true
-        default: "linux/amd64,linux/arm64"
-        type: string
       prerelease:
         description: "Mark the GitHub release as a prerelease"
         required: true
@@ -26,8 +21,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.event.inputs.tag }}
+  cancel-in-progress: false
+
 env:
   IMAGE_NAME: fwerkor/local-shell-mcp
+  PYTHON_VERSION: "3.12"
 
 jobs:
   validate-release:
@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      docker_tags: ${{ steps.docker-tags.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
 
@@ -58,6 +59,23 @@ jobs:
           print(f"version={version}")
           PY
 
+      - name: Prepare Docker release tags
+        id: docker-tags
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          PUSH_LATEST: ${{ github.event.inputs.push_latest }}
+        run: |
+          tags=("${IMAGE_NAME}:${RELEASE_TAG}")
+          if [[ "${RELEASE_TAG}" == v* ]]; then
+            tags+=("${IMAGE_NAME}:${RELEASE_TAG#v}")
+          fi
+          if [[ "${PUSH_LATEST}" == "true" ]]; then
+            tags+=("${IMAGE_NAME}:latest")
+          fi
+
+          json="$(printf '%s\n' "${tags[@]}" | jq -R . | jq -sc .)"
+          echo "tags=${json}" >> "$GITHUB_OUTPUT"
+
   build-python-package:
     name: Build Python package
     runs-on: ubuntu-latest
@@ -67,7 +85,8 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
 
       - name: Build wheel and source distribution
         run: |
@@ -75,6 +94,7 @@ jobs:
           python -m build
 
       - name: Generate checksums
+        shell: bash
         run: |
           cd dist
           sha256sum ./* > SHA256SUMS.txt
@@ -85,14 +105,129 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  publish-docker:
-    name: Publish Docker image
-    runs-on: ubuntu-latest
+  build-binary:
+    name: Build binary (${{ matrix.artifact }})
     needs: validate-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: linux-x86_64
+            runner: ubuntu-latest
+            binary: local-shell-mcp
+            archive: tar.gz
+          - artifact: linux-aarch64
+            runner: ubuntu-24.04-arm
+            binary: local-shell-mcp
+            archive: tar.gz
+          - artifact: macos-x86_64
+            runner: macos-13
+            binary: local-shell-mcp
+            archive: tar.gz
+          - artifact: macos-aarch64
+            runner: macos-14
+            binary: local-shell-mcp
+            archive: tar.gz
+          - artifact: windows-x86_64
+            runner: windows-latest
+            binary: local-shell-mcp.exe
+            archive: zip
+          - artifact: windows-aarch64
+            runner: windows-11-arm
+            binary: local-shell-mcp.exe
+            archive: zip
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Build self-contained executable
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pyinstaller
+          pyinstaller \
+            --clean \
+            --onefile \
+            --name local-shell-mcp \
+            --collect-all local_shell_mcp \
+            --collect-all mcp \
+            --collect-all uvicorn \
+            --collect-all fastapi \
+            --collect-all starlette \
+            scripts/pyinstaller-entry.py
+
+      - name: Smoke test executable
+        shell: bash
+        run: |
+          ./dist/${{ matrix.binary }} --help
+
+      - name: Package executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/local-shell-mcp-${{ matrix.artifact }}
+          cp dist/${{ matrix.binary }} release/local-shell-mcp-${{ matrix.artifact }}/
+          cp README.md LICENSE release/local-shell-mcp-${{ matrix.artifact }}/
+          cat > release/local-shell-mcp-${{ matrix.artifact }}/QUICKSTART.txt <<'EOF'
+          Start local-shell-mcp without Docker:
+
+            ./local-shell-mcp --mode mcp
+
+          Useful environment variables:
+
+            LOCAL_SHELL_MCP_HOST=0.0.0.0
+            LOCAL_SHELL_MCP_PORT=8765
+            LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/workspace
+            LOCAL_SHELL_MCP_AUTH_MODE=oauth
+            LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+            LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me
+            LOCAL_SHELL_MCP_OAUTH_JWT_SECRET=change-me-64-hex-random-secret
+          EOF
+          cd release
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            7z a local-shell-mcp-${{ matrix.artifact }}.zip local-shell-mcp-${{ matrix.artifact }} >/dev/null
+          else
+            tar -czf local-shell-mcp-${{ matrix.artifact }}.tar.gz local-shell-mcp-${{ matrix.artifact }}
+          fi
+
+      - name: Generate binary checksums
+        shell: bash
+        run: |
+          cd release
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum local-shell-mcp-${{ matrix.artifact }}.* > local-shell-mcp-${{ matrix.artifact }}.sha256
+          else
+            shasum -a 256 local-shell-mcp-${{ matrix.artifact }}.* > local-shell-mcp-${{ matrix.artifact }}.sha256
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.artifact }}
+          path: |
+            release/local-shell-mcp-${{ matrix.artifact }}.*
+          if-no-files-found: error
+
+  publish-docker-platform:
+    name: Publish Docker image (${{ matrix.platform }})
+    needs: validate-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            suffix: amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            suffix: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
@@ -101,31 +236,62 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Prepare Docker tags
-        id: docker-tags
+      - name: Prepare platform tags
+        id: platform-tags
         env:
-          RELEASE_TAG: ${{ github.event.inputs.tag }}
-          PUSH_LATEST: ${{ github.event.inputs.push_latest }}
+          DOCKER_TAGS_JSON: ${{ needs.validate-release.outputs.docker_tags }}
+          SUFFIX: ${{ matrix.suffix }}
         run: |
-          {
-            echo "tags<<EOF"
-            echo "${IMAGE_NAME}:${RELEASE_TAG}"
-            if [[ "${RELEASE_TAG}" == v* ]]; then
-              echo "${IMAGE_NAME}:${RELEASE_TAG#v}"
-            fi
-            if [[ "${PUSH_LATEST}" == "true" ]]; then
-              echo "${IMAGE_NAME}:latest"
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
 
-      - name: Build and push multi-platform image
+          tags = json.loads(os.environ["DOCKER_TAGS_JSON"])
+          suffix = os.environ["SUFFIX"]
+          print("tags<<EOF")
+          for tag in tags:
+              print(f"{tag}-{suffix}")
+          print("EOF")
+          PY
+
+      - name: Build and push platform image
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: ${{ github.event.inputs.platforms }}
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.docker-tags.outputs.tags }}
+          tags: ${{ steps.platform-tags.outputs.tags }}
+          cache-from: type=gha,scope=docker-${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.suffix }}
+
+  publish-docker-manifest:
+    name: Publish Docker manifest
+    runs-on: ubuntu-latest
+    needs:
+      - validate-release
+      - publish-docker-platform
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifests
+        env:
+          DOCKER_TAGS_JSON: ${{ needs.validate-release.outputs.docker_tags }}
+        run: |
+          python - <<'PY' > /tmp/create-manifests.sh
+          import json
+          import os
+
+          tags = json.loads(os.environ["DOCKER_TAGS_JSON"])
+          for tag in tags:
+              print("docker buildx imagetools create \\")
+              print(f"  -t {tag} \\")
+              print(f"  {tag}-amd64 \\")
+              print(f"  {tag}-arm64")
+          PY
+          bash /tmp/create-manifests.sh
 
   github-release:
     name: Publish GitHub release
@@ -133,14 +299,21 @@ jobs:
     needs:
       - validate-release
       - build-python-package
-      - publish-docker
+      - build-binary
+      - publish-docker-manifest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: python-dist
+          pattern: '*'
           path: dist
+          merge-multiple: true
+
+      - name: Create combined checksums
+        run: |
+          cd dist
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
 
       - name: Create release notes
         run: |
@@ -151,13 +324,31 @@ jobs:
           docker pull ${{ env.IMAGE_NAME }}:${{ github.event.inputs.tag }}
           \`\`\`
 
-          Multi-platform image platforms:
+          Docker platforms are built in parallel and published as a multi-arch manifest:
 
           \`\`\`text
-          ${{ github.event.inputs.platforms }}
+          linux/amd64
+          linux/arm64
           \`\`\`
 
-          Python package artifacts and SHA256 checksums are attached below.
+          All-in-one executable downloads are attached for:
+
+          \`\`\`text
+          linux-x86_64
+          linux-aarch64
+          macos-x86_64
+          macos-aarch64
+          windows-x86_64
+          windows-aarch64
+          \`\`\`
+
+          Start without Docker:
+
+          \`\`\`bash
+          ./local-shell-mcp --mode mcp
+          \`\`\`
+
+          Python package artifacts, executable archives, and SHA256 checksums are attached below.
 
           Python package version in \`pyproject.toml\`: \`${{ needs.validate-release.outputs.version }}\`
           EOF
