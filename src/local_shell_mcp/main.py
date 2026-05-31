@@ -20,6 +20,7 @@ from .oauth import (
     oauth_server_metadata,
     oauth_token,
 )
+from .remote import remote_routes, run_worker_cli
 from .settings import get_settings
 from .tools import build_mcp
 
@@ -30,8 +31,7 @@ def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
         async with inner_app.router.lifespan_context(inner_app):
             yield
 
-    return Starlette(
-        routes=[
+    routes = [
             Route("/healthz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
             Route("/readyz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
             Route("/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
@@ -42,7 +42,12 @@ def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
             Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
             Route("/oauth/token", oauth_token, methods=["POST"]),
             Mount("/", app=inner_app),
-        ],
+        ]
+    settings = get_settings()
+    if settings.remote_enabled:
+        routes[2:2] = remote_routes()
+    return Starlette(
+        routes=routes,
         lifespan=lifespan,
     )
 
@@ -79,14 +84,23 @@ def run_http() -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    argv = list(argv or [])
+    if argv and argv[0] == "worker":
+        run_worker_cli(argv[1:])
+        return
+
     parser = argparse.ArgumentParser(description="local-shell-mcp")
     parser.add_argument("--mode", choices=["mcp", "http", "stdio"], default=None)
     parser.add_argument("--config", default=None, help="Path to config YAML")
+    parser.add_argument("--remote", dest="remote", action="store_true", default=None, help="Enable remote worker mode (default)")
+    parser.add_argument("--no-remote", dest="remote", action="store_false", help="Disable remote worker mode")
     args = parser.parse_args(argv)
     if args.config:
         os.environ["LOCAL_SHELL_MCP_CONFIG"] = args.config
     if args.mode:
         os.environ["LOCAL_SHELL_MCP_MODE"] = args.mode
+    if args.remote is not None:
+        os.environ["LOCAL_SHELL_MCP_REMOTE_ENABLED"] = "true" if args.remote else "false"
 
     settings = get_settings()
     if settings.mode == "http":

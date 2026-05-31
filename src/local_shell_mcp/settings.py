@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     max_concurrent_commands: int = 4
     max_tmux_sessions: int = 16
 
+    # Remote worker mode is enabled by default. Remote machines join with one-time
+    # invites, poll for jobs over outbound HTTP(S), and expose near-parity tools.
+    remote_enabled: bool = True
+    remote_invite_ttl_s: int = 600
+    remote_poll_timeout_s: int = 25
+    remote_job_timeout_s: int = 3600
+
     shell_executable: str = "/bin/bash"
     tmux_bin: str = "tmux"
     rg_bin: str = "rg"

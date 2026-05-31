@@ -21,6 +21,7 @@ ChatGPT / MCP client
 - Streamable HTTP MCP endpoint at `/mcp`.
 - Read-only `search` and `fetch` tools for regular ChatGPT connectors.
 - Full coding-agent tools for ChatGPT Developer Mode / Full MCP clients.
+- Remote worker mode is enabled by default: create a one-time invite, paste one command on a remote HPC/NPU/server machine, and use that machine through `remote_*` tools without SSH.
 - Docker image with Python, common data/document/file-processing packages
   including PDF, Word, PowerPoint, Excel, and LibreOffice conversion support,
   Node.js, Go, Rust, Java, Ruby, PHP, Perl, Lua, R, C/C++ build tools, Git,
@@ -73,6 +74,21 @@ Git:
 - `git_show_tool`
 - `git_reset_tool`
 - `secret_scan`
+
+Remote worker control and near-parity tools:
+
+- `remote_invite`
+- `remote_list_machines`
+- `remote_revoke_machine`
+- `remote_rename_machine`
+- `remote_environment_info`
+- `remote_run_shell_tool`
+- `remote_run_python_tool`
+- `remote_shell_start` / `remote_shell_send` / `remote_shell_read` / `remote_shell_kill` / `remote_shell_list`
+- `remote_list_files` / `remote_tree_view` / `remote_glob_search` / `remote_grep_search`
+- `remote_read_file` / `remote_read_many_files` / `remote_write_file` / `remote_edit_file` / `remote_multi_edit_file` / `remote_delete_file_or_dir` / `remote_apply_patch`
+- `remote_git_clone_tool` / `remote_git_status_tool` / `remote_git_diff_tool` / `remote_git_log_tool` / `remote_git_checkout_tool` / `remote_git_fetch_tool` / `remote_git_pull_tool` / `remote_git_add_tool` / `remote_git_commit_tool` / `remote_git_push_tool` / `remote_git_show_tool` / `remote_git_reset_tool`
+- `remote_playwright_install_tool` / `remote_browser_screenshot_tool` / `remote_browser_get_text_tool` / `remote_browser_eval_tool` / `remote_browser_pdf_tool` / `remote_playwright_run_script_tool`
 
 Playwright and diagnostics:
 
@@ -238,6 +254,67 @@ docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit.js
 A successful tool call should produce audit events such as `run_shell_start` and
 `run_shell_end`.
 
+## Remote Worker Mode
+
+Remote worker mode is enabled by default. It lets machines behind NAT, firewalls,
+or restricted HPC login environments connect back to the public control server
+using outbound HTTP(S). The remote machine does not need an inbound port or SSH
+access from the MCP client.
+
+The normal local tools keep their original behavior. Remote tools use the same
+shape and add a required `machine` argument, for example:
+
+```text
+run_shell_tool(command="pwd")
+remote_run_shell_tool(machine="npu-4card", command="pwd")
+```
+
+Create a one-time invite from ChatGPT or any MCP client:
+
+```text
+Use local-shell-mcp remote_invite with name=npu-4card and workdir=/home/cyh/FrameDiff.
+```
+
+The tool returns a pasteable command like:
+
+```bash
+curl -fsSL https://your-public-host.example.com/join | bash -s -- \
+  --invite lsmcp_inv_xxxxx \
+  --name npu-4card \
+  --workdir /home/cyh/FrameDiff
+```
+
+Paste that command on the remote machine. The join script downloads a worker
+bundle from the control server at `/remote/worker-bundle.tgz`, so the remote side
+uses the same code snapshot as the control server and does not need GitHub or
+PyPI access. The worker registers once, exchanges the invite for a worker token,
+and then long-polls the control server for jobs. The default mode is foreground
+and temporary; press `Ctrl-C` on the remote machine to disconnect. Add
+`--background` to the generated command for a simple `nohup` background worker.
+`--persist` is accepted for future user-service installation support.
+
+After it connects, ask ChatGPT to list machines:
+
+```text
+Use local-shell-mcp remote_list_machines.
+```
+
+Then use the near-parity remote tool set, such as `remote_run_shell_tool`,
+`remote_read_file`, `remote_write_file`, `remote_grep_search`,
+`remote_git_pull_tool`, or `remote_shell_start`.
+
+Remote mode settings:
+
+| Variable | Default | Meaning |
+|---|---:|---|
+| `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` | Enable remote worker routes and MCP tools |
+| `LOCAL_SHELL_MCP_REMOTE_INVITE_TTL_S` | `600` | One-time invite lifetime |
+| `LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S` | `25` | Long-poll heartbeat timeout |
+| `LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S` | `3600` | Control-side remote job result timeout |
+
+To disable remote worker mode explicitly, run with `--no-remote` or set
+`LOCAL_SHELL_MCP_REMOTE_ENABLED=false`.
+
 ## Docker Commands
 
 Pull and run without Compose:
@@ -277,6 +354,7 @@ Environment variables use the `LOCAL_SHELL_MCP_` prefix.
 | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` | Give the AI unrestricted control of the container, including paths outside workspace and root access |
 | `LOCAL_SHELL_MCP_MAX_TIMEOUT_S` | `3600` | Max command timeout |
 | `LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES` | `200000` | Output truncation limit |
+| `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` | Enable remote worker invite, join, polling, and `remote_*` tools |
 
 You can also pass YAML:
 
