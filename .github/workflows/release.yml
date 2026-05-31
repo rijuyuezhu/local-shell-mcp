@@ -301,9 +301,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v8
+      - name: Download Python package artifacts
+        uses: actions/download-artifact@v8
         with:
-          pattern: '*'
+          name: python-dist
+          path: dist
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
           path: dist
           merge-multiple: true
 
