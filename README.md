@@ -177,7 +177,7 @@ On Windows PowerShell:
 .\local-shell-mcp.exe --mode mcp
 ```
 
-For binary deployments, set `LOCAL_SHELL_MCP_WORKSPACE_ROOT` to the directory you want the tool to control. The binary includes the Python server and dependencies, but not system tools such as Git, tmux, shells, compilers, LibreOffice, or Playwright browser binaries; those are taken from the host system.
+For binary deployments, set `LOCAL_SHELL_MCP_WORKSPACE_ROOT` to the directory you want the tool to control. The binary includes the Python server and default OAuth dependencies, but not system tools such as Git, tmux, shells, compilers, LibreOffice, or Playwright browser binaries; those are taken from the host system. Cloudflare Access JWT verification requires the optional `cloudflare-access` Python extra because it needs RSA crypto support; the prebuilt all-in-one binaries are optimized for the default OAuth mode.
 
 Start the Cloudflare Tunnel sidecar too:
 
