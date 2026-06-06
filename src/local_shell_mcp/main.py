@@ -21,7 +21,7 @@ from .oauth import (
     oauth_token,
 )
 from .remote import remote_routes, run_worker_cli
-from .settings import get_settings
+from .settings import get_settings, validate_public_oauth_configuration
 from .tools import build_mcp
 
 
@@ -54,6 +54,7 @@ def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
 
 def run_mcp() -> None:
     settings = get_settings()
+    validate_public_oauth_configuration(settings)
     mcp = build_mcp()
 
     if settings.mode == "stdio":
@@ -79,6 +80,7 @@ def run_mcp() -> None:
 
 def run_http() -> None:
     settings = get_settings()
+    validate_public_oauth_configuration(settings)
     app = build_http_app()
     uvicorn.run(app, host=settings.host, port=settings.port)
 

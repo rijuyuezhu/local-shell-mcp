@@ -199,3 +199,15 @@ def safe_settings_dump(settings: Settings | None = None) -> dict:
             else:
                 data[key] = "<redacted>"
     return data
+
+
+def validate_public_oauth_configuration(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
+    if settings.auth_mode != "oauth" or not settings.public_base_url:
+        return
+    weak_values = {"", "dev-" + "change-me"}
+    if settings.oauth_jwt_secret in weak_values:
+        raise RuntimeError(
+            "LOCAL_SHELL_MCP_OAUTH_JWT_SECRET must be set to a strong random value "
+            "when LOCAL_SHELL_MCP_PUBLIC_BASE_URL is configured."
+        )
