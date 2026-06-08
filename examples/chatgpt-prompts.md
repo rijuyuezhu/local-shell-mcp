@@ -8,10 +8,6 @@ Use local-shell-mcp. Clone `https://github.com/fwerkor/FrameDiff.git` into `/wor
 
 Use local-shell-mcp. In `/workspace/FrameDiff`, create a new branch `ai/example-change`, make the requested code edit with `edit_file` or `apply_patch`, run relevant tests, show `git diff --stat`, run `secret_scan`, commit, and push the branch.
 
-## Playwright
-
-Use local-shell-mcp. Open `https://example.com` with Playwright, save a screenshot to `screenshots/example.png`, and return the page title and visible text.
-
 ## One-command remote worker onboarding
 
 Use local-shell-mcp. Create a remote worker invite named `npu-4card` with workdir `/home/cyh/FrameDiff`. Show me only the pasteable join command and then, after I say it has run, call `remote_list_machines` to confirm it is online.

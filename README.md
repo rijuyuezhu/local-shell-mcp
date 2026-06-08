@@ -4,7 +4,7 @@
 Codex-like agents, or other MCP clients controlled access to a dedicated local
 container.
 
-The container exposes shell, filesystem, Git, todo, Playwright, and diagnostic
+The container exposes shell, filesystem, Git, todo, and diagnostic
 tools inside `/workspace`. The intended safety boundary is the container, not the
 host.
 
@@ -25,7 +25,7 @@ ChatGPT / MCP client
 - Docker image with Python, common data/document/file-processing packages
   including PDF, Word, PowerPoint, Excel, and LibreOffice conversion support,
   Node.js, Go, Rust, Java, Ruby, PHP, Perl, Lua, R, C/C++ build tools, Git,
-  tmux, ripgrep, and Playwright.
+  tmux, and ripgrep.
 - Audit log at `/workspace/.local-shell-mcp/audit.jsonl`.
 
 
@@ -103,16 +103,9 @@ Remote worker control and near-parity tools:
 - `remote_list_files` / `remote_tree_view` / `remote_glob_search` / `remote_grep_search`
 - `remote_read_file` / `remote_read_many_files` / `remote_write_file` / `remote_edit_file` / `remote_multi_edit_file` / `remote_delete_file_or_dir` / `remote_apply_patch`
 - `remote_git_clone_tool` / `remote_git_status_tool` / `remote_git_diff_tool` / `remote_git_log_tool` / `remote_git_checkout_tool` / `remote_git_fetch_tool` / `remote_git_pull_tool` / `remote_git_add_tool` / `remote_git_commit_tool` / `remote_git_push_tool` / `remote_git_show_tool` / `remote_git_reset_tool`
-- `remote_playwright_install_tool` / `remote_browser_screenshot_tool` / `remote_browser_get_text_tool` / `remote_browser_eval_tool` / `remote_browser_pdf_tool` / `remote_playwright_run_script_tool`
 
-Playwright and diagnostics:
+Diagnostics and todo:
 
-- `playwright_install_tool`
-- `browser_screenshot_tool`
-- `browser_get_text_tool`
-- `browser_eval_tool`
-- `browser_pdf_tool`
-- `playwright_run_script_tool`
 - `environment_info`
 - `audit_tail`
 - `todo_read_tool`
@@ -192,7 +185,7 @@ On Windows PowerShell:
 .\local-shell-mcp.exe --mode mcp
 ```
 
-For binary deployments, set `LOCAL_SHELL_MCP_WORKSPACE_ROOT` to the directory you want the tool to control. The binary includes the Python server and default OAuth dependencies, but not system tools such as Git, tmux, shells, compilers, LibreOffice, or Playwright browser binaries; those are taken from the host system.
+For binary deployments, set `LOCAL_SHELL_MCP_WORKSPACE_ROOT` to the directory you want the tool to control. The binary includes the Python server and default OAuth dependencies, but not system tools such as Git, tmux, shells, compilers, or LibreOffice; those are taken from the host system.
 
 Start the Cloudflare Tunnel sidecar too:
 
@@ -253,7 +246,7 @@ https://your-public-host.example.com/mcp
 
 ## ChatGPT Setup
 
-For full shell, filesystem, Git, and Playwright tools, enable ChatGPT Developer
+For full shell, filesystem, and Git tools, enable ChatGPT Developer
 Mode:
 
 1. Open ChatGPT settings.

@@ -64,7 +64,7 @@ def resource_url(request: Request | None = None) -> str:
 
 
 def _scopes() -> list[str]:
-    return ["shell:read", "shell:write", "shell:execute", "git:write", "browser:use"]
+    return ["shell:read", "shell:write", "shell:execute", "git:write"]
 
 
 def protected_resource_metadata(request: Request) -> dict[str, Any]:

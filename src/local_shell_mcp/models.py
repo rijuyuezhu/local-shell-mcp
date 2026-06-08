@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ToolResult(BaseModel):
@@ -41,14 +41,3 @@ class GrepMatch(BaseModel):
     line: int
     column: int | None = None
     text: str
-
-
-class BrowserResult(BaseModel):
-    ok: bool
-    url: str | None = None
-    title: str | None = None
-    text: str | None = None
-    screenshot_path: str | None = None
-    pdf_path: str | None = None
-    html_path: str | None = None
-    console: list[str] = Field(default_factory=list)

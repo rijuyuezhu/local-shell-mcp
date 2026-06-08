@@ -41,14 +41,6 @@ from .git_ops import (
     git_show,
     git_status,
 )
-from .playwright_ops import (
-    browser_eval,
-    browser_get_text,
-    browser_pdf,
-    browser_screenshot,
-    playwright_install,
-    playwright_run_script,
-)
 from .remote import remote_manager
 from .search_ops import grep, tree
 from .settings import get_settings, safe_settings_dump
@@ -141,7 +133,7 @@ SECRET_PATTERNS = {
 OAUTH_SECURITY_SCHEMES = [
     {
         "type": "oauth2",
-        "scopes": ["shell:read", "shell:write", "shell:execute", "git:write", "browser:use"],
+        "scopes": ["shell:read", "shell:write", "shell:execute", "git:write"],
     }
 ]
 NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
@@ -694,53 +686,6 @@ def build_mcp() -> FastMCP:
         except Exception as exc:
             return _handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
-    async def playwright_install_tool(browser: str = "chromium", with_deps: bool = False) -> dict:
-        """Install Playwright browser binaries in the container."""
-        try:
-            return _ok(await playwright_install(browser, with_deps))
-        except Exception as exc:
-            return _handled_error(exc)
-
-    @mcp.tool(meta=oauth_meta)
-    async def browser_screenshot_tool(url: str, output_path: str = "screenshots/page.png", browser: str = "chromium", full_page: bool = True, width: int = 1440, height: int = 1000, wait_until: str = "networkidle") -> dict:
-        """Open a URL with Playwright and save a screenshot."""
-        try:
-            return _ok(await browser_screenshot(url, output_path, browser, full_page, width, height, wait_until))
-        except Exception as exc:
-            return _handled_error(exc)
-
-    @mcp.tool(meta=oauth_meta)
-    async def browser_get_text_tool(url: str, browser: str = "chromium", wait_until: str = "networkidle", selector: str = "body") -> dict:
-        """Open a URL with Playwright and return visible text for a selector."""
-        try:
-            return _ok(await browser_get_text(url, browser, wait_until, selector))
-        except Exception as exc:
-            return _handled_error(exc)
-
-    @mcp.tool(meta=oauth_meta)
-    async def browser_eval_tool(url: str, javascript: str, browser: str = "chromium", wait_until: str = "networkidle") -> dict:
-        """Open a URL with Playwright and evaluate JavaScript."""
-        try:
-            return _ok(await browser_eval(url, javascript, browser, wait_until))
-        except Exception as exc:
-            return _handled_error(exc)
-
-    @mcp.tool(meta=oauth_meta)
-    async def browser_pdf_tool(url: str, output_path: str = "screenshots/page.pdf", width: int = 1440, height: int = 1000, wait_until: str = "networkidle") -> dict:
-        """Open a URL with Chromium and save a PDF."""
-        try:
-            return _ok(await browser_pdf(url, output_path, width, height, wait_until))
-        except Exception as exc:
-            return _handled_error(exc)
-
-    @mcp.tool(meta=oauth_meta)
-    async def playwright_run_script_tool(script: str, cwd: str = ".", timeout_s: int = 60) -> dict:
-        """Run a full Python Playwright script. Powerful; use in disposable containers."""
-        try:
-            return _ok(await playwright_run_script(script, cwd, timeout_s))
-        except Exception as exc:
-            return _handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def audit_tail(lines: int = 100) -> dict:
@@ -945,35 +890,6 @@ def build_mcp() -> FastMCP:
         """Run git reset on a remote worker. Modes: soft, mixed, hard."""
         return await _remote_call(machine, "git_reset_tool", {"cwd": cwd, "mode": mode, "ref": ref})
 
-    @mcp.tool(meta=oauth_meta)
-    async def remote_playwright_install_tool(machine: str, browser: str = "chromium", with_deps: bool = False) -> dict:
-        """Install Playwright browser binaries on a remote worker."""
-        return await _remote_call(machine, "playwright_install_tool", {"browser": browser, "with_deps": with_deps})
-
-    @mcp.tool(meta=oauth_meta)
-    async def remote_browser_screenshot_tool(machine: str, url: str, output_path: str = "screenshots/page.png", browser: str = "chromium", full_page: bool = True, width: int = 1440, height: int = 1000, wait_until: str = "networkidle") -> dict:
-        """Open a URL with Playwright on a remote worker and save a screenshot."""
-        return await _remote_call(machine, "browser_screenshot_tool", {"url": url, "output_path": output_path, "browser": browser, "full_page": full_page, "width": width, "height": height, "wait_until": wait_until})
-
-    @mcp.tool(meta=oauth_meta)
-    async def remote_browser_get_text_tool(machine: str, url: str, browser: str = "chromium", wait_until: str = "networkidle", selector: str = "body") -> dict:
-        """Open a URL with Playwright on a remote worker and return visible text."""
-        return await _remote_call(machine, "browser_get_text_tool", {"url": url, "browser": browser, "wait_until": wait_until, "selector": selector})
-
-    @mcp.tool(meta=oauth_meta)
-    async def remote_browser_eval_tool(machine: str, url: str, javascript: str, browser: str = "chromium", wait_until: str = "networkidle") -> dict:
-        """Open a URL with Playwright on a remote worker and evaluate JavaScript."""
-        return await _remote_call(machine, "browser_eval_tool", {"url": url, "javascript": javascript, "browser": browser, "wait_until": wait_until})
-
-    @mcp.tool(meta=oauth_meta)
-    async def remote_browser_pdf_tool(machine: str, url: str, output_path: str = "screenshots/page.pdf", width: int = 1440, height: int = 1000, wait_until: str = "networkidle") -> dict:
-        """Open a URL with Chromium on a remote worker and save a PDF."""
-        return await _remote_call(machine, "browser_pdf_tool", {"url": url, "output_path": output_path, "width": width, "height": height, "wait_until": wait_until})
-
-    @mcp.tool(meta=oauth_meta)
-    async def remote_playwright_run_script_tool(machine: str, script: str, cwd: str = ".", timeout_s: int = 60) -> dict:
-        """Run a full Python Playwright script on a remote worker."""
-        return await _remote_call(machine, "playwright_run_script_tool", {"script": script, "cwd": cwd, "timeout_s": timeout_s}, timeout_s)
 
     _install_full_container_auto_approval_hints(mcp)
     _install_mcp_tool_watchdogs(mcp)

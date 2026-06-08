@@ -49,14 +49,6 @@ from .git_ops import (
     git_show,
     git_status,
 )
-from .playwright_ops import (
-    browser_eval,
-    browser_get_text,
-    browser_pdf,
-    browser_screenshot,
-    playwright_install,
-    playwright_run_script,
-)
 from .search_ops import grep, tree
 from .settings import get_settings, safe_settings_dump
 from .shell_ops import (
@@ -85,7 +77,6 @@ REMOTE_WORKER_DISTRIBUTIONS = (
     "aiofiles",
     "python-multipart",
     "pathspec",
-    "playwright",
 )
 
 
@@ -499,23 +490,11 @@ async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
         return await git_show(args.get("cwd", "."), args.get("ref", "HEAD"), args.get("path"))
     if tool == "git_reset_tool":
         return await git_reset(args.get("cwd", "."), args.get("mode", "soft"), args.get("ref", "HEAD"))
-    if tool == "playwright_install_tool":
-        return await playwright_install(args.get("browser", "chromium"), args.get("with_deps", False))
-    if tool == "browser_screenshot_tool":
-        return await browser_screenshot(args["url"], args.get("output_path", "screenshots/page.png"), args.get("browser", "chromium"), args.get("full_page", True), args.get("width", 1440), args.get("height", 1000), args.get("wait_until", "networkidle"))
-    if tool == "browser_get_text_tool":
-        return await browser_get_text(args["url"], args.get("browser", "chromium"), args.get("wait_until", "networkidle"), args.get("selector", "body"))
-    if tool == "browser_eval_tool":
-        return await browser_eval(args["url"], args["javascript"], args.get("browser", "chromium"), args.get("wait_until", "networkidle"))
-    if tool == "browser_pdf_tool":
-        return await browser_pdf(args["url"], args.get("output_path", "screenshots/page.pdf"), args.get("width", 1440), args.get("height", 1000), args.get("wait_until", "networkidle"))
-    if tool == "playwright_run_script_tool":
-        return await playwright_run_script(args["script"], args.get("cwd", "."), args.get("timeout_s", 60))
     raise ValueError(f"unsupported remote worker tool: {tool}")
 
 
 def worker_capabilities() -> list[str]:
-    return ["shell", "persistent_shell", "files", "search", "git", "python", "playwright"]
+    return ["shell", "persistent_shell", "files", "search", "git", "python"]
 
 
 def worker_info(workdir: str) -> dict[str, Any]:

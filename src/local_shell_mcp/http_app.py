@@ -29,14 +29,6 @@ from .git_ops import (
     git_show,
     git_status,
 )
-from .playwright_ops import (
-    browser_eval,
-    browser_get_text,
-    browser_pdf,
-    browser_screenshot,
-    playwright_install,
-    playwright_run_script,
-)
 from .search_ops import grep, tree
 from .settings import get_settings
 from .shell_ops import (
@@ -224,28 +216,5 @@ def build_http_app() -> FastAPI:
     async def api_todo_write(body: dict, _: Principal = PRINCIPAL_DEP):
         return await _blocking(todo_write, body.get("todos", []))
 
-    @app.post("/tools/playwright/install")
-    async def api_playwright_install(body: dict, _: Principal = PRINCIPAL_DEP):
-        return await playwright_install(body.get("browser", "chromium"), body.get("with_deps", False))
-
-    @app.post("/tools/browser/screenshot")
-    async def api_browser_screenshot(body: dict, _: Principal = PRINCIPAL_DEP):
-        return await browser_screenshot(body["url"], body.get("output_path", "screenshots/page.png"), body.get("browser", "chromium"), body.get("full_page", True), body.get("width", 1440), body.get("height", 1000), body.get("wait_until", "networkidle"))
-
-    @app.post("/tools/browser/text")
-    async def api_browser_text(body: dict, _: Principal = PRINCIPAL_DEP):
-        return await browser_get_text(body["url"], body.get("browser", "chromium"), body.get("wait_until", "networkidle"), body.get("selector", "body"))
-
-    @app.post("/tools/browser/eval")
-    async def api_browser_eval(body: dict, _: Principal = PRINCIPAL_DEP):
-        return await browser_eval(body["url"], body["javascript"], body.get("browser", "chromium"), body.get("wait_until", "networkidle"))
-
-    @app.post("/tools/browser/pdf")
-    async def api_browser_pdf(body: dict, _: Principal = PRINCIPAL_DEP):
-        return await browser_pdf(body["url"], body.get("output_path", "screenshots/page.pdf"), body.get("width", 1440), body.get("height", 1000), body.get("wait_until", "networkidle"))
-
-    @app.post("/tools/playwright/run_script")
-    async def api_playwright_run_script(body: dict, _: Principal = PRINCIPAL_DEP):
-        return await playwright_run_script(body["script"], body.get("cwd", "."), body.get("timeout_s", 60))
 
     return app

@@ -1,6 +1,6 @@
 # local-shell-mcp for VS Code
 
-This extension starts and manages `local-shell-mcp` from VS Code, exposing the current workspace through MCP so ChatGPT can collaborate on code with shell, filesystem, Git, search, todo, Playwright, and remote-worker tools.
+This extension starts and manages `local-shell-mcp` from VS Code, exposing the current workspace through MCP so ChatGPT can collaborate on code with shell, filesystem, Git, search, todo, and remote-worker tools.
 
 ## Prerequisites
 
