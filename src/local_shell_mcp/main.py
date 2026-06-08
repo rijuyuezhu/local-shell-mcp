@@ -20,9 +20,45 @@ from .oauth import (
     oauth_server_metadata,
     oauth_token,
 )
-from .remote import remote_routes, run_worker_cli
+from .remote import add_worker_cli_args, remote_routes, run_worker_from_args
 from .settings import get_settings, validate_public_oauth_configuration
 from .tools import build_mcp
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="local-shell-mcp")
+    parser.add_argument("--mode", choices=["mcp", "http", "stdio"], default=None)
+    parser.add_argument("--config", default=None, help="Path to config YAML")
+    parser.add_argument(
+        "--remote",
+        dest="remote",
+        action="store_true",
+        default=None,
+        help="Enable remote worker mode (default)",
+    )
+    parser.add_argument(
+        "--no-remote",
+        dest="remote",
+        action="store_false",
+        help="Disable remote worker mode",
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
+    worker = subparsers.add_parser(
+        "worker",
+        help="Connect this machine to a local-shell-mcp control server",
+    )
+    add_worker_cli_args(worker)
+    return parser
+
+
+def _apply_server_args(args: argparse.Namespace) -> None:
+    if args.config:
+        os.environ["LOCAL_SHELL_MCP_CONFIG"] = args.config
+    if args.mode:
+        os.environ["LOCAL_SHELL_MCP_MODE"] = args.mode
+    if args.remote is not None:
+        os.environ["LOCAL_SHELL_MCP_REMOTE_ENABLED"] = "true" if args.remote else "false"
 
 
 def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
@@ -87,22 +123,12 @@ def run_http() -> None:
 
 def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else list(argv)
-    if argv and argv[0] == "worker":
-        run_worker_cli(argv[1:])
+    args = _build_parser().parse_args(argv)
+    if args.command == "worker":
+        run_worker_from_args(args)
         return
 
-    parser = argparse.ArgumentParser(description="local-shell-mcp")
-    parser.add_argument("--mode", choices=["mcp", "http", "stdio"], default=None)
-    parser.add_argument("--config", default=None, help="Path to config YAML")
-    parser.add_argument("--remote", dest="remote", action="store_true", default=None, help="Enable remote worker mode (default)")
-    parser.add_argument("--no-remote", dest="remote", action="store_false", help="Disable remote worker mode")
-    args = parser.parse_args(argv)
-    if args.config:
-        os.environ["LOCAL_SHELL_MCP_CONFIG"] = args.config
-    if args.mode:
-        os.environ["LOCAL_SHELL_MCP_MODE"] = args.mode
-    if args.remote is not None:
-        os.environ["LOCAL_SHELL_MCP_REMOTE_ENABLED"] = "true" if args.remote else "false"
+    _apply_server_args(args)
 
     settings = get_settings()
     if settings.mode == "http":

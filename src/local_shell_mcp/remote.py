@@ -540,12 +540,20 @@ async def run_worker(server: str, invite: str, name: str | None = None, workdir:
             await client.post(f"{server}{REMOTE_API_PREFIX}/result", headers=headers, json=out, timeout=30)
 
 
-def run_worker_cli(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Connect this machine to a local-shell-mcp control server")
+def add_worker_cli_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--server", required=True)
     parser.add_argument("--invite", required=True)
     parser.add_argument("--name", default=None)
     parser.add_argument("--workdir", default=None)
     parser.add_argument("--persist", action="store_true", help="Reserved for future user-service installation")
-    args = parser.parse_args(argv)
+
+
+def run_worker_from_args(args: argparse.Namespace) -> None:
     asyncio.run(run_worker(args.server, args.invite, args.name, args.workdir, args.persist))
+
+
+def run_worker_cli(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Connect this machine to a local-shell-mcp control server")
+    add_worker_cli_args(parser)
+    args = parser.parse_args(argv)
+    run_worker_from_args(args)

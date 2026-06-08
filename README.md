@@ -446,12 +446,10 @@ Do not expose HTTP debug mode publicly.
 ## Development
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e '.[dev]'
-ruff check .
-pytest -q
-LOCAL_SHELL_MCP_AUTH_MODE=none local-shell-mcp --mode mcp
+uv sync --group dev
+uv run ruff check .
+uv run pytest -q
+LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode mcp
 ```
 
 You can verify the MCP endpoint with a standard MCP client:

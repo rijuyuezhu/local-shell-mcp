@@ -70,10 +70,13 @@ RUN pacman -Sy --noconfirm "${KEYRING_PACKAGE}" \
 RUN npm install -g yarn pnpm typescript ts-node
 
 WORKDIR /app
-COPY requirements-agent.txt pyproject.toml README.md LICENSE /app/
-RUN pip install --no-cache-dir -r requirements-agent.txt
+RUN python -m pip install --no-cache-dir uv
+COPY requirements-agent.txt pyproject.toml uv.lock README.md LICENSE /app/
+RUN uv sync --locked --no-dev --no-install-project \
+  && uv pip install --python /app/.venv/bin/python -r requirements-agent.txt
 COPY src /app/src
-RUN pip install --no-cache-dir -e .
+RUN uv sync --locked --no-dev --inexact
+ENV PATH="/app/.venv/bin:${PATH}"
 
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN useradd -m -u 10001 agent \
