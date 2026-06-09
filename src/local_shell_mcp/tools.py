@@ -234,6 +234,8 @@ def _install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
     if not get_settings().allow_full_container:
         return
     for tool in mcp._tool_manager._tools.values():  # noqa: SLF001
+        if tool.name == "call_agent_mcp_tool" or tool.name.startswith("agent_mcp__"):
+            continue
         if tool.annotations and tool.annotations.readOnlyHint:
             continue
         tool.annotations = ToolAnnotations(

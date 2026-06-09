@@ -60,9 +60,7 @@ async def test_activate_agent_skill_returns_skill_content(tmp_path, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
-    tmp_path, monkeypatch
-):
+async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(tmp_path, monkeypatch):
     config_dir = tmp_path / "agent-config"
     config_dir.mkdir()
     (config_dir / "config.json").write_text(
@@ -141,17 +139,13 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
     ]
 
     disabled = _payload(
-        await mcp.call_tool(
-            "call_agent_mcp_tool", {"server": "off", "tool": "search", "args": {}}
-        )
+        await mcp.call_tool("call_agent_mcp_tool", {"server": "off", "tool": "search", "args": {}})
     )
     assert disabled["data"]["error_type"] == "ValueError"
     assert disabled["data"]["message"] == "MCP server off is disabled"
 
     unavailable = _payload(
-        await mcp.call_tool(
-            "call_agent_mcp_tool", {"server": "bad", "tool": "search", "args": {}}
-        )
+        await mcp.call_tool("call_agent_mcp_tool", {"server": "bad", "tool": "search", "args": {}})
     )
     assert unavailable["data"]["error_type"] == "ValueError"
     assert unavailable["data"]["message"] == (
@@ -190,7 +184,12 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(tmp_path, mon
         async def list_tools(self, name, server):  # noqa: ANN001, ARG002
             raise RuntimeError(
                 "Authorization: Bearer super-secret --token super-secret "
-                "https://example.com?token=super-secret"
+                "https://example.com?token=super-secret "
+                '{"api_key": "super-secret"} '
+                "{'token': 'super-secret'} "
+                '["--token", "super-secret"] '
+                "['--token', 'super-secret'] "
+                "https://user:super-secret@example.com/path"
             )
 
         async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
@@ -241,7 +240,12 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
         async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
             raise RuntimeError(
                 "Authorization: Bearer call-secret --token call-secret "
-                "https://example.com?token=call-secret"
+                "https://example.com?token=call-secret "
+                '{"api_key": "call-secret"} '
+                "{'token': 'call-secret'} "
+                '["--token", "call-secret"] '
+                "['--token', 'call-secret'] "
+                "https://user:call-secret@example.com/path"
             )
 
     monkeypatch.setattr(
@@ -305,12 +309,19 @@ async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
     config_dir = tmp_path / "agent-config"
     config_dir.mkdir()
     (config_dir / "config.json").write_text(
-        json.dumps({"version": 1, "mcpServers": {"docs": {"type": "http", "url": "https://example.com/mcp"}}}),
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {"docs": {"type": "http", "url": "https://example.com/mcp"}},
+            }
+        ),
         encoding="utf-8",
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    monkeypatch.setattr(tools_module, "AgentMcpClientManager", lambda timeout: FakeDynamicMcpManager())
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda timeout: FakeDynamicMcpManager()
+    )
     get_settings.cache_clear()
 
     mcp = build_mcp()

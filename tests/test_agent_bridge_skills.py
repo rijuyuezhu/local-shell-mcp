@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from local_shell_mcp.agent_bridge import (
@@ -91,9 +93,7 @@ def test_scan_agent_skills_rejects_directories_outside_config_root(tmp_path):
 def test_activate_skill_returns_content_and_related_files(tmp_path):
     skill_dir = tmp_path / "skills" / "debugging"
     skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(
-        "# Debugging\n\nFind root causes.\n", encoding="utf-8"
-    )
+    (skill_dir / "SKILL.md").write_text("# Debugging\n\nFind root causes.\n", encoding="utf-8")
 
     records = scan_agent_skills(tmp_path, "skills").skills
     payload = activate_skill(tmp_path, records["debugging"])
@@ -133,3 +133,62 @@ def test_scan_agent_skills_description_uses_early_paragraph_over_later_example(t
     result = scan_agent_skills(tmp_path, "skills")
 
     assert result.skills["examples"].description == "Use the early paragraph."
+
+
+def test_scan_agent_skills_warns_when_directory_iteration_fails(tmp_path, monkeypatch):
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    original_iterdir = Path.iterdir
+
+    def fail_iterdir(path):  # noqa: ANN001
+        if path == skills_dir:
+            raise OSError("racing directory")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_iterdir)
+
+    result = scan_agent_skills(tmp_path, "skills")
+
+    assert result.skills == {}
+    assert result.warnings == ["Could not scan skills directory skills: racing directory"]
+
+
+def test_scan_agent_skills_skips_unreadable_skill_and_continues(tmp_path, monkeypatch):
+    broken_dir = tmp_path / "skills" / "broken"
+    good_dir = tmp_path / "skills" / "good"
+    broken_dir.mkdir(parents=True)
+    good_dir.mkdir()
+    (broken_dir / "SKILL.md").write_text("# Broken\n\nDo not load.\n", encoding="utf-8")
+    (good_dir / "SKILL.md").write_text("# Good\n\nLoad this.\n", encoding="utf-8")
+    original_read_text = Path.read_text
+
+    def fail_read_text(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        if path == broken_dir / "SKILL.md":
+            raise OSError("unreadable skill")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_read_text)
+
+    result = scan_agent_skills(tmp_path, "skills")
+
+    assert set(result.skills) == {"good"}
+    assert result.warnings == ["Skipping skill broken: unreadable skill"]
+
+
+def test_scan_agent_skills_warns_when_related_file_scan_fails(tmp_path, monkeypatch):
+    skill_dir = tmp_path / "skills" / "racing"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("# Racing\n\nStill load.\n", encoding="utf-8")
+    original_rglob = Path.rglob
+
+    def fail_rglob(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        if path == skill_dir:
+            raise OSError("rglob failed")
+        return original_rglob(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "rglob", fail_rglob)
+
+    result = scan_agent_skills(tmp_path, "skills")
+
+    assert set(result.skills) == {"racing"}
+    assert result.warnings == ["Skipping related files for skill racing: rglob failed"]

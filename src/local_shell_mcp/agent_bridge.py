@@ -35,10 +35,20 @@ TEXT_SENSITIVE_KEY_PATTERN = (
     r"token|secret|password|passwd|key)"
 )
 SENSITIVE_TEXT_KEY_VALUE_RE = re.compile(
-    rf"(?P<prefix>\b{TEXT_SENSITIVE_KEY_PATTERN}\b\s*[:=]\s*)[^\s,;]+",
+    rf"(?P<prefix>(?<![A-Za-z0-9_])(?P<key_quote>['\"]?)"
+    rf"{TEXT_SENSITIVE_KEY_PATTERN}(?P=key_quote)\s*[:=]\s*)"
+    r"(?P<value_quote>['\"]?)(?P<value>[^\s,;'\"\)\}\]]+)"
+    r"(?P=value_quote)",
     re.I,
 )
-BEARER_TOKEN_RE = re.compile(r"\bBearer\s+[^\s,;]+", re.I)
+SENSITIVE_QUOTED_ARG_LIST_RE = re.compile(
+    rf"(?P<prefix>(?P<flag_quote>['\"])--?[A-Za-z0-9_.-]*"
+    rf"{SENSITIVE_KEY_PATTERN}[A-Za-z0-9_.-]*(?P=flag_quote)\s*,\s*"
+    r"(?P<value_quote>['\"]))(?P<value>[^'\"]*)(?P=value_quote)",
+    re.I,
+)
+BEARER_TOKEN_RE = re.compile(r"\bBearer\s+[^\s,;'\"\)\}\]]+", re.I)
+URL_USERINFO_PASSWORD_RE = re.compile(r"(?P<prefix>https?://[^/\s:@?#]+:)[^@/\s?#]+(?=@)", re.I)
 URL_QUERY_RE = re.compile(r"(?P<prefix>https?://[^\s?]+)\?[^\s\"')]+", re.I)
 
 
@@ -80,9 +90,7 @@ class AgentBridgeManifest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     version: int = 1
-    mcp_servers: dict[str, AgentMcpServerConfig] = Field(
-        default_factory=dict, alias="mcpServers"
-    )
+    mcp_servers: dict[str, AgentMcpServerConfig] = Field(default_factory=dict, alias="mcpServers")
     skills: AgentSkillsConfig = Field(default_factory=AgentSkillsConfig)
     dynamic_tools: AgentDynamicToolsConfig = Field(
         default_factory=AgentDynamicToolsConfig, alias="dynamicTools"
@@ -251,55 +259,78 @@ def scan_agent_skills(config_dir: Path, directory: str = "skills") -> SkillScanR
         return SkillScanResult(
             warnings=[f"Skills directory must be inside config directory: {directory}"]
         )
-    if not skills_dir.exists():
+    try:
+        skills_dir_exists = skills_dir.exists()
+    except OSError as exc:
+        return SkillScanResult(warnings=[f"Could not scan skills directory {directory}: {exc}"])
+    if not skills_dir_exists:
         return SkillScanResult(warnings=[f"Skills directory not found: {directory}"])
 
     skills: dict[str, SkillRecord] = {}
     warnings: list[str] = []
-    for child in sorted(
-        (candidate for candidate in skills_dir.iterdir() if candidate.is_dir()),
-        key=lambda candidate: candidate.name,
-    ):
-        if child.is_symlink():
-            warnings.append(f"Skipping skill {child.name}: skill directory is a symlink")
-            continue
-        skill_root = child.resolve()
-        if not skill_root.is_relative_to(config_root):
-            warnings.append(
-                f"Skipping skill {child.name}: skill directory must be inside config directory"
-            )
-            continue
-        entry_path = child / "SKILL.md"
-        if entry_path.is_symlink():
-            warnings.append(
-                f"Skipping skill {child.name}: "
-                "SKILL.md must be a regular file inside the skill directory"
-            )
-            continue
-        if not entry_path.is_file():
-            warnings.append(f"Skipping skill {child.name}: missing SKILL.md")
-            continue
-        if not entry_path.resolve().is_relative_to(skill_root):
-            warnings.append(
-                f"Skipping skill {child.name}: "
-                "SKILL.md must be inside the skill directory"
-            )
-            continue
-        markdown = entry_path.read_text(encoding="utf-8", errors="replace")
-        related_files: list[str] = []
-        for related_path in child.rglob("*"):
-            if not related_path.is_file():
+    try:
+        children = sorted(skills_dir.iterdir(), key=lambda candidate: candidate.name)
+    except OSError as exc:
+        return SkillScanResult(warnings=[f"Could not scan skills directory {directory}: {exc}"])
+
+    for child in children:
+        try:
+            if not child.is_dir():
                 continue
-            if related_path.is_symlink() or not related_path.resolve().is_relative_to(
-                skill_root
-            ):
+            if child.is_symlink():
+                warnings.append(f"Skipping skill {child.name}: skill directory is a symlink")
+                continue
+            skill_root = child.resolve()
+            if not skill_root.is_relative_to(config_root):
                 warnings.append(
-                    f"Skipping related file "
-                    f"{related_path.relative_to(config_root).as_posix()}: "
-                    "file must be inside the skill directory"
+                    f"Skipping skill {child.name}: skill directory must be inside config directory"
                 )
                 continue
-            related_files.append(_relative_posix(config_root, related_path))
+            entry_path = child / "SKILL.md"
+            if entry_path.is_symlink():
+                warnings.append(
+                    f"Skipping skill {child.name}: "
+                    "SKILL.md must be a regular file inside the skill directory"
+                )
+                continue
+            if not entry_path.is_file():
+                warnings.append(f"Skipping skill {child.name}: missing SKILL.md")
+                continue
+            if not entry_path.resolve().is_relative_to(skill_root):
+                warnings.append(
+                    f"Skipping skill {child.name}: SKILL.md must be inside the skill directory"
+                )
+                continue
+            markdown = entry_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            warnings.append(f"Skipping skill {child.name}: {exc}")
+            continue
+
+        related_files: list[str] = []
+        try:
+            for related_path in child.rglob("*"):
+                try:
+                    if not related_path.is_file():
+                        continue
+                    if related_path.is_symlink() or not related_path.resolve().is_relative_to(
+                        skill_root
+                    ):
+                        warnings.append(
+                            f"Skipping related file "
+                            f"{related_path.relative_to(config_root).as_posix()}: "
+                            "file must be inside the skill directory"
+                        )
+                        continue
+                    related_files.append(_relative_posix(config_root, related_path))
+                except OSError as exc:
+                    try:
+                        related_display = related_path.relative_to(config_root).as_posix()
+                    except ValueError:
+                        related_display = str(related_path)
+                    warnings.append(f"Skipping related file {related_display}: {exc}")
+        except OSError as exc:
+            warnings.append(f"Skipping related files for skill {child.name}: {exc}")
+
         skills[child.name] = SkillRecord(
             name=child.name,
             entry_path=_relative_posix(config_root, entry_path),
@@ -381,9 +412,20 @@ def redact_mapping(value: Any) -> Any:
 
 def _redact_text(value: str) -> str:
     redacted = redact_mapping(value)
+    redacted = SENSITIVE_QUOTED_ARG_LIST_RE.sub(
+        lambda match: f"{match.group('prefix')}<redacted>{match.group('value_quote')}",
+        redacted,
+    )
     redacted = BEARER_TOKEN_RE.sub("Bearer <redacted>", redacted)
+    redacted = URL_USERINFO_PASSWORD_RE.sub(r"\g<prefix><redacted>", redacted)
     redacted = URL_QUERY_RE.sub(r"\g<prefix>?<redacted>", redacted)
-    return SENSITIVE_TEXT_KEY_VALUE_RE.sub(r"\g<prefix><redacted>", redacted)
+    return SENSITIVE_TEXT_KEY_VALUE_RE.sub(
+        lambda match: (
+            f"{match.group('prefix')}{match.group('value_quote')}"
+            f"<redacted>{match.group('value_quote')}"
+        ),
+        redacted,
+    )
 
 
 def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:
@@ -497,9 +539,7 @@ def build_agent_registry(
             )
 
     effective_dynamic_skills = (
-        manifest.data.dynamic_tools.skills
-        if dynamic_skill_tools is None
-        else dynamic_skill_tools
+        manifest.data.dynamic_tools.skills if dynamic_skill_tools is None else dynamic_skill_tools
     )
     effective_dynamic_mcp = (
         manifest.data.dynamic_tools.mcp if dynamic_mcp_tools is None else dynamic_mcp_tools

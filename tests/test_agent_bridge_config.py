@@ -2,6 +2,7 @@ import json
 
 from local_shell_mcp.agent_bridge import (
     AgentBridgeManifest,
+    _redact_text,
     load_agent_manifest,
     redact_mapping,
 )
@@ -136,6 +137,24 @@ def test_redact_mapping_hides_secret_values():
     assert "secret" not in spaced_token
     assert "<redacted>" in spaced_token
     assert redact_mapping(["--password secret", "safe"]) == ["--password <redacted>", "safe"]
+
+
+def test_redact_text_hides_quoted_dict_argv_and_url_userinfo_secrets():
+    redacted = _redact_text(
+        '{"api_key": "super-secret"} '
+        "{'token': 'super-secret'} "
+        '["--token", "super-secret"] '
+        "['--token', 'super-secret'] "
+        "https://user:super-secret@example.com/path"
+    )
+
+    assert "super-secret" not in redacted
+    assert redacted.count("<redacted>") == 5
+    assert '"api_key": "<redacted>"' in redacted
+    assert "'token': '<redacted>'" in redacted
+    assert '["--token", "<redacted>"]' in redacted
+    assert "['--token', '<redacted>']" in redacted
+    assert "https://user:<redacted>@example.com/path" in redacted
 
 
 def test_agent_bridge_manifest_populates_python_field_names():
