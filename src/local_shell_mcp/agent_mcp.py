@@ -123,8 +123,16 @@ class AgentMcpClientManager:
     ) -> list[AgentMcpTool]:
         async def _list_tools() -> list[AgentMcpTool]:
             async with self._session(name, server) as session:
-                result = await session.list_tools()
-                return [normalize_mcp_tool(tool) for tool in _value(result, "tools", result)]
+                tools: list[AgentMcpTool] = []
+                cursor: str | None = None
+                while True:
+                    result = await session.list_tools(cursor=cursor)
+                    tools.extend(
+                        normalize_mcp_tool(tool) for tool in _value(result, "tools", result)
+                    )
+                    cursor = getattr(result, "nextCursor", None)
+                    if not cursor:
+                        return tools
 
         return await asyncio.wait_for(_list_tools(), timeout=self.call_timeout_s)
 
