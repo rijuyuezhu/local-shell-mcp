@@ -16,9 +16,7 @@ def _tool_value(source: Any, name: str, default: Any = None) -> Any:
     return getattr(source, name, default)
 
 
-def _tool_row(
-    server: str, tool: Any, dynamic_tool_name: str | None = None
-) -> dict[str, Any]:
+def _tool_row(server: str, tool: Any, dynamic_tool_name: str | None = None) -> dict[str, Any]:
     if is_dataclass(tool) and not isinstance(tool, type):
         data = asdict(tool)
     elif hasattr(tool, "model_dump"):
@@ -108,9 +106,7 @@ def register_agent_bridge_tools(
                 _tool_row(
                     server_name,
                     tool,
-                    dynamic_names.get(
-                        (server_name, str(_tool_value(tool, "name", "")))
-                    ),
+                    dynamic_names.get((server_name, str(_tool_value(tool, "name", "")))),
                 )
                 for server_name, record in records
                 for tool in record.tools

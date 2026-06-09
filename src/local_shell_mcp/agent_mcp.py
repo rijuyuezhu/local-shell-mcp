@@ -118,9 +118,7 @@ class AgentMcpClientManager:
 
         raise ValueError(f"unsupported MCP server type for {name}: {server.type}")
 
-    async def list_tools(
-        self, name: str, server: AgentMcpServerConfig
-    ) -> list[AgentMcpTool]:
+    async def list_tools(self, name: str, server: AgentMcpServerConfig) -> list[AgentMcpTool]:
         async def _list_tools() -> list[AgentMcpTool]:
             async with self._session(name, server) as session:
                 tools: list[AgentMcpTool] = []

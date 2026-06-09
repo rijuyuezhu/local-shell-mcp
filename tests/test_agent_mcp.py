@@ -244,9 +244,7 @@ def test_build_agent_registry_probes_enabled_servers(tmp_path):
 
 def test_build_agent_registry_records_probe_errors(tmp_path):
     (tmp_path / "config.json").write_text(
-        json.dumps(
-            {"version": 1, "mcpServers": {"bad": {"type": "http", "url": "https://bad"}}}
-        ),
+        json.dumps({"version": 1, "mcpServers": {"bad": {"type": "http", "url": "https://bad"}}}),
         encoding="utf-8",
     )
 
@@ -262,16 +260,13 @@ def test_build_agent_registry_records_probe_errors(tmp_path):
 
 def test_registry_config_status_redacts_probe_errors(tmp_path):
     (tmp_path / "config.json").write_text(
-        json.dumps(
-            {"version": 1, "mcpServers": {"bad": {"type": "http", "url": "https://bad"}}}
-        ),
+        json.dumps({"version": 1, "mcpServers": {"bad": {"type": "http", "url": "https://bad"}}}),
         encoding="utf-8",
     )
     manager = FakeMcpManager(
         errors_by_server={
             "bad": RuntimeError(
-                "Authorization: Bearer secret --token secret "
-                "https://example.com?token=secret"
+                "Authorization: Bearer secret --token secret https://example.com?token=secret"
             )
         }
     )
@@ -286,15 +281,11 @@ def test_registry_config_status_redacts_probe_errors(tmp_path):
 @pytest.mark.asyncio
 async def test_build_agent_registry_works_inside_running_loop(tmp_path):
     (tmp_path / "config.json").write_text(
-        json.dumps(
-            {"version": 1, "mcpServers": {"docs": {"type": "http", "url": "https://docs"}}}
-        ),
+        json.dumps({"version": 1, "mcpServers": {"docs": {"type": "http", "url": "https://docs"}}}),
         encoding="utf-8",
     )
     manager = FakeMcpManager(
-        tools_by_server={
-            "docs": [AgentMcpTool("search", "Search docs", {"type": "object"})]
-        }
+        tools_by_server={"docs": [AgentMcpTool("search", "Search docs", {"type": "object"})]}
     )
 
     registry = build_agent_registry(tmp_path, manager, probe_timeout_s=1)
@@ -332,9 +323,7 @@ def test_build_agent_registry_dynamic_flag_overrides(tmp_path):
     default_dir.mkdir()
     (default_dir / "config.json").write_text(json.dumps({"version": 1}), encoding="utf-8")
 
-    default_registry = build_agent_registry(
-        default_dir, FakeMcpManager(), probe_timeout_s=1
-    )
+    default_registry = build_agent_registry(default_dir, FakeMcpManager(), probe_timeout_s=1)
 
     assert default_registry.dynamic_mcp_tools is True
     assert default_registry.dynamic_skill_tools is True
@@ -349,9 +338,7 @@ def test_build_agent_registry_records_timeout_without_hanging(tmp_path):
                 await asyncio.sleep(60)
 
     (tmp_path / "config.json").write_text(
-        json.dumps(
-            {"version": 1, "mcpServers": {"slow": {"type": "http", "url": "https://slow"}}}
-        ),
+        json.dumps({"version": 1, "mcpServers": {"slow": {"type": "http", "url": "https://slow"}}}),
         encoding="utf-8",
     )
     result_queue: queue.Queue[Any] = queue.Queue(maxsize=1)
@@ -359,9 +346,7 @@ def test_build_agent_registry_records_timeout_without_hanging(tmp_path):
     def run_registry() -> None:
         try:
             result_queue.put(
-                build_agent_registry(
-                    tmp_path, StubbornMcpManager(), probe_timeout_s=0.05
-                )
+                build_agent_registry(tmp_path, StubbornMcpManager(), probe_timeout_s=0.05)
             )
         except BaseException as exc:
             result_queue.put(exc)
