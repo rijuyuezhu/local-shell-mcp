@@ -1,0 +1,14 @@
+# Keep the Docker build context small and avoid reading runtime/user workspaces.
+# The Dockerfile only needs these files/directories from the repository.
+**
+
+!Dockerfile
+!pyproject.toml
+!README.md
+!LICENSE
+
+!src/
+!src/**
+
+!scripts/
+!scripts/docker-entrypoint.sh
