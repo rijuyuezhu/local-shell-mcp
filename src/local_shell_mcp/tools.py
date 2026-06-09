@@ -12,6 +12,9 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
+from .agent_bridge import build_agent_registry
+from .agent_bridge_tools import register_agent_bridge_tools
+from .agent_mcp import AgentMcpClientManager
 from .audit import audit
 from .fs_ops import (
     delete_path,
@@ -359,6 +362,16 @@ def build_mcp() -> FastMCP:
     )
     read_only_meta = _security_meta([*NOAUTH_SECURITY_SCHEMES, *OAUTH_SECURITY_SCHEMES])
     oauth_meta = _security_meta(OAUTH_SECURITY_SCHEMES)
+
+    if settings.agent_bridge_enabled:
+        registry = build_agent_registry(
+            settings.agent_config_dir,
+            AgentMcpClientManager(settings.agent_mcp_call_timeout_s),
+            settings.agent_mcp_probe_timeout_s,
+            settings.agent_dynamic_mcp_tools,
+            settings.agent_dynamic_skill_tools,
+        )
+        register_agent_bridge_tools(mcp, registry, oauth_meta, _ok, _handled_error)
 
     @mcp.tool(annotations=read_only_tool, meta=read_only_meta)
     async def search(query: str) -> str:
