@@ -2,7 +2,7 @@
 set -euo pipefail
 
 workspace="${LOCAL_SHELL_MCP_WORKSPACE_ROOT:-/workspace}"
-allow_full_container="$(printf '%s' "${LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER:-false}" | tr '[:upper:]' '[:lower:]')"
+run_as_root="$(printf '%s' "${LOCAL_SHELL_MCP_RUN_AS_ROOT:-false}" | tr '[:upper:]' '[:lower:]')"
 persist_credentials="$(printf '%s' "${LOCAL_SHELL_MCP_PERSISTENT_CREDENTIALS:-true}" | tr '[:upper:]' '[:lower:]')"
 credentials_dir="${LOCAL_SHELL_MCP_CREDENTIALS_DIR:-/persist/credentials}"
 
@@ -117,7 +117,7 @@ setup_persistent_credentials() {
 
 if [ "$(id -u)" = "0" ]; then
   mkdir -p "$workspace" "$workspace/.local-shell-mcp" "$credentials_dir"
-  if is_truthy "$allow_full_container"; then
+  if is_truthy "$run_as_root"; then
     setup_persistent_credentials root /root
     exec "$@"
   fi

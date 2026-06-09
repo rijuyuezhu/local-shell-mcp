@@ -82,6 +82,7 @@ Common settings:
 | `LOCAL_SHELL_MCP_OAUTH_JWT_SECRET` | `dev-change-me` | Secret used to sign bearer tokens |
 | `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` | `0` | Bearer token lifetime in seconds; `0` means no expiry |
 | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` | Disable built-in workspace and command restrictions; intended only for disposable containers/VMs |
+| `LOCAL_SHELL_MCP_RUN_AS_ROOT` | `false` | Docker entrypoint escape hatch to run the MCP server as root instead of `agent`; prefer explicit `sudo` inside commands |
 | `LOCAL_SHELL_MCP_MAX_TIMEOUT_S` | `3600` | Maximum command timeout |
 | `LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES` | `200000` | Command output truncation limit |
 | `LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES` | `512000` | Per-file read limit |
