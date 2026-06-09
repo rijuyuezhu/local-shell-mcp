@@ -172,24 +172,30 @@ def test_redact_text_hides_realistic_stringified_secrets():
         'env={"GITHUB_TOKEN": "ghp_secret"} '
         '{ "X-API-Key": "super secret with spaces!" } '
         "AWS_SECRET_ACCESS_KEY=abc123 "
-        "Authorization: Basic abc123 "
-        "Cookie: session=abc123; other=ok "
+        "Authorization: Basic abc123\n"
+        "Cookie: session=abc123; refresh=def456\n"
         "password: multi word secret"
     )
 
     assert "ghp_secret" not in redacted
     assert "super secret with spaces!" not in redacted
     assert "abc123" not in redacted
+    assert "def456" not in redacted
     assert "multi word secret" not in redacted
     assert "<redacted>" in redacted
 
 
 def test_redact_text_hides_standalone_high_confidence_tokens():
-    token = "ghp_1234567890abcdef1234567890abcdef123456"
+    tokens = [
+        "ghp_1234567890abcdef1234567890abcdef123456",
+        "sk-1234567890abcdef1234567890abcdef",
+        "AKIA1234567890ABCDEF",
+    ]
 
-    redacted = _redact_text(f"probe failed with {token}")
+    redacted = _redact_text(f"probe failed with {' '.join(tokens)}")
 
-    assert token not in redacted
+    for token in tokens:
+        assert token not in redacted
     assert "<redacted>" in redacted
 
 

@@ -15,15 +15,19 @@ def _payload(response):  # noqa: ANN001
 REALISTIC_SECRET_ERROR = (
     'env={"GITHUB_TOKEN": "ghp_secret"} '
     '{ "X-API-Key": "super secret with spaces!" } '
-    "AWS_SECRET_ACCESS_KEY=abc123 "
-    "Authorization: Basic abc123 "
-    "Cookie: session=abc123; other=ok "
+    "AWS_SECRET_ACCESS_KEY=abc123\n"
+    "Authorization: Basic abc123\n"
+    "Cookie: session=abc123; refresh=def456\n"
+    "standalone sk-1234567890abcdef1234567890abcdef AKIA1234567890ABCDEF\n"
     "password: multi word secret"
 )
 REALISTIC_SECRET_VALUES = [
     "ghp_secret",
     "super secret with spaces!",
     "abc123",
+    "def456",
+    "sk-1234567890abcdef1234567890abcdef",
+    "AKIA1234567890ABCDEF",
     "multi word secret",
 ]
 

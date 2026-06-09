@@ -46,6 +46,13 @@ SENSITIVE_TEXT_UNQUOTED_VALUE_RE = re.compile(
     r"(?P<value>[^\s,;'\"\)\}\]\n][^,;'\"\)\}\]\n]*)",
     re.I,
 )
+SENSITIVE_HEADER_VALUE_RE = re.compile(
+    r"(?P<prefix>(?<![A-Za-z0-9_.-])(?P<key_quote>['\"]?)"
+    r"(?:authorization|proxy-authorization|cookie|set-cookie)(?P=key_quote)"
+    r"[^\S\r\n]*:[^\S\r\n]*)"
+    r"(?P<value>[^'\"\r\n][^\r\n]*)",
+    re.I,
+)
 SENSITIVE_QUOTED_ARG_LIST_RE = re.compile(
     rf"(?P<prefix>(?P<flag_quote>['\"])--?[A-Za-z0-9_.-]*"
     rf"{SENSITIVE_KEY_PATTERN}[A-Za-z0-9_.-]*(?P=flag_quote)\s*,\s*"
@@ -54,7 +61,8 @@ SENSITIVE_QUOTED_ARG_LIST_RE = re.compile(
 )
 BEARER_TOKEN_RE = re.compile(r"\bBearer\s+[^\s,;'\"\)\}\]]+", re.I)
 HIGH_CONFIDENCE_TOKEN_RE = re.compile(
-    r"\b(?:gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]{20,})\b"
+    r"\b(?:gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]{20,}|"
+    r"sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16})\b"
 )
 URL_USERINFO_PASSWORD_RE = re.compile(r"(?P<prefix>https?://[^/\s:@?#]+:)[^@/\s?#]+(?=@)", re.I)
 URL_QUERY_RE = re.compile(r"(?P<prefix>https?://[^\s?]+)\?[^\s\"')]+", re.I)
@@ -434,6 +442,10 @@ def _redact_text(value: str) -> str:
     redacted = HIGH_CONFIDENCE_TOKEN_RE.sub("<redacted>", redacted)
     redacted = URL_USERINFO_PASSWORD_RE.sub(r"\g<prefix><redacted>", redacted)
     redacted = URL_QUERY_RE.sub(r"\g<prefix>?<redacted>", redacted)
+    redacted = SENSITIVE_HEADER_VALUE_RE.sub(
+        lambda match: f"{match.group('prefix')}<redacted>",
+        redacted,
+    )
     redacted = SENSITIVE_TEXT_QUOTED_VALUE_RE.sub(
         lambda match: (
             f"{match.group('prefix')}{match.group('value_quote')}"
