@@ -469,9 +469,24 @@ def _redact_text(value: str) -> str:
     )
 
 
+def _configured_value_variants(value: str) -> set[str]:
+    variants = {value}
+    for serialized in (repr(value), json.dumps(value), json.dumps(value, ensure_ascii=False)):
+        variants.add(serialized)
+        if len(serialized) >= 2 and serialized[0] == serialized[-1] and serialized[0] in {"'", '"'}:
+            variants.add(serialized[1:-1])
+    return {variant for variant in variants if variant}
+
+
 def redact_configured_values(text: str, *maps: dict[str, str]) -> str:
     redacted = text
-    values = {value for mapping in maps for value in mapping.values() if value}
+    values = {
+        variant
+        for mapping in maps
+        for value in mapping.values()
+        if value
+        for variant in _configured_value_variants(value)
+    }
     for value in sorted(values, key=lambda item: (-len(item), item)):
         redacted = redacted.replace(value, "<redacted>")
     return redacted

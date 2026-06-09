@@ -35,6 +35,14 @@ CONFIGURED_HEADER_VALUE = "super-secret"
 CONFIGURED_VALUE_ERROR = (
     f"env={{'CUSTOM': '{CONFIGURED_ENV_VALUE}'}} headers={{'X-Auth': '{CONFIGURED_HEADER_VALUE}'}}"
 )
+SERIALIZED_ENV_VALUE = "line1\nline2"
+SERIALIZED_HEADER_VALUE = 'token "quoted" \\ path'
+SERIALIZED_ENV_VALUE_ESCAPED = json.dumps(SERIALIZED_ENV_VALUE)[1:-1]
+SERIALIZED_HEADER_VALUE_ESCAPED = json.dumps(SERIALIZED_HEADER_VALUE)[1:-1]
+SERIALIZED_CONFIGURED_VALUE_ERROR = (
+    f"env exact={SERIALIZED_ENV_VALUE} escaped={SERIALIZED_ENV_VALUE_ESCAPED} "
+    f"headers exact={SERIALIZED_HEADER_VALUE} escaped={SERIALIZED_HEADER_VALUE_ESCAPED}"
+)
 
 
 def _assert_realistic_secret_values_redacted(payload: str) -> None:
@@ -47,6 +55,29 @@ def _assert_configured_values_redacted(payload: str) -> None:
     assert CONFIGURED_ENV_VALUE not in payload
     assert CONFIGURED_HEADER_VALUE not in payload
     assert "<redacted>" in payload
+
+
+def _assert_serialized_configured_values_redacted(payload: str, message: str) -> None:
+    payload_secret_forms = [
+        SERIALIZED_ENV_VALUE,
+        SERIALIZED_ENV_VALUE_ESCAPED,
+        json.dumps(SERIALIZED_ENV_VALUE_ESCAPED)[1:-1],
+        SERIALIZED_HEADER_VALUE,
+        SERIALIZED_HEADER_VALUE_ESCAPED,
+        json.dumps(SERIALIZED_HEADER_VALUE_ESCAPED)[1:-1],
+    ]
+    message_secret_forms = [
+        SERIALIZED_ENV_VALUE,
+        SERIALIZED_ENV_VALUE_ESCAPED,
+        SERIALIZED_HEADER_VALUE,
+        SERIALIZED_HEADER_VALUE_ESCAPED,
+    ]
+    for secret in payload_secret_forms:
+        assert secret not in payload
+    for secret in message_secret_forms:
+        assert secret not in message
+    assert "<redacted>" in payload
+    assert "<redacted>" in message
 
 
 @pytest.mark.asyncio
@@ -155,6 +186,48 @@ async def test_agent_config_status_redacts_env_and_header_values(tmp_path, monke
     assert header_value not in payload
     assert server["env"] == {"CUSTOM": "<redacted>"}
     assert server["headers"] == {"X-Auth": "<redacted>"}
+
+
+@pytest.mark.asyncio
+async def test_agent_config_status_redacts_serialized_configured_values(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "bad": {
+                        "type": "http",
+                        "url": "https://bad.example/mcp",
+                        "env": {"CUSTOM": SERIALIZED_ENV_VALUE},
+                        "headers": {"X-Auth": SERIALIZED_HEADER_VALUE},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeMcpClientManager:
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            raise RuntimeError(SERIALIZED_CONFIGURED_VALUE_ERROR)
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            raise AssertionError("unavailable server should not be called")
+
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda _timeout: FakeMcpClientManager()
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool("agent_config_status", {})
+    payload = response[0].text
+    message = _payload(response)["data"]["mcp_servers"]["bad"]["error"]
+
+    _assert_serialized_configured_values_redacted(payload, message)
 
 
 @pytest.mark.asyncio
@@ -382,6 +455,50 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
 
     _assert_realistic_secret_values_redacted(payload)
     _assert_configured_values_redacted(payload)
+
+
+@pytest.mark.asyncio
+async def test_call_agent_mcp_tool_redacts_serialized_configured_values(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "docs": {
+                        "type": "http",
+                        "url": "https://docs.example/mcp",
+                        "env": {"CUSTOM": SERIALIZED_ENV_VALUE},
+                        "headers": {"X-Auth": SERIALIZED_HEADER_VALUE},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeMcpClientManager:
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            return [AgentMcpTool(name="search", description="Search docs", input_schema={})]
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            raise RuntimeError(SERIALIZED_CONFIGURED_VALUE_ERROR)
+
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda _timeout: FakeMcpClientManager()
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool(
+        "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
+    )
+    payload = response[0].text
+    message = _payload(response)["data"]["message"]
+
+    _assert_serialized_configured_values_redacted(payload, message)
 
 
 class FakeDynamicMcpManager:
