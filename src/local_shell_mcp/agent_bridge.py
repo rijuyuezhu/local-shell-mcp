@@ -31,14 +31,19 @@ SENSITIVE_FLAG_RE = re.compile(
     re.I,
 )
 TEXT_SENSITIVE_KEY_PATTERN = (
-    r"(?:authorization|cookie|credentials?|api[_-]?key|access[_-]?key|private[_-]?key|"
-    r"token|secret|password|passwd|key)"
+    r"(?:[A-Za-z0-9_.-]*(?:authorization|cookie|credentials?|api[_-]?key|"
+    r"access[_-]?key|private[_-]?key|token|secret|password|passwd)[A-Za-z0-9_.-]*|key)"
 )
-SENSITIVE_TEXT_KEY_VALUE_RE = re.compile(
-    rf"(?P<prefix>(?<![A-Za-z0-9_])(?P<key_quote>['\"]?)"
+SENSITIVE_TEXT_QUOTED_VALUE_RE = re.compile(
+    rf"(?P<prefix>(?<![A-Za-z0-9_.-])(?P<key_quote>['\"]?)"
     rf"{TEXT_SENSITIVE_KEY_PATTERN}(?P=key_quote)\s*[:=]\s*)"
-    r"(?P<value_quote>['\"]?)(?P<value>[^\s,;'\"\)\}\]]+)"
-    r"(?P=value_quote)",
+    r"(?P<value_quote>['\"])(?P<value>[^'\"]*)(?P=value_quote)",
+    re.I,
+)
+SENSITIVE_TEXT_UNQUOTED_VALUE_RE = re.compile(
+    rf"(?P<prefix>(?<![A-Za-z0-9_.-])(?P<key_quote>['\"]?)"
+    rf"{TEXT_SENSITIVE_KEY_PATTERN}(?P=key_quote)\s*[:=]\s*)"
+    r"(?P<value>[^\s,;'\"\)\}\]\n][^,;'\"\)\}\]\n]*)",
     re.I,
 )
 SENSITIVE_QUOTED_ARG_LIST_RE = re.compile(
@@ -247,14 +252,20 @@ def _skill_description(markdown: str) -> str:
 
 
 def scan_agent_skills(config_dir: Path, directory: str = "skills") -> SkillScanResult:
-    config_root = config_dir.resolve()
+    try:
+        config_root = config_dir.resolve()
+    except (OSError, RuntimeError) as exc:
+        return SkillScanResult(warnings=[f"Could not scan skills directory {directory}: {exc}"])
     directory_path = Path(directory)
     if not _is_relative_child_path(directory_path):
         return SkillScanResult(
             warnings=[f"Skills directory must be inside config directory: {directory}"]
         )
 
-    skills_dir = (config_root / directory_path).resolve()
+    try:
+        skills_dir = (config_root / directory_path).resolve()
+    except (OSError, RuntimeError) as exc:
+        return SkillScanResult(warnings=[f"Could not scan skills directory {directory}: {exc}"])
     if not skills_dir.is_relative_to(config_root):
         return SkillScanResult(
             warnings=[f"Skills directory must be inside config directory: {directory}"]
@@ -419,11 +430,15 @@ def _redact_text(value: str) -> str:
     redacted = BEARER_TOKEN_RE.sub("Bearer <redacted>", redacted)
     redacted = URL_USERINFO_PASSWORD_RE.sub(r"\g<prefix><redacted>", redacted)
     redacted = URL_QUERY_RE.sub(r"\g<prefix>?<redacted>", redacted)
-    return SENSITIVE_TEXT_KEY_VALUE_RE.sub(
+    redacted = SENSITIVE_TEXT_QUOTED_VALUE_RE.sub(
         lambda match: (
             f"{match.group('prefix')}{match.group('value_quote')}"
             f"<redacted>{match.group('value_quote')}"
         ),
+        redacted,
+    )
+    return SENSITIVE_TEXT_UNQUOTED_VALUE_RE.sub(
+        lambda match: f"{match.group('prefix')}<redacted>",
         redacted,
     )
 

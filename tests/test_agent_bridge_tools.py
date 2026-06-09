@@ -12,6 +12,28 @@ def _payload(response):  # noqa: ANN001
     return json.loads(response[0].text)
 
 
+REALISTIC_SECRET_ERROR = (
+    'env={"GITHUB_TOKEN": "ghp_secret"} '
+    '{ "X-API-Key": "super secret with spaces!" } '
+    "AWS_SECRET_ACCESS_KEY=abc123 "
+    "Authorization: Basic abc123 "
+    "Cookie: session=abc123; other=ok "
+    "password: multi word secret"
+)
+REALISTIC_SECRET_VALUES = [
+    "ghp_secret",
+    "super secret with spaces!",
+    "abc123",
+    "multi word secret",
+]
+
+
+def _assert_realistic_secret_values_redacted(payload: str) -> None:
+    for secret in REALISTIC_SECRET_VALUES:
+        assert secret not in payload
+    assert "<redacted>" in payload
+
+
 @pytest.mark.asyncio
 async def test_fixed_bridge_tools_exist_with_missing_config(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
@@ -39,6 +61,40 @@ async def test_agent_config_status_reports_missing_config(tmp_path, monkeypatch)
     payload = response[0].text
 
     assert "missing_config" in payload
+
+
+@pytest.mark.asyncio
+async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {"bad": {"type": "http", "url": "https://bad.example/mcp"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeMcpClientManager:
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            raise RuntimeError(REALISTIC_SECRET_ERROR)
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            raise AssertionError("unavailable server should not be called")
+
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda _timeout: FakeMcpClientManager()
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool("agent_config_status", {})
+    payload = response[0].text
+
+    _assert_realistic_secret_values_redacted(payload)
 
 
 @pytest.mark.asyncio
@@ -238,15 +294,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
             ]
 
         async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
-            raise RuntimeError(
-                "Authorization: Bearer call-secret --token call-secret "
-                "https://example.com?token=call-secret "
-                '{"api_key": "call-secret"} '
-                "{'token': 'call-secret'} "
-                '["--token", "call-secret"] '
-                "['--token', 'call-secret'] "
-                "https://user:call-secret@example.com/path"
-            )
+            raise RuntimeError(REALISTIC_SECRET_ERROR)
 
     monkeypatch.setattr(
         tools_module, "AgentMcpClientManager", lambda _timeout: FakeMcpClientManager()
@@ -260,8 +308,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
     )
     payload = response[0].text
 
-    assert "call-secret" not in payload
-    assert "<redacted>" in payload
+    _assert_realistic_secret_values_redacted(payload)
 
 
 class FakeDynamicMcpManager:
@@ -330,3 +377,35 @@ async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
     assert "agent_mcp__docs__search" in tool_names
     response = await mcp.call_tool("agent_mcp__docs__search", {"args": {"query": "abc"}})
     assert "abc" in response[0].text
+
+
+@pytest.mark.asyncio
+async def test_build_mcp_respects_manifest_dynamic_tool_disable(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    skill_dir = config_dir / "skills" / "paper-writer"
+    skill_dir.mkdir(parents=True)
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {"docs": {"type": "http", "url": "https://example.com/mcp"}},
+                "dynamicTools": {"mcp": False, "skills": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text("# Paper Writer\n\nDraft papers.\n", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda timeout: FakeDynamicMcpManager()
+    )
+    get_settings.cache_clear()
+
+    mcp = build_mcp()
+    tool_names = {tool.name for tool in await mcp.list_tools()}
+    status = _payload(await mcp.call_tool("agent_config_status", {}))["data"]
+
+    assert "activate_skill__paper_writer" not in tool_names
+    assert "agent_mcp__docs__search" not in tool_names
+    assert status["dynamic_tools"] == {"mcp": False, "skills": False}

@@ -370,8 +370,8 @@ def build_mcp() -> FastMCP:
             settings.agent_config_dir,
             AgentMcpClientManager(settings.agent_mcp_call_timeout_s),
             settings.agent_mcp_probe_timeout_s,
-            settings.agent_dynamic_mcp_tools,
-            settings.agent_dynamic_skill_tools,
+            None if settings.agent_dynamic_mcp_tools else False,
+            None if settings.agent_dynamic_skill_tools else False,
         )
         register_agent_bridge_tools(mcp, registry, oauth_meta, _ok, _handled_error)
 

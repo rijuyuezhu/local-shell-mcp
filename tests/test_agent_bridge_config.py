@@ -157,6 +157,23 @@ def test_redact_text_hides_quoted_dict_argv_and_url_userinfo_secrets():
     assert "https://user:<redacted>@example.com/path" in redacted
 
 
+def test_redact_text_hides_realistic_stringified_secrets():
+    redacted = _redact_text(
+        'env={"GITHUB_TOKEN": "ghp_secret"} '
+        '{ "X-API-Key": "super secret with spaces!" } '
+        "AWS_SECRET_ACCESS_KEY=abc123 "
+        "Authorization: Basic abc123 "
+        "Cookie: session=abc123; other=ok "
+        "password: multi word secret"
+    )
+
+    assert "ghp_secret" not in redacted
+    assert "super secret with spaces!" not in redacted
+    assert "abc123" not in redacted
+    assert "multi word secret" not in redacted
+    assert "<redacted>" in redacted
+
+
 def test_agent_bridge_manifest_populates_python_field_names():
     manifest = AgentBridgeManifest(
         mcp_servers={"github": {"type": "stdio", "command": "github-mcp-server"}},

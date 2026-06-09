@@ -153,6 +153,22 @@ def test_scan_agent_skills_warns_when_directory_iteration_fails(tmp_path, monkey
     assert result.warnings == ["Could not scan skills directory skills: racing directory"]
 
 
+def test_scan_agent_skills_warns_when_skills_dir_resolution_fails(tmp_path, monkeypatch):
+    original_resolve = Path.resolve
+
+    def fail_resolve(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        if path == tmp_path / "skills":
+            raise RuntimeError("symlink loop")
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+
+    result = scan_agent_skills(tmp_path, "skills")
+
+    assert result.skills == {}
+    assert result.warnings == ["Could not scan skills directory skills: symlink loop"]
+
+
 def test_scan_agent_skills_skips_unreadable_skill_and_continues(tmp_path, monkeypatch):
     broken_dir = tmp_path / "skills" / "broken"
     good_dir = tmp_path / "skills" / "good"
