@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
-from .agent_bridge import AgentCapabilityRegistry, activate_skill
+from .agent_bridge import AgentCapabilityRegistry, _redact_text, activate_skill
 
 OkFn = Callable[..., dict[str, Any]]
 HandledErrorFn = Callable[[Exception], dict[str, Any]]
@@ -112,9 +112,8 @@ def register_agent_bridge_tools(
             if not record.config.enabled:
                 raise ValueError(f"MCP server {server} is disabled")
             if not record.available:
-                raise ValueError(
-                    f"MCP server {server} is unavailable: {record.error or 'unknown error'}"
-                )
+                error = _redact_text(record.error) if record.error else "unknown error"
+                raise ValueError(f"MCP server {server} is unavailable: {error}")
             data = await registry.client_manager.call_tool(server, record.config, tool, args or {})
             return ok(data)
         except Exception as exc:

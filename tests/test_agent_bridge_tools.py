@@ -167,3 +167,45 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
     assert fake_manager.call_calls == [
         ("docs", "https://docs.example/mcp", "search", {"query": "mcp"})
     ]
+
+
+@pytest.mark.asyncio
+async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "bad": {"type": "http", "url": "https://bad.example/mcp"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeMcpClientManager:
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            raise RuntimeError(
+                "Authorization: Bearer super-secret --token super-secret "
+                "https://example.com?token=super-secret"
+            )
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            raise AssertionError("unavailable server should not be called")
+
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda _timeout: FakeMcpClientManager()
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool(
+        "call_agent_mcp_tool", {"server": "bad", "tool": "search", "args": {}}
+    )
+    payload = response[0].text
+
+    assert "super-secret" not in payload
+    assert "<redacted>" in payload
