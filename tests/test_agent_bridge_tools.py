@@ -2,8 +2,14 @@ import json
 
 import pytest
 
+import local_shell_mcp.tools as tools_module
+from local_shell_mcp.agent_mcp import AgentMcpTool
 from local_shell_mcp.settings import get_settings
 from local_shell_mcp.tools import build_mcp
+
+
+def _payload(response):  # noqa: ANN001
+    return json.loads(response[0].text)
 
 
 @pytest.mark.asyncio
@@ -51,3 +57,113 @@ async def test_activate_agent_skill_returns_skill_content(tmp_path, monkeypatch)
 
     assert "Find root causes." in payload
     assert "skills/debugging/SKILL.md" in payload
+
+
+@pytest.mark.asyncio
+async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
+    tmp_path, monkeypatch
+):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "docs": {"type": "http", "url": "https://docs.example/mcp"},
+                    "bad": {"type": "http", "url": "https://bad.example/mcp"},
+                    "off": {
+                        "type": "http",
+                        "url": "https://off.example/mcp",
+                        "enabled": False,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeMcpClientManager:
+        def __init__(self):
+            self.list_calls = []
+            self.call_calls = []
+
+        async def list_tools(self, name, server):  # noqa: ANN001
+            self.list_calls.append((name, server.url))
+            if name == "bad":
+                raise RuntimeError("probe failed")
+            return [
+                AgentMcpTool(
+                    name="search",
+                    description="Search docs",
+                    input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
+                )
+            ]
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001
+            self.call_calls.append((name, server.url, tool, args))
+            return {"server": name, "tool": tool, "args": args}
+
+    fake_manager = FakeMcpClientManager()
+    monkeypatch.setattr(tools_module, "AgentMcpClientManager", lambda _timeout: fake_manager)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    mcp = build_mcp()
+
+    servers = _payload(await mcp.call_tool("list_agent_mcp_servers", {}))["data"]
+    assert set(servers) == {"docs", "bad", "off"}
+    assert servers["docs"]["available"] is True
+    assert servers["bad"]["available"] is False
+    assert servers["off"]["available"] is False
+
+    tools = _payload(await mcp.call_tool("list_agent_mcp_tools", {}))["data"]["tools"]
+    assert tools == [
+        {
+            "server": "docs",
+            "tool": "search",
+            "description": "Search docs",
+            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+        }
+    ]
+
+    result = _payload(
+        await mcp.call_tool(
+            "call_agent_mcp_tool",
+            {"server": "docs", "tool": "search", "args": {"query": "mcp"}},
+        )
+    )
+    assert result["data"] == {"server": "docs", "tool": "search", "args": {"query": "mcp"}}
+    assert fake_manager.call_calls == [
+        ("docs", "https://docs.example/mcp", "search", {"query": "mcp"})
+    ]
+
+    disabled = _payload(
+        await mcp.call_tool(
+            "call_agent_mcp_tool", {"server": "off", "tool": "search", "args": {}}
+        )
+    )
+    assert disabled["data"]["error_type"] == "ValueError"
+    assert disabled["data"]["message"] == "MCP server off is disabled"
+
+    unavailable = _payload(
+        await mcp.call_tool(
+            "call_agent_mcp_tool", {"server": "bad", "tool": "search", "args": {}}
+        )
+    )
+    assert unavailable["data"]["error_type"] == "ValueError"
+    assert unavailable["data"]["message"] == (
+        "MCP server bad is unavailable: RuntimeError: probe failed"
+    )
+
+    unknown = _payload(
+        await mcp.call_tool(
+            "call_agent_mcp_tool", {"server": "missing", "tool": "search", "args": {}}
+        )
+    )
+    assert unknown["data"]["error_type"] == "ValueError"
+    assert unknown["data"]["message"] == "Unknown agent MCP server: missing"
+    assert fake_manager.call_calls == [
+        ("docs", "https://docs.example/mcp", "search", {"query": "mcp"})
+    ]

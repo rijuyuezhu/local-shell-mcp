@@ -109,6 +109,12 @@ def register_agent_bridge_tools(
             record = registry.mcp_servers.get(server)
             if record is None:
                 raise ValueError(f"Unknown agent MCP server: {server}")
+            if not record.config.enabled:
+                raise ValueError(f"MCP server {server} is disabled")
+            if not record.available:
+                raise ValueError(
+                    f"MCP server {server} is unavailable: {record.error or 'unknown error'}"
+                )
             data = await registry.client_manager.call_tool(server, record.config, tool, args or {})
             return ok(data)
         except Exception as exc:
