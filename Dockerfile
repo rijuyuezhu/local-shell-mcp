@@ -161,7 +161,9 @@ RUN pacman -Sy --noconfirm archlinux-keyring \
     libreoffice-fresh \
     lazygit \
     yazi \
-    fzf
+    fzf \
+    github-cli \
+    pre-commit
 
 COPY --from=aur-builder /tmp/aur-packages /tmp/aur-packages
 RUN pacman -U --needed --noconfirm /tmp/aur-packages/*.pkg.tar.zst \
