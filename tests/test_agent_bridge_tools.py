@@ -30,11 +30,22 @@ REALISTIC_SECRET_VALUES = [
     "AKIA1234567890ABCDEF",
     "multi word secret",
 ]
+CONFIGURED_ENV_VALUE = "custom-secret"
+CONFIGURED_HEADER_VALUE = "super-secret"
+CONFIGURED_VALUE_ERROR = (
+    f"env={{'CUSTOM': '{CONFIGURED_ENV_VALUE}'}} headers={{'X-Auth': '{CONFIGURED_HEADER_VALUE}'}}"
+)
 
 
 def _assert_realistic_secret_values_redacted(payload: str) -> None:
     for secret in REALISTIC_SECRET_VALUES:
         assert secret not in payload
+    assert "<redacted>" in payload
+
+
+def _assert_configured_values_redacted(payload: str) -> None:
+    assert CONFIGURED_ENV_VALUE not in payload
+    assert CONFIGURED_HEADER_VALUE not in payload
     assert "<redacted>" in payload
 
 
@@ -75,7 +86,14 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
         json.dumps(
             {
                 "version": 1,
-                "mcpServers": {"bad": {"type": "http", "url": "https://bad.example/mcp"}},
+                "mcpServers": {
+                    "bad": {
+                        "type": "http",
+                        "url": "https://bad.example/mcp",
+                        "env": {"CUSTOM": CONFIGURED_ENV_VALUE},
+                        "headers": {"X-Auth": CONFIGURED_HEADER_VALUE},
+                    }
+                },
             }
         ),
         encoding="utf-8",
@@ -83,7 +101,7 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
 
     class FakeMcpClientManager:
         async def list_tools(self, name, server):  # noqa: ANN001, ARG002
-            raise RuntimeError(REALISTIC_SECRET_ERROR)
+            raise RuntimeError(f"{REALISTIC_SECRET_ERROR} {CONFIGURED_VALUE_ERROR}")
 
         async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
             raise AssertionError("unavailable server should not be called")
@@ -99,6 +117,7 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
     payload = response[0].text
 
     _assert_realistic_secret_values_redacted(payload)
+    _assert_configured_values_redacted(payload)
 
 
 @pytest.mark.asyncio
@@ -270,7 +289,12 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(tmp_path, mon
             {
                 "version": 1,
                 "mcpServers": {
-                    "bad": {"type": "http", "url": "https://bad.example/mcp"},
+                    "bad": {
+                        "type": "http",
+                        "url": "https://bad.example/mcp",
+                        "env": {"CUSTOM": CONFIGURED_ENV_VALUE},
+                        "headers": {"X-Auth": CONFIGURED_HEADER_VALUE},
+                    },
                 },
             }
         ),
@@ -286,7 +310,8 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(tmp_path, mon
                 "{'token': 'super-secret'} "
                 '["--token", "super-secret"] '
                 "['--token', 'super-secret'] "
-                "https://user:super-secret@example.com/path"
+                "https://user:super-secret@example.com/path "
+                f"{CONFIGURED_VALUE_ERROR}"
             )
 
         async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
@@ -306,6 +331,7 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(tmp_path, mon
 
     assert "super-secret" not in payload
     assert "<redacted>" in payload
+    _assert_configured_values_redacted(payload)
 
 
 @pytest.mark.asyncio
@@ -317,7 +343,12 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
             {
                 "version": 1,
                 "mcpServers": {
-                    "docs": {"type": "http", "url": "https://docs.example/mcp"},
+                    "docs": {
+                        "type": "http",
+                        "url": "https://docs.example/mcp",
+                        "env": {"CUSTOM": CONFIGURED_ENV_VALUE},
+                        "headers": {"X-Auth": CONFIGURED_HEADER_VALUE},
+                    },
                 },
             }
         ),
@@ -335,7 +366,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
             ]
 
         async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
-            raise RuntimeError(REALISTIC_SECRET_ERROR)
+            raise RuntimeError(f"{REALISTIC_SECRET_ERROR} {CONFIGURED_VALUE_ERROR}")
 
     monkeypatch.setattr(
         tools_module, "AgentMcpClientManager", lambda _timeout: FakeMcpClientManager()
@@ -350,6 +381,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
     payload = response[0].text
 
     _assert_realistic_secret_values_redacted(payload)
+    _assert_configured_values_redacted(payload)
 
 
 class FakeDynamicMcpManager:
@@ -418,6 +450,53 @@ async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
     assert "agent_mcp__docs__search" in tool_names
     response = await mcp.call_tool("agent_mcp__docs__search", {"args": {"query": "abc"}})
     assert "abc" in response[0].text
+
+
+@pytest.mark.asyncio
+async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "docs": {
+                        "type": "http",
+                        "url": "https://example.com/mcp",
+                        "env": {"CUSTOM": CONFIGURED_ENV_VALUE},
+                        "headers": {"X-Auth": CONFIGURED_HEADER_VALUE},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FailingDynamicMcpManager:
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            return [
+                AgentMcpTool(
+                    name="search",
+                    description="Search docs",
+                    input_schema={"type": "object"},
+                )
+            ]
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            raise RuntimeError(CONFIGURED_VALUE_ERROR)
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda timeout: FailingDynamicMcpManager()
+    )
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool("agent_mcp__docs__search", {"args": {}})
+    payload = response[0].text
+
+    _assert_configured_values_redacted(payload)
 
 
 @pytest.mark.asyncio

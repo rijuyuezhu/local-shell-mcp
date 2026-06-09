@@ -192,7 +192,17 @@ class AgentCapabilityRegistry:
                     "enabled": record.config.enabled,
                     "available": record.available,
                     "tool_count": len(record.tools),
-                    "error": _redact_text(record.error) if record.error else None,
+                    "error": (
+                        _redact_text(
+                            redact_configured_values(
+                                record.error,
+                                record.config.env,
+                                record.config.headers,
+                            )
+                        )
+                        if record.error
+                        else None
+                    ),
                     "env": {str(key): "<redacted>" for key in record.config.env},
                     "headers": {str(key): "<redacted>" for key in record.config.headers},
                 }
@@ -457,6 +467,14 @@ def _redact_text(value: str) -> str:
         lambda match: f"{match.group('prefix')}<redacted>",
         redacted,
     )
+
+
+def redact_configured_values(text: str, *maps: dict[str, str]) -> str:
+    redacted = text
+    values = {value for mapping in maps for value in mapping.values() if value}
+    for value in sorted(values, key=lambda item: (-len(item), item)):
+        redacted = redacted.replace(value, "<redacted>")
+    return redacted
 
 
 def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:

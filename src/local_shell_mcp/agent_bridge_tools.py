@@ -4,7 +4,12 @@ from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
-from .agent_bridge import AgentCapabilityRegistry, _redact_text, activate_skill
+from .agent_bridge import (
+    AgentCapabilityRegistry,
+    _redact_text,
+    activate_skill,
+    redact_configured_values,
+)
 
 OkFn = Callable[..., dict[str, Any]]
 HandledErrorFn = Callable[[Exception], dict[str, Any]]
@@ -45,8 +50,9 @@ def _tool_row(server: str, tool: Any, dynamic_tool_name: str | None = None) -> d
     return row
 
 
-def _redacted_mcp_call_error(exc: Exception) -> ValueError:
-    return ValueError(f"Agent MCP tool call failed: {_redact_text(str(exc))}")
+def _redacted_mcp_call_error(exc: Exception, *maps: dict[str, str]) -> ValueError:
+    error = _redact_text(redact_configured_values(str(exc), *maps))
+    return ValueError(f"Agent MCP tool call failed: {error}")
 
 
 def register_agent_bridge_tools(
@@ -127,14 +133,28 @@ def register_agent_bridge_tools(
             if not record.config.enabled:
                 raise ValueError(f"MCP server {server} is disabled")
             if not record.available:
-                error = _redact_text(record.error) if record.error else "unknown error"
+                error = (
+                    _redact_text(
+                        redact_configured_values(
+                            record.error,
+                            record.config.env,
+                            record.config.headers,
+                        )
+                    )
+                    if record.error
+                    else "unknown error"
+                )
                 raise ValueError(f"MCP server {server} is unavailable: {error}")
             try:
                 data = await registry.client_manager.call_tool(
                     server, record.config, tool, args or {}
                 )
             except Exception as exc:
-                raise _redacted_mcp_call_error(exc) from None
+                raise _redacted_mcp_call_error(
+                    exc,
+                    record.config.env,
+                    record.config.headers,
+                ) from None
             return ok(data)
         except Exception as exc:
             return handled_error(exc)
@@ -165,7 +185,11 @@ def register_agent_bridge_tools(
                         server_name, record.config, tool_name, args or {}
                     )
                 except Exception as exc:
-                    raise _redacted_mcp_call_error(exc) from None
+                    raise _redacted_mcp_call_error(
+                        exc,
+                        record.config.env,
+                        record.config.headers,
+                    ) from None
                 return ok(data)
             except Exception as exc:
                 return handled_error(exc)
