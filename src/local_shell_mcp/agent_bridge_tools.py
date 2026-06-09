@@ -114,7 +114,14 @@ def register_agent_bridge_tools(
             if not record.available:
                 error = _redact_text(record.error) if record.error else "unknown error"
                 raise ValueError(f"MCP server {server} is unavailable: {error}")
-            data = await registry.client_manager.call_tool(server, record.config, tool, args or {})
+            try:
+                data = await registry.client_manager.call_tool(
+                    server, record.config, tool, args or {}
+                )
+            except Exception as exc:
+                raise ValueError(
+                    f"Agent MCP tool call failed: {_redact_text(str(exc))}"
+                ) from None
             return ok(data)
         except Exception as exc:
             return handled_error(exc)

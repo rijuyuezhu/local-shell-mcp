@@ -209,3 +209,51 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(tmp_path, mon
 
     assert "super-secret" not in payload
     assert "<redacted>" in payload
+
+
+@pytest.mark.asyncio
+async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "docs": {"type": "http", "url": "https://docs.example/mcp"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeMcpClientManager:
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            return [
+                AgentMcpTool(
+                    name="search",
+                    description="Search docs",
+                    input_schema={"type": "object"},
+                )
+            ]
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            raise RuntimeError(
+                "Authorization: Bearer call-secret --token call-secret "
+                "https://example.com?token=call-secret"
+            )
+
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda _timeout: FakeMcpClientManager()
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool(
+        "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
+    )
+    payload = response[0].text
+
+    assert "call-secret" not in payload
+    assert "<redacted>" in payload
