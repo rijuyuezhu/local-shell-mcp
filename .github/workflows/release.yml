@@ -382,4 +382,4 @@ jobs:
           generate_release_notes: true
           body_path: RELEASE_NOTES.md
           files: dist/*
-          token: ${{ secrets.GH_RELEASE_TOKEN != '' && secrets.GH_RELEASE_TOKEN || github.token }}
+          token: ${{ secrets.GH_RELEASE_TOKEN && secrets.GH_RELEASE_TOKEN || github.token }}
