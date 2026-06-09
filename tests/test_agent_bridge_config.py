@@ -81,6 +81,16 @@ def test_load_agent_manifest_invalid_json(tmp_path):
     assert "JSON" in manifest.errors[0] or "Expecting" in manifest.errors[0]
 
 
+def test_load_agent_manifest_invalid_encoding(tmp_path):
+    (tmp_path / "config.json").write_bytes(b'{"version": 1, "bad": "\xff"}')
+
+    manifest = load_agent_manifest(tmp_path)
+
+    assert manifest.status == "invalid_config"
+    assert manifest.data == AgentBridgeManifest()
+    assert manifest.errors
+
+
 def test_load_agent_manifest_invalid_schema_does_not_leak_sensitive_inputs(tmp_path):
     config = {
         "version": 1,

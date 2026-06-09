@@ -456,7 +456,7 @@ def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:
             status="invalid_config",
             errors=[str(error) for error in exc.errors(include_input=False)],
         )
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         return LoadedAgentManifest(
             config_path=config_path,
             status="invalid_config",
