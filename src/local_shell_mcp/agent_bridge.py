@@ -17,6 +17,11 @@ SENSITIVE_ARG_RE = re.compile(
     rf"(?P<prefix>--?[A-Za-z0-9_.-]*{SENSITIVE_KEY_PATTERN}[A-Za-z0-9_.-]*=)\S+",
     re.I,
 )
+SENSITIVE_SPACED_ARG_RE = re.compile(
+    rf"(?P<prefix>(?:^|\s)--?[A-Za-z0-9_.-]*{SENSITIVE_KEY_PATTERN}"
+    rf"[A-Za-z0-9_.-]*\s+)\S+",
+    re.I,
+)
 SENSITIVE_FLAG_RE = re.compile(
     rf"^--?[A-Za-z0-9_.-]*{SENSITIVE_KEY_PATTERN}[A-Za-z0-9_.-]*$",
     re.I,
@@ -107,7 +112,8 @@ def redact_mapping(value: Any) -> Any:
                 redact_next = True
         return list_result
     if isinstance(value, str):
-        return SENSITIVE_ARG_RE.sub(r"\g<prefix><redacted>", value)
+        redacted = SENSITIVE_ARG_RE.sub(r"\g<prefix><redacted>", value)
+        return SENSITIVE_SPACED_ARG_RE.sub(r"\g<prefix><redacted>", redacted)
     return value
 
 

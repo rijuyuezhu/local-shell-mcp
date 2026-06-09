@@ -132,6 +132,11 @@ def test_redact_mapping_hides_secret_values():
     assert redacted["split_argv"] == ["--password", "<redacted>", "visible"]
     assert redact_mapping("--token=secret") == "--token=<redacted>"
 
+    spaced_token = redact_mapping("tool --token secret")
+    assert "secret" not in spaced_token
+    assert "<redacted>" in spaced_token
+    assert redact_mapping(["--password secret", "safe"]) == ["--password <redacted>", "safe"]
+
 
 def test_agent_bridge_manifest_populates_python_field_names():
     manifest = AgentBridgeManifest(
