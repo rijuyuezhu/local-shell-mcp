@@ -492,6 +492,21 @@ def redact_configured_values(text: str, *maps: dict[str, str]) -> str:
     return redacted
 
 
+def redact_configured_value_tree(value: Any, *maps: dict[str, str]) -> Any:
+    if isinstance(value, dict):
+        return {
+            _redact_text(redact_configured_values(str(key), *maps)): redact_configured_value_tree(
+                child, *maps
+            )
+            for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_configured_value_tree(item, *maps) for item in value]
+    if isinstance(value, str):
+        return _redact_text(redact_configured_values(value, *maps))
+    return value
+
+
 def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:
     config_path = config_dir / "config.json"
     if not config_path.exists():
@@ -622,8 +637,22 @@ def build_agent_registry(
             if not record.available:
                 continue
             for tool in record.tools:
+                display_server_name = str(
+                    redact_configured_value_tree(
+                        server_name,
+                        record.config.env,
+                        record.config.headers,
+                    )
+                )
+                display_tool_name = str(
+                    redact_configured_value_tree(
+                        tool.name,
+                        record.config.env,
+                        record.config.headers,
+                    )
+                )
                 dynamic_name = make_unique_tool_name(
-                    f"agent_mcp__{server_name}", tool.name, seen_names
+                    f"agent_mcp__{display_server_name}", display_tool_name, seen_names
                 )
                 mcp_tool_map[dynamic_name] = DynamicMcpToolRecord(
                     dynamic_name, server_name, tool.name

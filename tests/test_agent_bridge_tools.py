@@ -542,7 +542,11 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
                     "details": [
                         f"structured env={CONFIGURED_ENV_VALUE}",
                         {"header": CONFIGURED_HEADER_VALUE},
-                    ]
+                    ],
+                    "keyed": {
+                        f"env-{CONFIGURED_ENV_VALUE}": "env key",
+                        CONFIGURED_HEADER_VALUE: "header key",
+                    },
                 },
             }
 
@@ -564,6 +568,98 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
     _assert_configured_values_redacted(payload)
     assert "<redacted>" in data["content"][0]["text"]
     assert "<redacted>" in json.dumps(data["structured_content"])
+    assert "env-<redacted>" in data["structured_content"]["keyed"]
+    assert "<redacted>" in data["structured_content"]["keyed"]
+
+
+@pytest.mark.asyncio
+async def test_agent_mcp_public_metadata_redacts_configured_values(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    high_confidence_token = "sk-1234567890abcdef1234567890abcdef"
+    upstream_tool_name = (
+        f"search-{CONFIGURED_ENV_VALUE}-{CONFIGURED_HEADER_VALUE}-{high_confidence_token}"
+    )
+    schema_secret_key = f"query_{CONFIGURED_ENV_VALUE}"
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "docs": {
+                        "type": "http",
+                        "url": "https://docs.example/mcp",
+                        "env": {"CUSTOM": CONFIGURED_ENV_VALUE},
+                        "headers": {"X-Auth": CONFIGURED_HEADER_VALUE},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class MetadataLeakMcpManager:
+        def __init__(self):
+            self.call_calls = []
+
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            return [
+                AgentMcpTool(
+                    name=upstream_tool_name,
+                    description=(
+                        f"Search env={CONFIGURED_ENV_VALUE} header={CONFIGURED_HEADER_VALUE} "
+                        f"token={high_confidence_token}"
+                    ),
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            schema_secret_key: {
+                                "type": "string",
+                                "description": f"Uses {CONFIGURED_HEADER_VALUE}",
+                                CONFIGURED_HEADER_VALUE: f"default {CONFIGURED_ENV_VALUE}",
+                            }
+                        },
+                        "required": [schema_secret_key],
+                    },
+                )
+            ]
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            self.call_calls.append((name, tool, args))
+            return {"ok": True}
+
+    fake_manager = MetadataLeakMcpManager()
+    monkeypatch.setattr(tools_module, "AgentMcpClientManager", lambda _timeout: fake_manager)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    mcp = build_mcp()
+    rows = _payload(await mcp.call_tool("list_agent_mcp_tools", {}))["data"]["tools"]
+    rows_payload = json.dumps(rows)
+
+    for secret in (CONFIGURED_ENV_VALUE, CONFIGURED_HEADER_VALUE, high_confidence_token):
+        assert secret not in rows_payload
+    assert "<redacted>" in rows_payload
+
+    row = rows[0]
+    assert row["tool"] == "search-<redacted>-<redacted>-<redacted>"
+    assert row["input_schema"]["properties"]["query_<redacted>"]["<redacted>"] == (
+        "default <redacted>"
+    )
+    dynamic_tool_name = row["dynamic_tool_name"]
+    assert "redacted" in dynamic_tool_name
+    for secret in (CONFIGURED_ENV_VALUE, CONFIGURED_HEADER_VALUE, high_confidence_token):
+        assert secret not in dynamic_tool_name
+
+    dynamic_tool = {tool.name: tool for tool in await mcp.list_tools()}[dynamic_tool_name]
+    dynamic_description = dynamic_tool.description or ""
+    for secret in (CONFIGURED_ENV_VALUE, CONFIGURED_HEADER_VALUE, high_confidence_token):
+        assert secret not in dynamic_description
+    assert "<redacted>" in dynamic_description
+
+    await mcp.call_tool(dynamic_tool_name, {"args": {"query": "abc"}})
+    assert fake_manager.call_calls == [("docs", upstream_tool_name, {"query": "abc"})]
 
 
 class FakeDynamicMcpManager:
@@ -722,7 +818,11 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
                     "details": {
                         "env": CONFIGURED_ENV_VALUE,
                         "message": f"header={CONFIGURED_HEADER_VALUE}",
-                    }
+                    },
+                    "keyed": {
+                        f"env-{CONFIGURED_ENV_VALUE}": "env key",
+                        CONFIGURED_HEADER_VALUE: "header key",
+                    },
                 },
             }
 
@@ -744,6 +844,8 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
     _assert_configured_values_redacted(payload)
     assert "<redacted>" in data["content"][0]["text"]
     assert "<redacted>" in json.dumps(data["structured_content"])
+    assert "env-<redacted>" in data["structured_content"]["keyed"]
+    assert "<redacted>" in data["structured_content"]["keyed"]
 
 
 @pytest.mark.asyncio

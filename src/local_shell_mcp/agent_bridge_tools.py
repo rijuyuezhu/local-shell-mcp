@@ -8,6 +8,7 @@ from .agent_bridge import (
     AgentCapabilityRegistry,
     _redact_text,
     activate_skill,
+    redact_configured_value_tree,
     redact_configured_values,
     redact_mapping,
 )
@@ -22,7 +23,13 @@ def _tool_value(source: Any, name: str, default: Any = None) -> Any:
     return getattr(source, name, default)
 
 
-def _tool_row(server: str, tool: Any, dynamic_tool_name: str | None = None) -> dict[str, Any]:
+def _tool_row(
+    server: str,
+    tool: Any,
+    env: dict[str, str],
+    headers: dict[str, str],
+    dynamic_tool_name: str | None = None,
+) -> dict[str, Any]:
     if is_dataclass(tool) and not isinstance(tool, type):
         data = asdict(tool)
     elif hasattr(tool, "model_dump"):
@@ -42,12 +49,18 @@ def _tool_row(server: str, tool: Any, dynamic_tool_name: str | None = None) -> d
 
     row = {
         "server": server,
-        "tool": str(data.get("name") or _tool_value(tool, "name", "")),
-        "description": str(data.get("description") or _tool_value(tool, "description", "") or ""),
-        "input_schema": input_schema or {},
+        "tool": redact_configured_value_tree(
+            str(data.get("name") or _tool_value(tool, "name", "")), env, headers
+        ),
+        "description": redact_configured_value_tree(
+            str(data.get("description") or _tool_value(tool, "description", "") or ""),
+            env,
+            headers,
+        ),
+        "input_schema": redact_configured_value_tree(input_schema or {}, env, headers),
     }
     if dynamic_tool_name is not None:
-        row["dynamic_tool_name"] = dynamic_tool_name
+        row["dynamic_tool_name"] = redact_configured_value_tree(dynamic_tool_name, env, headers)
     return row
 
 
@@ -57,13 +70,7 @@ def _redacted_mcp_call_error(exc: Exception, *maps: dict[str, str]) -> ValueErro
 
 
 def _redact_mcp_payload_strings(value: Any, *maps: dict[str, str]) -> Any:
-    if isinstance(value, dict):
-        return {key: _redact_mcp_payload_strings(child, *maps) for key, child in value.items()}
-    if isinstance(value, list):
-        return [_redact_mcp_payload_strings(item, *maps) for item in value]
-    if isinstance(value, str):
-        return _redact_text(redact_configured_values(value, *maps))
-    return value
+    return redact_configured_value_tree(value, *maps)
 
 
 def _redact_mcp_error_payload(data: Any, *maps: dict[str, str]) -> Any:
@@ -129,6 +136,8 @@ def register_agent_bridge_tools(
                 _tool_row(
                     server_name,
                     tool,
+                    record.config.env,
+                    record.config.headers,
                     dynamic_names.get((server_name, str(_tool_value(tool, "name", "")))),
                 )
                 for server_name, record in records
@@ -232,8 +241,16 @@ def register_agent_bridge_tools(
             for candidate in server_record.tools
             if str(_tool_value(candidate, "name", "")) == record.tool_name
         )
-        tool_description = str(_tool_value(tool, "description", "") or record.tool_name)
-        description = f"[agent mcp: {record.server_name}] {tool_description}"
+        tool_description = redact_configured_value_tree(
+            str(_tool_value(tool, "description", "") or record.tool_name),
+            server_record.config.env,
+            server_record.config.headers,
+        )
+        description = redact_configured_value_tree(
+            f"[agent mcp: {record.server_name}] {tool_description}",
+            server_record.config.env,
+            server_record.config.headers,
+        )
         mcp.tool(name=dynamic_name, description=description, meta=meta)(
             make_mcp_handler(record.server_name, record.tool_name)
         )
