@@ -878,3 +878,100 @@ async def test_build_mcp_respects_manifest_dynamic_tool_disable(tmp_path, monkey
     assert "activate_skill__paper_writer" not in tool_names
     assert "agent_mcp__docs__search" not in tool_names
     assert status["dynamic_tools"] == {"mcp": False, "skills": False}
+
+
+@pytest.mark.asyncio
+async def test_agent_bridge_hot_reloads_dynamic_skill_tools(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    skill_dir = config_dir / "skills" / "paper-writer"
+    skill_dir.mkdir(parents=True)
+    (config_dir / "config.json").write_text(json.dumps({"version": 1}), encoding="utf-8")
+    (skill_dir / "SKILL.md").write_text("# Paper Writer\n\nDraft papers.\n", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    mcp = build_mcp()
+    tool_names = {tool.name for tool in await mcp.list_tools()}
+    assert "activate_skill__paper_writer" in tool_names
+    assert "activate_skill__debugging" not in tool_names
+
+    debugging_dir = config_dir / "skills" / "debugging"
+    debugging_dir.mkdir()
+    (debugging_dir / "SKILL.md").write_text("# Debugging\n\nFind root causes.\n", encoding="utf-8")
+
+    tool_names = {tool.name for tool in await mcp.list_tools()}
+    assert "activate_skill__paper_writer" in tool_names
+    assert "activate_skill__debugging" in tool_names
+    response = await mcp.call_tool("activate_skill__debugging", {})
+    assert "Find root causes." in response[0].text
+
+    (skill_dir / "SKILL.md").unlink()
+    tool_names = {tool.name for tool in await mcp.list_tools()}
+    assert "activate_skill__paper_writer" not in tool_names
+    assert "activate_skill__debugging" in tool_names
+
+
+@pytest.mark.asyncio
+async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(json.dumps({"version": 1}), encoding="utf-8")
+
+    class ReloadingMcpManager:
+        def __init__(self):
+            self.call_calls = []
+
+        async def list_tools(self, name, server):  # noqa: ANN001
+            return [AgentMcpTool(name="search", description=f"Search {name}", input_schema={})]
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001
+            self.call_calls.append((name, server.url, tool, args))
+            return {"server": name, "url": server.url, "tool": tool, "args": args}
+
+    fake_manager = ReloadingMcpManager()
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr(tools_module, "AgentMcpClientManager", lambda _timeout: fake_manager)
+    get_settings.cache_clear()
+
+    mcp = build_mcp()
+    tool_names = {tool.name for tool in await mcp.list_tools()}
+    assert "agent_mcp__docs__search" not in tool_names
+
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {"docs": {"type": "http", "url": "https://docs.example/mcp"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    tool_names = {tool.name for tool in await mcp.list_tools()}
+    assert "agent_mcp__docs__search" in tool_names
+    response = await mcp.call_tool("agent_mcp__docs__search", {"args": {"query": "abc"}})
+    assert _payload(response)["data"] == {
+        "server": "docs",
+        "url": "https://docs.example/mcp",
+        "tool": "search",
+        "args": {"query": "abc"},
+    }
+
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "api": {"type": "http", "url": "https://api.example/mcp"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    tool_names = {tool.name for tool in await mcp.list_tools()}
+    assert "agent_mcp__docs__search" not in tool_names
+    assert "agent_mcp__api__search" in tool_names
+
+    response = await mcp.call_tool("call_agent_mcp_tool", {"server": "api", "tool": "search"})
+    assert _payload(response)["data"]["url"] == "https://api.example/mcp"

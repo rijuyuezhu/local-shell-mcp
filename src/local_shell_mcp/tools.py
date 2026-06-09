@@ -373,7 +373,16 @@ def build_mcp() -> FastMCP:
             None if settings.agent_dynamic_mcp_tools else False,
             None if settings.agent_dynamic_skill_tools else False,
         )
-        register_agent_bridge_tools(mcp, registry, oauth_meta, _ok, _handled_error)
+        register_agent_bridge_tools(
+            mcp,
+            registry,
+            oauth_meta,
+            _ok,
+            _handled_error,
+            settings.agent_mcp_probe_timeout_s,
+            None if settings.agent_dynamic_mcp_tools else False,
+            None if settings.agent_dynamic_skill_tools else False,
+        )
 
     @mcp.tool(annotations=read_only_tool, meta=read_only_meta)
     async def search(query: str) -> str:
