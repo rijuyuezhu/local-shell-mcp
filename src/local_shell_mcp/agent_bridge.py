@@ -30,6 +30,16 @@ SENSITIVE_FLAG_RE = re.compile(
     rf"^--?[A-Za-z0-9_.-]*{SENSITIVE_KEY_PATTERN}[A-Za-z0-9_.-]*$",
     re.I,
 )
+TEXT_SENSITIVE_KEY_PATTERN = (
+    r"(?:authorization|cookie|credentials?|api[_-]?key|access[_-]?key|private[_-]?key|"
+    r"token|secret|password|passwd|key)"
+)
+SENSITIVE_TEXT_KEY_VALUE_RE = re.compile(
+    rf"(?P<prefix>\b{TEXT_SENSITIVE_KEY_PATTERN}\b\s*[:=]\s*)[^\s,;]+",
+    re.I,
+)
+BEARER_TOKEN_RE = re.compile(r"\bBearer\s+[^\s,;]+", re.I)
+URL_QUERY_RE = re.compile(r"(?P<prefix>https?://[^\s?]+)\?[^\s\"')]+", re.I)
 
 
 class AgentMcpServerConfig(BaseModel):
@@ -143,7 +153,7 @@ class AgentCapabilityRegistry:
                     "enabled": record.config.enabled,
                     "available": record.available,
                     "tool_count": len(record.tools),
-                    "error": record.error,
+                    "error": _redact_text(record.error) if record.error else None,
                     "env": redact_mapping(record.config.env),
                     "headers": redact_mapping(record.config.headers),
                 }
@@ -354,6 +364,13 @@ def redact_mapping(value: Any) -> Any:
     return value
 
 
+def _redact_text(value: str) -> str:
+    redacted = redact_mapping(value)
+    redacted = BEARER_TOKEN_RE.sub("Bearer <redacted>", redacted)
+    redacted = URL_QUERY_RE.sub(r"\g<prefix>?<redacted>", redacted)
+    return SENSITIVE_TEXT_KEY_VALUE_RE.sub(r"\g<prefix><redacted>", redacted)
+
+
 def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:
     config_path = config_dir / "config.json"
     if not config_path.exists():
@@ -376,11 +393,12 @@ def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:
     return LoadedAgentManifest(config_path=config_path, status="loaded", data=data)
 
 
-def _run_async_blocking(coro: Any) -> Any:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
+def _run_async_blocking(coro: Any, timeout_s: float | None = None) -> Any:
+    if timeout_s is None:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
 
     result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
 
@@ -392,10 +410,20 @@ def _run_async_blocking(coro: Any) -> Any:
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
-    success, result = result_queue.get()
+    try:
+        if timeout_s is None:
+            success, result = result_queue.get()
+        else:
+            success, result = result_queue.get(timeout=timeout_s)
+    except queue.Empty:
+        raise TimeoutError(f"operation timed out after {timeout_s:g}s") from None
     if success:
         return result
     raise result
+
+
+def _probe_timeout_seconds(probe_timeout_s: float) -> float:
+    return max(0.001, probe_timeout_s)
 
 
 def build_agent_registry(
@@ -407,10 +435,11 @@ def build_agent_registry(
 ) -> AgentCapabilityRegistry:
     config_root = Path(config_dir)
     manifest = load_agent_manifest(config_root)
+    probe_timeout = _probe_timeout_seconds(probe_timeout_s)
     if client_manager is None:
         from .agent_mcp import AgentMcpClientManager
 
-        client_manager = AgentMcpClientManager(call_timeout_s=max(1, probe_timeout_s))
+        client_manager = AgentMcpClientManager(call_timeout_s=probe_timeout)
 
     skill_scan = SkillScanResult()
     mcp_servers: dict[str, AgentMcpServerRecord] = {}
@@ -432,8 +461,9 @@ def build_agent_registry(
                 tools = _run_async_blocking(
                     asyncio.wait_for(
                         client_manager.list_tools(name, server),
-                        timeout=max(1, probe_timeout_s),
-                    )
+                        timeout=probe_timeout,
+                    ),
+                    timeout_s=probe_timeout,
                 )
             except Exception as exc:
                 mcp_servers[name] = AgentMcpServerRecord(

@@ -1,6 +1,11 @@
+import asyncio
 import json
+import queue
+import threading
+import time
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from mcp.types import Tool
@@ -253,3 +258,127 @@ def test_build_agent_registry_records_probe_errors(tmp_path):
 
     assert registry.mcp_servers["bad"].available is False
     assert registry.mcp_servers["bad"].error == "RuntimeError: boom"
+
+
+def test_registry_config_status_redacts_probe_errors(tmp_path):
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {"version": 1, "mcpServers": {"bad": {"type": "http", "url": "https://bad"}}}
+        ),
+        encoding="utf-8",
+    )
+    manager = FakeMcpManager(
+        errors_by_server={
+            "bad": RuntimeError(
+                "Authorization: Bearer secret --token secret "
+                "https://example.com?token=secret"
+            )
+        }
+    )
+
+    status = build_agent_registry(tmp_path, manager, probe_timeout_s=1).config_status()
+    serialized = json.dumps(status)
+
+    assert "secret" not in serialized.lower()
+    assert "<redacted>" in serialized
+
+
+@pytest.mark.asyncio
+async def test_build_agent_registry_works_inside_running_loop(tmp_path):
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {"version": 1, "mcpServers": {"docs": {"type": "http", "url": "https://docs"}}}
+        ),
+        encoding="utf-8",
+    )
+    manager = FakeMcpManager(
+        tools_by_server={
+            "docs": [AgentMcpTool("search", "Search docs", {"type": "object"})]
+        }
+    )
+
+    registry = build_agent_registry(tmp_path, manager, probe_timeout_s=1)
+
+    assert registry.mcp_servers["docs"].available is True
+    assert registry.mcp_servers["docs"].tools[0].name == "search"
+
+
+def test_build_agent_registry_dynamic_flag_overrides(tmp_path):
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "dynamicTools": {"mcp": False, "skills": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manifest_registry = build_agent_registry(tmp_path, FakeMcpManager(), probe_timeout_s=1)
+    override_registry = build_agent_registry(
+        tmp_path,
+        FakeMcpManager(),
+        probe_timeout_s=1,
+        dynamic_mcp_tools=True,
+        dynamic_skill_tools=True,
+    )
+
+    assert manifest_registry.dynamic_mcp_tools is False
+    assert manifest_registry.dynamic_skill_tools is False
+    assert override_registry.dynamic_mcp_tools is True
+    assert override_registry.dynamic_skill_tools is True
+
+    default_dir = tmp_path / "defaults"
+    default_dir.mkdir()
+    (default_dir / "config.json").write_text(json.dumps({"version": 1}), encoding="utf-8")
+
+    default_registry = build_agent_registry(
+        default_dir, FakeMcpManager(), probe_timeout_s=1
+    )
+
+    assert default_registry.dynamic_mcp_tools is True
+    assert default_registry.dynamic_skill_tools is True
+
+
+def test_build_agent_registry_records_timeout_without_hanging(tmp_path):
+    class StubbornMcpManager:
+        async def list_tools(self, name, server):  # noqa: ANN001
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                await asyncio.sleep(60)
+
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {"version": 1, "mcpServers": {"slow": {"type": "http", "url": "https://slow"}}}
+        ),
+        encoding="utf-8",
+    )
+    result_queue: queue.Queue[Any] = queue.Queue(maxsize=1)
+
+    def run_registry() -> None:
+        try:
+            result_queue.put(
+                build_agent_registry(
+                    tmp_path, StubbornMcpManager(), probe_timeout_s=0.05
+                )
+            )
+        except BaseException as exc:
+            result_queue.put(exc)
+
+    started_at = time.monotonic()
+    thread = threading.Thread(target=run_registry, daemon=True)
+    thread.start()
+
+    result: Any = None
+    try:
+        result = result_queue.get(timeout=1)
+    except queue.Empty:
+        pytest.fail("build_agent_registry did not return within the probe timeout")
+
+    elapsed = time.monotonic() - started_at
+    assert elapsed < 1
+    assert not isinstance(result, BaseException)
+    record = result.mcp_servers["slow"]
+    assert record.available is False
+    assert "timeout" in record.error.lower() or "timed out" in record.error.lower()
