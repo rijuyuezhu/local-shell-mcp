@@ -1,8 +1,6 @@
-ARG BASE_IMAGE=archlinux:latest
-FROM ${BASE_IMAGE} AS aur-builder
-ARG KEYRING_PACKAGE=archlinux-keyring
+FROM archlinux:latest AS aur-builder
 
-RUN pacman -Sy --noconfirm "${KEYRING_PACKAGE}" \
+RUN pacman -Sy --noconfirm archlinux-keyring \
   && pacman -S --needed --noconfirm \
     base-devel \
     ca-certificates \
@@ -17,8 +15,8 @@ RUN pacman -Sy --noconfirm "${KEYRING_PACKAGE}" \
   && useradd -m -u 10001 builder \
   && echo "builder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builder-nopasswd \
   && chmod 0440 /etc/sudoers.d/builder-nopasswd \
-  && mkdir -p /tmp/aur-packages \
-  && chown builder:builder /tmp/aur-packages \
+  && mkdir -p /tmp/aur /tmp/aur-packages \
+  && chown builder:builder /tmp/aur /tmp/aur-packages \
   && sed -i 's|^#PKGDEST=.*|PKGDEST=/tmp/aur-packages|' /etc/makepkg.conf
 
 USER builder
@@ -43,8 +41,7 @@ RUN paru -S --needed --noconfirm --removemake \
     python-uv-dynamic-versioning \
   && paru -S --needed --noconfirm --removemake python-mcp
 
-FROM ${BASE_IMAGE}
-ARG KEYRING_PACKAGE=archlinux-keyring
+FROM archlinux:latest
 
 ENV PYTHONUNBUFFERED=1 \
     LOCAL_SHELL_MCP_WORKSPACE_ROOT=/workspace \
@@ -53,10 +50,11 @@ ENV PYTHONUNBUFFERED=1 \
     LOCAL_SHELL_MCP_PERSISTENT_CREDENTIALS=true \
     LOCAL_SHELL_MCP_CREDENTIALS_DIR=/persist/credentials
 
-RUN pacman -Sy --noconfirm "${KEYRING_PACKAGE}" \
+RUN pacman -Sy --noconfirm archlinux-keyring \
   && pacman -S --needed --noconfirm \
     bash \
     zsh \
+    zsh-completions \
     ca-certificates \
     sudo \
     curl \
@@ -68,6 +66,7 @@ RUN pacman -Sy --noconfirm "${KEYRING_PACKAGE}" \
     tmux \
     tree \
     vim \
+    neovim \
     wget \
     zip \
     unzip \
@@ -159,7 +158,10 @@ RUN pacman -Sy --noconfirm "${KEYRING_PACKAGE}" \
     pandoc \
     poppler \
     tesseract \
-    libreoffice-fresh
+    libreoffice-fresh \
+    lazygit \
+    yazi \
+    fzf
 
 COPY --from=aur-builder /tmp/aur-packages /tmp/aur-packages
 RUN pacman -U --needed --noconfirm /tmp/aur-packages/*.pkg.tar.zst \
@@ -182,7 +184,7 @@ RUN useradd -m -u 10001 agent \
   && mkdir -p /workspace /workspace/.local-shell-mcp /persist/credentials \
   && echo "agent ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/agent-nopasswd \
   && chmod 0440 /etc/sudoers.d/agent-nopasswd \
-  && chown -R agent:agent /workspace /app \
+  && chown -R agent:agent /workspace /app /home/agent /persist/credentials \
   && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /workspace

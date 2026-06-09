@@ -1,6 +1,6 @@
 services:
   local-shell-mcp:
-    image: local-shell-mcp:latest
+    image: rijuyuezhu/local-shell-mcp:latest
     pull_policy: never
     container_name: local-shell-mcp
     restart: unless-stopped
