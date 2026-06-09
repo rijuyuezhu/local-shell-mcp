@@ -6,9 +6,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-SENSITIVE_KEY_RE = re.compile(r"(authorization|api[_-]?key|token|secret|password|passwd)", re.I)
+SENSITIVE_KEY_PATTERN = (
+    r"(?:authorization|cookie|credentials?|api[_-]?key|access[_-]?key|private[_-]?key|"
+    r"token|secret|password|passwd)"
+)
+SENSITIVE_KEY_RE = re.compile(SENSITIVE_KEY_PATTERN, re.I)
+SENSITIVE_ARG_RE = re.compile(
+    rf"(?P<prefix>--?[A-Za-z0-9_.-]*{SENSITIVE_KEY_PATTERN}[A-Za-z0-9_.-]*=)\S+",
+    re.I,
+)
+SENSITIVE_FLAG_RE = re.compile(
+    rf"^--?[A-Za-z0-9_.-]*{SENSITIVE_KEY_PATTERN}[A-Za-z0-9_.-]*$",
+    re.I,
+)
 
 
 class AgentMcpServerConfig(BaseModel):
@@ -46,6 +58,8 @@ class AgentDynamicToolsConfig(BaseModel):
 
 
 class AgentBridgeManifest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     version: int = 1
     mcp_servers: dict[str, AgentMcpServerConfig] = Field(
         default_factory=dict, alias="mcpServers"
@@ -81,7 +95,19 @@ def redact_mapping(value: Any) -> Any:
                 result[str(key)] = redact_mapping(child)
         return result
     if isinstance(value, list):
-        return [redact_mapping(item) for item in value]
+        list_result: list[Any] = []
+        redact_next = False
+        for item in value:
+            if redact_next:
+                list_result.append("<redacted>")
+                redact_next = False
+                continue
+            list_result.append(redact_mapping(item))
+            if isinstance(item, str) and SENSITIVE_FLAG_RE.fullmatch(item):
+                redact_next = True
+        return list_result
+    if isinstance(value, str):
+        return SENSITIVE_ARG_RE.sub(r"\g<prefix><redacted>", value)
     return value
 
 
@@ -92,7 +118,13 @@ def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:
     try:
         raw = json.loads(config_path.read_text(encoding="utf-8"))
         data = AgentBridgeManifest.model_validate(raw)
-    except (OSError, json.JSONDecodeError, ValidationError) as exc:
+    except ValidationError as exc:
+        return LoadedAgentManifest(
+            config_path=config_path,
+            status="invalid_config",
+            errors=[str(error) for error in exc.errors(include_input=False)],
+        )
+    except (OSError, json.JSONDecodeError) as exc:
         return LoadedAgentManifest(
             config_path=config_path,
             status="invalid_config",

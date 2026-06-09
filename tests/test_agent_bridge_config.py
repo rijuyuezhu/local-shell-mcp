@@ -80,18 +80,64 @@ def test_load_agent_manifest_invalid_json(tmp_path):
     assert "JSON" in manifest.errors[0] or "Expecting" in manifest.errors[0]
 
 
+def test_load_agent_manifest_invalid_schema_does_not_leak_sensitive_inputs(tmp_path):
+    config = {
+        "version": 1,
+        "mcpServers": {
+            "docs": {
+                "type": "http",
+                "url": "https://example.com/mcp",
+                "headers": {"Authorization": ["Bearer secret"]},
+                "env": {"GITHUB_TOKEN": ["ghp_secret"]},
+            }
+        },
+    }
+    (tmp_path / "config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    manifest = load_agent_manifest(tmp_path)
+    errors = "\n".join(manifest.errors)
+
+    assert manifest.status == "invalid_config"
+    assert manifest.errors
+    assert "Bearer secret" not in errors
+    assert "ghp_secret" not in errors
+
+
 def test_redact_mapping_hides_secret_values():
     redacted = redact_mapping(
         {
             "GITHUB_TOKEN": "ghp_secret",
             "Authorization": "Bearer secret",
+            "Cookie": "session=secret",
+            "PRIVATE_KEY": "private secret",
+            "AWS_ACCESS_KEY_ID": "AKIASECRET",
+            "credentials": {"label": "secret"},
             "normal": "visible",
             "nested": {"password": "secret", "label": "ok"},
+            "argv": ["--token=secret", "--api-key=secret", "visible"],
+            "split_argv": ["--password", "secret", "visible"],
         }
     )
 
     assert redacted["GITHUB_TOKEN"] == "<redacted>"
     assert redacted["Authorization"] == "<redacted>"
+    assert redacted["Cookie"] == "<redacted>"
+    assert redacted["PRIVATE_KEY"] == "<redacted>"
+    assert redacted["AWS_ACCESS_KEY_ID"] == "<redacted>"
+    assert redacted["credentials"] == "<redacted>"
     assert redacted["normal"] == "visible"
     assert redacted["nested"]["password"] == "<redacted>"
     assert redacted["nested"]["label"] == "ok"
+    assert redacted["argv"] == ["--token=<redacted>", "--api-key=<redacted>", "visible"]
+    assert redacted["split_argv"] == ["--password", "<redacted>", "visible"]
+    assert redact_mapping("--token=secret") == "--token=<redacted>"
+
+
+def test_agent_bridge_manifest_populates_python_field_names():
+    manifest = AgentBridgeManifest(
+        mcp_servers={"github": {"type": "stdio", "command": "github-mcp-server"}},
+        dynamic_tools={"mcp": False, "skills": True},
+    )
+
+    assert manifest.mcp_servers["github"].command == "github-mcp-server"
+    assert manifest.dynamic_tools.mcp is False
