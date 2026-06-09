@@ -9,6 +9,7 @@ from .agent_bridge import (
     _redact_text,
     activate_skill,
     redact_configured_values,
+    redact_mapping,
 )
 
 OkFn = Callable[..., dict[str, Any]]
@@ -53,6 +54,22 @@ def _tool_row(server: str, tool: Any, dynamic_tool_name: str | None = None) -> d
 def _redacted_mcp_call_error(exc: Exception, *maps: dict[str, str]) -> ValueError:
     error = _redact_text(redact_configured_values(str(exc), *maps))
     return ValueError(f"Agent MCP tool call failed: {error}")
+
+
+def _redact_mcp_payload_strings(value: Any, *maps: dict[str, str]) -> Any:
+    if isinstance(value, dict):
+        return {key: _redact_mcp_payload_strings(child, *maps) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_redact_mcp_payload_strings(item, *maps) for item in value]
+    if isinstance(value, str):
+        return _redact_text(redact_configured_values(value, *maps))
+    return value
+
+
+def _redact_mcp_error_payload(data: Any, *maps: dict[str, str]) -> Any:
+    if not isinstance(data, dict) or not (data.get("is_error") or data.get("isError")):
+        return data
+    return _redact_mcp_payload_strings(redact_mapping(data), *maps)
 
 
 def register_agent_bridge_tools(
@@ -155,7 +172,13 @@ def register_agent_bridge_tools(
                     record.config.env,
                     record.config.headers,
                 ) from None
-            return ok(data)
+            return ok(
+                _redact_mcp_error_payload(
+                    data,
+                    record.config.env,
+                    record.config.headers,
+                )
+            )
         except Exception as exc:
             return handled_error(exc)
 
@@ -190,7 +213,13 @@ def register_agent_bridge_tools(
                         record.config.env,
                         record.config.headers,
                     ) from None
-                return ok(data)
+                return ok(
+                    _redact_mcp_error_payload(
+                        data,
+                        record.config.env,
+                        record.config.headers,
+                    )
+                )
             except Exception as exc:
                 return handled_error(exc)
 

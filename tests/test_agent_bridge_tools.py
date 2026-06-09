@@ -501,6 +501,71 @@ async def test_call_agent_mcp_tool_redacts_serialized_configured_values(tmp_path
     _assert_serialized_configured_values_redacted(payload, message)
 
 
+@pytest.mark.asyncio
+async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "docs": {
+                        "type": "http",
+                        "url": "https://docs.example/mcp",
+                        "env": {"CUSTOM": CONFIGURED_ENV_VALUE},
+                        "headers": {"X-Auth": CONFIGURED_HEADER_VALUE},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class ErrorPayloadMcpManager:
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            return [AgentMcpTool(name="search", description="Search docs", input_schema={})]
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            return {
+                "is_error": True,
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"{REALISTIC_SECRET_ERROR} content env={CONFIGURED_ENV_VALUE} "
+                            f"header={CONFIGURED_HEADER_VALUE}"
+                        ),
+                    }
+                ],
+                "structured_content": {
+                    "details": [
+                        f"structured env={CONFIGURED_ENV_VALUE}",
+                        {"header": CONFIGURED_HEADER_VALUE},
+                    ]
+                },
+            }
+
+    monkeypatch.setattr(
+        tools_module, "AgentMcpClientManager", lambda _timeout: ErrorPayloadMcpManager()
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool(
+        "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
+    )
+    payload = response[0].text
+    data = _payload(response)["data"]
+
+    assert data["is_error"] is True
+    _assert_realistic_secret_values_redacted(payload)
+    _assert_configured_values_redacted(payload)
+    assert "<redacted>" in data["content"][0]["text"]
+    assert "<redacted>" in json.dumps(data["structured_content"])
+
+
 class FakeDynamicMcpManager:
     async def list_tools(self, name, server):  # noqa: ANN001, ARG002
         if name == "docs":
@@ -614,6 +679,71 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(tmp_path
     payload = response[0].text
 
     _assert_configured_values_redacted(payload)
+
+
+@pytest.mark.asyncio
+async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "docs": {
+                        "type": "http",
+                        "url": "https://example.com/mcp",
+                        "env": {"CUSTOM": CONFIGURED_ENV_VALUE},
+                        "headers": {"X-Auth": CONFIGURED_HEADER_VALUE},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class ErrorPayloadDynamicMcpManager:
+        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+            return [AgentMcpTool(name="search", description="Search docs", input_schema={})]
+
+        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+            return {
+                "is_error": True,
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"{REALISTIC_SECRET_ERROR} content env={CONFIGURED_ENV_VALUE} "
+                            f"header={CONFIGURED_HEADER_VALUE}"
+                        ),
+                    }
+                ],
+                "structured_content": {
+                    "details": {
+                        "env": CONFIGURED_ENV_VALUE,
+                        "message": f"header={CONFIGURED_HEADER_VALUE}",
+                    }
+                },
+            }
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr(
+        tools_module,
+        "AgentMcpClientManager",
+        lambda _timeout: ErrorPayloadDynamicMcpManager(),
+    )
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool("agent_mcp__docs__search", {"args": {}})
+    payload = response[0].text
+    data = _payload(response)["data"]
+
+    assert data["is_error"] is True
+    _assert_realistic_secret_values_redacted(payload)
+    _assert_configured_values_redacted(payload)
+    assert "<redacted>" in data["content"][0]["text"]
+    assert "<redacted>" in json.dumps(data["structured_content"])
 
 
 @pytest.mark.asyncio
