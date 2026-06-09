@@ -125,6 +125,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
             "tool": "search",
             "description": "Search docs",
             "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+            "dynamic_tool_name": "agent_mcp__docs__search",
         }
     ]
 
@@ -257,3 +258,64 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
 
     assert "call-secret" not in payload
     assert "<redacted>" in payload
+
+
+class FakeDynamicMcpManager:
+    async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        if name == "docs":
+            return [
+                AgentMcpTool(
+                    name="search",
+                    description="Search docs",
+                    input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
+                )
+            ]
+        return []
+
+    async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        return {
+            "server": name,
+            "tool": tool,
+            "args": args,
+            "content": [{"type": "text", "text": "ok"}],
+        }
+
+
+@pytest.mark.asyncio
+async def test_dynamic_skill_tool_is_visible_and_callable(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    skill_dir = config_dir / "skills" / "paper-writer"
+    skill_dir.mkdir(parents=True)
+    (config_dir / "config.json").write_text(json.dumps({"version": 1}), encoding="utf-8")
+    (skill_dir / "SKILL.md").write_text("# Paper Writer\n\nDraft papers.\n", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    mcp = build_mcp()
+    tools = {tool.name for tool in await mcp.list_tools()}
+
+    assert "activate_skill__paper_writer" in tools
+    response = await mcp.call_tool("activate_skill__paper_writer", {})
+    assert "Draft papers." in response[0].text
+
+
+@pytest.mark.asyncio
+async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps({"version": 1, "mcpServers": {"docs": {"type": "http", "url": "https://example.com/mcp"}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr(tools_module, "AgentMcpClientManager", lambda timeout: FakeDynamicMcpManager())
+    get_settings.cache_clear()
+
+    mcp = build_mcp()
+    tool_names = {tool.name for tool in await mcp.list_tools()}
+
+    assert "agent_mcp__docs__search" in tool_names
+    response = await mcp.call_tool("agent_mcp__docs__search", {"args": {"query": "abc"}})
+    assert "abc" in response[0].text

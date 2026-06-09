@@ -16,7 +16,9 @@ def _tool_value(source: Any, name: str, default: Any = None) -> Any:
     return getattr(source, name, default)
 
 
-def _tool_row(server: str, tool: Any) -> dict[str, Any]:
+def _tool_row(
+    server: str, tool: Any, dynamic_tool_name: str | None = None
+) -> dict[str, Any]:
     if is_dataclass(tool) and not isinstance(tool, type):
         data = asdict(tool)
     elif hasattr(tool, "model_dump"):
@@ -34,12 +36,19 @@ def _tool_row(server: str, tool: Any) -> dict[str, Any]:
     if input_schema is None:
         input_schema = _tool_value(tool, "inputSchema", {})
 
-    return {
+    row = {
         "server": server,
         "tool": str(data.get("name") or _tool_value(tool, "name", "")),
         "description": str(data.get("description") or _tool_value(tool, "description", "") or ""),
         "input_schema": input_schema or {},
     }
+    if dynamic_tool_name is not None:
+        row["dynamic_tool_name"] = dynamic_tool_name
+    return row
+
+
+def _redacted_mcp_call_error(exc: Exception) -> ValueError:
+    return ValueError(f"Agent MCP tool call failed: {_redact_text(str(exc))}")
 
 
 def register_agent_bridge_tools(
@@ -91,8 +100,18 @@ def register_agent_bridge_tools(
                 if server is not None
                 else registry.mcp_servers.items()
             )
+            dynamic_names = {
+                (record.server_name, record.tool_name): dynamic_name
+                for dynamic_name, record in registry.dynamic_mcp_tool_map.items()
+            }
             rows = [
-                _tool_row(server_name, tool)
+                _tool_row(
+                    server_name,
+                    tool,
+                    dynamic_names.get(
+                        (server_name, str(_tool_value(tool, "name", "")))
+                    ),
+                )
                 for server_name, record in records
                 for tool in record.tools
             ]
@@ -119,9 +138,53 @@ def register_agent_bridge_tools(
                     server, record.config, tool, args or {}
                 )
             except Exception as exc:
-                raise ValueError(
-                    f"Agent MCP tool call failed: {_redact_text(str(exc))}"
-                ) from None
+                raise _redacted_mcp_call_error(exc) from None
             return ok(data)
         except Exception as exc:
             return handled_error(exc)
+
+    def make_skill_handler(skill_name: str):  # noqa: ANN202
+        async def handler() -> dict:
+            try:
+                skill = registry.skills[skill_name]
+                return ok(activate_skill(registry.config_dir, skill))
+            except Exception as exc:
+                return handled_error(exc)
+
+        return handler
+
+    for dynamic_name, record in registry.dynamic_skill_tool_map.items():
+        skill = registry.skills[record.skill_name]
+        description = f"[agent skill] Activate {record.skill_name}: {skill.description}"
+        mcp.tool(name=dynamic_name, description=description, meta=meta)(
+            make_skill_handler(record.skill_name)
+        )
+
+    def make_mcp_handler(server_name: str, tool_name: str):  # noqa: ANN202
+        async def handler(args: dict[str, Any] | None = None) -> dict:
+            try:
+                record = registry.mcp_servers[server_name]
+                try:
+                    data = await registry.client_manager.call_tool(
+                        server_name, record.config, tool_name, args or {}
+                    )
+                except Exception as exc:
+                    raise _redacted_mcp_call_error(exc) from None
+                return ok(data)
+            except Exception as exc:
+                return handled_error(exc)
+
+        return handler
+
+    for dynamic_name, record in registry.dynamic_mcp_tool_map.items():
+        server_record = registry.mcp_servers[record.server_name]
+        tool = next(
+            candidate
+            for candidate in server_record.tools
+            if str(_tool_value(candidate, "name", "")) == record.tool_name
+        )
+        tool_description = str(_tool_value(tool, "description", "") or record.tool_name)
+        description = f"[agent mcp: {record.server_name}] {tool_description}"
+        mcp.tool(name=dynamic_name, description=description, meta=meta)(
+            make_mcp_handler(record.server_name, record.tool_name)
+        )

@@ -128,6 +128,19 @@ class AgentMcpServerRecord:
 
 
 @dataclass(frozen=True)
+class DynamicSkillToolRecord:
+    dynamic_name: str
+    skill_name: str
+
+
+@dataclass(frozen=True)
+class DynamicMcpToolRecord:
+    dynamic_name: str
+    server_name: str
+    tool_name: str
+
+
+@dataclass(frozen=True)
 class AgentCapabilityRegistry:
     config_dir: Path
     config_path: Path
@@ -138,6 +151,8 @@ class AgentCapabilityRegistry:
     mcp_servers: dict[str, AgentMcpServerRecord]
     dynamic_mcp_tools: bool
     dynamic_skill_tools: bool
+    dynamic_skill_tool_map: dict[str, DynamicSkillToolRecord]
+    dynamic_mcp_tool_map: dict[str, DynamicMcpToolRecord]
     client_manager: Any
 
     def config_status(self) -> dict[str, Any]:
@@ -481,6 +496,35 @@ def build_agent_registry(
                 tools=tools,
             )
 
+    effective_dynamic_skills = (
+        manifest.data.dynamic_tools.skills
+        if dynamic_skill_tools is None
+        else dynamic_skill_tools
+    )
+    effective_dynamic_mcp = (
+        manifest.data.dynamic_tools.mcp if dynamic_mcp_tools is None else dynamic_mcp_tools
+    )
+
+    seen_names: set[str] = set()
+    skill_tool_map: dict[str, DynamicSkillToolRecord] = {}
+    if effective_dynamic_skills:
+        for skill_name in skill_scan.skills:
+            dynamic_name = make_unique_tool_name("activate_skill", skill_name, seen_names)
+            skill_tool_map[dynamic_name] = DynamicSkillToolRecord(dynamic_name, skill_name)
+
+    mcp_tool_map: dict[str, DynamicMcpToolRecord] = {}
+    if effective_dynamic_mcp:
+        for server_name, record in mcp_servers.items():
+            if not record.available:
+                continue
+            for tool in record.tools:
+                dynamic_name = make_unique_tool_name(
+                    f"agent_mcp__{server_name}", tool.name, seen_names
+                )
+                mcp_tool_map[dynamic_name] = DynamicMcpToolRecord(
+                    dynamic_name, server_name, tool.name
+                )
+
     return AgentCapabilityRegistry(
         config_dir=config_root,
         config_path=manifest.config_path,
@@ -489,15 +533,9 @@ def build_agent_registry(
         skills=skill_scan.skills,
         skill_warnings=skill_scan.warnings,
         mcp_servers=mcp_servers,
-        dynamic_mcp_tools=(
-            manifest.data.dynamic_tools.mcp
-            if dynamic_mcp_tools is None
-            else dynamic_mcp_tools
-        ),
-        dynamic_skill_tools=(
-            manifest.data.dynamic_tools.skills
-            if dynamic_skill_tools is None
-            else dynamic_skill_tools
-        ),
+        dynamic_mcp_tools=effective_dynamic_mcp,
+        dynamic_skill_tools=effective_dynamic_skills,
+        dynamic_skill_tool_map=skill_tool_map,
+        dynamic_mcp_tool_map=mcp_tool_map,
         client_manager=client_manager,
     )
