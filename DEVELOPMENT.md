@@ -94,7 +94,7 @@ python scripts/probe-mcp.py https://your-public-host.example.com --pin "$LOCAL_S
 
 The Docker image is intended to be the safest default runtime because it keeps the model-controlled tools inside a container. The entrypoint prepares workspace permissions and, when enabled, persists common developer credential locations into `/persist/credentials`.
 
-When `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true`, the Docker entrypoint runs the server as root and grants the `agent` user passwordless sudo. This is intended only for disposable containers or VMs.
+The Docker entrypoint normally runs the server as `agent` after preparing `/workspace` permissions, even when `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true` disables built-in workspace and command restrictions. The `agent` user has passwordless sudo for commands that intentionally need root. Set `LOCAL_SHELL_MCP_RUN_AS_ROOT=true` only when the MCP server process itself must run as root in a disposable container or VM.
 
 ## Release assets
 
