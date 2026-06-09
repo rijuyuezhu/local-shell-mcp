@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import queue
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -103,6 +106,54 @@ class SkillRecord:
 class SkillScanResult:
     skills: dict[str, SkillRecord] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class AgentMcpServerRecord:
+    name: str
+    config: AgentMcpServerConfig
+    available: bool
+    tools: list[Any] = field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class AgentCapabilityRegistry:
+    config_dir: Path
+    config_path: Path
+    manifest_status: str
+    manifest_errors: list[str]
+    skills: dict[str, SkillRecord]
+    skill_warnings: list[str]
+    mcp_servers: dict[str, AgentMcpServerRecord]
+    dynamic_mcp_tools: bool
+    dynamic_skill_tools: bool
+    client_manager: Any
+
+    def config_status(self) -> dict[str, Any]:
+        return {
+            "config_dir": str(self.config_dir),
+            "config_path": str(self.config_path),
+            "manifest_status": self.manifest_status,
+            "manifest_errors": self.manifest_errors,
+            "skills": {"count": len(self.skills), "warnings": self.skill_warnings},
+            "mcp_servers": {
+                name: {
+                    "type": record.config.type,
+                    "enabled": record.config.enabled,
+                    "available": record.available,
+                    "tool_count": len(record.tools),
+                    "error": record.error,
+                    "env": redact_mapping(record.config.env),
+                    "headers": redact_mapping(record.config.headers),
+                }
+                for name, record in self.mcp_servers.items()
+            },
+            "dynamic_tools": {
+                "mcp": self.dynamic_mcp_tools,
+                "skills": self.dynamic_skill_tools,
+            },
+        }
 
 
 def _relative_posix(base: Path, path: Path) -> str:
@@ -323,3 +374,100 @@ def load_agent_manifest(config_dir: Path) -> LoadedAgentManifest:
             errors=[str(exc)],
         )
     return LoadedAgentManifest(config_path=config_path, status="loaded", data=data)
+
+
+def _run_async_blocking(coro: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+    def run() -> None:
+        try:
+            result_queue.put((True, asyncio.run(coro)))
+        except BaseException as exc:
+            result_queue.put((False, exc))
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    success, result = result_queue.get()
+    if success:
+        return result
+    raise result
+
+
+def build_agent_registry(
+    config_dir: Path,
+    client_manager: Any | None = None,
+    probe_timeout_s: float = 5,
+    dynamic_mcp_tools: bool | None = None,
+    dynamic_skill_tools: bool | None = None,
+) -> AgentCapabilityRegistry:
+    config_root = Path(config_dir)
+    manifest = load_agent_manifest(config_root)
+    if client_manager is None:
+        from .agent_mcp import AgentMcpClientManager
+
+        client_manager = AgentMcpClientManager(call_timeout_s=max(1, probe_timeout_s))
+
+    skill_scan = SkillScanResult()
+    mcp_servers: dict[str, AgentMcpServerRecord] = {}
+    if manifest.status == "loaded":
+        if manifest.data.skills.enabled:
+            skill_scan = scan_agent_skills(config_root, manifest.data.skills.directory)
+
+        for name, server in manifest.data.mcp_servers.items():
+            if not server.enabled:
+                mcp_servers[name] = AgentMcpServerRecord(
+                    name=name,
+                    config=server,
+                    available=False,
+                    error="disabled",
+                )
+                continue
+
+            try:
+                tools = _run_async_blocking(
+                    asyncio.wait_for(
+                        client_manager.list_tools(name, server),
+                        timeout=max(1, probe_timeout_s),
+                    )
+                )
+            except Exception as exc:
+                mcp_servers[name] = AgentMcpServerRecord(
+                    name=name,
+                    config=server,
+                    available=False,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                continue
+
+            mcp_servers[name] = AgentMcpServerRecord(
+                name=name,
+                config=server,
+                available=True,
+                tools=tools,
+            )
+
+    return AgentCapabilityRegistry(
+        config_dir=config_root,
+        config_path=manifest.config_path,
+        manifest_status=manifest.status,
+        manifest_errors=manifest.errors,
+        skills=skill_scan.skills,
+        skill_warnings=skill_scan.warnings,
+        mcp_servers=mcp_servers,
+        dynamic_mcp_tools=(
+            manifest.data.dynamic_tools.mcp
+            if dynamic_mcp_tools is None
+            else dynamic_mcp_tools
+        ),
+        dynamic_skill_tools=(
+            manifest.data.dynamic_tools.skills
+            if dynamic_skill_tools is None
+            else dynamic_skill_tools
+        ),
+        client_manager=client_manager,
+    )

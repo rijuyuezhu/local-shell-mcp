@@ -1,10 +1,11 @@
+import json
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
 from mcp.types import Tool
 
-from local_shell_mcp.agent_bridge import AgentMcpServerConfig
+from local_shell_mcp.agent_bridge import AgentMcpServerConfig, build_agent_registry
 from local_shell_mcp.agent_mcp import (
     AgentMcpClientManager,
     AgentMcpTool,
@@ -185,3 +186,70 @@ async def test_client_manager_list_tools_cleans_up_session_on_use_error(monkeypa
         await manager.list_tools("docs", server)
 
     assert events == ["enter", ("list_tools", None), "exit"]
+
+
+class FakeMcpManager:
+    def __init__(self, tools_by_server=None, errors_by_server=None):
+        self.tools_by_server = tools_by_server or {}
+        self.errors_by_server = errors_by_server or {}
+
+    async def list_tools(self, name, server):  # noqa: ANN001
+        if name in self.errors_by_server:
+            raise self.errors_by_server[name]
+        return self.tools_by_server.get(name, [])
+
+
+def test_build_agent_registry_probes_enabled_servers(tmp_path):
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "docs": {"type": "http", "url": "https://example.com/mcp"},
+                    "off": {
+                        "type": "http",
+                        "url": "https://example.com/mcp",
+                        "enabled": False,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    manager = FakeMcpManager(
+        tools_by_server={
+            "docs": [
+                AgentMcpTool(
+                    name="search",
+                    description="Search docs",
+                    input_schema={"type": "object"},
+                )
+            ]
+        }
+    )
+
+    registry = build_agent_registry(tmp_path, manager, probe_timeout_s=1)
+
+    assert registry.manifest_status == "loaded"
+    assert registry.mcp_servers["docs"].available is True
+    assert registry.mcp_servers["docs"].tools[0].name == "search"
+    assert registry.mcp_servers["off"].available is False
+    assert registry.mcp_servers["off"].error == "disabled"
+
+
+def test_build_agent_registry_records_probe_errors(tmp_path):
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {"version": 1, "mcpServers": {"bad": {"type": "http", "url": "https://bad"}}}
+        ),
+        encoding="utf-8",
+    )
+
+    registry = build_agent_registry(
+        tmp_path,
+        FakeMcpManager(errors_by_server={"bad": RuntimeError("boom")}),
+        probe_timeout_s=1,
+    )
+
+    assert registry.mcp_servers["bad"].available is False
+    assert registry.mcp_servers["bad"].error == "RuntimeError: boom"
