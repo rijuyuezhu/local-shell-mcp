@@ -184,6 +184,15 @@ def test_redact_text_hides_realistic_stringified_secrets():
     assert "<redacted>" in redacted
 
 
+def test_redact_text_hides_standalone_high_confidence_tokens():
+    token = "ghp_1234567890abcdef1234567890abcdef123456"
+
+    redacted = _redact_text(f"probe failed with {token}")
+
+    assert token not in redacted
+    assert "<redacted>" in redacted
+
+
 def test_agent_bridge_manifest_populates_python_field_names():
     manifest = AgentBridgeManifest(
         mcp_servers={"github": {"type": "stdio", "command": "github-mcp-server"}},

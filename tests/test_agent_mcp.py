@@ -278,6 +278,37 @@ def test_registry_config_status_redacts_probe_errors(tmp_path):
     assert "<redacted>" in serialized
 
 
+def test_registry_config_status_redacts_env_and_header_values(tmp_path):
+    env_token = "ghp_1234567890abcdef1234567890abcdef123456"
+    header_value = "Bearer supersecret"
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "off": {
+                        "type": "http",
+                        "url": "https://off.example/mcp",
+                        "enabled": False,
+                        "env": {"CUSTOM": env_token},
+                        "headers": {"X-Auth": header_value},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = build_agent_registry(tmp_path, FakeMcpManager(), probe_timeout_s=1).config_status()
+    server = status["mcp_servers"]["off"]
+    serialized = json.dumps(status)
+
+    assert env_token not in serialized
+    assert header_value not in serialized
+    assert server["env"] == {"CUSTOM": "<redacted>"}
+    assert server["headers"] == {"X-Auth": "<redacted>"}
+
+
 @pytest.mark.asyncio
 async def test_build_agent_registry_works_inside_running_loop(tmp_path):
     (tmp_path / "config.json").write_text(

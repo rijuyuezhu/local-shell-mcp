@@ -53,6 +53,9 @@ SENSITIVE_QUOTED_ARG_LIST_RE = re.compile(
     re.I,
 )
 BEARER_TOKEN_RE = re.compile(r"\bBearer\s+[^\s,;'\"\)\}\]]+", re.I)
+HIGH_CONFIDENCE_TOKEN_RE = re.compile(
+    r"\b(?:gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]{20,})\b"
+)
 URL_USERINFO_PASSWORD_RE = re.compile(r"(?P<prefix>https?://[^/\s:@?#]+:)[^@/\s?#]+(?=@)", re.I)
 URL_QUERY_RE = re.compile(r"(?P<prefix>https?://[^\s?]+)\?[^\s\"')]+", re.I)
 
@@ -182,8 +185,8 @@ class AgentCapabilityRegistry:
                     "available": record.available,
                     "tool_count": len(record.tools),
                     "error": _redact_text(record.error) if record.error else None,
-                    "env": redact_mapping(record.config.env),
-                    "headers": redact_mapping(record.config.headers),
+                    "env": {str(key): "<redacted>" for key in record.config.env},
+                    "headers": {str(key): "<redacted>" for key in record.config.headers},
                 }
                 for name, record in self.mcp_servers.items()
             },
@@ -428,6 +431,7 @@ def _redact_text(value: str) -> str:
         redacted,
     )
     redacted = BEARER_TOKEN_RE.sub("Bearer <redacted>", redacted)
+    redacted = HIGH_CONFIDENCE_TOKEN_RE.sub("<redacted>", redacted)
     redacted = URL_USERINFO_PASSWORD_RE.sub(r"\g<prefix><redacted>", redacted)
     redacted = URL_QUERY_RE.sub(r"\g<prefix>?<redacted>", redacted)
     redacted = SENSITIVE_TEXT_QUOTED_VALUE_RE.sub(

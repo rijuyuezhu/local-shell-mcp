@@ -98,6 +98,43 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_agent_config_status_redacts_env_and_header_values(tmp_path, monkeypatch):
+    config_dir = tmp_path / "agent-config"
+    config_dir.mkdir()
+    env_token = "ghp_1234567890abcdef1234567890abcdef123456"
+    header_value = "Bearer supersecret"
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "mcpServers": {
+                    "off": {
+                        "type": "http",
+                        "url": "https://off.example/mcp",
+                        "enabled": False,
+                        "env": {"CUSTOM": env_token},
+                        "headers": {"X-Auth": header_value},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    get_settings.cache_clear()
+
+    response = await build_mcp().call_tool("agent_config_status", {})
+    payload = response[0].text
+    server = _payload(response)["data"]["mcp_servers"]["off"]
+
+    assert env_token not in payload
+    assert header_value not in payload
+    assert server["env"] == {"CUSTOM": "<redacted>"}
+    assert server["headers"] == {"X-Auth": "<redacted>"}
+
+
+@pytest.mark.asyncio
 async def test_activate_agent_skill_returns_skill_content(tmp_path, monkeypatch):
     config_dir = tmp_path / "agent-config"
     skill_dir = config_dir / "skills" / "debugging"
