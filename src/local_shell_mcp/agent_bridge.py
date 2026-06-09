@@ -109,6 +109,10 @@ def _relative_posix(base: Path, path: Path) -> str:
     return path.resolve().relative_to(base.resolve()).as_posix()
 
 
+def _is_relative_child_path(value: Path) -> bool:
+    return not value.is_absolute() and ".." not in value.parts
+
+
 def _first_sentence(value: str) -> str:
     match = re.match(r"(.+?[.!?])(?:\s|$)", value)
     if match:
@@ -116,28 +120,42 @@ def _first_sentence(value: str) -> str:
     return value
 
 
-def _skill_description(markdown: str) -> str:
-    for line in markdown.splitlines():
-        stripped = line.strip()
-        key, separator, value = stripped.partition(":")
-        if separator and key.strip().lower() == "description":
-            return value.strip().strip("'\"") or "Agent skill"
+def _description_value(line: str) -> str | None:
+    key, separator, value = line.strip().partition(":")
+    if separator and key.strip().lower() == "description":
+        return value.strip().strip("'\"") or "Agent skill"
+    return None
 
-    in_front_matter = False
-    front_matter_possible = True
-    for line in markdown.splitlines():
+
+def _skill_description(markdown: str) -> str:
+    lines = markdown.splitlines()
+    line_index = 0
+    while line_index < len(lines) and not lines[line_index].strip():
+        line_index += 1
+
+    if line_index < len(lines) and lines[line_index].strip() in {"---", "+++"}:
+        delimiter = lines[line_index].strip()
+        line_index += 1
+        while line_index < len(lines):
+            stripped = lines[line_index].strip()
+            if stripped in {delimiter, "..."}:
+                line_index += 1
+                break
+            description = _description_value(lines[line_index])
+            if description is not None:
+                return description
+            line_index += 1
+
+    in_code_fence = False
+    for line in lines[line_index:]:
         stripped = line.strip()
         if not stripped:
             continue
-        if front_matter_possible and stripped in {"---", "+++"}:
-            in_front_matter = True
-            front_matter_possible = False
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_code_fence = not in_code_fence
             continue
-        if in_front_matter:
-            if stripped in {"---", "...", "+++"}:
-                in_front_matter = False
+        if in_code_fence:
             continue
-        front_matter_possible = False
         if stripped in {"---", "...", "+++"} or stripped.startswith("#"):
             continue
         return _first_sentence(stripped)
@@ -145,7 +163,18 @@ def _skill_description(markdown: str) -> str:
 
 
 def scan_agent_skills(config_dir: Path, directory: str = "skills") -> SkillScanResult:
-    skills_dir = (config_dir / directory).resolve()
+    config_root = config_dir.resolve()
+    directory_path = Path(directory)
+    if not _is_relative_child_path(directory_path):
+        return SkillScanResult(
+            warnings=[f"Skills directory must be inside config directory: {directory}"]
+        )
+
+    skills_dir = (config_root / directory_path).resolve()
+    if not skills_dir.is_relative_to(config_root):
+        return SkillScanResult(
+            warnings=[f"Skills directory must be inside config directory: {directory}"]
+        )
     if not skills_dir.exists():
         return SkillScanResult(warnings=[f"Skills directory not found: {directory}"])
 
@@ -155,29 +184,70 @@ def scan_agent_skills(config_dir: Path, directory: str = "skills") -> SkillScanR
         (candidate for candidate in skills_dir.iterdir() if candidate.is_dir()),
         key=lambda candidate: candidate.name,
     ):
+        if child.is_symlink():
+            warnings.append(f"Skipping skill {child.name}: skill directory is a symlink")
+            continue
+        skill_root = child.resolve()
+        if not skill_root.is_relative_to(config_root):
+            warnings.append(
+                f"Skipping skill {child.name}: skill directory must be inside config directory"
+            )
+            continue
         entry_path = child / "SKILL.md"
+        if entry_path.is_symlink():
+            warnings.append(
+                f"Skipping skill {child.name}: "
+                "SKILL.md must be a regular file inside the skill directory"
+            )
+            continue
         if not entry_path.is_file():
             warnings.append(f"Skipping skill {child.name}: missing SKILL.md")
             continue
+        if not entry_path.resolve().is_relative_to(skill_root):
+            warnings.append(
+                f"Skipping skill {child.name}: "
+                "SKILL.md must be inside the skill directory"
+            )
+            continue
         markdown = entry_path.read_text(encoding="utf-8", errors="replace")
-        related_files = sorted(
-            _relative_posix(config_dir, related_path)
-            for related_path in child.rglob("*")
-            if related_path.is_file()
-        )
+        related_files: list[str] = []
+        for related_path in child.rglob("*"):
+            if not related_path.is_file():
+                continue
+            if related_path.is_symlink() or not related_path.resolve().is_relative_to(
+                skill_root
+            ):
+                warnings.append(
+                    f"Skipping related file "
+                    f"{related_path.relative_to(config_root).as_posix()}: "
+                    "file must be inside the skill directory"
+                )
+                continue
+            related_files.append(_relative_posix(config_root, related_path))
         skills[child.name] = SkillRecord(
             name=child.name,
-            entry_path=_relative_posix(config_dir, entry_path),
+            entry_path=_relative_posix(config_root, entry_path),
             description=_skill_description(markdown),
-            related_files=related_files,
+            related_files=sorted(related_files),
         )
     return SkillScanResult(skills=skills, warnings=warnings)
 
 
 def activate_skill(config_dir: Path, skill: SkillRecord) -> dict[str, Any]:
-    content = (config_dir / skill.entry_path).read_text(
-        encoding="utf-8", errors="replace"
-    )
+    config_root = config_dir.resolve()
+    entry_relative = Path(skill.entry_path)
+    if not _is_relative_child_path(entry_relative):
+        raise ValueError("Skill entry path must be inside config directory")
+    entry_path = config_root / entry_relative
+    skill_root = entry_path.parent.resolve()
+    if entry_path.is_symlink() or not entry_path.is_file():
+        raise ValueError("Skill entry path must be a regular file")
+    entry_resolved = entry_path.resolve()
+    if not entry_resolved.is_relative_to(config_root):
+        raise ValueError("Skill entry path must be inside config directory")
+    if not entry_resolved.is_relative_to(skill_root):
+        raise ValueError("Skill entry path must be inside the skill directory")
+    content = entry_path.read_text(encoding="utf-8", errors="replace")
     return {
         "name": skill.name,
         "entry_path": skill.entry_path,
@@ -193,7 +263,7 @@ def _sanitize_name(value: str) -> str:
 
 
 def make_unique_tool_name(prefix: str, raw_name: str, seen: set[str]) -> str:
-    base_name = _sanitize_name(f"{prefix}__{raw_name}")
+    base_name = f"{_sanitize_name(prefix)}__{_sanitize_name(raw_name)}"
     candidate = base_name
     if candidate in seen:
         digest = hashlib.sha1(raw_name.encode("utf-8")).hexdigest()[:8]
