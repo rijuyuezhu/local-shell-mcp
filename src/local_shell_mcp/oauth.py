@@ -76,9 +76,23 @@ def issuer_url(request: Request | None = None) -> str:
 
 
 def resource_url(request: Request | None = None) -> str:
-    """Return the resource URL that clients use for protected-resource discovery."""
+    """Return the canonical MCP resource URI used for OAuth audience binding."""
     settings = get_settings()
-    return (settings.oauth_resource or public_base_url(request)).rstrip("/")
+    if settings.oauth_resource:
+        return settings.oauth_resource.rstrip("/")
+    # Use the MCP endpoint, not just the origin, so access tokens are audience-bound
+    # to this server rather than every service on the same host.
+    return (public_base_url(request).rstrip("/") + "/mcp").rstrip("/")
+
+
+def _normalize_resource(value: str) -> str:
+    """Normalize resource indicators for exact-but-slash-tolerant comparisons."""
+    return value.rstrip("/")
+
+
+def _default_scope() -> str:
+    """Return the default local single-user scope grant."""
+    return " ".join(_scopes())
 
 
 def _scopes() -> list[str]:
@@ -176,6 +190,10 @@ def _validate_authorize_params(params: dict[str, str]) -> str | None:
         return "Missing client_id"
     if not params.get("redirect_uri"):
         return "Missing redirect_uri"
+    if not params.get("resource"):
+        return "Missing resource"
+    if _normalize_resource(params["resource"]) != resource_url():
+        return "resource does not match this MCP server"
     client = _CLIENTS.get(params["client_id"])
     if (
         client
@@ -215,7 +233,7 @@ def _authorize_form(
 ) -> HTMLResponse:
     """Render the local approval form used before issuing an authorization code."""
     settings = get_settings()
-    scope = params.get("scope") or " ".join(_scopes())
+    scope = params.get("scope") or _default_scope()
     resource = params.get("resource") or resource_url()
     error_html = f'<p style="color:#b00020">{error}</p>' if error else ""
     pin_hint = "Enter LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN to approve this ChatGPT connector."
@@ -280,8 +298,8 @@ async def oauth_authorize_post(request: Request) -> Response:
         code=code,
         client_id=params["client_id"],
         redirect_uri=params["redirect_uri"],
-        scope=params.get("scope") or " ".join(_scopes()),
-        resource=params.get("resource") or resource_url(request),
+        scope=params.get("scope") or _default_scope(),
+        resource=_normalize_resource(params["resource"]),
         code_challenge=params.get("code_challenge"),
         code_challenge_method=params.get("code_challenge_method"),
     )
@@ -339,6 +357,15 @@ async def oauth_token(request: Request) -> JSONResponse:
     client_id = str(form.get("client_id") or "")
     redirect_uri = str(form.get("redirect_uri") or "")
     verifier = str(form.get("code_verifier") or "") or None
+    resource = str(form.get("resource") or "")
+    if not resource:
+        return _json(
+            {
+                "error": "invalid_request",
+                "error_description": "Missing resource",
+            },
+            status_code=400,
+        )
     code_obj = _CODES.get(code)
     if not code_obj or code_obj.used:
         return _json(
@@ -358,6 +385,14 @@ async def oauth_token(request: Request) -> JSONResponse:
             {
                 "error": "invalid_grant",
                 "error_description": "Client or redirect mismatch",
+            },
+            status_code=400,
+        )
+    if _normalize_resource(resource) != _normalize_resource(code_obj.resource):
+        return _json(
+            {
+                "error": "invalid_grant",
+                "error_description": "Resource mismatch",
             },
             status_code=400,
         )

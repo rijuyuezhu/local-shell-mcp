@@ -88,7 +88,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "require_auth_for_mcp_discovery",
         "Authentication and OAuth",
-        "Require authentication for MCP initialize/list-tools discovery calls.",
+        "Require bearer auth for MCP-over-HTTP requests; OAuth/bootstrap routes remain public.",
     ),
     SettingSpec(
         "public_base_url",
@@ -105,7 +105,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "oauth_resource",
         "Authentication and OAuth",
-        "Override OAuth resource metadata; defaults to public_base_url when unset.",
+        "Override OAuth resource metadata; defaults to public_base_url plus /mcp when unset.",
         "URL",
     ),
     SettingSpec(
@@ -124,7 +124,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "oauth_access_token_ttl_s",
         "Authentication and OAuth",
-        "Bearer token lifetime in seconds; 0 means no expiry.",
+        "Bearer token lifetime in seconds; 0 disables expiry.",
         "SECONDS",
     ),
     SettingSpec(

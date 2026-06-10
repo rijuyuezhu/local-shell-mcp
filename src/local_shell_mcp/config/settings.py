@@ -98,7 +98,9 @@ class Settings(BaseSettings):
     # Authentication. OAuth is the default for ChatGPT custom connectors.
     auth_mode: Literal["none", "oauth"] = "oauth"
     auth_bypass_localhost: bool = True
-    require_auth_for_mcp_discovery: bool = False
+    # MCP-over-HTTP requests are protected by default; only OAuth/bootstrap
+    # metadata routes stay public. Kept for backwards-compatible config parsing.
+    require_auth_for_mcp_discovery: bool = True
 
     # Built-in OAuth 2.1 authorization server for ChatGPT MCP connectors.
     # Set public_base_url to the externally reachable HTTPS origin, e.g. https://local-shell-mcp.example.com
@@ -111,8 +113,9 @@ class Settings(BaseSettings):
             os.getenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET") or "dev-change-me"
         )
     )
-    # 0 means access tokens never expire.
-    oauth_access_token_ttl_s: int = 0
+    # Keep the embedded single-user authorization flow simple, but avoid
+    # issuing permanent bearer tokens by default.
+    oauth_access_token_ttl_s: int = 3600
     oauth_code_ttl_s: int = 300
 
     # Command policy. Set denylist empty if this container is intentionally disposable.

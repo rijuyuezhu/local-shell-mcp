@@ -1,30 +1,28 @@
 import json
+import time
 
 import pytest
 
 import local_shell_mcp.tools as tools_module
 from local_shell_mcp.agent_mcp import AgentMcpTool
-from local_shell_mcp.auth import _is_mcp_discovery_request
 from local_shell_mcp.config.settings import get_settings
-from local_shell_mcp.oauth import issue_access_token, validate_bearer_token
+from local_shell_mcp.oauth import (
+    issue_access_token,
+    resource_url,
+    validate_bearer_token,
+)
 from local_shell_mcp.tools import build_mcp
 
 
-def test_mcp_discovery_methods_are_unauthenticated():
-    scope = {"type": "http", "path": "/mcp", "method": "POST"}
-    initialize = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
-    ).encode()
-    tools_list = json.dumps(
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
-    ).encode()
-    tools_call = json.dumps(
-        {"jsonrpc": "2.0", "id": 3, "method": "tools/call"}
-    ).encode()
+def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
+    get_settings.cache_clear()
 
-    assert _is_mcp_discovery_request(scope, initialize)
-    assert _is_mcp_discovery_request(scope, tools_list)
-    assert not _is_mcp_discovery_request(scope, tools_call)
+    assert resource_url() == "https://local-shell-mcp.example.com/mcp"
 
 
 @pytest.mark.asyncio
@@ -130,7 +128,7 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
     assert tools["run_shell_tool"].annotations is None
 
 
-def test_oauth_access_tokens_do_not_expire_by_default(tmp_path, monkeypatch):
+def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET", "test-secret")
     monkeypatch.delenv("LOCAL_SHELL_MCP_PUBLIC_BASE_URL", raising=False)
@@ -141,9 +139,9 @@ def test_oauth_access_tokens_do_not_expire_by_default(tmp_path, monkeypatch):
     token = issue_access_token(
         client_id="test-client",
         scope="shell:execute",
-        resource="http://127.0.0.1:8765",
+        resource="http://127.0.0.1:8765/mcp",
     )
     claims = validate_bearer_token(token)
 
-    assert "exp" not in claims
+    assert claims["exp"] > int(time.time())
     assert claims["client_id"] == "test-client"
