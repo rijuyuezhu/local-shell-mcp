@@ -1,4 +1,4 @@
-# Minimal YAML config example. Values here are applied after environment defaults.
+# Minimal YAML config example. Effective precedence is defaults < config file < environment variables < CLI arguments.
 
 host: 0.0.0.0
 port: 8765

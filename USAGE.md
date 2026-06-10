@@ -41,13 +41,13 @@ A successful shell call should produce audit events such as `run_shell_start` an
 Running `local-shell-mcp` without a subcommand starts the server:
 
 ```text
-local-shell-mcp [--mode {mcp,http,stdio}] [--config PATH] [--remote | --no-remote]
+local-shell-mcp [--mode {mcp,http,stdio}] [--config PATH] [--host HOST] [--port PORT] [--workspace-root PATH] [--auth-mode {none,oauth}] [--remote | --no-remote]
 ```
 
 Server options:
 
 - `--mode {mcp,http,stdio}` overrides `LOCAL_SHELL_MCP_MODE`.
-- `--config PATH` sets `LOCAL_SHELL_MCP_CONFIG` before loading settings.
+- `--config PATH` selects an optional YAML config file. The effective precedence is defaults < config file < environment variables < CLI arguments.
 - `--remote` enables remote worker routes and tools.
 - `--no-remote` disables remote worker routes and tools.
 
@@ -60,7 +60,7 @@ local-shell-mcp worker --help
 
 ## Configuration
 
-Environment variables use the `LOCAL_SHELL_MCP_` prefix. YAML config can also be passed with `--config`:
+Application environment variables use the `LOCAL_SHELL_MCP_` prefix. Docker entrypoint variables use `DOCKER_`. YAML config can also be passed with `--config`:
 
 ```bash
 local-shell-mcp --config config.example.yaml --mode mcp
@@ -93,7 +93,7 @@ Common settings:
 | `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED` | `true` | Enable agent capability bridge tools |
 | `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/home/agent/local-shell-mcp-config` | Read-only capability config directory |
 
-See `config.example.yaml` and `.env.example` for deployment-oriented examples.
+See `ENV.md`, `config.example.yaml`, and `.env.example` for deployment-oriented examples.
 
 ## Remote worker mode
 
