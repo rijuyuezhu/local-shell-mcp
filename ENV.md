@@ -1,6 +1,6 @@
 # Environment variable reference
 
-This is the complete reference for settings that can be supplied through the process environment. For task-oriented setup instructions, start with [INSTALL.md](INSTALL.md) and [USAGE.md](USAGE.md).
+This is the complete reference for settings that can be supplied through the process environment. For Docker Compose deployments, copy [.env.example](.env.example) to `.env`; the compose file requires that file and passes it to the main container with `env_file:`. For task-oriented setup instructions, start with [INSTALL.md](INSTALL.md) and [USAGE.md](USAGE.md).
 
 ## Naming convention
 

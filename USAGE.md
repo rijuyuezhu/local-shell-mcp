@@ -60,7 +60,7 @@ local-shell-mcp worker --help
 
 ## Configuration
 
-Use CLI arguments for one-off runs, `LOCAL_SHELL_MCP_*` environment variables for deployments, and `config.example.yaml` only when a file-based configuration is more convenient. Application settings resolve in this order:
+Use CLI arguments for one-off runs, `.env` / `LOCAL_SHELL_MCP_*` environment variables for Compose deployments, and `config.example.yaml` only when a file-based configuration is more convenient. Application settings resolve in this order:
 
 ```text
 defaults < config file < LOCAL_SHELL_MCP_* environment variables < CLI arguments
@@ -84,7 +84,7 @@ The most common settings are:
 
 Docker image startup knobs, such as credential persistence and whether the server process runs as root, use `DOCKER_*` variables because they are consumed by the container entrypoint before the application starts.
 
-See [ENV.md](ENV.md) for the complete variable reference and [config.example.yaml](config.example.yaml) / [.env.example](.env.example) for copyable examples.
+For Docker Compose, copy [.env.example](.env.example) to `.env`; the compose file requires it and passes it through with `env_file:`. See [ENV.md](ENV.md) for the complete variable reference and [config.example.yaml](config.example.yaml) for non-Compose file-based configuration.
 
 ## Remote worker mode
 
