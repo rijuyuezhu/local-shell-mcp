@@ -6,7 +6,7 @@ This is the complete reference for settings that can be supplied through the pro
 
 - `LOCAL_SHELL_MCP_*` configures the local-shell-mcp application.
 - `DOCKER_*` configures Docker image entrypoint behavior before the application starts.
-- Third-party variables such as `CLOUDFLARE_TUNNEL_TOKEN`, `TUNNEL_HOSTNAME`, and `SSH_AUTH_SOCK` keep their upstream names.
+- Third-party variables such as `CLOUDFLARE_TUNNEL_TOKEN` and `SSH_AUTH_SOCK` keep their upstream names.
 
 ## Application configuration precedence
 
@@ -94,7 +94,4 @@ These variables are consumed by `scripts/docker-entrypoint.sh` before `local-she
 | Environment variable | Used by | Description |
 |---|---|---|
 | `CLOUDFLARE_TUNNEL_TOKEN` | `docker-compose.yml` tunnel profile | Token for the optional Cloudflare Tunnel sidecar. |
-| `TUNNEL_HOSTNAME` | `scripts/run-with-cloudflare-tunnel.sh` | Hostname passed to `cloudflared tunnel --hostname`. |
-| `LOCAL_SHELL_MCP_CF_ACCESS_TEAM_DOMAIN` | `scripts/run-with-cloudflare-tunnel.sh` | Legacy Cloudflare Access script input. Not consumed by the application. |
-| `LOCAL_SHELL_MCP_CF_ACCESS_AUDIENCE` | `scripts/run-with-cloudflare-tunnel.sh` | Legacy Cloudflare Access script input. Not consumed by the application. |
 | `SSH_AUTH_SOCK` | optional Docker Compose mount | SSH agent socket to expose to the container instead of mounting private keys. |
