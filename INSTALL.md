@@ -59,7 +59,7 @@ The Compose file mounts:
 - `./workspaces/default` as `/home`, the container home tree.
 - `local-shell-mcp-credentials` as `/persist/credentials`, used for persistent GitHub CLI, Git HTTPS, GitCode, SSH, `.netrc`, and GPG state when credential persistence is enabled.
 
-Set `LOCAL_SHELL_MCP_PERSISTENT_CREDENTIALS=false` for a more disposable authentication state.
+Set `DOCKER_PERSISTENT_CREDENTIALS=false` for a more disposable authentication state.
 
 If the container cannot write `/workspace/.local-shell-mcp`, fix host ownership:
 

@@ -2,9 +2,35 @@
 set -euo pipefail
 
 workspace="${LOCAL_SHELL_MCP_WORKSPACE_ROOT:-/workspace}"
-run_as_root="$(printf '%s' "${LOCAL_SHELL_MCP_RUN_AS_ROOT:-false}" | tr '[:upper:]' '[:lower:]')"
-persist_credentials="$(printf '%s' "${LOCAL_SHELL_MCP_PERSISTENT_CREDENTIALS:-true}" | tr '[:upper:]' '[:lower:]')"
-credentials_dir="${LOCAL_SHELL_MCP_CREDENTIALS_DIR:-/persist/credentials}"
+
+env_value() {
+  local name="$1"
+  local deprecated_name="$2"
+  local default_value="$3"
+
+  if [ -n "${!name+x}" ]; then
+    printf '%s' "${!name}"
+    return 0
+  fi
+
+  if [ -n "${!deprecated_name+x}" ]; then
+    printf 'warning: %s is deprecated for Docker entrypoint configuration; use %s instead.
+' "$deprecated_name" "$name" >&2
+    printf '%s' "${!deprecated_name}"
+    return 0
+  fi
+
+  printf '%s' "$default_value"
+}
+
+lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+run_as_root="$(lower "$(env_value DOCKER_RUN_AS_ROOT LOCAL_SHELL_MCP_RUN_AS_ROOT false)")"
+persist_credentials="$(lower "$(env_value DOCKER_PERSISTENT_CREDENTIALS LOCAL_SHELL_MCP_PERSISTENT_CREDENTIALS true)")"
+credentials_dir="$(env_value DOCKER_CREDENTIALS_DIR LOCAL_SHELL_MCP_CREDENTIALS_DIR /persist/credentials)"
+chown_workspace="$(lower "$(env_value DOCKER_CHOWN_WORKSPACE LOCAL_SHELL_MCP_CHOWN_WORKSPACE true)")"
 
 is_truthy() {
   case "$1" in
@@ -122,7 +148,7 @@ if [ "$(id -u)" = "0" ]; then
     exec "$@"
   fi
   setup_persistent_credentials agent /home/agent
-  if [ "${LOCAL_SHELL_MCP_CHOWN_WORKSPACE:-true}" != "false" ]; then
+  if is_truthy "$chown_workspace"; then
     chown -R agent:agent "$workspace"
   fi
   exec runuser -u agent -- "$@"

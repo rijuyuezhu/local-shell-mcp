@@ -47,8 +47,8 @@ ENV PYTHONUNBUFFERED=1 \
     LOCAL_SHELL_MCP_WORKSPACE_ROOT=/workspace \
     LOCAL_SHELL_MCP_HOST=0.0.0.0 \
     LOCAL_SHELL_MCP_PORT=8765 \
-    LOCAL_SHELL_MCP_PERSISTENT_CREDENTIALS=true \
-    LOCAL_SHELL_MCP_CREDENTIALS_DIR=/persist/credentials
+    DOCKER_PERSISTENT_CREDENTIALS=true \
+    DOCKER_CREDENTIALS_DIR=/persist/credentials
 
 RUN pacman -Sy --noconfirm archlinux-keyring \
   && pacman -S --needed --noconfirm \
