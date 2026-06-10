@@ -51,8 +51,8 @@ Repository = "https://github.com/rijuyuezhu/local-shell-mcp"
 local-shell-mcp = "local_shell_mcp.main:main"
 
 [tool.ruff]
-line-length = 100
-target-version = "py311"
+line-length = 80
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
