@@ -17,9 +17,6 @@ DEFAULT_AGENT_CONFIG_DIR = Path("/home/agent/local-shell-mcp-config")
 ENV_PREFIX = "LOCAL_SHELL_MCP_"
 
 SENSITIVE_SETTING_KEYS = {
-    "cf_access_audience",
-    "cf_access_allowed_emails",
-    "cf_access_allowed_email_domains",
     "oauth_admin_pin",
     "oauth_jwt_secret",
 }
@@ -302,7 +299,7 @@ def validate_public_oauth_configuration(
     settings = settings or get_settings()
     if settings.auth_mode != "oauth" or not settings.public_base_url:
         return
-    weak_values = {"", "dev-" + "change-me"}
+    weak_values = {"", "dev-change-me"}
     if settings.oauth_jwt_secret in weak_values:
         raise RuntimeError(
             "LOCAL_SHELL_MCP_OAUTH_JWT_SECRET must be set to a strong random value "
