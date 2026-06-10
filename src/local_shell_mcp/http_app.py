@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .auth import CloudflareAccessMiddleware, Principal, verify_request
+from .config.settings import get_settings
 from .fs_ops import (
     delete_path,
     edit_text,
@@ -32,7 +33,6 @@ from .git_ops import (
     git_status,
 )
 from .search_ops import grep, tree
-from .settings import get_settings
 from .shell_ops import (
     PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
     kill_shell,

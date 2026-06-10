@@ -1,5 +1,5 @@
 import local_shell_mcp.main as cli
-from local_shell_mcp.config_registry import SETTING_SPECS, cli_overrides_from_args
+from local_shell_mcp.config.registry import SETTING_SPECS, cli_overrides_from_args
 
 
 def test_server_options_parse_to_default_handler():

@@ -16,7 +16,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .audit import audit
-from .settings import get_settings
+from .config.settings import get_settings
 
 
 @dataclass

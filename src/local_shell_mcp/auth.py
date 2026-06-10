@@ -12,7 +12,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .audit import audit
-from .settings import Settings, get_settings
+from .config.settings import Settings, get_settings
 
 PUBLIC_PATHS = {
     "/healthz",

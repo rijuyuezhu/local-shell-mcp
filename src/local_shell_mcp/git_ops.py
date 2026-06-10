@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shlex
 
-from .settings import get_settings
+from .config.settings import get_settings
 from .shell_ops import run_shell
 
 

@@ -5,8 +5,8 @@ import pytest
 import local_shell_mcp.tools as tools_module
 from local_shell_mcp.agent_mcp import AgentMcpTool
 from local_shell_mcp.auth import _is_mcp_discovery_request
+from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.oauth import issue_access_token, validate_bearer_token
-from local_shell_mcp.settings import get_settings
 from local_shell_mcp.tools import build_mcp
 
 

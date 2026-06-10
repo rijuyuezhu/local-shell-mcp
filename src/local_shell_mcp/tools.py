@@ -18,6 +18,7 @@ from .agent_bridge import build_agent_registry
 from .agent_bridge_tools import register_agent_bridge_tools
 from .agent_mcp import AgentMcpClientManager
 from .audit import audit
+from .config.settings import get_settings, safe_settings_dump
 from .fs_ops import (
     delete_path,
     edit_text,
@@ -48,7 +49,6 @@ from .git_ops import (
 )
 from .remote import remote_manager
 from .search_ops import grep, tree
-from .settings import get_settings, safe_settings_dump
 from .shell_ops import (
     PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
     kill_shell,

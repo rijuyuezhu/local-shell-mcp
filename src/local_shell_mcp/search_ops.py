@@ -6,8 +6,8 @@ import asyncio
 import json
 import shlex
 
+from .config.settings import get_settings
 from .fs_ops import missing_path_context, resolve_path
-from .settings import get_settings
 from .shell_ops import run_shell
 
 

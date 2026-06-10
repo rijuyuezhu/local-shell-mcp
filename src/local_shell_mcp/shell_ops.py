@@ -12,9 +12,9 @@ import uuid
 from dataclasses import dataclass
 
 from .audit import audit
+from .config.settings import get_settings
 from .fs_ops import relative_display, resolve_path
 from .models import CommandResult
-from .settings import get_settings
 
 PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S = 10
 PUBLIC_RUN_SHELL_TIMEOUT_CAP_S = 60

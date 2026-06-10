@@ -6,7 +6,7 @@ from local_shell_mcp.agent_bridge import (
     load_agent_manifest,
     redact_mapping,
 )
-from local_shell_mcp.settings import get_settings
+from local_shell_mcp.config.settings import get_settings
 
 
 def test_agent_config_dir_defaults_to_home_agent(monkeypatch, tmp_path):

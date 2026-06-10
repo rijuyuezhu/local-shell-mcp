@@ -25,6 +25,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
 from .audit import audit
+from .config.settings import get_settings, safe_settings_dump
 from .fs_ops import (
     delete_path,
     edit_text,
@@ -52,7 +53,6 @@ from .git_ops import (
     git_status,
 )
 from .search_ops import grep, tree
-from .settings import get_settings, safe_settings_dump
 from .shell_ops import (
     kill_shell,
     list_shells,
@@ -691,7 +691,7 @@ async def run_worker(
     workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
     os.environ.setdefault("LOCAL_SHELL_MCP_WORKSPACE_ROOT", workdir)
     os.environ.setdefault("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
-    from .settings import get_settings as _get_settings
+    from .config.settings import get_settings as _get_settings
 
     _get_settings.cache_clear()
     server = server.rstrip("/")

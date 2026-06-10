@@ -313,6 +313,20 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("python_bin", "Tool executables", "Python executable.", "PATH"),
 )
 
+
+def _group_setting_specs_by_section() -> list[tuple[SectionName, list[SettingSpec]]]:
+    """Group setting specs by section while preserving registry order within each section."""
+    specs_by_section: dict[SectionName, list[SettingSpec]] = {
+        section: [] for section in SECTION_ORDER
+    }
+    for spec in SETTING_SPECS:
+        specs_by_section[spec.section].append(spec)
+    return [(section, specs_by_section[section]) for section in SECTION_ORDER]
+
+
+SETTING_SPECS_BY_SECTION: list[tuple[SectionName, list[SettingSpec]]] = (
+    _group_setting_specs_by_section()
+)
 SPECS_BY_NAME = {spec.name: spec for spec in SETTING_SPECS}
 
 CONFIG_SPEC = SettingSpec(
@@ -389,9 +403,9 @@ def is_bool_setting(name: str) -> bool:
 def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
     """Register one CLI option for every Settings field, grouped by section."""
     validate_setting_specs()
-    for section in SECTION_ORDER:
+    for section, specs in SETTING_SPECS_BY_SECTION:
         group = parser.add_argument_group(section)
-        for spec in (item for item in SETTING_SPECS if item.section == section):
+        for spec in specs:
             kwargs: dict[str, Any] = {
                 "dest": spec.name,
                 "default": None,

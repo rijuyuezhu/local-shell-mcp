@@ -9,7 +9,7 @@ import os
 import shutil
 from pathlib import Path
 
-from .settings import get_settings
+from .config.settings import get_settings
 
 BINARY_CHECK_BYTES = 8192
 BINARY_CONTROL_RATIO = 0.30
