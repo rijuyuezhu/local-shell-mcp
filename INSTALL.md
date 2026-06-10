@@ -97,6 +97,36 @@ https://your-public-host.example.com/mcp
 
 This sidecar uses Cloudflare Tunnel only. It does not configure Cloudflare Access.
 
+## Local source checkout with Cloudflare Tunnel
+
+For a non-Docker source checkout, `scripts/run-with-cloudflare-tunnel.sh` starts
+`local-shell-mcp` with `uv` and then runs a named Cloudflare Tunnel in the same
+terminal session. It expects a `.env` file in the repository root and exports all
+variables from that file before launching the server. At minimum, set the public
+base URL and tunnel token:
+
+```env
+LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+CLOUDFLARE_TUNNEL_TOKEN=...
+```
+
+The Cloudflare public hostname should route to the local server address:
+
+```text
+http://127.0.0.1:8765
+```
+
+Run it from the repository root:
+
+```bash
+scripts/run-with-cloudflare-tunnel.sh
+```
+
+When `cloudflared` exits, the script also stops the background `local-shell-mcp`
+process. Use the Docker Compose sidecar above for long-running deployments; use
+this script when you want to test a source checkout quickly with the same tunnel
+token.
+
 ## Docker without Compose
 
 ```bash

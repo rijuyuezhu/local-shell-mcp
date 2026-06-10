@@ -77,9 +77,10 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 | `scripts/probe-mcp.py` | Probe a public streamable HTTP MCP endpoint. It checks unauthenticated discovery and, with `--pin`, an authenticated tool call. | `uv run python scripts/probe-mcp.py https://your-public-host.example.com --pin "$LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN"` |
 | `scripts/generate-config-examples.py` | Generate `.env.example` and `config.example.yaml` from `src/local_shell_mcp/config_registry.py`. Use `--check` in tests/CI to detect drift. | `uv run python scripts/generate-config-examples.py --check` |
 | `scripts/docker-entrypoint.sh` | Docker image entrypoint. It prepares workspace ownership, credential persistence, and final process user before launching the server. | Invoked by `Dockerfile`; do not run directly on the host. |
+| `scripts/run-with-cloudflare-tunnel.sh` | Start a local source checkout with `uv run local-shell-mcp --mode mcp`, export variables from `.env`, then run `cloudflared tunnel --token "$CLOUDFLARE_TUNNEL_TOKEN"`. | `scripts/run-with-cloudflare-tunnel.sh` |
 | `scripts/pyinstaller-entry.py` | Thin Python entrypoint for PyInstaller release assets. | Used by the release workflow. |
 
-The old standalone Cloudflare tunnel launcher was removed. Use the Docker Compose `cloudflared` sidecar profile documented in [INSTALL.md](INSTALL.md) instead.
+For Docker deployments, prefer the Compose `cloudflared` sidecar profile documented in [INSTALL.md](INSTALL.md). The standalone tunnel launcher is mainly for quick source-checkout testing.
 
 ## MCP endpoint probe
 
