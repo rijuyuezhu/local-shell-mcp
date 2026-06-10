@@ -83,7 +83,7 @@ These variables are consumed by `scripts/docker-entrypoint.sh` before `local-she
 | Environment variable | Default | Description |
 |---|---:|---|
 | `DOCKER_RUN_AS_ROOT` | `false` | Run the server process as root instead of the `agent` user. Prefer explicit `sudo` inside commands. |
-| `DOCKER_PERSISTENT_CREDENTIALS` | `true` in the image, `false` in compose | Persist common developer credential files into `DOCKER_CREDENTIALS_DIR`. |
+| `DOCKER_PERSISTENT_CREDENTIALS` | `true` | Persist common developer credential files into `DOCKER_CREDENTIALS_DIR`. Compose deployments get this value from `.env`. |
 | `DOCKER_CREDENTIALS_DIR` | `/persist/credentials` | Root directory for persisted GitHub CLI, Git, SSH, `.netrc`, and GPG state. |
 | `DOCKER_CHOWN_WORKSPACE` | `true` | `chown` the workspace to `agent` before starting the server. |
 
