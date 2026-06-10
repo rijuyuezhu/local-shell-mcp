@@ -3,7 +3,7 @@
 # This file configures application Settings only. Docker entrypoint and sidecar variables stay in .env.
 
 # Server.
-# Server transport mode: mcp, http, stdio, or both.
+# Server transport mode.
 mode: "mcp"
 # Bind host for HTTP/MCP transports.
 host: "0.0.0.0"
