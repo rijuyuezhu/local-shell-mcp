@@ -1,6 +1,6 @@
-# Environment variables
+# Environment variable reference
 
-This project uses separate environment-variable namespaces for the MCP server itself and for the Docker image entrypoint.
+This is the complete reference for settings that can be supplied through the process environment. For task-oriented setup instructions, start with [INSTALL.md](INSTALL.md) and [USAGE.md](USAGE.md).
 
 ## Naming convention
 
@@ -8,15 +8,15 @@ This project uses separate environment-variable namespaces for the MCP server it
 - `DOCKER_*` configures Docker image entrypoint behavior before the application starts.
 - Third-party variables such as `CLOUDFLARE_TUNNEL_TOKEN`, `TUNNEL_HOSTNAME`, and `SSH_AUTH_SOCK` keep their upstream names.
 
-## Configuration precedence
+## Application configuration precedence
 
-Application settings are resolved in this order:
+Only application settings participate in this precedence chain:
 
 ```text
 defaults < config file < LOCAL_SHELL_MCP_* environment variables < CLI arguments
 ```
 
-The YAML config file is optional. Prefer `LOCAL_SHELL_MCP_*` variables or CLI arguments for new deployments. `--config PATH` and `LOCAL_SHELL_MCP_CONFIG` remain supported for compatibility.
+The YAML config file is optional. Prefer `LOCAL_SHELL_MCP_*` variables or CLI arguments for new deployments. `--config PATH` and `LOCAL_SHELL_MCP_CONFIG` select the optional config file.
 
 ## Application settings
 

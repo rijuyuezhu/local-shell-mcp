@@ -60,40 +60,31 @@ local-shell-mcp worker --help
 
 ## Configuration
 
-Application environment variables use the `LOCAL_SHELL_MCP_` prefix. Docker entrypoint variables use `DOCKER_`. YAML config can also be passed with `--config`:
+Use CLI arguments for one-off runs, `LOCAL_SHELL_MCP_*` environment variables for deployments, and `config.example.yaml` only when a file-based configuration is more convenient. Application settings resolve in this order:
 
-```bash
-local-shell-mcp --config config.example.yaml --mode mcp
+```text
+defaults < config file < LOCAL_SHELL_MCP_* environment variables < CLI arguments
 ```
 
-Common settings:
+The most common settings are:
 
-| Variable | Default | Meaning |
-|---|---:|---|
-| `LOCAL_SHELL_MCP_HOST` | `0.0.0.0` | Bind host |
-| `LOCAL_SHELL_MCP_PORT` | `8765` | Bind port |
-| `LOCAL_SHELL_MCP_MODE` | `mcp` | `mcp`, `http`, or `stdio` |
-| `LOCAL_SHELL_MCP_WORKSPACE_ROOT` | `/workspace` | Root for normal file and command operations |
-| `LOCAL_SHELL_MCP_AUTH_MODE` | `oauth` | `oauth` or `none` |
-| `LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST` | `true` | Allow localhost requests without bearer auth |
-| `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY` | `false` | Require auth for MCP initialize/list-tools discovery calls |
-| `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` | unset | Public HTTPS origin used in OAuth metadata |
-| `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | unset | PIN required to approve OAuth authorization |
-| `LOCAL_SHELL_MCP_OAUTH_JWT_SECRET` | `dev-change-me` | Secret used to sign bearer tokens |
-| `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` | `0` | Bearer token lifetime in seconds; `0` means no expiry |
-| `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` | Disable built-in workspace and command restrictions; intended only for disposable containers/VMs |
-| `DOCKER_RUN_AS_ROOT` | `false` | Docker entrypoint escape hatch to run the MCP server as root instead of `agent`; prefer explicit `sudo` inside commands |
-| `LOCAL_SHELL_MCP_MAX_TIMEOUT_S` | `3600` | Maximum command timeout |
-| `LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES` | `200000` | Command output truncation limit |
-| `LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES` | `512000` | Per-file read limit |
-| `LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES` | `5000000` | Per-file write/edit limit |
-| `LOCAL_SHELL_MCP_MAX_CONCURRENT_COMMANDS` | `4` | Concurrent command limit |
-| `LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS` | `16` | Persistent shell session limit |
-| `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` | Enable remote worker routes and tools |
-| `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED` | `true` | Enable agent capability bridge tools |
-| `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/home/agent/local-shell-mcp-config` | Read-only capability config directory |
+| Setting | CLI | Environment | Default |
+|---|---|---|---:|
+| Server mode | `--mode` | `LOCAL_SHELL_MCP_MODE` | `mcp` |
+| Bind host | `--host` | `LOCAL_SHELL_MCP_HOST` | `0.0.0.0` |
+| Bind port | `--port` | `LOCAL_SHELL_MCP_PORT` | `8765` |
+| Workspace root | `--workspace-root` | `LOCAL_SHELL_MCP_WORKSPACE_ROOT` | `/workspace` |
+| Auth mode | `--auth-mode` | `LOCAL_SHELL_MCP_AUTH_MODE` | `oauth` |
+| Public OAuth origin | `--public-base-url` | `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` | unset |
+| OAuth approval PIN | `--oauth-admin-pin` | `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | unset |
+| OAuth JWT secret | `--oauth-jwt-secret` | `LOCAL_SHELL_MCP_OAUTH_JWT_SECRET` | `dev-change-me` |
+| Full-container mode | `--allow-full-container` / `--no-allow-full-container` | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` |
+| Remote worker routes | `--remote` / `--no-remote` | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` |
+| Agent bridge config | `--agent-config-dir` | `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/home/agent/local-shell-mcp-config` |
 
-See `ENV.md`, `config.example.yaml`, and `.env.example` for deployment-oriented examples.
+Docker image startup knobs, such as credential persistence and whether the server process runs as root, use `DOCKER_*` variables because they are consumed by the container entrypoint before the application starts.
+
+See [ENV.md](ENV.md) for the complete variable reference and [config.example.yaml](config.example.yaml) / [.env.example](.env.example) for copyable examples.
 
 ## Remote worker mode
 
