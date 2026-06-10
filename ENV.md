@@ -78,12 +78,12 @@ The YAML config file is optional. Prefer `LOCAL_SHELL_MCP_*` variables or CLI ar
 
 ## Docker entrypoint settings
 
-These variables are consumed by `scripts/docker-entrypoint.sh` before `local-shell-mcp` starts. They are intentionally not part of `Settings`.
+These variables are consumed by `scripts/docker-entrypoint.sh` before `local-shell-mcp` starts. They are intentionally not part of `Settings`, do not participate in application config-file precedence, and affect only Docker image startup behavior. In Docker Compose deployments, they are supplied from `.env` together with the application variables because `docker-compose.yml` uses `env_file: .env` for the main container.
 
 | Environment variable | Default | Description |
 |---|---:|---|
 | `DOCKER_RUN_AS_ROOT` | `false` | Run the server process as root instead of the `agent` user. Prefer explicit `sudo` inside commands. |
-| `DOCKER_PERSISTENT_CREDENTIALS` | `true` | Persist common developer credential files into `DOCKER_CREDENTIALS_DIR`. Compose deployments get this value from `.env`. |
+| `DOCKER_PERSISTENT_CREDENTIALS` | `true` | Persist common developer credential files into `DOCKER_CREDENTIALS_DIR`. |
 | `DOCKER_CREDENTIALS_DIR` | `/persist/credentials` | Root directory for persisted GitHub CLI, Git, SSH, `.netrc`, and GPG state. |
 | `DOCKER_CHOWN_WORKSPACE` | `true` | `chown` the workspace to `agent` before starting the server. |
 
