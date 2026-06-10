@@ -87,15 +87,6 @@ These variables are consumed by `scripts/docker-entrypoint.sh` before `local-she
 | `DOCKER_CREDENTIALS_DIR` | `/persist/credentials` | Root directory for persisted GitHub CLI, Git, SSH, `.netrc`, and GPG state. |
 | `DOCKER_CHOWN_WORKSPACE` | `true` | `chown` the workspace to `agent` before starting the server. |
 
-Deprecated Docker aliases are still accepted by the entrypoint with a warning:
-
-| Deprecated | Replacement |
-|---|---|
-| `LOCAL_SHELL_MCP_RUN_AS_ROOT` | `DOCKER_RUN_AS_ROOT` |
-| `LOCAL_SHELL_MCP_PERSISTENT_CREDENTIALS` | `DOCKER_PERSISTENT_CREDENTIALS` |
-| `LOCAL_SHELL_MCP_CREDENTIALS_DIR` | `DOCKER_CREDENTIALS_DIR` |
-| `LOCAL_SHELL_MCP_CHOWN_WORKSPACE` | `DOCKER_CHOWN_WORKSPACE` |
-
 ## Third-party and script variables
 
 | Environment variable | Used by | Description |
