@@ -10,8 +10,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+# Prefer the current checkout over any globally injected package path, such as /app/src
+# in development containers.
+sys.path = [path for path in sys.path if Path(path or ".").resolve() != SRC]
+sys.path.insert(0, str(SRC))
 
 from local_shell_mcp.config_registry import (  # noqa: E402
     SECTION_ORDER,
