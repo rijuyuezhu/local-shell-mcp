@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -258,32 +257,24 @@ def load_settings(
 _configured_settings: Settings | None = None
 
 
-@lru_cache(maxsize=1)
-def _load_cached_settings() -> Settings:
-    return load_settings()
-
-
 def get_settings() -> Settings:
     """Return cached settings, optionally primed by configure_settings."""
-    if _configured_settings is not None:
-        return _configured_settings
-    return _load_cached_settings()
+    global _configured_settings
+    if _configured_settings is None:
+        _configured_settings = load_settings()
+    return _configured_settings
 
 
 def configure_settings(settings: Settings) -> None:
     """Install a fully resolved Settings object for subsequent get_settings calls."""
     global _configured_settings
-
     _configured_settings = settings
-    _load_cached_settings.cache_clear()
 
 
 def clear_settings_cache() -> None:
     """Clear cached settings. Intended for tests and CLI reconfiguration."""
     global _configured_settings
-
     _configured_settings = None
-    _load_cached_settings.cache_clear()
 
 
 # Backwards-compatible test helper: many tests call get_settings.cache_clear().

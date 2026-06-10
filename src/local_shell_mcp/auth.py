@@ -243,4 +243,4 @@ class AuthMiddleware:
 
 
 # Backwards-compatible alias.
-CloudflareAccessMiddleware = AuthMiddleware
+type CloudflareAccessMiddleware = AuthMiddleware
