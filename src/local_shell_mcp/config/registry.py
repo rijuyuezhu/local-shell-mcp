@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, get_args, get_origin
 
-from pydantic.fields import PydanticUndefined
+from pydantic.fields import PydanticUndefined  # type: ignore
 
 from .settings import ENV_PREFIX, Settings
 
-SectionName = Literal[
+type SectionName = Literal[
     "Server",
     "Paths and state",
     "Authentication and OAuth",
@@ -58,7 +58,12 @@ SECTION_ORDER: tuple[SectionName, ...] = (
 )
 
 SETTING_SPECS: tuple[SettingSpec, ...] = (
-    SettingSpec("mode", "Server", "Server transport mode: mcp, http, stdio, or both.", "MODE"),
+    SettingSpec(
+        "mode",
+        "Server",
+        "Server transport mode: mcp, http, stdio, or both.",
+        "MODE",
+    ),
     SettingSpec("host", "Server", "Bind host for HTTP/MCP transports.", "HOST"),
     SettingSpec("port", "Server", "Bind port for HTTP/MCP transports.", "PORT"),
     SettingSpec(
@@ -73,7 +78,12 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Directory for runtime state such as audit logs and temporary files.",
         "PATH",
     ),
-    SettingSpec("audit_log_path", "Paths and state", "Path to the JSONL audit log.", "PATH"),
+    SettingSpec(
+        "audit_log_path",
+        "Paths and state",
+        "Path to the JSONL audit log.",
+        "PATH",
+    ),
     SettingSpec(
         "auth_mode",
         "Authentication and OAuth",
@@ -142,7 +152,10 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "BOOL",
     ),
     SettingSpec(
-        "allow_network", "Safety and resource limits", "Allow network-capable operations.", "BOOL"
+        "allow_network",
+        "Safety and resource limits",
+        "Allow network-capable operations.",
+        "BOOL",
     ),
     SettingSpec(
         "default_timeout_s",
@@ -175,7 +188,10 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "BYTES",
     ),
     SettingSpec(
-        "max_grep_results", "Safety and resource limits", "Maximum grep result count.", "COUNT"
+        "max_grep_results",
+        "Safety and resource limits",
+        "Maximum grep result count.",
+        "COUNT",
     ),
     SettingSpec(
         "max_directory_entries",
@@ -184,10 +200,16 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "COUNT",
     ),
     SettingSpec(
-        "max_glob_results", "Safety and resource limits", "Maximum glob search results.", "COUNT"
+        "max_glob_results",
+        "Safety and resource limits",
+        "Maximum glob search results.",
+        "COUNT",
     ),
     SettingSpec(
-        "max_tree_entries", "Safety and resource limits", "Maximum tree-view entries.", "COUNT"
+        "max_tree_entries",
+        "Safety and resource limits",
+        "Maximum tree-view entries.",
+        "COUNT",
     ),
     SettingSpec(
         "max_read_many_files",
@@ -201,9 +223,17 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Combined byte limit for multi-file reads.",
         "BYTES",
     ),
-    SettingSpec("max_todos", "Safety and resource limits", "Todo-list item limit.", "COUNT"),
     SettingSpec(
-        "max_todo_bytes", "Safety and resource limits", "Todo-list serialized byte limit.", "BYTES"
+        "max_todos",
+        "Safety and resource limits",
+        "Todo-list item limit.",
+        "COUNT",
+    ),
+    SettingSpec(
+        "max_todo_bytes",
+        "Safety and resource limits",
+        "Todo-list serialized byte limit.",
+        "BYTES",
     ),
     SettingSpec(
         "max_audit_tail_bytes",
@@ -218,10 +248,16 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "BYTES",
     ),
     SettingSpec(
-        "max_tmp_files", "Safety and resource limits", "Temporary-file count limit.", "COUNT"
+        "max_tmp_files",
+        "Safety and resource limits",
+        "Temporary-file count limit.",
+        "COUNT",
     ),
     SettingSpec(
-        "max_tmp_bytes", "Safety and resource limits", "Temporary-file byte limit.", "BYTES"
+        "max_tmp_bytes",
+        "Safety and resource limits",
+        "Temporary-file byte limit.",
+        "BYTES",
     ),
     SettingSpec(
         "max_concurrent_commands",
@@ -248,7 +284,10 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "CSV",
     ),
     SettingSpec(
-        "remote_enabled", "Remote workers", "Enable remote worker routes and MCP tools.", "BOOL"
+        "remote_enabled",
+        "Remote workers",
+        "Enable remote worker routes and MCP tools.",
+        "BOOL",
     ),
     SettingSpec(
         "remote_invite_ttl_s",
@@ -305,7 +344,10 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "BOOL",
     ),
     SettingSpec(
-        "shell_executable", "Tool executables", "Shell executable used for shell commands.", "PATH"
+        "shell_executable",
+        "Tool executables",
+        "Shell executable used for shell commands.",
+        "PATH",
     ),
     SettingSpec("tmux_bin", "Tool executables", "tmux executable.", "PATH"),
     SettingSpec("rg_bin", "Tool executables", "ripgrep executable.", "PATH"),
@@ -314,7 +356,9 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
 )
 
 
-def _group_setting_specs_by_section() -> list[tuple[SectionName, list[SettingSpec]]]:
+def _group_setting_specs_by_section() -> list[
+    tuple[SectionName, list[SettingSpec]]
+]:
     """Group setting specs by section while preserving registry order within each section."""
     specs_by_section: dict[SectionName, list[SettingSpec]] = {
         section: [] for section in SECTION_ORDER
@@ -344,7 +388,9 @@ def validate_setting_specs() -> None:
     missing = sorted(fields - specs)
     extra = sorted(specs - fields)
     if missing or extra:
-        raise RuntimeError(f"Setting spec mismatch: missing={missing}, extra={extra}")
+        raise RuntimeError(
+            f"Setting spec mismatch: missing={missing}, extra={extra}"
+        )
 
 
 def default_value(name: str) -> Any:
@@ -430,7 +476,9 @@ def _parse_bool(value: str) -> bool:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    raise argparse.ArgumentTypeError("expected one of: true, false, yes, no, 1, 0, on, off")
+    raise argparse.ArgumentTypeError(
+        "expected one of: true, false, yes, no, 1, 0, on, off"
+    )
 
 
 def cli_overrides_from_args(args: argparse.Namespace) -> dict[str, object]:

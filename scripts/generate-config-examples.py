@@ -91,7 +91,10 @@ def generate_env_example() -> str:
             lines.append(_env_line(spec.env_var, default_value(spec.name)))
 
     lines.extend(
-        ["", "# Docker entrypoint settings. These are read before local-shell-mcp starts."]
+        [
+            "",
+            "# Docker entrypoint settings. These are read before local-shell-mcp starts.",
+        ]
     )
     for name, default, help_text in DOCKER_ENTRYPOINT_SPECS:
         for comment in _wrap_comment(help_text):
@@ -180,7 +183,11 @@ def write_examples(*, check: bool) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="Fail if generated examples are stale")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Fail if generated examples are stale",
+    )
     args = parser.parse_args()
     return write_examples(check=args.check)
 

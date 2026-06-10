@@ -111,7 +111,9 @@ class Settings(BaseSettings):
     oauth_resource: str | None = None
     oauth_admin_pin: str | None = None
     oauth_jwt_secret: str = Field(
-        default_factory=lambda: os.getenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET") or "dev-change-me"
+        default_factory=lambda: (
+            os.getenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET") or "dev-change-me"
+        )
     )
     # 0 means access tokens never expire.
     oauth_access_token_ttl_s: int = 0
@@ -144,12 +146,18 @@ class Settings(BaseSettings):
     )
 
     @field_validator(
-        "workspace_root", "audit_log_path", "state_dir", "agent_config_dir", mode="before"
+        "workspace_root",
+        "audit_log_path",
+        "state_dir",
+        "agent_config_dir",
+        mode="before",
     )
     @classmethod
     def expand_path(cls, value: str | Path) -> Path:
         """Expand user and environment variables for path settings before validation."""
-        return Path(os.path.expandvars(os.path.expanduser(str(value)))).resolve()
+        return Path(
+            os.path.expandvars(os.path.expanduser(str(value)))
+        ).resolve()
 
     @field_validator("command_denylist", "path_denylist", mode="before")
     @classmethod
@@ -217,7 +225,10 @@ def _env_overrides() -> dict[str, Any]:
     if not present:
         return {}
     env_settings = Settings()
-    return {field_name: getattr(env_settings, field_name) for field_name in present.values()}
+    return {
+        field_name: getattr(env_settings, field_name)
+        for field_name in present.values()
+    }
 
 
 def _prepare_settings(settings: Settings, *, create_dirs: bool) -> Settings:
@@ -293,7 +304,9 @@ def safe_settings_dump(settings: Settings | None = None) -> dict:
     return data
 
 
-def validate_public_oauth_configuration(settings: Settings | None = None) -> None:
+def validate_public_oauth_configuration(
+    settings: Settings | None = None,
+) -> None:
     """Reject HTTP OAuth startup configurations that cannot produce externally valid issuer and resource metadata."""
     settings = settings or get_settings()
     if settings.auth_mode != "oauth" or not settings.public_base_url:

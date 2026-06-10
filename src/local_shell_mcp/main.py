@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -69,12 +68,14 @@ def _run_server_from_args(args: argparse.Namespace) -> None:
     elif settings.mode in {"mcp", "stdio"}:
         run_mcp()
     elif settings.mode == "both":
-        raise SystemExit("mode=both is reserved; run separate mcp/http processes for now")
+        raise SystemExit(
+            "mode=both is reserved; run separate mcp/http processes for now"
+        )
     else:
         raise SystemExit(f"Unsupported mode: {settings.mode}")
 
 
-def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
+def _with_oauth_routes(inner_app) -> Starlette:
     """Wrap the MCP ASGI app with OAuth and remote routes when serving over HTTP."""
 
     @asynccontextmanager
@@ -83,11 +84,31 @@ def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
             yield
 
     routes = [
-        Route("/healthz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
-        Route("/readyz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
-        Route("/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
-        Route("/.well-known/oauth-authorization-server", oauth_server_metadata, methods=["GET"]),
-        Route("/.well-known/openid-configuration", oauth_server_metadata, methods=["GET"]),
+        Route(
+            "/healthz",
+            lambda request: JSONResponse({"ok": True}),
+            methods=["GET"],
+        ),
+        Route(
+            "/readyz",
+            lambda request: JSONResponse({"ok": True}),
+            methods=["GET"],
+        ),
+        Route(
+            "/.well-known/oauth-protected-resource",
+            oauth_protected_resource,
+            methods=["GET"],
+        ),
+        Route(
+            "/.well-known/oauth-authorization-server",
+            oauth_server_metadata,
+            methods=["GET"],
+        ),
+        Route(
+            "/.well-known/openid-configuration",
+            oauth_server_metadata,
+            methods=["GET"],
+        ),
         Route("/oauth/register", oauth_register, methods=["POST"]),
         Route("/oauth/authorize", oauth_authorize_get, methods=["GET"]),
         Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
@@ -145,4 +166,4 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()

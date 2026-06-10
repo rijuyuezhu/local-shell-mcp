@@ -1,7 +1,10 @@
 import re
 from pathlib import Path
 
-from local_shell_mcp.config.registry import SETTING_SPECS, validate_setting_specs
+from local_shell_mcp.config.registry import (
+    SETTING_SPECS,
+    validate_setting_specs,
+)
 from local_shell_mcp.config.settings import Settings, load_settings
 
 
