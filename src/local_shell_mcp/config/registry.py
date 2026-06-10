@@ -213,7 +213,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "max_todos",
         "Safety and resource limits",
         "Todo-list item limit.",
-        "COUNT",
+        metavar="COUNT",
     ),
     SettingSpec(
         "max_todo_bytes",
@@ -419,6 +419,13 @@ def is_bool_setting(name: str) -> bool:
     return Settings.model_fields[name].annotation is bool
 
 
+class BoolChoiceAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if values not in ("true", "false"):
+            raise argparse.ArgumentTypeError(f"Invalid boolean value: {values}")
+        setattr(namespace, self.dest, values == "true")
+
+
 def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
     """Register one CLI option for every Settings field, grouped by section."""
     validate_setting_specs()
@@ -435,8 +442,11 @@ def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
             choices = argparse_choices_for(spec.name)
             if choices:
                 kwargs["choices"] = choices
-            elif Settings.model_fields[spec.name].annotation is int:
+
+            if Settings.model_fields[spec.name].annotation is int:
                 kwargs["type"] = int
+            elif is_bool_setting(spec.name):
+                kwargs["action"] = BoolChoiceAction
             group.add_argument(spec.cli_flag, **kwargs)
 
 

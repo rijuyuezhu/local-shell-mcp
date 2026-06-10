@@ -73,8 +73,12 @@ def test_bool_cli_values_parse_explicitly():
         ).allow_full_container
         is False
     )
-    assert parser.parse_args(["--remote-enabled", "no"]).remote_enabled is False
-    assert parser.parse_args(["--remote-enabled", "yes"]).remote_enabled is True
+    assert (
+        parser.parse_args(["--remote-enabled", "false"]).remote_enabled is False
+    )
+    assert (
+        parser.parse_args(["--remote-enabled", "true"]).remote_enabled is True
+    )
 
 
 def test_worker_subcommand_parse_to_worker_handler():
