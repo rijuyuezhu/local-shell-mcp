@@ -32,11 +32,13 @@ function firstWorkspaceFolder(): string | undefined {
 
 function getConfig(): ExtensionConfig {
   const cfg = vscode.workspace.getConfiguration('local-shell-mcp');
-  const workspaceRoot = cfg.get<string>('workspaceRoot')?.trim() || firstWorkspaceFolder() || process.cwd();
+  const workspaceRoot =
+    cfg.get<string>('workspaceRoot')?.trim() || firstWorkspaceFolder() || process.cwd();
   const authMode = cfg.get<'oauth' | 'none'>('authMode', 'oauth');
 
   return {
-    executablePath: cfg.get<string>('executablePath', 'local-shell-mcp').trim() || 'local-shell-mcp',
+    executablePath:
+      cfg.get<string>('executablePath', 'local-shell-mcp').trim() || 'local-shell-mcp',
     host: cfg.get<string>('host', '127.0.0.1').trim() || '127.0.0.1',
     port: cfg.get<number>('port', 8765),
     workspaceRoot,
@@ -86,7 +88,10 @@ function stringifyExtraEnv(extraEnv: Record<string, unknown>): Record<string, st
   return env;
 }
 
-async function buildEnvironment(context: vscode.ExtensionContext, config: ExtensionConfig): Promise<NodeJS.ProcessEnv> {
+async function buildEnvironment(
+  context: vscode.ExtensionContext,
+  config: ExtensionConfig,
+): Promise<NodeJS.ProcessEnv> {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...stringifyExtraEnv(config.extraEnv),
@@ -110,7 +115,10 @@ async function buildEnvironment(context: vscode.ExtensionContext, config: Extens
   return env;
 }
 
-function requestJson(url: string, timeoutMs = 2500): Promise<{ ok: boolean; statusCode: number; body: string }> {
+function requestJson(
+  url: string,
+  timeoutMs = 2500,
+): Promise<{ ok: boolean; statusCode: number; body: string }> {
   return new Promise((resolve) => {
     const client = url.startsWith('https:') ? https : http;
     const req = client.get(url, { timeout: timeoutMs }, (res) => {
@@ -149,7 +157,9 @@ async function waitForHealth(config: ExtensionConfig): Promise<boolean> {
 
 async function startServer(context: vscode.ExtensionContext): Promise<void> {
   if (serverProcess) {
-    vscode.window.showInformationMessage('local-shell-mcp is already running from this VS Code window.');
+    vscode.window.showInformationMessage(
+      'local-shell-mcp is already running from this VS Code window.',
+    );
     return;
   }
 
@@ -176,20 +186,26 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
   });
   child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
     serverProcess = undefined;
-    channel.appendLine(`local-shell-mcp exited with code=${code ?? 'null'} signal=${signal ?? 'null'}`);
+    channel.appendLine(
+      `local-shell-mcp exited with code=${code ?? 'null'} signal=${signal ?? 'null'}`,
+    );
   });
 
   const healthy = await waitForHealth(config);
   if (healthy) {
     vscode.window.showInformationMessage(`local-shell-mcp is running at ${mcpUrl(config)}`);
   } else {
-    vscode.window.showWarningMessage('local-shell-mcp process started, but /healthz did not respond yet. See the local-shell-mcp output channel.');
+    vscode.window.showWarningMessage(
+      'local-shell-mcp process started, but /healthz did not respond yet. See the local-shell-mcp output channel.',
+    );
   }
 }
 
 async function stopServer(): Promise<void> {
   if (!serverProcess) {
-    vscode.window.showInformationMessage('No local-shell-mcp process is running from this VS Code window.');
+    vscode.window.showInformationMessage(
+      'No local-shell-mcp process is running from this VS Code window.',
+    );
     return;
   }
   const proc = serverProcess;
@@ -215,9 +231,13 @@ async function showStatus(): Promise<void> {
   const owned = serverProcess ? 'yes' : 'no';
 
   if (health.ok) {
-    vscode.window.showInformationMessage(`local-shell-mcp is reachable. MCP URL: ${mcpUrl(config)}. Started by this window: ${owned}.`);
+    vscode.window.showInformationMessage(
+      `local-shell-mcp is reachable. MCP URL: ${mcpUrl(config)}. Started by this window: ${owned}.`,
+    );
   } else {
-    vscode.window.showWarningMessage(`local-shell-mcp is not reachable at ${healthUrl}: ${health.body}. Started by this window: ${owned}.`);
+    vscode.window.showWarningMessage(
+      `local-shell-mcp is not reachable at ${healthUrl}: ${health.body}. Started by this window: ${owned}.`,
+    );
   }
 
   const channel = getOutput();
