@@ -5,3 +5,23 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: vscode-extension-format
+        name: vscode-extension format
+        entry: bash -c 'cd vscode-extension && npm ci && npm run format:check'
+        language: system
+        pass_filenames: false
+        files: ^vscode-extension/(src/.*\.ts|.*\.(json|md|mjs)|package-lock\.json)$
+      - id: vscode-extension-lint
+        name: vscode-extension lint
+        entry: bash -c 'cd vscode-extension && npm ci && npm run lint'
+        language: system
+        pass_filenames: false
+        files: ^vscode-extension/(src/.*\.ts|eslint\.config\.mjs|package(-lock)?\.json|tsconfig\.json)$
+      - id: vscode-extension-compile
+        name: vscode-extension compile
+        entry: bash -c 'cd vscode-extension && npm ci && npm run compile'
+        language: system
+        pass_filenames: false
+        files: ^vscode-extension/(src/.*\.ts|package(-lock)?\.json|tsconfig\.json)$
