@@ -89,13 +89,13 @@ command_denylist:
   - "docker.sock"
   - "/var/run/docker.sock"
   - "mkfs"
-  - "mount "
-  - "umount "
+  - "mount"
+  - "umount"
   - "shutdown"
   - "reboot"
-  - "systemctl "
+  - "systemctl"
   - "iptables"
-  - "nft "
+  - "nft"
 # Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when
 # full-container mode is enabled.
 path_denylist:

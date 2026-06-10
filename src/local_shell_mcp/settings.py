@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
@@ -118,21 +118,21 @@ class Settings(BaseSettings):
     oauth_code_ttl_s: int = 300
 
     # Command policy. Set denylist empty if this container is intentionally disposable.
-    command_denylist: list[str] = Field(
+    command_denylist: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             "docker.sock",
             "/var/run/docker.sock",
             "mkfs",
-            "mount ",
-            "umount ",
+            "mount",
+            "umount",
             "shutdown",
             "reboot",
-            "systemctl ",
+            "systemctl",
             "iptables",
-            "nft ",
+            "nft",
         ]
     )
-    path_denylist: list[str] = Field(
+    path_denylist: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             ".ssh/id_rsa",
             ".ssh/id_ed25519",
@@ -244,27 +244,35 @@ def load_settings(
     return _prepare_settings(Settings(**values), create_dirs=create_dirs)
 
 
+_configured_settings: Settings | None = None
+
+
 @lru_cache(maxsize=1)
-def _cached_settings(settings: Settings | None = None) -> Settings:
-    if settings is None:
-        return load_settings()
-    return settings
+def _load_cached_settings() -> Settings:
+    return load_settings()
 
 
 def get_settings() -> Settings:
     """Return cached settings, optionally primed by configure_settings."""
-    return _cached_settings()
+    if _configured_settings is not None:
+        return _configured_settings
+    return _load_cached_settings()
 
 
 def configure_settings(settings: Settings) -> None:
     """Install a fully resolved Settings object for subsequent get_settings calls."""
-    _cached_settings.cache_clear()
-    _cached_settings(settings)
+    global _configured_settings
+
+    _configured_settings = settings
+    _load_cached_settings.cache_clear()
 
 
 def clear_settings_cache() -> None:
     """Clear cached settings. Intended for tests and CLI reconfiguration."""
-    _cached_settings.cache_clear()
+    global _configured_settings
+
+    _configured_settings = None
+    _load_cached_settings.cache_clear()
 
 
 # Backwards-compatible test helper: many tests call get_settings.cache_clear().
