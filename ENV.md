@@ -27,6 +27,8 @@ The YAML config file is optional. Prefer `LOCAL_SHELL_MCP_*` variables or CLI ar
 | `LOCAL_SHELL_MCP_MODE` | `--mode` | `mcp` | Server mode: `mcp`, `http`, or `stdio`. |
 | `LOCAL_SHELL_MCP_CONFIG` | `--config` | unset | Optional YAML config path. Prefer env/CLI for new deployments. |
 | `LOCAL_SHELL_MCP_WORKSPACE_ROOT` | `--workspace-root` | `/workspace` | Root directory for normal file and command operations. |
+| `LOCAL_SHELL_MCP_STATE_DIR` | — | `/workspace/.local-shell-mcp` | Directory for runtime state. Recomputed under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` when the workspace root is customized and this is left at its default. |
+| `LOCAL_SHELL_MCP_AUDIT_LOG_PATH` | — | `/workspace/.local-shell-mcp/audit.jsonl` | Audit log path. Recomputed under `LOCAL_SHELL_MCP_STATE_DIR` when the workspace root is customized and this is left at its default. |
 | `LOCAL_SHELL_MCP_AUTH_MODE` | `--auth-mode` | `oauth` | Authentication mode: `oauth` or `none`. Do not expose public services with `none`. |
 | `LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST` | — | `true` | Allow localhost requests without bearer auth. |
 | `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY` | — | `false` | Require auth for MCP initialize/list-tools discovery calls. |
