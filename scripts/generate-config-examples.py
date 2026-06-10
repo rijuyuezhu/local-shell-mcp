@@ -8,14 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-# Prefer the current checkout over any globally injected package path, such as /app/src
-# in development containers.
-sys.path = [path for path in sys.path if Path(path or ".").resolve() != SRC]
-sys.path.insert(0, str(SRC))
-
-from local_shell_mcp.config_registry import (  # noqa: E402
+from local_shell_mcp.config_registry import (
     SECTION_ORDER,
     SETTING_SPECS,
     default_to_string,
@@ -23,6 +16,8 @@ from local_shell_mcp.config_registry import (  # noqa: E402
     validate_setting_specs,
     yaml_default,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 DOCKER_ENTRYPOINT_SPECS: tuple[tuple[str, str, str], ...] = (
     (

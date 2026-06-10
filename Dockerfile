@@ -174,14 +174,13 @@ RUN pacman -U --needed --noconfirm /tmp/aur-packages/*.pkg.tar.zst \
 RUN npm install -g yarn pnpm typescript ts-node
 
 WORKDIR /app
-COPY pyproject.toml README.md LICENSE /app/
+COPY pyproject.toml uv.lock README.md LICENSE /app/
 COPY src /app/src
-RUN python -m compileall -q /app/src \
+RUN uv sync --locked --no-dev \
+  && /app/.venv/bin/python -m compileall -q /app/src \
   && mkdir -p /usr/local/bin \
-  && printf '#!/usr/bin/env bash\nexec python -m local_shell_mcp.main "$@"\n' > /usr/local/bin/local-shell-mcp \
+  && printf '#!/usr/bin/env bash\nexec /app/.venv/bin/python -m local_shell_mcp.main "$@"\n' > /usr/local/bin/local-shell-mcp \
   && chmod +x /usr/local/bin/local-shell-mcp
-ENV PYTHONPATH="/app/src"
-
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN useradd -m -u 10001 agent \
   && mkdir -p /workspace /workspace/.local-shell-mcp /persist/credentials \
