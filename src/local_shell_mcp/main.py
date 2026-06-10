@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -23,7 +22,12 @@ from .oauth import (
     oauth_token,
 )
 from .remote import add_worker_cli_args, remote_routes, run_worker_from_args
-from .settings import get_settings, validate_public_oauth_configuration
+from .settings import (
+    configure_settings,
+    get_settings,
+    load_settings,
+    validate_public_oauth_configuration,
+)
 from .tools import build_mcp
 
 
@@ -45,6 +49,56 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help="Path to config YAML; overrides LOCAL_SHELL_MCP_CONFIG",
+    )
+    parser.add_argument("--host", default=None, help="Bind host; overrides LOCAL_SHELL_MCP_HOST")
+    parser.add_argument(
+        "--port", type=int, default=None, help="Bind port; overrides LOCAL_SHELL_MCP_PORT"
+    )
+    parser.add_argument(
+        "--workspace-root",
+        default=None,
+        metavar="PATH",
+        help="Workspace root; overrides LOCAL_SHELL_MCP_WORKSPACE_ROOT",
+    )
+    parser.add_argument(
+        "--auth-mode",
+        choices=["none", "oauth"],
+        default=None,
+        help="Authentication mode; overrides LOCAL_SHELL_MCP_AUTH_MODE",
+    )
+    parser.add_argument(
+        "--public-base-url",
+        default=None,
+        help="Public HTTPS origin; overrides LOCAL_SHELL_MCP_PUBLIC_BASE_URL",
+    )
+    parser.add_argument(
+        "--oauth-admin-pin",
+        default=None,
+        help="OAuth approval PIN; overrides LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN",
+    )
+    parser.add_argument(
+        "--oauth-jwt-secret",
+        default=None,
+        help="OAuth JWT signing secret; overrides LOCAL_SHELL_MCP_OAUTH_JWT_SECRET",
+    )
+    parser.add_argument(
+        "--allow-full-container",
+        dest="allow_full_container",
+        action="store_true",
+        default=None,
+        help="Disable built-in workspace and command restrictions",
+    )
+    parser.add_argument(
+        "--no-allow-full-container",
+        dest="allow_full_container",
+        action="store_false",
+        help="Keep built-in workspace and command restrictions enabled",
+    )
+    parser.add_argument(
+        "--agent-config-dir",
+        default=None,
+        metavar="PATH",
+        help="Agent bridge config directory; overrides LOCAL_SHELL_MCP_AGENT_CONFIG_DIR",
     )
     parser.add_argument(
         "--remote",
@@ -70,21 +124,29 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _apply_server_args(args: argparse.Namespace) -> None:
-    """Project CLI server options into environment variables consumed by settings loading."""
-    if args.config:
-        os.environ["LOCAL_SHELL_MCP_CONFIG"] = args.config
-    if args.mode:
-        os.environ["LOCAL_SHELL_MCP_MODE"] = args.mode
+def _server_overrides_from_args(args: argparse.Namespace) -> dict[str, object]:
+    """Collect explicit CLI server options as Settings field overrides."""
+    overrides = {
+        "mode": args.mode,
+        "host": args.host,
+        "port": args.port,
+        "workspace_root": args.workspace_root,
+        "auth_mode": args.auth_mode,
+        "public_base_url": args.public_base_url,
+        "oauth_admin_pin": args.oauth_admin_pin,
+        "oauth_jwt_secret": args.oauth_jwt_secret,
+        "allow_full_container": args.allow_full_container,
+        "agent_config_dir": args.agent_config_dir,
+    }
     if args.remote is not None:
-        os.environ["LOCAL_SHELL_MCP_REMOTE_ENABLED"] = "true" if args.remote else "false"
+        overrides["remote_enabled"] = args.remote
+    return {key: value for key, value in overrides.items() if value is not None}
 
 
 def _run_server_from_args(args: argparse.Namespace) -> None:
     """Select stdio MCP or HTTP server startup based on parsed CLI arguments."""
-    _apply_server_args(args)
-
-    settings = get_settings()
+    settings = load_settings(args.config, _server_overrides_from_args(args))
+    configure_settings(settings)
     if settings.mode == "http":
         run_http()
     elif settings.mode in {"mcp", "stdio"}:
