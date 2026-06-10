@@ -41,15 +41,14 @@ A successful shell call should produce audit events such as `run_shell_start` an
 Running `local-shell-mcp` without a subcommand starts the server:
 
 ```text
-local-shell-mcp [--mode {mcp,http,stdio}] [--config PATH] [--host HOST] [--port PORT] [--workspace-root PATH] [--auth-mode {none,oauth}] [--remote | --no-remote]
+local-shell-mcp [--config PATH] [--mode MODE] [--host HOST] [--port PORT] [--workspace-root PATH] [...]
 ```
 
 Server options:
 
-- `--mode {mcp,http,stdio}` overrides `LOCAL_SHELL_MCP_MODE`.
+- Every `LOCAL_SHELL_MCP_*` application setting has a matching CLI flag, using the lowercase dashed form of the setting name, for example `LOCAL_SHELL_MCP_REMOTE_ENABLED` -> `--remote-enabled true`.
+- Boolean CLI values are explicit: use `true` or `false`, for example `--allow-full-container false`.
 - `--config PATH` selects an optional YAML config file. The effective precedence is defaults < config file < environment variables < CLI arguments.
-- `--remote` enables remote worker routes and tools.
-- `--no-remote` disables remote worker routes and tools.
 
 Use the built-in help for exact parser output:
 
@@ -78,8 +77,8 @@ The most common settings are:
 | Public OAuth origin | `--public-base-url` | `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` | unset |
 | OAuth approval PIN | `--oauth-admin-pin` | `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | unset |
 | OAuth JWT secret | `--oauth-jwt-secret` | `LOCAL_SHELL_MCP_OAUTH_JWT_SECRET` | `dev-change-me` |
-| Full-container mode | `--allow-full-container` / `--no-allow-full-container` | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` |
-| Remote worker routes | `--remote` / `--no-remote` | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` |
+| Full-container mode | `--allow-full-container true/false` | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` |
+| Remote worker routes | `--remote-enabled true/false` | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` |
 | Agent bridge config | `--agent-config-dir` | `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/home/agent/local-shell-mcp-config` |
 
 Docker image startup knobs, such as credential persistence and whether the server process runs as root, use `DOCKER_*` variables because they are consumed by the container entrypoint before the application starts.
@@ -136,7 +135,7 @@ Remote settings:
 | `LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S` | `25` | Long-poll heartbeat timeout |
 | `LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S` | `3600` | Control-side remote job result timeout |
 
-Disable remote mode with `--no-remote` or `LOCAL_SHELL_MCP_REMOTE_ENABLED=false`.
+Disable remote mode with `--remote-enabled false` or `LOCAL_SHELL_MCP_REMOTE_ENABLED=false`.
 
 ## Agent capability bridge
 

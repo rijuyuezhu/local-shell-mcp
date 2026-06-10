@@ -12,6 +12,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from .auth import AuthMiddleware
+from .config_registry import cli_overrides_from_args, register_setting_cli_args
 from .http_app import build_http_app
 from .oauth import (
     oauth_authorize_get,
@@ -39,80 +40,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.set_defaults(handler=_run_server_from_args)
     parser.add_argument(
-        "--mode",
-        choices=["mcp", "http", "stdio"],
-        default=None,
-        help="Server transport mode; overrides LOCAL_SHELL_MCP_MODE",
-    )
-    parser.add_argument(
         "--config",
         default=None,
         metavar="PATH",
-        help="Path to config YAML; overrides LOCAL_SHELL_MCP_CONFIG",
+        help=(
+            "Path to optional YAML config file. Overrides LOCAL_SHELL_MCP_CONFIG. "
+            "This selects the config file and is not itself a Settings field."
+        ),
     )
-    parser.add_argument("--host", default=None, help="Bind host; overrides LOCAL_SHELL_MCP_HOST")
-    parser.add_argument(
-        "--port", type=int, default=None, help="Bind port; overrides LOCAL_SHELL_MCP_PORT"
-    )
-    parser.add_argument(
-        "--workspace-root",
-        default=None,
-        metavar="PATH",
-        help="Workspace root; overrides LOCAL_SHELL_MCP_WORKSPACE_ROOT",
-    )
-    parser.add_argument(
-        "--auth-mode",
-        choices=["none", "oauth"],
-        default=None,
-        help="Authentication mode; overrides LOCAL_SHELL_MCP_AUTH_MODE",
-    )
-    parser.add_argument(
-        "--public-base-url",
-        default=None,
-        help="Public HTTPS origin; overrides LOCAL_SHELL_MCP_PUBLIC_BASE_URL",
-    )
-    parser.add_argument(
-        "--oauth-admin-pin",
-        default=None,
-        help="OAuth approval PIN; overrides LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN",
-    )
-    parser.add_argument(
-        "--oauth-jwt-secret",
-        default=None,
-        help="OAuth JWT signing secret; overrides LOCAL_SHELL_MCP_OAUTH_JWT_SECRET",
-    )
-    parser.add_argument(
-        "--allow-full-container",
-        dest="allow_full_container",
-        action="store_true",
-        default=None,
-        help="Disable built-in workspace and command restrictions",
-    )
-    parser.add_argument(
-        "--no-allow-full-container",
-        dest="allow_full_container",
-        action="store_false",
-        help="Keep built-in workspace and command restrictions enabled",
-    )
-    parser.add_argument(
-        "--agent-config-dir",
-        default=None,
-        metavar="PATH",
-        help="Agent bridge config directory; overrides LOCAL_SHELL_MCP_AGENT_CONFIG_DIR",
-    )
-    parser.add_argument(
-        "--remote",
-        dest="remote",
-        action="store_true",
-        default=None,
-        help="Enable remote worker mode (default)",
-    )
-    parser.add_argument(
-        "--no-remote",
-        dest="remote",
-        action="store_false",
-        help="Disable remote worker mode",
-    )
+    register_setting_cli_args(parser)
 
     subparsers = parser.add_subparsers(dest="command")
     worker = subparsers.add_parser(
@@ -124,28 +60,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _server_overrides_from_args(args: argparse.Namespace) -> dict[str, object]:
-    """Collect explicit CLI server options as Settings field overrides."""
-    overrides = {
-        "mode": args.mode,
-        "host": args.host,
-        "port": args.port,
-        "workspace_root": args.workspace_root,
-        "auth_mode": args.auth_mode,
-        "public_base_url": args.public_base_url,
-        "oauth_admin_pin": args.oauth_admin_pin,
-        "oauth_jwt_secret": args.oauth_jwt_secret,
-        "allow_full_container": args.allow_full_container,
-        "agent_config_dir": args.agent_config_dir,
-    }
-    if args.remote is not None:
-        overrides["remote_enabled"] = args.remote
-    return {key: value for key, value in overrides.items() if value is not None}
-
-
 def _run_server_from_args(args: argparse.Namespace) -> None:
     """Select stdio MCP or HTTP server startup based on parsed CLI arguments."""
-    settings = load_settings(args.config, _server_overrides_from_args(args))
+    settings = load_settings(args.config, cli_overrides_from_args(args))
     configure_settings(settings)
     if settings.mode == "http":
         run_http()
