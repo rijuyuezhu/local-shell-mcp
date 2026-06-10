@@ -11,6 +11,7 @@ from typing import Any
 from local_shell_mcp.config.registry import (
     SECTION_ORDER,
     SETTING_SPECS,
+    SettingSpec,
     default_to_string,
     default_value,
     validate_setting_specs,
@@ -79,7 +80,9 @@ def generate_env_example() -> str:
         "# Docker Compose uses this file as the main container environment via `env_file: .env`.",
         "# Copy it with: cp .env.example .env",
     ]
-    specs_by_section = {section: [] for section in SECTION_ORDER}
+    specs_by_section: dict[str, list[SettingSpec]] = {
+        section: [] for section in SECTION_ORDER
+    }
     for spec in SETTING_SPECS:
         specs_by_section[spec.section].append(spec)
 
@@ -141,7 +144,6 @@ def generate_yaml_example() -> str:
     lines: list[str] = [
         "# Full YAML config example.",
         "# Effective precedence: defaults < config file < LOCAL_SHELL_MCP_* environment variables < CLI arguments.",
-        "# This file configures application Settings only. Docker entrypoint and sidecar variables stay in .env.",
     ]
     specs_by_section = {section: [] for section in SECTION_ORDER}
     for spec in SETTING_SPECS:
