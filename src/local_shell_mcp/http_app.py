@@ -15,11 +15,9 @@ from .auth.middleware import (
     verify_request,
 )
 from .config.settings import get_settings
-from .ops.shell_ops import PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
+from .ops.shell_ops import public_tool_timeout_s
 from .tools.discovery import discover_tool_registries
 from .tools.local_invocations import call_local_tool
-
-PUBLIC_TOOL_TIMEOUT_S = PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 
 
 def principal_dep(request: Request) -> Principal:
@@ -118,7 +116,7 @@ def build_http_app() -> FastAPI:
             return await call_next(request)
         try:
             return await asyncio.wait_for(
-                call_next(request), timeout=PUBLIC_TOOL_TIMEOUT_S
+                call_next(request), timeout=public_tool_timeout_s()
             )
         except TimeoutError:
             return JSONResponse(
@@ -126,7 +124,7 @@ def build_http_app() -> FastAPI:
                 content={
                     "ok": False,
                     "error": "tool_timeout",
-                    "message": f"{request.url.path} exceeded {PUBLIC_TOOL_TIMEOUT_S} second public tool timeout",
+                    "message": f"{request.url.path} exceeded {public_tool_timeout_s()} second public tool timeout",
                 },
             )
 

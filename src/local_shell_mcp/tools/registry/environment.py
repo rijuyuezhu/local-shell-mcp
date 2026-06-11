@@ -5,7 +5,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from ...config.settings import safe_settings_dump
-from ...ops.shell_ops import run_shell
+from ...ops.shell_ops import effective_tool_limits, run_shell
 from ..base import McpToolContext, ToolRegistry
 from .common import handled_error, ok_response
 
@@ -36,6 +36,7 @@ def register_environment_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             return ok_response(
                 {
                     "settings": safe_settings_dump(settings),
+                    "effective_tool_limits": effective_tool_limits(),
                     "probe": result.model_dump(),
                 }
             )

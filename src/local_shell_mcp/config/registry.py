@@ -153,15 +153,33 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Advertise lower-risk MCP client hints for local tools without changing server-side authentication or command policy.",
     ),
     SettingSpec(
-        "default_timeout_s",
+        "public_tool_timeout_s",
         "Safety and resource limits",
-        "Default shell command timeout in seconds.",
+        "Public MCP/HTTP tool watchdog timeout in seconds.",
         "SECONDS",
     ),
     SettingSpec(
-        "max_timeout_s",
+        "public_run_shell_default_timeout_s",
         "Safety and resource limits",
-        "Maximum shell command timeout in seconds.",
+        "Default timeout for public run_shell_tool calls in seconds.",
+        "SECONDS",
+    ),
+    SettingSpec(
+        "public_run_shell_max_timeout_s",
+        "Safety and resource limits",
+        "Maximum timeout accepted by public run_shell_tool calls in seconds.",
+        "SECONDS",
+    ),
+    SettingSpec(
+        "internal_shell_default_timeout_s",
+        "Safety and resource limits",
+        "Advanced internal shell command default timeout in seconds; public run_shell_tool uses stricter public settings.",
+        "SECONDS",
+    ),
+    SettingSpec(
+        "internal_shell_max_timeout_s",
+        "Safety and resource limits",
+        "Advanced internal shell command maximum timeout in seconds; public run_shell_tool uses stricter public settings.",
         "SECONDS",
     ),
     SettingSpec(
