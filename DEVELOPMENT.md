@@ -36,20 +36,20 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 | Path | Purpose |
 |---|---|
 | `src/local_shell_mcp/main.py` | CLI parsing and server entrypoints. |
-| `src/local_shell_mcp/tools.py` | MCP tool registration and public tool wrappers. |
-| `src/local_shell_mcp/http_app.py` | REST debug API and HTTP routes. |
-| `src/local_shell_mcp/settings.py` | Pydantic settings, environment variables, YAML config, safe settings dump. |
+| `src/local_shell_mcp/tools/` | MCP tool registration and shared public tool invocation helpers. `__init__.py` keeps explicit FastMCP signatures for schema generation; `local_invocations.py` is the shared local-tool dispatch table used by HTTP adapters. |
+| `src/local_shell_mcp/http_app.py` | REST debug API and HTTP protocol adapter over the shared local tool registry. |
+| `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, safe settings dump, and generated config metadata. |
 | `src/local_shell_mcp/auth/` | Authentication package. `middleware.py` protects HTTP/MCP requests; `oauth.py` handles OAuth metadata, dynamic client registration, authorization, token issue/validation. |
-| `src/local_shell_mcp/shell_ops.py` | Bounded shell execution and tmux-backed persistent sessions. |
-| `src/local_shell_mcp/fs_ops.py` | Workspace path resolution and file operations. |
-| `src/local_shell_mcp/search_ops.py` | Ripgrep search and compact tree views. |
-| `src/local_shell_mcp/git_ops.py` | Git command wrappers. |
+| `src/local_shell_mcp/ops/shell_ops.py` | Bounded shell execution and tmux-backed persistent sessions. |
+| `src/local_shell_mcp/ops/fs_ops.py` | Workspace path resolution and file operations. |
+| `src/local_shell_mcp/ops/search_ops.py` | Ripgrep search and compact tree views. |
+| `src/local_shell_mcp/ops/git_ops.py` | Git command wrappers. |
 | `src/local_shell_mcp/remote.py` | Remote invite, worker bundle, long-poll protocol, and remote tool execution. |
 | `src/local_shell_mcp/agent_bridge.py` | Agent bridge manifest loading, skill scanning, MCP probing, redaction. |
 | `src/local_shell_mcp/agent_bridge_tools.py` | Agent bridge MCP tool registration and dynamic tool reloads. |
 | `src/local_shell_mcp/agent_mcp.py` | External MCP client manager and tool/result normalization. |
 | `src/local_shell_mcp/audit.py` | Audit log writer and trimming. |
-| `src/local_shell_mcp/todo_ops.py` | Todo state persistence. |
+| `src/local_shell_mcp/ops/todo_ops.py` | Todo state persistence. |
 | `tests/` | Unit and compatibility tests. |
 | `scripts/` | Development, probing, generated-config, entrypoint, and release helper scripts. |
 | `vscode-extension/` | VS Code extension source and packaging metadata. |
