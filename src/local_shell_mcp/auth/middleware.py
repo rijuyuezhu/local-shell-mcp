@@ -31,8 +31,11 @@ class Principal:
     """Authenticated caller identity attached to requests after local bypass or OAuth verification."""
 
     email: str | None
+    """Authenticated caller email address when present in token claims."""
     subject: str | None
+    """Stable subject identifier for the authenticated caller."""
     claims: dict[str, Any]
+    """Validated bearer token claims or localhost-bypass identity metadata."""
 
 
 def _client_host(request: Request) -> str:

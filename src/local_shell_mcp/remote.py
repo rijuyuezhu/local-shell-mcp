@@ -146,10 +146,15 @@ class RemoteInvite:
     """One-time enrollment token that allows a remote worker to register before expiry."""
 
     code: str
+    """Opaque invite code presented by a joining remote worker."""
     name: str | None
+    """Optional requested worker name for display and lookup."""
     workdir: str | None
+    """Optional worker-side working directory requested for the connection."""
     expires_at: float
+    """Unix timestamp after which the invite can no longer be used."""
     used: bool = False
+    """Whether a worker has already consumed this one-time invite."""
 
 
 @dataclass
@@ -157,14 +162,23 @@ class RemoteWorker:
     """Registered remote worker state, including polling queue, current job, and last heartbeat."""
 
     name: str
+    """Stable worker name used in remote tool routing."""
     token: str
+    """Bearer token used by the worker to poll for jobs and submit results."""
     workdir: str | None = None
+    """Default working directory reported or requested for this worker."""
     created_at: float = field(default_factory=_utc)
+    """Unix timestamp when the worker registered."""
     last_seen: float = field(default_factory=_utc)
+    """Unix timestamp for the most recent worker poll or heartbeat."""
     status: str = "online"
+    """Current worker availability state shown in remote status responses."""
     capabilities: list[str] = field(default_factory=list)
+    """Capability names advertised by the worker."""
     info: dict[str, Any] = field(default_factory=dict)
+    """Additional worker-provided diagnostic metadata."""
     queue: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
+    """Pending job queue consumed by the worker poll loop."""
 
 
 class RemoteManager:

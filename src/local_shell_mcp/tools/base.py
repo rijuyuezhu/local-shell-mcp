@@ -19,8 +19,11 @@ class HttpToolRoute:
     """HTTP endpoint metadata for a tool exposed through the REST adapter."""
 
     method: HttpMethod
+    """HTTP verb accepted by the route."""
     path: str
+    """Absolute REST path registered on the FastAPI app."""
     tool_name: str
+    """Canonical local tool name dispatched by this route."""
 
 
 @dataclass(frozen=True)
@@ -28,11 +31,17 @@ class McpToolContext:
     """Shared MCP registration context prepared by the app assembler."""
 
     settings: Any
+    """Runtime settings object shared by all tool registries."""
     read_only_tool: ToolAnnotations
+    """MCP annotation applied to read-only tools."""
     read_only_meta: dict[str, Any]
+    """Metadata advertised for read-only MCP tools."""
     oauth_meta: dict[str, Any]
+    """OAuth metadata advertised for tools requiring authorization."""
     ok: Callable[[Any, str], dict[str, Any]]
+    """Helper that wraps successful tool responses in the public envelope."""
     handled_error: Callable[[Exception], dict[str, Any]]
+    """Helper that converts handled exceptions into public error envelopes."""
 
 
 class ToolRegistry:

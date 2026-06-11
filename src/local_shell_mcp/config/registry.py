@@ -31,11 +31,17 @@ class SettingSpec:
     """Metadata for one application setting exposed through env, YAML, and CLI."""
 
     name: str
+    """Settings attribute name on the Settings model."""
     section: SectionName
+    """Documentation and config-file section where this setting is grouped."""
     help: str
+    """Human-readable help text used by CLI and generated examples."""
     metavar: str | None = None
-    example_default: Any | None = None  # override the default value in Settings
-    exposed: bool = True  # include in generated docs and CLI help
+    """Optional placeholder shown for CLI arguments that take values."""
+    example_default: Any | None = None
+    """Optional value used when rendering example configuration files."""
+    exposed: bool = True
+    """Whether this setting appears in generated user-facing surfaces."""
 
     @property
     def env_var(self) -> str:
