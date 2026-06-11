@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from ...config.settings import safe_settings_dump
 from ...ops.shell_ops import run_shell
 from ..base import McpToolContext, ToolRegistry
-from .common import _handled_error, _ok
+from .common import handled_error, ok_response
 
 
 class EnvironmentToolRegistry(ToolRegistry):
@@ -33,11 +33,11 @@ def register_environment_mcp(mcp: FastMCP, context: McpToolContext) -> None:
                 cwd=".",
                 timeout_s=10,
             )
-            return _ok(
+            return ok_response(
                 {
                     "settings": safe_settings_dump(settings),
                     "probe": result.model_dump(),
                 }
             )
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)

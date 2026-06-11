@@ -28,11 +28,11 @@ from .tools.discovery import discover_tool_registries
 from .tools.registry.common import (
     NOAUTH_SECURITY_SCHEMES,
     OAUTH_SECURITY_SCHEMES,
-    _handled_error,
-    _install_full_container_auto_approval_hints,
-    _install_mcp_tool_watchdogs,
-    _ok,
-    _security_meta,
+    handled_error,
+    install_full_container_auto_approval_hints,
+    install_mcp_tool_watchdogs,
+    ok_response,
+    security_meta,
 )
 
 
@@ -86,17 +86,17 @@ def build_mcp() -> FastMCP:
     context = McpToolContext(
         settings=settings,
         read_only_tool=read_only_tool,
-        read_only_meta=_security_meta(
+        read_only_meta=security_meta(
             [*NOAUTH_SECURITY_SCHEMES, *OAUTH_SECURITY_SCHEMES]
         ),
-        oauth_meta=_security_meta(OAUTH_SECURITY_SCHEMES),
-        ok=_ok,
-        handled_error=_handled_error,
+        oauth_meta=security_meta(OAUTH_SECURITY_SCHEMES),
+        ok=ok_response,
+        handled_error=handled_error,
     )
     for registry in discover_tool_registries():
         registry.register_mcp(mcp, context)
-    _install_full_container_auto_approval_hints(mcp)
-    _install_mcp_tool_watchdogs(mcp)
+    install_full_container_auto_approval_hints(mcp)
+    install_mcp_tool_watchdogs(mcp)
     return mcp
 
 

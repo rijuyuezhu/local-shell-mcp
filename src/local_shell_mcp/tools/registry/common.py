@@ -29,18 +29,18 @@ from ...ops.shell_ops import (
 )
 
 
-def _ok(data: Any = None, message: str = "") -> dict:
+def ok_response(data: Any = None, message: str = "") -> dict:
     """Wrap successful tool data in the response envelope used by MCP handlers."""
     return {"ok": True, "message": message, "data": data}
 
 
-def _handled_error(exc: Exception) -> dict:
+def handled_error(exc: Exception) -> dict:
     """Convert expected operational exceptions into user-visible tool error payloads."""
     audit("tool_error", error=repr(exc))
     if isinstance(exc, FileNotFoundError) and str(exc):
         with suppress(Exception):
             context = missing_path_context(str(exc))
-            return _ok(
+            return ok_response(
                 {
                     "status": "not_found",
                     "error_type": type(exc).__name__,
@@ -49,7 +49,7 @@ def _handled_error(exc: Exception) -> dict:
                 },
                 message=f"Path not found: {context['path']}",
             )
-    return _ok(
+    return ok_response(
         {
             "status": "error",
             "error_type": type(exc).__name__,
@@ -59,7 +59,7 @@ def _handled_error(exc: Exception) -> dict:
     )
 
 
-async def _to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+async def to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
     """Run blocking helpers in a worker thread while preserving async tool-handler flow."""
     return await asyncio.to_thread(func, *args, **kwargs)
 
@@ -77,13 +77,13 @@ def _assert_text_input_size(
         )
 
 
-async def _apply_patch_text(patch: str, cwd: str = ".") -> dict:
+async def apply_patch_text(patch: str, cwd: str = ".") -> dict:
     """Apply a unified diff through git apply and return the command result envelope."""
     _assert_text_input_size("patch", patch)
-    await _to_thread(prune_temp_dir)
+    await to_thread(prune_temp_dir)
     patch_path = temp_dir() / f"patch-{uuid.uuid4().hex}.diff"
-    patch_path.parent.mkdir(parents=True, exist_ok=True)
-    await _to_thread(patch_path.write_text, patch, encoding="utf-8")
+    patch_path.parent.mkdir(parents=True, existok_response=True)
+    await to_thread(patch_path.write_text, patch, encoding="utf-8")
     quoted = shlex.quote(str(patch_path))
     result = await run_shell(
         f"git apply --check {quoted} && git apply {quoted}",
@@ -94,13 +94,15 @@ async def _apply_patch_text(patch: str, cwd: str = ".") -> dict:
     return {**result.model_dump(), "patch_path": relative_display(patch_path)}
 
 
-async def _run_python(code: str, cwd: str = ".", timeout_s: int = 60) -> dict:
+async def run_python_script(
+    code: str, cwd: str = ".", timeout_s: int = 60
+) -> dict:
     """Execute provided Python code from a temporary file and clean it up after completion."""
     _assert_text_input_size("Python script", code)
-    await _to_thread(prune_temp_dir)
+    await to_thread(prune_temp_dir)
     path = temp_dir() / f"script-{uuid.uuid4().hex}.py"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    await _to_thread(path.write_text, code, encoding="utf-8")
+    path.parent.mkdir(parents=True, existok_response=True)
+    await to_thread(path.write_text, code, encoding="utf-8")
     result = await run_shell(
         f"python3 {shlex.quote(str(path))}",
         cwd=cwd,
@@ -133,7 +135,7 @@ class PublicToolTimeoutError(TimeoutError):
     pass
 
 
-def _security_meta(schemes: list[dict[str, Any]]) -> dict[str, Any]:
+def security_meta(schemes: list[dict[str, Any]]) -> dict[str, Any]:
     """Attach security-scheme metadata to tools when HTTP OAuth mode requires authenticated calls."""
     return {"securitySchemes": schemes}
 
@@ -156,10 +158,10 @@ def _timeout_payload_for_tool(tool_name: str, exc: Exception) -> dict | str:
             },
             ensure_ascii=False,
         )
-    return _handled_error(exc)
+    return handled_error(exc)
 
 
-def _install_mcp_tool_watchdogs(mcp: FastMCP) -> None:
+def install_mcp_tool_watchdogs(mcp: FastMCP) -> None:
     """Wrap FastMCP execution paths so public tools return structured timeout errors."""
     for tool in mcp._tool_manager._tools.values():  # noqa: SLF001
         original = tool.fn
@@ -186,7 +188,7 @@ def _install_mcp_tool_watchdogs(mcp: FastMCP) -> None:
         tool.fn = wrapped
 
 
-def _install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
+def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
     """Patch generated tool schemas to advertise reduced confirmation needs in full-container mode."""
     if not get_settings().allow_full_container:
         return
@@ -205,7 +207,7 @@ def _install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
         )
 
 
-def _read_many_files_sync(
+def read_many_files_sync(
     paths: list[str],
     start_line: int | None = None,
     end_line: int | None = None,
@@ -240,7 +242,7 @@ def _read_many_files_sync(
     return {"files": files, "total_content_bytes": total_content_bytes}
 
 
-def _secret_scan_sync(
+def run_secret_scan_sync(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
 ) -> dict:
     """Scan workspace text files for credential-like strings while respecting size, binary, and result limits."""
@@ -284,14 +286,14 @@ def _secret_scan_sync(
     }
 
 
-async def _secret_scan(
+async def run_secret_scan(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
 ) -> dict:
     """Expose secret scanning through an async wrapper for MCP handlers."""
-    return await _to_thread(_secret_scan_sync, cwd, glob, max_results)
+    return await to_thread(run_secret_scan_sync, cwd, glob, max_results)
 
 
-def _read_audit_tail_entries(lines: int = 100) -> dict:
+def read_audit_tail_entries(lines: int = 100) -> dict:
     """Parse the recent audit-log tail into structured records, preserving malformed lines as raw entries."""
     settings = get_settings()
     path = settings.audit_log_path

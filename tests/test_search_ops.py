@@ -2,7 +2,7 @@ import pytest
 
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.ops.search_ops import tree
-from local_shell_mcp.tools.registry.common import _handled_error
+from local_shell_mcp.tools.registry.common import handled_error
 
 
 @pytest.mark.asyncio
@@ -59,7 +59,7 @@ def test_tool_error_returns_successful_not_found_result(tmp_path, monkeypatch):
     get_settings.cache_clear()
     (tmp_path / "actual").mkdir()
 
-    result = _handled_error(
+    result = handled_error(
         FileNotFoundError(str(tmp_path / "missing" / "project"))
     )
 
@@ -72,7 +72,7 @@ def test_tool_error_returns_successful_not_found_result(tmp_path, monkeypatch):
 
 
 def test_tool_error_returns_successful_error_result():
-    result = _handled_error(ValueError("bad input"))
+    result = handled_error(ValueError("bad input"))
 
     assert result["ok"] is True
     assert "error" not in result

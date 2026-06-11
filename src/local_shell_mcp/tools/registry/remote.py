@@ -6,7 +6,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ...remote import remote_manager
 from ..base import McpToolContext, ToolRegistry
-from .common import _handled_error, _ok
+from .common import handled_error, ok_response
 
 
 class RemoteToolRegistry(ToolRegistry):
@@ -28,7 +28,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         try:
             return await remote_manager().call(machine, tool, args, timeout_s)
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def remote_invite(
@@ -38,35 +38,35 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Create a one-time command for a remote machine to join this control server."""
         try:
-            return _ok(
+            return ok_response(
                 await remote_manager().create_invite(name, workdir, ttl_s)
             )
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def remote_list_machines() -> dict:
         """List remote worker machines connected to this control server."""
         try:
-            return _ok(remote_manager().list_machines())
+            return ok_response(remote_manager().list_machines())
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def remote_revoke_machine(machine: str) -> dict:
         """Revoke and remove a remote worker machine."""
         try:
-            return _ok(remote_manager().revoke(machine))
+            return ok_response(remote_manager().revoke(machine))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def remote_rename_machine(machine: str, new_name: str) -> dict:
         """Rename a remote worker machine."""
         try:
-            return _ok(remote_manager().rename(machine, new_name))
+            return ok_response(remote_manager().rename(machine, new_name))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def remote_environment_info(machine: str) -> dict:

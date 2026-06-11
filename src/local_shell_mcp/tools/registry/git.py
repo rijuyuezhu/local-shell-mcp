@@ -19,7 +19,7 @@ from ...ops.git_ops import (
     git_status,
 )
 from ..base import HttpToolRoute, McpToolContext, ToolRegistry
-from .common import _handled_error, _ok
+from .common import handled_error, ok_response
 
 
 class GitToolRegistry(ToolRegistry):
@@ -67,17 +67,17 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Clone a Git repository."""
         try:
-            return _ok(await git_clone(repo_url, dest, branch, cwd))
+            return ok_response(await git_clone(repo_url, dest, branch, cwd))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_status_tool(cwd: str = ".") -> dict:
         """Run git status and list remotes."""
         try:
-            return _ok(await git_status(cwd))
+            return ok_response(await git_status(cwd))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_diff_tool(
@@ -88,17 +88,17 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Run git diff."""
         try:
-            return _ok(await git_diff(cwd, staged, path, stat))
+            return ok_response(await git_diff(cwd, staged, path, stat))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_log_tool(cwd: str = ".", max_count: int = 20) -> dict:
         """Show recent git commits."""
         try:
-            return _ok(await git_log(cwd, max_count))
+            return ok_response(await git_log(cwd, max_count))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_checkout_tool(
@@ -106,9 +106,9 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Checkout an existing ref or create a branch."""
         try:
-            return _ok(await git_checkout(cwd, ref, create))
+            return ok_response(await git_checkout(cwd, ref, create))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_fetch_tool(
@@ -116,17 +116,17 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Fetch a git remote."""
         try:
-            return _ok(await git_fetch(cwd, remote, prune))
+            return ok_response(await git_fetch(cwd, remote, prune))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_pull_tool(cwd: str = ".", ff_only: bool = True) -> dict:
         """Pull current branch."""
         try:
-            return _ok(await git_pull(cwd, ff_only))
+            return ok_response(await git_pull(cwd, ff_only))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_add_tool(
@@ -134,9 +134,9 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Stage paths for commit."""
         try:
-            return _ok(await git_add(cwd, paths))
+            return ok_response(await git_add(cwd, paths))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_commit_tool(
@@ -144,9 +144,9 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Create a git commit."""
         try:
-            return _ok(await git_commit(cwd, message, all_changes))
+            return ok_response(await git_commit(cwd, message, all_changes))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_push_tool(
@@ -157,9 +157,11 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Push current HEAD to a remote branch."""
         try:
-            return _ok(await git_push(cwd, remote, branch, set_upstream))
+            return ok_response(
+                await git_push(cwd, remote, branch, set_upstream)
+            )
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_show_tool(
@@ -167,9 +169,9 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Show a commit, object, or file at ref:path."""
         try:
-            return _ok(await git_show(cwd, ref, path))
+            return ok_response(await git_show(cwd, ref, path))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
     async def git_reset_tool(
@@ -177,6 +179,6 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Run git reset. Modes: soft, mixed, hard."""
         try:
-            return _ok(await git_reset(cwd, mode, ref))
+            return ok_response(await git_reset(cwd, mode, ref))
         except Exception as exc:
-            return _handled_error(exc)
+            return handled_error(exc)

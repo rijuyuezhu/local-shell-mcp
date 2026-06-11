@@ -10,7 +10,7 @@ from ...audit import audit
 from ...ops.fs_ops import read_text
 from ...ops.search_ops import grep
 from ..base import McpToolContext, ToolRegistry
-from .common import _to_thread
+from .common import to_thread
 
 
 class WorkspaceConnectorToolRegistry(ToolRegistry):
@@ -65,7 +65,7 @@ def register_workspace_connector_mcp(
     async def fetch(id: str) -> str:
         """Fetch a workspace file by id returned from search."""
         try:
-            data = await _to_thread(read_text, id)
+            data = await to_thread(read_text, id)
             path = data.get("path") or id
             binary = bool(data.get("binary"))
             return json.dumps(

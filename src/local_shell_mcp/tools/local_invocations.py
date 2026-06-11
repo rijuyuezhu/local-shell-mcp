@@ -39,12 +39,12 @@ from ..ops.shell_ops import (
 )
 from ..ops.todo_ops import todo_read, todo_write
 from .registry.common import (
-    _apply_patch_text,
-    _read_audit_tail_entries,
-    _read_many_files_sync,
-    _run_python,
-    _secret_scan,
-    _to_thread,
+    apply_patch_text,
+    read_audit_tail_entries,
+    read_many_files_sync,
+    run_python_script,
+    run_secret_scan,
+    to_thread,
 )
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
@@ -61,8 +61,8 @@ async def _run_shell_tool(args: dict[str, Any]) -> dict[str, Any]:
     ).model_dump()
 
 
-async def _run_python_tool(args: dict[str, Any]) -> dict[str, Any]:
-    return await _run_python(
+async def run_python_script_tool(args: dict[str, Any]) -> dict[str, Any]:
+    return await run_python_script(
         args["code"], args.get("cwd", "."), args.get("timeout_s", 60)
     )
 
@@ -92,7 +92,7 @@ async def _shell_list(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
 
 
 async def _list_files(args: dict[str, Any]) -> list[dict[str, Any]]:
-    return await _to_thread(
+    return await to_thread(
         list_dir,
         args.get("path", "."),
         args.get("recursive", False),
@@ -110,7 +110,7 @@ async def _tree_view(args: dict[str, Any]) -> dict[str, Any]:
 
 async def _glob_search(args: dict[str, Any]) -> dict[str, Any]:
     return {
-        "paths": await _to_thread(
+        "paths": await to_thread(
             glob_paths,
             args["pattern"],
             args.get("cwd", "."),
@@ -131,7 +131,7 @@ async def _grep_search(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _read_file(args: dict[str, Any]) -> dict[str, Any]:
-    return await _to_thread(
+    return await to_thread(
         read_text,
         args["path"],
         args.get("start_line"),
@@ -142,8 +142,8 @@ async def _read_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _read_many_files(args: dict[str, Any]) -> dict[str, Any]:
-    return await _to_thread(
-        _read_many_files_sync,
+    return await to_thread(
+        read_many_files_sync,
         args["paths"],
         args.get("start_line"),
         args.get("end_line"),
@@ -153,13 +153,13 @@ async def _read_many_files(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _write_file(args: dict[str, Any]) -> dict[str, Any]:
-    return await _to_thread(
+    return await to_thread(
         write_text, args["path"], args["content"], args.get("overwrite", True)
     )
 
 
 async def _edit_file(args: dict[str, Any]) -> dict[str, Any]:
-    return await _to_thread(
+    return await to_thread(
         edit_text,
         args["path"],
         args["old"],
@@ -169,17 +169,17 @@ async def _edit_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _multi_edit_file(args: dict[str, Any]) -> dict[str, Any]:
-    return await _to_thread(multi_edit_text, args["path"], args["edits"])
+    return await to_thread(multi_edit_text, args["path"], args["edits"])
 
 
 async def _delete_file_or_dir(args: dict[str, Any]) -> dict[str, Any]:
-    return await _to_thread(
+    return await to_thread(
         delete_path, args["path"], args.get("recursive", False)
     )
 
 
 async def _apply_patch(args: dict[str, Any]) -> dict[str, Any]:
-    return await _apply_patch_text(args["patch"], args.get("cwd", "."))
+    return await apply_patch_text(args["patch"], args.get("cwd", "."))
 
 
 async def _git_clone_tool(args: dict[str, Any]) -> dict[str, Any]:
@@ -259,27 +259,27 @@ async def _git_reset_tool(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-async def _secret_scan_tool(args: dict[str, Any]) -> dict[str, Any]:
-    return await _secret_scan(
+async def secret_scan_tool(args: dict[str, Any]) -> dict[str, Any]:
+    return await run_secret_scan(
         args.get("cwd", "."), args.get("glob"), args.get("max_results", 200)
     )
 
 
 async def _todo_read_tool(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
-    return await _to_thread(todo_read)
+    return await to_thread(todo_read)
 
 
 async def _todo_write_tool(args: dict[str, Any]) -> dict[str, Any]:
-    return await _to_thread(todo_write, args.get("todos", []))
+    return await to_thread(todo_write, args.get("todos", []))
 
 
 async def _audit_tail(args: dict[str, Any]) -> dict[str, Any]:
-    return await _to_thread(_read_audit_tail_entries, args.get("lines", 100))
+    return await to_thread(read_audit_tail_entries, args.get("lines", 100))
 
 
 LOCAL_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "run_shell_tool": _run_shell_tool,
-    "run_python_tool": _run_python_tool,
+    "run_python_tool": run_python_script_tool,
     "shell_start": _shell_start,
     "shell_send": _shell_send,
     "shell_read": _shell_read,
@@ -308,7 +308,7 @@ LOCAL_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "git_push_tool": _git_push_tool,
     "git_show_tool": _git_show_tool,
     "git_reset_tool": _git_reset_tool,
-    "secret_scan": _secret_scan_tool,
+    "secret_scan": secret_scan_tool,
     "todo_read_tool": _todo_read_tool,
     "todo_write_tool": _todo_write_tool,
     "audit_tail": _audit_tail,
