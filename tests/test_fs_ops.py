@@ -13,6 +13,7 @@ from local_shell_mcp.ops.fs_ops import (
     write_text,
 )
 from local_shell_mcp.ops.shell_ops import check_command_policy
+from tests.helpers import mcp_text, nested_mcp_text
 
 
 def test_write_read_edit(tmp_path, monkeypatch):
@@ -143,7 +144,7 @@ async def test_fetch_omits_binary_content_from_text_field(
     (tmp_path / "blob.bin").write_bytes(b"abc\x00world")
 
     response = await build_mcp().call_tool("fetch", {"id": "blob.bin"})
-    payload = json.loads(response[0][0].text)
+    payload = json.loads(nested_mcp_text(response))
 
     assert payload["text"] == "Refusing to read binary file as text"
     assert payload["metadata"]["binary"] is True
@@ -161,7 +162,7 @@ async def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
     response = await build_mcp().call_tool(
         "read_many_files", {"paths": ["a.txt", "b.txt"]}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
 
     assert "Refusing to read 2 files; max is 1" in payload
 

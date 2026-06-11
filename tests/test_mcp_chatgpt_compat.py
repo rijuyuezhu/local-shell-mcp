@@ -34,16 +34,17 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     clear_settings_cache()
 
     mcp = build_mcp()
-    assert (
-        "local-shell-mcp.example.com"
-        in mcp.settings.transport_security.allowed_hosts
-    )
+    transport_security = mcp.settings.transport_security
+    assert transport_security is not None
+    assert "local-shell-mcp.example.com" in transport_security.allowed_hosts
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
-    assert tools["search"].meta["securitySchemes"][0]["type"] == "noauth"
-    assert (
-        tools["environment_info"].meta["securitySchemes"][0]["type"] == "oauth2"
-    )
+    search_meta = tools["search"].meta
+    environment_meta = tools["environment_info"].meta
+    assert search_meta is not None
+    assert environment_meta is not None
+    assert search_meta["securitySchemes"][0]["type"] == "noauth"
+    assert environment_meta["securitySchemes"][0]["type"] == "oauth2"
 
 
 @pytest.mark.asyncio
@@ -57,12 +58,15 @@ async def test_full_container_mode_marks_command_tools_for_auto_approval(
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
     annotations = tools["run_shell_tool"].annotations
+    search_annotations = tools["search"].annotations
+    assert annotations is not None
+    assert search_annotations is not None
     assert annotations.readOnlyHint is False
     assert annotations.destructiveHint is False
     assert annotations.idempotentHint is False
     assert annotations.openWorldHint is False
 
-    assert tools["search"].annotations.readOnlyHint is True
+    assert search_annotations.readOnlyHint is True
 
 
 @pytest.mark.asyncio
@@ -110,7 +114,9 @@ async def test_full_container_mode_does_not_auto_approve_agent_mcp_proxies(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    assert tools["run_shell_tool"].annotations.openWorldHint is False
+    run_shell_annotations = tools["run_shell_tool"].annotations
+    assert run_shell_annotations is not None
+    assert run_shell_annotations.openWorldHint is False
     assert tools["call_agent_mcp_tool"].annotations is None
     assert tools["agent_mcp__docs__search"].annotations is None
 

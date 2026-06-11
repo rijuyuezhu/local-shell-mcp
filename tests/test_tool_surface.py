@@ -1,4 +1,5 @@
 import json
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -6,12 +7,13 @@ from fastapi.testclient import TestClient
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
-from local_shell_mcp.tools.base import HttpToolRoute, ToolRegistry
+from local_shell_mcp.tools.base import HttpMethod, HttpToolRoute, ToolRegistry
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
     call_local_tool,
     local_tool_handlers,
 )
+from tests.helpers import mcp_text
 
 LOCAL_MCP_TOOL_NAMES = {
     "search",
@@ -120,7 +122,7 @@ async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
         .json()
     )
     mcp_response = await build_mcp().call_tool("list_files", {"path": "."})
-    mcp_payload = json.loads(mcp_response[0].text)
+    mcp_payload = json.loads(mcp_text(mcp_response))
 
     assert http_payload == mcp_payload["data"]
 
@@ -141,7 +143,7 @@ async def test_http_git_status_matches_mcp_tool_payload(tmp_path, monkeypatch):
         .json()
     )
     mcp_response = await build_mcp().call_tool("git_status_tool", {"cwd": "."})
-    mcp_payload = json.loads(mcp_response[0].text)["data"]
+    mcp_payload = json.loads(mcp_text(mcp_response))["data"]
 
     assert {k: v for k, v in http_payload.items() if k != "duration_ms"} == {
         k: v for k, v in mcp_payload.items() if k != "duration_ms"
@@ -165,7 +167,11 @@ def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
 def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
     class RegistryWithUnsupportedRoute:
         def http_routes(self):
-            return [HttpToolRoute("PUT", "/tools/example", "todo_read_tool")]
+            return [
+                HttpToolRoute(
+                    cast(HttpMethod, "PUT"), "/tools/example", "todo_read_tool"
+                )
+            ]
 
     monkeypatch.setattr(
         "local_shell_mcp.http_app.discover_tool_registries",

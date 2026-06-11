@@ -2,6 +2,8 @@ import json
 
 from local_shell_mcp.agent_bridge import (
     AgentBridgeManifest,
+    AgentDynamicToolsConfig,
+    AgentMcpServerConfig,
     _redact_text,
     load_agent_manifest,
     redact_mapping,
@@ -214,10 +216,12 @@ def test_redact_text_hides_standalone_high_confidence_tokens():
 
 def test_agent_bridge_manifest_populates_python_field_names():
     manifest = AgentBridgeManifest(
-        mcp_servers={
-            "github": {"type": "stdio", "command": "github-mcp-server"}
+        mcpServers={
+            "github": AgentMcpServerConfig(
+                type="stdio", command="github-mcp-server"
+            )
         },
-        dynamic_tools={"mcp": False, "skills": True},
+        dynamicTools=AgentDynamicToolsConfig(mcp=False, skills=True),
     )
 
     assert manifest.mcp_servers["github"].command == "github-mcp-server"
