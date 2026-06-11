@@ -51,6 +51,21 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert environment_meta["securitySchemes"][0]["type"] == "oauth2"
 
 
+@pytest.mark.asyncio
+async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES", "12345")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_GREP_RESULTS", "678")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+
+    run_shell_description = tools["run_shell_tool"].description or ""
+    grep_description = tools["grep_search"].description or ""
+    assert "max_output_bytes=12345" in run_shell_description
+    assert "max_grep_results=678" in grep_description
+
+
 def test_transport_security_uses_exact_public_base_url_host(
     tmp_path, monkeypatch
 ):

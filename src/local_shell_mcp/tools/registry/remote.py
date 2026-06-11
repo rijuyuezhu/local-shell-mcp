@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from ...ops.shell_ops import PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 from ...remote import remote_manager
 from ..base import McpToolContext, ToolRegistry
 from .common import handled_error, ok_response
@@ -21,6 +22,7 @@ class RemoteToolRegistry(ToolRegistry):
 def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
     protected_meta = context.protected_meta
+    settings = context.settings
 
     async def _remote_call(
         machine: str, tool: str, args: dict, timeout_s: int | None = None
@@ -30,13 +32,21 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Create a one-time command for a remote machine to join this control server. "
+            "Use when you need to run workspace tools on another worker. "
+            f"ttl_s defaults to the configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted. "
+            "The invite should be treated as sensitive because it grants enrollment capability."
+        ),
+    )
     async def remote_invite(
         name: str | None = None,
         workdir: str | None = None,
         ttl_s: int | None = None,
     ) -> dict:
-        """Create a one-time command for a remote machine to join this control server. Use when you need to run workspace tools on another worker. The invite expires after ttl_s seconds and should be treated as sensitive because it grants enrollment capability."""
+        """Create a one-time remote-worker invite."""
         try:
             return ok_response(
                 await remote_manager().create_invite(name, workdir, ttl_s)
@@ -73,7 +83,15 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """Return workspace, auth, policy, and basic environment information from a remote worker. Use to verify the remote machine, working directory, runtime versions, and limits before running remote commands or editing remote files."""
         return await _remote_call(machine, "environment_info", {})
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. "
+            f"timeout_s is in seconds and should stay within the public tool timeout cap of {PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} seconds on the worker; "
+            f"max_output_bytes caps returned output and the worker default cap is max_output_bytes={settings.max_output_bytes}. "
+            "For long-running or interactive remote processes, use remote_shell_start with remote_shell_send and remote_shell_read."
+        ),
+    )
     async def remote_run_shell_tool(
         machine: str,
         command: str,
@@ -81,7 +99,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         timeout_s: int | None = None,
         max_output_bytes: int | None = None,
     ) -> dict:
-        """Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. timeout_s is in seconds and max_output_bytes caps output. For long-running or interactive remote processes, use remote_shell_start with remote_shell_send and remote_shell_read."""
+        """Run one non-interactive shell command on a remote worker."""
         return await _remote_call(
             machine,
             "run_shell_tool",
@@ -94,11 +112,18 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             timeout_s,
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Write Python code to a temporary file and execute it on a remote worker. "
+            "Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. "
+            f"cwd is resolved on the remote worker and timeout_s defaults to 60 seconds; keep it within the public tool timeout cap of {PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} seconds."
+        ),
+    )
     async def remote_run_python_tool(
         machine: str, code: str, cwd: str = ".", timeout_s: int = 60
     ) -> dict:
-        """Write Python code to a temporary file and execute it on a remote worker. Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. cwd is resolved on the remote worker and timeout_s is in seconds."""
+        """Write Python code to a temporary file and execute it on a remote worker."""
         return await _remote_call(
             machine,
             "run_python_tool",
@@ -156,43 +181,67 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """List persistent shell sessions on a remote worker. Use before reading, sending to, or killing remote sessions when you need the session_id or active-process overview."""
         return await _remote_call(machine, "shell_list", {})
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "List files and directories on a remote worker. Use for quick remote directory inspection. "
+            f"path is resolved on the remote worker; recursive controls traversal; max_entries defaults to 500 and is capped by max_directory_entries={settings.max_directory_entries}."
+        ),
+    )
     async def remote_list_files(
         machine: str,
         path: str = ".",
         recursive: bool = False,
         max_entries: int = 500,
     ) -> dict:
-        """List files and directories on a remote worker. Use for quick remote directory inspection. path is resolved on the remote worker; recursive and max_entries control traversal size."""
+        """List files and directories on a remote worker."""
         return await _remote_call(
             machine,
             "list_files",
             {"path": path, "recursive": recursive, "max_entries": max_entries},
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Return a compact directory tree from a remote worker. Use to understand remote project layout before reading or editing files. "
+            f"depth defaults to 3; max_entries defaults to 500 and is capped by max_tree_entries={settings.max_tree_entries}."
+        ),
+    )
     async def remote_tree_view(
         machine: str, cwd: str = ".", depth: int = 3, max_entries: int = 500
     ) -> dict:
-        """Return a compact directory tree from a remote worker. Use to understand remote project layout before reading or editing files. depth and max_entries bound output."""
+        """Return a compact directory tree from a remote worker."""
         return await _remote_call(
             machine,
             "tree_view",
             {"cwd": cwd, "depth": depth, "max_entries": max_entries},
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Find files by glob pattern on a remote worker. Use when you know remote filename patterns and need matching paths. "
+            f"cwd narrows the search root; max_results defaults to 500 and is capped by max_glob_results={settings.max_glob_results}."
+        ),
+    )
     async def remote_glob_search(
         machine: str, pattern: str, cwd: str = ".", max_results: int = 500
     ) -> dict:
-        """Find files by glob pattern on a remote worker. Use when you know remote filename patterns and need matching paths. cwd narrows the search root and max_results bounds output."""
+        """Find files by glob pattern on a remote worker."""
         return await _remote_call(
             machine,
             "glob_search",
             {"pattern": pattern, "cwd": cwd, "max_results": max_results},
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Search remote file contents using ripgrep. Use to locate symbols, usages, or text on a remote worker before reading or editing. "
+            f"query is regex by default; glob, cwd, and case_sensitive narrow the search; max_results is optional and capped by max_grep_results={settings.max_grep_results}."
+        ),
+    )
     async def remote_grep_search(
         machine: str,
         query: str,
@@ -202,7 +251,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         case_sensitive: bool = True,
         max_results: int | None = None,
     ) -> dict:
-        """Search remote file contents using ripgrep. Use to locate symbols, usages, or text on a remote worker before reading or editing. query is regex by default; glob, cwd, case_sensitive, and max_results narrow the search."""
+        """Search remote file contents using ripgrep."""
         return await _remote_call(
             machine,
             "grep_search",
@@ -216,7 +265,13 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Read a UTF-8 text file on a remote worker, optionally by line range. Use after locating a remote file to inspect exact content before editing. "
+            f"start_line and end_line page large files; binary_preview requests bounded binary preview behavior; per-file reads are capped by max_file_read_bytes={settings.max_file_read_bytes}."
+        ),
+    )
     async def remote_read_file(
         machine: str,
         path: str,
@@ -225,7 +280,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         binary_preview: str | None = None,
         binary_preview_bytes: int = 256,
     ) -> dict:
-        """Read a UTF-8 text file on a remote worker, optionally by line range. Use after locating a remote file to inspect exact content before editing. start_line and end_line page large files; binary_preview requests bounded binary preview behavior."""
+        """Read a UTF-8 text file on a remote worker."""
         return await _remote_call(
             machine,
             "read_file",
@@ -238,7 +293,13 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Read multiple UTF-8 text files on a remote worker with the same optional line range. Use for targeted remote context gathering across known paths. "
+            f"Server-side limits bound file count and total bytes: max_read_many_files={settings.max_read_many_files}, max_read_many_total_bytes={settings.max_read_many_total_bytes}."
+        ),
+    )
     async def remote_read_many_files(
         machine: str,
         paths: list[str],
@@ -247,7 +308,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         binary_preview: str | None = None,
         binary_preview_bytes: int = 256,
     ) -> dict:
-        """Read multiple UTF-8 text files on a remote worker with the same optional line range. Use for targeted remote context gathering across known paths. Server-side limits bound file count and total bytes."""
+        """Read multiple UTF-8 text files on a remote worker."""
         return await _remote_call(
             machine,
             "read_many_files",
@@ -260,22 +321,34 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Write a UTF-8 text file on a remote worker. Use to create or intentionally replace a whole remote file. "
+            f"Writes are capped by max_file_write_bytes={settings.max_file_write_bytes}; overwrite=false protects existing files; for precise changes prefer remote_edit_file or remote_apply_patch."
+        ),
+    )
     async def remote_write_file(
         machine: str, path: str, content: str, overwrite: bool = True
     ) -> dict:
-        """Write a UTF-8 text file on a remote worker. Use to create or intentionally replace a whole remote file. overwrite=false protects existing files; for precise changes prefer remote_edit_file or remote_apply_patch."""
+        """Write a UTF-8 text file on a remote worker."""
         return await _remote_call(
             machine,
             "write_file",
             {"path": path, "content": content, "overwrite": overwrite},
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Replace exact text in a remote file. Use for small precise remote edits after reading the target file. "
+            f"old must match exactly; replace_all=true should be used only when every exact occurrence should change. Writes are capped by max_file_write_bytes={settings.max_file_write_bytes}."
+        ),
+    )
     async def remote_edit_file(
         machine: str, path: str, old: str, new: str, replace_all: bool = False
     ) -> dict:
-        """Replace exact text in a remote file. Use for small precise remote edits after reading the target file. old must match exactly; replace_all=true should be used only when every exact occurrence should change."""
+        """Replace exact text in a remote file."""
         return await _remote_call(
             machine,
             "edit_file",

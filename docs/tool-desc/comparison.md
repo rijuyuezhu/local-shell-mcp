@@ -1,13 +1,13 @@
 # Tool-surface comparison after simplification
 
-This document supersedes the earlier exploratory comparison. The current local-shell-mcp branch intentionally moves closer to opencode's smaller coding-agent surface by removing dedicated git porcelain tools and making the remaining tool descriptions more operationally explicit.
+This document supersedes the earlier exploratory comparison. The current local-shell-mcp branch intentionally moves closer to opencode's smaller coding-agent surface by removing dedicated git porcelain tools and making the remaining MCP descriptions more operationally explicit.
 
 ## Current counts
 
 | Project | Built-in tools counted | Notes |
 | --- | ---: | --- |
 | opencode | 12 | Core tools registered with `Tool.make`: `apply_patch`, `bash`, `edit`, `glob`, `grep`, `question`, `read`, `skill`, `todowrite`, `webfetch`, `websearch`, `write`. |
-| local-shell-mcp | 47 | Built-in MCP tools registered with `@mcp.tool`; dynamic agent-bridge tools are not included in this static count. |
+| local-shell-mcp | 47 | Built-in MCP tools returned by `build_mcp().list_tools()`; dynamic agent-bridge tools are not included in this static table. |
 
 ## What changed in local-shell-mcp
 
@@ -16,7 +16,7 @@ This document supersedes the earlier exploratory comparison. The current local-s
 - Removed `audit_tail` and `max_audit_tail_bytes`; audit logging remains internal.
 - Removed git-specific configuration/scope entries: `git_bin` and `git:write`.
 - Kept `apply_patch` because it is a file editing primitive. It happens to use `git apply` as a patch engine, but normal git workflows should now go through shell tools.
-- Expanded descriptions for remaining tools with usage guidance, parameter defaults, units, limits, path semantics, and tool-choice advice.
+- Expanded MCP descriptions for remaining tools with usage guidance, parameter defaults, runtime limits, path semantics, and tool-choice advice.
 
 ## Why local-shell-mcp still has more tools than opencode
 

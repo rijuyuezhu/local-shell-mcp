@@ -7,6 +7,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...ops.shell_ops import (
+    PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
     kill_shell,
     list_shells,
     public_run_shell,
@@ -97,15 +98,27 @@ class ShellToolRegistry(ToolRegistry):
 def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
     protected_meta = context.protected_meta
+    settings = context.settings
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Run one non-interactive shell command in the controlled workspace/container. "
+            "Use for build, test, package-manager, git, and inspection commands that should finish promptly. "
+            "Parameters: command is the shell command string; cwd defaults to '.' and is resolved relative to the workspace "
+            "unless an allowed absolute path is supplied; timeout_s is in seconds, optional, "
+            f"and must be 1..{PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} for this public tool; "
+            f"max_output_bytes is optional and is capped by max_output_bytes={settings.max_output_bytes}. "
+            "For long-running, interactive, or streaming processes, use shell_start with shell_send and shell_read instead."
+        ),
+    )
     async def run_shell_tool(
         command: str,
         cwd: str = ".",
         timeout_s: int | None = None,
         max_output_bytes: int | None = None,
     ) -> dict:
-        """Run one non-interactive shell command in the controlled workspace/container. Use for build, test, package-manager, git, and inspection commands that should finish promptly. Parameters: command is the shell command string; cwd defaults to '.' and is resolved relative to the workspace unless an allowed absolute path is supplied; timeout_s is in seconds, optional, and must be 1..60 for this public tool; max_output_bytes is optional and caps returned output bytes, with the server maximum still enforced. For long-running, interactive, or streaming processes, use shell_start with shell_send and shell_read instead."""
+        """Run one non-interactive shell command."""
         try:
             return ok_response(
                 (
@@ -117,11 +130,20 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Write Python code to a temporary file and execute it in the controlled workspace/container. "
+            "Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. "
+            "Parameters: code is the full Python source to run; cwd defaults to '.' and is workspace-relative unless an allowed absolute path is supplied; "
+            f"timeout_s is in seconds, defaults to 60, and should stay within the public tool timeout cap of {PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} seconds. "
+            f"Returned output is capped by max_output_bytes={settings.max_output_bytes}. Keep code non-interactive and write durable outputs explicitly if needed."
+        ),
+    )
     async def run_python_tool(
         code: str, cwd: str = ".", timeout_s: int = 60
     ) -> dict:
-        """Write Python code to a temporary file and execute it in the controlled workspace/container. Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. Parameters: code is the full Python source to run; cwd defaults to '.' and is workspace-relative unless an allowed absolute path is supplied; timeout_s is in seconds, defaults to 60, and should stay within the public tool timeout cap. Keep code non-interactive and write durable outputs explicitly if needed."""
+        """Write Python code to a temporary file and execute it."""
         try:
             return ok_response(await run_python_script(code, cwd, timeout_s))
         except Exception as exc:
