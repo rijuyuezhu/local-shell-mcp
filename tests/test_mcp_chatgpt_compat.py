@@ -34,6 +34,12 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     clear_settings_cache()
 
     mcp = build_mcp()
+    assert mcp.instructions is not None
+    assert (
+        "Dedicated git tools are intentionally not exposed" in mcp.instructions
+    )
+    assert "secret_scan is heuristic" in mcp.instructions
+
     transport_security = mcp.settings.transport_security
     assert transport_security is not None
     assert "local-shell-mcp.example.com" in transport_security.allowed_hosts

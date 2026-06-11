@@ -112,11 +112,26 @@ def _transport_security_settings() -> TransportSecuritySettings:
     )
 
 
+SERVER_INSTRUCTIONS = """You are operating local-shell-mcp, a coding-agent control surface for the configured workspace/container and optional remote workers.
+
+Work carefully and prefer small, inspectable steps:
+- Use search, tree_view, glob_search, grep_search, read_file, and read_many_files to inspect before editing.
+- Use edit_file or multi_edit_file for precise local text replacements, and apply_patch for larger local diffs. Use remote_* equivalents for connected remote workers.
+- Use run_shell_tool for bounded one-shot shell commands, including git workflows. Dedicated git tools are intentionally not exposed. Use shell_start/shell_send/shell_read for long-running, streaming, or interactive local processes.
+- For remote workers, first use remote_list_machines or remote_environment_info when needed, then use remote_run_shell_tool for bounded one-shot remote commands, including remote git workflows. Use remote_shell_start/shell_send/shell_read for long-running or interactive remote processes.
+- Before committing, pushing, releasing, or sharing logs, inspect diffs and consider secret_scan. secret_scan is heuristic and does not prove a workspace is secret-free.
+- Respect workspace/path restrictions and runtime limits advertised by each tool description. Do not assume full-container access unless the environment reports it.
+- Keep the user informed about meaningful progress during longer multi-step work, and report validation commands and results clearly.
+"""
+
+
 def build_mcp() -> FastMCP:
     """Create the configured FastMCP server from discovered tool registries."""
     settings = get_settings()
     mcp = FastMCP(
-        "local-shell-mcp", transport_security=_transport_security_settings()
+        "local-shell-mcp",
+        instructions=SERVER_INSTRUCTIONS,
+        transport_security=_transport_security_settings(),
     )
     read_only_tool = ToolAnnotations(
         readOnlyHint=True,
