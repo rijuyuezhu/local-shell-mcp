@@ -20,7 +20,7 @@ class RemoteToolRegistry(ToolRegistry):
 
 def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
-    oauth_meta = context.oauth_meta
+    protected_meta = context.protected_meta
 
     async def _remote_call(
         machine: str, tool: str, args: dict, timeout_s: int | None = None
@@ -30,7 +30,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_invite(
         name: str | None = None,
         workdir: str | None = None,
@@ -44,7 +44,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_list_machines() -> dict:
         """List remote worker machines connected to this control server."""
         try:
@@ -52,7 +52,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_revoke_machine(machine: str) -> dict:
         """Revoke and remove a remote worker machine."""
         try:
@@ -60,7 +60,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_rename_machine(machine: str, new_name: str) -> dict:
         """Rename a remote worker machine."""
         try:
@@ -68,12 +68,12 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_environment_info(machine: str) -> dict:
         """Return remote workspace, auth, policy, and basic environment information."""
         return await _remote_call(machine, "environment_info", {})
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_run_shell_tool(
         machine: str,
         command: str,
@@ -94,7 +94,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             timeout_s,
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_run_python_tool(
         machine: str, code: str, cwd: str = ".", timeout_s: int = 60
     ) -> dict:
@@ -106,7 +106,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             timeout_s,
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_shell_start(
         machine: str,
         cwd: str = ".",
@@ -120,7 +120,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"cwd": cwd, "name": name, "command": command},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_shell_send(
         machine: str, session_id: str, input_text: str, enter: bool = True
     ) -> dict:
@@ -135,7 +135,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_shell_read(
         machine: str, session_id: str, lines: int = 200
     ) -> dict:
@@ -144,19 +144,19 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "shell_read", {"session_id": session_id, "lines": lines}
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_shell_kill(machine: str, session_id: str) -> dict:
         """Kill a persistent remote shell session."""
         return await _remote_call(
             machine, "shell_kill", {"session_id": session_id}
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_shell_list(machine: str) -> dict:
         """List persistent shell sessions on a remote worker."""
         return await _remote_call(machine, "shell_list", {})
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_list_files(
         machine: str,
         path: str = ".",
@@ -170,7 +170,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"path": path, "recursive": recursive, "max_entries": max_entries},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_tree_view(
         machine: str, cwd: str = ".", depth: int = 3, max_entries: int = 500
     ) -> dict:
@@ -181,7 +181,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"cwd": cwd, "depth": depth, "max_entries": max_entries},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_glob_search(
         machine: str, pattern: str, cwd: str = ".", max_results: int = 500
     ) -> dict:
@@ -192,7 +192,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"pattern": pattern, "cwd": cwd, "max_results": max_results},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_grep_search(
         machine: str,
         query: str,
@@ -216,7 +216,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_read_file(
         machine: str,
         path: str,
@@ -238,7 +238,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_read_many_files(
         machine: str,
         paths: list[str],
@@ -260,7 +260,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_write_file(
         machine: str, path: str, content: str, overwrite: bool = True
     ) -> dict:
@@ -271,7 +271,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"path": path, "content": content, "overwrite": overwrite},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_edit_file(
         machine: str, path: str, old: str, new: str, replace_all: bool = False
     ) -> dict:
@@ -282,7 +282,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"path": path, "old": old, "new": new, "replace_all": replace_all},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_multi_edit_file(
         machine: str, path: str, edits: list[dict]
     ) -> dict:
@@ -291,7 +291,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "multi_edit_file", {"path": path, "edits": edits}
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_delete_file_or_dir(
         machine: str, path: str, recursive: bool = False
     ) -> dict:
@@ -302,7 +302,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"path": path, "recursive": recursive},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_apply_patch(
         machine: str, patch: str, cwd: str = "."
     ) -> dict:
@@ -311,7 +311,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "apply_patch", {"patch": patch, "cwd": cwd}
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_clone_tool(
         machine: str,
         repo_url: str,
@@ -326,12 +326,12 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"repo_url": repo_url, "dest": dest, "branch": branch, "cwd": cwd},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_status_tool(machine: str, cwd: str = ".") -> dict:
         """Run git status on a remote worker."""
         return await _remote_call(machine, "git_status_tool", {"cwd": cwd})
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_diff_tool(
         machine: str,
         cwd: str = ".",
@@ -346,7 +346,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"cwd": cwd, "staged": staged, "path": path, "stat": stat},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_log_tool(
         machine: str, cwd: str = ".", max_count: int = 20
     ) -> dict:
@@ -355,7 +355,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "git_log_tool", {"cwd": cwd, "max_count": max_count}
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_checkout_tool(
         machine: str, cwd: str, ref: str, create: bool = False
     ) -> dict:
@@ -366,7 +366,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"cwd": cwd, "ref": ref, "create": create},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_fetch_tool(
         machine: str, cwd: str = ".", remote: str = "origin", prune: bool = True
     ) -> dict:
@@ -377,7 +377,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"cwd": cwd, "remote": remote, "prune": prune},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_pull_tool(
         machine: str, cwd: str = ".", ff_only: bool = True
     ) -> dict:
@@ -386,7 +386,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "git_pull_tool", {"cwd": cwd, "ff_only": ff_only}
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_add_tool(
         machine: str, cwd: str = ".", paths: list[str] | None = None
     ) -> dict:
@@ -395,7 +395,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "git_add_tool", {"cwd": cwd, "paths": paths}
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_commit_tool(
         machine: str, cwd: str, message: str, all_changes: bool = False
     ) -> dict:
@@ -406,7 +406,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"cwd": cwd, "message": message, "all_changes": all_changes},
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_push_tool(
         machine: str,
         cwd: str,
@@ -426,7 +426,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_show_tool(
         machine: str, cwd: str = ".", ref: str = "HEAD", path: str | None = None
     ) -> dict:
@@ -435,7 +435,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "git_show_tool", {"cwd": cwd, "ref": ref, "path": path}
         )
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def remote_git_reset_tool(
         machine: str, cwd: str = ".", mode: str = "soft", ref: str = "HEAD"
     ) -> dict:

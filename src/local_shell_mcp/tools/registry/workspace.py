@@ -27,9 +27,9 @@ def register_workspace_connector_mcp(
 ) -> None:
     """Register MCP tools for this tool group."""
     read_only_tool = context.read_only_tool
-    read_only_meta = context.read_only_meta
+    connector_meta = context.connector_meta
 
-    @mcp.tool(annotations=read_only_tool, meta=read_only_meta)
+    @mcp.tool(annotations=read_only_tool, meta=connector_meta)
     async def search(query: str) -> str:
         """Search workspace files and return ChatGPT connector-compatible results."""
         try:
@@ -61,7 +61,7 @@ def register_workspace_connector_mcp(
             audit("tool_error", error=repr(exc))
             return json.dumps({"results": []})
 
-    @mcp.tool(annotations=read_only_tool, meta=read_only_meta)
+    @mcp.tool(annotations=read_only_tool, meta=connector_meta)
     async def fetch(id: str) -> str:
         """Fetch a workspace file by id returned from search."""
         try:

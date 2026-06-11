@@ -88,7 +88,7 @@ def test_transport_security_handles_default_ports_and_ipv6(
 
 
 @pytest.mark.asyncio
-async def test_full_container_mode_marks_command_tools_for_auto_approval(
+async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -110,7 +110,7 @@ async def test_full_container_mode_marks_command_tools_for_auto_approval(
 
 
 @pytest.mark.asyncio
-async def test_full_container_mode_does_not_auto_approve_agent_mcp_proxies(
+async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
     tmp_path, monkeypatch
 ):
     config_dir = tmp_path / "agent-config"
@@ -144,7 +144,7 @@ async def test_full_container_mode_does_not_auto_approve_agent_mcp_proxies(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS", "true")
     monkeypatch.setattr(
         tools_module,
         "AgentMcpClientManager",
@@ -159,6 +159,38 @@ async def test_full_container_mode_does_not_auto_approve_agent_mcp_proxies(
     assert run_shell_annotations.openWorldHint is False
     assert tools["call_agent_mcp_tool"].annotations is None
     assert tools["agent_mcp__docs__search"].annotations is None
+
+
+@pytest.mark.asyncio
+async def test_relaxed_client_tool_hints_marks_command_tools_without_full_container(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS", "true")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+
+    annotations = tools["run_shell_tool"].annotations
+    assert annotations is not None
+    assert annotations.readOnlyHint is False
+    assert annotations.destructiveHint is False
+    assert annotations.idempotentHint is False
+    assert annotations.openWorldHint is False
+    assert tools["run_shell_tool"].meta == {
+        "securitySchemes": [
+            {
+                "type": "oauth2",
+                "scopes": [
+                    "shell:read",
+                    "shell:write",
+                    "shell:execute",
+                    "git:write",
+                ],
+            }
+        ]
+    }
 
 
 @pytest.mark.asyncio

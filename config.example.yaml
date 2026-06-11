@@ -34,6 +34,9 @@ oauth_admin_pin: null
 allow_full_container: false
 # Allow network-capable operations.
 allow_network: true
+# Advertise lower-risk MCP client hints for local tools without changing server-side authentication or
+# command policy.
+relaxed_client_tool_hints: false
 # Default shell command timeout in seconds.
 default_timeout_s: 60
 # Maximum shell command timeout in seconds.

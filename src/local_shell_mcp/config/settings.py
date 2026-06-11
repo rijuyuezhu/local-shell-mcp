@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # By default, tools are limited to workspace_root. Set true only inside a disposable container.
     allow_full_container: bool = False
     allow_network: bool = True
+    # Client-facing hint only: reduces MCP client confirmations for local tools
+    # without changing server-side authentication, authorization, or command policy.
+    relaxed_client_tool_hints: bool = False
 
     default_timeout_s: int = 60
     max_timeout_s: int = 3600
