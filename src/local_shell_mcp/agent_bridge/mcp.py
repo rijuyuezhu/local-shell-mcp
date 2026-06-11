@@ -22,8 +22,11 @@ class AgentMcpTool:
     """Normalized description of an upstream MCP tool exposed through the bridge."""
 
     name: str
+    """Upstream MCP tool name."""
     description: str
+    """Human-readable tool description advertised by the upstream server."""
     input_schema: dict[str, Any]
+    """JSON schema describing the upstream tool input payload."""
 
 
 def _value(source: Any, name: str, default: Any = None) -> Any:

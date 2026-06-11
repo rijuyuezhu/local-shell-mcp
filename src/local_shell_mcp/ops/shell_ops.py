@@ -30,8 +30,11 @@ class TailBuffer:
     """Accumulate bounded process output while tracking how many bytes were dropped from the head."""
 
     keep_bytes: int
+    """Maximum number of output bytes retained in memory."""
     data: bytearray
+    """Buffered tail bytes retained from process output."""
     total_bytes: int = 0
+    """Total bytes observed before tail truncation."""
 
     def append(self, chunk: bytes) -> None:
         """Append bytes to the tail buffer and discard the oldest data beyond the configured limit."""

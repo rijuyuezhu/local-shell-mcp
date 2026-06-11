@@ -10,7 +10,7 @@ from local_shell_mcp.auth.oauth import (
     validate_bearer_token,
 )
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.mcp_app import build_mcp
+from local_shell_mcp.mcp_app import _transport_security_settings, build_mcp
 from local_shell_mcp.tools.registry import agent as tools_module
 
 
@@ -37,6 +37,10 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     transport_security = mcp.settings.transport_security
     assert transport_security is not None
     assert "local-shell-mcp.example.com" in transport_security.allowed_hosts
+    assert "local-shell-mcp.example.com:443" in transport_security.allowed_hosts
+    assert (
+        "local-shell-mcp.example.com:*" not in transport_security.allowed_hosts
+    )
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
     search_meta = tools["search"].meta
@@ -45,6 +49,42 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert environment_meta is not None
     assert search_meta["securitySchemes"][0]["type"] == "noauth"
     assert environment_meta["securitySchemes"][0]["type"] == "oauth2"
+
+
+def test_transport_security_uses_exact_public_base_url_host(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://example.com:8443"
+    )
+    clear_settings_cache()
+
+    transport_security = _transport_security_settings()
+
+    assert "example.com:8443" in transport_security.allowed_hosts
+    assert "example.com" not in transport_security.allowed_hosts
+    assert "example.com:*" not in transport_security.allowed_hosts
+    assert "https://example.com:8443" in transport_security.allowed_origins
+    assert "https://example.com" not in transport_security.allowed_origins
+
+
+def test_transport_security_handles_default_ports_and_ipv6(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://[2001:db8::1]:443"
+    )
+    clear_settings_cache()
+
+    transport_security = _transport_security_settings()
+
+    assert "[2001:db8::1]" in transport_security.allowed_hosts
+    assert "[2001:db8::1]:443" in transport_security.allowed_hosts
+    assert "2001:db8::1:*" not in transport_security.allowed_hosts
+    assert "[2001:db8::1]:*" not in transport_security.allowed_hosts
+    assert "https://[2001:db8::1]" in transport_security.allowed_origins
 
 
 @pytest.mark.asyncio
