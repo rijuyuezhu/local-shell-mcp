@@ -395,7 +395,7 @@ def yaml_default(value: Any) -> Any:
     return value
 
 
-def argparse_type_for(name: str):  # noqa: ANN201
+def argparse_type_for(name: str):
     """Return an argparse type callable for a Settings field."""
     annotation = Settings.model_fields[name].annotation
     if annotation is int:

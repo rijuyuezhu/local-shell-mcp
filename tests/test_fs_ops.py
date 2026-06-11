@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.ops.fs_ops import (
     edit_text,
@@ -13,11 +13,12 @@ from local_shell_mcp.ops.fs_ops import (
     write_text,
 )
 from local_shell_mcp.ops.shell_ops import check_command_policy
+from tests.helpers import mcp_text, nested_mcp_text
 
 
 def test_write_read_edit(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     write_text("a.txt", "hello world")
     assert read_text("a.txt")["content"] == "hello world"
     edit_text("a.txt", "world", "mcp")
@@ -26,7 +27,7 @@ def test_write_read_edit(tmp_path, monkeypatch):
 
 def test_read_text_refuses_binary_without_decoding(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     payload = b"\x89PNG\r\n\x1a\n\x00binary"
     (tmp_path / "image.png").write_bytes(payload)
 
@@ -45,7 +46,7 @@ def test_read_text_binary_preview_is_explicit_and_limited(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02\x03\x04")
 
     result = read_text("blob.bin", binary_preview="hex", binary_preview_bytes=2)
@@ -58,10 +59,10 @@ def test_read_text_binary_preview_is_explicit_and_limited(
 
 def test_binary_preview_does_not_read_entire_file(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02\x03\x04")
 
-    def fail_read_bytes(self):  # noqa: ANN001, ARG001
+    def fail_read_bytes(self):
         raise AssertionError(
             "read_bytes should not be used for bounded previews"
         )
@@ -76,7 +77,7 @@ def test_binary_preview_does_not_read_entire_file(tmp_path, monkeypatch):
 def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES", "5")
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "long.txt").write_text("hello world", encoding="utf-8")
 
     result = read_text("long.txt")
@@ -92,10 +93,10 @@ def test_write_text_does_not_read_existing_file_before_overwrite(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "existing.txt").write_text("old", encoding="utf-8")
 
-    def fail_read_text(self, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ARG001
+    def fail_read_text(self, *args, **kwargs):
         raise AssertionError("write_text should not read old file contents")
 
     monkeypatch.setattr(Path, "read_text", fail_read_text)
@@ -109,7 +110,7 @@ def test_write_text_does_not_read_existing_file_before_overwrite(
 def test_edit_refuses_files_above_write_limit(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES", "5")
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "large.txt").write_text("hello world", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Refusing to edit"):
@@ -118,7 +119,7 @@ def test_edit_refuses_files_above_write_limit(tmp_path, monkeypatch):
 
 def test_edits_refuse_binary_files(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     original = b"abc\x00world"
     (tmp_path / "blob.bin").write_bytes(original)
 
@@ -139,11 +140,11 @@ async def test_fetch_omits_binary_content_from_text_field(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "blob.bin").write_bytes(b"abc\x00world")
 
     response = await build_mcp().call_tool("fetch", {"id": "blob.bin"})
-    payload = json.loads(response[0][0].text)
+    payload = json.loads(nested_mcp_text(response))
 
     assert payload["text"] == "Refusing to read binary file as text"
     assert payload["metadata"]["binary"] is True
@@ -154,14 +155,14 @@ async def test_fetch_omits_binary_content_from_text_field(
 async def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_READ_MANY_FILES", "1")
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "b.txt").write_text("b", encoding="utf-8")
 
     response = await build_mcp().call_tool(
         "read_many_files", {"paths": ["a.txt", "b.txt"]}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
 
     assert "Refusing to read 2 files; max is 1" in payload
 
@@ -169,7 +170,7 @@ async def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
 def test_reject_path_escape(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
     with pytest.raises(ValueError):
         resolve_path("/etc/passwd")
 
@@ -179,7 +180,7 @@ def test_full_container_mode_disables_builtin_restrictions(
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     settings = get_settings()
     assert settings.command_denylist == []

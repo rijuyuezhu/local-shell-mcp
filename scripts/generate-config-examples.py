@@ -8,12 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-from local_shell_mcp.config.registry import (  # noqa: E402,I001
+from local_shell_mcp.config.registry import (
     SECTION_ORDER,
     SETTING_SPECS,
     SettingSpec,
@@ -22,7 +17,6 @@ from local_shell_mcp.config.registry import (  # noqa: E402,I001
     validate_setting_specs,
     yaml_default,
 )
-
 
 DOCKER_ENTRYPOINT_SPECS: tuple[tuple[str, str, str], ...] = (
     (
@@ -171,9 +165,10 @@ def generate_yaml_example() -> str:
 
 def write_examples(*, check: bool) -> int:
     """Write generated files or check they are up to date."""
+    root = Path(__file__).resolve().parents[1]
     outputs = {
-        ROOT / ".env.example": generate_env_example(),
-        ROOT / "config.example.yaml": generate_yaml_example(),
+        root / ".env.example": generate_env_example(),
+        root / "config.example.yaml": generate_yaml_example(),
     }
     stale: list[Path] = []
     for path, content in outputs.items():
@@ -184,7 +179,7 @@ def write_examples(*, check: bool) -> int:
             path.write_text(content)
     if stale:
         for path in stale:
-            print(f"out of date: {path.relative_to(ROOT)}", file=sys.stderr)
+            print(f"out of date: {path.relative_to(root)}", file=sys.stderr)
         return 1
     return 0
 

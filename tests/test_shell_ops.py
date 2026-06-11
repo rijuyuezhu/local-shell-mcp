@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import local_shell_mcp.http_app as http_app_module
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.models import CommandResult
@@ -17,6 +17,7 @@ from local_shell_mcp.ops.shell_ops import (
 from local_shell_mcp.tools.registry import common as common_tools_module
 from local_shell_mcp.tools.registry import filesystem as fs_tools_module
 from local_shell_mcp.tools.registry import git as git_tools_module
+from tests.helpers import mcp_text
 
 
 @pytest.mark.asyncio
@@ -24,12 +25,12 @@ async def test_run_shell_tool_rejects_timeout_above_public_cap(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "run_shell_tool", {"command": "echo ok", "timeout_s": 3600}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
 
     assert "timeout_s must be <= 60 seconds for public run_shell" in payload
 
@@ -38,15 +39,15 @@ async def test_run_shell_tool_rejects_timeout_above_public_cap(
 async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
-    get_settings.cache_clear()
+    clear_settings_cache()
 
-    async def hanging_git_status(cwd: str = "."):  # noqa: ARG001
+    async def hanging_git_status(cwd: str = "."):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
 
     response = await build_mcp().call_tool("git_status_tool", {"cwd": "."})
-    payload = response[0].text
+    payload = mcp_text(response)
 
     assert "git_status_tool exceeded 0.01 second public tool timeout" in payload
 
@@ -55,9 +56,9 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setattr(http_app_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
-    get_settings.cache_clear()
+    clear_settings_cache()
 
-    async def hanging_git_status(cwd: str = "."):  # noqa: ARG001
+    async def hanging_git_status(cwd: str = "."):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
@@ -74,9 +75,9 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setattr(http_app_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
-    get_settings.cache_clear()
+    clear_settings_cache()
 
-    def blocking_list_dir(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+    def blocking_list_dir(*args, **kwargs):
         time.sleep(0.2)
         return []
 
@@ -94,16 +95,16 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
 async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
-    get_settings.cache_clear()
+    clear_settings_cache()
 
-    def blocking_list_dir(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+    def blocking_list_dir(*args, **kwargs):
         time.sleep(0.2)
         return []
 
     monkeypatch.setattr(fs_tools_module, "list_dir", blocking_list_dir)
 
     response = await build_mcp().call_tool("list_files", {"path": "."})
-    payload = response[0].text
+    payload = mcp_text(response)
 
     assert "list_files exceeded 0.01 second public tool timeout" in payload
 
@@ -113,14 +114,14 @@ def test_public_run_shell_timeout_uses_ten_second_default(
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_DEFAULT_TIMEOUT_S", "3600")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     assert public_run_shell_timeout(None) == 10
 
 
 def test_public_run_shell_timeout_allows_explicit_cap(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     assert public_run_shell_timeout(60) == 60
 
@@ -130,9 +131,9 @@ async def test_run_shell_timeout_includes_subprocess_spawn(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
-    async def hanging_spawn(command: str, cwd: str):  # noqa: ARG001
+    async def hanging_spawn(command: str, cwd: str):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
@@ -150,7 +151,7 @@ async def test_run_shell_timeout_includes_subprocess_spawn(
 @pytest.mark.asyncio
 async def test_run_shell_fast_command_succeeds(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     result = await run_shell("echo ok", timeout_s=5)
 
@@ -162,7 +163,7 @@ async def test_run_shell_fast_command_succeeds(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_run_shell_streams_and_bounds_large_output(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     result = await run_shell(
         "python3 -c 'import sys; sys.stdout.write(\"x\" * 200000)'",
@@ -180,7 +181,7 @@ async def test_run_shell_timeout_marks_result_and_cleans_up(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     result = await run_shell("sleep 30", timeout_s=1)
 
@@ -219,7 +220,7 @@ async def test_run_shell_filters_server_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "should-not-leak")
     monkeypatch.setenv("PYTHONPATH", "/app/src")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     result = await run_shell(
         "env | grep -E '^(PYTHONPATH|LOCAL_SHELL_MCP_)=' || true",

@@ -1,17 +1,19 @@
 import json
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
 
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
-from local_shell_mcp.tools.base import HttpToolRoute, ToolRegistry
+from local_shell_mcp.tools.base import HttpMethod, HttpToolRoute, ToolRegistry
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
     call_local_tool,
     local_tool_handlers,
 )
+from tests.helpers import mcp_text
 
 LOCAL_MCP_TOOL_NAMES = {
     "search",
@@ -99,7 +101,7 @@ async def test_mcp_local_and_remote_tool_surface_is_stable(
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     names = {tool.name for tool in await build_mcp().list_tools()}
 
@@ -112,7 +114,7 @@ async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     http_payload = (
         TestClient(build_http_app())
@@ -120,7 +122,7 @@ async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
         .json()
     )
     mcp_response = await build_mcp().call_tool("list_files", {"path": "."})
-    mcp_payload = json.loads(mcp_response[0].text)
+    mcp_payload = json.loads(mcp_text(mcp_response))
 
     assert http_payload == mcp_payload["data"]
 
@@ -130,7 +132,7 @@ async def test_http_git_status_matches_mcp_tool_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     TestClient(build_http_app()).post(
         "/tools/run_shell", json={"command": "git init"}
@@ -141,7 +143,7 @@ async def test_http_git_status_matches_mcp_tool_payload(tmp_path, monkeypatch):
         .json()
     )
     mcp_response = await build_mcp().call_tool("git_status_tool", {"cwd": "."})
-    mcp_payload = json.loads(mcp_response[0].text)["data"]
+    mcp_payload = json.loads(mcp_text(mcp_response))["data"]
 
     assert {k: v for k, v in http_payload.items() if k != "duration_ms"} == {
         k: v for k, v in mcp_payload.items() if k != "duration_ms"
@@ -152,7 +154,7 @@ def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = TestClient(build_http_app()).get(
         "/tools/todo", params={"tool_name": "shell_list"}
@@ -165,7 +167,11 @@ def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
 def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
     class RegistryWithUnsupportedRoute:
         def http_routes(self):
-            return [HttpToolRoute("PUT", "/tools/example", "todo_read_tool")]
+            return [
+                HttpToolRoute(
+                    cast(HttpMethod, "PUT"), "/tools/example", "todo_read_tool"
+                )
+            ]
 
     monkeypatch.setattr(
         "local_shell_mcp.http_app.discover_tool_registries",
@@ -209,3 +215,42 @@ def test_discovered_http_routes_have_registry_handlers():
     }
 
     assert route_tool_names <= set(local_tool_handlers())
+
+
+@pytest.mark.asyncio
+async def test_apply_patch_tool_creates_temp_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    (tmp_path / "target.txt").write_text("old\n", encoding="utf-8")
+
+    patch = """diff --git a/target.txt b/target.txt
+--- a/target.txt
++++ b/target.txt
+@@ -1 +1 @@
+-old
++new
+"""
+
+    payload = await call_local_tool("apply_patch", {"patch": patch, "cwd": "."})
+
+    assert payload["ok"] is True
+    assert (tmp_path / "target.txt").read_text(encoding="utf-8") == "new\n"
+
+
+@pytest.mark.asyncio
+async def test_run_python_tool_creates_temp_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    payload = await call_local_tool(
+        "run_python_tool", {"code": "print('py314')", "cwd": "."}
+    )
+
+    assert payload["ok"] is True
+    assert payload["stdout"] == "py314\n"

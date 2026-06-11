@@ -2,17 +2,19 @@ import json
 
 from local_shell_mcp.agent_bridge import (
     AgentBridgeManifest,
+    AgentDynamicToolsConfig,
+    AgentMcpServerConfig,
     _redact_text,
     load_agent_manifest,
     redact_mapping,
 )
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 
 
 def test_agent_config_dir_defaults_to_home_agent(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.delenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", raising=False)
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     settings = get_settings()
 
@@ -29,7 +31,7 @@ def test_agent_config_dir_env_override(monkeypatch, tmp_path):
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     assert get_settings().agent_config_dir == config_dir.resolve()
 
@@ -214,10 +216,12 @@ def test_redact_text_hides_standalone_high_confidence_tokens():
 
 def test_agent_bridge_manifest_populates_python_field_names():
     manifest = AgentBridgeManifest(
-        mcp_servers={
-            "github": {"type": "stdio", "command": "github-mcp-server"}
+        mcpServers={
+            "github": AgentMcpServerConfig(
+                type="stdio", command="github-mcp-server"
+            )
         },
-        dynamic_tools={"mcp": False, "skills": True},
+        dynamicTools=AgentDynamicToolsConfig(mcp=False, skills=True),
     )
 
     assert manifest.mcp_servers["github"].command == "github-mcp-server"

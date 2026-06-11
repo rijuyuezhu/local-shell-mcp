@@ -3,13 +3,14 @@ import json
 import pytest
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.tools.registry import agent as tools_module
+from tests.helpers import mcp_text
 
 
-def _payload(response):  # noqa: ANN001
-    return json.loads(response[0].text)
+def _payload(response):
+    return json.loads(mcp_text(response))
 
 
 REALISTIC_SECRET_ERROR = (
@@ -90,7 +91,7 @@ async def test_fixed_bridge_tools_exist_with_missing_config(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agent-config")
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tools = {tool.name for tool in await mcp.list_tools()}
@@ -113,10 +114,10 @@ async def test_agent_config_status_reports_missing_config(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agent-config")
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
-    payload = response[0].text
+    payload = mcp_text(response)
 
     assert "missing_config" in payload
 
@@ -143,12 +144,12 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             raise RuntimeError(
                 f"{REALISTIC_SECRET_ERROR} {CONFIGURED_VALUE_ERROR}"
             )
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise AssertionError("unavailable server should not be called")
 
     monkeypatch.setattr(
@@ -160,10 +161,10 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
-    payload = response[0].text
+    payload = mcp_text(response)
 
     _assert_realistic_secret_values_redacted(payload)
     _assert_configured_values_redacted(payload)
@@ -198,10 +199,10 @@ async def test_agent_config_status_redacts_env_and_header_values(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
-    payload = response[0].text
+    payload = mcp_text(response)
     server = _payload(response)["data"]["mcp_servers"]["off"]
 
     assert env_token not in payload
@@ -234,10 +235,10 @@ async def test_agent_config_status_redacts_serialized_configured_values(
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             raise RuntimeError(SERIALIZED_CONFIGURED_VALUE_ERROR)
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise AssertionError("unavailable server should not be called")
 
     monkeypatch.setattr(
@@ -249,10 +250,10 @@ async def test_agent_config_status_redacts_serialized_configured_values(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
-    payload = response[0].text
+    payload = mcp_text(response)
     message = _payload(response)["data"]["mcp_servers"]["bad"]["error"]
 
     _assert_serialized_configured_values_redacted(payload, message)
@@ -275,12 +276,12 @@ async def test_activate_agent_skill_returns_skill_content(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "activate_agent_skill", {"name": "debugging"}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
 
     assert "Find root causes." in payload
     assert "skills/debugging/SKILL.md" in payload
@@ -315,7 +316,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
             self.list_calls = []
             self.call_calls = []
 
-        async def list_tools(self, name, server):  # noqa: ANN001
+        async def list_tools(self, name, server):
             self.list_calls.append((name, server.url))
             if name == "bad":
                 raise RuntimeError("probe failed")
@@ -330,7 +331,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001
+        async def call_tool(self, name, server, tool, args):
             self.call_calls.append((name, server.url, tool, args))
             return {"server": name, "tool": tool, "args": args}
 
@@ -342,7 +343,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
 
@@ -442,7 +443,7 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             raise RuntimeError(
                 "Authorization: Bearer super-secret --token super-secret "
                 "https://example.com?token=super-secret "
@@ -454,7 +455,7 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
                 f"{CONFIGURED_VALUE_ERROR}"
             )
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise AssertionError("unavailable server should not be called")
 
     monkeypatch.setattr(
@@ -466,12 +467,12 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "call_agent_mcp_tool", {"server": "bad", "tool": "search", "args": {}}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
 
     assert "super-secret" not in payload
     assert "<redacted>" in payload
@@ -500,7 +501,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search",
@@ -509,7 +510,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise RuntimeError(
                 f"{REALISTIC_SECRET_ERROR} {CONFIGURED_VALUE_ERROR}"
             )
@@ -523,12 +524,12 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
 
     _assert_realistic_secret_values_redacted(payload)
     _assert_configured_values_redacted(payload)
@@ -558,14 +559,14 @@ async def test_call_agent_mcp_tool_redacts_serialized_configured_values(
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search", description="Search docs", input_schema={}
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise RuntimeError(SERIALIZED_CONFIGURED_VALUE_ERROR)
 
     monkeypatch.setattr(
@@ -577,12 +578,12 @@ async def test_call_agent_mcp_tool_redacts_serialized_configured_values(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
     message = _payload(response)["data"]["message"]
 
     _assert_serialized_configured_values_redacted(payload, message)
@@ -610,14 +611,14 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
     )
 
     class ErrorPayloadMcpManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search", description="Search docs", input_schema={}
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             return {
                 "is_error": True,
                 "content": [
@@ -650,12 +651,12 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
     data = _payload(response)["data"]
 
     assert data["is_error"] is True
@@ -697,7 +698,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
         def __init__(self):
             self.call_calls = []
 
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name=upstream_tool_name,
@@ -719,7 +720,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             self.call_calls.append((name, tool, args))
             return {"ok": True}
 
@@ -731,7 +732,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     rows = _payload(await mcp.call_tool("list_agent_mcp_tools", {}))["data"][
@@ -780,7 +781,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
 
 
 class FakeDynamicMcpManager:
-    async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+    async def list_tools(self, name, server):
         if name == "docs":
             return [
                 AgentMcpTool(
@@ -794,7 +795,7 @@ class FakeDynamicMcpManager:
             ]
         return []
 
-    async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+    async def call_tool(self, name, server, tool, args):
         return {
             "server": name,
             "tool": tool,
@@ -820,14 +821,14 @@ async def test_dynamic_skill_tool_is_visible_and_callable(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tools = {tool.name for tool in await mcp.list_tools()}
 
     assert "activate_skill__paper_writer" in tools
     response = await mcp.call_tool("activate_skill__paper_writer", {})
-    assert "Draft papers." in response[0].text
+    assert "Draft papers." in mcp_text(response)
 
 
 @pytest.mark.asyncio
@@ -854,7 +855,7 @@ async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
         "AgentMcpClientManager",
         lambda timeout: FakeDynamicMcpManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}
@@ -863,7 +864,7 @@ async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
     response = await mcp.call_tool(
         "agent_mcp__docs__search", {"args": {"query": "abc"}}
     )
-    assert "abc" in response[0].text
+    assert "abc" in mcp_text(response)
 
 
 @pytest.mark.asyncio
@@ -890,7 +891,7 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
     )
 
     class FailingDynamicMcpManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search",
@@ -899,7 +900,7 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise RuntimeError(CONFIGURED_VALUE_ERROR)
 
     monkeypatch.setenv(
@@ -911,12 +912,12 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
         "AgentMcpClientManager",
         lambda timeout: FailingDynamicMcpManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "agent_mcp__docs__search", {"args": {}}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
 
     _assert_configured_values_redacted(payload)
 
@@ -943,14 +944,14 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
     )
 
     class ErrorPayloadDynamicMcpManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search", description="Search docs", input_schema={}
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             return {
                 "is_error": True,
                 "content": [
@@ -983,12 +984,12 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
         "AgentMcpClientManager",
         lambda _timeout: ErrorPayloadDynamicMcpManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "agent_mcp__docs__search", {"args": {}}
     )
-    payload = response[0].text
+    payload = mcp_text(response)
     data = _payload(response)["data"]
 
     assert data["is_error"] is True
@@ -1031,7 +1032,7 @@ async def test_build_mcp_respects_manifest_dynamic_tool_disable(
         "AgentMcpClientManager",
         lambda timeout: FakeDynamicMcpManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}
@@ -1059,7 +1060,7 @@ async def test_agent_bridge_hot_reloads_dynamic_skill_tools(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}
@@ -1076,7 +1077,7 @@ async def test_agent_bridge_hot_reloads_dynamic_skill_tools(
     assert "activate_skill__paper_writer" in tool_names
     assert "activate_skill__debugging" in tool_names
     response = await mcp.call_tool("activate_skill__debugging", {})
-    assert "Find root causes." in response[0].text
+    assert "Find root causes." in mcp_text(response)
 
     (skill_dir / "SKILL.md").unlink()
     tool_names = {tool.name for tool in await mcp.list_tools()}
@@ -1096,14 +1097,14 @@ async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
         def __init__(self):
             self.call_calls = []
 
-        async def list_tools(self, name, server):  # noqa: ANN001
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search", description=f"Search {name}", input_schema={}
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001
+        async def call_tool(self, name, server, tool, args):
             self.call_calls.append((name, server.url, tool, args))
             return {
                 "server": name,
@@ -1120,7 +1121,7 @@ async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tools_module, "AgentMcpClientManager", lambda _timeout: fake_manager
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}

@@ -396,7 +396,7 @@ async def oauth_token(request: Request) -> JSONResponse:
     form = await request.form()
     grant_type = str(form.get("grant_type") or "")
     if grant_type != "authorization_code":
-        return _oauth_error(UnsupportedGrantTypeError())
+        return _oauth_error(UnsupportedGrantTypeError(grant_type=grant_type))
     code = str(form.get("code") or "")
     client_id = str(form.get("client_id") or "")
     redirect_uri = str(form.get("redirect_uri") or "")
@@ -420,7 +420,7 @@ async def oauth_token(request: Request) -> JSONResponse:
         client_id=client_id, scope=code_obj.scope, resource=code_obj.resource
     )
     audit("oauth_token_issued", client_id=client_id, resource=code_obj.resource)
-    body = {
+    body: dict[str, Any] = {
         "access_token": token,
         "token_type": "Bearer",
         "scope": code_obj.scope,

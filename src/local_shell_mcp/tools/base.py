@@ -9,7 +9,7 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
+type ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
 type HttpMethod = Literal["GET", "POST"]
 
@@ -31,8 +31,8 @@ class McpToolContext:
     read_only_tool: ToolAnnotations
     read_only_meta: dict[str, Any]
     oauth_meta: dict[str, Any]
-    ok: Callable[[Any, str], dict]
-    handled_error: Callable[[Exception], dict]
+    ok: Callable[[Any, str], dict[str, Any]]
+    handled_error: Callable[[Exception], dict[str, Any]]
 
 
 class ToolRegistry:

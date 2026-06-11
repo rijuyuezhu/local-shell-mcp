@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import asdict, is_dataclass
 from typing import Any
@@ -19,8 +19,8 @@ from . import (
     redact_mapping,
 )
 
-OkFn = Callable[..., dict[str, Any]]
-HandledErrorFn = Callable[[Exception], dict[str, Any]]
+type OkFn = Callable[..., dict[str, Any]]
+type HandledErrorFn = Callable[[Exception], dict[str, Any]]
 
 
 def _tool_value(source: Any, name: str, default: Any = None) -> Any:
@@ -38,10 +38,12 @@ def _tool_row(
     dynamic_tool_name: str | None = None,
 ) -> dict[str, Any]:
     """Convert an upstream MCP tool into a redacted status row with schema and dynamic-name metadata."""
+    model_dump = getattr(tool, "model_dump", None)
     if is_dataclass(tool) and not isinstance(tool, type):
         data = asdict(tool)
-    elif hasattr(tool, "model_dump"):
-        data = tool.model_dump(mode="json")
+    elif callable(model_dump):
+        dumped = model_dump(mode="json")
+        data = dumped if isinstance(dumped, Mapping) else {}
     elif isinstance(tool, dict):
         data = tool
     else:
@@ -203,7 +205,7 @@ class AgentBridgeToolReloader:
         self._dynamic_tool_names.clear()
 
 
-def make_skill_handler(reloader: AgentBridgeToolReloader, skill_name: str):  # noqa: ANN202
+def make_skill_handler(reloader: AgentBridgeToolReloader, skill_name: str):
     """Create a FastMCP handler that activates one discovered skill from the current registry."""
 
     async def handler() -> dict:
@@ -219,7 +221,7 @@ def make_skill_handler(reloader: AgentBridgeToolReloader, skill_name: str):  # n
 
 def make_mcp_handler(
     reloader: AgentBridgeToolReloader, server_name: str, tool_name: str
-):  # noqa: ANN202
+):
     """Create a FastMCP handler that proxies one upstream MCP tool with redacted arguments and errors."""
 
     async def handler(args: dict[str, Any] | None = None) -> dict:
@@ -256,11 +258,11 @@ def _install_agent_bridge_reload_hooks(
     original_list_tools = mcp.list_tools
     original_call_tool = mcp.call_tool
 
-    async def list_tools_with_agent_reload():  # noqa: ANN202
+    async def list_tools_with_agent_reload():
         reloader.refresh_if_needed()
         return await original_list_tools()
 
-    async def call_tool_with_agent_reload(name: str, arguments: dict[str, Any]):  # noqa: ANN202
+    async def call_tool_with_agent_reload(name: str, arguments: dict[str, Any]):
         reloader.refresh_if_needed()
         return await original_call_tool(name, arguments)
 

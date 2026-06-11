@@ -9,12 +9,11 @@ license-files = ["LICENSE"]
 authors = [{ name = "local-shell-mcp contributors" }]
 keywords = ["mcp", "chatgpt", "shell", "coding-agent"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Environment :: Web Environment",
-  "Intended Audience :: Developers",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "aiofiles>=25.1.0",
@@ -34,6 +33,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.0",
+    "pyright>=1.1.410",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.16",
@@ -63,3 +63,7 @@ ignore = ["E501"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"

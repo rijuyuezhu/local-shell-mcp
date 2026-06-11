@@ -45,12 +45,13 @@ async def grep(
         data = obj.get("data", {})
         submatches = data.get("submatches") or [{}]
         first = submatches[0]
+        first_start = first.get("start")
         matches.append(
             {
                 "path": data.get("path", {}).get("text"),
                 "line": data.get("line_number"),
-                "column": first.get("start") + 1
-                if first.get("start") is not None
+                "column": first_start + 1
+                if isinstance(first_start, int)
                 else None,
                 "text": data.get("lines", {}).get("text", "").rstrip("\n"),
             }
@@ -101,7 +102,7 @@ def tree_sync(cwd: str = ".", depth: int = 3, max_entries: int = 500) -> dict:
     count = 0
     truncated = False
 
-    def walk(directory, current_depth: int) -> None:  # noqa: ANN001
+    def walk(directory, current_depth: int) -> None:
         nonlocal count, truncated
         if current_depth >= depth or count >= limit:
             return

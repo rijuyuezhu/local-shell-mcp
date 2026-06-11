@@ -154,7 +154,7 @@ class Settings(BaseSettings):
 
     @field_validator("command_denylist", "path_denylist", mode="before")
     @classmethod
-    def split_csv_fields(cls, value):  # noqa: ANN001
+    def split_csv_fields(cls, value):
         """Normalize comma-delimited restriction lists supplied through environment variables."""
         return _split_csv(value)
 
@@ -269,10 +269,6 @@ def clear_settings_cache() -> None:
     """Clear cached settings. Intended for tests and CLI reconfiguration."""
     global _configured_settings
     _configured_settings = None
-
-
-# Backwards-compatible test helper: many tests call get_settings.cache_clear().
-get_settings.cache_clear = clear_settings_cache  # type: ignore[attr-defined]
 
 
 def safe_settings_dump(settings: Settings | None = None) -> dict:

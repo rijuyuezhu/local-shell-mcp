@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from starlette.applications import Starlette
 from starlette.routing import Route
 
@@ -5,7 +7,7 @@ import local_shell_mcp.mcp_app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
 
 
-async def _ok(request):  # noqa: ANN001
+async def _ok(request):
     return None
 
 
@@ -29,7 +31,7 @@ def test_build_mcp_http_app_wraps_mcp_with_oauth_routes():
         Settings(mode="mcp", auth_mode="none", remote_enabled=False)
     )
 
-    app = mcp_app.build_mcp_http_app(_DummyMcp())
+    app = mcp_app.build_mcp_http_app(cast(Any, _DummyMcp()))
 
     assert app is not None
     paths = _route_paths(app)
@@ -47,7 +49,7 @@ def test_build_mcp_http_app_includes_remote_routes_when_enabled():
         Settings(mode="mcp", auth_mode="none", remote_enabled=True)
     )
 
-    app = mcp_app.build_mcp_http_app(_DummyMcp())
+    app = mcp_app.build_mcp_http_app(cast(Any, _DummyMcp()))
 
     assert app is not None
     paths = _route_paths(app)

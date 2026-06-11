@@ -1,6 +1,6 @@
 import pytest
 
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.search_ops import tree
 from local_shell_mcp.tools.registry.common import handled_error
 
@@ -8,7 +8,7 @@ from local_shell_mcp.tools.registry.common import handled_error
 @pytest.mark.asyncio
 async def test_tree_reports_existing_directory(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "project" / "src").mkdir(parents=True)
     (tmp_path / "project" / "README.md").write_text("hello", encoding="utf-8")
 
@@ -26,7 +26,7 @@ async def test_tree_clamps_entries_without_sorting_entire_tree(
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TREE_ENTRIES", "3")
-    get_settings.cache_clear()
+    clear_settings_cache()
     for idx in range(10):
         (tmp_path / f"file-{idx}.txt").write_text("x", encoding="utf-8")
 
@@ -42,7 +42,7 @@ async def test_tree_returns_context_for_missing_directory(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "actual").mkdir()
 
     result = await tree("missing/project")
@@ -56,7 +56,7 @@ async def test_tree_returns_context_for_missing_directory(
 
 def test_tool_error_returns_successful_not_found_result(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+    clear_settings_cache()
     (tmp_path / "actual").mkdir()
 
     result = handled_error(

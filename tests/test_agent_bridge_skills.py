@@ -148,7 +148,7 @@ def test_scan_agent_skills_warns_when_directory_iteration_fails(
     skills_dir.mkdir()
     original_iterdir = Path.iterdir
 
-    def fail_iterdir(path):  # noqa: ANN001
+    def fail_iterdir(path):
         if path == skills_dir:
             raise OSError("racing directory")
         return original_iterdir(path)
@@ -168,7 +168,7 @@ def test_scan_agent_skills_warns_when_skills_dir_resolution_fails(
 ):
     original_resolve = Path.resolve
 
-    def fail_resolve(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+    def fail_resolve(path, *args, **kwargs):
         if path == tmp_path / "skills":
             raise RuntimeError("symlink loop")
         return original_resolve(path, *args, **kwargs)
@@ -198,7 +198,7 @@ def test_scan_agent_skills_skips_unreadable_skill_and_continues(
     )
     original_read_text = Path.read_text
 
-    def fail_read_text(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+    def fail_read_text(path, *args, **kwargs):
         if path == broken_dir / "SKILL.md":
             raise OSError("unreadable skill")
         return original_read_text(path, *args, **kwargs)
@@ -221,7 +221,7 @@ def test_scan_agent_skills_warns_when_related_file_scan_fails(
     )
     original_rglob = Path.rglob
 
-    def fail_rglob(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+    def fail_rglob(path, *args, **kwargs):
         if path == skill_dir:
             raise OSError("rglob failed")
         return original_rglob(path, *args, **kwargs)

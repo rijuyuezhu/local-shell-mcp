@@ -88,7 +88,7 @@ def build_http_app() -> FastAPI:
         app.add_middleware(AuthMiddleware)
 
     @app.exception_handler(ValueError)
-    async def value_error_handler(request: Request, exc: ValueError):  # noqa: ARG001
+    async def value_error_handler(request: Request, exc: ValueError):
         return JSONResponse(
             status_code=400,
             content={
@@ -99,21 +99,21 @@ def build_http_app() -> FastAPI:
         )
 
     @app.exception_handler(KeyError)
-    async def key_error_handler(request: Request, exc: KeyError):  # noqa: ARG001
+    async def key_error_handler(request: Request, exc: KeyError):
         return JSONResponse(
             status_code=404,
             content={"ok": False, "error": "unknown_tool", "message": str(exc)},
         )
 
     @app.exception_handler(HTTPException)
-    async def http_error_handler(request: Request, exc: HTTPException):  # noqa: ARG001
+    async def http_error_handler(request: Request, exc: HTTPException):
         return JSONResponse(
             status_code=exc.status_code,
             content={"ok": False, "error": "http_error", "message": exc.detail},
         )
 
     @app.middleware("http")
-    async def tools_timeout_middleware(request: Request, call_next):  # noqa: ANN001
+    async def tools_timeout_middleware(request: Request, call_next):
         if not request.url.path.startswith("/tools/"):
             return await call_next(request)
         try:
