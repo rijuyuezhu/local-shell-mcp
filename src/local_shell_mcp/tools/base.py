@@ -4,19 +4,21 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
+type HttpMethod = Literal["GET", "POST"]
+
 
 @dataclass(frozen=True)
 class HttpToolRoute:
     """HTTP endpoint metadata for a tool exposed through the REST adapter."""
 
-    method: str
+    method: HttpMethod
     path: str
     tool_name: str
 

@@ -30,11 +30,6 @@ def principal_dep(request: Request) -> Principal:
 PRINCIPAL_DEP = Depends(principal_dep)
 
 
-def _tool_body(body: dict[str, Any] | None) -> dict[str, Any]:
-    """Normalize absent HTTP request bodies to the empty tool argument set."""
-    return body or {}
-
-
 def _register_http_tool_routes(app: FastAPI) -> None:
     """Register REST tool endpoints from the shared local tool routing table."""
     routes = [
@@ -56,7 +51,7 @@ def _register_http_tool_routes(app: FastAPI) -> None:
 
 def _make_get_tool_handler(tool_name: str):
     async def get_handler(_: Principal = PRINCIPAL_DEP):
-        return await call_local_tool(tool_name, {})
+        return await call_local_tool(tool_name, None)
 
     return get_handler
 
@@ -66,7 +61,7 @@ def _make_post_tool_handler(tool_name: str):
         body: dict[str, Any] | None = None,
         _: Principal = PRINCIPAL_DEP,
     ):
-        return await call_local_tool(tool_name, _tool_body(body))
+        return await call_local_tool(tool_name, body)
 
     return post_handler
 
