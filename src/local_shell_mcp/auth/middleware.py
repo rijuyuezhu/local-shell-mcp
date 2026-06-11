@@ -103,27 +103,28 @@ def _verify_oauth(request: Request, settings: Settings) -> Principal:
 def verify_request(request: Request) -> Principal:
     """Resolve the effective principal for a request according to configured auth mode and local bypass rules."""
     settings = get_settings()
-    if settings.auth_mode == "none":
-        return Principal(
-            email=None, subject="anonymous", claims={"auth": "none"}
-        )
-    if (
-        settings.auth_bypass_localhost
-        and _is_localhost(request)
-        and settings.mode == "http"
-    ):
-        return Principal(
-            email="localhost",
-            subject="localhost",
-            claims={"auth": "localhost-bypass"},
-        )
-    if settings.auth_mode == "oauth":
-        principal = _verify_oauth(request, settings)
-    else:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unsupported auth_mode: {settings.auth_mode}",
-        )
+    match settings.auth_mode:
+        case "none":
+            return Principal(
+                email=None, subject="anonymous", claims={"auth": "none"}
+            )
+        case "oauth" if (
+            settings.auth_bypass_localhost
+            and _is_localhost(request)
+            and settings.mode == "http"
+        ):
+            return Principal(
+                email="localhost",
+                subject="localhost",
+                claims={"auth": "localhost-bypass"},
+            )
+        case "oauth":
+            principal = _verify_oauth(request, settings)
+        case _:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unsupported auth_mode: {settings.auth_mode}",
+            )
     audit(
         "auth_ok",
         subject=principal.subject,

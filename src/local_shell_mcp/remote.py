@@ -585,166 +585,177 @@ async def _run_python(
 
 async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
     """Dispatch a remote-worker tool call to the corresponding filesystem, shell, git, browser, or session helper."""
-    if tool == "environment_info":
-        result = await run_shell(
-            "uname -a; echo '---'; id; echo '---'; pwd; echo '---'; python3 --version; git --version",
-            cwd=".",
-            timeout_s=10,
-        )
-        return {"settings": safe_settings_dump(), "probe": result.model_dump()}
-    if tool == "run_shell_tool":
-        return (
-            await public_run_shell(
-                args["command"],
-                args.get("cwd", "."),
-                args.get("timeout_s"),
-                args.get("max_output_bytes"),
+    match tool:
+        case "environment_info":
+            result = await run_shell(
+                "uname -a; echo '---'; id; echo '---'; pwd; echo '---'; python3 --version; git --version",
+                cwd=".",
+                timeout_s=10,
             )
-        ).model_dump()
-    if tool == "run_python_tool":
-        return await _run_python(
-            args["code"], args.get("cwd", "."), args.get("timeout_s", 60)
-        )
-    if tool == "shell_start":
-        return await start_shell(
-            args.get("cwd", "."), args.get("name"), args.get("command")
-        )
-    if tool == "shell_send":
-        return await send_shell(
-            args["session_id"], args["input_text"], args.get("enter", True)
-        )
-    if tool == "shell_read":
-        return await read_shell(args["session_id"], args.get("lines", 200))
-    if tool == "shell_kill":
-        return await kill_shell(args["session_id"])
-    if tool == "shell_list":
-        return await list_shells()
-    if tool == "list_files":
-        return await _to_thread(
-            list_dir,
-            args.get("path", "."),
-            args.get("recursive", False),
-            args.get("max_entries", 500),
-        )
-    if tool == "tree_view":
-        return await tree(
-            args.get("cwd", "."),
-            args.get("depth", 3),
-            args.get("max_entries", 500),
-        )
-    if tool == "glob_search":
-        return {
-            "paths": await _to_thread(
-                glob_paths,
-                args["pattern"],
-                args.get("cwd", "."),
-                args.get("max_results", 500),
+            return {
+                "settings": safe_settings_dump(),
+                "probe": result.model_dump(),
+            }
+        case "run_shell_tool":
+            return (
+                await public_run_shell(
+                    args["command"],
+                    args.get("cwd", "."),
+                    args.get("timeout_s"),
+                    args.get("max_output_bytes"),
+                )
+            ).model_dump()
+        case "run_python_tool":
+            return await _run_python(
+                args["code"], args.get("cwd", "."), args.get("timeout_s", 60)
             )
-        }
-    if tool == "grep_search":
-        return await grep(
-            args["query"],
-            args.get("cwd", "."),
-            args.get("glob"),
-            args.get("regex", True),
-            args.get("case_sensitive", True),
-            args.get("max_results"),
-        )
-    if tool == "read_file":
-        return await _to_thread(
-            read_text,
-            args["path"],
-            args.get("start_line"),
-            args.get("end_line"),
-            args.get("binary_preview"),
-            args.get("binary_preview_bytes", 256),
-        )
-    if tool == "read_many_files":
-        return await _to_thread(
-            _read_many_files_sync,
-            args["paths"],
-            args.get("start_line"),
-            args.get("end_line"),
-            args.get("binary_preview"),
-            args.get("binary_preview_bytes", 256),
-        )
-    if tool == "write_file":
-        return await _to_thread(
-            write_text,
-            args["path"],
-            args["content"],
-            args.get("overwrite", True),
-        )
-    if tool == "edit_file":
-        return await _to_thread(
-            edit_text,
-            args["path"],
-            args["old"],
-            args["new"],
-            args.get("replace_all", False),
-        )
-    if tool == "multi_edit_file":
-        return await _to_thread(multi_edit_text, args["path"], args["edits"])
-    if tool == "delete_file_or_dir":
-        return await _to_thread(
-            delete_path, args["path"], args.get("recursive", False)
-        )
-    if tool == "apply_patch":
-        return await _apply_patch_text(args["patch"], args.get("cwd", "."))
-    if tool == "git_clone_tool":
-        return await git_clone(
-            args["repo_url"],
-            args.get("dest"),
-            args.get("branch"),
-            args.get("cwd", "."),
-        )
-    if tool == "git_status_tool":
-        return await git_status(args.get("cwd", "."))
-    if tool == "git_diff_tool":
-        return await git_diff(
-            args.get("cwd", "."),
-            args.get("staged", False),
-            args.get("path"),
-            args.get("stat", False),
-        )
-    if tool == "git_log_tool":
-        return await git_log(args.get("cwd", "."), args.get("max_count", 20))
-    if tool == "git_checkout_tool":
-        return await git_checkout(
-            args["cwd"], args["ref"], args.get("create", False)
-        )
-    if tool == "git_fetch_tool":
-        return await git_fetch(
-            args.get("cwd", "."),
-            args.get("remote", "origin"),
-            args.get("prune", True),
-        )
-    if tool == "git_pull_tool":
-        return await git_pull(args.get("cwd", "."), args.get("ff_only", True))
-    if tool == "git_add_tool":
-        return await git_add(args.get("cwd", "."), args.get("paths"))
-    if tool == "git_commit_tool":
-        return await git_commit(
-            args["cwd"], args["message"], args.get("all_changes", False)
-        )
-    if tool == "git_push_tool":
-        return await git_push(
-            args["cwd"],
-            args.get("remote", "origin"),
-            args.get("branch"),
-            args.get("set_upstream", True),
-        )
-    if tool == "git_show_tool":
-        return await git_show(
-            args.get("cwd", "."), args.get("ref", "HEAD"), args.get("path")
-        )
-    if tool == "git_reset_tool":
-        return await git_reset(
-            args.get("cwd", "."),
-            args.get("mode", "soft"),
-            args.get("ref", "HEAD"),
-        )
-    raise ValueError(f"unsupported remote worker tool: {tool}")
+        case "shell_start":
+            return await start_shell(
+                args.get("cwd", "."), args.get("name"), args.get("command")
+            )
+        case "shell_send":
+            return await send_shell(
+                args["session_id"], args["input_text"], args.get("enter", True)
+            )
+        case "shell_read":
+            return await read_shell(args["session_id"], args.get("lines", 200))
+        case "shell_kill":
+            return await kill_shell(args["session_id"])
+        case "shell_list":
+            return await list_shells()
+        case "list_files":
+            return await _to_thread(
+                list_dir,
+                args.get("path", "."),
+                args.get("recursive", False),
+                args.get("max_entries", 500),
+            )
+        case "tree_view":
+            return await tree(
+                args.get("cwd", "."),
+                args.get("depth", 3),
+                args.get("max_entries", 500),
+            )
+        case "glob_search":
+            return {
+                "paths": await _to_thread(
+                    glob_paths,
+                    args["pattern"],
+                    args.get("cwd", "."),
+                    args.get("max_results", 500),
+                )
+            }
+        case "grep_search":
+            return await grep(
+                args["query"],
+                args.get("cwd", "."),
+                args.get("glob"),
+                args.get("regex", True),
+                args.get("case_sensitive", True),
+                args.get("max_results"),
+            )
+        case "read_file":
+            return await _to_thread(
+                read_text,
+                args["path"],
+                args.get("start_line"),
+                args.get("end_line"),
+                args.get("binary_preview"),
+                args.get("binary_preview_bytes", 256),
+            )
+        case "read_many_files":
+            return await _to_thread(
+                _read_many_files_sync,
+                args["paths"],
+                args.get("start_line"),
+                args.get("end_line"),
+                args.get("binary_preview"),
+                args.get("binary_preview_bytes", 256),
+            )
+        case "write_file":
+            return await _to_thread(
+                write_text,
+                args["path"],
+                args["content"],
+                args.get("overwrite", True),
+            )
+        case "edit_file":
+            return await _to_thread(
+                edit_text,
+                args["path"],
+                args["old"],
+                args["new"],
+                args.get("replace_all", False),
+            )
+        case "multi_edit_file":
+            return await _to_thread(
+                multi_edit_text, args["path"], args["edits"]
+            )
+        case "delete_file_or_dir":
+            return await _to_thread(
+                delete_path, args["path"], args.get("recursive", False)
+            )
+        case "apply_patch":
+            return await _apply_patch_text(args["patch"], args.get("cwd", "."))
+        case "git_clone_tool":
+            return await git_clone(
+                args["repo_url"],
+                args.get("dest"),
+                args.get("branch"),
+                args.get("cwd", "."),
+            )
+        case "git_status_tool":
+            return await git_status(args.get("cwd", "."))
+        case "git_diff_tool":
+            return await git_diff(
+                args.get("cwd", "."),
+                args.get("staged", False),
+                args.get("path"),
+                args.get("stat", False),
+            )
+        case "git_log_tool":
+            return await git_log(
+                args.get("cwd", "."), args.get("max_count", 20)
+            )
+        case "git_checkout_tool":
+            return await git_checkout(
+                args["cwd"], args["ref"], args.get("create", False)
+            )
+        case "git_fetch_tool":
+            return await git_fetch(
+                args.get("cwd", "."),
+                args.get("remote", "origin"),
+                args.get("prune", True),
+            )
+        case "git_pull_tool":
+            return await git_pull(
+                args.get("cwd", "."), args.get("ff_only", True)
+            )
+        case "git_add_tool":
+            return await git_add(args.get("cwd", "."), args.get("paths"))
+        case "git_commit_tool":
+            return await git_commit(
+                args["cwd"], args["message"], args.get("all_changes", False)
+            )
+        case "git_push_tool":
+            return await git_push(
+                args["cwd"],
+                args.get("remote", "origin"),
+                args.get("branch"),
+                args.get("set_upstream", True),
+            )
+        case "git_show_tool":
+            return await git_show(
+                args.get("cwd", "."), args.get("ref", "HEAD"), args.get("path")
+            )
+        case "git_reset_tool":
+            return await git_reset(
+                args.get("cwd", "."),
+                args.get("mode", "soft"),
+                args.get("ref", "HEAD"),
+            )
+        case _:
+            raise ValueError(f"unsupported remote worker tool: {tool}")
 
 
 def worker_capabilities() -> list[str]:

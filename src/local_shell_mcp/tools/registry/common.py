@@ -35,12 +35,12 @@ from ...ops.shell_ops import (
 )
 
 
-def ok_response(data: Any = None, message: str = "") -> dict:
+def ok_response(data: Any = None, message: str = "") -> dict[str, Any]:
     """Wrap successful tool data in the response envelope used by MCP handlers."""
     return {"ok": True, "message": message, "data": data}
 
 
-def handled_error(exc: Exception) -> dict:
+def handled_error(exc: Exception) -> dict[str, Any]:
     """Convert expected operational exceptions into user-visible tool error payloads."""
     audit("tool_error", error=repr(exc))
     if isinstance(exc, FileNotFoundError) and str(exc):
@@ -88,7 +88,7 @@ async def apply_patch_text(patch: str, cwd: str = ".") -> dict:
     _assert_text_input_size("patch", patch)
     await to_thread(prune_temp_dir)
     patch_path = temp_dir() / f"patch-{uuid.uuid4().hex}.diff"
-    patch_path.parent.mkdir(parents=True, existok_response=True)
+    patch_path.parent.mkdir(parents=True, exist_ok=True)
     await to_thread(patch_path.write_text, patch, encoding="utf-8")
     quoted = shlex.quote(str(patch_path))
     result = await run_shell(
@@ -107,7 +107,7 @@ async def run_python_script(
     _assert_text_input_size("Python script", code)
     await to_thread(prune_temp_dir)
     path = temp_dir() / f"script-{uuid.uuid4().hex}.py"
-    path.parent.mkdir(parents=True, existok_response=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     await to_thread(path.write_text, code, encoding="utf-8")
     result = await run_shell(
         f"python3 {shlex.quote(str(path))}",
@@ -146,25 +146,29 @@ def security_meta(schemes: list[dict[str, Any]]) -> dict[str, Any]:
     return {"securitySchemes": schemes}
 
 
-def _timeout_payload_for_tool(tool_name: str, exc: Exception) -> dict | str:
+def _timeout_payload_for_tool(
+    tool_name: str, exc: Exception
+) -> dict[str, Any] | str:
     """Build an actionable timeout payload that reports limits and next-step guidance for the failed tool."""
-    if tool_name == "search":
-        return json.dumps({"results": []}, ensure_ascii=False)
-    if tool_name == "fetch":
-        return json.dumps(
-            {
-                "id": "",
-                "title": "",
-                "text": str(exc),
-                "url": "file:///workspace/",
-                "metadata": {
-                    "source": "workspace",
-                    "error": type(exc).__name__,
+    match tool_name:
+        case "search":
+            return json.dumps({"results": []}, ensure_ascii=False)
+        case "fetch":
+            return json.dumps(
+                {
+                    "id": "",
+                    "title": "",
+                    "text": str(exc),
+                    "url": "file:///workspace/",
+                    "metadata": {
+                        "source": "workspace",
+                        "error": type(exc).__name__,
+                    },
                 },
-            },
-            ensure_ascii=False,
-        )
-    return handled_error(exc)
+                ensure_ascii=False,
+            )
+        case _:
+            return handled_error(exc)
 
 
 def _mcp_tool_input(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
@@ -282,7 +286,7 @@ def read_many_files_sync(
     end_line: int | None = None,
     binary_preview: str | None = None,
     binary_preview_bytes: int = 256,
-) -> dict:
+) -> dict[str, Any]:
     """Read many files for a tool call while preserving per-path success and error entries."""
     settings = get_settings()
     if len(paths) > settings.max_read_many_files:
@@ -313,7 +317,7 @@ def read_many_files_sync(
 
 def run_secret_scan_sync(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
-) -> dict:
+) -> dict[str, Any]:
     """Scan workspace text files for credential-like strings while respecting size, binary, and result limits."""
     import re
 
@@ -357,12 +361,12 @@ def run_secret_scan_sync(
 
 async def run_secret_scan(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
-) -> dict:
+) -> dict[str, Any]:
     """Expose secret scanning through an async wrapper for MCP handlers."""
     return await to_thread(run_secret_scan_sync, cwd, glob, max_results)
 
 
-def read_audit_tail_entries(lines: int = 100) -> dict:
+def read_audit_tail_entries(lines: int = 100) -> dict[str, Any]:
     """Parse the recent audit-log tail into structured records, preserving malformed lines as raw entries."""
     settings = get_settings()
     path = settings.audit_log_path

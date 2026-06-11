@@ -19,8 +19,8 @@ from . import (
     redact_mapping,
 )
 
-OkFn = Callable[..., dict[str, Any]]
-HandledErrorFn = Callable[[Exception], dict[str, Any]]
+type OkFn = Callable[..., dict[str, Any]]
+type HandledErrorFn = Callable[[Exception], dict[str, Any]]
 
 
 def _tool_value(source: Any, name: str, default: Any = None) -> Any:

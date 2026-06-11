@@ -88,56 +88,52 @@ class AgentMcpClientManager:
         self, name: str, server: AgentMcpServerConfig
     ) -> AsyncIterator[ClientSession]:
         """Open and initialize the transport-specific MCP client session for one configured server."""
-        if server.type == "stdio":
-            if not server.command:
-                raise ValueError("stdio MCP server requires command")
-            params = StdioServerParameters(
-                command=server.command,
-                args=server.args,
-                env=server.env or None,
-            )
-            async with (
-                stdio_client(params) as (read_stream, write_stream),
-                ClientSession(read_stream, write_stream) as session,
-            ):
-                await session.initialize()
-                yield session
-            return
-
-        if server.type == "http":
-            if not server.url:
-                raise ValueError("http MCP server requires url")
-            async with (
-                streamable_http_client(
-                    server.url, headers=server.headers or None
-                ) as (
-                    read_stream,
-                    write_stream,
-                    _get_session_id,
-                ),
-                ClientSession(read_stream, write_stream) as session,
-            ):
-                await session.initialize()
-                yield session
-            return
-
-        if server.type == "sse":
-            if not server.url:
-                raise ValueError("sse MCP server requires url")
-            async with (
-                sse_client(server.url, headers=server.headers or None) as (
-                    read_stream,
-                    write_stream,
-                ),
-                ClientSession(read_stream, write_stream) as session,
-            ):
-                await session.initialize()
-                yield session
-            return
-
-        raise ValueError(
-            f"unsupported MCP server type for {name}: {server.type}"
-        )
+        match server.type:
+            case "stdio":
+                if not server.command:
+                    raise ValueError("stdio MCP server requires command")
+                params = StdioServerParameters(
+                    command=server.command,
+                    args=server.args,
+                    env=server.env or None,
+                )
+                async with (
+                    stdio_client(params) as (read_stream, write_stream),
+                    ClientSession(read_stream, write_stream) as session,
+                ):
+                    await session.initialize()
+                    yield session
+            case "http":
+                if not server.url:
+                    raise ValueError("http MCP server requires url")
+                async with (
+                    streamable_http_client(
+                        server.url, headers=server.headers or None
+                    ) as (
+                        read_stream,
+                        write_stream,
+                        _get_session_id,
+                    ),
+                    ClientSession(read_stream, write_stream) as session,
+                ):
+                    await session.initialize()
+                    yield session
+            case "sse":
+                if not server.url:
+                    raise ValueError("sse MCP server requires url")
+                async with (
+                    sse_client(server.url, headers=server.headers or None) as (
+                        read_stream,
+                        write_stream,
+                    ),
+                    ClientSession(read_stream, write_stream) as session,
+                ):
+                    await session.initialize()
+                    yield session
+            case _:
+                raise ValueError(
+                    f"unsupported MCP server type for {name}: {server.type}"
+                )
 
     async def list_tools(
         self, name: str, server: AgentMcpServerConfig
