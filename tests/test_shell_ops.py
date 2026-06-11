@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 import local_shell_mcp.http_app as http_app_module
 import local_shell_mcp.tools as tools_module
+import local_shell_mcp.tools.local_invocations as local_invocations_module
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.models import CommandResult
@@ -58,7 +59,9 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     async def hanging_git_status(cwd: str = "."):  # noqa: ARG001
         await asyncio.sleep(5)
 
-    monkeypatch.setattr(http_app_module, "git_status", hanging_git_status)
+    monkeypatch.setattr(
+        local_invocations_module, "git_status", hanging_git_status
+    )
 
     response = TestClient(build_http_app()).post(
         "/tools/git/status", json={"cwd": "."}
@@ -78,7 +81,7 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
         time.sleep(0.2)
         return []
 
-    monkeypatch.setattr(http_app_module, "list_dir", blocking_list_dir)
+    monkeypatch.setattr(local_invocations_module, "list_dir", blocking_list_dir)
 
     response = TestClient(build_http_app()).post(
         "/tools/list_files", json={"path": "."}
