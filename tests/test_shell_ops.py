@@ -15,7 +15,9 @@ from local_shell_mcp.ops.shell_ops import (
     run_shell,
     send_shell,
 )
-from local_shell_mcp.tools.registry import local as tools_module
+from local_shell_mcp.tools.registry import common as common_tools_module
+from local_shell_mcp.tools.registry import filesystem as fs_tools_module
+from local_shell_mcp.tools.registry import git as git_tools_module
 
 
 @pytest.mark.asyncio
@@ -36,13 +38,13 @@ async def test_run_shell_tool_rejects_timeout_above_public_cap(
 @pytest.mark.asyncio
 async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setattr(tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     get_settings.cache_clear()
 
     async def hanging_git_status(cwd: str = "."):  # noqa: ARG001
         await asyncio.sleep(5)
 
-    monkeypatch.setattr(tools_module, "git_status", hanging_git_status)
+    monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
 
     response = await build_mcp().call_tool("git_status_tool", {"cwd": "."})
     payload = response[0].text
@@ -94,14 +96,14 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setattr(tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     get_settings.cache_clear()
 
     def blocking_list_dir(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
         time.sleep(0.2)
         return []
 
-    monkeypatch.setattr(tools_module, "list_dir", blocking_list_dir)
+    monkeypatch.setattr(fs_tools_module, "list_dir", blocking_list_dir)
 
     response = await build_mcp().call_tool("list_files", {"path": "."})
     payload = response[0].text

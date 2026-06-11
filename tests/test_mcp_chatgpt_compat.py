@@ -11,7 +11,7 @@ from local_shell_mcp.auth.oauth import (
 )
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.mcp_app import build_mcp
-from local_shell_mcp.tools.registry import local as tools_module
+from local_shell_mcp.tools.registry import agent as tools_module
 
 
 def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):

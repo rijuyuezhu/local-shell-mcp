@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from ...ops.todo_ops import todo_read, todo_write
 from ..base import HttpToolRoute, McpToolContext, ToolRegistry
-from .local import register_todo_mcp
+from .common import _handled_error, _ok, _to_thread
 
 
 class TodoToolRegistry(ToolRegistry):
@@ -25,3 +26,24 @@ class TodoToolRegistry(ToolRegistry):
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_todo_mcp(mcp, context)
+
+
+def register_todo_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    oauth_meta = context.oauth_meta
+
+    @mcp.tool(meta=oauth_meta)
+    async def todo_read_tool() -> dict:
+        """Read the agent todo list. Similar to Claude Code TodoRead."""
+        try:
+            return _ok(await _to_thread(todo_read))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def todo_write_tool(todos: list[dict]) -> dict:
+        """Write the agent todo list. Each todo: id, content, status, priority."""
+        try:
+            return _ok(await _to_thread(todo_write, todos))
+        except Exception as exc:
+            return _handled_error(exc)

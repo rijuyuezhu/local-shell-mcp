@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from ...ops.shell_ops import (
+    kill_shell,
+    list_shells,
+    public_run_shell,
+    read_shell,
+    send_shell,
+    start_shell,
+)
 from ..base import HttpToolRoute, McpToolContext, ToolRegistry
-from .local import register_shell_mcp
+from .common import _handled_error, _ok, _run_python
 
 
 class ShellToolRegistry(ToolRegistry):
@@ -33,3 +41,81 @@ class ShellToolRegistry(ToolRegistry):
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_shell_mcp(mcp, context)
+
+
+def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    oauth_meta = context.oauth_meta
+
+    @mcp.tool(meta=oauth_meta)
+    async def run_shell_tool(
+        command: str,
+        cwd: str = ".",
+        timeout_s: int | None = None,
+        max_output_bytes: int | None = None,
+    ) -> dict:
+        """Run a shell command in the controlled container. This is the primary coding-agent tool."""
+        try:
+            return _ok(
+                (
+                    await public_run_shell(
+                        command, cwd, timeout_s, max_output_bytes
+                    )
+                ).model_dump()
+            )
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def run_python_tool(
+        code: str, cwd: str = ".", timeout_s: int = 60
+    ) -> dict:
+        """Write Python code to a temporary file and execute it."""
+        try:
+            return _ok(await _run_python(code, cwd, timeout_s))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def shell_start(
+        cwd: str = ".", name: str | None = None, command: str | None = None
+    ) -> dict:
+        """Start a persistent tmux-backed shell session."""
+        try:
+            return _ok(await start_shell(cwd, name, command))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def shell_send(
+        session_id: str, input_text: str, enter: bool = True
+    ) -> dict:
+        """Send input to a persistent shell session."""
+        try:
+            return _ok(await send_shell(session_id, input_text, enter))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def shell_read(session_id: str, lines: int = 200) -> dict:
+        """Read recent output from a persistent shell session."""
+        try:
+            return _ok(await read_shell(session_id, lines))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def shell_kill(session_id: str) -> dict:
+        """Kill a persistent shell session."""
+        try:
+            return _ok(await kill_shell(session_id))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def shell_list() -> dict:
+        """List persistent shell sessions."""
+        try:
+            return _ok(await list_shells())
+        except Exception as exc:
+            return _handled_error(exc)

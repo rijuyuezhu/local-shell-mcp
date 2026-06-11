@@ -25,7 +25,7 @@ from .config.settings import get_settings
 from .remote import remote_routes
 from .tools.base import McpToolContext
 from .tools.discovery import discover_tool_registries
-from .tools.registry.local import (
+from .tools.registry.common import (
     NOAUTH_SECURITY_SCHEMES,
     OAUTH_SECURITY_SCHEMES,
     _handled_error,

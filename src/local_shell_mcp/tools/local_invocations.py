@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from importlib import import_module
 from typing import Any
 
 from ..ops.fs_ops import (
@@ -39,14 +38,14 @@ from ..ops.shell_ops import (
     start_shell,
 )
 from ..ops.todo_ops import todo_read, todo_write
-
-_local_def = import_module("local_shell_mcp.tools.registry.local")
-_apply_patch_text = _local_def._apply_patch_text
-_read_audit_tail_entries = _local_def._read_audit_tail_entries
-_read_many_files_sync = _local_def._read_many_files_sync
-_run_python = _local_def._run_python
-_secret_scan = _local_def._secret_scan
-_to_thread = _local_def._to_thread
+from .registry.common import (
+    _apply_patch_text,
+    _read_audit_tail_entries,
+    _read_many_files_sync,
+    _run_python,
+    _secret_scan,
+    _to_thread,
+)
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
