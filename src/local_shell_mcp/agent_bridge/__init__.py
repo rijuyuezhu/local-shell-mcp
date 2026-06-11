@@ -768,7 +768,7 @@ def build_agent_registry(
     manifest = load_agent_manifest(config_root)
     probe_timeout = _probe_timeout_seconds(probe_timeout_s)
     if client_manager is None:
-        from .agent_mcp import AgentMcpClientManager
+        from .mcp import AgentMcpClientManager
 
         client_manager = AgentMcpClientManager(call_timeout_s=probe_timeout)
 

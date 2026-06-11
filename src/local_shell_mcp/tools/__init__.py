@@ -15,8 +15,8 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
 from ..agent_bridge import build_agent_registry
-from ..agent_bridge_tools import register_agent_bridge_tools
-from ..agent_mcp import AgentMcpClientManager
+from ..agent_bridge.mcp import AgentMcpClientManager
+from ..agent_bridge.tools import register_agent_bridge_tools
 from ..audit import audit
 from ..config.settings import get_settings, safe_settings_dump
 from ..ops.fs_ops import (

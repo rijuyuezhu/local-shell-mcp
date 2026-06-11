@@ -3,7 +3,7 @@ import json
 import pytest
 
 import local_shell_mcp.tools as tools_module
-from local_shell_mcp.agent_mcp import AgentMcpTool
+from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.tools import build_mcp
 

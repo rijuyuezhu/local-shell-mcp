@@ -13,7 +13,7 @@ from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 
-from local_shell_mcp.agent_bridge import AgentMcpServerConfig
+from . import AgentMcpServerConfig
 
 
 @dataclass(frozen=True)

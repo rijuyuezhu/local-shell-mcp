@@ -45,9 +45,9 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 | `src/local_shell_mcp/ops/search_ops.py` | Ripgrep search and compact tree views. |
 | `src/local_shell_mcp/ops/git_ops.py` | Git command wrappers. |
 | `src/local_shell_mcp/remote.py` | Remote invite, worker bundle, long-poll protocol, and remote tool execution. |
-| `src/local_shell_mcp/agent_bridge.py` | Agent bridge manifest loading, skill scanning, MCP probing, redaction. |
-| `src/local_shell_mcp/agent_bridge_tools.py` | Agent bridge MCP tool registration and dynamic tool reloads. |
-| `src/local_shell_mcp/agent_mcp.py` | External MCP client manager and tool/result normalization. |
+| `src/local_shell_mcp/agent_bridge/__init__.py` | Agent bridge manifest loading, skill scanning, MCP probing, redaction. |
+| `src/local_shell_mcp/agent_bridge/tools.py` | Agent bridge MCP tool registration and dynamic tool reloads. |
+| `src/local_shell_mcp/agent_bridge/mcp.py` | External MCP client manager and tool/result normalization. |
 | `src/local_shell_mcp/audit.py` | Audit log writer and trimming. |
 | `src/local_shell_mcp/ops/todo_ops.py` | Todo state persistence. |
 | `tests/` | Unit and compatibility tests. |

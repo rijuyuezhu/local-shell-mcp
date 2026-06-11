@@ -4,7 +4,7 @@ import time
 import pytest
 
 import local_shell_mcp.tools as tools_module
-from local_shell_mcp.agent_mcp import AgentMcpTool
+from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.auth.oauth import (
     issue_access_token,
     resource_url,
