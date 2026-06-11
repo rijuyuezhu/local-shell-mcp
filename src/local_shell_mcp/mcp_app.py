@@ -169,7 +169,6 @@ def run_mcp() -> None:
     if settings.mode == "stdio":
         # stdio do not need http service
         mcp.run(transport="stdio")
-        return
-
-    app = build_mcp_http_app(mcp)
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    else:
+        app = build_mcp_http_app(mcp)
+        uvicorn.run(app, host=settings.host, port=settings.port)
