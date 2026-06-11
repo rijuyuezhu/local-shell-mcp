@@ -7,7 +7,11 @@ import asyncio
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from .auth import CloudflareAccessMiddleware, Principal, verify_request
+from .auth.middleware import (
+    CloudflareAccessMiddleware,
+    Principal,
+    verify_request,
+)
 from .config.settings import get_settings
 from .fs_ops import (
     delete_path,

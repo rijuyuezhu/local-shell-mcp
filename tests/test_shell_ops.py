@@ -215,7 +215,7 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
 async def test_run_shell_filters_server_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET", "should-not-leak")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "should-not-leak")
     monkeypatch.setenv("PYTHONPATH", "/app/src")
     get_settings.cache_clear()
 

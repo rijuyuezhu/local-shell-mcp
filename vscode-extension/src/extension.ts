@@ -1,5 +1,4 @@
 import * as cp from 'child_process';
-import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 import * as vscode from 'vscode';
@@ -66,17 +65,6 @@ function mcpUrl(config: ExtensionConfig): string {
   return `${mcpBaseUrl(config)}/mcp`;
 }
 
-async function getOrCreateJwtSecret(context: vscode.ExtensionContext): Promise<string> {
-  const key = 'local-shell-mcp.oauthJwtSecret';
-  const existing = context.globalState.get<string>(key);
-  if (existing) {
-    return existing;
-  }
-  const generated = crypto.randomBytes(32).toString('hex');
-  await context.globalState.update(key, generated);
-  return generated;
-}
-
 function stringifyExtraEnv(extraEnv: Record<string, unknown>): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(extraEnv)) {
@@ -108,9 +96,6 @@ async function buildEnvironment(
   }
   if (config.oauthAdminPin) {
     env.LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN = config.oauthAdminPin;
-  }
-  if (config.authMode === 'oauth' && !env.LOCAL_SHELL_MCP_OAUTH_JWT_SECRET) {
-    env.LOCAL_SHELL_MCP_OAUTH_JWT_SECRET = await getOrCreateJwtSecret(context);
   }
   return env;
 }

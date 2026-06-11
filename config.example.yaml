@@ -22,22 +22,12 @@ audit_log_path: "/workspace/.local-shell-mcp/audit.jsonl"
 auth_mode: "oauth"
 # Allow localhost requests without bearer authentication.
 auth_bypass_localhost: true
-# Require authentication for MCP initialize/list-tools discovery calls.
-require_auth_for_mcp_discovery: false
+# Require bearer auth for MCP-over-HTTP requests; OAuth/bootstrap routes remain public.
+require_auth_for_mcp_discovery: true
 # Public HTTPS origin used in OAuth metadata and callbacks.
 public_base_url: null
-# Override OAuth issuer metadata; defaults to public_base_url when unset.
-oauth_issuer: null
-# Override OAuth resource metadata; defaults to public_base_url when unset.
-oauth_resource: null
 # PIN required to approve OAuth authorization.
 oauth_admin_pin: null
-# Secret used to sign OAuth bearer tokens; set a strong random value.
-oauth_jwt_secret: "dev-change-me"
-# Bearer token lifetime in seconds; 0 means no expiry.
-oauth_access_token_ttl_s: 0
-# OAuth authorization-code lifetime in seconds.
-oauth_code_ttl_s: 300
 
 # Safety and resource limits.
 # Disable built-in workspace and command restrictions; use only in disposable containers or VMs.

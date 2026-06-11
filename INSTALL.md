@@ -27,16 +27,11 @@ Edit `.env`; Docker Compose passes this file to the `local-shell-mcp` container 
 LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
-LOCAL_SHELL_MCP_OAUTH_JWT_SECRET=change-me-64-hex-random-secret
 LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=false
 CLOUDFLARE_TUNNEL_TOKEN=
 ```
 
-Generate a stable JWT secret with:
-
-```bash
-openssl rand -hex 32
-```
+The bearer-token signing secret is generated automatically under the configured state directory.
 
 Create the default workspace and start the service:
 

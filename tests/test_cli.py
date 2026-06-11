@@ -24,8 +24,6 @@ def test_server_options_parse_to_default_handler():
             "https://example.com",
             "--oauth-admin-pin",
             "pin",
-            "--oauth-jwt-secret",
-            "secret",
             "--allow-full-container",
             "true",
             "--agent-config-dir",
@@ -44,7 +42,6 @@ def test_server_options_parse_to_default_handler():
     assert args.auth_mode == "none"
     assert args.public_base_url == "https://example.com"
     assert args.oauth_admin_pin == "pin"
-    assert args.oauth_jwt_secret == "secret"
     assert args.allow_full_container is True
     assert args.agent_config_dir == "/tmp/agent-config"
     assert args.remote_enabled is False
@@ -54,8 +51,11 @@ def test_every_setting_has_cli_option():
     help_text = cli._build_parser().format_help()
 
     for spec in SETTING_SPECS:
-        assert spec.cli_flag in help_text
-        assert spec.env_var in help_text
+        if getattr(spec, "exposed", True):
+            assert spec.cli_flag in help_text
+            assert spec.env_var in help_text
+        else:
+            assert spec.cli_flag not in help_text
 
 
 def test_bool_cli_values_parse_explicitly():

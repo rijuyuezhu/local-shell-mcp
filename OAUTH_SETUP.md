@@ -8,14 +8,9 @@
 LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://local-shell-mcp.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=replace-with-a-long-random-pin
-LOCAL_SHELL_MCP_OAUTH_JWT_SECRET=replace-with-output-of-openssl-rand-hex-32
 ```
 
-Generate the secret:
-
-```bash
-openssl rand -hex 32
-```
+The bearer-token signing secret is generated automatically and persisted under `LOCAL_SHELL_MCP_STATE_DIR`.
 
 ## Start
 
@@ -41,7 +36,7 @@ https://your-public-host.example.com/mcp
 
 On first connection, ChatGPT will open `/oauth/authorize`. Enter `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` to approve the connector. ChatGPT will then exchange the authorization code for a bearer token and call `/mcp` with `Authorization: Bearer ...`.
 
-Bearer tokens do not expire by default. Set `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` to a positive number of seconds if you want expiring tokens.
+Bearer tokens expire after the built-in default lifetime. Advanced deployments can still override `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` and `LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S`, but these are intentionally omitted from the default examples.
 
 ## Important
 
