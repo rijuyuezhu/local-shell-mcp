@@ -1,5 +1,4 @@
 import * as cp from 'child_process';
-import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 import * as vscode from 'vscode';
