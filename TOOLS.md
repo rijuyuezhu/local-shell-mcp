@@ -6,6 +6,8 @@ Regular ChatGPT connectors and Deep Research-style clients can use `search` and 
 
 All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-container mode is enabled. Remote tools perform the same category of operation on a connected remote worker and add a required `machine` argument.
 
+Tool definitions are registered through category registries under `src/local_shell_mcp/tools/registry/`. The MCP surface and REST debug API are derived from those registries; `tools/local_invocations.py` only aggregates registry-provided HTTP handlers.
+
 ## Read-only connector tools
 
 | Tool | Purpose |
@@ -156,4 +158,4 @@ If dynamic tools are enabled in both environment settings and the bridge manifes
 - Default path denylists block sensitive fragments such as `.env`, credentials, private SSH keys, and `.git/config`.
 - Default command denylists block host-control fragments such as Docker socket access, mounting, shutdown, reboot, firewall manipulation, and similar commands.
 - `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true` disables built-in path and command restrictions and adds auto-approval hints for command-capable tools. Use it only in disposable containers or VMs.
-- OAuth metadata allows unauthenticated discovery by default for ChatGPT compatibility, while protected tool calls require OAuth unless localhost bypass or auth-free mode is configured.
+- OAuth/bootstrap metadata, health checks, and remote-worker join/poll/result endpoints are public. MCP-over-HTTP tool calls require OAuth unless `auth_mode=none` is configured. Localhost auth bypass is limited to the REST debug API (`--mode http`).

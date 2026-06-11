@@ -5,7 +5,7 @@
 ## Recommended deployment
 
 - Run inside a disposable container or VM.
-- Expose only through Cloudflare Access.
+- Expose public deployments through HTTPS with `LOCAL_SHELL_MCP_AUTH_MODE=oauth`; Cloudflare Tunnel is fine, but Cloudflare Access is optional and not the built-in auth layer.
 - Do not mount Docker socket.
 - Do not mount host root.
 - Do not mount unrestricted SSH keys or all of `~/.ssh`.
@@ -14,9 +14,11 @@
 - Review audit logs after each session.
 
 `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true` is an explicit full-control mode. It
-disables built-in command and path denylists, runs the container service as root
-when started through the bundled entrypoint, and grants the `agent` user
-passwordless `sudo`. Only enable it in a disposable container or VM.
+disables built-in command and path denylists and adds auto-approval hints for
+command-capable tools. In the Docker image, the server still normally runs as the
+`agent` user after entrypoint setup; that user has passwordless `sudo` for
+commands that intentionally need root. Set `DOCKER_RUN_AS_ROOT=true` only when
+the server process itself must run as root in a disposable container or VM.
 
 ## Threats considered
 

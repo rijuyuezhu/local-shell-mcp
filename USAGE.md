@@ -38,7 +38,7 @@ A successful shell call should produce audit events such as `run_shell_start` an
 
 ## CLI modes
 
-Running `local-shell-mcp` without a subcommand starts the server:
+Running `local-shell-mcp` without a subcommand starts the server. `--mode mcp` serves MCP over HTTP at `/mcp`; `--mode stdio` runs a stdio MCP server for local MCP clients; `--mode http` starts the REST debug API only. `--mode both` is reserved and exits with an error, so run separate processes if you need MCP and REST at the same time.
 
 ```text
 local-shell-mcp [--config PATH] [--mode MODE] [--host HOST] [--port PORT] [--workspace-root PATH] [...]
@@ -78,6 +78,8 @@ The most common settings are:
 | OAuth approval PIN | `--oauth-admin-pin` | `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | unset |
 | Full-container mode | `--allow-full-container true/false` | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` |
 | Remote worker routes | `--remote-enabled true/false` | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` |
+| MCP request auth | `--require-auth-for-mcp-discovery true/false` | `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY` | `true` |
+| OAuth token TTL | advanced flag omitted from examples | `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` | `3600` |
 | Agent bridge config | `--agent-config-dir` | `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/home/agent/local-shell-mcp-config` |
 
 Docker image startup knobs, such as credential persistence and whether the server process runs as root, use `DOCKER_*` variables because they are consumed by the container entrypoint before the application starts.
@@ -227,11 +229,13 @@ The normal MCP server runs with:
 local-shell-mcp --mode mcp
 ```
 
-For local-only debugging, start the REST API:
+For local-only debugging, start the REST API. This is a separate FastAPI adapter over the registry-provided local handlers; it is not the MCP server and it does not expose `/mcp`:
 
 ```bash
 LOCAL_SHELL_MCP_AUTH_MODE=none local-shell-mcp --mode http
 ```
+
+When `LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST=true`, localhost requests can bypass OAuth in REST debug mode. Do not rely on that bypass for public MCP deployments.
 
 Example:
 
@@ -248,8 +252,9 @@ If ChatGPT says it connected but no tools are available:
 1. Confirm Developer Mode is enabled for full MCP tools.
 2. Delete and re-add the connector after server changes.
 3. Confirm `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` exactly matches the public HTTPS origin.
-4. Check `/mcp` with a standard MCP client.
-5. Watch `/workspace/.local-shell-mcp/audit.jsonl`.
+4. Confirm the server is running with `--mode mcp`, not `--mode http`.
+5. Check `/mcp` with a standard MCP client.
+6. Watch `/workspace/.local-shell-mcp/audit.jsonl`.
 
 If OAuth succeeds but tool listing fails, check container logs:
 
@@ -265,4 +270,4 @@ You can probe the public endpoint from a machine with the project installed:
 python scripts/probe-mcp.py https://your-public-host.example.com --pin "$LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN"
 ```
 
-The probe should report successful unauthenticated `initialize/list_tools` and a successful authenticated `environment_info` call.
+The probe should report successful public health/OAuth metadata checks and, with `--pin`, successful authenticated `list_tools` plus an authenticated `environment_info` call.
