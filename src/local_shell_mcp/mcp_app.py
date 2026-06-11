@@ -90,6 +90,7 @@ def run_mcp() -> None:
     mcp = build_mcp()
 
     if settings.mode == "stdio":
+        # stdio do not need http service
         mcp.run(transport="stdio")
         return
 
