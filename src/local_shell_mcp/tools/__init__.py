@@ -14,12 +14,12 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
-from .agent_bridge import build_agent_registry
-from .agent_bridge_tools import register_agent_bridge_tools
-from .agent_mcp import AgentMcpClientManager
-from .audit import audit
-from .config.settings import get_settings, safe_settings_dump
-from .ops.fs_ops import (
+from ..agent_bridge import build_agent_registry
+from ..agent_bridge_tools import register_agent_bridge_tools
+from ..agent_mcp import AgentMcpClientManager
+from ..audit import audit
+from ..config.settings import get_settings, safe_settings_dump
+from ..ops.fs_ops import (
     delete_path,
     edit_text,
     glob_paths,
@@ -33,7 +33,7 @@ from .ops.fs_ops import (
     temp_dir,
     write_text,
 )
-from .ops.git_ops import (
+from ..ops.git_ops import (
     git_add,
     git_checkout,
     git_clone,
@@ -47,8 +47,8 @@ from .ops.git_ops import (
     git_show,
     git_status,
 )
-from .ops.search_ops import grep, tree
-from .ops.shell_ops import (
+from ..ops.search_ops import grep, tree
+from ..ops.shell_ops import (
     PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
     kill_shell,
     list_shells,
@@ -59,8 +59,8 @@ from .ops.shell_ops import (
     send_shell,
     start_shell,
 )
-from .ops.todo_ops import todo_read, todo_write
-from .remote import remote_manager
+from ..ops.todo_ops import todo_read, todo_write
+from ..remote import remote_manager
 
 
 def _ok(data: Any = None, message: str = "") -> dict:
