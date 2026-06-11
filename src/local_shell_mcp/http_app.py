@@ -43,28 +43,32 @@ def _register_http_tool_routes(app: FastAPI) -> None:
         for route in registry.http_routes()
     ]
     for route in routes:
-        method, path, tool_name = route.method, route.path, route.tool_name
-        if method == "GET":
+        match route.method:
+            case "GET":
+                app.get(route.path)(_make_get_tool_handler(route.tool_name))
+            case "POST":
+                app.post(route.path)(_make_post_tool_handler(route.tool_name))
+            case _:
+                raise ValueError(
+                    f"Unsupported HTTP tool method {route.method!r} for {route.path}"
+                )
 
-            async def get_handler(
-                _: Principal = PRINCIPAL_DEP,
-                *,
-                _tool_name: str = tool_name,
-            ):
-                return await call_local_tool(_tool_name, {})
 
-            app.get(path)(get_handler)
-            continue
+def _make_get_tool_handler(tool_name: str):
+    async def get_handler(_: Principal = PRINCIPAL_DEP):
+        return await call_local_tool(tool_name, {})
 
-        async def post_handler(
-            body: dict[str, Any] | None = None,
-            _: Principal = PRINCIPAL_DEP,
-            *,
-            _tool_name: str = tool_name,
-        ):
-            return await call_local_tool(_tool_name, _tool_body(body))
+    return get_handler
 
-        app.post(path)(post_handler)
+
+def _make_post_tool_handler(tool_name: str):
+    async def post_handler(
+        body: dict[str, Any] | None = None,
+        _: Principal = PRINCIPAL_DEP,
+    ):
+        return await call_local_tool(tool_name, _tool_body(body))
+
+    return post_handler
 
 
 def build_http_app() -> FastAPI:

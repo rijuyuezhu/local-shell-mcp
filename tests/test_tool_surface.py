@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
+from local_shell_mcp.tools.base import HttpToolRoute
 
 LOCAL_MCP_TOOL_NAMES = {
     "search",
@@ -140,3 +141,31 @@ async def test_http_git_status_matches_mcp_tool_payload(tmp_path, monkeypatch):
     assert {k: v for k, v in http_payload.items() if k != "duration_ms"} == {
         k: v for k, v in mcp_payload.items() if k != "duration_ms"
     }
+
+
+def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    get_settings.cache_clear()
+
+    response = TestClient(build_http_app()).get(
+        "/tools/todo", params={"tool_name": "shell_list"}
+    )
+
+    assert response.status_code == 200
+    assert "todos" in response.json()
+
+
+def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
+    class RegistryWithUnsupportedRoute:
+        def http_routes(self):
+            return [HttpToolRoute("PUT", "/tools/example", "todo_read_tool")]
+
+    monkeypatch.setattr(
+        "local_shell_mcp.http_app.discover_tool_registries",
+        lambda: [RegistryWithUnsupportedRoute()],
+    )
+
+    with pytest.raises(ValueError, match="Unsupported HTTP tool method 'PUT'"):
+        build_http_app()
