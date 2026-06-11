@@ -161,31 +161,35 @@ def _timeout_payload_for_tool(tool_name: str, exc: Exception) -> dict | str:
     return handled_error(exc)
 
 
+def _mcp_tool_watchdog_wrapper(original, tool_name: str):  # noqa: ANN001, ANN202
+    """Return a timeout wrapper for one FastMCP tool function."""
+
+    async def wrapped(*args, **kwargs):  # noqa: ANN002, ANN003
+        try:
+            return await asyncio.wait_for(
+                original(*args, **kwargs), timeout=PUBLIC_TOOL_TIMEOUT_S
+            )
+        except TimeoutError:
+            exc = PublicToolTimeoutError(
+                f"{tool_name} exceeded {PUBLIC_TOOL_TIMEOUT_S} second public tool timeout"
+            )
+            audit(
+                "tool_timeout",
+                tool=tool_name,
+                timeout_s=PUBLIC_TOOL_TIMEOUT_S,
+            )
+            return _timeout_payload_for_tool(tool_name, exc)
+
+    wrapped.__local_shell_mcp_watchdog__ = True  # type: ignore[attr-defined]
+    return wrapped
+
+
 def install_mcp_tool_watchdogs(mcp: FastMCP) -> None:
     """Wrap FastMCP execution paths so public tools return structured timeout errors."""
     for tool in mcp._tool_manager._tools.values():  # noqa: SLF001
-        original = tool.fn
-        tool_name = tool.name
-
-        async def wrapped(
-            *args, __original=original, __tool_name=tool_name, **kwargs
-        ):  # noqa: ANN002, ANN003
-            try:
-                return await asyncio.wait_for(
-                    __original(*args, **kwargs), timeout=PUBLIC_TOOL_TIMEOUT_S
-                )
-            except TimeoutError:
-                exc = PublicToolTimeoutError(
-                    f"{__tool_name} exceeded {PUBLIC_TOOL_TIMEOUT_S} second public tool timeout"
-                )
-                audit(
-                    "tool_timeout",
-                    tool=__tool_name,
-                    timeout_s=PUBLIC_TOOL_TIMEOUT_S,
-                )
-                return _timeout_payload_for_tool(__tool_name, exc)
-
-        tool.fn = wrapped
+        if getattr(tool.fn, "__local_shell_mcp_watchdog__", False):
+            continue
+        tool.fn = _mcp_tool_watchdog_wrapper(tool.fn, tool.name)
 
 
 def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
