@@ -20,16 +20,6 @@ class _DummyMcp:
         self.transports.append(transport)
 
 
-class _LegacyMcp:
-    def __init__(self):
-        self.transports = []
-
-    def run(self, *, transport: str):
-        self.transports.append(transport)
-        if transport == "streamable-http":
-            raise TypeError("unsupported transport")
-
-
 def _route_paths(app: Starlette) -> list[str]:
     return [getattr(route, "path", "") for route in app.routes]
 
@@ -74,13 +64,3 @@ def test_run_mcp_uses_stdio_transport(monkeypatch):
     mcp_app.run_mcp()
 
     assert dummy.transports == ["stdio"]
-
-
-def test_run_mcp_falls_back_to_sse_for_legacy_sdk(monkeypatch):
-    configure_settings(Settings(mode="mcp", auth_mode="none"))
-    legacy = _LegacyMcp()
-    monkeypatch.setattr(mcp_app, "build_mcp", lambda: legacy)
-
-    mcp_app.run_mcp()
-
-    assert legacy.transports == ["streamable-http", "sse"]

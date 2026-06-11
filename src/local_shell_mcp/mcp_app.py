@@ -98,10 +98,3 @@ def run_mcp() -> None:
     if app is not None:
         uvicorn.run(app, host=settings.host, port=settings.port)
         return
-
-    # Fallback for older MCP SDKs. OAuth metadata cannot be attached in this mode,
-    # so this is suitable only for localhost/stdio-style testing.
-    try:
-        mcp.run(transport="streamable-http")
-    except TypeError:
-        mcp.run(transport="sse")
