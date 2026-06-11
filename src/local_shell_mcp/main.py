@@ -4,16 +4,9 @@ from __future__ import annotations
 
 import argparse
 
-import uvicorn
-
 from .config.registry import cli_overrides_from_args, register_setting_cli_args
-from .config.settings import (
-    configure_settings,
-    get_settings,
-    load_settings,
-    validate_public_oauth_configuration,
-)
-from .http_app import build_http_app
+from .config.settings import configure_settings, load_settings
+from .http_app import run_http
 from .mcp_app import run_mcp
 from .remote import add_worker_cli_args, run_worker_from_args
 
@@ -60,14 +53,6 @@ def _run_server_from_args(args: argparse.Namespace) -> None:
         )
     else:
         raise SystemExit(f"Unsupported mode: {settings.mode}")
-
-
-def run_http() -> None:
-    """Run the HTTP server with FastAPI routes, MCP transport, OAuth metadata, and remote-worker endpoints."""
-    settings = get_settings()
-    validate_public_oauth_configuration(settings)
-    app = build_http_app()
-    uvicorn.run(app, host=settings.host, port=settings.port)
 
 
 def main(argv: list[str] | None = None) -> None:

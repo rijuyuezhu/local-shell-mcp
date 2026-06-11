@@ -38,7 +38,7 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 | `src/local_shell_mcp/main.py` | CLI parsing and mode dispatch. |
 | `src/local_shell_mcp/mcp_app.py` | MCP stdio/HTTP transport startup and OAuth/remote ASGI route wrapping. |
 | `src/local_shell_mcp/tools/` | MCP tool registration and shared public tool invocation helpers. `__init__.py` keeps explicit FastMCP signatures for schema generation; `local_invocations.py` is the shared local-tool dispatch table used by HTTP adapters. |
-| `src/local_shell_mcp/http_app.py` | REST debug API and HTTP protocol adapter over the shared local tool registry. |
+| `src/local_shell_mcp/http_app.py` | REST debug API, HTTP server startup, and HTTP protocol adapter over the shared local tool registry. |
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, safe settings dump, and generated config metadata. |
 | `src/local_shell_mcp/auth/` | Authentication package. `middleware.py` protects HTTP/MCP requests; `oauth.py` handles OAuth metadata, dynamic client registration, authorization, token issue/validation. |
 | `src/local_shell_mcp/ops/shell_ops.py` | Bounded shell execution and tmux-backed persistent sessions. |
