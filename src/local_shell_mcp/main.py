@@ -43,16 +43,17 @@ def _run_server_from_args(args: argparse.Namespace) -> None:
     """Select stdio MCP or HTTP server startup based on parsed CLI arguments."""
     settings = load_settings(args.config, cli_overrides_from_args(args))
     configure_settings(settings)
-    if settings.mode == "http":
-        run_http()
-    elif settings.mode in {"mcp", "stdio"}:
-        run_mcp()
-    elif settings.mode == "both":
-        raise SystemExit(
-            "mode=both is reserved; run separate mcp/http processes for now"
-        )
-    else:
-        raise SystemExit(f"Unsupported mode: {settings.mode}")
+    match settings.mode:
+        case "http":
+            run_http()
+        case "mcp" | "stdio":
+            run_mcp()
+        case "both":
+            raise SystemExit(
+                "mode=both is reserved; run separate mcp/http processes for now"
+            )
+        case _:
+            raise SystemExit(f"Unsupported mode: {settings.mode}")
 
 
 def main(argv: list[str] | None = None) -> None:
