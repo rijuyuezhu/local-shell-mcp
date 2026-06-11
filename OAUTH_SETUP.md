@@ -10,7 +10,7 @@ LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=replace-with-a-long-random-pin
 ```
 
-The bearer-token signing secret is generated automatically and persisted under `LOCAL_SHELL_MCP_STATE_DIR` when `LOCAL_SHELL_MCP_OAUTH_JWT_SECRET` is unset.
+The bearer-token signing secret is generated automatically and persisted under `LOCAL_SHELL_MCP_STATE_DIR`.
 
 ## Start
 

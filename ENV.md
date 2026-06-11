@@ -36,7 +36,6 @@ The YAML config file is optional. Prefer `LOCAL_SHELL_MCP_*` variables or CLI ar
 | `LOCAL_SHELL_MCP_OAUTH_ISSUER` | `--oauth-issuer` | `unset` | Override OAuth issuer metadata; defaults to public_base_url when unset. |
 | `LOCAL_SHELL_MCP_OAUTH_RESOURCE` | `--oauth-resource` | `unset` | Override OAuth resource metadata; defaults to public_base_url when unset. |
 | `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | `--oauth-admin-pin` | `unset` | PIN required to approve OAuth authorization. |
-| `LOCAL_SHELL_MCP_OAUTH_JWT_SECRET` | `--oauth-jwt-secret` | `dev-change-me` | Secret used to sign OAuth bearer tokens; set a strong random value. |
 | `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` | `--oauth-access-token-ttl-s` | `0` | Bearer token lifetime in seconds; 0 means no expiry. |
 | `LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S` | `--oauth-code-ttl-s` | `300` | OAuth authorization-code lifetime in seconds. |
 | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `--allow-full-container` | `false` | Disable built-in workspace and command restrictions; use only in disposable containers or VMs. |

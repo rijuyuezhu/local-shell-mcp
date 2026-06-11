@@ -107,7 +107,6 @@ class Settings(BaseSettings):
     oauth_issuer: str | None = None
     oauth_resource: str | None = None
     oauth_admin_pin: str | None = None
-    oauth_jwt_secret: str | None = None
     # Keep the embedded single-user authorization flow simple, but avoid
     # issuing permanent bearer tokens by default.
     oauth_access_token_ttl_s: int = 3600

@@ -10,8 +10,8 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
-from .auth import (
-    AuthMiddleware,
+from .auth.middleware import AuthMiddleware
+from .auth.oauth import (
     oauth_authorize_get,
     oauth_authorize_post,
     oauth_protected_resource,

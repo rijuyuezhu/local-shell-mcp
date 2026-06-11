@@ -5,12 +5,12 @@ import pytest
 
 import local_shell_mcp.tools as tools_module
 from local_shell_mcp.agent_mcp import AgentMcpTool
-from local_shell_mcp.config.settings import get_settings
-from local_shell_mcp.oauth import (
+from local_shell_mcp.auth.oauth import (
     issue_access_token,
     resource_url,
     validate_bearer_token,
 )
+from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.tools import build_mcp
 
 
@@ -130,7 +130,6 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
 
 def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET", "test-secret")
     monkeypatch.delenv("LOCAL_SHELL_MCP_PUBLIC_BASE_URL", raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)

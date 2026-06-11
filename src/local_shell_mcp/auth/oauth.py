@@ -66,9 +66,6 @@ _CODES: dict[str, AuthCode] = {}
 def _jwt_secret() -> str:
     """Return a configured or persisted signing secret for local bearer tokens."""
     settings = get_settings()
-    if settings.oauth_jwt_secret:
-        return settings.oauth_jwt_secret
-
     secret_path = settings.state_dir / "oauth-jwt-secret"
     try:
         secret = secret_path.read_text(encoding="utf-8").strip()

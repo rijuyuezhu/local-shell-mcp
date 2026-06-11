@@ -118,13 +118,6 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "PIN",
     ),
     SettingSpec(
-        "oauth_jwt_secret",
-        "Authentication and OAuth",
-        "Secret used to sign OAuth bearer tokens; set a strong random value.",
-        "SECRET",
-        exposed=False,
-    ),
-    SettingSpec(
         "oauth_access_token_ttl_s",
         "Authentication and OAuth",
         "Advanced bearer token lifetime in seconds.",

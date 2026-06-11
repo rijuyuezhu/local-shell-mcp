@@ -10,7 +10,6 @@ from local_shell_mcp.config.settings import Settings, load_settings
 HIDDEN_CONFIG_FIELDS = {
     "oauth_issuer",
     "oauth_resource",
-    "oauth_jwt_secret",
     "oauth_access_token_ttl_s",
     "oauth_code_ttl_s",
 }

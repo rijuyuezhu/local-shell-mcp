@@ -76,7 +76,6 @@ The most common settings are:
 | Auth mode | `--auth-mode` | `LOCAL_SHELL_MCP_AUTH_MODE` | `oauth` |
 | Public OAuth origin | `--public-base-url` | `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` | unset |
 | OAuth approval PIN | `--oauth-admin-pin` | `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | unset |
-| OAuth JWT secret | `--oauth-jwt-secret` | `LOCAL_SHELL_MCP_OAUTH_JWT_SECRET` | `dev-change-me` |
 | Full-container mode | `--allow-full-container true/false` | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` |
 | Remote worker routes | `--remote-enabled true/false` | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` |
 | Agent bridge config | `--agent-config-dir` | `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/home/agent/local-shell-mcp-config` |
