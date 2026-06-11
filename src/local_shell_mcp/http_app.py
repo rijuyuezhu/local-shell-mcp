@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .auth.middleware import (
-    CloudflareAccessMiddleware,
+    AuthMiddleware,
     Principal,
     verify_request,
 )
@@ -72,7 +72,7 @@ def build_http_app() -> FastAPI:
     app = FastAPI(title="local-shell-mcp REST API", version="0.1.0")
     settings = get_settings()
     if settings.auth_mode != "none":
-        app.add_middleware(CloudflareAccessMiddleware)
+        app.add_middleware(AuthMiddleware)
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError):  # noqa: ARG001

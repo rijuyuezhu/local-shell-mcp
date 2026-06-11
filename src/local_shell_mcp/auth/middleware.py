@@ -171,7 +171,3 @@ class AuthMiddleware:
             return
 
         await self.app(scope, receive, send)
-
-
-# Backwards-compatible alias.
-type CloudflareAccessMiddleware = AuthMiddleware
