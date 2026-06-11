@@ -3,7 +3,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
 
@@ -39,7 +39,7 @@ def test_http_tool_calls_audit_full_input_output_and_auth_context(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = TestClient(build_http_app()).post(
         "/tools/read_file", json={"path": "alpha.txt"}
@@ -70,7 +70,7 @@ async def test_mcp_tool_calls_audit_full_input_output(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("read_file", {"path": "beta.txt"})
     payload = json.loads(response[0].text)
@@ -95,7 +95,7 @@ async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("read_file", {"path": "missing.txt"})
     payload = json.loads(response[0].text)

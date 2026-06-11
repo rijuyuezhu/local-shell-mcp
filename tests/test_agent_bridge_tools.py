@@ -3,7 +3,7 @@ import json
 import pytest
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.tools.registry import agent as tools_module
 
@@ -90,7 +90,7 @@ async def test_fixed_bridge_tools_exist_with_missing_config(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agent-config")
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tools = {tool.name for tool in await mcp.list_tools()}
@@ -113,7 +113,7 @@ async def test_agent_config_status_reports_missing_config(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agent-config")
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
     payload = response[0].text
@@ -160,7 +160,7 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
     payload = response[0].text
@@ -198,7 +198,7 @@ async def test_agent_config_status_redacts_env_and_header_values(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
     payload = response[0].text
@@ -249,7 +249,7 @@ async def test_agent_config_status_redacts_serialized_configured_values(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
     payload = response[0].text
@@ -275,7 +275,7 @@ async def test_activate_agent_skill_returns_skill_content(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "activate_agent_skill", {"name": "debugging"}
@@ -342,7 +342,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
 
@@ -466,7 +466,7 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "call_agent_mcp_tool", {"server": "bad", "tool": "search", "args": {}}
@@ -523,7 +523,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
@@ -577,7 +577,7 @@ async def test_call_agent_mcp_tool_redacts_serialized_configured_values(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
@@ -650,7 +650,7 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
@@ -731,7 +731,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     rows = _payload(await mcp.call_tool("list_agent_mcp_tools", {}))["data"][
@@ -820,7 +820,7 @@ async def test_dynamic_skill_tool_is_visible_and_callable(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tools = {tool.name for tool in await mcp.list_tools()}
@@ -854,7 +854,7 @@ async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
         "AgentMcpClientManager",
         lambda timeout: FakeDynamicMcpManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}
@@ -911,7 +911,7 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
         "AgentMcpClientManager",
         lambda timeout: FailingDynamicMcpManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "agent_mcp__docs__search", {"args": {}}
@@ -983,7 +983,7 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
         "AgentMcpClientManager",
         lambda _timeout: ErrorPayloadDynamicMcpManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     response = await build_mcp().call_tool(
         "agent_mcp__docs__search", {"args": {}}
@@ -1031,7 +1031,7 @@ async def test_build_mcp_respects_manifest_dynamic_tool_disable(
         "AgentMcpClientManager",
         lambda timeout: FakeDynamicMcpManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}
@@ -1059,7 +1059,7 @@ async def test_agent_bridge_hot_reloads_dynamic_skill_tools(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}
@@ -1120,7 +1120,7 @@ async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tools_module, "AgentMcpClientManager", lambda _timeout: fake_manager
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}

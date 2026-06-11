@@ -271,10 +271,6 @@ def clear_settings_cache() -> None:
     _configured_settings = None
 
 
-# Backwards-compatible test helper: many tests call get_settings.cache_clear().
-get_settings.cache_clear = clear_settings_cache  # type: ignore[attr-defined]
-
-
 def safe_settings_dump(settings: Settings | None = None) -> dict:
     """Return settings for diagnostics without exposing credentials or auth secrets."""
 

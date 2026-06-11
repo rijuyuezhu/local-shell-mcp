@@ -9,7 +9,7 @@ from local_shell_mcp.auth.oauth import (
     resource_url,
     validate_bearer_token,
 )
-from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.tools.registry import agent as tools_module
 
@@ -20,7 +20,7 @@ def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
         "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://local-shell-mcp.example.com"
     )
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     assert resource_url() == "https://local-shell-mcp.example.com/mcp"
 
@@ -31,7 +31,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://local-shell-mcp.example.com"
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     mcp = build_mcp()
     assert (
@@ -52,7 +52,7 @@ async def test_full_container_mode_marks_command_tools_for_auto_approval(
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
@@ -106,7 +106,7 @@ async def test_full_container_mode_does_not_auto_approve_agent_mcp_proxies(
         "AgentMcpClientManager",
         lambda _timeout: FakeMcpClientManager(),
     )
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
@@ -121,7 +121,7 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "false")
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
@@ -133,7 +133,7 @@ def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
     monkeypatch.delenv("LOCAL_SHELL_MCP_PUBLIC_BASE_URL", raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
-    get_settings.cache_clear()
+    clear_settings_cache()
 
     token = issue_access_token(
         client_id="test-client",

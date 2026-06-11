@@ -786,9 +786,9 @@ async def run_worker(
     workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
     os.environ.setdefault("LOCAL_SHELL_MCP_WORKSPACE_ROOT", workdir)
     os.environ.setdefault("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
-    from .config.settings import get_settings as _get_settings
+    from .config.settings import clear_settings_cache
 
-    _get_settings.cache_clear()
+    clear_settings_cache()
     server = server.rstrip("/")
     async with httpx.AsyncClient(timeout=None) as client:
         register_payload = {
