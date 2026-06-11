@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import Any
 
 import uvicorn
 from mcp.server.fastmcp import FastMCP
@@ -25,7 +24,7 @@ from .remote import remote_routes
 from .tools import build_mcp
 
 
-def with_oauth_routes(inner_app: Any) -> Starlette:
+def with_oauth_routes(inner_app: Starlette) -> Starlette:
     """Wrap the MCP ASGI app with health, OAuth, and remote-worker routes."""
 
     @asynccontextmanager
@@ -76,7 +75,7 @@ def build_mcp_http_app(mcp: FastMCP) -> Starlette:
     settings = get_settings()
     for attr in ("streamable_http_app", "sse_app"):
         if hasattr(mcp, attr):
-            inner = getattr(mcp, attr)()
+            inner: Starlette = getattr(mcp, attr)()
             app = with_oauth_routes(inner)
             if settings.auth_mode != "none":
                 app.add_middleware(AuthMiddleware)
