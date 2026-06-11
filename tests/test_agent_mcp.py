@@ -221,7 +221,7 @@ class FakeMcpManager:
         self.tools_by_server = tools_by_server or {}
         self.errors_by_server = errors_by_server or {}
 
-    async def list_tools(self, name, server):  # noqa: ANN001
+    async def list_tools(self, name, server):
         if name in self.errors_by_server:
             raise self.errors_by_server[name]
         return self.tools_by_server.get(name, [])
@@ -451,7 +451,7 @@ def test_build_agent_registry_dynamic_flag_overrides(tmp_path):
 
 def test_build_agent_registry_records_timeout_without_hanging(tmp_path):
     class StubbornMcpManager:
-        async def list_tools(self, name, server):  # noqa: ANN001
+        async def list_tools(self, name, server):
             try:
                 await asyncio.sleep(60)
             except asyncio.CancelledError:

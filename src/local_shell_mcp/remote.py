@@ -407,7 +407,7 @@ def _bearer_token(request: Request) -> str:
     return ""
 
 
-async def worker_bundle(request: Request) -> Response:  # noqa: ARG001
+async def worker_bundle(request: Request) -> Response:
     """Serve a source-and-dependency bundle used to bootstrap a remote worker."""
     package_root = Path(__file__).resolve().parent
     buffer = BytesIO()
@@ -420,7 +420,7 @@ async def worker_bundle(request: Request) -> Response:  # noqa: ARG001
     return Response(buffer.getvalue(), media_type="application/gzip")
 
 
-async def join_script(request: Request) -> PlainTextResponse:  # noqa: ARG001
+async def join_script(request: Request) -> PlainTextResponse:
     """Serve a shell script that installs and starts a remote worker for a pending invite."""
     settings = get_settings()
     server = (
@@ -517,7 +517,7 @@ def remote_routes() -> list[Route]:
     ]
 
 
-async def _to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+async def _to_thread(func, *args, **kwargs):
     """Run blocking local helpers in a thread when executing worker tools asynchronously."""
     return await asyncio.to_thread(func, *args, **kwargs)
 
@@ -780,7 +780,7 @@ async def run_worker(
     name: str | None = None,
     workdir: str | None = None,
     persist: bool = False,
-) -> None:  # noqa: ARG001
+) -> None:
     """Register with a server, poll for jobs, execute tools locally, and submit results until stopped."""
     workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
     os.environ.setdefault("LOCAL_SHELL_MCP_WORKSPACE_ROOT", workdir)
@@ -836,7 +836,7 @@ async def run_worker(
                     job["tool"], dict(job.get("args") or {})
                 )
                 out = {"job_id": job["id"], "ok": True, "data": result}
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 out = {
                     "job_id": job.get("id"),
                     **_handled_remote_exception(exc),

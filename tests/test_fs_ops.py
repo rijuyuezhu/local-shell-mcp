@@ -62,7 +62,7 @@ def test_binary_preview_does_not_read_entire_file(tmp_path, monkeypatch):
     clear_settings_cache()
     (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02\x03\x04")
 
-    def fail_read_bytes(self):  # noqa: ANN001, ARG001
+    def fail_read_bytes(self):
         raise AssertionError(
             "read_bytes should not be used for bounded previews"
         )
@@ -96,7 +96,7 @@ def test_write_text_does_not_read_existing_file_before_overwrite(
     clear_settings_cache()
     (tmp_path / "existing.txt").write_text("old", encoding="utf-8")
 
-    def fail_read_text(self, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ARG001
+    def fail_read_text(self, *args, **kwargs):
         raise AssertionError("write_text should not read old file contents")
 
     monkeypatch.setattr(Path, "read_text", fail_read_text)

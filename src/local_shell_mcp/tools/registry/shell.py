@@ -55,7 +55,7 @@ async def _shell_kill(args: dict[str, Any]) -> dict[str, Any]:
     return await kill_shell(args["session_id"])
 
 
-async def _shell_list(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
+async def _shell_list(args: dict[str, Any]) -> dict[str, Any]:
     return await list_shells()
 
 

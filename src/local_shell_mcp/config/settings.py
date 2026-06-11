@@ -154,7 +154,7 @@ class Settings(BaseSettings):
 
     @field_validator("command_denylist", "path_denylist", mode="before")
     @classmethod
-    def split_csv_fields(cls, value):  # noqa: ANN001
+    def split_csv_fields(cls, value):
         """Normalize comma-delimited restriction lists supplied through environment variables."""
         return _split_csv(value)
 

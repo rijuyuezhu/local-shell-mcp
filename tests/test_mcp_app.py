@@ -7,7 +7,7 @@ import local_shell_mcp.mcp_app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
 
 
-async def _ok(request):  # noqa: ANN001
+async def _ok(request):
     return None
 
 

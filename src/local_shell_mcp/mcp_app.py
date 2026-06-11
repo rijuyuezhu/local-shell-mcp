@@ -104,19 +104,19 @@ def with_oauth_routes(inner_app: Starlette) -> Starlette:
     """Wrap the MCP ASGI app with health, OAuth, and remote-worker routes."""
 
     @asynccontextmanager
-    async def lifespan(app: Starlette):  # noqa: ARG001
+    async def lifespan(app: Starlette):
         async with inner_app.router.lifespan_context(inner_app):
             yield
 
     routes = [
         Route(
             "/healthz",
-            lambda request: JSONResponse({"ok": True}),  # noqa: ARG005
+            lambda request: JSONResponse({"ok": True}),
             methods=["GET"],
         ),
         Route(
             "/readyz",
-            lambda request: JSONResponse({"ok": True}),  # noqa: ARG005
+            lambda request: JSONResponse({"ok": True}),
             methods=["GET"],
         ),
         Route(

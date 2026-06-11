@@ -41,7 +41,7 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     clear_settings_cache()
 
-    async def hanging_git_status(cwd: str = "."):  # noqa: ARG001
+    async def hanging_git_status(cwd: str = "."):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
@@ -58,7 +58,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(http_app_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     clear_settings_cache()
 
-    async def hanging_git_status(cwd: str = "."):  # noqa: ARG001
+    async def hanging_git_status(cwd: str = "."):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
@@ -77,7 +77,7 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setattr(http_app_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     clear_settings_cache()
 
-    def blocking_list_dir(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+    def blocking_list_dir(*args, **kwargs):
         time.sleep(0.2)
         return []
 
@@ -97,7 +97,7 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     clear_settings_cache()
 
-    def blocking_list_dir(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+    def blocking_list_dir(*args, **kwargs):
         time.sleep(0.2)
         return []
 
@@ -133,7 +133,7 @@ async def test_run_shell_timeout_includes_subprocess_spawn(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
-    async def hanging_spawn(command: str, cwd: str):  # noqa: ARG001
+    async def hanging_spawn(command: str, cwd: str):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(

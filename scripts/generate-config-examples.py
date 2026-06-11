@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,15 +14,14 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from local_shell_mcp.config.registry import (  # noqa: E402,I001
-    SECTION_ORDER,
-    SETTING_SPECS,
-    SettingSpec,
-    default_to_string,
-    default_value,
-    validate_setting_specs,
-    yaml_default,
-)
+registry = importlib.import_module("local_shell_mcp.config.registry")
+SECTION_ORDER = registry.SECTION_ORDER
+SETTING_SPECS = registry.SETTING_SPECS
+SettingSpec = registry.SettingSpec
+default_to_string = registry.default_to_string
+default_value = registry.default_value
+validate_setting_specs = registry.validate_setting_specs
+yaml_default = registry.yaml_default
 
 
 DOCKER_ENTRYPOINT_SPECS: tuple[tuple[str, str, str], ...] = (

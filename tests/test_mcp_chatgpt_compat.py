@@ -88,7 +88,7 @@ async def test_full_container_mode_does_not_auto_approve_agent_mcp_proxies(
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search",
@@ -97,7 +97,7 @@ async def test_full_container_mode_does_not_auto_approve_agent_mcp_proxies(
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             return {"ok": True}
 
     monkeypatch.setenv(

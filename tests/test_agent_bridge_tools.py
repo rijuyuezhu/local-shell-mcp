@@ -9,7 +9,7 @@ from local_shell_mcp.tools.registry import agent as tools_module
 from tests.helpers import mcp_text
 
 
-def _payload(response):  # noqa: ANN001
+def _payload(response):
     return json.loads(mcp_text(response))
 
 
@@ -144,12 +144,12 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             raise RuntimeError(
                 f"{REALISTIC_SECRET_ERROR} {CONFIGURED_VALUE_ERROR}"
             )
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise AssertionError("unavailable server should not be called")
 
     monkeypatch.setattr(
@@ -235,10 +235,10 @@ async def test_agent_config_status_redacts_serialized_configured_values(
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             raise RuntimeError(SERIALIZED_CONFIGURED_VALUE_ERROR)
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise AssertionError("unavailable server should not be called")
 
     monkeypatch.setattr(
@@ -316,7 +316,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
             self.list_calls = []
             self.call_calls = []
 
-        async def list_tools(self, name, server):  # noqa: ANN001
+        async def list_tools(self, name, server):
             self.list_calls.append((name, server.url))
             if name == "bad":
                 raise RuntimeError("probe failed")
@@ -331,7 +331,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001
+        async def call_tool(self, name, server, tool, args):
             self.call_calls.append((name, server.url, tool, args))
             return {"server": name, "tool": tool, "args": args}
 
@@ -443,7 +443,7 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             raise RuntimeError(
                 "Authorization: Bearer super-secret --token super-secret "
                 "https://example.com?token=super-secret "
@@ -455,7 +455,7 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
                 f"{CONFIGURED_VALUE_ERROR}"
             )
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise AssertionError("unavailable server should not be called")
 
     monkeypatch.setattr(
@@ -501,7 +501,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search",
@@ -510,7 +510,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise RuntimeError(
                 f"{REALISTIC_SECRET_ERROR} {CONFIGURED_VALUE_ERROR}"
             )
@@ -559,14 +559,14 @@ async def test_call_agent_mcp_tool_redacts_serialized_configured_values(
     )
 
     class FakeMcpClientManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search", description="Search docs", input_schema={}
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise RuntimeError(SERIALIZED_CONFIGURED_VALUE_ERROR)
 
     monkeypatch.setattr(
@@ -611,14 +611,14 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
     )
 
     class ErrorPayloadMcpManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search", description="Search docs", input_schema={}
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             return {
                 "is_error": True,
                 "content": [
@@ -698,7 +698,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
         def __init__(self):
             self.call_calls = []
 
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name=upstream_tool_name,
@@ -720,7 +720,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             self.call_calls.append((name, tool, args))
             return {"ok": True}
 
@@ -781,7 +781,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
 
 
 class FakeDynamicMcpManager:
-    async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+    async def list_tools(self, name, server):
         if name == "docs":
             return [
                 AgentMcpTool(
@@ -795,7 +795,7 @@ class FakeDynamicMcpManager:
             ]
         return []
 
-    async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+    async def call_tool(self, name, server, tool, args):
         return {
             "server": name,
             "tool": tool,
@@ -891,7 +891,7 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
     )
 
     class FailingDynamicMcpManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search",
@@ -900,7 +900,7 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             raise RuntimeError(CONFIGURED_VALUE_ERROR)
 
     monkeypatch.setenv(
@@ -944,14 +944,14 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
     )
 
     class ErrorPayloadDynamicMcpManager:
-        async def list_tools(self, name, server):  # noqa: ANN001, ARG002
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search", description="Search docs", input_schema={}
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001, ARG002
+        async def call_tool(self, name, server, tool, args):
             return {
                 "is_error": True,
                 "content": [
@@ -1097,14 +1097,14 @@ async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
         def __init__(self):
             self.call_calls = []
 
-        async def list_tools(self, name, server):  # noqa: ANN001
+        async def list_tools(self, name, server):
             return [
                 AgentMcpTool(
                     name="search", description=f"Search {name}", input_schema={}
                 )
             ]
 
-        async def call_tool(self, name, server, tool, args):  # noqa: ANN001
+        async def call_tool(self, name, server, tool, args):
             self.call_calls.append((name, server.url, tool, args))
             return {
                 "server": name,

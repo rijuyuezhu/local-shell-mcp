@@ -11,7 +11,7 @@ from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from .common import handled_error, ok_response, to_thread
 
 
-async def _todo_read_tool(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
+async def _todo_read_tool(args: dict[str, Any]) -> dict[str, Any]:
     return await to_thread(todo_read)
 
 

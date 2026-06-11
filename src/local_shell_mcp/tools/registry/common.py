@@ -7,8 +7,9 @@ import json
 import shlex
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from typing import Any
+from typing import Any, Protocol, cast
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -65,7 +66,7 @@ def handled_error(exc: Exception) -> dict[str, Any]:
     )
 
 
-async def to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+async def to_thread(func, *args, **kwargs):
     """Run blocking helpers in a worker thread while preserving async tool-handler flow."""
     return await asyncio.to_thread(func, *args, **kwargs)
 
@@ -135,6 +136,14 @@ NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
 PUBLIC_TOOL_TIMEOUT_S = PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 
 
+class AuditedMcpToolFn(Protocol):
+    """Callable MCP tool wrapper marked after audit/watchdog installation."""
+
+    __local_shell_mcp_audit_watchdog__: bool
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Awaitable[Any]: ...
+
+
 class PublicToolTimeoutError(TimeoutError):
     """Signals that a public tool timed out and should return structured retry guidance instead of a generic failure."""
 
@@ -182,10 +191,12 @@ def _mcp_tool_input(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     return {}
 
 
-def _mcp_tool_audit_watchdog_wrapper(original, tool_name: str):  # noqa: ANN001, ANN202
+def _mcp_tool_audit_watchdog_wrapper(
+    original: Callable[..., Awaitable[Any]], tool_name: str
+) -> AuditedMcpToolFn:
     """Return a wrapper that audits every MCP tool call and enforces the public timeout."""
 
-    async def wrapped(*args, **kwargs):  # noqa: ANN002, ANN003
+    async def wrapped(*args: Any, **kwargs: Any) -> Any:
         call_id = new_audit_call_id()
         start = time.time()
         audit_tool_call_start(
@@ -249,13 +260,14 @@ def _mcp_tool_audit_watchdog_wrapper(original, tool_name: str):  # noqa: ANN001,
         )
         return result
 
-    wrapped.__local_shell_mcp_audit_watchdog__ = True  # type: ignore[attr-defined]
-    return wrapped
+    audited = cast(AuditedMcpToolFn, wrapped)
+    audited.__local_shell_mcp_audit_watchdog__ = True
+    return audited
 
 
 def install_mcp_tool_watchdogs(mcp: FastMCP) -> None:
     """Wrap FastMCP execution paths so public tools are audited and return structured timeout errors."""
-    for tool in mcp._tool_manager._tools.values():  # noqa: SLF001
+    for tool in mcp._tool_manager._tools.values():
         if getattr(tool.fn, "__local_shell_mcp_audit_watchdog__", False):
             continue
         tool.fn = _mcp_tool_audit_watchdog_wrapper(tool.fn, tool.name)
@@ -265,7 +277,7 @@ def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
     """Patch generated tool schemas to advertise reduced confirmation needs in full-container mode."""
     if not get_settings().allow_full_container:
         return
-    for tool in mcp._tool_manager._tools.values():  # noqa: SLF001
+    for tool in mcp._tool_manager._tools.values():
         if tool.name == "call_agent_mcp_tool" or tool.name.startswith(
             "agent_mcp__"
         ):

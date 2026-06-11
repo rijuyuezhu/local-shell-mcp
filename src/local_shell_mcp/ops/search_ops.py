@@ -102,7 +102,7 @@ def tree_sync(cwd: str = ".", depth: int = 3, max_entries: int = 500) -> dict:
     count = 0
     truncated = False
 
-    def walk(directory, current_depth: int) -> None:  # noqa: ANN001
+    def walk(directory, current_depth: int) -> None:
         nonlocal count, truncated
         if current_depth >= depth or count >= limit:
             return
