@@ -50,8 +50,15 @@ def _register_http_tool_routes(app: FastAPI) -> None:
 
 
 def _make_get_tool_handler(tool_name: str):
-    async def get_handler(_: Principal = PRINCIPAL_DEP):
-        return await call_local_tool(tool_name, None)
+    async def get_handler(principal: Principal = PRINCIPAL_DEP):
+        return await call_local_tool(
+            tool_name,
+            None,
+            audit_context={
+                "principal": principal,
+                "path": f"/tools/{tool_name}",
+            },
+        )
 
     return get_handler
 
@@ -59,9 +66,16 @@ def _make_get_tool_handler(tool_name: str):
 def _make_post_tool_handler(tool_name: str):
     async def post_handler(
         body: dict[str, Any] | None = None,
-        _: Principal = PRINCIPAL_DEP,
+        principal: Principal = PRINCIPAL_DEP,
     ):
-        return await call_local_tool(tool_name, body)
+        return await call_local_tool(
+            tool_name,
+            body,
+            audit_context={
+                "principal": principal,
+                "path": f"/tools/{tool_name}",
+            },
+        )
 
     return post_handler
 

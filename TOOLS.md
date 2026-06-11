@@ -20,8 +20,10 @@ Tool definitions are registered through category registries under `src/local_she
 | Tool | Purpose |
 |---|---|
 | `environment_info` | Return workspace, auth, policy, and basic runtime information. |
-| `audit_tail` | Read recent audit log entries. |
+| `audit_tail` | Read recent audit log entries, including routed tool-call start/end records. |
 | `secret_scan` | Scan workspace text files for common secret patterns before commit or push. |
+
+The audit log is populated at the MCP and REST routing layers. Normal tool calls produce paired `tool_call_start` and `tool_call_end` records with the full input and output payloads, linked by `call_id`. Shell/auth/remote subsystems may add more specialized events such as `run_shell_start`, `auth_ok`, and `remote_worker_registered`.
 
 ## Shell and Python
 

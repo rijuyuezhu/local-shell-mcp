@@ -34,7 +34,31 @@ Watch server-side activity:
 docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit.jsonl
 ```
 
-A successful shell call should produce audit events such as `run_shell_start` and `run_shell_end`.
+Every routed MCP or REST tool call should produce paired `tool_call_start` and `tool_call_end` audit events. Shell tools also continue to emit lower-level events such as `run_shell_start` and `run_shell_end`.
+
+
+## Audit log
+
+The audit log is a short-term, complete JSONL record of routed tool activity. It is intended for debugging, post-session review, and safety analysis in disposable or otherwise controlled environments. Each record has a `ts` timestamp, an `event` name, and event-specific fields.
+
+Every MCP or REST debug tool call is logged at the routing layer, so individual tool implementations do not need to add their own call audit code. A normal call produces a start/end pair linked by `call_id`:
+
+```json
+{"ts": 1710000000.0, "event": "tool_call_start", "call_id": "...", "transport": "mcp", "tool": "read_file", "input": {"path": "README.md"}, "principal": null, "context": {}}
+{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read_file", "ok": true, "duration_ms": 12, "output": {"ok": true, "message": "", "data": {"path": "README.md", "content": "..."}}}
+```
+
+For REST debug calls, `principal` contains the authenticated caller context, for example `email`, `subject`, and token `claims`; `context` includes adapter details such as the routed path. For MCP calls, the audited `input` is the argument payload FastMCP passes to the tool, including defaulted optional parameters when FastMCP supplies them.
+
+Failures and timeouts are also linked by `call_id`:
+
+```json
+{"event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "grep_search", "ok": false, "duration_ms": 60000, "error": {"type": "PublicToolTimeoutError", "message": "grep_search exceeded 60 second public tool timeout", "repr": "PublicToolTimeoutError('...')"}}
+```
+
+The audit log intentionally stores complete tool inputs and outputs, including file contents, command output, authentication claims, and other sensitive values visible to the server. Keep the log inside the configured state directory, use the size limits to keep it short-lived, and avoid copying it to less trusted systems.
+
+Other event families may appear alongside routed tool calls, including `run_shell_start`, `run_shell_end`, `shell_start`, `shell_send`, `shell_read`, `shell_kill`, `auth_ok`, `oauth_*`, `tool_error`, `tool_timeout`, and `remote_worker_registered`.
 
 ## CLI modes
 

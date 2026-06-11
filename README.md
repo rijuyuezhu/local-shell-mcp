@@ -12,7 +12,7 @@ Use it when you want an AI coding agent to inspect a project, edit files, run te
 - A Docker image with Python, Node.js, Go, Rust, Java, Ruby, PHP, Perl, Lua, R, C/C++ build tools, Git, tmux, ripgrep, LibreOffice, and common document/data-processing libraries.
 - Optional remote worker mode: invite a machine behind NAT, a firewall, or an HPC login node to connect back over outbound HTTPS and expose matching `remote_*` tools.
 - Optional agent capability bridge for externally synced MCP servers and skills.
-- Audit logging under `/workspace/.local-shell-mcp/audit.jsonl`.
+- Complete short-term JSONL audit logging under `/workspace/.local-shell-mcp/audit.jsonl`, including routed tool inputs, outputs, authentication context, and existing shell/auth/remote events.
 - A VS Code extension that starts the server for the current workspace and copies the connector setup details.
 
 ## Start here
@@ -46,7 +46,7 @@ See [INSTALL.md](INSTALL.md) for Docker, binary, VS Code, and tunnel setup.
 2. Connect ChatGPT or another MCP client to `/mcp`.
 3. Ask the model to inspect the workspace, make edits, run tests, and show diffs.
 4. Review changes before committing or pushing.
-5. Watch the audit log when debugging tool calls.
+5. Watch the audit log when debugging tool calls or reviewing what a client did.
 
 Example prompt:
 

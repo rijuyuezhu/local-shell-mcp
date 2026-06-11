@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shlex
+import time
 import uuid
 from contextlib import suppress
 from typing import Any
@@ -12,7 +13,12 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from ...audit import audit
+from ...audit import (
+    audit,
+    audit_tool_call_end,
+    audit_tool_call_start,
+    new_audit_call_id,
+)
 from ...config.settings import get_settings
 from ...ops.fs_ops import (
     missing_path_context,
@@ -161,35 +167,94 @@ def _timeout_payload_for_tool(tool_name: str, exc: Exception) -> dict | str:
     return handled_error(exc)
 
 
-def _mcp_tool_watchdog_wrapper(original, tool_name: str):  # noqa: ANN001, ANN202
-    """Return a timeout wrapper for one FastMCP tool function."""
+def _mcp_tool_input(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """Represent FastMCP positional/keyword arguments as the routed tool input payload."""
+    if kwargs and not args:
+        return kwargs
+    if args and not kwargs:
+        return list(args)
+    if args or kwargs:
+        return {"args": list(args), "kwargs": kwargs}
+    return {}
+
+
+def _mcp_tool_audit_watchdog_wrapper(original, tool_name: str):  # noqa: ANN001, ANN202
+    """Return a wrapper that audits every MCP tool call and enforces the public timeout."""
 
     async def wrapped(*args, **kwargs):  # noqa: ANN002, ANN003
+        call_id = new_audit_call_id()
+        start = time.time()
+        audit_tool_call_start(
+            call_id=call_id,
+            transport="mcp",
+            tool=tool_name,
+            input=_mcp_tool_input(args, kwargs),
+        )
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 original(*args, **kwargs), timeout=PUBLIC_TOOL_TIMEOUT_S
             )
         except TimeoutError:
             exc = PublicToolTimeoutError(
                 f"{tool_name} exceeded {PUBLIC_TOOL_TIMEOUT_S} second public tool timeout"
             )
+            duration_ms = int((time.time() - start) * 1000)
             audit(
                 "tool_timeout",
                 tool=tool_name,
                 timeout_s=PUBLIC_TOOL_TIMEOUT_S,
             )
-            return _timeout_payload_for_tool(tool_name, exc)
+            payload = _timeout_payload_for_tool(tool_name, exc)
+            audit_tool_call_end(
+                call_id=call_id,
+                transport="mcp",
+                tool=tool_name,
+                ok=False,
+                duration_ms=duration_ms,
+                output=payload,
+                error={
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                    "repr": repr(exc),
+                },
+            )
+            return payload
+        except BaseException as exc:
+            duration_ms = int((time.time() - start) * 1000)
+            audit_tool_call_end(
+                call_id=call_id,
+                transport="mcp",
+                tool=tool_name,
+                ok=False,
+                duration_ms=duration_ms,
+                error={
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                    "repr": repr(exc),
+                },
+            )
+            raise
+        duration_ms = int((time.time() - start) * 1000)
+        audit_tool_call_end(
+            call_id=call_id,
+            transport="mcp",
+            tool=tool_name,
+            ok=True,
+            duration_ms=duration_ms,
+            output=result,
+        )
+        return result
 
-    wrapped.__local_shell_mcp_watchdog__ = True  # type: ignore[attr-defined]
+    wrapped.__local_shell_mcp_audit_watchdog__ = True  # type: ignore[attr-defined]
     return wrapped
 
 
 def install_mcp_tool_watchdogs(mcp: FastMCP) -> None:
-    """Wrap FastMCP execution paths so public tools return structured timeout errors."""
+    """Wrap FastMCP execution paths so public tools are audited and return structured timeout errors."""
     for tool in mcp._tool_manager._tools.values():  # noqa: SLF001
-        if getattr(tool.fn, "__local_shell_mcp_watchdog__", False):
+        if getattr(tool.fn, "__local_shell_mcp_audit_watchdog__", False):
             continue
-        tool.fn = _mcp_tool_watchdog_wrapper(tool.fn, tool.name)
+        tool.fn = _mcp_tool_audit_watchdog_wrapper(tool.fn, tool.name)
 
 
 def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
