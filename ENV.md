@@ -23,7 +23,7 @@ The YAML config file is optional. Prefer `LOCAL_SHELL_MCP_*` variables or CLI ar
 | Environment variable | CLI argument | Default | Description |
 |---|---|---:|---|
 | `LOCAL_SHELL_MCP_CONFIG` | `--config` | unset | Path to optional YAML config file. This selects the config file and is not itself a Settings field. |
-| `LOCAL_SHELL_MCP_MODE` | `--mode` | `mcp` | Server transport mode: mcp, http, stdio, or both. |
+| `LOCAL_SHELL_MCP_MODE` | `--mode` | `mcp` | Server transport mode. |
 | `LOCAL_SHELL_MCP_HOST` | `--host` | `0.0.0.0` | Bind host for HTTP/MCP transports. |
 | `LOCAL_SHELL_MCP_PORT` | `--port` | `8765` | Bind port for HTTP/MCP transports. |
 | `LOCAL_SHELL_MCP_WORKSPACE_ROOT` | `--workspace-root` | `/workspace` | Root directory for normal file and command operations. |
@@ -31,13 +31,9 @@ The YAML config file is optional. Prefer `LOCAL_SHELL_MCP_*` variables or CLI ar
 | `LOCAL_SHELL_MCP_AUDIT_LOG_PATH` | `--audit-log-path` | `/workspace/.local-shell-mcp/audit.jsonl` | Path to the JSONL audit log. |
 | `LOCAL_SHELL_MCP_AUTH_MODE` | `--auth-mode` | `oauth` | Authentication mode: oauth or none. Do not expose public services with none. |
 | `LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST` | `--auth-bypass-localhost` | `true` | Allow localhost requests without bearer authentication. |
-| `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY` | `--require-auth-for-mcp-discovery` | `false` | Require authentication for MCP initialize/list-tools discovery calls. |
+| `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY` | `--require-auth-for-mcp-discovery` | `true` | Require bearer auth for MCP-over-HTTP requests; OAuth/bootstrap routes remain public. |
 | `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` | `--public-base-url` | `unset` | Public HTTPS origin used in OAuth metadata and callbacks. |
-| `LOCAL_SHELL_MCP_OAUTH_ISSUER` | `--oauth-issuer` | `unset` | Override OAuth issuer metadata; defaults to public_base_url when unset. |
-| `LOCAL_SHELL_MCP_OAUTH_RESOURCE` | `--oauth-resource` | `unset` | Override OAuth resource metadata; defaults to public_base_url when unset. |
 | `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | `--oauth-admin-pin` | `unset` | PIN required to approve OAuth authorization. |
-| `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` | `--oauth-access-token-ttl-s` | `0` | Bearer token lifetime in seconds; 0 means no expiry. |
-| `LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S` | `--oauth-code-ttl-s` | `300` | OAuth authorization-code lifetime in seconds. |
 | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `--allow-full-container` | `false` | Disable built-in workspace and command restrictions; use only in disposable containers or VMs. |
 | `LOCAL_SHELL_MCP_ALLOW_NETWORK` | `--allow-network` | `true` | Allow network-capable operations. |
 | `LOCAL_SHELL_MCP_DEFAULT_TIMEOUT_S` | `--default-timeout-s` | `60` | Default shell command timeout in seconds. |
@@ -59,7 +55,7 @@ The YAML config file is optional. Prefer `LOCAL_SHELL_MCP_*` variables or CLI ar
 | `LOCAL_SHELL_MCP_MAX_TMP_BYTES` | `--max-tmp-bytes` | `50000000` | Temporary-file byte limit. |
 | `LOCAL_SHELL_MCP_MAX_CONCURRENT_COMMANDS` | `--max-concurrent-commands` | `4` | Concurrent command limit. |
 | `LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS` | `--max-tmux-sessions` | `16` | Persistent shell session limit. |
-| `LOCAL_SHELL_MCP_COMMAND_DENYLIST` | `--command-denylist` | `docker.sock,/var/run/docker.sock,mkfs,mount ,umount ,shutdown,reboot,systemctl ,iptables,nft ` | Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled. |
+| `LOCAL_SHELL_MCP_COMMAND_DENYLIST` | `--command-denylist` | `docker.sock,/var/run/docker.sock,mkfs,mount,umount,shutdown,reboot,systemctl,iptables,nft` | Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled. |
 | `LOCAL_SHELL_MCP_PATH_DENYLIST` | `--path-denylist` | `.ssh/id_rsa,.ssh/id_ed25519,.env,secrets,credentials,.git/config` | Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled. |
 | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `--remote-enabled` | `true` | Enable remote worker routes and MCP tools. |
 | `LOCAL_SHELL_MCP_REMOTE_INVITE_TTL_S` | `--remote-invite-ttl-s` | `600` | One-time remote worker invite lifetime in seconds. |

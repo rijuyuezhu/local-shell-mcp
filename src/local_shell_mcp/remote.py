@@ -26,7 +26,7 @@ from starlette.routing import Route
 
 from .audit import audit
 from .config.settings import get_settings, safe_settings_dump
-from .fs_ops import (
+from .ops.fs_ops import (
     delete_path,
     edit_text,
     glob_paths,
@@ -38,7 +38,7 @@ from .fs_ops import (
     temp_dir,
     write_text,
 )
-from .git_ops import (
+from .ops.git_ops import (
     git_add,
     git_checkout,
     git_clone,
@@ -52,8 +52,8 @@ from .git_ops import (
     git_show,
     git_status,
 )
-from .search_ops import grep, tree
-from .shell_ops import (
+from .ops.search_ops import grep, tree
+from .ops.shell_ops import (
     kill_shell,
     list_shells,
     public_run_shell,

@@ -14,7 +14,7 @@ from local_shell_mcp.agent_bridge import (
     AgentMcpServerConfig,
     build_agent_registry,
 )
-from local_shell_mcp.agent_mcp import (
+from local_shell_mcp.agent_bridge.mcp import (
     AgentMcpClientManager,
     AgentMcpTool,
     normalize_mcp_tool,

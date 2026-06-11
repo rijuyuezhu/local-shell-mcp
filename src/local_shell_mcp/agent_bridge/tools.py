@@ -8,7 +8,7 @@ from contextlib import suppress
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
-from .agent_bridge import (
+from . import (
     AgentCapabilityRegistry,
     _redact_text,
     activate_skill,

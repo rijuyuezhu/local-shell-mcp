@@ -287,12 +287,3 @@ def safe_settings_dump(settings: Settings | None = None) -> dict:
             else:
                 data[key] = "<redacted>"
     return data
-
-
-def validate_public_oauth_configuration(
-    settings: Settings | None = None,
-) -> None:
-    """Reject HTTP OAuth startup configurations that cannot produce externally valid issuer and resource metadata."""
-    settings = settings or get_settings()
-    if settings.auth_mode != "oauth" or not settings.public_base_url:
-        return

@@ -5,16 +5,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 import local_shell_mcp.http_app as http_app_module
-import local_shell_mcp.tools as tools_module
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.http_app import build_http_app
+from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.models import CommandResult
-from local_shell_mcp.shell_ops import (
+from local_shell_mcp.ops.shell_ops import (
     public_run_shell_timeout,
     run_shell,
     send_shell,
 )
-from local_shell_mcp.tools import build_mcp
+from local_shell_mcp.tools.registry import common as common_tools_module
+from local_shell_mcp.tools.registry import filesystem as fs_tools_module
+from local_shell_mcp.tools.registry import git as git_tools_module
 
 
 @pytest.mark.asyncio
@@ -35,13 +37,13 @@ async def test_run_shell_tool_rejects_timeout_above_public_cap(
 @pytest.mark.asyncio
 async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setattr(tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     get_settings.cache_clear()
 
     async def hanging_git_status(cwd: str = "."):  # noqa: ARG001
         await asyncio.sleep(5)
 
-    monkeypatch.setattr(tools_module, "git_status", hanging_git_status)
+    monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
 
     response = await build_mcp().call_tool("git_status_tool", {"cwd": "."})
     payload = response[0].text
@@ -58,7 +60,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     async def hanging_git_status(cwd: str = "."):  # noqa: ARG001
         await asyncio.sleep(5)
 
-    monkeypatch.setattr(http_app_module, "git_status", hanging_git_status)
+    monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
 
     response = TestClient(build_http_app()).post(
         "/tools/git/status", json={"cwd": "."}
@@ -78,7 +80,7 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
         time.sleep(0.2)
         return []
 
-    monkeypatch.setattr(http_app_module, "list_dir", blocking_list_dir)
+    monkeypatch.setattr(fs_tools_module, "list_dir", blocking_list_dir)
 
     response = TestClient(build_http_app()).post(
         "/tools/list_files", json={"path": "."}
@@ -91,14 +93,14 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setattr(tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     get_settings.cache_clear()
 
     def blocking_list_dir(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
         time.sleep(0.2)
         return []
 
-    monkeypatch.setattr(tools_module, "list_dir", blocking_list_dir)
+    monkeypatch.setattr(fs_tools_module, "list_dir", blocking_list_dir)
 
     response = await build_mcp().call_tool("list_files", {"path": "."})
     payload = response[0].text
@@ -134,7 +136,7 @@ async def test_run_shell_timeout_includes_subprocess_spawn(
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        "local_shell_mcp.shell_ops._spawn_process", hanging_spawn
+        "local_shell_mcp.ops.shell_ops._spawn_process", hanging_spawn
     )
 
     result = await run_shell("echo never", timeout_s=1)
@@ -201,7 +203,7 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
             command="tmux",
         )
 
-    monkeypatch.setattr("local_shell_mcp.shell_ops.tmux", fake_tmux)
+    monkeypatch.setattr("local_shell_mcp.ops.shell_ops.tmux", fake_tmux)
 
     result = await asyncio.wait_for(
         send_shell("session-1", "echo ok", enter=True), timeout=1

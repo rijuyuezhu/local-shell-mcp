@@ -6,9 +6,9 @@ Use it when you want an AI coding agent to inspect a project, edit files, run te
 
 ## What you get
 
-- A ChatGPT custom connector endpoint at `/mcp`, with built-in OAuth for public deployments.
+- A ChatGPT custom connector endpoint at `/mcp`, with built-in OAuth for public deployments. The MCP server and local REST debug API are separate modes.
 - Read-only `search` and `fetch` tools for regular ChatGPT connectors and Deep Research-style use.
-- Full coding-agent tools for ChatGPT Developer Mode and other full MCP clients.
+- Full coding-agent tools for ChatGPT Developer Mode and other full MCP clients, registered by category-specific tool registries.
 - A Docker image with Python, Node.js, Go, Rust, Java, Ruby, PHP, Perl, Lua, R, C/C++ build tools, Git, tmux, ripgrep, LibreOffice, and common document/data-processing libraries.
 - Optional remote worker mode: invite a machine behind NAT, a firewall, or an HPC login node to connect back over outbound HTTPS and expose matching `remote_*` tools.
 - Optional agent capability bridge for externally synced MCP servers and skills.
