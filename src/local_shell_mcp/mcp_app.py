@@ -19,7 +19,7 @@ from .auth.oauth import (
     oauth_server_metadata,
     oauth_token,
 )
-from .config.settings import get_settings, validate_public_oauth_configuration
+from .config.settings import get_settings
 from .remote import remote_routes
 from .tools import build_mcp
 
@@ -87,7 +87,6 @@ def build_mcp_http_app(mcp: Any | None = None) -> Starlette | None:
 def run_mcp() -> None:
     """Run the FastMCP server through stdio or HTTP transport."""
     settings = get_settings()
-    validate_public_oauth_configuration(settings)
     mcp = build_mcp()
 
     if settings.mode == "stdio":

@@ -11,7 +11,7 @@ from typing import Any
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 from . import AgentMcpServerConfig
 
@@ -108,7 +108,7 @@ class AgentMcpClientManager:
             if not server.url:
                 raise ValueError("http MCP server requires url")
             async with (
-                streamablehttp_client(
+                streamable_http_client(
                     server.url, headers=server.headers or None
                 ) as (
                     read_stream,

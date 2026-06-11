@@ -14,7 +14,7 @@ from .auth.middleware import (
     Principal,
     verify_request,
 )
-from .config.settings import get_settings, validate_public_oauth_configuration
+from .config.settings import get_settings
 from .ops.shell_ops import PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 from .tools.local_invocations import HTTP_TOOL_ROUTES, call_local_tool
 
@@ -125,6 +125,5 @@ def build_http_app() -> FastAPI:
 def run_http() -> None:
     """Run the HTTP server with REST tool routes and health endpoints."""
     settings = get_settings()
-    validate_public_oauth_configuration(settings)
     app = build_http_app()
     uvicorn.run(app, host=settings.host, port=settings.port)
