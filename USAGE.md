@@ -149,7 +149,7 @@ After it connects:
 Use local-shell-mcp remote_list_machines.
 ```
 
-Then use near-parity remote tools such as `remote_run_shell_tool`, `remote_read_file`, `remote_write_file`, `remote_grep_search`, `remote_git_pull_tool`, or `remote_shell_start`.
+Then use near-parity remote tools such as `remote_run_shell_tool`, `remote_read_file`, `remote_write_file`, `remote_grep_search`, or `remote_shell_start`. Run remote git workflows with `remote_run_shell_tool`.
 
 Remote settings:
 

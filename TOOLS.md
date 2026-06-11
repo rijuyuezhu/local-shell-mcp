@@ -15,21 +15,20 @@ Tool definitions are registered through category registries under `src/local_she
 | `search` | Search workspace files and return connector-compatible result cards. |
 | `fetch` | Fetch a workspace file by id returned from `search`. |
 
-## Environment and audit
+## Environment and safety
 
 | Tool | Purpose |
 |---|---|
 | `environment_info` | Return workspace, auth, policy, and basic runtime information. |
-| `audit_tail` | Read recent audit log entries, including routed tool-call start/end records. |
-| `secret_scan` | Scan workspace text files for common secret patterns before commit or push. |
+| `secret_scan` | Scan workspace text files for common secret patterns before commit, push, release, or sharing logs. |
 
-The audit log is populated at the MCP and REST routing layers. Normal tool calls produce paired `tool_call_start` and `tool_call_end` records with the full input and output payloads, linked by `call_id`. Shell/auth/remote subsystems may add more specialized events such as `run_shell_start`, `auth_ok`, and `remote_worker_registered`.
+The audit log is still populated internally at the MCP and REST routing layers. Normal tool calls produce paired `tool_call_start` and `tool_call_end` records with the full input and output payloads, linked by `call_id`. Shell/auth/remote subsystems may add more specialized events such as `run_shell_start`, `auth_ok`, and `remote_worker_registered`. There is no model-facing audit-tail tool.
 
 ## Shell and Python
 
 | Tool | Purpose |
 |---|---|
-| `run_shell_tool` | Run a bounded shell command in the workspace. |
+| `run_shell_tool` | Run a bounded non-interactive shell command in the workspace. Use this for git workflows. |
 | `run_python_tool` | Write Python code to a temporary file and execute it. |
 | `shell_start` | Start a persistent tmux-backed shell session. |
 | `shell_send` | Send input to a persistent shell session. |
@@ -37,7 +36,7 @@ The audit log is populated at the MCP and REST routing layers. Normal tool calls
 | `shell_kill` | Kill a persistent shell session. |
 | `shell_list` | List persistent shell sessions. |
 
-Command execution is limited by timeout, output-size, and concurrency settings. Public shell calls use a stricter public timeout cap than the internal maximum. Persistent shells are useful for long-running REPLs, dev servers, and interactive commands.
+Command execution is limited by timeout, output-size, and concurrency settings. Public shell calls use a stricter public timeout cap than the internal maximum. Persistent shells are useful for long-running REPLs, dev servers, and interactive commands. Dedicated git tools are intentionally not exposed; run git through `run_shell_tool` or a persistent shell.
 
 ## Filesystem and search
 
@@ -53,26 +52,9 @@ Command execution is limited by timeout, output-size, and concurrency settings. 
 | `edit_file` | Replace exact text in a file. |
 | `multi_edit_file` | Apply multiple exact-text edits to one file. |
 | `delete_file_or_dir` | Delete a file or directory. |
-| `apply_patch` | Apply a unified diff using `git apply`. |
+| `apply_patch` | Apply a unified diff using `git apply` as a file-editing primitive. |
 
 The file tools reject path escapes outside the workspace unless `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true`. Text reads and writes are bounded by configured byte limits. Binary files are not returned as text unless an explicit preview mode is requested.
-
-## Git
-
-| Tool | Purpose |
-|---|---|
-| `git_clone_tool` | Clone a Git repository. |
-| `git_status_tool` | Run status and show remotes. |
-| `git_diff_tool` | Show unstaged or staged diffs, optionally for one path or as stats. |
-| `git_log_tool` | Show recent commits. |
-| `git_checkout_tool` | Checkout a ref or create a branch. |
-| `git_fetch_tool` | Fetch a remote, with pruning enabled by default. |
-| `git_pull_tool` | Pull the current branch, fast-forward only by default. |
-| `git_add_tool` | Stage paths. |
-| `git_commit_tool` | Create a commit. |
-| `git_push_tool` | Push current HEAD to a remote branch. |
-| `git_show_tool` | Show a commit, object, or file at `ref:path`. |
-| `git_reset_tool` | Reset with soft, mixed, or hard mode. |
 
 Run `secret_scan` and inspect diffs before committing or pushing.
 
@@ -101,7 +83,7 @@ Remote workers connect back to the control server over outbound HTTP(S), long-po
 
 | Tool | Purpose |
 |---|---|
-| `remote_run_shell_tool` | Run a shell command on a remote worker. |
+| `remote_run_shell_tool` | Run a shell command on a remote worker. Use this for remote git workflows. |
 | `remote_run_python_tool` | Write Python code to a temporary file and execute it on a remote worker. |
 | `remote_shell_start` | Start a persistent remote shell session. |
 | `remote_shell_send` | Send input to a remote shell session. |
@@ -125,22 +107,7 @@ Remote workers connect back to the control server over outbound HTTP(S), long-po
 | `remote_delete_file_or_dir` | Delete a remote file or directory. |
 | `remote_apply_patch` | Apply a unified diff on a remote worker. |
 
-## Remote Git
-
-| Tool | Purpose |
-|---|---|
-| `remote_git_clone_tool` | Clone a Git repository on a remote worker. |
-| `remote_git_status_tool` | Run remote Git status and show remotes. |
-| `remote_git_diff_tool` | Show remote diffs. |
-| `remote_git_log_tool` | Show recent remote commits. |
-| `remote_git_checkout_tool` | Checkout a remote ref or create a branch. |
-| `remote_git_fetch_tool` | Fetch a remote repository. |
-| `remote_git_pull_tool` | Pull a remote repository. |
-| `remote_git_add_tool` | Stage remote paths. |
-| `remote_git_commit_tool` | Create a remote commit. |
-| `remote_git_push_tool` | Push remote HEAD. |
-| `remote_git_show_tool` | Show a remote commit, object, or file. |
-| `remote_git_reset_tool` | Reset a remote repository. |
+Dedicated remote git tools are intentionally not exposed. Use `remote_run_shell_tool` for one-shot remote git commands or `remote_shell_start` for longer interactive remote workflows.
 
 ## Agent capability bridge tools
 
