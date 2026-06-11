@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
+from mcp.server.fastmcp import FastMCP
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
@@ -70,10 +71,9 @@ def with_oauth_routes(inner_app: Any) -> Starlette:
     return Starlette(routes=routes, lifespan=lifespan)
 
 
-def build_mcp_http_app(mcp: Any | None = None) -> Starlette | None:
+def build_mcp_http_app(mcp: FastMCP) -> Starlette:
     """Build the MCP HTTP ASGI app for the current settings and SDK version."""
     settings = get_settings()
-    mcp = mcp or build_mcp()
     for attr in ("streamable_http_app", "sse_app"):
         if hasattr(mcp, attr):
             inner = getattr(mcp, attr)()
@@ -81,7 +81,9 @@ def build_mcp_http_app(mcp: Any | None = None) -> Starlette | None:
             if settings.auth_mode != "none":
                 app.add_middleware(AuthMiddleware)
             return app
-    return None
+    raise RuntimeError(
+        "MCP HTTP ASGI app not available since both streamable_http_app and sse_app are not available"
+    )
 
 
 def run_mcp() -> None:
