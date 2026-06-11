@@ -21,7 +21,15 @@ from .auth.oauth import (
 )
 from .config.settings import get_settings
 from .remote import remote_routes
-from .tools import build_mcp
+from .tools.discovery import get_primary_mcp_registry
+
+
+def build_mcp() -> FastMCP:
+    """Create the configured FastMCP server from the discovered tool registry."""
+    mcp = get_primary_mcp_registry().build_mcp()
+    if mcp is None:  # pragma: no cover - guarded by get_primary_mcp_registry
+        raise RuntimeError("Discovered MCP registry did not build an app")
+    return mcp
 
 
 def with_oauth_routes(inner_app: Starlette) -> Starlette:

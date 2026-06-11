@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from local_shell_mcp.config.settings import get_settings
+from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.ops.fs_ops import (
     edit_text,
     multi_edit_text,
@@ -12,7 +13,6 @@ from local_shell_mcp.ops.fs_ops import (
     write_text,
 )
 from local_shell_mcp.ops.shell_ops import check_command_policy
-from local_shell_mcp.tools import build_mcp
 
 
 def test_write_read_edit(tmp_path, monkeypatch):

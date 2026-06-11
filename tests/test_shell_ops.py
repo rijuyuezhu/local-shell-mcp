@@ -5,17 +5,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 import local_shell_mcp.http_app as http_app_module
-import local_shell_mcp.tools as tools_module
 import local_shell_mcp.tools.local_invocations as local_invocations_module
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.http_app import build_http_app
+from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.models import CommandResult
 from local_shell_mcp.ops.shell_ops import (
     public_run_shell_timeout,
     run_shell,
     send_shell,
 )
-from local_shell_mcp.tools import build_mcp
+from local_shell_mcp.tools.registry import local as tools_module
 
 
 @pytest.mark.asyncio

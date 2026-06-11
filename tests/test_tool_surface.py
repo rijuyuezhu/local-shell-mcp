@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.http_app import build_http_app
-from local_shell_mcp.tools import build_mcp
+from local_shell_mcp.mcp_app import build_mcp
 
 LOCAL_MCP_TOOL_NAMES = {
     "search",

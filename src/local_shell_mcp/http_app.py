@@ -16,7 +16,8 @@ from .auth.middleware import (
 )
 from .config.settings import get_settings
 from .ops.shell_ops import PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
-from .tools.local_invocations import HTTP_TOOL_ROUTES, call_local_tool
+from .tools.discovery import discover_tool_registries
+from .tools.local_invocations import call_local_tool
 
 PUBLIC_TOOL_TIMEOUT_S = PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 
@@ -36,7 +37,13 @@ def _tool_body(body: dict[str, Any] | None) -> dict[str, Any]:
 
 def _register_http_tool_routes(app: FastAPI) -> None:
     """Register REST tool endpoints from the shared local tool routing table."""
-    for (method, path), tool_name in HTTP_TOOL_ROUTES.items():
+    routes = [
+        route
+        for registry in discover_tool_registries()
+        for route in registry.http_routes()
+    ]
+    for route in routes:
+        method, path, tool_name = route.method, route.path, route.tool_name
         if method == "GET":
 
             async def get_handler(
