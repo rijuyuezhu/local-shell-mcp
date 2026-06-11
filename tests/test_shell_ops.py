@@ -9,7 +9,7 @@ import local_shell_mcp.tools as tools_module
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.models import CommandResult
-from local_shell_mcp.shell_ops import (
+from local_shell_mcp.ops.shell_ops import (
     public_run_shell_timeout,
     run_shell,
     send_shell,
@@ -134,7 +134,7 @@ async def test_run_shell_timeout_includes_subprocess_spawn(
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        "local_shell_mcp.shell_ops._spawn_process", hanging_spawn
+        "local_shell_mcp.ops.shell_ops._spawn_process", hanging_spawn
     )
 
     result = await run_shell("echo never", timeout_s=1)
@@ -201,7 +201,7 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
             command="tmux",
         )
 
-    monkeypatch.setattr("local_shell_mcp.shell_ops.tmux", fake_tmux)
+    monkeypatch.setattr("local_shell_mcp.ops.shell_ops.tmux", fake_tmux)
 
     result = await asyncio.wait_for(
         send_shell("session-1", "echo ok", enter=True), timeout=1

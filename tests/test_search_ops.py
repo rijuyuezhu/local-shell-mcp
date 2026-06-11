@@ -1,7 +1,7 @@
 import pytest
 
 from local_shell_mcp.config.settings import get_settings
-from local_shell_mcp.search_ops import tree
+from local_shell_mcp.ops.search_ops import tree
 from local_shell_mcp.tools import _handled_error
 
 

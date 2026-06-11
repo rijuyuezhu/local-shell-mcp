@@ -13,7 +13,7 @@ from .auth.middleware import (
     verify_request,
 )
 from .config.settings import get_settings
-from .fs_ops import (
+from .ops.fs_ops import (
     delete_path,
     edit_text,
     glob_paths,
@@ -22,7 +22,7 @@ from .fs_ops import (
     read_text,
     write_text,
 )
-from .git_ops import (
+from .ops.git_ops import (
     git_add,
     git_checkout,
     git_clone,
@@ -36,8 +36,8 @@ from .git_ops import (
     git_show,
     git_status,
 )
-from .search_ops import grep, tree
-from .shell_ops import (
+from .ops.search_ops import grep, tree
+from .ops.shell_ops import (
     PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
     kill_shell,
     list_shells,
@@ -46,7 +46,7 @@ from .shell_ops import (
     send_shell,
     start_shell,
 )
-from .todo_ops import todo_read, todo_write
+from .ops.todo_ops import todo_read, todo_write
 
 PUBLIC_TOOL_TIMEOUT_S = PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 

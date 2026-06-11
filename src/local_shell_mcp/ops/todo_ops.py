@@ -6,7 +6,7 @@ import json
 import time
 from pathlib import Path
 
-from .config.settings import get_settings
+from ..config.settings import get_settings
 
 
 def _todo_path() -> Path:

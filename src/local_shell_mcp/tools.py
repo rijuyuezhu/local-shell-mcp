@@ -19,7 +19,7 @@ from .agent_bridge_tools import register_agent_bridge_tools
 from .agent_mcp import AgentMcpClientManager
 from .audit import audit
 from .config.settings import get_settings, safe_settings_dump
-from .fs_ops import (
+from .ops.fs_ops import (
     delete_path,
     edit_text,
     glob_paths,
@@ -33,7 +33,7 @@ from .fs_ops import (
     temp_dir,
     write_text,
 )
-from .git_ops import (
+from .ops.git_ops import (
     git_add,
     git_checkout,
     git_clone,
@@ -47,9 +47,8 @@ from .git_ops import (
     git_show,
     git_status,
 )
-from .remote import remote_manager
-from .search_ops import grep, tree
-from .shell_ops import (
+from .ops.search_ops import grep, tree
+from .ops.shell_ops import (
     PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
     kill_shell,
     list_shells,
@@ -60,7 +59,8 @@ from .shell_ops import (
     send_shell,
     start_shell,
 )
-from .todo_ops import todo_read, todo_write
+from .ops.todo_ops import todo_read, todo_write
+from .remote import remote_manager
 
 
 def _ok(data: Any = None, message: str = "") -> dict:
