@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
@@ -21,14 +23,80 @@ from .auth.oauth import (
 )
 from .config.settings import get_settings
 from .remote import remote_routes
-from .tools.discovery import get_primary_mcp_registry
+from .tools.base import McpToolContext
+from .tools.discovery import discover_tool_registries
+from .tools.registry.local import (
+    NOAUTH_SECURITY_SCHEMES,
+    OAUTH_SECURITY_SCHEMES,
+    _handled_error,
+    _install_full_container_auto_approval_hints,
+    _install_mcp_tool_watchdogs,
+    _ok,
+    _security_meta,
+)
+
+
+def _transport_security_settings() -> TransportSecuritySettings:
+    """Derive transport-specific auth metadata from the active server settings."""
+    from urllib.parse import urlparse
+
+    settings = get_settings()
+    allowed_hosts = {
+        "127.0.0.1",
+        "127.0.0.1:*",
+        "localhost",
+        "localhost:*",
+        "[::1]",
+        "[::1]:*",
+    }
+    allowed_origins = {
+        "http://127.0.0.1:*",
+        "http://localhost:*",
+        "http://[::1]:*",
+        "https://chatgpt.com",
+        "https://chat.openai.com",
+    }
+
+    if settings.public_base_url:
+        parsed = urlparse(settings.public_base_url)
+        if parsed.netloc:
+            allowed_hosts.add(parsed.netloc)
+            allowed_hosts.add(f"{parsed.hostname}:*")
+            allowed_origins.add(f"{parsed.scheme}://{parsed.netloc}")
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=sorted(allowed_hosts),
+        allowed_origins=sorted(allowed_origins),
+    )
 
 
 def build_mcp() -> FastMCP:
-    """Create the configured FastMCP server from the discovered tool registry."""
-    mcp = get_primary_mcp_registry().build_mcp()
-    if mcp is None:  # pragma: no cover - guarded by get_primary_mcp_registry
-        raise RuntimeError("Discovered MCP registry did not build an app")
+    """Create the configured FastMCP server from discovered tool registries."""
+    settings = get_settings()
+    mcp = FastMCP(
+        "local-shell-mcp", transport_security=_transport_security_settings()
+    )
+    read_only_tool = ToolAnnotations(
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    )
+    context = McpToolContext(
+        settings=settings,
+        read_only_tool=read_only_tool,
+        read_only_meta=_security_meta(
+            [*NOAUTH_SECURITY_SCHEMES, *OAUTH_SECURITY_SCHEMES]
+        ),
+        oauth_meta=_security_meta(OAUTH_SECURITY_SCHEMES),
+        ok=_ok,
+        handled_error=_handled_error,
+    )
+    for registry in discover_tool_registries():
+        registry.register_mcp(mcp, context)
+    _install_full_container_auto_approval_hints(mcp)
+    _install_mcp_tool_watchdogs(mcp)
     return mcp
 
 

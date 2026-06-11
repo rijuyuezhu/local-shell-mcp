@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
@@ -20,11 +21,22 @@ class HttpToolRoute:
     tool_name: str
 
 
+@dataclass(frozen=True)
+class McpToolContext:
+    """Shared MCP registration context prepared by the app assembler."""
+
+    settings: Any
+    read_only_tool: ToolAnnotations
+    read_only_meta: dict[str, Any]
+    oauth_meta: dict[str, Any]
+    ok: Callable[[Any, str], dict]
+    handled_error: Callable[[Exception], dict]
+
+
 class ToolRegistry:
     """Base class for modules that describe MCP and HTTP tool exposure."""
 
     name: str = ""
-    owns_mcp: bool = False
 
     def http_routes(self) -> Iterable[HttpToolRoute]:
         """Return REST routes provided by this registry."""
@@ -34,6 +46,6 @@ class ToolRegistry:
         """Return canonical tool-name to HTTP invocation handler mappings."""
         return {}
 
-    def build_mcp(self) -> FastMCP | None:
-        """Build a complete FastMCP app when this registry owns MCP assembly."""
+    def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
+        """Register MCP tools for this registry onto the provided app."""
         return None

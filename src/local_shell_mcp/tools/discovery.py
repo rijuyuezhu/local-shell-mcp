@@ -33,15 +33,3 @@ def discover_tool_registries() -> tuple[ToolRegistry, ...]:
         key=lambda registry: registry.name or registry.__class__.__name__
     )
     return tuple(registries)
-
-
-def get_primary_mcp_registry() -> ToolRegistry:
-    """Return the registry that currently owns complete FastMCP construction."""
-    owners = [
-        registry for registry in discover_tool_registries() if registry.owns_mcp
-    ]
-    if len(owners) != 1:
-        raise RuntimeError(
-            f"Expected exactly one MCP registry, found {len(owners)}"
-        )
-    return owners[0]

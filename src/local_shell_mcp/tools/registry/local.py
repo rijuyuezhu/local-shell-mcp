@@ -61,7 +61,7 @@ from ...ops.shell_ops import (
 )
 from ...ops.todo_ops import todo_read, todo_write
 from ...remote import remote_manager
-from ..base import HttpToolRoute, ToolRegistry
+from ..base import McpToolContext
 
 
 def _ok(data: Any = None, message: str = "") -> dict:
@@ -165,29 +165,6 @@ OAUTH_SECURITY_SCHEMES = [
 ]
 NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
 PUBLIC_TOOL_TIMEOUT_S = PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
-
-
-class LocalToolRegistry(ToolRegistry):
-    """Registry for built-in local, remote, git, shell, filesystem, and bridge tools."""
-
-    name = "local"
-    owns_mcp = True
-
-    def http_routes(self):
-        from ..local_invocations import HTTP_TOOL_ROUTES
-
-        return (
-            HttpToolRoute(method=method, path=path, tool_name=tool_name)
-            for (method, path), tool_name in HTTP_TOOL_ROUTES.items()
-        )
-
-    def http_handlers(self):
-        from ..local_invocations import LOCAL_TOOL_HANDLERS
-
-        return LOCAL_TOOL_HANDLERS
-
-    def build_mcp(self) -> FastMCP:
-        return build_mcp()
 
 
 class PublicToolTimeoutError(TimeoutError):
@@ -433,23 +410,10 @@ def _read_audit_tail_entries(lines: int = 100) -> dict:
     }
 
 
-def build_mcp() -> FastMCP:
-    """Create the configured FastMCP server and register every local, remote, git, shell, filesystem, and bridge tool."""
-    settings = get_settings()
-    mcp = FastMCP(
-        "local-shell-mcp", transport_security=_transport_security_settings()
-    )
-    read_only_tool = ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
-    )
-    read_only_meta = _security_meta(
-        [*NOAUTH_SECURITY_SCHEMES, *OAUTH_SECURITY_SCHEMES]
-    )
-    oauth_meta = _security_meta(OAUTH_SECURITY_SCHEMES)
-
+def register_agent_bridge_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    settings = context.settings
+    oauth_meta = context.oauth_meta
     if settings.agent_bridge_enabled:
         registry = build_agent_registry(
             settings.agent_config_dir,
@@ -468,6 +432,14 @@ def build_mcp() -> FastMCP:
             None if settings.agent_dynamic_mcp_tools else False,
             None if settings.agent_dynamic_skill_tools else False,
         )
+
+
+def register_workspace_connector_mcp(
+    mcp: FastMCP, context: McpToolContext
+) -> None:
+    """Register MCP tools for this tool group."""
+    read_only_tool = context.read_only_tool
+    read_only_meta = context.read_only_meta
 
     @mcp.tool(annotations=read_only_tool, meta=read_only_meta)
     async def search(query: str) -> str:
@@ -540,6 +512,12 @@ def build_mcp() -> FastMCP:
                 ensure_ascii=False,
             )
 
+
+def register_environment_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    settings = context.settings
+    oauth_meta = context.oauth_meta
+
     @mcp.tool(meta=oauth_meta)
     async def environment_info() -> dict:
         """Return workspace, auth, policy, and basic environment information."""
@@ -557,6 +535,11 @@ def build_mcp() -> FastMCP:
             )
         except Exception as exc:
             return _handled_error(exc)
+
+
+def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    oauth_meta = context.oauth_meta
 
     @mcp.tool(meta=oauth_meta)
     async def run_shell_tool(
@@ -630,6 +613,11 @@ def build_mcp() -> FastMCP:
             return _ok(await list_shells())
         except Exception as exc:
             return _handled_error(exc)
+
+
+def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    oauth_meta = context.oauth_meta
 
     @mcp.tool(meta=oauth_meta)
     async def list_files(
@@ -775,6 +763,29 @@ def build_mcp() -> FastMCP:
             return _handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
+    async def secret_scan(
+        cwd: str = ".", glob: str | None = None, max_results: int = 200
+    ) -> dict:
+        """Scan workspace text files for common secrets before commit/push."""
+        try:
+            return _ok(await _secret_scan(cwd, glob, max_results))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def audit_tail(lines: int = 100) -> dict:
+        """Read recent audit log entries."""
+        try:
+            return _ok(await _to_thread(_read_audit_tail_entries, lines))
+        except Exception as exc:
+            return _handled_error(exc)
+
+
+def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    oauth_meta = context.oauth_meta
+
+    @mcp.tool(meta=oauth_meta)
     async def git_clone_tool(
         repo_url: str,
         dest: str | None = None,
@@ -897,15 +908,10 @@ def build_mcp() -> FastMCP:
         except Exception as exc:
             return _handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
-    async def secret_scan(
-        cwd: str = ".", glob: str | None = None, max_results: int = 200
-    ) -> dict:
-        """Scan workspace text files for common secrets before commit/push."""
-        try:
-            return _ok(await _secret_scan(cwd, glob, max_results))
-        except Exception as exc:
-            return _handled_error(exc)
+
+def register_todo_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    oauth_meta = context.oauth_meta
 
     @mcp.tool(meta=oauth_meta)
     async def todo_read_tool() -> dict:
@@ -923,13 +929,10 @@ def build_mcp() -> FastMCP:
         except Exception as exc:
             return _handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
-    async def audit_tail(lines: int = 100) -> dict:
-        """Read recent audit log entries."""
-        try:
-            return _ok(await _to_thread(_read_audit_tail_entries, lines))
-        except Exception as exc:
-            return _handled_error(exc)
+
+def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register MCP tools for this tool group."""
+    oauth_meta = context.oauth_meta
 
     async def _remote_call(
         machine: str, tool: str, args: dict, timeout_s: int | None = None
@@ -1352,7 +1355,3 @@ def build_mcp() -> FastMCP:
         return await _remote_call(
             machine, "git_reset_tool", {"cwd": cwd, "mode": mode, "ref": ref}
         )
-
-    _install_full_container_auto_approval_hints(mcp)
-    _install_mcp_tool_watchdogs(mcp)
-    return mcp
