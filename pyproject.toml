@@ -33,6 +33,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.0",
+    "pyright>=1.1.410",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.16",
@@ -62,3 +63,7 @@ ignore = ["E501"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
