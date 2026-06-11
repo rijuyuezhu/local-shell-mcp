@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
@@ -107,9 +108,8 @@ class AgentMcpClientManager:
                 if not server.url:
                     raise ValueError("http MCP server requires url")
                 async with (
-                    streamable_http_client(
-                        server.url, headers=server.headers or None
-                    ) as (
+                    httpx.AsyncClient(headers=server.headers or None) as client,
+                    streamable_http_client(server.url, http_client=client) as (
                         read_stream,
                         write_stream,
                         _get_session_id,

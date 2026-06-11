@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import asdict, is_dataclass
 from typing import Any
@@ -38,10 +38,12 @@ def _tool_row(
     dynamic_tool_name: str | None = None,
 ) -> dict[str, Any]:
     """Convert an upstream MCP tool into a redacted status row with schema and dynamic-name metadata."""
+    model_dump = getattr(tool, "model_dump", None)
     if is_dataclass(tool) and not isinstance(tool, type):
         data = asdict(tool)
-    elif hasattr(tool, "model_dump"):
-        data = tool.model_dump(mode="json")
+    elif callable(model_dump):
+        dumped = model_dump(mode="json")
+        data = dumped if isinstance(dumped, Mapping) else {}
     elif isinstance(tool, dict):
         data = tool
     else:

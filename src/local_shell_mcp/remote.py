@@ -112,10 +112,10 @@ def _add_distribution_to_tar(
             _add_distribution_to_tar(tar, required_name, seen)
 
     for entry in dist.files or []:
-        entry_path = Path(entry)
+        entry_path = Path(str(entry))
         if entry_path.is_absolute() or ".." in entry_path.parts:
             continue
-        source = Path(dist.locate_file(entry))
+        source = Path(str(dist.locate_file(entry)))
         if not source.is_file() or source.suffix in {".pyc", ".pyo"}:
             continue
         tar.add(source, arcname=str(Path("vendor") / entry_path))
@@ -255,9 +255,8 @@ class RemoteManager:
 
     def _default_machine_name(self, payload: dict[str, Any]) -> str:
         """Choose a stable human-readable worker name when the worker did not provide one."""
-        info = (
-            payload.get("info") if isinstance(payload.get("info"), dict) else {}
-        )
+        raw_info = payload.get("info")
+        info = raw_info if isinstance(raw_info, dict) else {}
         user = info.get("user") or os.getenv("USER") or "user"
         host = info.get("hostname") or "remote"
         base = f"{user}@{host}"
