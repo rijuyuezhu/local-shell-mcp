@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.server.fastmcp import FastMCP
 
 from ...ops.fs_ops import (
@@ -14,7 +16,7 @@ from ...ops.fs_ops import (
     write_text,
 )
 from ...ops.search_ops import grep, tree
-from ..base import HttpToolRoute, McpToolContext, ToolRegistry
+from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from .common import (
     apply_patch_text,
     handled_error,
@@ -26,34 +28,146 @@ from .common import (
 )
 
 
+async def _list_files(args: dict[str, Any]) -> list[dict[str, Any]]:
+    return await to_thread(
+        list_dir,
+        args.get("path", "."),
+        args.get("recursive", False),
+        args.get("max_entries", 500),
+    )
+
+
+async def _tree_view(args: dict[str, Any]) -> dict[str, Any]:
+    return await tree(
+        args.get("cwd", "."),
+        args.get("depth", 3),
+        args.get("max_entries", 500),
+    )
+
+
+async def _glob_search(args: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "paths": await to_thread(
+            glob_paths,
+            args["pattern"],
+            args.get("cwd", "."),
+            args.get("max_results", 500),
+        )
+    }
+
+
+async def _grep_search(args: dict[str, Any]) -> dict[str, Any]:
+    return await grep(
+        args["query"],
+        args.get("cwd", "."),
+        args.get("glob"),
+        args.get("regex", True),
+        args.get("case_sensitive", True),
+        args.get("max_results"),
+    )
+
+
+async def _read_file(args: dict[str, Any]) -> dict[str, Any]:
+    return await to_thread(
+        read_text,
+        args["path"],
+        args.get("start_line"),
+        args.get("end_line"),
+        args.get("binary_preview"),
+        args.get("binary_preview_bytes", 256),
+    )
+
+
+async def _read_many_files(args: dict[str, Any]) -> dict[str, Any]:
+    return await to_thread(
+        read_many_files_sync,
+        args["paths"],
+        args.get("start_line"),
+        args.get("end_line"),
+        args.get("binary_preview"),
+        args.get("binary_preview_bytes", 256),
+    )
+
+
+async def _write_file(args: dict[str, Any]) -> dict[str, Any]:
+    return await to_thread(
+        write_text, args["path"], args["content"], args.get("overwrite", True)
+    )
+
+
+async def _edit_file(args: dict[str, Any]) -> dict[str, Any]:
+    return await to_thread(
+        edit_text,
+        args["path"],
+        args["old"],
+        args["new"],
+        args.get("replace_all", False),
+    )
+
+
+async def _multi_edit_file(args: dict[str, Any]) -> dict[str, Any]:
+    return await to_thread(multi_edit_text, args["path"], args["edits"])
+
+
+async def _delete_file_or_dir(args: dict[str, Any]) -> dict[str, Any]:
+    return await to_thread(
+        delete_path, args["path"], args.get("recursive", False)
+    )
+
+
+async def _apply_patch(args: dict[str, Any]) -> dict[str, Any]:
+    return await apply_patch_text(args["patch"], args.get("cwd", "."))
+
+
+async def _secret_scan(args: dict[str, Any]) -> dict[str, Any]:
+    return await run_secret_scan(
+        args.get("cwd", "."), args.get("glob"), args.get("max_results", 200)
+    )
+
+
+async def _audit_tail(args: dict[str, Any]) -> dict[str, Any]:
+    return await to_thread(read_audit_tail_entries, args.get("lines", 100))
+
+
+FILESYSTEM_HTTP_ROUTES = (
+    HttpToolRoute("POST", "/tools/list_files", "list_files"),
+    HttpToolRoute("POST", "/tools/tree", "tree_view"),
+    HttpToolRoute("POST", "/tools/glob", "glob_search"),
+    HttpToolRoute("POST", "/tools/grep", "grep_search"),
+    HttpToolRoute("POST", "/tools/read_file", "read_file"),
+    HttpToolRoute("POST", "/tools/write_file", "write_file"),
+    HttpToolRoute("POST", "/tools/edit_file", "edit_file"),
+    HttpToolRoute("POST", "/tools/multi_edit_file", "multi_edit_file"),
+    HttpToolRoute("POST", "/tools/delete", "delete_file_or_dir"),
+)
+
+FILESYSTEM_HTTP_HANDLERS: dict[str, ToolHandler] = {
+    "list_files": _list_files,
+    "tree_view": _tree_view,
+    "glob_search": _glob_search,
+    "grep_search": _grep_search,
+    "read_file": _read_file,
+    "read_many_files": _read_many_files,
+    "write_file": _write_file,
+    "edit_file": _edit_file,
+    "multi_edit_file": _multi_edit_file,
+    "delete_file_or_dir": _delete_file_or_dir,
+    "apply_patch": _apply_patch,
+    "secret_scan": _secret_scan,
+    "audit_tail": _audit_tail,
+}
+
+
 class FilesystemToolRegistry(ToolRegistry):
     """Register filesystem, search, patch, and audit tools."""
 
     name = "filesystem"
 
     def http_routes(self):
-        from ..local_invocations import HTTP_TOOL_ROUTES
+        return FILESYSTEM_HTTP_ROUTES
 
-        names = {
-            "list_files",
-            "tree_view",
-            "glob_search",
-            "grep_search",
-            "read_file",
-            "read_many_files",
-            "write_file",
-            "edit_file",
-            "multi_edit_file",
-            "delete_file_or_dir",
-            "apply_patch",
-            "secret_scan",
-            "audit_tail",
-        }
-        return (
-            HttpToolRoute(method=method, path=path, tool_name=tool_name)
-            for (method, path), tool_name in HTTP_TOOL_ROUTES.items()
-            if tool_name in names
-        )
+    def http_handlers(self):
+        return FILESYSTEM_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_filesystem_mcp(mcp, context)

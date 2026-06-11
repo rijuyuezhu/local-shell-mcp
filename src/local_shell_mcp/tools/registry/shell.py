@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.server.fastmcp import FastMCP
 
 from ...ops.shell_ops import (
@@ -12,8 +14,69 @@ from ...ops.shell_ops import (
     send_shell,
     start_shell,
 )
-from ..base import HttpToolRoute, McpToolContext, ToolRegistry
+from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from .common import handled_error, ok_response, run_python_script
+
+
+async def _run_shell_tool(args: dict[str, Any]) -> dict[str, Any]:
+    return (
+        await public_run_shell(
+            args["command"],
+            args.get("cwd", "."),
+            args.get("timeout_s"),
+            args.get("max_output_bytes"),
+        )
+    ).model_dump()
+
+
+async def _run_python_tool(args: dict[str, Any]) -> dict[str, Any]:
+    return await run_python_script(
+        args["code"], args.get("cwd", "."), args.get("timeout_s", 60)
+    )
+
+
+async def _shell_start(args: dict[str, Any]) -> dict[str, Any]:
+    return await start_shell(
+        args.get("cwd", "."), args.get("name"), args.get("command")
+    )
+
+
+async def _shell_send(args: dict[str, Any]) -> dict[str, Any]:
+    return await send_shell(
+        args["session_id"], args["input_text"], args.get("enter", True)
+    )
+
+
+async def _shell_read(args: dict[str, Any]) -> dict[str, Any]:
+    return await read_shell(args["session_id"], args.get("lines", 200))
+
+
+async def _shell_kill(args: dict[str, Any]) -> dict[str, Any]:
+    return await kill_shell(args["session_id"])
+
+
+async def _shell_list(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
+    return await list_shells()
+
+
+SHELL_HTTP_ROUTES = (
+    HttpToolRoute("POST", "/tools/run_shell", "run_shell_tool"),
+    HttpToolRoute("POST", "/tools/shell_start", "shell_start"),
+    HttpToolRoute("POST", "/tools/shell_send", "shell_send"),
+    HttpToolRoute("POST", "/tools/shell_read", "shell_read"),
+    HttpToolRoute("POST", "/tools/shell_kill", "shell_kill"),
+    HttpToolRoute("GET", "/tools/shell_list", "shell_list"),
+)
+
+SHELL_HTTP_HANDLERS: dict[str, ToolHandler] = {
+    "run_shell_tool": _run_shell_tool,
+    "run_python_tool": _run_python_tool,
+    "shell_start": _shell_start,
+    "shell_send": _shell_send,
+    "shell_read": _shell_read,
+    "shell_kill": _shell_kill,
+    "shell_list": _shell_list,
+}
 
 
 class ShellToolRegistry(ToolRegistry):
@@ -22,22 +85,10 @@ class ShellToolRegistry(ToolRegistry):
     name = "shell"
 
     def http_routes(self):
-        from ..local_invocations import HTTP_TOOL_ROUTES
+        return SHELL_HTTP_ROUTES
 
-        names = {
-            "run_shell_tool",
-            "run_python_tool",
-            "shell_start",
-            "shell_send",
-            "shell_read",
-            "shell_kill",
-            "shell_list",
-        }
-        return (
-            HttpToolRoute(method=method, path=path, tool_name=tool_name)
-            for (method, path), tool_name in HTTP_TOOL_ROUTES.items()
-            if tool_name in names
-        )
+    def http_handlers(self):
+        return SHELL_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_shell_mcp(mcp, context)

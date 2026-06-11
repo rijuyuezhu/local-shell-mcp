@@ -2,11 +2,32 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.server.fastmcp import FastMCP
 
 from ...ops.todo_ops import todo_read, todo_write
-from ..base import HttpToolRoute, McpToolContext, ToolRegistry
+from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from .common import handled_error, ok_response, to_thread
+
+
+async def _todo_read_tool(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
+    return await to_thread(todo_read)
+
+
+async def _todo_write_tool(args: dict[str, Any]) -> dict[str, Any]:
+    return await to_thread(todo_write, args.get("todos", []))
+
+
+TODO_HTTP_ROUTES = (
+    HttpToolRoute("GET", "/tools/todo", "todo_read_tool"),
+    HttpToolRoute("POST", "/tools/todo", "todo_write_tool"),
+)
+
+TODO_HTTP_HANDLERS: dict[str, ToolHandler] = {
+    "todo_read_tool": _todo_read_tool,
+    "todo_write_tool": _todo_write_tool,
+}
 
 
 class TodoToolRegistry(ToolRegistry):
@@ -15,14 +36,10 @@ class TodoToolRegistry(ToolRegistry):
     name = "todo"
 
     def http_routes(self):
-        from ..local_invocations import HTTP_TOOL_ROUTES
+        return TODO_HTTP_ROUTES
 
-        names = {"todo_read_tool", "todo_write_tool"}
-        return (
-            HttpToolRoute(method=method, path=path, tool_name=tool_name)
-            for (method, path), tool_name in HTTP_TOOL_ROUTES.items()
-            if tool_name in names
-        )
+    def http_handlers(self):
+        return TODO_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_todo_mcp(mcp, context)

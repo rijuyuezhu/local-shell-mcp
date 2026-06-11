@@ -6,7 +6,12 @@ from fastapi.testclient import TestClient
 from local_shell_mcp.config.settings import get_settings
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
-from local_shell_mcp.tools.base import HttpToolRoute
+from local_shell_mcp.tools.base import HttpToolRoute, ToolRegistry
+from local_shell_mcp.tools.discovery import discover_tool_registries
+from local_shell_mcp.tools.local_invocations import (
+    call_local_tool,
+    local_tool_handlers,
+)
 
 LOCAL_MCP_TOOL_NAMES = {
     "search",
@@ -169,3 +174,38 @@ def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
 
     with pytest.raises(ValueError, match="Unsupported HTTP tool method 'PUT'"):
         build_http_app()
+
+
+@pytest.mark.asyncio
+async def test_local_invocations_are_collected_from_discovered_registries(
+    monkeypatch,
+):
+    async def example_handler(args):
+        return {"from_registry": args["value"]}
+
+    class ExampleRegistry(ToolRegistry):
+        def http_handlers(self):
+            return {"example_tool": example_handler}
+
+    monkeypatch.setattr(
+        "local_shell_mcp.tools.local_invocations.discover_tool_registries",
+        lambda: [ExampleRegistry()],
+    )
+    local_tool_handlers.cache_clear()
+
+    try:
+        assert await call_local_tool("example_tool", {"value": 42}) == {
+            "from_registry": 42
+        }
+    finally:
+        local_tool_handlers.cache_clear()
+
+
+def test_discovered_http_routes_have_registry_handlers():
+    route_tool_names = {
+        route.tool_name
+        for registry in discover_tool_registries()
+        for route in registry.http_routes()
+    }
+
+    assert route_tool_names <= set(local_tool_handlers())
