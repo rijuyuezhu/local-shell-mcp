@@ -29,6 +29,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     register_setting_cli_args(parser)
 
+    # worker subcommand
     subparsers = parser.add_subparsers(dest="command")
     worker = subparsers.add_parser(
         "worker",
