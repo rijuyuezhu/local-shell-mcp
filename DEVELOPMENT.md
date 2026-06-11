@@ -39,7 +39,7 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 | `src/local_shell_mcp/mcp_app.py` | MCP stdio/HTTP transport startup and OAuth/remote ASGI route wrapping. |
 | `src/local_shell_mcp/tools/base.py` | Shared `ToolRegistry`, `McpToolContext`, HTTP route metadata, and local handler types. |
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries under `tools/registry/`. |
-| `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper. It aggregates local invocation handlers from discovered registries instead of maintaining a separate tool table. |
+| `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper. It aggregates local invocation handlers from discovered registries and audits routed REST tool calls instead of maintaining a separate tool table. |
 | `src/local_shell_mcp/tools/registry/` | Category-specific tool registries. Each registry owns its MCP registration, REST debug routes, and local HTTP invocation handlers when applicable. |
 | `src/local_shell_mcp/http_app.py` | REST debug API, HTTP server startup, and HTTP protocol adapter over the shared local tool registry. |
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, safe settings dump, and generated config metadata. |
@@ -52,7 +52,7 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 | `src/local_shell_mcp/agent_bridge/__init__.py` | Agent bridge manifest loading, skill scanning, MCP probing, redaction. |
 | `src/local_shell_mcp/agent_bridge/tools.py` | Agent bridge MCP tool registration and dynamic tool reloads. |
 | `src/local_shell_mcp/agent_bridge/mcp.py` | External MCP client manager and tool/result normalization. |
-| `src/local_shell_mcp/audit.py` | Audit log writer and trimming. |
+| `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
 | `src/local_shell_mcp/ops/todo_ops.py` | Todo state persistence. |
 | `tests/` | Unit and compatibility tests. |
 | `scripts/` | Development, probing, generated-config, entrypoint, and release helper scripts. |
@@ -64,6 +64,7 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 - `mcp_app.py` owns the FastMCP app, transport security settings, OAuth/bootstrap routes, remote-worker ASGI routes, and MCP tool watchdog installation.
 - `http_app.py` is only the REST debug adapter. It discovers `HttpToolRoute` values from registries and invokes handlers through `tools.local_invocations.call_local_tool`.
 - Tool registration is registry-based: a category module under `tools/registry/` should define its MCP tools and, when the REST debug API should expose the same operation, its HTTP route plus local handler in the same module. Do not add a second global tool table.
+- Routed tool calls are audited centrally: REST debug calls in `tools.local_invocations.call_local_tool`, and MCP calls by the FastMCP audit/watchdog wrapper installed from `tools/registry/common.py`. Do not add per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured. Health, OAuth metadata/authorization, and remote worker bootstrap endpoints remain public; localhost bypass applies only to `--mode http`.
 - Tool results use a consistent `ok`, `message`, and `data` shape where possible.
 - File tools avoid reading full binary files by default and enforce configured read/write limits.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -41,3 +42,54 @@ def audit(event: str, **fields: Any) -> None:
     _trim_audit_log(path, settings.max_audit_log_bytes)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+
+
+def new_audit_call_id() -> str:
+    """Return a unique identifier used to link start/end audit records for one operation."""
+    return uuid.uuid4().hex
+
+
+def audit_tool_call_start(
+    *,
+    call_id: str,
+    transport: str,
+    tool: str,
+    input: Any,
+    principal: Any = None,
+    context: dict[str, Any] | None = None,
+) -> None:
+    """Record the full input and caller context for one routed tool invocation."""
+    audit(
+        "tool_call_start",
+        call_id=call_id,
+        transport=transport,
+        tool=tool,
+        input=input,
+        principal=principal,
+        context=context or {},
+    )
+
+
+def audit_tool_call_end(
+    *,
+    call_id: str,
+    transport: str,
+    tool: str,
+    ok: bool,
+    duration_ms: int,
+    output: Any = None,
+    error: dict[str, Any] | None = None,
+) -> None:
+    """Record the full output or exception for one routed tool invocation."""
+    fields: dict[str, Any] = {
+        "call_id": call_id,
+        "transport": transport,
+        "tool": tool,
+        "ok": ok,
+        "duration_ms": duration_ms,
+    }
+    if error is not None:
+        fields["error"] = error
+    else:
+        fields["output"] = output
+    audit("tool_call_end", **fields)
