@@ -1,4 +1,4 @@
-"""Build the FastAPI application that exposes shell, filesystem, git, remote-worker, and MCP endpoints."""
+"""Build the FastAPI application that exposes shell, filesystem, remote-worker, and MCP endpoints."""
 
 from __future__ import annotations
 

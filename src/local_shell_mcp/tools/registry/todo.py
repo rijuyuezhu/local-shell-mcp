@@ -51,7 +51,7 @@ def register_todo_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(meta=protected_meta)
     async def todo_read_tool() -> dict:
-        """Read the agent todo list. Similar to Claude Code TodoRead."""
+        """Read the current agent todo list. Use at the start of multi-step or resumed work to recover planned tasks and statuses. This is read-only; use todo_write_tool to create or update todos."""
         try:
             return ok_response(await to_thread(todo_read))
         except Exception as exc:
@@ -59,7 +59,7 @@ def register_todo_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(meta=protected_meta)
     async def todo_write_tool(todos: list[dict]) -> dict:
-        """Write the agent todo list. Each todo: id, content, status, priority."""
+        """Replace the current structured agent todo list. Use for multi-step work where progress should be tracked explicitly. Each todo should include id, content, status, and priority; keep statuses current rather than storing unrelated notes."""
         try:
             return ok_response(await to_thread(todo_write, todos))
         except Exception as exc:

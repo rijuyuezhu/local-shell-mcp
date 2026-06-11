@@ -38,20 +38,6 @@ from .ops.fs_ops import (
     temp_dir,
     write_text,
 )
-from .ops.git_ops import (
-    git_add,
-    git_checkout,
-    git_clone,
-    git_commit,
-    git_diff,
-    git_fetch,
-    git_log,
-    git_pull,
-    git_push,
-    git_reset,
-    git_show,
-    git_status,
-)
 from .ops.search_ops import grep, tree
 from .ops.shell_ops import (
     kill_shell,
@@ -597,7 +583,7 @@ async def _run_python(
 
 
 async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
-    """Dispatch a remote-worker tool call to the corresponding filesystem, shell, git, browser, or session helper."""
+    """Dispatch a remote-worker tool call to the corresponding filesystem, shell, browser, or session helper."""
     match tool:
         case "environment_info":
             result = await run_shell(
@@ -710,70 +696,13 @@ async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
             )
         case "apply_patch":
             return await _apply_patch_text(args["patch"], args.get("cwd", "."))
-        case "git_clone_tool":
-            return await git_clone(
-                args["repo_url"],
-                args.get("dest"),
-                args.get("branch"),
-                args.get("cwd", "."),
-            )
-        case "git_status_tool":
-            return await git_status(args.get("cwd", "."))
-        case "git_diff_tool":
-            return await git_diff(
-                args.get("cwd", "."),
-                args.get("staged", False),
-                args.get("path"),
-                args.get("stat", False),
-            )
-        case "git_log_tool":
-            return await git_log(
-                args.get("cwd", "."), args.get("max_count", 20)
-            )
-        case "git_checkout_tool":
-            return await git_checkout(
-                args["cwd"], args["ref"], args.get("create", False)
-            )
-        case "git_fetch_tool":
-            return await git_fetch(
-                args.get("cwd", "."),
-                args.get("remote", "origin"),
-                args.get("prune", True),
-            )
-        case "git_pull_tool":
-            return await git_pull(
-                args.get("cwd", "."), args.get("ff_only", True)
-            )
-        case "git_add_tool":
-            return await git_add(args.get("cwd", "."), args.get("paths"))
-        case "git_commit_tool":
-            return await git_commit(
-                args["cwd"], args["message"], args.get("all_changes", False)
-            )
-        case "git_push_tool":
-            return await git_push(
-                args["cwd"],
-                args.get("remote", "origin"),
-                args.get("branch"),
-                args.get("set_upstream", True),
-            )
-        case "git_show_tool":
-            return await git_show(
-                args.get("cwd", "."), args.get("ref", "HEAD"), args.get("path")
-            )
-        case "git_reset_tool":
-            return await git_reset(
-                args.get("cwd", "."),
-                args.get("mode", "soft"),
-                args.get("ref", "HEAD"),
-            )
         case _:
             raise ValueError(f"unsupported remote worker tool: {tool}")
 
 
 def worker_capabilities() -> list[str]:
     """List browser and Playwright capabilities available in the worker environment."""
-    return ["shell", "persistent_shell", "files", "search", "git", "python"]
+    return ["shell", "persistent_shell", "files", "search", "python"]
 
 
 def worker_info(workdir: str) -> dict[str, Any]:

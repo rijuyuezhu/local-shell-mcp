@@ -231,12 +231,6 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "BYTES",
     ),
     SettingSpec(
-        "max_audit_tail_bytes",
-        "Safety and resource limits",
-        "Audit-tail response byte limit.",
-        "BYTES",
-    ),
-    SettingSpec(
         "max_audit_log_bytes",
         "Safety and resource limits",
         "Audit-log rotation threshold in bytes.",
@@ -342,7 +336,6 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     ),
     SettingSpec("tmux_bin", "Tool executables", "tmux executable.", "PATH"),
     SettingSpec("rg_bin", "Tool executables", "ripgrep executable.", "PATH"),
-    SettingSpec("git_bin", "Tool executables", "Git executable.", "PATH"),
     SettingSpec("python_bin", "Tool executables", "Python executable.", "PATH"),
 )
 

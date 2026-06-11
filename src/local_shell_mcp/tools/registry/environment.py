@@ -26,7 +26,7 @@ def register_environment_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(meta=protected_meta)
     async def environment_info() -> dict:
-        """Return workspace, auth, policy, and basic environment information."""
+        """Return the active workspace, server settings, auth/policy state, and a small environment probe. Use this before planning tool-heavy work when you need to know the workspace root, timeout/output limits, network policy, or basic runtime versions. This is read-only and intended for orientation, not for executing arbitrary commands."""
         try:
             result = await run_shell(
                 "uname -a; echo '---'; id; echo '---'; pwd; echo '---'; python3 --version; git --version",

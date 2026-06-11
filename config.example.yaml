@@ -63,8 +63,6 @@ max_read_many_total_bytes: 5000000
 max_todos: 1000
 # Todo-list serialized byte limit.
 max_todo_bytes: 1000000
-# Audit-tail response byte limit.
-max_audit_tail_bytes: 1000000
 # Audit-log rotation threshold in bytes.
 max_audit_log_bytes: 20000000
 # Temporary-file count limit.
@@ -129,7 +127,5 @@ shell_executable: "/bin/bash"
 tmux_bin: "tmux"
 # ripgrep executable.
 rg_bin: "rg"
-# Git executable.
-git_bin: "git"
 # Python executable.
 python_bin: "python3"

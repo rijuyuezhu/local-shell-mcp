@@ -186,7 +186,6 @@ async def test_relaxed_client_tool_hints_marks_command_tools_without_full_contai
                     "shell:read",
                     "shell:write",
                     "shell:execute",
-                    "git:write",
                 ],
             }
         ]
