@@ -149,9 +149,9 @@ class GitToolRegistry(ToolRegistry):
 
 def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
-    oauth_meta = context.oauth_meta
+    protected_meta = context.protected_meta
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_clone_tool(
         repo_url: str,
         dest: str | None = None,
@@ -164,7 +164,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_status_tool(cwd: str = ".") -> dict:
         """Run git status and list remotes."""
         try:
@@ -172,7 +172,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_diff_tool(
         cwd: str = ".",
         staged: bool = False,
@@ -185,7 +185,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_log_tool(cwd: str = ".", max_count: int = 20) -> dict:
         """Show recent git commits."""
         try:
@@ -193,7 +193,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_checkout_tool(
         cwd: str, ref: str, create: bool = False
     ) -> dict:
@@ -203,7 +203,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_fetch_tool(
         cwd: str = ".", remote: str = "origin", prune: bool = True
     ) -> dict:
@@ -213,7 +213,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_pull_tool(cwd: str = ".", ff_only: bool = True) -> dict:
         """Pull current branch."""
         try:
@@ -221,7 +221,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_add_tool(
         cwd: str = ".", paths: list[str] | None = None
     ) -> dict:
@@ -231,7 +231,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_commit_tool(
         cwd: str, message: str, all_changes: bool = False
     ) -> dict:
@@ -241,7 +241,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_push_tool(
         cwd: str,
         remote: str = "origin",
@@ -256,7 +256,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_show_tool(
         cwd: str = ".", ref: str = "HEAD", path: str | None = None
     ) -> dict:
@@ -266,7 +266,7 @@ def register_git_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def git_reset_tool(
         cwd: str = ".", mode: str = "soft", ref: str = "HEAD"
     ) -> dict:

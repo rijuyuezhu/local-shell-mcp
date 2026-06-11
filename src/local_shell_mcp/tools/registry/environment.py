@@ -22,9 +22,9 @@ class EnvironmentToolRegistry(ToolRegistry):
 def register_environment_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
     settings = context.settings
-    oauth_meta = context.oauth_meta
+    protected_meta = context.protected_meta
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def environment_info() -> dict:
         """Return workspace, auth, policy, and basic environment information."""
         try:

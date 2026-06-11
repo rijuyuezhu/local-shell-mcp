@@ -148,6 +148,11 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Allow network-capable operations.",
     ),
     SettingSpec(
+        "relaxed_client_tool_hints",
+        "Safety and resource limits",
+        "Advertise lower-risk MCP client hints for local tools without changing server-side authentication or command policy.",
+    ),
+    SettingSpec(
         "default_timeout_s",
         "Safety and resource limits",
         "Default shell command timeout in seconds.",

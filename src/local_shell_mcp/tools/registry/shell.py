@@ -96,9 +96,9 @@ class ShellToolRegistry(ToolRegistry):
 
 def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
-    oauth_meta = context.oauth_meta
+    protected_meta = context.protected_meta
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def run_shell_tool(
         command: str,
         cwd: str = ".",
@@ -117,7 +117,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def run_python_tool(
         code: str, cwd: str = ".", timeout_s: int = 60
     ) -> dict:
@@ -127,7 +127,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def shell_start(
         cwd: str = ".", name: str | None = None, command: str | None = None
     ) -> dict:
@@ -137,7 +137,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def shell_send(
         session_id: str, input_text: str, enter: bool = True
     ) -> dict:
@@ -147,7 +147,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def shell_read(session_id: str, lines: int = 200) -> dict:
         """Read recent output from a persistent shell session."""
         try:
@@ -155,7 +155,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def shell_kill(session_id: str) -> dict:
         """Kill a persistent shell session."""
         try:
@@ -163,7 +163,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def shell_list() -> dict:
         """List persistent shell sessions."""
         try:

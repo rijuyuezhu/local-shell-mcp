@@ -47,9 +47,9 @@ class TodoToolRegistry(ToolRegistry):
 
 def register_todo_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
-    oauth_meta = context.oauth_meta
+    protected_meta = context.protected_meta
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def todo_read_tool() -> dict:
         """Read the agent todo list. Similar to Claude Code TodoRead."""
         try:
@@ -57,7 +57,7 @@ def register_todo_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def todo_write_tool(todos: list[dict]) -> dict:
         """Write the agent todo list. Each todo: id, content, status, priority."""
         try:

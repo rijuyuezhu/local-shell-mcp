@@ -9,6 +9,8 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from ..config.settings import Settings
+
 type ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
 type HttpMethod = Literal["GET", "POST"]
@@ -30,14 +32,14 @@ class HttpToolRoute:
 class McpToolContext:
     """Shared MCP registration context prepared by the app assembler."""
 
-    settings: Any
+    settings: Settings
     """Runtime settings object shared by all tool registries."""
     read_only_tool: ToolAnnotations
     """MCP annotation applied to read-only tools."""
-    read_only_meta: dict[str, Any]
-    """Metadata advertised for read-only MCP tools."""
-    oauth_meta: dict[str, Any]
-    """OAuth metadata advertised for tools requiring authorization."""
+    connector_meta: dict[str, Any]
+    """Client-facing metadata advertised for connector-style read-only MCP tools."""
+    protected_meta: dict[str, Any]
+    """Client-facing metadata advertised for protected MCP tools."""
     ok: Callable[[Any, str], dict[str, Any]]
     """Helper that wraps successful tool responses in the public envelope."""
     handled_error: Callable[[Exception], dict[str, Any]]

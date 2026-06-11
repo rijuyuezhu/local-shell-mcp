@@ -23,7 +23,7 @@ class AgentBridgeToolRegistry(ToolRegistry):
 def register_agent_bridge_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
     settings = context.settings
-    oauth_meta = context.oauth_meta
+    protected_meta = context.protected_meta
     if settings.agent_bridge_enabled:
         registry = build_agent_registry(
             settings.agent_config_dir,
@@ -35,7 +35,7 @@ def register_agent_bridge_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         register_agent_bridge_tools(
             mcp,
             registry,
-            oauth_meta,
+            protected_meta,
             ok_response,
             handled_error,
             settings.agent_mcp_probe_timeout_s,

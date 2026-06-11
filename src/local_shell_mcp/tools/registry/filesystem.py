@@ -175,9 +175,9 @@ class FilesystemToolRegistry(ToolRegistry):
 
 def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
-    oauth_meta = context.oauth_meta
+    protected_meta = context.protected_meta
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def list_files(
         path: str = ".", recursive: bool = False, max_entries: int = 500
     ) -> dict:
@@ -189,7 +189,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def tree_view(
         cwd: str = ".", depth: int = 3, max_entries: int = 500
     ) -> dict:
@@ -199,7 +199,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def glob_search(
         pattern: str, cwd: str = ".", max_results: int = 500
     ) -> dict:
@@ -215,7 +215,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def grep_search(
         query: str,
         cwd: str = ".",
@@ -232,7 +232,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def read_file(
         path: str,
         start_line: int | None = None,
@@ -255,7 +255,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def read_many_files(
         paths: list[str],
         start_line: int | None = None,
@@ -278,7 +278,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def write_file(
         path: str, content: str, overwrite: bool = True
     ) -> dict:
@@ -290,7 +290,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def edit_file(
         path: str, old: str, new: str, replace_all: bool = False
     ) -> dict:
@@ -302,7 +302,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def multi_edit_file(path: str, edits: list[dict]) -> dict:
         """Apply multiple exact-text edits to one file. Each edit has old, new, replace_all."""
         try:
@@ -310,7 +310,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def delete_file_or_dir(path: str, recursive: bool = False) -> dict:
         """Delete a file or directory inside the controlled workspace/container."""
         try:
@@ -318,7 +318,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def apply_patch(patch: str, cwd: str = ".") -> dict:
         """Apply a unified diff using git apply."""
         try:
@@ -326,7 +326,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def secret_scan(
         cwd: str = ".", glob: str | None = None, max_results: int = 200
     ) -> dict:
@@ -336,7 +336,7 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=oauth_meta)
+    @mcp.tool(meta=protected_meta)
     async def audit_tail(lines: int = 100) -> dict:
         """Read recent audit log entries."""
         try:
