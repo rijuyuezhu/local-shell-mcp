@@ -8,7 +8,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from local_shell_mcp.config.registry import (
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from local_shell_mcp.config.registry import (  # noqa: E402,I001
     SECTION_ORDER,
     SETTING_SPECS,
     SettingSpec,
@@ -18,7 +23,6 @@ from local_shell_mcp.config.registry import (
     yaml_default,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
 
 DOCKER_ENTRYPOINT_SPECS: tuple[tuple[str, str, str], ...] = (
     (
@@ -84,7 +88,8 @@ def generate_env_example() -> str:
         section: [] for section in SECTION_ORDER
     }
     for spec in SETTING_SPECS:
-        specs_by_section[spec.section].append(spec)
+        if getattr(spec, "exposed", True):
+            specs_by_section[spec.section].append(spec)
 
     for section in SECTION_ORDER:
         lines.extend(["", f"# {section}."])
@@ -147,7 +152,8 @@ def generate_yaml_example() -> str:
     ]
     specs_by_section = {section: [] for section in SECTION_ORDER}
     for spec in SETTING_SPECS:
-        specs_by_section[spec.section].append(spec)
+        if getattr(spec, "exposed", True):
+            specs_by_section[spec.section].append(spec)
 
     for section in SECTION_ORDER:
         lines.extend(["", f"# {section}."])

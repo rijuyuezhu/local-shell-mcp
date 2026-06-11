@@ -63,6 +63,27 @@ _CLIENTS: dict[str, OAuthClient] = {}
 _CODES: dict[str, AuthCode] = {}
 
 
+def _jwt_secret() -> str:
+    """Return a configured or persisted signing secret for local bearer tokens."""
+    settings = get_settings()
+    if settings.oauth_jwt_secret:
+        return settings.oauth_jwt_secret
+
+    secret_path = settings.state_dir / "oauth-jwt-secret"
+    try:
+        secret = secret_path.read_text(encoding="utf-8").strip()
+        if secret:
+            return secret
+    except FileNotFoundError:
+        pass
+
+    settings.state_dir.mkdir(parents=True, exist_ok=True)
+    secret = secrets.token_urlsafe(48)
+    secret_path.write_text(secret + "\n", encoding="utf-8")
+    secret_path.chmod(0o600)
+    return secret
+
+
 def public_base_url(request: Request | None = None) -> str:
     """Determine the externally visible base URL from configured public URL or request headers."""
     settings = get_settings()
@@ -370,7 +391,7 @@ def issue_access_token(
     }
     if settings.oauth_access_token_ttl_s > 0:
         payload["exp"] = now + settings.oauth_access_token_ttl_s
-    return jwt.encode(payload, settings.oauth_jwt_secret, algorithm="HS256")
+    return jwt.encode(payload, _jwt_secret(), algorithm="HS256")
 
 
 async def oauth_token(request: Request) -> JSONResponse:
@@ -416,10 +437,9 @@ def validate_bearer_token(
     token: str, request: Request | None = None
 ) -> dict[str, Any]:
     """Decode and validate issuer, audience, resource, and scope claims for incoming bearer tokens."""
-    settings = get_settings()
     return jwt.decode(
         token,
-        settings.oauth_jwt_secret,
+        _jwt_secret(),
         algorithms=["HS256"],
         audience=resource_url(request),
         issuer=issuer_url(request),

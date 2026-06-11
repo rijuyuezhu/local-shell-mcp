@@ -35,6 +35,7 @@ class SettingSpec:
     help: str
     metavar: str | None = None
     example_default: Any | None = None  # override the default value in Settings
+    exposed: bool = True  # include in generated docs and CLI help
 
     @property
     def env_var(self) -> str:
@@ -99,14 +100,16 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "oauth_issuer",
         "Authentication and OAuth",
-        "Override OAuth issuer metadata; defaults to public_base_url when unset.",
+        "Advanced compatibility override for OAuth issuer metadata; usually derived from public_base_url.",
         "URL",
+        exposed=False,
     ),
     SettingSpec(
         "oauth_resource",
         "Authentication and OAuth",
-        "Override OAuth resource metadata; defaults to public_base_url plus /mcp when unset.",
+        "Advanced compatibility override for OAuth resource metadata; usually derived from public_base_url plus /mcp.",
         "URL",
+        exposed=False,
     ),
     SettingSpec(
         "oauth_admin_pin",
@@ -119,19 +122,21 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Authentication and OAuth",
         "Secret used to sign OAuth bearer tokens; set a strong random value.",
         "SECRET",
-        "dev-change-me",
+        exposed=False,
     ),
     SettingSpec(
         "oauth_access_token_ttl_s",
         "Authentication and OAuth",
-        "Bearer token lifetime in seconds; 0 disables expiry.",
+        "Advanced bearer token lifetime in seconds.",
         "SECONDS",
+        exposed=False,
     ),
     SettingSpec(
         "oauth_code_ttl_s",
         "Authentication and OAuth",
-        "OAuth authorization-code lifetime in seconds.",
+        "Advanced OAuth authorization-code lifetime in seconds.",
         "SECONDS",
+        exposed=False,
     ),
     SettingSpec(
         "allow_full_container",
@@ -346,7 +351,8 @@ def _group_setting_specs_by_section() -> SpecBySection:
         section: [] for section in SECTION_ORDER
     }
     for spec in SETTING_SPECS:
-        specs_by_section[spec.section].append(spec)
+        if spec.exposed:
+            specs_by_section[spec.section].append(spec)
     return [(section, specs_by_section[section]) for section in SECTION_ORDER]
 
 

@@ -23,7 +23,7 @@ For most users, the Docker Compose flow is the safest starting point:
 cp .env.example .env
 ```
 
-Edit `.env` and set the public URL, OAuth PIN, and JWT secret. Then start the service:
+Edit `.env` and set the public URL and OAuth approval PIN. The bearer-token signing secret is generated and persisted automatically. Then start the service:
 
 ```bash
 mkdir -p workspaces/default

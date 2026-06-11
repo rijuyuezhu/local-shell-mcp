@@ -7,6 +7,14 @@ from local_shell_mcp.config.registry import (
 )
 from local_shell_mcp.config.settings import Settings, load_settings
 
+HIDDEN_CONFIG_FIELDS = {
+    "oauth_issuer",
+    "oauth_resource",
+    "oauth_jwt_secret",
+    "oauth_access_token_ttl_s",
+    "oauth_code_ttl_s",
+}
+
 
 def test_setting_specs_cover_settings_fields():
     validate_setting_specs()
@@ -31,11 +39,23 @@ def test_config_examples_include_every_registered_setting():
     yaml_example = Path("config.example.yaml").read_text()
 
     for spec in SETTING_SPECS:
-        assert re.search(rf"^{spec.env_var}=", env_example, flags=re.MULTILINE)
-        assert re.search(rf"^{spec.name}:", yaml_example, flags=re.MULTILINE)
-        for word in spec.help.split():
-            assert word in env_example
-            assert word in yaml_example
+        if spec.name not in HIDDEN_CONFIG_FIELDS:
+            assert re.search(
+                rf"^{spec.env_var}=", env_example, flags=re.MULTILINE
+            )
+            assert re.search(
+                rf"^{spec.name}:", yaml_example, flags=re.MULTILINE
+            )
+            for word in spec.help.split():
+                assert word in env_example
+                assert word in yaml_example
+        else:
+            assert not re.search(
+                rf"^{spec.env_var}=", env_example, flags=re.MULTILINE
+            )
+            assert not re.search(
+                rf"^{spec.name}:", yaml_example, flags=re.MULTILINE
+            )
 
 
 def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
