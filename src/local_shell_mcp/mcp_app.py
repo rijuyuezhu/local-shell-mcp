@@ -96,6 +96,4 @@ def run_mcp() -> None:
         return
 
     app = build_mcp_http_app(mcp)
-    if app is not None:
-        uvicorn.run(app, host=settings.host, port=settings.port)
-        return
+    uvicorn.run(app, host=settings.host, port=settings.port)
