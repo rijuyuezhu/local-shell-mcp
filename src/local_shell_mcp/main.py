@@ -3,22 +3,9 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import asynccontextmanager
 
 import uvicorn
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route
 
-from .auth.middleware import AuthMiddleware
-from .auth.oauth import (
-    oauth_authorize_get,
-    oauth_authorize_post,
-    oauth_protected_resource,
-    oauth_register,
-    oauth_server_metadata,
-    oauth_token,
-)
 from .config.registry import cli_overrides_from_args, register_setting_cli_args
 from .config.settings import (
     configure_settings,
@@ -27,8 +14,8 @@ from .config.settings import (
     validate_public_oauth_configuration,
 )
 from .http_app import build_http_app
-from .remote import add_worker_cli_args, remote_routes, run_worker_from_args
-from .tools import build_mcp
+from .mcp_app import run_mcp
+from .remote import add_worker_cli_args, run_worker_from_args
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -73,82 +60,6 @@ def _run_server_from_args(args: argparse.Namespace) -> None:
         )
     else:
         raise SystemExit(f"Unsupported mode: {settings.mode}")
-
-
-def _with_oauth_routes(inner_app) -> Starlette:
-    """Wrap the MCP ASGI app with OAuth and remote routes when serving over HTTP."""
-
-    @asynccontextmanager
-    async def lifespan(app):  # noqa: ANN001
-        async with inner_app.router.lifespan_context(inner_app):
-            yield
-
-    routes = [
-        Route(
-            "/healthz",
-            lambda request: JSONResponse({"ok": True}),
-            methods=["GET"],
-        ),
-        Route(
-            "/readyz",
-            lambda request: JSONResponse({"ok": True}),
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/oauth-protected-resource",
-            oauth_protected_resource,
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/oauth-authorization-server",
-            oauth_server_metadata,
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/openid-configuration",
-            oauth_server_metadata,
-            methods=["GET"],
-        ),
-        Route("/oauth/register", oauth_register, methods=["POST"]),
-        Route("/oauth/authorize", oauth_authorize_get, methods=["GET"]),
-        Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
-        Route("/oauth/token", oauth_token, methods=["POST"]),
-        Mount("/", app=inner_app),
-    ]
-    settings = get_settings()
-    if settings.remote_enabled:
-        routes[2:2] = remote_routes()
-    return Starlette(
-        routes=routes,
-        lifespan=lifespan,
-    )
-
-
-def run_mcp() -> None:
-    """Run the FastMCP server on stdio using the current environment configuration."""
-    settings = get_settings()
-    validate_public_oauth_configuration(settings)
-    mcp = build_mcp()
-
-    if settings.mode == "stdio":
-        mcp.run(transport="stdio")
-        return
-
-    for attr in ("streamable_http_app", "sse_app"):
-        if hasattr(mcp, attr):
-            inner = getattr(mcp, attr)()
-            app = _with_oauth_routes(inner)
-            if settings.auth_mode != "none":
-                app.add_middleware(AuthMiddleware)
-            uvicorn.run(app, host=settings.host, port=settings.port)
-            return
-
-    # Fallback for older MCP SDKs. OAuth metadata cannot be attached in this mode, so this is
-    # suitable only for localhost/stdio-style testing.
-    try:
-        mcp.run(transport="streamable-http")
-    except TypeError:
-        mcp.run(transport="sse")
 
 
 def run_http() -> None:
