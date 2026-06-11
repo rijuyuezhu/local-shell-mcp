@@ -16,7 +16,7 @@ from local_shell_mcp.ops.shell_ops import (
 )
 from local_shell_mcp.tools.registry import common as common_tools_module
 from local_shell_mcp.tools.registry import filesystem as fs_tools_module
-from local_shell_mcp.tools.registry import git as git_tools_module
+from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_text
 
 
@@ -41,15 +41,24 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     clear_settings_cache()
 
-    async def hanging_git_status(cwd: str = "."):
+    async def hanging_public_run_shell(
+        command: str,
+        cwd: str = ".",
+        timeout_s: int | None = None,
+        max_output_bytes: int | None = None,
+    ):
         await asyncio.sleep(5)
 
-    monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
+    monkeypatch.setattr(
+        shell_tools_module, "public_run_shell", hanging_public_run_shell
+    )
 
-    response = await build_mcp().call_tool("git_status_tool", {"cwd": "."})
+    response = await build_mcp().call_tool(
+        "run_shell_tool", {"command": "echo ok"}
+    )
     payload = mcp_text(response)
 
-    assert "git_status_tool exceeded 0.01 second public tool timeout" in payload
+    assert "run_shell_tool exceeded 0.01 second public tool timeout" in payload
 
 
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
@@ -58,13 +67,17 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(http_app_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
     clear_settings_cache()
 
-    async def hanging_git_status(cwd: str = "."):
+    async def hanging_run_shell_handler(args: dict):
         await asyncio.sleep(5)
 
-    monkeypatch.setattr(git_tools_module, "git_status", hanging_git_status)
+    monkeypatch.setitem(
+        shell_tools_module.SHELL_HTTP_HANDLERS,
+        "run_shell_tool",
+        hanging_run_shell_handler,
+    )
 
     response = TestClient(build_http_app()).post(
-        "/tools/git/status", json={"cwd": "."}
+        "/tools/run_shell", json={"command": "echo ok"}
     )
 
     assert response.status_code == 504

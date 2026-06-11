@@ -129,7 +129,7 @@ SECRET_PATTERNS = {
 OAUTH_SECURITY_SCHEMES = [
     {
         "type": "oauth2",
-        "scopes": ["shell:read", "shell:write", "shell:execute", "git:write"],
+        "scopes": ["shell:read", "shell:write", "shell:execute"],
     }
 ]
 NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
@@ -384,49 +384,3 @@ async def run_secret_scan(
 ) -> dict[str, Any]:
     """Expose secret scanning through an async wrapper for MCP handlers."""
     return await to_thread(run_secret_scan_sync, cwd, glob, max_results)
-
-
-def read_audit_tail_entries(lines: int = 100) -> dict[str, Any]:
-    """Parse the recent audit-log tail into structured records, preserving malformed lines as raw entries."""
-    settings = get_settings()
-    path = settings.audit_log_path
-    if not path.exists():
-        return {"entries": []}
-
-    line_limit = max(1, min(lines, 1000))
-    max_bytes = max(1, settings.max_audit_tail_bytes)
-    chunks: list[bytes] = []
-    bytes_read = 0
-    newline_count = 0
-    with path.open("rb") as fh:
-        fh.seek(0, 2)
-        position = fh.tell()
-        while (
-            position > 0
-            and bytes_read < max_bytes
-            and newline_count <= line_limit
-        ):
-            read_size = min(8192, position, max_bytes - bytes_read)
-            position -= read_size
-            fh.seek(position)
-            chunk = fh.read(read_size)
-            chunks.append(chunk)
-            bytes_read += len(chunk)
-            newline_count += chunk.count(b"\n")
-
-    content = (
-        b"".join(reversed(chunks))
-        .decode("utf-8", errors="replace")
-        .splitlines()[-line_limit:]
-    )
-    entries = []
-    for line in content:
-        try:
-            entries.append(json.loads(line))
-        except json.JSONDecodeError:
-            entries.append({"raw": line})
-    return {
-        "entries": entries,
-        "bytes_read": bytes_read,
-        "truncated_bytes": max(0, path.stat().st_size - bytes_read),
-    }

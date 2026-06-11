@@ -138,7 +138,7 @@ def _default_scope() -> str:
 
 def _scopes() -> list[str]:
     """Return the static scopes supported by local-shell-mcp's OAuth flow."""
-    return ["shell:read", "shell:write", "shell:execute", "git:write"]
+    return ["shell:read", "shell:write", "shell:execute"]
 
 
 def protected_resource_metadata(request: Request) -> dict[str, Any]:

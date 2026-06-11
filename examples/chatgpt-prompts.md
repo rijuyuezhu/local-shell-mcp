@@ -18,4 +18,4 @@ Use local-shell-mcp. On remote machine `npu-4card`, run `pwd`, `hostname`, `pyth
 
 ## Remote code edit and test
 
-Use local-shell-mcp. On remote machine `hpc-a`, inspect `/home/cyh/project`, search for the requested symbol with `remote_grep_search`, edit the file with `remote_edit_file` or `remote_apply_patch`, run the relevant test with `remote_run_shell_tool`, then show `remote_git_diff_tool`.
+Use local-shell-mcp. On remote machine `hpc-a`, inspect `/home/cyh/project`, search for the requested symbol with `remote_grep_search`, edit the file with `remote_edit_file` or `remote_apply_patch`, run the relevant test with `remote_run_shell_tool`, then show `git diff --stat` with `remote_run_shell_tool`.

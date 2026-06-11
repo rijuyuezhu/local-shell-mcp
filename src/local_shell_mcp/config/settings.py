@@ -68,7 +68,6 @@ class Settings(BaseSettings):
     max_read_many_total_bytes: int = 5_000_000
     max_todos: int = 1_000
     max_todo_bytes: int = 1_000_000
-    max_audit_tail_bytes: int = 1_000_000
     max_audit_log_bytes: int = 20_000_000
     max_tmp_files: int = 500
     max_tmp_bytes: int = 50_000_000
@@ -94,7 +93,6 @@ class Settings(BaseSettings):
     shell_executable: str = "/bin/bash"
     tmux_bin: str = "tmux"
     rg_bin: str = "rg"
-    git_bin: str = "git"
     python_bin: str = "python3"
 
     # Authentication. OAuth is the default for ChatGPT custom connectors.

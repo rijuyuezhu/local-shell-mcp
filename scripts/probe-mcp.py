@@ -29,7 +29,7 @@ async def oauth_token(base_url: str, pin: str) -> str:
                 "response_type": "code",
                 "client_id": client_id,
                 "redirect_uri": redirect_uri,
-                "scope": "shell:read shell:write shell:execute git:write",
+                "scope": "shell:read shell:write shell:execute",
                 "pin": pin,
             },
         )

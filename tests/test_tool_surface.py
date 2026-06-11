@@ -37,22 +37,9 @@ LOCAL_MCP_TOOL_NAMES = {
     "multi_edit_file",
     "delete_file_or_dir",
     "apply_patch",
-    "git_clone_tool",
-    "git_status_tool",
-    "git_diff_tool",
-    "git_log_tool",
-    "git_checkout_tool",
-    "git_fetch_tool",
-    "git_pull_tool",
-    "git_add_tool",
-    "git_commit_tool",
-    "git_push_tool",
-    "git_show_tool",
-    "git_reset_tool",
     "secret_scan",
     "todo_read_tool",
     "todo_write_tool",
-    "audit_tail",
 }
 
 
@@ -80,18 +67,6 @@ REMOTE_MCP_TOOL_NAMES = {
     "remote_multi_edit_file",
     "remote_delete_file_or_dir",
     "remote_apply_patch",
-    "remote_git_clone_tool",
-    "remote_git_status_tool",
-    "remote_git_diff_tool",
-    "remote_git_log_tool",
-    "remote_git_checkout_tool",
-    "remote_git_fetch_tool",
-    "remote_git_pull_tool",
-    "remote_git_add_tool",
-    "remote_git_commit_tool",
-    "remote_git_push_tool",
-    "remote_git_show_tool",
-    "remote_git_reset_tool",
 }
 
 
@@ -125,29 +100,6 @@ async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
     mcp_payload = json.loads(mcp_text(mcp_response))
 
     assert http_payload == mcp_payload["data"]
-
-
-@pytest.mark.asyncio
-async def test_http_git_status_matches_mcp_tool_payload(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    clear_settings_cache()
-
-    TestClient(build_http_app()).post(
-        "/tools/run_shell", json={"command": "git init"}
-    )
-    http_payload = (
-        TestClient(build_http_app())
-        .post("/tools/git/status", json={"cwd": "."})
-        .json()
-    )
-    mcp_response = await build_mcp().call_tool("git_status_tool", {"cwd": "."})
-    mcp_payload = json.loads(mcp_text(mcp_response))["data"]
-
-    assert {k: v for k, v in http_payload.items() if k != "duration_ms"} == {
-        k: v for k, v in mcp_payload.items() if k != "duration_ms"
-    }
 
 
 def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):

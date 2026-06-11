@@ -31,7 +31,7 @@ def register_workspace_connector_mcp(
 
     @mcp.tool(annotations=read_only_tool, meta=connector_meta)
     async def search(query: str) -> str:
-        """Search workspace files and return ChatGPT connector-compatible results."""
+        """Search workspace text files and return ChatGPT connector-compatible search results. Use this when a connector-style client needs file result ids rather than raw ripgrep matches. The search is case-insensitive literal text, limited to concise file-level results; use grep_search for regex searches, line matches, globs, or larger code-navigation tasks."""
         try:
             result = await grep(
                 query,
@@ -63,7 +63,7 @@ def register_workspace_connector_mcp(
 
     @mcp.tool(annotations=read_only_tool, meta=connector_meta)
     async def fetch(id: str) -> str:
-        """Fetch a workspace file by id returned from search."""
+        """Fetch a workspace file by id returned from search and format it as a ChatGPT connector document. Use only after search has returned an id. For coding work, prefer read_file because it supports line ranges, binary previews, and richer diagnostics."""
         try:
             data = await to_thread(read_text, id)
             path = data.get("path") or id

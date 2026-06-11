@@ -7,6 +7,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...ops.shell_ops import (
+    PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
     kill_shell,
     list_shells,
     public_run_shell,
@@ -97,15 +98,27 @@ class ShellToolRegistry(ToolRegistry):
 def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
     protected_meta = context.protected_meta
+    settings = context.settings
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Run one non-interactive shell command in the controlled workspace/container. "
+            "Use for build, test, package-manager, git, and inspection commands that should finish promptly. "
+            "Parameters: command is the shell command string; cwd defaults to '.' and is resolved relative to the workspace "
+            "unless an allowed absolute path is supplied; timeout_s is in seconds, optional, "
+            f"and must be 1..{PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} for this public tool; "
+            f"max_output_bytes is optional and is capped by max_output_bytes={settings.max_output_bytes}. "
+            "For long-running, interactive, or streaming processes, use shell_start with shell_send and shell_read instead."
+        ),
+    )
     async def run_shell_tool(
         command: str,
         cwd: str = ".",
         timeout_s: int | None = None,
         max_output_bytes: int | None = None,
     ) -> dict:
-        """Run a shell command in the controlled container. This is the primary coding-agent tool."""
+        """Run one non-interactive shell command."""
         try:
             return ok_response(
                 (
@@ -117,7 +130,16 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(
+        meta=protected_meta,
+        description=(
+            "Write Python code to a temporary file and execute it in the controlled workspace/container. "
+            "Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. "
+            "Parameters: code is the full Python source to run; cwd defaults to '.' and is workspace-relative unless an allowed absolute path is supplied; "
+            f"timeout_s is in seconds, defaults to 60, and should stay within the public tool timeout cap of {PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} seconds. "
+            f"Returned output is capped by max_output_bytes={settings.max_output_bytes}. Keep code non-interactive and write durable outputs explicitly if needed."
+        ),
+    )
     async def run_python_tool(
         code: str, cwd: str = ".", timeout_s: int = 60
     ) -> dict:
@@ -131,7 +153,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     async def shell_start(
         cwd: str = ".", name: str | None = None, command: str | None = None
     ) -> dict:
-        """Start a persistent tmux-backed shell session."""
+        """Start a persistent tmux-backed shell session. Use for interactive programs, development servers, REPLs, long-running watches, or commands whose output must be read incrementally. Parameters: cwd defaults to '.' and is resolved relative to the workspace unless an allowed absolute path is supplied; name is an optional human-readable session label; command is optional and starts immediately in the session. For one-shot commands, prefer run_shell_tool."""
         try:
             return ok_response(await start_shell(cwd, name, command))
         except Exception as exc:
@@ -141,7 +163,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     async def shell_send(
         session_id: str, input_text: str, enter: bool = True
     ) -> dict:
-        """Send input to a persistent shell session."""
+        """Send input to an existing persistent shell session. Use after shell_start when a process is waiting for commands or interactive input. Set enter=false only when intentionally sending partial input without a newline."""
         try:
             return ok_response(await send_shell(session_id, input_text, enter))
         except Exception as exc:
@@ -149,7 +171,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(meta=protected_meta)
     async def shell_read(session_id: str, lines: int = 200) -> dict:
-        """Read recent output from a persistent shell session."""
+        """Read recent output from a persistent shell session. Use after shell_start or shell_send to inspect incremental output without blocking. Parameters: session_id must be an id returned by shell_start or shell_list; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."""
         try:
             return ok_response(await read_shell(session_id, lines))
         except Exception as exc:
@@ -157,7 +179,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(meta=protected_meta)
     async def shell_kill(session_id: str) -> dict:
-        """Kill a persistent shell session."""
+        """Terminate a persistent shell session by session_id. Use when a server, watch process, REPL, or stuck command is no longer needed. This is destructive for that session but does not delete files."""
         try:
             return ok_response(await kill_shell(session_id))
         except Exception as exc:
@@ -165,7 +187,7 @@ def register_shell_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(meta=protected_meta)
     async def shell_list() -> dict:
-        """List persistent shell sessions."""
+        """List active persistent shell sessions. Use before reading, sending to, or killing sessions when you do not know the session_id or need to check what long-running processes are active."""
         try:
             return ok_response(await list_shells())
         except Exception as exc:
