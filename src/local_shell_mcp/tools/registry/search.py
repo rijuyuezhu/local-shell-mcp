@@ -13,7 +13,7 @@ from ..declarative import DeclarativeToolRegistry
 class SearchToolRegistry(DeclarativeToolRegistry):
     """Register search and tree-view tools."""
 
-    name = "search_ops"
+    name = "search"
 
 
 local_tool = SearchToolRegistry.get_tool_decorator()

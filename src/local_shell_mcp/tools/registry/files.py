@@ -21,7 +21,7 @@ from ..declarative import DeclarativeToolRegistry
 class FileToolRegistry(DeclarativeToolRegistry):
     """Register file operation tools."""
 
-    name = "files"
+    name = "file"
 
 
 local_tool = FileToolRegistry.get_tool_decorator()
