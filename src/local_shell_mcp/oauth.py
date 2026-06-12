@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import html as html_lib
 import hmac
+import html as html_lib
 import secrets
 import time
 from dataclasses import dataclass, field
