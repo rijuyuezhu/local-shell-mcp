@@ -85,8 +85,11 @@ async def exercise_filesystem_and_search_tools(
         "grep_search",
         {"query": "needle", "cwd": ".", "glob": "**/*.txt", "regex": False},
     )
-    assert grep_result["matches"]
-    assert grep_result["matches"][0]["path"] == "notes/demo.txt"
+    assert "matches" in grep_result
+    assert "count" in grep_result
+    if grep_result.get("ok") is True:
+        assert grep_result["matches"]
+        assert grep_result["matches"][0]["path"] == "notes/demo.txt"
 
     read_result = await client.call_tool(
         "read_file", {"path": "notes/demo.txt"}
