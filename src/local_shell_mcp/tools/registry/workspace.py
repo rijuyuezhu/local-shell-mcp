@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -16,7 +17,6 @@ from ..base import (
     StaticHttpToolRegistry,
     ToolHandler,
 )
-from ..responses import to_thread
 
 
 async def _search(args: dict[str, Any]) -> str:
@@ -53,7 +53,7 @@ async def _search(args: dict[str, Any]) -> str:
 async def _fetch(args: dict[str, Any]) -> str:
     file_id = args["id"]
     try:
-        data = await to_thread(read_text, file_id)
+        data = await asyncio.to_thread(read_text, file_id)
         path = data.get("path") or file_id
         binary = bool(data.get("binary"))
         return json.dumps(

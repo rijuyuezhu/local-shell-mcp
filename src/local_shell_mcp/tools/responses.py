@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import suppress
 from typing import Any
 
@@ -39,8 +38,3 @@ def handled_error(exc: Exception) -> dict[str, Any]:
         },
         message=f"Tool handled {type(exc).__name__}",
     )
-
-
-async def to_thread(func, *args, **kwargs):
-    """Run blocking helpers in a worker thread while preserving async tool-handler flow."""
-    return await asyncio.to_thread(func, *args, **kwargs)

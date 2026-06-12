@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -14,7 +15,7 @@ from ..base import (
     StaticHttpToolRegistry,
     ToolHandler,
 )
-from ..responses import handled_error, ok_response, to_thread
+from ..responses import handled_error, ok_response
 
 
 async def _tree_view(args: dict[str, Any]) -> dict[str, Any]:
@@ -27,7 +28,7 @@ async def _tree_view(args: dict[str, Any]) -> dict[str, Any]:
 
 async def _glob_search(args: dict[str, Any]) -> dict[str, Any]:
     return {
-        "paths": await to_thread(
+        "paths": await asyncio.to_thread(
             glob_paths,
             args["pattern"],
             args.get("cwd", "."),
@@ -109,7 +110,7 @@ def register_search_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         try:
             return ok_response(
                 {
-                    "paths": await to_thread(
+                    "paths": await asyncio.to_thread(
                         glob_paths, pattern, cwd, max_results
                     )
                 }

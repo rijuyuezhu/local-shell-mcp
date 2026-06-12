@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -21,11 +22,11 @@ from ..base import (
     StaticHttpToolRegistry,
     ToolHandler,
 )
-from ..responses import handled_error, ok_response, to_thread
+from ..responses import handled_error, ok_response
 
 
 async def _list_files(args: dict[str, Any]) -> list[dict[str, Any]]:
-    return await to_thread(
+    return await asyncio.to_thread(
         list_dir,
         args.get("path", "."),
         args.get("recursive", False),
@@ -34,7 +35,7 @@ async def _list_files(args: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 async def _read_file(args: dict[str, Any]) -> dict[str, Any]:
-    return await to_thread(
+    return await asyncio.to_thread(
         read_text,
         args["path"],
         args.get("start_line"),
@@ -45,7 +46,7 @@ async def _read_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _read_many_files(args: dict[str, Any]) -> dict[str, Any]:
-    return await to_thread(
+    return await asyncio.to_thread(
         read_many_files_sync,
         args["paths"],
         args.get("start_line"),
@@ -56,13 +57,13 @@ async def _read_many_files(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _write_file(args: dict[str, Any]) -> dict[str, Any]:
-    return await to_thread(
+    return await asyncio.to_thread(
         write_text, args["path"], args["content"], args.get("overwrite", True)
     )
 
 
 async def _edit_file(args: dict[str, Any]) -> dict[str, Any]:
-    return await to_thread(
+    return await asyncio.to_thread(
         edit_text,
         args["path"],
         args["old"],
@@ -72,11 +73,11 @@ async def _edit_file(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _multi_edit_file(args: dict[str, Any]) -> dict[str, Any]:
-    return await to_thread(multi_edit_text, args["path"], args["edits"])
+    return await asyncio.to_thread(multi_edit_text, args["path"], args["edits"])
 
 
 async def _delete_file_or_dir(args: dict[str, Any]) -> dict[str, Any]:
-    return await to_thread(
+    return await asyncio.to_thread(
         delete_path, args["path"], args.get("recursive", False)
     )
 
@@ -133,7 +134,7 @@ def register_file_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """List files and directories under a path."""
         try:
             return ok_response(
-                await to_thread(list_dir, path, recursive, max_entries)
+                await asyncio.to_thread(list_dir, path, recursive, max_entries)
             )
         except Exception as exc:
             return handled_error(exc)
@@ -156,7 +157,7 @@ def register_file_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """Read a UTF-8 text file, optionally by line range."""
         try:
             return ok_response(
-                await to_thread(
+                await asyncio.to_thread(
                     read_text,
                     path,
                     start_line,
@@ -185,7 +186,7 @@ def register_file_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """Read multiple UTF-8 text files with the same optional line range."""
         try:
             return ok_response(
-                await to_thread(
+                await asyncio.to_thread(
                     read_many_files_sync,
                     paths,
                     start_line,
@@ -212,7 +213,7 @@ def register_file_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """Write a UTF-8 text file."""
         try:
             return ok_response(
-                await to_thread(write_text, path, content, overwrite)
+                await asyncio.to_thread(write_text, path, content, overwrite)
             )
         except Exception as exc:
             return handled_error(exc)
@@ -232,7 +233,7 @@ def register_file_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """Replace exact text in a file."""
         try:
             return ok_response(
-                await to_thread(edit_text, path, old, new, replace_all)
+                await asyncio.to_thread(edit_text, path, old, new, replace_all)
             )
         except Exception as exc:
             return handled_error(exc)
@@ -241,7 +242,9 @@ def register_file_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     async def multi_edit_file(path: str, edits: list[dict]) -> dict:
         """Apply multiple exact-text edits to one file. Use when several small replacements in the same file should be made together. Each edit must provide old, new, and optional replace_all; each old string must match exactly. Read the file first to avoid stale or ambiguous edits."""
         try:
-            return ok_response(await to_thread(multi_edit_text, path, edits))
+            return ok_response(
+                await asyncio.to_thread(multi_edit_text, path, edits)
+            )
         except Exception as exc:
             return handled_error(exc)
 
@@ -249,6 +252,8 @@ def register_file_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     async def delete_file_or_dir(path: str, recursive: bool = False) -> dict:
         """Delete a file or directory inside the controlled workspace/container. Use only when removal is intentional. recursive=false deletes files or empty directories; recursive=true is required for non-empty directories and should be used carefully."""
         try:
-            return ok_response(await to_thread(delete_path, path, recursive))
+            return ok_response(
+                await asyncio.to_thread(delete_path, path, recursive)
+            )
         except Exception as exc:
             return handled_error(exc)
