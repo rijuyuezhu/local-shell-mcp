@@ -29,7 +29,7 @@ SECTION_ORDER: tuple[SectionName, ...] = get_args(SectionName.__value__)
 
 @dataclass(frozen=True)
 class SettingSpec:
-    """Metadata for one application setting exposed through env, YAML, and CLI."""
+    """Metadata for one application setting covered by env, YAML, and CLI."""
 
     name: str
     """Settings attribute name on the Settings model."""
@@ -41,8 +41,6 @@ class SettingSpec:
     """Optional placeholder shown for CLI arguments that take values."""
     example_default: Any | None = None
     """Optional value used when rendering example configuration files."""
-    exposed: bool = True
-    """Whether this setting appears in generated user-facing surfaces."""
 
     @property
     def help(self) -> str:
@@ -76,27 +74,22 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("auth_bypass_localhost", "Authentication and OAuth"),
     SettingSpec("require_auth_for_mcp_discovery", "Authentication and OAuth"),
     SettingSpec("public_base_url", "Authentication and OAuth", metavar="URL"),
-    SettingSpec(
-        "oauth_issuer", "Authentication and OAuth", metavar="URL", exposed=False
-    ),
+    SettingSpec("oauth_issuer", "Authentication and OAuth", metavar="URL"),
     SettingSpec(
         "oauth_resource",
         "Authentication and OAuth",
         metavar="URL",
-        exposed=False,
     ),
     SettingSpec("oauth_admin_pin", "Authentication and OAuth", metavar="PIN"),
     SettingSpec(
         "oauth_access_token_ttl_s",
         "Authentication and OAuth",
         metavar="SECONDS",
-        exposed=False,
     ),
     SettingSpec(
         "oauth_code_ttl_s",
         "Authentication and OAuth",
         metavar="SECONDS",
-        exposed=False,
     ),
     SettingSpec("allow_full_container", "Safety and resource limits"),
     SettingSpec("allow_network", "Safety and resource limits"),
@@ -203,8 +196,7 @@ def _group_setting_specs_by_section() -> SpecBySection:
         section: [] for section in SECTION_ORDER
     }
     for spec in SETTING_SPECS:
-        if spec.exposed:
-            specs_by_section[spec.section].append(spec)
+        specs_by_section[spec.section].append(spec)
     return [(section, specs_by_section[section]) for section in SECTION_ORDER]
 
 

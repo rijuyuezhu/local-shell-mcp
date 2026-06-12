@@ -26,8 +26,17 @@ auth_bypass_localhost: true
 require_auth_for_mcp_discovery: true
 # Public HTTPS origin used in OAuth metadata and callbacks.
 public_base_url: null
+# Advanced compatibility override for OAuth issuer metadata; usually derived from public_base_url.
+oauth_issuer: null
+# Advanced compatibility override for OAuth resource metadata; usually derived from public_base_url
+# plus /mcp.
+oauth_resource: null
 # PIN required to approve OAuth authorization.
 oauth_admin_pin: null
+# Advanced bearer token lifetime in seconds.
+oauth_access_token_ttl_s: 3600
+# Advanced OAuth authorization-code lifetime in seconds.
+oauth_code_ttl_s: 300
 
 # Safety and resource limits.
 # Disable built-in workspace and command restrictions; use only in disposable containers or VMs.
