@@ -1,4 +1,4 @@
-"""Shared abstractions for tool definition registries."""
+"""Shared tool registry contracts and transport-facing metadata types."""
 
 from __future__ import annotations
 

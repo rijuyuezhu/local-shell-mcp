@@ -8,7 +8,7 @@ import json
 from ...audit import audit
 from ...ops.fs_ops import read_text
 from ...ops.search_ops import grep
-from ..definitions import DeclarativeToolRegistry
+from ..declarative import DeclarativeToolRegistry
 
 
 class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):

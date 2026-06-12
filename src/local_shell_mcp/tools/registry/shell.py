@@ -11,8 +11,8 @@ from ...ops.tmux_ops import (
     send_shell,
     start_shell,
 )
-from ..base import McpToolContext
-from ..definitions import DeclarativeToolRegistry
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 
 
 class ShellToolRegistry(DeclarativeToolRegistry):

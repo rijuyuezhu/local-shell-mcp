@@ -6,8 +6,8 @@ import asyncio
 
 from ...ops.fs_ops import glob_paths
 from ...ops.search_ops import grep, tree
-from ..base import McpToolContext
-from ..definitions import DeclarativeToolRegistry
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 
 
 class SearchToolRegistry(DeclarativeToolRegistry):

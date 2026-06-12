@@ -14,8 +14,8 @@ from ...ops.fs_ops import (
     read_text,
     write_text,
 )
-from ..base import McpToolContext
-from ..definitions import DeclarativeToolRegistry
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 
 
 class FileToolRegistry(DeclarativeToolRegistry):

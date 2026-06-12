@@ -24,7 +24,7 @@ from ..auth.oauth import (
 )
 from ..config.settings import get_settings
 from ..remote.http import remote_routes
-from ..tools.base import McpToolContext
+from ..tools.contracts import McpToolContext
 from ..tools.discovery import discover_tool_registries
 from ..tools.responses import handled_error, ok_response
 from .instructions import SERVER_INSTRUCTIONS

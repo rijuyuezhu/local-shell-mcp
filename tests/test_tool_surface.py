@@ -12,7 +12,11 @@ from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_SPECS,
 )
 from local_shell_mcp.remote.worker import WORKER_TOOL_NAMES
-from local_shell_mcp.tools.base import HttpMethod, HttpToolRoute, ToolRegistry
+from local_shell_mcp.tools.contracts import (
+    HttpMethod,
+    HttpToolRoute,
+    ToolRegistry,
+)
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
     call_local_tool,

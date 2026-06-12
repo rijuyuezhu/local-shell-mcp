@@ -7,7 +7,7 @@ import inspect
 import pkgutil
 from functools import lru_cache
 
-from .base import ToolRegistry
+from .contracts import ToolRegistry
 
 DEFINITION_PACKAGE = "local_shell_mcp.tools.registry"
 

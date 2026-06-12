@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from ...ops.todo_ops import todo_read, todo_write
-from ..definitions import DeclarativeToolRegistry
+from ..declarative import DeclarativeToolRegistry
 
 
 class TodoToolRegistry(DeclarativeToolRegistry):

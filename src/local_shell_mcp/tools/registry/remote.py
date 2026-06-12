@@ -15,8 +15,8 @@ from ...remote.service import (
     revoke_remote_machine,
 )
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
-from ..base import HttpToolRoute, McpToolContext, ToolHandler
-from ..definitions import DeclarativeToolRegistry
+from ..contracts import HttpToolRoute, McpToolContext, ToolHandler
+from ..declarative import DeclarativeToolRegistry
 
 
 class RemoteToolRegistry(DeclarativeToolRegistry):

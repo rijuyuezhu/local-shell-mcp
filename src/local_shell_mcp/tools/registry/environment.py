@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ...config.settings import get_settings, safe_settings_dump
 from ...ops.command_ops import run_shell
-from ..definitions import DeclarativeToolRegistry
+from ..declarative import DeclarativeToolRegistry
 
 
 class EnvironmentToolRegistry(DeclarativeToolRegistry):

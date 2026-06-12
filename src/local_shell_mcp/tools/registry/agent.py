@@ -18,8 +18,8 @@ from ...agent_bridge.service import (
 )
 from ...agent_bridge.tools import register_agent_bridge_dynamic_tools
 from ...config.settings import Settings
-from ..base import McpToolContext
-from ..definitions import DeclarativeToolRegistry
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 from ..responses import handled_error, ok_response
 
 

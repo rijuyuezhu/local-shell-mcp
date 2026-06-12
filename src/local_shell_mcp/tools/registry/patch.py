@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ...ops.patch_ops import apply_patch_text
-from ..definitions import DeclarativeToolRegistry
+from ..declarative import DeclarativeToolRegistry
 
 
 class PatchToolRegistry(DeclarativeToolRegistry):

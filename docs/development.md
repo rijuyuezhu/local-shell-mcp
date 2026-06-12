@@ -62,8 +62,8 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 |---|---|
 | `src/local_shell_mcp/main.py` | CLI parsing and mode dispatch. |
 | `src/local_shell_mcp/mcp/` | MCP stdio/HTTP transport app assembly, client-facing metadata, server instructions, remote MCP companion registration, and tool watchdogs. |
-| `src/local_shell_mcp/tools/base.py` | Shared tool registry, context, HTTP route metadata, and local handler types. |
-| `src/local_shell_mcp/tools/definitions.py` | Declarative static tool definitions that derive MCP registration and HTTP handlers from one typed function. |
+| `src/local_shell_mcp/tools/contracts.py` | Shared tool registry contracts, context, HTTP route metadata, and local handler types. |
+| `src/local_shell_mcp/tools/declarative.py` | Declarative tool registration that derives MCP registration and HTTP handlers from one typed function. |
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries. |
 | `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper and routed REST auditing. |
 | `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries discovered at runtime. |

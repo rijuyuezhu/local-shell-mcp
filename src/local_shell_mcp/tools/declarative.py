@@ -1,4 +1,4 @@
-"""Declarative static tool definitions shared by MCP and HTTP adapters."""
+"""Declarative tool registration shared by MCP and HTTP adapters."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from ..config.settings import Settings
-from .base import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
+from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
 
 ToolMeta = Literal["protected", "connector"]
 ToolAnnotation = Literal["read_only"]
