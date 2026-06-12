@@ -7,7 +7,7 @@ from contextlib import suppress
 from typing import Any
 
 from ..audit import audit
-from ..ops.fs_ops import missing_path_context
+from ..ops.path_ops import missing_path_context
 
 
 def ok_response(data: Any = None, message: str = "") -> dict[str, Any]:

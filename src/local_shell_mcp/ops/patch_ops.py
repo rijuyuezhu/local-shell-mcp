@@ -6,7 +6,7 @@ import asyncio
 import shlex
 import uuid
 
-from .fs_ops import (
+from .path_ops import (
     assert_text_input_size,
     prune_temp_dir,
     relative_display,

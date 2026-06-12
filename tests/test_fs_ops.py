@@ -9,9 +9,9 @@ from local_shell_mcp.ops.fs_ops import (
     edit_text,
     multi_edit_text,
     read_text,
-    resolve_path,
     write_text,
 )
+from local_shell_mcp.ops.path_ops import resolve_path
 from local_shell_mcp.ops.shell_ops import check_command_policy
 from tests.helpers import mcp_text, nested_mcp_text
 

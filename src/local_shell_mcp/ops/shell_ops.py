@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from ..audit import audit
 from ..config.settings import get_settings
-from .fs_ops import (
+from .path_ops import (
     assert_text_input_size,
     prune_temp_dir,
     relative_display,

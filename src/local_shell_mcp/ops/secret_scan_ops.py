@@ -7,7 +7,8 @@ import re
 from typing import Any
 
 from ..config.settings import get_settings
-from .fs_ops import read_text, relative_display, resolve_path
+from .fs_ops import read_text
+from .path_ops import relative_display, resolve_path
 
 SECRET_PATTERNS = {
     "github_token": r"gh[pousr]_[A-Za-z0-9_]{36,}",
