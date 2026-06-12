@@ -63,6 +63,19 @@ def _make_remote_worker_handler(
     return handler
 
 
+async def _remote_call(
+    machine: str,
+    tool: str,
+    args: dict[str, Any],
+    timeout_s: int | None = None,
+) -> dict[str, Any]:
+    """Call a worker-side tool and convert manager failures into tool envelopes."""
+    try:
+        return await remote_manager().call(machine, tool, args, timeout_s)
+    except Exception as exc:
+        return handled_error(exc)
+
+
 REMOTE_CONTROL_HTTP_ROUTES = (
     HttpToolRoute("POST", "/tools/remote_invite", "remote_invite"),
     HttpToolRoute("GET", "/tools/remote_list_machines", "remote_list_machines"),
@@ -118,14 +131,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
     protected_meta = context.protected_meta
     settings = context.settings
-
-    async def _remote_call(
-        machine: str, tool: str, args: dict, timeout_s: int | None = None
-    ) -> dict:
-        try:
-            return await remote_manager().call(machine, tool, args, timeout_s)
-        except Exception as exc:
-            return handled_error(exc)
 
     @mcp.tool(
         meta=protected_meta,
