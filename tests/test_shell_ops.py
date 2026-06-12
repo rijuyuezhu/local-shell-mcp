@@ -233,10 +233,19 @@ async def test_run_shell_filters_server_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "should-not-leak")
     monkeypatch.setenv("PYTHONPATH", "/app/src")
+    monkeypatch.setenv("DOCKER_RUN_AS_ROOT", "false")
+    monkeypatch.setenv("DOCKER_PERSISTENT_CREDENTIALS", "true")
+    monkeypatch.setenv("DOCKER_CREDENTIALS_DIR", "/persist/credentials")
+    monkeypatch.setenv("DOCKER_CHOWN_WORKSPACE", "true")
+    monkeypatch.setenv("CLOUDFLARE_TUNNEL_TOKEN", "should-not-leak")
     clear_settings_cache()
 
     result = await run_shell(
-        "env | grep -E '^(PYTHONPATH|LOCAL_SHELL_MCP_)=' || true",
+        (
+            "env | grep -E "
+            "'^(PYTHONPATH|LOCAL_SHELL_MCP_|DOCKER_|CLOUDFLARE_TUNNEL_TOKEN=)' "
+            "|| true"
+        ),
         cwd=str(tmp_path),
     )
 
