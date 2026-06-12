@@ -143,7 +143,7 @@ class ToolDefinition:
             description=self._mcp_description(context),
             annotations=self._mcp_annotations(context),
             meta=self._mcp_meta(context),
-            structured_output=False,
+            structured_output=False if self.mcp_envelope else None,
         )(mcp_handler)
 
 
