@@ -7,13 +7,10 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ...agent_bridge import (
-    _redact_text,
-    activate_skill,
-    build_agent_registry,
-    redact_configured_values,
-)
 from ...agent_bridge.mcp import AgentMcpClientManager
+from ...agent_bridge.redaction import _redact_text, redact_configured_values
+from ...agent_bridge.registry import build_agent_registry
+from ...agent_bridge.skills import activate_skill
 from ...agent_bridge.tools import (
     _redact_mcp_error_payload,
     _redacted_mcp_call_error,

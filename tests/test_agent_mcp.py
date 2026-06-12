@@ -10,16 +10,14 @@ from typing import Any
 import pytest
 from mcp.types import Tool
 
-from local_shell_mcp.agent_bridge import (
-    AgentMcpServerConfig,
-    build_agent_registry,
-)
 from local_shell_mcp.agent_bridge.mcp import (
     AgentMcpClientManager,
     AgentMcpTool,
     normalize_mcp_tool,
     normalize_tool_result,
 )
+from local_shell_mcp.agent_bridge.models import AgentMcpServerConfig
+from local_shell_mcp.agent_bridge.registry import build_agent_registry
 
 
 def test_normalize_mcp_tool_preserves_schema():

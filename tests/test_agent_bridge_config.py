@@ -1,13 +1,12 @@
 import json
 
-from local_shell_mcp.agent_bridge import (
+from local_shell_mcp.agent_bridge.models import (
     AgentBridgeManifest,
     AgentDynamicToolsConfig,
     AgentMcpServerConfig,
-    _redact_text,
-    load_agent_manifest,
-    redact_mapping,
 )
+from local_shell_mcp.agent_bridge.redaction import _redact_text, redact_mapping
+from local_shell_mcp.agent_bridge.state import load_agent_manifest
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 
 
