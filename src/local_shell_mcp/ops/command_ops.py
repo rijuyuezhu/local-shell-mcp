@@ -85,26 +85,6 @@ def public_tool_timeout_s() -> float:
     return max(0.001, get_settings().public_tool_timeout_s)
 
 
-def effective_tool_limits() -> dict[str, object]:
-    """Return user-facing effective limits for public tools and internal shell execution."""
-    settings = get_settings()
-    return {
-        "public_tool_watchdog_s": public_tool_timeout_s(),
-        "run_shell_tool": {
-            "default_timeout_s": max(
-                1, settings.public_run_shell_default_timeout_s
-            ),
-            "max_timeout_s": max(1, settings.public_run_shell_max_timeout_s),
-        },
-        "internal_run_shell": {
-            "default_timeout_s": max(
-                1, settings.internal_shell_default_timeout_s
-            ),
-            "max_timeout_s": max(1, settings.internal_shell_max_timeout_s),
-        },
-    }
-
-
 def clamp_output(
     stdout: str, stderr: str, max_output_bytes: int | None = None
 ) -> tuple[str, str, bool]:

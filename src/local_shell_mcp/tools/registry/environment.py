@@ -7,7 +7,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...config.settings import get_settings, safe_settings_dump
-from ...ops.command_ops import effective_tool_limits, run_shell
+from ...ops.command_ops import run_shell
 from ..base import (
     HttpToolRoute,
     McpToolContext,
@@ -26,7 +26,6 @@ async def _environment_info(args: dict[str, Any]) -> dict[str, Any]:
     )
     return {
         "settings": safe_settings_dump(settings),
-        "effective_tool_limits": effective_tool_limits(),
         "probe": result.model_dump(),
     }
 
@@ -58,7 +57,7 @@ def register_environment_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(meta=protected_meta)
     async def environment_info() -> dict:
-        """Return the active workspace, server settings, auth/policy state, and a small environment probe. Use this before planning tool-heavy work when you need to know the workspace root, timeout/output limits, network policy, or basic runtime versions. This is read-only and intended for orientation, not for executing arbitrary commands."""
+        """Return the active workspace, server settings, auth/policy state, and a small environment probe. Use this before planning tool-heavy work when you need to know the workspace root, auth/network policy, or basic runtime versions. This is read-only and intended for orientation, not for executing arbitrary commands."""
         try:
             return ok_response(await _environment_info({}))
         except Exception as exc:
