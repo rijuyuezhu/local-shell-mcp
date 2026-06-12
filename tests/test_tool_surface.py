@@ -7,6 +7,11 @@ from fastapi.testclient import TestClient
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
+from local_shell_mcp.remote.tool_specs import (
+    REMOTE_WORKER_TOOL_NAMES,
+    REMOTE_WORKER_TOOL_SPECS,
+)
+from local_shell_mcp.remote.worker import WORKER_TOOL_NAMES
 from local_shell_mcp.tools.base import HttpMethod, HttpToolRoute, ToolRegistry
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
@@ -81,6 +86,27 @@ async def test_mcp_local_and_remote_tool_surface_is_stable(
     names = {tool.name for tool in await build_mcp().list_tools()}
 
     assert names == LOCAL_MCP_TOOL_NAMES | REMOTE_MCP_TOOL_NAMES
+
+
+def test_remote_worker_specs_drive_http_and_worker_allowlist():
+    spec_names = {spec.public_name for spec in REMOTE_WORKER_TOOL_SPECS}
+    worker_tools = {spec.worker_tool for spec in REMOTE_WORKER_TOOL_SPECS}
+    route_by_name = {
+        route.tool_name: route
+        for registry in discover_tool_registries()
+        for route in registry.http_routes()
+    }
+    handler_names = set(local_tool_handlers())
+
+    assert len(spec_names) == len(REMOTE_WORKER_TOOL_SPECS)
+    assert worker_tools == REMOTE_WORKER_TOOL_NAMES
+    assert WORKER_TOOL_NAMES == REMOTE_WORKER_TOOL_NAMES
+    assert spec_names <= set(route_by_name)
+    assert spec_names <= handler_names
+    for spec in REMOTE_WORKER_TOOL_SPECS:
+        route = route_by_name[spec.public_name]
+        assert route.method == "POST"
+        assert route.path == spec.http_path
 
 
 @pytest.mark.asyncio
