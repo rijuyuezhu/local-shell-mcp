@@ -72,7 +72,7 @@ async def git_pull(cwd: str = ".", ff_only: bool = True) -> dict:
 
 async def git_add(cwd: str = ".", paths: list[str] | None = None) -> dict:
     paths = paths or ["."]
-    result = await run_shell(_git("add", *paths), cwd=cwd)
+    result = await run_shell(_git("add", chr(45) + chr(45), *paths), cwd=cwd)
     return result.model_dump()
 
 
