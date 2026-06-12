@@ -7,7 +7,12 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...ops.secret_scan_ops import run_secret_scan
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import handled_error, ok_response
 
 
@@ -26,16 +31,13 @@ SECRET_SCAN_HTTP_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-class SecretScanToolRegistry(ToolRegistry):
+class SecretScanToolRegistry(StaticHttpToolRegistry):
     """Register secret scanning tools."""
 
     name = "secret_scan"
 
-    def http_routes(self):
-        return SECRET_SCAN_HTTP_ROUTES
-
-    def http_handlers(self):
-        return SECRET_SCAN_HTTP_HANDLERS
+    routes = SECRET_SCAN_HTTP_ROUTES
+    handlers = SECRET_SCAN_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_secret_scan_mcp(mcp, context)

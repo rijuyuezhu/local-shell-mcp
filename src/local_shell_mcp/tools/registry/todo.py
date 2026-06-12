@@ -7,7 +7,12 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...ops.todo_ops import todo_read, todo_write
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import handled_error, ok_response, to_thread
 
 
@@ -30,16 +35,13 @@ TODO_HTTP_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-class TodoToolRegistry(ToolRegistry):
+class TodoToolRegistry(StaticHttpToolRegistry):
     """Register todo-list tools."""
 
     name = "todo"
 
-    def http_routes(self):
-        return TODO_HTTP_ROUTES
-
-    def http_handlers(self):
-        return TODO_HTTP_HANDLERS
+    routes = TODO_HTTP_ROUTES
+    handlers = TODO_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_todo_mcp(mcp, context)

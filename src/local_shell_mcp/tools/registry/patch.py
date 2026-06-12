@@ -7,7 +7,12 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...ops.patch_ops import apply_patch_text
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import handled_error, ok_response
 
 
@@ -22,16 +27,13 @@ PATCH_HTTP_ROUTES = (
 PATCH_HTTP_HANDLERS: dict[str, ToolHandler] = {"apply_patch": _apply_patch}
 
 
-class PatchToolRegistry(ToolRegistry):
+class PatchToolRegistry(StaticHttpToolRegistry):
     """Register patch application tools."""
 
     name = "patch"
 
-    def http_routes(self):
-        return PATCH_HTTP_ROUTES
-
-    def http_handlers(self):
-        return PATCH_HTTP_HANDLERS
+    routes = PATCH_HTTP_ROUTES
+    handlers = PATCH_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_patch_mcp(mcp, context)

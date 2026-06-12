@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -62,3 +62,20 @@ class ToolRegistry:
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         """Register MCP tools for this registry onto the provided app."""
         return None
+
+
+class StaticHttpToolRegistry(ToolRegistry):
+    """Base class for registries with static REST routes and handlers."""
+
+    routes: ClassVar[Iterable[HttpToolRoute]] = ()
+    """Static REST routes provided by this registry."""
+    handlers: ClassVar[Mapping[str, ToolHandler]] = {}
+    """Static HTTP invocation handlers provided by this registry."""
+
+    def http_routes(self) -> Iterable[HttpToolRoute]:
+        """Return static REST routes provided by this registry."""
+        return self.routes
+
+    def http_handlers(self) -> Mapping[str, ToolHandler]:
+        """Return static HTTP invocation handlers provided by this registry."""
+        return self.handlers

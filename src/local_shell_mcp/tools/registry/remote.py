@@ -14,7 +14,12 @@ from ...remote.service import (
     revoke_remote_machine,
 )
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import handled_error, ok_response
 
 
@@ -118,16 +123,13 @@ REMOTE_HTTP_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-class RemoteToolRegistry(ToolRegistry):
+class RemoteToolRegistry(StaticHttpToolRegistry):
     """Register remote-worker proxy tools."""
 
     name = "remote"
 
-    def http_routes(self):
-        return REMOTE_HTTP_ROUTES
-
-    def http_handlers(self):
-        return REMOTE_HTTP_HANDLERS
+    routes = REMOTE_HTTP_ROUTES
+    handlers = REMOTE_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_remote_mcp(mcp, context)
