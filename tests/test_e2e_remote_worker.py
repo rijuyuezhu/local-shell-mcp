@@ -36,6 +36,7 @@ REMOTE_TOOL_NAMES = {
     "remote_run_python_tool",
     "remote_list_files",
     "remote_read_file",
+    "remote_read_many_files",
     "remote_write_file",
     "remote_delete_file_or_dir",
 }
@@ -121,6 +122,7 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
             "LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
             "LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_MAX_TIMEOUT_S": "10",
             "LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S": "15",
+            "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES": "1",
         }
     )
     return env
@@ -247,6 +249,12 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 remote_workspace
             )
             assert remote_env["settings"]["auth_mode"] == "none"
+            assert (
+                remote_env["effective_tool_limits"]["run_shell_tool"][
+                    "max_timeout_s"
+                ]
+                == 10
+            )
             assert remote_env["probe"]["ok"] is True
             assert str(remote_workspace) in remote_env["probe"]["stdout"]
 
@@ -276,6 +284,22 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 {"machine": machine, "path": "remote/demo.txt"},
             )
             assert read_result["content"] == "hello from remote worker\n"
+
+            (remote_workspace / "remote" / "other.txt").write_text(
+                "second remote file\n", encoding="utf-8"
+            )
+            many_result = await client.call_tool(
+                "remote_read_many_files",
+                {
+                    "machine": machine,
+                    "paths": ["remote/demo.txt", "remote/other.txt"],
+                },
+            )
+            assert many_result["status"] == "error"
+            assert many_result["error_type"] == "ValueError"
+            assert (
+                "Refusing to read 2 files; max is 1" in many_result["message"]
+            )
 
             shell_result = await client.call_tool(
                 "remote_run_shell_tool",
