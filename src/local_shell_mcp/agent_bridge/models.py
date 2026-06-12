@@ -193,7 +193,7 @@ class AgentCapabilityRegistry:
 
     def config_status(self) -> dict[str, Any]:
         """Return a redacted status payload suitable for diagnostics and public tool responses."""
-        from . import _redact_text, redact_configured_values
+        from .redaction import _redact_text, redact_configured_values
 
         return {
             "config_dir": str(self.config_dir),
