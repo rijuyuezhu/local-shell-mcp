@@ -63,6 +63,9 @@ ignore = ["E501"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests that start real local-shell-mcp server processes",
+]
 
 [tool.pyright]
 pythonVersion = "3.14"

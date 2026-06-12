@@ -166,6 +166,7 @@ async def _spawn_process(command: str, cwd: str) -> asyncio.subprocess.Process:
         command,
         cwd=cwd,
         env=_subprocess_env(),
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
