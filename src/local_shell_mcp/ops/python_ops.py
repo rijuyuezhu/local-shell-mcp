@@ -2,28 +2,18 @@
 
 from __future__ import annotations
 
-import asyncio
 import shlex
-import uuid
 
 from .command_ops import public_run_shell_timeout, run_shell
-from .path_ops import (
-    assert_text_input_size,
-    prune_temp_dir,
-    relative_display,
-    temp_dir,
-)
+from .path_ops import relative_display
+from .temp_file_ops import write_temp_text_file
 
 
 async def run_python_script(
     code: str, cwd: str = ".", timeout_s: int = 60
 ) -> dict:
     """Execute provided Python code from a temporary file."""
-    assert_text_input_size("Python script", code)
-    await asyncio.to_thread(prune_temp_dir)
-    path = temp_dir() / f"script-{uuid.uuid4().hex}.py"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(path.write_text, code, encoding="utf-8")
+    path = await write_temp_text_file("Python script", code, "script", "py")
     result = await run_shell(
         f"python3 {shlex.quote(str(path))}",
         cwd=cwd,
