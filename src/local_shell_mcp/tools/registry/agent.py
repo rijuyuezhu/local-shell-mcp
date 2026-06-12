@@ -17,8 +17,9 @@ from ...agent_bridge.service import (
     list_agent_skills_payload,
 )
 from ...agent_bridge.tools import register_agent_bridge_tools
-from ...config.settings import get_settings
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ...config.settings import Settings
+from ..base import McpToolContext
+from ..definitions import DeclarativeToolRegistry
 from ..responses import handled_error, ok_response
 
 
@@ -28,77 +29,84 @@ def _agent_registry():
     )
 
 
-async def _agent_config_status(args: dict[str, Any]) -> dict[str, Any]:
-    return agent_config_status_payload(_agent_registry())
+def _agent_bridge_enabled(settings: Settings) -> bool:
+    return settings.agent_bridge_enabled
 
 
-async def _list_agent_skills(args: dict[str, Any]) -> dict[str, Any]:
-    return list_agent_skills_payload(_agent_registry())
-
-
-async def _activate_agent_skill(args: dict[str, Any]) -> dict[str, Any]:
-    return activate_agent_skill_payload(_agent_registry(), args["name"])
-
-
-async def _list_agent_mcp_servers(args: dict[str, Any]) -> dict[str, Any]:
-    return list_agent_mcp_servers_payload(_agent_registry())
-
-
-async def _list_agent_mcp_tools(args: dict[str, Any]) -> dict[str, Any]:
-    return list_agent_mcp_tools_payload(_agent_registry(), args.get("server"))
-
-
-async def _call_agent_mcp_tool(args: dict[str, Any]) -> dict[str, Any]:
-    return await call_agent_mcp_tool_payload(
-        _agent_registry(),
-        args["server"],
-        args["tool"],
-        args.get("args") or {},
-    )
-
-
-AGENT_BRIDGE_HTTP_ROUTES = (
-    HttpToolRoute("GET", "/tools/agent_config_status", "agent_config_status"),
-    HttpToolRoute("GET", "/tools/list_agent_skills", "list_agent_skills"),
-    HttpToolRoute(
-        "POST", "/tools/activate_agent_skill", "activate_agent_skill"
-    ),
-    HttpToolRoute(
-        "GET", "/tools/list_agent_mcp_servers", "list_agent_mcp_servers"
-    ),
-    HttpToolRoute(
-        "POST", "/tools/list_agent_mcp_tools", "list_agent_mcp_tools"
-    ),
-    HttpToolRoute("POST", "/tools/call_agent_mcp_tool", "call_agent_mcp_tool"),
-)
-
-AGENT_BRIDGE_HTTP_HANDLERS: dict[str, ToolHandler] = {
-    "agent_config_status": _agent_config_status,
-    "list_agent_skills": _list_agent_skills,
-    "activate_agent_skill": _activate_agent_skill,
-    "list_agent_mcp_servers": _list_agent_mcp_servers,
-    "list_agent_mcp_tools": _list_agent_mcp_tools,
-    "call_agent_mcp_tool": _call_agent_mcp_tool,
-}
-
-
-class AgentBridgeToolRegistry(ToolRegistry):
+class AgentBridgeToolRegistry(DeclarativeToolRegistry):
     """Register agent bridge tools."""
 
     name = "agent_bridge"
 
-    def http_routes(self):
-        if not get_settings().agent_bridge_enabled:
-            return ()
-        return AGENT_BRIDGE_HTTP_ROUTES
-
-    def http_handlers(self):
-        if not get_settings().agent_bridge_enabled:
-            return {}
-        return AGENT_BRIDGE_HTTP_HANDLERS
-
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_agent_bridge_mcp(mcp, context)
+
+
+local_tool = AgentBridgeToolRegistry.get_tool_decorator()
+
+
+@local_tool(
+    http_method="GET",
+    http_path="/tools/agent_config_status",
+    enabled=_agent_bridge_enabled,
+)
+async def agent_config_status() -> dict[str, Any]:
+    """Return agent bridge configuration status."""
+    return agent_config_status_payload(_agent_registry())
+
+
+@local_tool(
+    http_method="GET",
+    http_path="/tools/list_agent_skills",
+    enabled=_agent_bridge_enabled,
+)
+async def list_agent_skills() -> dict[str, Any]:
+    """List agent skills discovered from config."""
+    return list_agent_skills_payload(_agent_registry())
+
+
+@local_tool(
+    http_method="POST",
+    http_path="/tools/activate_agent_skill",
+    enabled=_agent_bridge_enabled,
+)
+async def activate_agent_skill(name: str) -> dict[str, Any]:
+    """Load an agent skill's instructions."""
+    return activate_agent_skill_payload(_agent_registry(), name)
+
+
+@local_tool(
+    http_method="GET",
+    http_path="/tools/list_agent_mcp_servers",
+    enabled=_agent_bridge_enabled,
+)
+async def list_agent_mcp_servers() -> dict[str, Any]:
+    """List configured agent MCP servers."""
+    return list_agent_mcp_servers_payload(_agent_registry())
+
+
+@local_tool(
+    http_method="POST",
+    http_path="/tools/list_agent_mcp_tools",
+    enabled=_agent_bridge_enabled,
+)
+async def list_agent_mcp_tools(server: str | None = None) -> dict[str, Any]:
+    """List tools exposed by configured agent MCP servers."""
+    return list_agent_mcp_tools_payload(_agent_registry(), server)
+
+
+@local_tool(
+    http_method="POST",
+    http_path="/tools/call_agent_mcp_tool",
+    enabled=_agent_bridge_enabled,
+)
+async def call_agent_mcp_tool(
+    server: str, tool: str, args: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Call a tool on a configured agent MCP server."""
+    return await call_agent_mcp_tool_payload(
+        _agent_registry(), server, tool, args or {}
+    )
 
 
 def register_agent_bridge_mcp(mcp: FastMCP, context: McpToolContext) -> None:
