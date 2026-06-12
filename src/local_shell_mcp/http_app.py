@@ -1,4 +1,4 @@
-"""Build the FastAPI application that exposes shell, filesystem, remote-worker, and MCP endpoints."""
+"""Build the FastAPI REST application that exposes local tool endpoints."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def _make_post_tool_handler(tool_name: str):
 
 
 def build_http_app() -> FastAPI:
-    """Construct the authenticated HTTP API and mount MCP, OAuth, tool, and remote-worker routes."""
+    """Construct the authenticated REST API and register local tool routes."""
     app = FastAPI(title="local-shell-mcp REST API", version="0.1.0")
     settings = get_settings()
     if settings.auth_mode != "none":

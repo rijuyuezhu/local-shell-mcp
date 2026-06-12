@@ -66,7 +66,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries. |
 | `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper and routed REST auditing. |
 | `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries. |
-| `src/local_shell_mcp/http_app.py` | REST debug API and HTTP protocol adapter. |
+| `src/local_shell_mcp/http_app.py` | REST debug API for local tool endpoints and HTTP protocol adapter. |
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and generated metadata. |
 | `src/local_shell_mcp/auth/` | Authentication middleware and OAuth server. |
 | `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, and todo behavior. |
