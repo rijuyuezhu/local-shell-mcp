@@ -81,7 +81,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 ## Implementation notes
 
 - Tool registration is registry-based. Keep concrete behavior in `ops/`; registry modules adapt parameters, response envelopes, descriptions, and metadata.
-- Transport app assembly lives in `mcp.app` and `http.app`; compatibility imports remain available from `local_shell_mcp.mcp_app` and `local_shell_mcp.http_app`.
+- Transport app assembly lives in `mcp.app` and `http.app`.
 - Registry modules with static REST routes and handlers should inherit `StaticHttpToolRegistry`; keep custom `http_routes()` or `http_handlers()` methods only when runtime settings affect the surface.
 - Large registry implementations may delegate focused MCP registration code to transport-specific companion modules, as `remote.py` does with `mcp.remote_tools`, so `tools.registry` stays focused on discovered registry definitions.
 - Configuration surface metadata lives in `config.surface`; `config.registry` remains as a compatibility import path.

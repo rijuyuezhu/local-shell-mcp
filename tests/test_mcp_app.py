@@ -11,15 +11,6 @@ async def _ok(request):
     return None
 
 
-def test_legacy_app_module_imports_still_work():
-    from local_shell_mcp import http_app, mcp_app
-    from local_shell_mcp.http.app import build_http_app
-    from local_shell_mcp.mcp.app import build_mcp
-
-    assert http_app.build_http_app is build_http_app
-    assert mcp_app.build_mcp is build_mcp
-
-
 class _DummyMcp:
     def __init__(self):
         self.transports = []
