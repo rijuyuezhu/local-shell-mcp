@@ -61,12 +61,12 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | Path | Purpose |
 |---|---|
 | `src/local_shell_mcp/main.py` | CLI parsing and mode dispatch. |
-| `src/local_shell_mcp/mcp_app.py` | MCP stdio/HTTP transport startup and OAuth/remote ASGI route wrapping. |
+| `src/local_shell_mcp/mcp/` | MCP stdio/HTTP transport app assembly, client-facing metadata, server instructions, remote MCP companion registration, and tool watchdogs. |
 | `src/local_shell_mcp/tools/base.py` | Shared tool registry, context, HTTP route metadata, and local handler types. |
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries. |
 | `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper and routed REST auditing. |
 | `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries discovered at runtime. |
-| `src/local_shell_mcp/http_app.py` | REST debug API for local tool endpoints and HTTP protocol adapter. |
+| `src/local_shell_mcp/http/` | REST debug API assembly for local tool endpoints and HTTP protocol adapter. |
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and configuration surface metadata. |
 | `src/local_shell_mcp/auth/` | Authentication middleware and OAuth server. |
 | `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, todo, and shared operation helpers. |
@@ -81,8 +81,9 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 ## Implementation notes
 
 - Tool registration is registry-based. Keep concrete behavior in `ops/`; registry modules adapt parameters, response envelopes, descriptions, and metadata.
+- Transport app assembly lives in `mcp.app` and `http.app`; compatibility imports remain available from `local_shell_mcp.mcp_app` and `local_shell_mcp.http_app`.
 - Registry modules with static REST routes and handlers should inherit `StaticHttpToolRegistry`; keep custom `http_routes()` or `http_handlers()` methods only when runtime settings affect the surface.
-- Large registry implementations may delegate focused MCP registration code to companion modules outside `tools.registry`, as `remote.py` does with `tools.remote_mcp`, so discovery only imports registry definition modules.
+- Large registry implementations may delegate focused MCP registration code to transport-specific companion modules, as `remote.py` does with `mcp.remote_tools`, so `tools.registry` stays focused on discovered registry definitions.
 - Configuration surface metadata lives in `config.surface`; `config.registry` remains as a compatibility import path.
 - Do not add a second global tool table. MCP and REST surfaces should be derived from category registries.
 - Routed tool calls are audited centrally. Avoid per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.

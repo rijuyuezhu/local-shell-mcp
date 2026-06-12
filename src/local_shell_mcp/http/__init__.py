@@ -1,0 +1,1 @@
+"""HTTP REST application assembly."""

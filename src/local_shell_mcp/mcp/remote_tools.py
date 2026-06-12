@@ -13,8 +13,8 @@ from ..remote.service import (
     rename_remote_machine,
     revoke_remote_machine,
 )
-from .base import McpToolContext
-from .responses import handled_error, ok_response
+from ..tools.base import McpToolContext
+from ..tools.responses import handled_error, ok_response
 
 
 async def _remote_call(

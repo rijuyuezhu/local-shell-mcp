@@ -1,1 +1,1 @@
-"""Tool definition package. Runtime app assembly lives in local_shell_mcp.mcp_app."""
+"""Tool definition, discovery, invocation, and registry adapters."""

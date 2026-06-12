@@ -6,6 +6,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from ...mcp.remote_tools import register_remote_mcp
 from ...remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
@@ -20,7 +21,6 @@ from ..base import (
     StaticHttpToolRegistry,
     ToolHandler,
 )
-from ..remote_mcp import register_remote_mcp
 
 
 async def _remote_invite(args: dict[str, Any]) -> dict[str, Any]:

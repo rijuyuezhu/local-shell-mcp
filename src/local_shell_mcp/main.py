@@ -6,8 +6,8 @@ import argparse
 
 from .config.settings import configure_settings, load_settings
 from .config.surface import cli_overrides_from_args, register_setting_cli_args
-from .http_app import run_http
-from .mcp_app import run_mcp
+from .http.app import run_http
+from .mcp.app import run_mcp
 from .remote.worker import add_worker_cli_args, run_worker_from_args
 
 
