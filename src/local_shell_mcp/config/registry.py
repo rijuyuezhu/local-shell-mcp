@@ -1,7 +1,8 @@
 """Central registry for runtime configuration surfaces.
 
-The settings registry is the single source of truth for application setting help
-text, CLI flag registration, and generated example configuration files.
+Settings field docstrings are the source of truth for application setting help
+text; this registry controls grouping, CLI flags, and generated example
+configuration files.
 """
 
 from __future__ import annotations
@@ -34,14 +35,24 @@ class SettingSpec:
     """Settings attribute name on the Settings model."""
     section: SectionName
     """Documentation and config-file section where this setting is grouped."""
-    help: str
-    """Human-readable help text used by CLI and generated examples."""
+    help_override: str | None = None
+    """Optional explicit help text; Settings field descriptions are used by default."""
     metavar: str | None = None
     """Optional placeholder shown for CLI arguments that take values."""
     example_default: Any | None = None
     """Optional value used when rendering example configuration files."""
     exposed: bool = True
     """Whether this setting appears in generated user-facing surfaces."""
+
+    @property
+    def help(self) -> str:
+        """Return human-readable help text used by CLI and generated examples."""
+        if self.help_override is not None:
+            return self.help_override
+        description = Settings.model_fields[self.name].description
+        if description:
+            return description
+        raise RuntimeError(f"Missing Settings field docstring for {self.name}")
 
     @property
     def env_var(self) -> str:
@@ -55,331 +66,132 @@ class SettingSpec:
 
 
 SETTING_SPECS: tuple[SettingSpec, ...] = (
+    SettingSpec("mode", "Server"),
+    SettingSpec("host", "Server", metavar="HOST"),
+    SettingSpec("port", "Server", metavar="PORT"),
+    SettingSpec("workspace_root", "Paths and state", metavar="PATH"),
+    SettingSpec("state_dir", "Paths and state", metavar="PATH"),
+    SettingSpec("audit_log_path", "Paths and state", metavar="PATH"),
+    SettingSpec("auth_mode", "Authentication and OAuth", metavar="MODE"),
+    SettingSpec("auth_bypass_localhost", "Authentication and OAuth"),
+    SettingSpec("require_auth_for_mcp_discovery", "Authentication and OAuth"),
+    SettingSpec("public_base_url", "Authentication and OAuth", metavar="URL"),
     SettingSpec(
-        "mode",
-        "Server",
-        "Server transport mode.",
-        # we do not set metavar here to get the choices
-    ),
-    SettingSpec(
-        "host",
-        "Server",
-        "Bind host for HTTP/MCP transports.",
-        "HOST",
-    ),
-    SettingSpec(
-        "port",
-        "Server",
-        "Bind port for HTTP/MCP transports.",
-        "PORT",
-    ),
-    SettingSpec(
-        "workspace_root",
-        "Paths and state",
-        "Root directory for normal file and command operations.",
-        "PATH",
-    ),
-    SettingSpec(
-        "state_dir",
-        "Paths and state",
-        "Directory for runtime state such as audit logs and temporary files.",
-        "PATH",
-    ),
-    SettingSpec(
-        "audit_log_path",
-        "Paths and state",
-        "Path to the JSONL audit log.",
-        "PATH",
-    ),
-    SettingSpec(
-        "auth_mode",
-        "Authentication and OAuth",
-        "Authentication mode: oauth or none. Do not expose public services with none.",
-        "MODE",
-    ),
-    SettingSpec(
-        "auth_bypass_localhost",
-        "Authentication and OAuth",
-        "Allow localhost requests without bearer authentication.",
-    ),
-    SettingSpec(
-        "require_auth_for_mcp_discovery",
-        "Authentication and OAuth",
-        "Require bearer auth for MCP-over-HTTP requests; OAuth/bootstrap routes remain public.",
-    ),
-    SettingSpec(
-        "public_base_url",
-        "Authentication and OAuth",
-        "Public HTTPS origin used in OAuth metadata and callbacks.",
-        "URL",
-    ),
-    SettingSpec(
-        "oauth_issuer",
-        "Authentication and OAuth",
-        "Advanced compatibility override for OAuth issuer metadata; usually derived from public_base_url.",
-        "URL",
-        exposed=False,
+        "oauth_issuer", "Authentication and OAuth", metavar="URL", exposed=False
     ),
     SettingSpec(
         "oauth_resource",
         "Authentication and OAuth",
-        "Advanced compatibility override for OAuth resource metadata; usually derived from public_base_url plus /mcp.",
-        "URL",
+        metavar="URL",
         exposed=False,
     ),
-    SettingSpec(
-        "oauth_admin_pin",
-        "Authentication and OAuth",
-        "PIN required to approve OAuth authorization.",
-        "PIN",
-    ),
+    SettingSpec("oauth_admin_pin", "Authentication and OAuth", metavar="PIN"),
     SettingSpec(
         "oauth_access_token_ttl_s",
         "Authentication and OAuth",
-        "Advanced bearer token lifetime in seconds.",
-        "SECONDS",
+        metavar="SECONDS",
         exposed=False,
     ),
     SettingSpec(
         "oauth_code_ttl_s",
         "Authentication and OAuth",
-        "Advanced OAuth authorization-code lifetime in seconds.",
-        "SECONDS",
+        metavar="SECONDS",
         exposed=False,
     ),
+    SettingSpec("allow_full_container", "Safety and resource limits"),
+    SettingSpec("allow_network", "Safety and resource limits"),
+    SettingSpec("relaxed_client_tool_hints", "Safety and resource limits"),
     SettingSpec(
-        "allow_full_container",
-        "Safety and resource limits",
-        "Disable built-in workspace and command restrictions; use only in disposable containers or VMs.",
-    ),
-    SettingSpec(
-        "allow_network",
-        "Safety and resource limits",
-        "Allow network-capable operations.",
-    ),
-    SettingSpec(
-        "relaxed_client_tool_hints",
-        "Safety and resource limits",
-        "Advertise lower-risk MCP client hints for local tools without changing server-side authentication or command policy.",
-    ),
-    SettingSpec(
-        "public_tool_timeout_s",
-        "Safety and resource limits",
-        "Public MCP/HTTP tool watchdog timeout in seconds.",
-        "SECONDS",
+        "public_tool_timeout_s", "Safety and resource limits", metavar="SECONDS"
     ),
     SettingSpec(
         "public_run_shell_default_timeout_s",
         "Safety and resource limits",
-        "Default timeout for public run_shell_tool calls in seconds.",
-        "SECONDS",
+        metavar="SECONDS",
     ),
     SettingSpec(
         "public_run_shell_max_timeout_s",
         "Safety and resource limits",
-        "Maximum timeout accepted by public run_shell_tool calls in seconds.",
-        "SECONDS",
+        metavar="SECONDS",
     ),
     SettingSpec(
         "internal_shell_default_timeout_s",
         "Safety and resource limits",
-        "Advanced internal shell command default timeout in seconds; public run_shell_tool uses stricter public settings.",
-        "SECONDS",
+        metavar="SECONDS",
     ),
     SettingSpec(
         "internal_shell_max_timeout_s",
         "Safety and resource limits",
-        "Advanced internal shell command maximum timeout in seconds; public run_shell_tool uses stricter public settings.",
-        "SECONDS",
+        metavar="SECONDS",
     ),
     SettingSpec(
-        "max_output_bytes",
-        "Safety and resource limits",
-        "Command output truncation limit in bytes.",
-        "BYTES",
+        "max_output_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(
-        "max_file_read_bytes",
-        "Safety and resource limits",
-        "Per-file read limit in bytes.",
-        "BYTES",
+        "max_file_read_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(
-        "max_file_write_bytes",
-        "Safety and resource limits",
-        "Per-file write/edit limit in bytes.",
-        "BYTES",
+        "max_file_write_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(
-        "max_grep_results",
-        "Safety and resource limits",
-        "Maximum grep result count.",
-        "COUNT",
+        "max_grep_results", "Safety and resource limits", metavar="COUNT"
     ),
     SettingSpec(
-        "max_directory_entries",
-        "Safety and resource limits",
-        "Maximum listed directory entries.",
-        "COUNT",
+        "max_directory_entries", "Safety and resource limits", metavar="COUNT"
     ),
     SettingSpec(
-        "max_glob_results",
-        "Safety and resource limits",
-        "Maximum glob search results.",
-        "COUNT",
+        "max_glob_results", "Safety and resource limits", metavar="COUNT"
     ),
     SettingSpec(
-        "max_tree_entries",
-        "Safety and resource limits",
-        "Maximum tree-view entries.",
-        "COUNT",
+        "max_tree_entries", "Safety and resource limits", metavar="COUNT"
     ),
     SettingSpec(
-        "max_read_many_files",
-        "Safety and resource limits",
-        "Maximum files read by a multi-file read operation.",
-        "COUNT",
+        "max_read_many_files", "Safety and resource limits", metavar="COUNT"
     ),
     SettingSpec(
         "max_read_many_total_bytes",
         "Safety and resource limits",
-        "Combined byte limit for multi-file reads.",
-        "BYTES",
+        metavar="BYTES",
+    ),
+    SettingSpec("max_todos", "Safety and resource limits", metavar="COUNT"),
+    SettingSpec(
+        "max_todo_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(
-        "max_todos",
-        "Safety and resource limits",
-        "Todo-list item limit.",
-        metavar="COUNT",
+        "max_audit_log_bytes", "Safety and resource limits", metavar="BYTES"
+    ),
+    SettingSpec("max_tmp_files", "Safety and resource limits", metavar="COUNT"),
+    SettingSpec("max_tmp_bytes", "Safety and resource limits", metavar="BYTES"),
+    SettingSpec(
+        "max_concurrent_commands", "Safety and resource limits", metavar="COUNT"
     ),
     SettingSpec(
-        "max_todo_bytes",
-        "Safety and resource limits",
-        "Todo-list serialized byte limit.",
-        "BYTES",
+        "max_tmux_sessions", "Safety and resource limits", metavar="COUNT"
     ),
     SettingSpec(
-        "max_audit_log_bytes",
-        "Safety and resource limits",
-        "Audit-log rotation threshold in bytes.",
-        "BYTES",
+        "command_denylist", "Safety and resource limits", metavar="CSV"
     ),
-    SettingSpec(
-        "max_tmp_files",
-        "Safety and resource limits",
-        "Temporary-file count limit.",
-        "COUNT",
-    ),
-    SettingSpec(
-        "max_tmp_bytes",
-        "Safety and resource limits",
-        "Temporary-file byte limit.",
-        "BYTES",
-    ),
-    SettingSpec(
-        "max_concurrent_commands",
-        "Safety and resource limits",
-        "Concurrent command limit.",
-        "COUNT",
-    ),
-    SettingSpec(
-        "max_tmux_sessions",
-        "Safety and resource limits",
-        "Persistent shell session limit.",
-        "COUNT",
-    ),
-    SettingSpec(
-        "command_denylist",
-        "Safety and resource limits",
-        "Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled.",
-        "CSV",
-    ),
-    SettingSpec(
-        "path_denylist",
-        "Safety and resource limits",
-        "Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled.",
-        "CSV",
-    ),
-    SettingSpec(
-        "remote_enabled",
-        "Remote workers",
-        "Enable remote worker routes and MCP tools.",
-    ),
-    SettingSpec(
-        "remote_invite_ttl_s",
-        "Remote workers",
-        "One-time remote worker invite lifetime in seconds.",
-        "SECONDS",
-    ),
-    SettingSpec(
-        "remote_poll_timeout_s",
-        "Remote workers",
-        "Remote worker long-poll heartbeat timeout in seconds.",
-        "SECONDS",
-    ),
-    SettingSpec(
-        "remote_job_timeout_s",
-        "Remote workers",
-        "Control-side remote job result timeout in seconds.",
-        "SECONDS",
-    ),
-    SettingSpec(
-        "agent_bridge_enabled",
-        "Agent capability bridge",
-        "Enable agent capability bridge tools.",
-    ),
-    SettingSpec(
-        "agent_config_dir",
-        "Agent capability bridge",
-        "Read-only capability config directory.",
-        "PATH",
-    ),
+    SettingSpec("path_denylist", "Safety and resource limits", metavar="CSV"),
+    SettingSpec("remote_enabled", "Remote workers"),
+    SettingSpec("remote_invite_ttl_s", "Remote workers", metavar="SECONDS"),
+    SettingSpec("remote_poll_timeout_s", "Remote workers", metavar="SECONDS"),
+    SettingSpec("remote_job_timeout_s", "Remote workers", metavar="SECONDS"),
+    SettingSpec("agent_bridge_enabled", "Agent capability bridge"),
+    SettingSpec("agent_config_dir", "Agent capability bridge", metavar="PATH"),
     SettingSpec(
         "agent_mcp_probe_timeout_s",
         "Agent capability bridge",
-        "Agent MCP server probe timeout in seconds.",
-        "SECONDS",
+        metavar="SECONDS",
     ),
     SettingSpec(
-        "agent_mcp_call_timeout_s",
-        "Agent capability bridge",
-        "Agent MCP tool-call timeout in seconds.",
-        "SECONDS",
+        "agent_mcp_call_timeout_s", "Agent capability bridge", metavar="SECONDS"
     ),
-    SettingSpec(
-        "agent_dynamic_mcp_tools",
-        "Agent capability bridge",
-        "Register dynamic MCP bridge tools.",
-    ),
-    SettingSpec(
-        "agent_dynamic_skill_tools",
-        "Agent capability bridge",
-        "Register dynamic skill bridge tools.",
-    ),
-    SettingSpec(
-        "shell_executable",
-        "Tool executables",
-        "Shell executable used for shell commands.",
-        "PATH",
-    ),
-    SettingSpec(
-        "tmux_bin",
-        "Tool executables",
-        "tmux executable.",
-        "PATH",
-    ),
-    SettingSpec(
-        "rg_bin",
-        "Tool executables",
-        "ripgrep executable.",
-        "PATH",
-    ),
-    SettingSpec(
-        "python_bin",
-        "Tool executables",
-        "Python executable.",
-        "PATH",
-    ),
+    SettingSpec("agent_dynamic_mcp_tools", "Agent capability bridge"),
+    SettingSpec("agent_dynamic_skill_tools", "Agent capability bridge"),
+    SettingSpec("shell_executable", "Tool executables", metavar="PATH"),
+    SettingSpec("tmux_bin", "Tool executables", metavar="PATH"),
+    SettingSpec("rg_bin", "Tool executables", metavar="PATH"),
+    SettingSpec("python_bin", "Tool executables", metavar="PATH"),
 )
 
 type SpecBySection = list[tuple[SectionName, list[SettingSpec]]]

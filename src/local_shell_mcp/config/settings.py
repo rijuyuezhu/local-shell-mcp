@@ -38,84 +38,139 @@ class Settings(BaseSettings):
     defaults < config file < environment variables < CLI overrides.
     """
 
-    model_config = SettingsConfigDict(env_prefix=ENV_PREFIX, extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix=ENV_PREFIX, extra="ignore", use_attribute_docstrings=True
+    )
 
     host: str = "0.0.0.0"
+    """Bind host for HTTP/MCP transports."""
     port: int = 8765
+    """Bind port for HTTP/MCP transports."""
     mode: Literal["mcp", "http", "both", "stdio"] = "mcp"
+    """Server transport mode."""
 
     workspace_root: Path = DEFAULT_WORKSPACE_ROOT
+    """Root directory for normal file and command operations."""
     audit_log_path: Path = DEFAULT_AUDIT_LOG_PATH
+    """Path to the JSONL audit log."""
     state_dir: Path = DEFAULT_STATE_DIR
+    """Directory for runtime state such as audit logs and temporary files."""
 
     # By default, tools are limited to workspace_root. Set true only inside a disposable container.
     allow_full_container: bool = False
+    """Disable built-in workspace and command restrictions; use only in disposable containers or VMs."""
     allow_network: bool = True
+    """Allow network-capable operations."""
     # Client-facing hint only: reduces MCP client confirmations for local tools
     # without changing server-side authentication, authorization, or command policy.
     relaxed_client_tool_hints: bool = False
+    """Advertise lower-risk MCP client hints for local tools without changing server-side authentication or command policy."""
 
     # Public MCP/HTTP tool calls are guarded separately from internal command execution.
     public_tool_timeout_s: float = 60
+    """Public MCP/HTTP tool watchdog timeout in seconds."""
     public_run_shell_default_timeout_s: int = 10
+    """Default timeout for public run_shell_tool calls in seconds."""
     public_run_shell_max_timeout_s: int = 60
+    """Maximum timeout accepted by public run_shell_tool calls in seconds."""
     internal_shell_default_timeout_s: int = 60
+    """Advanced internal shell command default timeout in seconds; public run_shell_tool uses stricter public settings."""
     internal_shell_max_timeout_s: int = 3600
+    """Advanced internal shell command maximum timeout in seconds; public run_shell_tool uses stricter public settings."""
     max_output_bytes: int = 200_000
+    """Command output truncation limit in bytes."""
     max_file_read_bytes: int = 512_000
+    """Per-file read limit in bytes."""
     max_file_write_bytes: int = 5_000_000
+    """Per-file write/edit limit in bytes."""
     max_grep_results: int = 200
+    """Maximum grep result count."""
     max_directory_entries: int = 5_000
+    """Maximum listed directory entries."""
     max_glob_results: int = 5_000
+    """Maximum glob search results."""
     max_tree_entries: int = 5_000
+    """Maximum tree-view entries."""
     max_read_many_files: int = 100
+    """Maximum files read by a multi-file read operation."""
     max_read_many_total_bytes: int = 5_000_000
+    """Combined byte limit for multi-file reads."""
     max_todos: int = 1_000
+    """Todo-list item limit."""
     max_todo_bytes: int = 1_000_000
+    """Todo-list serialized byte limit."""
     max_audit_log_bytes: int = 20_000_000
+    """Audit-log rotation threshold in bytes."""
     max_tmp_files: int = 500
+    """Temporary-file count limit."""
     max_tmp_bytes: int = 50_000_000
+    """Temporary-file byte limit."""
     max_concurrent_commands: int = 4
+    """Concurrent command limit."""
     max_tmux_sessions: int = 16
+    """Persistent shell session limit."""
 
     # Remote worker mode is enabled by default. Remote machines join with one-time
     # invites, poll for jobs over outbound HTTP(S), and expose near-parity tools.
     remote_enabled: bool = True
+    """Enable remote worker routes and MCP tools."""
     remote_invite_ttl_s: int = 600
+    """One-time remote worker invite lifetime in seconds."""
     remote_poll_timeout_s: int = 25
+    """Remote worker long-poll heartbeat timeout in seconds."""
     remote_job_timeout_s: int = 3600
+    """Control-side remote job result timeout in seconds."""
 
     # Agent capability bridge. External sync tools write normalized MCP and skill
     # config here; local-shell-mcp reads it without mutating it.
     agent_bridge_enabled: bool = True
+    """Enable agent capability bridge tools."""
     agent_config_dir: Path = DEFAULT_AGENT_CONFIG_DIR
+    """Read-only capability config directory."""
     agent_mcp_probe_timeout_s: int = 5
+    """Agent MCP server probe timeout in seconds."""
     agent_mcp_call_timeout_s: int = 60
+    """Agent MCP tool-call timeout in seconds."""
     agent_dynamic_mcp_tools: bool = True
+    """Register dynamic MCP bridge tools."""
     agent_dynamic_skill_tools: bool = True
+    """Register dynamic skill bridge tools."""
 
     shell_executable: str = "/bin/bash"
+    """Shell executable used for shell commands."""
     tmux_bin: str = "tmux"
+    """tmux executable."""
     rg_bin: str = "rg"
+    """ripgrep executable."""
     python_bin: str = "python3"
+    """Python executable."""
 
     # Authentication. OAuth is the default for ChatGPT custom connectors.
     auth_mode: Literal["none", "oauth"] = "oauth"
+    """Authentication mode: oauth or none. Do not expose public services with none."""
     auth_bypass_localhost: bool = True
+    """Allow localhost requests without bearer authentication."""
     # MCP-over-HTTP requests are protected by default; only OAuth/bootstrap
     # metadata routes stay public. Kept for backwards-compatible config parsing.
     require_auth_for_mcp_discovery: bool = True
+    """Require bearer auth for MCP-over-HTTP requests; OAuth/bootstrap routes remain public."""
 
     # Built-in OAuth 2.1 authorization server for ChatGPT MCP connectors.
     # Set public_base_url to the externally reachable HTTPS origin, e.g. https://local-shell-mcp.example.com
     public_base_url: str | None = None
+    """Public HTTPS origin used in OAuth metadata and callbacks."""
     oauth_issuer: str | None = None
+    """Advanced compatibility override for OAuth issuer metadata; usually derived from public_base_url."""
     oauth_resource: str | None = None
+    """Advanced compatibility override for OAuth resource metadata; usually derived from public_base_url plus /mcp."""
     oauth_admin_pin: str | None = None
+    """PIN required to approve OAuth authorization."""
     # Keep the embedded single-user authorization flow simple, but avoid
     # issuing permanent bearer tokens by default.
     oauth_access_token_ttl_s: int = 3600
+    """Advanced bearer token lifetime in seconds."""
     oauth_code_ttl_s: int = 300
+    """Advanced OAuth authorization-code lifetime in seconds."""
 
     # Command policy. Set denylist empty if this container is intentionally disposable.
     command_denylist: Annotated[list[str], NoDecode] = Field(
@@ -132,6 +187,7 @@ class Settings(BaseSettings):
             "nft",
         ]
     )
+    """Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled."""
     path_denylist: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             ".ssh/id_rsa",
@@ -142,6 +198,7 @@ class Settings(BaseSettings):
             ".git/config",
         ]
     )
+    """Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled."""
 
     @field_validator(
         "workspace_root",
