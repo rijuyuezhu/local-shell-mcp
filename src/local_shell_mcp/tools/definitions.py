@@ -6,7 +6,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -131,9 +131,59 @@ class ToolDefinition:
 
 
 class DeclarativeToolRegistry(ToolRegistry):
-    """Registry base for static tools defined once as ToolDefinition values."""
+    """Registry base for static tools registered by local-tool decorators."""
 
-    tools: tuple[ToolDefinition, ...] = ()
+    tools: ClassVar[tuple[ToolDefinition, ...]] = ()
+    _context: McpToolContext | None = None
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Give every concrete registry its own tool collection."""
+        super().__init_subclass__(**kwargs)
+        cls.tools = ()
+
+    @classmethod
+    def register_tool(cls, tool: ToolDefinition) -> ToolDefinition:
+        """Attach a tool definition to this registry class."""
+        if any(existing.name == tool.name for existing in cls.tools):
+            raise ValueError(f"Duplicate tool definition: {tool.name}")
+        cls.tools = (*cls.tools, tool)
+        return tool
+
+    @classmethod
+    def get_tool_decorator(
+        cls,
+    ) -> Callable[..., Callable[[ToolFunc], ToolDefinition]]:
+        """Return a decorator factory that registers tools on this registry."""
+
+        def registry_local_tool(
+            *,
+            http_method: HttpMethod | None,
+            http_path: str | None,
+            name: str | None = None,
+            meta: ToolMeta = "protected",
+            annotations: ToolAnnotation | None = None,
+            description: ToolDescription | None = None,
+            mcp_envelope: bool = True,
+            enabled: ToolEnabled = _always_enabled,
+        ) -> Callable[[ToolFunc], ToolDefinition]:
+            def decorator(func: ToolFunc) -> ToolDefinition:
+                return cls.register_tool(
+                    ToolDefinition(
+                        func=func,
+                        name=name or func.__name__,
+                        http_method=http_method,
+                        http_path=http_path,
+                        meta=meta,
+                        annotations=annotations,
+                        description=description,
+                        mcp_envelope=mcp_envelope,
+                        enabled=enabled,
+                    )
+                )
+
+            return decorator
+
+        return registry_local_tool
 
     def _enabled_tools(self) -> tuple[ToolDefinition, ...]:
         settings = self._settings()
@@ -145,8 +195,6 @@ class DeclarativeToolRegistry(ToolRegistry):
         from ..config.settings import get_settings
 
         return get_settings()
-
-    _context: McpToolContext | None = None
 
     def http_routes(self) -> Iterable[HttpToolRoute]:
         return tuple(

@@ -7,7 +7,16 @@ import asyncio
 from ...ops.fs_ops import glob_paths
 from ...ops.search_ops import grep, tree
 from ..base import McpToolContext
-from ..definitions import DeclarativeToolRegistry, local_tool
+from ..definitions import DeclarativeToolRegistry
+
+
+class SearchToolRegistry(DeclarativeToolRegistry):
+    """Register search and tree-view tools."""
+
+    name = "search_ops"
+
+
+local_tool = SearchToolRegistry.get_tool_decorator()
 
 
 def _tree_view_description(context: McpToolContext) -> str:
@@ -78,10 +87,3 @@ async def grep_search(
 ) -> dict:
     """Search file contents with ripgrep."""
     return await grep(query, cwd, glob, regex, case_sensitive, max_results)
-
-
-class SearchToolRegistry(DeclarativeToolRegistry):
-    """Register search and tree-view tools."""
-
-    name = "search_ops"
-    tools = (tree_view, glob_search, grep_search)

@@ -83,7 +83,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 
 - Tool registration is registry-based. Keep concrete behavior in `ops/`; registry modules adapt parameters, response envelopes, descriptions, and metadata.
 - Transport app assembly lives in `mcp.app` and `http.app`.
-- Prefer `DeclarativeToolRegistry` for static tools so MCP registration and HTTP handlers derive from one typed function. Use `StaticHttpToolRegistry` only when a registry still needs hand-written static handler maps, and keep custom `http_routes()` or `http_handlers()` methods only when runtime settings affect the surface.
+- Prefer `DeclarativeToolRegistry` for static tools so MCP registration and HTTP handlers derive from one typed function. Declare the registry class first, then use `local_tool = RegistryClass.get_tool_decorator()` and `@local_tool(...)` for each tool so the registry has no second explicit tool list. Use `StaticHttpToolRegistry` only when a registry still needs hand-written static handler maps, and keep custom `http_routes()` or `http_handlers()` methods only when runtime settings affect the surface.
 - Large registry implementations may delegate focused MCP registration code to transport-specific companion modules, as `remote.py` does with `mcp.remote_tools`, so `tools.registry` stays focused on discovered registry definitions.
 - Configuration surface metadata lives in `config.surface`.
 - Do not add a second global tool table. MCP and REST surfaces should be derived from category registries.

@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from ...ops.secret_scan_ops import run_secret_scan
 from ..base import McpToolContext
-from ..definitions import DeclarativeToolRegistry, local_tool
+from ..definitions import DeclarativeToolRegistry
+
+
+class SecretScanToolRegistry(DeclarativeToolRegistry):
+    """Register secret scanning tools."""
+
+    name = "secret_scan"
+
+
+local_tool = SecretScanToolRegistry.get_tool_decorator()
 
 
 def _secret_scan_description(context: McpToolContext) -> str:
@@ -26,10 +35,3 @@ async def secret_scan(
 ) -> dict:
     """Scan workspace text files for common secrets."""
     return await run_secret_scan(cwd, glob, max_results)
-
-
-class SecretScanToolRegistry(DeclarativeToolRegistry):
-    """Register secret scanning tools."""
-
-    name = "secret_scan"
-    tools = (secret_scan,)

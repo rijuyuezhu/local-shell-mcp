@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from ...config.settings import get_settings, safe_settings_dump
 from ...ops.command_ops import run_shell
-from ..definitions import DeclarativeToolRegistry, local_tool
+from ..definitions import DeclarativeToolRegistry
+
+
+class EnvironmentToolRegistry(DeclarativeToolRegistry):
+    """Register environment/probe tools."""
+
+    name = "environment"
+
+
+local_tool = EnvironmentToolRegistry.get_tool_decorator()
 
 
 @local_tool(http_method="GET", http_path="/tools/environment_info")
@@ -20,10 +29,3 @@ async def environment_info() -> dict:
         "settings": safe_settings_dump(settings),
         "probe": result.model_dump(),
     }
-
-
-class EnvironmentToolRegistry(DeclarativeToolRegistry):
-    """Register environment/probe tools."""
-
-    name = "environment"
-    tools = (environment_info,)

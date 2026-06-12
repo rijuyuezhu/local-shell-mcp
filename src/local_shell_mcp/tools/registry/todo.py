@@ -5,7 +5,16 @@ from __future__ import annotations
 import asyncio
 
 from ...ops.todo_ops import todo_read, todo_write
-from ..definitions import DeclarativeToolRegistry, local_tool
+from ..definitions import DeclarativeToolRegistry
+
+
+class TodoToolRegistry(DeclarativeToolRegistry):
+    """Register todo-list tools."""
+
+    name = "todo"
+
+
+local_tool = TodoToolRegistry.get_tool_decorator()
 
 
 @local_tool(http_method="GET", http_path="/tools/todo")
@@ -18,10 +27,3 @@ async def todo_read_tool() -> dict:
 async def todo_write_tool(todos: list[dict]) -> dict:
     """Replace the current structured agent todo list. Use for multi-step work where progress should be tracked explicitly. Each todo should include id, content, status, and priority; keep statuses current rather than storing unrelated notes."""
     return await asyncio.to_thread(todo_write, todos)
-
-
-class TodoToolRegistry(DeclarativeToolRegistry):
-    """Register todo-list tools."""
-
-    name = "todo"
-    tools = (todo_read_tool, todo_write_tool)
