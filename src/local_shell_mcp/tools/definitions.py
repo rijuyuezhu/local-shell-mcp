@@ -119,14 +119,15 @@ class ToolDefinition:
                 return result
             return context.ok(result, "")
 
+        mcp_handler.__name__ = self.name
+        mcp_handler.__qualname__ = self.name
         mcp_handler.__signature__ = self.signature  # type: ignore[attr-defined]
-        mcp.add_tool(
-            mcp_handler,
-            name=self.name,
+        mcp.tool(
             description=self._mcp_description(context),
             annotations=self._mcp_annotations(context),
             meta=self._mcp_meta(context),
-        )
+            structured_output=False,
+        )(mcp_handler)
 
 
 class DeclarativeToolRegistry(ToolRegistry):
