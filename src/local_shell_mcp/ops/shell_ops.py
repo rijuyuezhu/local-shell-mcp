@@ -138,10 +138,16 @@ def _command_semaphore() -> asyncio.Semaphore:
 
 def _subprocess_env() -> dict[str, str]:
     """Return the environment exposed to user shell commands."""
+    blocked_names = {
+        "CLOUDFLARE_TUNNEL_TOKEN",
+        "PYTHONPATH",
+    }
     return {
         key: value
         for key, value in os.environ.items()
-        if key != "PYTHONPATH" and not key.startswith("LOCAL_SHELL_MCP_")
+        if key not in blocked_names
+        and not key.startswith("LOCAL_SHELL_MCP_")
+        and not key.startswith("DOCKER_")
     }
 
 

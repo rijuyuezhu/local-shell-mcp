@@ -108,7 +108,7 @@ The most common settings are:
 
 Docker image startup knobs, such as credential persistence and whether the server process runs as root, use `DOCKER_*` variables because they are consumed by the container entrypoint before the application starts.
 
-For Docker Compose, copy [.env.example](.env.example) to `.env`; the compose file requires it and passes it through with `env_file:`. See [ENV.md](ENV.md) for the complete variable reference and [config.example.yaml](config.example.yaml) for non-Compose file-based configuration.
+For Docker Compose, copy [.env.example](.env.example) to `.env`; the compose file requires it and passes it through with `env_file:`. Use [.env.example](.env.example) as the complete variable reference, and [config.example.yaml](config.example.yaml) for non-Compose file-based configuration.
 
 ## Remote worker mode
 
