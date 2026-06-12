@@ -126,10 +126,13 @@ FILESYSTEM_HTTP_ROUTES = (
     HttpToolRoute("POST", "/tools/glob", "glob_search"),
     HttpToolRoute("POST", "/tools/grep", "grep_search"),
     HttpToolRoute("POST", "/tools/read_file", "read_file"),
+    HttpToolRoute("POST", "/tools/read_many_files", "read_many_files"),
     HttpToolRoute("POST", "/tools/write_file", "write_file"),
     HttpToolRoute("POST", "/tools/edit_file", "edit_file"),
     HttpToolRoute("POST", "/tools/multi_edit_file", "multi_edit_file"),
     HttpToolRoute("POST", "/tools/delete", "delete_file_or_dir"),
+    HttpToolRoute("POST", "/tools/apply_patch", "apply_patch"),
+    HttpToolRoute("POST", "/tools/secret_scan", "secret_scan"),
 )
 
 FILESYSTEM_HTTP_HANDLERS: dict[str, ToolHandler] = {

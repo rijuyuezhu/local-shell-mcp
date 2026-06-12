@@ -2,17 +2,145 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.server.fastmcp import FastMCP
 
 from ...remote import remote_manager
-from ..base import McpToolContext, ToolRegistry
+from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from .common import handled_error, ok_response
+
+
+async def _remote_invite(args: dict[str, Any]) -> dict[str, Any]:
+    return await remote_manager().create_invite(
+        args.get("name"), args.get("workdir"), args.get("ttl_s")
+    )
+
+
+async def _remote_list_machines(args: dict[str, Any]) -> dict[str, Any]:
+    return remote_manager().list_machines()
+
+
+async def _remote_revoke_machine(args: dict[str, Any]) -> dict[str, Any]:
+    return remote_manager().revoke(args["machine"])
+
+
+async def _remote_rename_machine(args: dict[str, Any]) -> dict[str, Any]:
+    return remote_manager().rename(args["machine"], args["new_name"])
+
+
+def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in args.items() if key != "machine"}
+
+
+async def _remote_worker_tool(
+    args: dict[str, Any], tool_name: str, timeout_s: int | None = None
+) -> dict[str, Any]:
+    result = await remote_manager().call(
+        args["machine"], tool_name, _remote_worker_args(args), timeout_s
+    )
+    if result.get("ok", False):
+        data = result.get("data")
+        return data if isinstance(data, dict) else {"result": data}
+    return result
+
+
+def _make_remote_worker_handler(
+    tool_name: str,
+    *,
+    timeout_arg: str | None = None,
+    default_timeout: int | None = None,
+) -> ToolHandler:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        timeout_s = (
+            args.get(timeout_arg, default_timeout)
+            if timeout_arg is not None
+            else None
+        )
+        return await _remote_worker_tool(args, tool_name, timeout_s)
+
+    return handler
+
+
+REMOTE_HTTP_ROUTES = (
+    HttpToolRoute("POST", "/tools/remote_invite", "remote_invite"),
+    HttpToolRoute("GET", "/tools/remote_list_machines", "remote_list_machines"),
+    HttpToolRoute(
+        "POST", "/tools/remote_revoke_machine", "remote_revoke_machine"
+    ),
+    HttpToolRoute(
+        "POST", "/tools/remote_rename_machine", "remote_rename_machine"
+    ),
+    HttpToolRoute(
+        "POST", "/tools/remote_environment_info", "remote_environment_info"
+    ),
+    HttpToolRoute("POST", "/tools/remote_run_shell", "remote_run_shell_tool"),
+    HttpToolRoute("POST", "/tools/remote_run_python", "remote_run_python_tool"),
+    HttpToolRoute("POST", "/tools/remote_shell_start", "remote_shell_start"),
+    HttpToolRoute("POST", "/tools/remote_shell_send", "remote_shell_send"),
+    HttpToolRoute("POST", "/tools/remote_shell_read", "remote_shell_read"),
+    HttpToolRoute("POST", "/tools/remote_shell_kill", "remote_shell_kill"),
+    HttpToolRoute("POST", "/tools/remote_shell_list", "remote_shell_list"),
+    HttpToolRoute("POST", "/tools/remote_list_files", "remote_list_files"),
+    HttpToolRoute("POST", "/tools/remote_tree", "remote_tree_view"),
+    HttpToolRoute("POST", "/tools/remote_glob", "remote_glob_search"),
+    HttpToolRoute("POST", "/tools/remote_grep", "remote_grep_search"),
+    HttpToolRoute("POST", "/tools/remote_read_file", "remote_read_file"),
+    HttpToolRoute(
+        "POST", "/tools/remote_read_many_files", "remote_read_many_files"
+    ),
+    HttpToolRoute("POST", "/tools/remote_write_file", "remote_write_file"),
+    HttpToolRoute("POST", "/tools/remote_edit_file", "remote_edit_file"),
+    HttpToolRoute(
+        "POST", "/tools/remote_multi_edit_file", "remote_multi_edit_file"
+    ),
+    HttpToolRoute("POST", "/tools/remote_delete", "remote_delete_file_or_dir"),
+    HttpToolRoute("POST", "/tools/remote_apply_patch", "remote_apply_patch"),
+)
+
+REMOTE_HTTP_HANDLERS: dict[str, ToolHandler] = {
+    "remote_invite": _remote_invite,
+    "remote_list_machines": _remote_list_machines,
+    "remote_revoke_machine": _remote_revoke_machine,
+    "remote_rename_machine": _remote_rename_machine,
+    "remote_environment_info": _make_remote_worker_handler("environment_info"),
+    "remote_run_shell_tool": _make_remote_worker_handler(
+        "run_shell_tool", timeout_arg="timeout_s"
+    ),
+    "remote_run_python_tool": _make_remote_worker_handler(
+        "run_python_tool", timeout_arg="timeout_s", default_timeout=60
+    ),
+    "remote_shell_start": _make_remote_worker_handler("shell_start"),
+    "remote_shell_send": _make_remote_worker_handler("shell_send"),
+    "remote_shell_read": _make_remote_worker_handler("shell_read"),
+    "remote_shell_kill": _make_remote_worker_handler("shell_kill"),
+    "remote_shell_list": _make_remote_worker_handler("shell_list"),
+    "remote_list_files": _make_remote_worker_handler("list_files"),
+    "remote_tree_view": _make_remote_worker_handler("tree_view"),
+    "remote_glob_search": _make_remote_worker_handler("glob_search"),
+    "remote_grep_search": _make_remote_worker_handler("grep_search"),
+    "remote_read_file": _make_remote_worker_handler("read_file"),
+    "remote_read_many_files": _make_remote_worker_handler("read_many_files"),
+    "remote_write_file": _make_remote_worker_handler("write_file"),
+    "remote_edit_file": _make_remote_worker_handler("edit_file"),
+    "remote_multi_edit_file": _make_remote_worker_handler("multi_edit_file"),
+    "remote_delete_file_or_dir": _make_remote_worker_handler(
+        "delete_file_or_dir"
+    ),
+    "remote_apply_patch": _make_remote_worker_handler("apply_patch"),
+}
 
 
 class RemoteToolRegistry(ToolRegistry):
     """Register remote-worker proxy tools."""
 
     name = "remote"
+
+    def http_routes(self):
+        return REMOTE_HTTP_ROUTES
+
+    def http_handlers(self):
+        return REMOTE_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_remote_mcp(mcp, context)

@@ -159,14 +159,34 @@ async def test_local_invocations_are_collected_from_discovered_registries(
         local_tool_handlers.cache_clear()
 
 
-def test_discovered_http_routes_have_registry_handlers():
-    route_tool_names = {
-        route.tool_name
-        for registry in discover_tool_registries()
-        for route in registry.http_routes()
-    }
+@pytest.mark.asyncio
+@pytest.mark.parametrize("agent_bridge_enabled", ["false", "true"])
+async def test_mcp_tools_have_matching_http_routes_and_handlers(
+    tmp_path, monkeypatch, agent_bridge_enabled
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agents")
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", agent_bridge_enabled
+    )
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
 
-    assert route_tool_names <= set(local_tool_handlers())
+    try:
+        mcp_tool_names = {tool.name for tool in await build_mcp().list_tools()}
+        route_tool_names = {
+            route.tool_name
+            for registry in discover_tool_registries()
+            for route in registry.http_routes()
+        }
+        handler_tool_names = set(local_tool_handlers())
+
+        assert route_tool_names == mcp_tool_names
+        assert handler_tool_names == mcp_tool_names
+    finally:
+        local_tool_handlers.cache_clear()
 
 
 @pytest.mark.asyncio
