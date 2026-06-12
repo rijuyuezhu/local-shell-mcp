@@ -6,7 +6,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ...remote import remote_manager
+from ...remote.manager import remote_manager
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from .common import handled_error, ok_response
 

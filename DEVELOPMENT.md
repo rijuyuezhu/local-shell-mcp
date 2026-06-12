@@ -16,6 +16,7 @@ Run checks:
 ```bash
 uv run pre-commit run --all-files
 uv run ruff check .
+uv run pyright
 uv run pytest -q
 ```
 
@@ -49,7 +50,7 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 | `src/local_shell_mcp/ops/search_ops.py` | Ripgrep search and compact tree views. |
 | `src/local_shell_mcp/ops/patch_ops.py` | Unified-diff patch application through `git apply`. |
 | `src/local_shell_mcp/ops/secret_scan_ops.py` | Workspace text scan for common sensitive-token patterns. |
-| `src/local_shell_mcp/remote.py` | Remote invite, worker bundle, long-poll protocol, and remote tool execution. |
+| `src/local_shell_mcp/remote/` | Remote invite management, HTTP worker routes, worker bundle assembly, long-poll protocol, worker-side execution, and worker CLI helpers. |
 | `src/local_shell_mcp/agent_bridge/__init__.py` | Agent bridge manifest loading, skill scanning, MCP probing, redaction. |
 | `src/local_shell_mcp/agent_bridge/tools.py` | Agent bridge MCP tool registration and dynamic tool reloads. |
 | `src/local_shell_mcp/agent_bridge/mcp.py` | External MCP client manager and tool/result normalization. |
@@ -128,6 +129,7 @@ Before cutting a release, run:
 
 ```bash
 uv run pre-commit run --all-files
+uv run pyright
 uv run pytest -q
 ```
 
