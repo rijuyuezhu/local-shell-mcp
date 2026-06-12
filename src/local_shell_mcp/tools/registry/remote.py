@@ -7,6 +7,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...remote.manager import remote_manager
+from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from ..responses import handled_error, ok_response
 
@@ -62,7 +63,7 @@ def _make_remote_worker_handler(
     return handler
 
 
-REMOTE_HTTP_ROUTES = (
+REMOTE_CONTROL_HTTP_ROUTES = (
     HttpToolRoute("POST", "/tools/remote_invite", "remote_invite"),
     HttpToolRoute("GET", "/tools/remote_list_machines", "remote_list_machines"),
     HttpToolRoute(
@@ -71,63 +72,30 @@ REMOTE_HTTP_ROUTES = (
     HttpToolRoute(
         "POST", "/tools/remote_rename_machine", "remote_rename_machine"
     ),
-    HttpToolRoute(
-        "POST", "/tools/remote_environment_info", "remote_environment_info"
-    ),
-    HttpToolRoute("POST", "/tools/remote_run_shell", "remote_run_shell_tool"),
-    HttpToolRoute("POST", "/tools/remote_run_python", "remote_run_python_tool"),
-    HttpToolRoute("POST", "/tools/remote_shell_start", "remote_shell_start"),
-    HttpToolRoute("POST", "/tools/remote_shell_send", "remote_shell_send"),
-    HttpToolRoute("POST", "/tools/remote_shell_read", "remote_shell_read"),
-    HttpToolRoute("POST", "/tools/remote_shell_kill", "remote_shell_kill"),
-    HttpToolRoute("POST", "/tools/remote_shell_list", "remote_shell_list"),
-    HttpToolRoute("POST", "/tools/remote_list_files", "remote_list_files"),
-    HttpToolRoute("POST", "/tools/remote_tree", "remote_tree_view"),
-    HttpToolRoute("POST", "/tools/remote_glob", "remote_glob_search"),
-    HttpToolRoute("POST", "/tools/remote_grep", "remote_grep_search"),
-    HttpToolRoute("POST", "/tools/remote_read_file", "remote_read_file"),
-    HttpToolRoute(
-        "POST", "/tools/remote_read_many_files", "remote_read_many_files"
-    ),
-    HttpToolRoute("POST", "/tools/remote_write_file", "remote_write_file"),
-    HttpToolRoute("POST", "/tools/remote_edit_file", "remote_edit_file"),
-    HttpToolRoute(
-        "POST", "/tools/remote_multi_edit_file", "remote_multi_edit_file"
-    ),
-    HttpToolRoute("POST", "/tools/remote_delete", "remote_delete_file_or_dir"),
-    HttpToolRoute("POST", "/tools/remote_apply_patch", "remote_apply_patch"),
 )
 
-REMOTE_HTTP_HANDLERS: dict[str, ToolHandler] = {
+REMOTE_HTTP_ROUTES = REMOTE_CONTROL_HTTP_ROUTES + tuple(
+    HttpToolRoute("POST", spec.http_path, spec.public_name)
+    for spec in REMOTE_WORKER_TOOL_SPECS
+)
+
+REMOTE_CONTROL_HTTP_HANDLERS: dict[str, ToolHandler] = {
     "remote_invite": _remote_invite,
     "remote_list_machines": _remote_list_machines,
     "remote_revoke_machine": _remote_revoke_machine,
     "remote_rename_machine": _remote_rename_machine,
-    "remote_environment_info": _make_remote_worker_handler("environment_info"),
-    "remote_run_shell_tool": _make_remote_worker_handler(
-        "run_shell_tool", timeout_arg="timeout_s"
-    ),
-    "remote_run_python_tool": _make_remote_worker_handler(
-        "run_python_tool", timeout_arg="timeout_s", default_timeout=60
-    ),
-    "remote_shell_start": _make_remote_worker_handler("shell_start"),
-    "remote_shell_send": _make_remote_worker_handler("shell_send"),
-    "remote_shell_read": _make_remote_worker_handler("shell_read"),
-    "remote_shell_kill": _make_remote_worker_handler("shell_kill"),
-    "remote_shell_list": _make_remote_worker_handler("shell_list"),
-    "remote_list_files": _make_remote_worker_handler("list_files"),
-    "remote_tree_view": _make_remote_worker_handler("tree_view"),
-    "remote_glob_search": _make_remote_worker_handler("glob_search"),
-    "remote_grep_search": _make_remote_worker_handler("grep_search"),
-    "remote_read_file": _make_remote_worker_handler("read_file"),
-    "remote_read_many_files": _make_remote_worker_handler("read_many_files"),
-    "remote_write_file": _make_remote_worker_handler("write_file"),
-    "remote_edit_file": _make_remote_worker_handler("edit_file"),
-    "remote_multi_edit_file": _make_remote_worker_handler("multi_edit_file"),
-    "remote_delete_file_or_dir": _make_remote_worker_handler(
-        "delete_file_or_dir"
-    ),
-    "remote_apply_patch": _make_remote_worker_handler("apply_patch"),
+}
+
+REMOTE_HTTP_HANDLERS: dict[str, ToolHandler] = {
+    **REMOTE_CONTROL_HTTP_HANDLERS,
+    **{
+        spec.public_name: _make_remote_worker_handler(
+            spec.worker_tool,
+            timeout_arg=spec.timeout_arg,
+            default_timeout=spec.default_timeout,
+        )
+        for spec in REMOTE_WORKER_TOOL_SPECS
+    },
 }
 
 

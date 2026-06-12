@@ -14,6 +14,7 @@ import httpx
 
 from ..tools.local_invocations import call_local_tool
 from .constants import REMOTE_API_PREFIX
+from .tool_specs import REMOTE_WORKER_TOOL_NAMES
 
 
 def _handled_remote_exception(exc: Exception) -> dict[str, Any]:
@@ -21,27 +22,7 @@ def _handled_remote_exception(exc: Exception) -> dict[str, Any]:
     return {"ok": False, "error": type(exc).__name__, "message": str(exc)}
 
 
-WORKER_TOOL_NAMES = {
-    "environment_info",
-    "run_shell_tool",
-    "run_python_tool",
-    "shell_start",
-    "shell_send",
-    "shell_read",
-    "shell_kill",
-    "shell_list",
-    "list_files",
-    "tree_view",
-    "glob_search",
-    "grep_search",
-    "read_file",
-    "read_many_files",
-    "write_file",
-    "edit_file",
-    "multi_edit_file",
-    "delete_file_or_dir",
-    "apply_patch",
-}
+WORKER_TOOL_NAMES = REMOTE_WORKER_TOOL_NAMES
 
 
 async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
