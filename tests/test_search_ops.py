@@ -82,8 +82,7 @@ async def test_grep_accepts_query_starting_with_dash(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     get_settings.cache_clear()
     term = chr(45) + "needle"
-    (tmp_path / "dash.txt").write_text(term + "
-", encoding="utf-8")
+    (tmp_path / "dash.txt").write_text(term + "\\n", encoding="utf-8")
 
     result = await grep(term, cwd=".", regex=False)
 
