@@ -6,28 +6,34 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ...remote.manager import remote_manager
+from ...remote.service import (
+    call_remote_worker_tool,
+    create_remote_invite,
+    list_remote_machines,
+    rename_remote_machine,
+    revoke_remote_machine,
+)
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from ..responses import handled_error, ok_response
 
 
 async def _remote_invite(args: dict[str, Any]) -> dict[str, Any]:
-    return await remote_manager().create_invite(
+    return await create_remote_invite(
         args.get("name"), args.get("workdir"), args.get("ttl_s")
     )
 
 
 async def _remote_list_machines(args: dict[str, Any]) -> dict[str, Any]:
-    return remote_manager().list_machines()
+    return list_remote_machines()
 
 
 async def _remote_revoke_machine(args: dict[str, Any]) -> dict[str, Any]:
-    return remote_manager().revoke(args["machine"])
+    return revoke_remote_machine(args["machine"])
 
 
 async def _remote_rename_machine(args: dict[str, Any]) -> dict[str, Any]:
-    return remote_manager().rename(args["machine"], args["new_name"])
+    return rename_remote_machine(args["machine"], args["new_name"])
 
 
 def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
@@ -37,7 +43,7 @@ def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
 async def _remote_worker_tool(
     args: dict[str, Any], tool_name: str, timeout_s: int | None = None
 ) -> dict[str, Any]:
-    result = await remote_manager().call(
+    result = await call_remote_worker_tool(
         args["machine"], tool_name, _remote_worker_args(args), timeout_s
     )
     if result.get("ok", False):
@@ -71,7 +77,7 @@ async def _remote_call(
 ) -> dict[str, Any]:
     """Call a worker-side tool and convert manager failures into tool envelopes."""
     try:
-        return await remote_manager().call(machine, tool, args, timeout_s)
+        return await call_remote_worker_tool(machine, tool, args, timeout_s)
     except Exception as exc:
         return handled_error(exc)
 
@@ -148,9 +154,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> dict:
         """Create a one-time remote-worker invite."""
         try:
-            return ok_response(
-                await remote_manager().create_invite(name, workdir, ttl_s)
-            )
+            return ok_response(await create_remote_invite(name, workdir, ttl_s))
         except Exception as exc:
             return handled_error(exc)
 
@@ -158,7 +162,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     async def remote_list_machines() -> dict:
         """List remote worker machines currently known to the control server. Use before running any remote_* tool when you need the machine name or want to verify that a worker is connected."""
         try:
-            return ok_response(remote_manager().list_machines())
+            return ok_response(list_remote_machines())
         except Exception as exc:
             return handled_error(exc)
 
@@ -166,7 +170,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     async def remote_revoke_machine(machine: str) -> dict:
         """Revoke and remove a remote worker machine. Use when a worker should no longer receive jobs or has become stale/untrusted. This is a control-plane action and cannot be undone except by re-inviting the worker."""
         try:
-            return ok_response(remote_manager().revoke(machine))
+            return ok_response(revoke_remote_machine(machine))
         except Exception as exc:
             return handled_error(exc)
 
@@ -174,7 +178,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     async def remote_rename_machine(machine: str, new_name: str) -> dict:
         """Rename a remote worker machine. Use to give a connected worker a clearer stable name before issuing remote jobs. This changes the control-server name used by later remote_* calls."""
         try:
-            return ok_response(remote_manager().rename(machine, new_name))
+            return ok_response(rename_remote_machine(machine, new_name))
         except Exception as exc:
             return handled_error(exc)
 

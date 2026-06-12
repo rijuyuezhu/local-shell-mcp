@@ -70,7 +70,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and configuration surface metadata. |
 | `src/local_shell_mcp/auth/` | Authentication middleware and OAuth server. |
 | `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, todo, and shared operation helpers. |
-| `src/local_shell_mcp/remote/` | Remote invite management, shared worker tool specs, worker routes, bundle assembly, and worker CLI helpers. |
+| `src/local_shell_mcp/remote/` | Remote invite management, shared worker tool specs and services, worker routes, bundle assembly, and worker CLI helpers. |
 | `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge, including shared service helpers used by MCP and REST adapters. |
 | `src/local_shell_mcp/responses.py` | Shared response envelope builders for tool and remote endpoint responses. |
 | `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
@@ -89,6 +89,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 - File tools avoid reading full binary files by default and enforce configured read/write limits.
 - Operation modules that need managed temporary text files should use `ops.temp_file_ops` so temp pruning, size checks, and filename generation stay consistent.
 - Remote workers run matching operation categories on the worker machine and return results through the control server.
+- Remote registry adapters should call remote manager behavior through `remote.service` helpers rather than reaching into the manager directly.
 - Remote worker proxy routes, HTTP handlers, and worker-side allowlists should derive from `remote.tool_specs` so new remote proxies are not registered in multiple places by hand.
 - Agent bridge config is treated as external input and redacts configured secrets from status and error payloads.
 - Agent bridge MCP and REST adapters should share behavior through `agent_bridge.service` instead of duplicating status, skill, and upstream MCP call logic.
