@@ -16,7 +16,7 @@ from ...ops.shell_ops import (
     start_shell,
 )
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
-from .common import handled_error, ok_response
+from ..responses import handled_error, ok_response
 
 
 async def _run_shell_tool(args: dict[str, Any]) -> dict[str, Any]:

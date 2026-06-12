@@ -4,7 +4,7 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.search_ops import grep, tree
-from local_shell_mcp.tools.registry.common import handled_error
+from local_shell_mcp.tools.responses import handled_error
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ...remote.manager import remote_manager
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
-from .common import handled_error, ok_response
+from ..responses import handled_error, ok_response
 
 
 async def _remote_invite(args: dict[str, Any]) -> dict[str, Any]:

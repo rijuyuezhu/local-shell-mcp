@@ -1,4 +1,4 @@
-"""Shared helpers and metadata used by built-in tool registries."""
+"""MCP tool audit and timeout watchdog helpers."""
 
 from __future__ import annotations
 
@@ -6,65 +6,18 @@ import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from typing import Any, Protocol, cast
 
 from mcp.server.fastmcp import FastMCP
-from mcp.types import ToolAnnotations
 
-from ...audit import (
+from ..audit import (
     audit,
     audit_tool_call_end,
     audit_tool_call_start,
     new_audit_call_id,
 )
-from ...config.settings import get_settings
-from ...ops.fs_ops import missing_path_context
-from ...ops.shell_ops import public_tool_timeout_s
-
-
-def ok_response(data: Any = None, message: str = "") -> dict[str, Any]:
-    """Wrap successful tool data in the response envelope used by MCP handlers."""
-    return {"ok": True, "message": message, "data": data}
-
-
-def handled_error(exc: Exception) -> dict[str, Any]:
-    """Convert expected operational exceptions into user-visible tool error payloads."""
-    audit("tool_error", error=repr(exc))
-    if isinstance(exc, FileNotFoundError) and str(exc):
-        with suppress(Exception):
-            context = missing_path_context(str(exc))
-            return ok_response(
-                {
-                    "status": "not_found",
-                    "error_type": type(exc).__name__,
-                    "message": str(exc),
-                    **context,
-                },
-                message=f"Path not found: {context['path']}",
-            )
-    return ok_response(
-        {
-            "status": "error",
-            "error_type": type(exc).__name__,
-            "message": str(exc),
-        },
-        message=f"Tool handled {type(exc).__name__}",
-    )
-
-
-async def to_thread(func, *args, **kwargs):
-    """Run blocking helpers in a worker thread while preserving async tool-handler flow."""
-    return await asyncio.to_thread(func, *args, **kwargs)
-
-
-OAUTH_SECURITY_SCHEMES = [
-    {
-        "type": "oauth2",
-        "scopes": ["shell:read", "shell:write", "shell:execute"],
-    }
-]
-NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
+from ..ops.shell_ops import public_tool_timeout_s
+from .responses import handled_error
 
 
 class AuditedMcpToolFn(Protocol):
@@ -79,11 +32,6 @@ class PublicToolTimeoutError(TimeoutError):
     """Signals that a public tool timed out and should return structured retry guidance instead of a generic failure."""
 
     pass
-
-
-def security_meta(schemes: list[dict[str, Any]]) -> dict[str, Any]:
-    """Attach security-scheme metadata to tools when HTTP OAuth mode requires authenticated calls."""
-    return {"securitySchemes": schemes}
 
 
 def _timeout_payload_for_tool(
@@ -202,30 +150,3 @@ def install_mcp_tool_watchdogs(mcp: FastMCP) -> None:
         if getattr(tool.fn, "__local_shell_mcp_audit_watchdog__", False):
             continue
         tool.fn = _mcp_tool_audit_watchdog_wrapper(tool.fn, tool.name)
-
-
-def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
-    """Patch local tool schemas to advertise reduced MCP client confirmation needs.
-
-    These are client-facing hints only. They do not change server-side
-    authentication, authorization, workspace boundaries, command policy, or audit
-    behavior, and they intentionally do not mark mutating tools as read-only.
-    """
-    settings = get_settings()
-    if not (
-        settings.allow_full_container or settings.relaxed_client_tool_hints
-    ):
-        return
-    for tool in mcp._tool_manager._tools.values():
-        if tool.name == "call_agent_mcp_tool" or tool.name.startswith(
-            "agent_mcp__"
-        ):
-            continue
-        if tool.annotations and tool.annotations.readOnlyHint:
-            continue
-        tool.annotations = ToolAnnotations(
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=False,
-            openWorldHint=False,
-        )

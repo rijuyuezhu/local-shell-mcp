@@ -26,15 +26,14 @@ from .config.settings import get_settings
 from .remote.http import remote_routes
 from .tools.base import McpToolContext
 from .tools.discovery import discover_tool_registries
-from .tools.registry.common import (
+from .tools.metadata import (
     NOAUTH_SECURITY_SCHEMES,
     OAUTH_SECURITY_SCHEMES,
-    handled_error,
     install_full_container_auto_approval_hints,
-    install_mcp_tool_watchdogs,
-    ok_response,
     security_meta,
 )
+from .tools.responses import handled_error, ok_response
+from .tools.watchdogs import install_mcp_tool_watchdogs
 
 
 def _host_header_name(hostname: str) -> str:
