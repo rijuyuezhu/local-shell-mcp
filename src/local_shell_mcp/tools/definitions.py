@@ -6,7 +6,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, Protocol
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -19,6 +19,23 @@ ToolAnnotation = Literal["read_only"]
 ToolDescription = str | Callable[[McpToolContext], str]
 ToolEnabled = Callable[[Settings], bool]
 ToolFunc = Callable[..., Awaitable[Any]]
+
+
+class LocalToolDecoratorFactory(Protocol):
+    """Callable factory returned by a declarative registry for tool registration."""
+
+    def __call__(
+        self,
+        *,
+        http_method: HttpMethod | None,
+        http_path: str | None,
+        name: str | None = None,
+        meta: ToolMeta = "protected",
+        annotations: ToolAnnotation | None = None,
+        description: ToolDescription | None = None,
+        mcp_envelope: bool = True,
+        enabled: ToolEnabled = ...,
+    ) -> Callable[[ToolFunc], ToolDefinition]: ...
 
 
 def _always_enabled(settings: Settings) -> bool:
@@ -150,9 +167,7 @@ class DeclarativeToolRegistry(ToolRegistry):
         return tool
 
     @classmethod
-    def get_tool_decorator(
-        cls,
-    ) -> Callable[..., Callable[[ToolFunc], ToolDefinition]]:
+    def get_tool_decorator(cls) -> LocalToolDecoratorFactory:
         """Return a decorator factory that registers tools on this registry."""
 
         def registry_local_tool(
