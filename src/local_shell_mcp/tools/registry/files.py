@@ -1,4 +1,4 @@
-"""Filesystem/search MCP tool registry."""
+"""File operation tool registry."""
 
 from __future__ import annotations
 
@@ -9,18 +9,14 @@ from mcp.server.fastmcp import FastMCP
 from ...ops.fs_ops import (
     delete_path,
     edit_text,
-    glob_paths,
     list_dir,
     multi_edit_text,
     read_many_files_sync,
     read_text,
     write_text,
 )
-from ...ops.patch_ops import apply_patch_text
-from ...ops.search_ops import grep, tree
-from ...ops.secret_scan_ops import run_secret_scan
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
-from .common import handled_error, ok_response, to_thread
+from ..responses import handled_error, ok_response, to_thread
 
 
 async def _list_files(args: dict[str, Any]) -> list[dict[str, Any]]:
@@ -29,36 +25,6 @@ async def _list_files(args: dict[str, Any]) -> list[dict[str, Any]]:
         args.get("path", "."),
         args.get("recursive", False),
         args.get("max_entries", 500),
-    )
-
-
-async def _tree_view(args: dict[str, Any]) -> dict[str, Any]:
-    return await tree(
-        args.get("cwd", "."),
-        args.get("depth", 3),
-        args.get("max_entries", 500),
-    )
-
-
-async def _glob_search(args: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "paths": await to_thread(
-            glob_paths,
-            args["pattern"],
-            args.get("cwd", "."),
-            args.get("max_results", 500),
-        )
-    }
-
-
-async def _grep_search(args: dict[str, Any]) -> dict[str, Any]:
-    return await grep(
-        args["query"],
-        args.get("cwd", "."),
-        args.get("glob"),
-        args.get("regex", True),
-        args.get("case_sensitive", True),
-        args.get("max_results"),
     )
 
 
@@ -110,64 +76,44 @@ async def _delete_file_or_dir(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-async def _apply_patch(args: dict[str, Any]) -> dict[str, Any]:
-    return await apply_patch_text(args["patch"], args.get("cwd", "."))
-
-
-async def _secret_scan(args: dict[str, Any]) -> dict[str, Any]:
-    return await run_secret_scan(
-        args.get("cwd", "."), args.get("glob"), args.get("max_results", 200)
-    )
-
-
-FILESYSTEM_HTTP_ROUTES = (
+FILE_HTTP_ROUTES = (
     HttpToolRoute("POST", "/tools/list_files", "list_files"),
-    HttpToolRoute("POST", "/tools/tree", "tree_view"),
-    HttpToolRoute("POST", "/tools/glob", "glob_search"),
-    HttpToolRoute("POST", "/tools/grep", "grep_search"),
     HttpToolRoute("POST", "/tools/read_file", "read_file"),
     HttpToolRoute("POST", "/tools/read_many_files", "read_many_files"),
     HttpToolRoute("POST", "/tools/write_file", "write_file"),
     HttpToolRoute("POST", "/tools/edit_file", "edit_file"),
     HttpToolRoute("POST", "/tools/multi_edit_file", "multi_edit_file"),
     HttpToolRoute("POST", "/tools/delete", "delete_file_or_dir"),
-    HttpToolRoute("POST", "/tools/apply_patch", "apply_patch"),
-    HttpToolRoute("POST", "/tools/secret_scan", "secret_scan"),
 )
 
-FILESYSTEM_HTTP_HANDLERS: dict[str, ToolHandler] = {
+FILE_HTTP_HANDLERS: dict[str, ToolHandler] = {
     "list_files": _list_files,
-    "tree_view": _tree_view,
-    "glob_search": _glob_search,
-    "grep_search": _grep_search,
     "read_file": _read_file,
     "read_many_files": _read_many_files,
     "write_file": _write_file,
     "edit_file": _edit_file,
     "multi_edit_file": _multi_edit_file,
     "delete_file_or_dir": _delete_file_or_dir,
-    "apply_patch": _apply_patch,
-    "secret_scan": _secret_scan,
 }
 
 
-class FilesystemToolRegistry(ToolRegistry):
-    """Register filesystem, search, patch, and safety tools."""
+class FileToolRegistry(ToolRegistry):
+    """Register file operation tools."""
 
-    name = "filesystem"
+    name = "files"
 
     def http_routes(self):
-        return FILESYSTEM_HTTP_ROUTES
+        return FILE_HTTP_ROUTES
 
     def http_handlers(self):
-        return FILESYSTEM_HTTP_HANDLERS
+        return FILE_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
-        register_filesystem_mcp(mcp, context)
+        register_file_mcp(mcp, context)
 
 
-def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
-    """Register MCP tools for this tool group."""
+def register_file_mcp(mcp: FastMCP, context: McpToolContext) -> None:
+    """Register file operation MCP tools."""
     protected_meta = context.protected_meta
     settings = context.settings
 
@@ -186,70 +132,6 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         try:
             return ok_response(
                 await to_thread(list_dir, path, recursive, max_entries)
-            )
-        except Exception as exc:
-            return handled_error(exc)
-
-    @mcp.tool(
-        meta=protected_meta,
-        description=(
-            "Return a compact directory tree rooted at cwd. Use to understand project layout before reading files or making edits. "
-            "Parameters: cwd defaults to '.' and is workspace-relative unless an allowed absolute path is supplied; depth defaults to 3 and controls nesting; "
-            f"max_entries defaults to 500 and is capped by max_tree_entries={settings.max_tree_entries}. Prefer this over recursive list_files for high-level orientation."
-        ),
-    )
-    async def tree_view(
-        cwd: str = ".", depth: int = 3, max_entries: int = 500
-    ) -> dict:
-        """Return a compact directory tree rooted at cwd."""
-        try:
-            return ok_response(await tree(cwd, depth, max_entries))
-        except Exception as exc:
-            return handled_error(exc)
-
-    @mcp.tool(
-        meta=protected_meta,
-        description=(
-            "Find files by glob pattern. Use when you know filename patterns such as *.py or **/pyproject.toml and need matching paths, not file contents. "
-            "Parameters: pattern is the glob expression; cwd defaults to '.' and narrows the search root; "
-            f"max_results defaults to 500 and is capped by max_glob_results={settings.max_glob_results}."
-        ),
-    )
-    async def glob_search(
-        pattern: str, cwd: str = ".", max_results: int = 500
-    ) -> dict:
-        """Find files by glob pattern."""
-        try:
-            return ok_response(
-                {
-                    "paths": await to_thread(
-                        glob_paths, pattern, cwd, max_results
-                    )
-                }
-            )
-        except Exception as exc:
-            return handled_error(exc)
-
-    @mcp.tool(
-        meta=protected_meta,
-        description=(
-            "Search file contents with ripgrep. Use to locate symbols, usages, error messages, or text before reading or editing files. "
-            "Parameters: query is a regular expression by default; set regex=false for literal text; cwd defaults to '.' and narrows the search root; glob optionally filters files; case_sensitive defaults to true; "
-            f"max_results is optional and capped by max_grep_results={settings.max_grep_results}."
-        ),
-    )
-    async def grep_search(
-        query: str,
-        cwd: str = ".",
-        glob: str | None = None,
-        regex: bool = True,
-        case_sensitive: bool = True,
-        max_results: int | None = None,
-    ) -> dict:
-        """Search file contents with ripgrep."""
-        try:
-            return ok_response(
-                await grep(query, cwd, glob, regex, case_sensitive, max_results)
             )
         except Exception as exc:
             return handled_error(exc)
@@ -366,30 +248,5 @@ def register_filesystem_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """Delete a file or directory inside the controlled workspace/container. Use only when removal is intentional. recursive=false deletes files or empty directories; recursive=true is required for non-empty directories and should be used carefully."""
         try:
             return ok_response(await to_thread(delete_path, path, recursive))
-        except Exception as exc:
-            return handled_error(exc)
-
-    @mcp.tool(meta=protected_meta)
-    async def apply_patch(patch: str, cwd: str = ".") -> dict:
-        """Apply a unified diff using git apply. Use for larger edits, multi-file changes, file additions, and deletions when an exact patch is clearer than individual replacements. cwd controls where paths in the patch are resolved. This uses git apply as a patch engine; for git workflow commands such as status, diff, add, commit, or push, use run_shell_tool."""
-        try:
-            return ok_response(await apply_patch_text(patch, cwd))
-        except Exception as exc:
-            return handled_error(exc)
-
-    @mcp.tool(
-        meta=protected_meta,
-        description=(
-            "Scan workspace text files for common secrets before commit, push, release, or sharing logs. "
-            "Use as a precaution after editing configuration, credentials, CI, deployment, or documentation files. "
-            f"glob can narrow the scan and max_results bounds findings; max_results is capped by max_grep_results={settings.max_grep_results}. Results are heuristic and do not prove the workspace is secret-free."
-        ),
-    )
-    async def secret_scan(
-        cwd: str = ".", glob: str | None = None, max_results: int = 200
-    ) -> dict:
-        """Scan workspace text files for common secrets."""
-        try:
-            return ok_response(await run_secret_scan(cwd, glob, max_results))
         except Exception as exc:
             return handled_error(exc)

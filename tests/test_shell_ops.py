@@ -7,13 +7,10 @@ from fastapi.testclient import TestClient
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
-from local_shell_mcp.models import CommandResult
-from local_shell_mcp.ops.shell_ops import (
-    public_run_shell_timeout,
-    run_shell,
-    send_shell,
-)
-from local_shell_mcp.tools.registry import filesystem as fs_tools_module
+from local_shell_mcp.ops.command_ops import public_run_shell_timeout, run_shell
+from local_shell_mcp.ops.shell_models import CommandResult
+from local_shell_mcp.ops.tmux_ops import send_shell
+from local_shell_mcp.tools.registry import files as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_text
 
@@ -150,7 +147,7 @@ async def test_run_shell_timeout_includes_subprocess_spawn(
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell_ops._spawn_process", hanging_spawn
+        "local_shell_mcp.ops.command_ops._spawn_process", hanging_spawn
     )
 
     result = await run_shell("echo never", timeout_s=1)
@@ -217,7 +214,7 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
             command="tmux",
         )
 
-    monkeypatch.setattr("local_shell_mcp.ops.shell_ops.tmux", fake_tmux)
+    monkeypatch.setattr("local_shell_mcp.ops.tmux_ops.tmux", fake_tmux)
 
     result = await asyncio.wait_for(
         send_shell("session-1", "echo ok", enter=True), timeout=1

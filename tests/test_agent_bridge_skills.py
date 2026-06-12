@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.agent_bridge import (
-    SkillRecord,
+from local_shell_mcp.agent_bridge.models import SkillRecord
+from local_shell_mcp.agent_bridge.registry import make_unique_tool_name
+from local_shell_mcp.agent_bridge.skills import (
     activate_skill,
-    make_unique_tool_name,
     scan_agent_skills,
 )
 

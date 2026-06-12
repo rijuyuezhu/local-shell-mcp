@@ -6,13 +6,13 @@ import asyncio
 import shlex
 import uuid
 
-from .fs_ops import (
+from .command_ops import run_shell
+from .path_ops import (
     assert_text_input_size,
     prune_temp_dir,
     relative_display,
     temp_dir,
 )
-from .shell_ops import run_shell
 
 
 async def apply_patch_text(patch: str, cwd: str = ".") -> dict:

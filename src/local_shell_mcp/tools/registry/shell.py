@@ -6,17 +6,17 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ...ops.shell_ops import (
+from ...ops.command_ops import public_run_shell
+from ...ops.python_ops import run_python_script
+from ...ops.tmux_ops import (
     kill_shell,
     list_shells,
-    public_run_shell,
     read_shell,
-    run_python_script,
     send_shell,
     start_shell,
 )
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
-from .common import handled_error, ok_response
+from ..responses import handled_error, ok_response
 
 
 async def _run_shell_tool(args: dict[str, Any]) -> dict[str, Any]:

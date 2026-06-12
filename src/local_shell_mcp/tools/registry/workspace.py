@@ -11,7 +11,7 @@ from ...audit import audit
 from ...ops.fs_ops import read_text
 from ...ops.search_ops import grep
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
-from .common import to_thread
+from ..responses import to_thread
 
 
 async def _search(args: dict[str, Any]) -> str:
