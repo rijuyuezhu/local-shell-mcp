@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
-from local_shell_mcp.models import CommandResult
+from local_shell_mcp.ops.shell_models import CommandResult
 from local_shell_mcp.ops.shell_ops import (
     public_run_shell_timeout,
     run_shell,

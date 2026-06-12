@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 from ..audit import audit
 from ..config.settings import get_settings
-from ..models import CommandResult
 from .fs_ops import (
     assert_text_input_size,
     prune_temp_dir,
@@ -21,6 +20,7 @@ from .fs_ops import (
     resolve_path,
     temp_dir,
 )
+from .shell_models import CommandResult
 
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2
