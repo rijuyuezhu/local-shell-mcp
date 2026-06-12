@@ -1,0 +1,77 @@
+site_name: local-shell-mcp
+site_description: ChatGPT-compatible OAuth MCP server for controlled local shell, filesystem, and git access
+site_url: https://project.rijuyuezhu.top/local-shell-mcp/
+repo_url: https://github.com/rijuyuezhu/local-shell-mcp
+repo_name: rijuyuezhu/local-shell-mcp
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - content.action.edit
+    - content.code.copy
+    - content.tabs.link
+  palette:
+    - scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quickstart: getting-started/quickstart.md
+      - ChatGPT connector: getting-started/chatgpt-connector.md
+      - Docker Compose: getting-started/docker-compose.md
+      - Cloudflare Tunnel: getting-started/cloudflare-tunnel.md
+      - Install options: getting-started/install-options.md
+      - VS Code: getting-started/vscode.md
+  - Guides:
+      - Common workflows: guides/common-workflows.md
+      - Example prompts: guides/example-prompts.md
+      - Remote workers: guides/remote-workers.md
+      - Agent capability bridge: guides/agent-bridge.md
+      - Git access: guides/git-access.md
+      - Audit log: guides/audit-log.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - CLI: reference/cli.md
+      - Tools: reference/tools.md
+  - Security: security.md
+  - Troubleshooting: troubleshooting.md
+  - Development: development.md

@@ -253,10 +253,10 @@ async function copySetupPrompt(): Promise<void> {
   vscode.window.showInformationMessage('Copied local-shell-mcp ChatGPT setup prompt.');
 }
 
-async function openGuide(context: vscode.ExtensionContext): Promise<void> {
-  const guideUri = vscode.Uri.joinPath(context.extensionUri, 'GUIDE.md');
-  const document = await vscode.workspace.openTextDocument(guideUri);
-  await vscode.window.showTextDocument(document, { preview: true });
+async function openGuide(): Promise<void> {
+  await vscode.env.openExternal(
+    vscode.Uri.parse('https://project.rijuyuezhu.top/local-shell-mcp/getting-started/vscode/'),
+  );
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -270,7 +270,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('local-shell-mcp.showStatus', showStatus),
     vscode.commands.registerCommand('local-shell-mcp.copyMcpUrl', copyMcpUrl),
     vscode.commands.registerCommand('local-shell-mcp.copySetupPrompt', copySetupPrompt),
-    vscode.commands.registerCommand('local-shell-mcp.openGuide', () => openGuide(context)),
+    vscode.commands.registerCommand('local-shell-mcp.openGuide', openGuide),
   );
 }
 
