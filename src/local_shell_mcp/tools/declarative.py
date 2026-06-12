@@ -64,14 +64,23 @@ class ToolDefinition:
     """Single static tool definition used to derive MCP and HTTP exposure."""
 
     func: ToolFunc
+    """Typed coroutine that implements the tool's canonical behavior."""
     name: str
+    """Canonical tool name exposed to MCP clients and HTTP dispatch."""
     http_method: HttpMethod | None
+    """HTTP method for the REST adapter route, or None for MCP-only tools."""
     http_path: str | None
+    """HTTP path for the REST adapter route, or None for MCP-only tools."""
     meta: ToolMeta = "protected"
+    """MCP metadata class advertised for this tool."""
     annotations: ToolAnnotation | None = None
+    """Optional MCP tool annotations applied during registration."""
     description: ToolDescription | None = None
+    """Static or context-derived MCP description override."""
     mcp_envelope: bool = True
+    """Whether MCP calls should wrap results in the public ok/error envelope."""
     enabled: ToolEnabled = _always_enabled
+    """Predicate controlling whether the tool is exposed for current settings."""
 
     @property
     def signature(self) -> inspect.Signature:
