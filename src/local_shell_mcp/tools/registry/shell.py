@@ -51,7 +51,6 @@ def _run_python_tool_description(context: McpToolContext) -> str:
 @local_tool(
     http_method="POST",
     http_path="/tools/run_shell",
-    name="run_shell_tool",
     description=_run_shell_tool_description,
 )
 async def run_shell_tool(
@@ -69,7 +68,6 @@ async def run_shell_tool(
 @local_tool(
     http_method="POST",
     http_path="/tools/run_python",
-    name="run_python_tool",
     description=_run_python_tool_description,
 )
 async def run_python_tool(
