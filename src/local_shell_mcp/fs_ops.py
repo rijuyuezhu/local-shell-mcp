@@ -230,7 +230,7 @@ def read_text(
         data = data[: settings.max_file_read_bytes]
         truncated = True
     truncated_bytes = max(0, size - len(data))
-    text = data.decode("utf-8")
+    text = data.decode("utf-8", errors="replace")
     lines = text.splitlines()
     total_lines = len(lines)
     if start_line is not None or end_line is not None:

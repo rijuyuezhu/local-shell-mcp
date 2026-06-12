@@ -165,3 +165,16 @@ def test_full_container_mode_disables_builtin_restrictions(tmp_path, monkeypatch
     assert settings.path_denylist == []
     assert str(resolve_path("/etc/passwd")) == "/etc/passwd"
     check_command_policy("mount /dev/null /mnt || true")
+
+
+def test_read_text_handles_truncated_utf8_sequence(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES", "4")
+    get_settings.cache_clear()
+    (tmp_path / "utf8.txt").write_text("你好", encoding="utf-8")
+
+    result = read_text("utf8.txt")
+
+    assert result["truncated"] is True
+    assert result["bytes_read"] == 4
+    assert result["content"] == "你�"
