@@ -1,7 +1,9 @@
+import shutil
+
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.search_ops import tree
+from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.ops.search_ops import grep, tree
 from local_shell_mcp.tools.registry.common import handled_error
 
 
@@ -81,3 +83,19 @@ def test_tool_error_returns_successful_error_result():
         "error_type": "ValueError",
         "message": "bad input",
     }
+
+
+@pytest.mark.asyncio
+async def test_grep_accepts_query_starting_with_dash(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    term = chr(45) + "needle"
+    (tmp_path / "dash.txt").write_text(term + "\n", encoding="utf-8")
+
+    result = await grep(term, cwd=".", regex=False)
+
+    assert result["ok"] is True
+    assert result["count"] == 1
+    assert result["matches"][0]["path"].endswith("dash.txt")

@@ -5,6 +5,7 @@ import pytest
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.auth.oauth import (
+    _authorize_form,
     issue_access_token,
     resource_url,
     validate_bearer_token,
@@ -242,3 +243,23 @@ def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
 
     assert claims["exp"] > int(time.time())
     assert claims["client_id"] == "test-client"
+
+
+def test_oauth_authorize_form_escapes_reflected_fields(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    marker = chr(60) + "unsafe" + chr(62)
+    response = _authorize_form(
+        {
+            "client_id": "client",
+            "redirect_uri": f"https://example.test/cb?x={marker}",
+            "resource": f"https://resource.test/{marker}",
+            "scope": f"shell:read {marker}",
+        },
+        error=f"bad {marker}",
+    )
+    body = bytes(response.body).decode("utf-8")
+
+    assert marker not in body
+    assert "&lt;unsafe&gt;" in body
