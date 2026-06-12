@@ -40,14 +40,15 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 | `src/local_shell_mcp/tools/base.py` | Shared `ToolRegistry`, `McpToolContext`, HTTP route metadata, and local handler types. |
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries under `tools/registry/`. |
 | `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper. It aggregates local invocation handlers from discovered registries and audits routed REST tool calls instead of maintaining a separate tool table. |
-| `src/local_shell_mcp/tools/registry/` | Category-specific tool registries. Each registry owns its MCP registration, REST debug routes, and local HTTP invocation handlers when applicable. |
+| `src/local_shell_mcp/tools/registry/` | Category-specific tool registries for MCP/REST exposure and client-facing metadata. Concrete behavior belongs under `ops/`. |
 | `src/local_shell_mcp/http_app.py` | REST debug API, HTTP server startup, and HTTP protocol adapter over the shared local tool registry. |
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, safe settings dump, and generated config metadata. |
 | `src/local_shell_mcp/auth/` | Authentication package. `middleware.py` protects HTTP/MCP requests; `oauth.py` handles OAuth metadata, dynamic client registration, authorization, token issue/validation. |
-| `src/local_shell_mcp/ops/shell_ops.py` | Bounded shell execution and tmux-backed persistent sessions. |
-| `src/local_shell_mcp/ops/fs_ops.py` | Workspace path resolution and file operations. |
+| `src/local_shell_mcp/ops/shell_ops.py` | Bounded shell execution, temporary Python script execution, and tmux-backed persistent sessions. |
+| `src/local_shell_mcp/ops/fs_ops.py` | Workspace path resolution, file operations, and bounded multi-file reads. |
 | `src/local_shell_mcp/ops/search_ops.py` | Ripgrep search and compact tree views. |
-| `src/local_shell_mcp/ops/git_ops.py` | Git command wrappers. |
+| `src/local_shell_mcp/ops/patch_ops.py` | Unified-diff patch application through `git apply`. |
+| `src/local_shell_mcp/ops/secret_scan_ops.py` | Workspace text scan for common sensitive-token patterns. |
 | `src/local_shell_mcp/remote.py` | Remote invite, worker bundle, long-poll protocol, and remote tool execution. |
 | `src/local_shell_mcp/agent_bridge/__init__.py` | Agent bridge manifest loading, skill scanning, MCP probing, redaction. |
 | `src/local_shell_mcp/agent_bridge/tools.py` | Agent bridge MCP tool registration and dynamic tool reloads. |
@@ -63,7 +64,7 @@ LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
 - The server can run as MCP-over-HTTP (`--mode mcp`), stdio MCP (`--mode stdio`), or the REST debug API (`--mode http`). `mode=both` remains a reserved value; run separate MCP and REST processes when both surfaces are needed.
 - `mcp_app.py` owns the FastMCP app, transport security settings, OAuth/bootstrap routes, remote-worker ASGI routes, and MCP tool watchdog installation.
 - `http_app.py` is only the REST debug adapter. It discovers `HttpToolRoute` values from registries and invokes handlers through `tools.local_invocations.call_local_tool`.
-- Tool registration is registry-based: a category module under `tools/registry/` should define its MCP tools and, when the REST debug API should expose the same operation, its HTTP route plus local handler in the same module. Do not add a second global tool table.
+- Tool registration is registry-based: a category module under `tools/registry/` should define its MCP tools and, when the REST debug API should expose the same operation, its HTTP route plus local handler in the same module. Keep concrete filesystem, shell, patch, search, scan, and todo behavior in `ops/`; registry modules should adapt parameters, response envelopes, descriptions, and metadata rather than implementing operations directly. Do not add a second global tool table.
 - Routed tool calls are audited centrally: REST debug calls in `tools.local_invocations.call_local_tool`, and MCP calls by the FastMCP audit/watchdog wrapper installed from `tools/registry/common.py`. Do not add per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured. Health, OAuth metadata/authorization, and remote worker bootstrap endpoints remain public; localhost bypass applies only to `--mode http`.
 - Tool results use a consistent `ok`, `message`, and `data` shape where possible.

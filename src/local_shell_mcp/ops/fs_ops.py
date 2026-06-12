@@ -61,6 +61,19 @@ def prune_temp_dir() -> None:
             continue
 
 
+def assert_text_input_size(
+    label: str, text: str, limit: int | None = None
+) -> None:
+    """Reject oversized text payloads before writing or executing user-provided text."""
+    settings = get_settings()
+    max_bytes = limit or settings.max_file_write_bytes
+    size = len(text.encode("utf-8"))
+    if size > max_bytes:
+        raise ValueError(
+            f"Refusing {label} of {size} bytes; max is {max_bytes}"
+        )
+
+
 def resolve_path(
     path: str | Path,
     *,
@@ -287,6 +300,41 @@ def read_text(
         "truncated": truncated,
         "content": text,
     }
+
+
+def read_many_files_sync(
+    paths: list[str],
+    start_line: int | None = None,
+    end_line: int | None = None,
+    binary_preview: str | None = None,
+    binary_preview_bytes: int = BINARY_PREVIEW_BYTES,
+) -> dict:
+    """Read many files while preserving per-path success and error entries."""
+    settings = get_settings()
+    if len(paths) > settings.max_read_many_files:
+        raise ValueError(
+            f"Refusing to read {len(paths)} files; max is {settings.max_read_many_files}"
+        )
+
+    files = []
+    total_content_bytes = 0
+    for path in paths:
+        item = read_text(
+            path, start_line, end_line, binary_preview, binary_preview_bytes
+        )
+        content = item.get("content")
+        if isinstance(content, str):
+            total_content_bytes += len(content.encode("utf-8"))
+        preview = item.get("preview")
+        if isinstance(preview, str):
+            total_content_bytes += len(preview.encode("utf-8"))
+        if total_content_bytes > settings.max_read_many_total_bytes:
+            raise ValueError(
+                f"Refusing to return {total_content_bytes} bytes from read_many_files; "
+                f"max is {settings.max_read_many_total_bytes}"
+            )
+        files.append(item)
+    return {"files": files, "total_content_bytes": total_content_bytes}
 
 
 def write_text(path: str, content: str, overwrite: bool = True) -> dict:

@@ -11,11 +11,12 @@ from ...ops.shell_ops import (
     list_shells,
     public_run_shell,
     read_shell,
+    run_python_script,
     send_shell,
     start_shell,
 )
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
-from .common import handled_error, ok_response, run_python_script
+from .common import handled_error, ok_response
 
 
 async def _run_shell_tool(args: dict[str, Any]) -> dict[str, Any]:

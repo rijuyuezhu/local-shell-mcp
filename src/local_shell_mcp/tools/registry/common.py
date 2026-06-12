@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shlex
 import time
-import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any, Protocol, cast
@@ -21,19 +19,8 @@ from ...audit import (
     new_audit_call_id,
 )
 from ...config.settings import get_settings
-from ...ops.fs_ops import (
-    missing_path_context,
-    prune_temp_dir,
-    read_text,
-    relative_display,
-    resolve_path,
-    temp_dir,
-)
-from ...ops.shell_ops import (
-    public_run_shell_timeout,
-    public_tool_timeout_s,
-    run_shell,
-)
+from ...ops.fs_ops import missing_path_context
+from ...ops.shell_ops import public_tool_timeout_s
 
 
 def ok_response(data: Any = None, message: str = "") -> dict[str, Any]:
@@ -70,61 +57,6 @@ async def to_thread(func, *args, **kwargs):
     """Run blocking helpers in a worker thread while preserving async tool-handler flow."""
     return await asyncio.to_thread(func, *args, **kwargs)
 
-
-def _assert_text_input_size(
-    label: str, text: str, limit: int | None = None
-) -> None:
-    """Reject oversized text payloads before they are written to disk or passed to patch tools."""
-    settings = get_settings()
-    max_bytes = limit or settings.max_file_write_bytes
-    size = len(text.encode("utf-8"))
-    if size > max_bytes:
-        raise ValueError(
-            f"Refusing {label} of {size} bytes; max is {max_bytes}"
-        )
-
-
-async def apply_patch_text(patch: str, cwd: str = ".") -> dict:
-    """Apply a unified diff through git apply and return the command result envelope."""
-    _assert_text_input_size("patch", patch)
-    await to_thread(prune_temp_dir)
-    patch_path = temp_dir() / f"patch-{uuid.uuid4().hex}.diff"
-    patch_path.parent.mkdir(parents=True, exist_ok=True)
-    await to_thread(patch_path.write_text, patch, encoding="utf-8")
-    quoted = shlex.quote(str(patch_path))
-    result = await run_shell(
-        f"git apply --check {quoted} && git apply {quoted}",
-        cwd=cwd,
-        timeout_s=60,
-        max_output_bytes=500_000,
-    )
-    return {**result.model_dump(), "patch_path": relative_display(patch_path)}
-
-
-async def run_python_script(
-    code: str, cwd: str = ".", timeout_s: int = 60
-) -> dict:
-    """Execute provided Python code from a temporary file and clean it up after completion."""
-    _assert_text_input_size("Python script", code)
-    await to_thread(prune_temp_dir)
-    path = temp_dir() / f"script-{uuid.uuid4().hex}.py"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    await to_thread(path.write_text, code, encoding="utf-8")
-    result = await run_shell(
-        f"python3 {shlex.quote(str(path))}",
-        cwd=cwd,
-        timeout_s=public_run_shell_timeout(timeout_s),
-        max_output_bytes=1_000_000,
-    )
-    return {**result.model_dump(), "script_path": relative_display(path)}
-
-
-SECRET_PATTERNS = {
-    "github_token": r"gh[pousr]_[A-Za-z0-9_]{36,}",
-    "aws_access_key": r"AKIA[0-9A-Z]{16}",
-    "private_key": r"-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----",
-    "generic_assignment": r"(?i)(token|secret|password|passwd|api_key|apikey)\s*[:=]\s*['\"][^'\"]{8,}['\"]",
-}
 
 OAUTH_SECURITY_SCHEMES = [
     {
@@ -297,89 +229,3 @@ def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
             idempotentHint=False,
             openWorldHint=False,
         )
-
-
-def read_many_files_sync(
-    paths: list[str],
-    start_line: int | None = None,
-    end_line: int | None = None,
-    binary_preview: str | None = None,
-    binary_preview_bytes: int = 256,
-) -> dict[str, Any]:
-    """Read many files for a tool call while preserving per-path success and error entries."""
-    settings = get_settings()
-    if len(paths) > settings.max_read_many_files:
-        raise ValueError(
-            f"Refusing to read {len(paths)} files; max is {settings.max_read_many_files}"
-        )
-
-    files = []
-    total_content_bytes = 0
-    for path in paths:
-        item = read_text(
-            path, start_line, end_line, binary_preview, binary_preview_bytes
-        )
-        content = item.get("content")
-        if isinstance(content, str):
-            total_content_bytes += len(content.encode("utf-8"))
-        preview = item.get("preview")
-        if isinstance(preview, str):
-            total_content_bytes += len(preview.encode("utf-8"))
-        if total_content_bytes > settings.max_read_many_total_bytes:
-            raise ValueError(
-                f"Refusing to return {total_content_bytes} bytes from read_many_files; "
-                f"max is {settings.max_read_many_total_bytes}"
-            )
-        files.append(item)
-    return {"files": files, "total_content_bytes": total_content_bytes}
-
-
-def run_secret_scan_sync(
-    cwd: str = ".", glob: str | None = None, max_results: int = 200
-) -> dict[str, Any]:
-    """Scan workspace text files for credential-like strings while respecting size, binary, and result limits."""
-    import re
-
-    settings = get_settings()
-    max_results = max(1, min(max_results, settings.max_grep_results))
-    base = resolve_path(cwd, must_exist=True)
-    findings = []
-    truncated_files = 0
-    for path in base.rglob("*"):
-        if ".git" in path.parts or not path.is_file():
-            continue
-        if glob and not path.match(glob):
-            continue
-        try:
-            data = read_text(str(path))
-        except Exception:
-            continue
-        if data.get("binary"):
-            continue
-        if data.get("truncated"):
-            truncated_files += 1
-        text = data.get("content") or ""
-        for name, pattern in SECRET_PATTERNS.items():
-            for match in re.finditer(pattern, text):
-                line = text.count("\n", 0, match.start()) + 1
-                findings.append(
-                    {"type": name, "path": relative_display(path), "line": line}
-                )
-                if len(findings) >= max_results:
-                    return {
-                        "findings": findings,
-                        "truncated": True,
-                        "truncated_files": truncated_files,
-                    }
-    return {
-        "findings": findings,
-        "truncated": False,
-        "truncated_files": truncated_files,
-    }
-
-
-async def run_secret_scan(
-    cwd: str = ".", glob: str | None = None, max_results: int = 200
-) -> dict[str, Any]:
-    """Expose secret scanning through an async wrapper for MCP handlers."""
-    return await to_thread(run_secret_scan_sync, cwd, glob, max_results)
