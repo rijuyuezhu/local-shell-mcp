@@ -232,32 +232,3 @@ class DeclarativeToolRegistry(ToolRegistry):
                 tool.register_mcp(mcp, context)
         finally:
             self._context = None
-
-
-def local_tool(
-    *,
-    http_method: HttpMethod | None,
-    http_path: str | None,
-    name: str | None = None,
-    meta: ToolMeta = "protected",
-    annotations: ToolAnnotation | None = None,
-    description: ToolDescription | None = None,
-    mcp_envelope: bool = True,
-    enabled: ToolEnabled = _always_enabled,
-) -> Callable[[ToolFunc], ToolDefinition]:
-    """Declare one static tool and derive MCP/HTTP adapters from it."""
-
-    def decorator(func: ToolFunc) -> ToolDefinition:
-        return ToolDefinition(
-            func=func,
-            name=name or func.__name__,
-            http_method=http_method,
-            http_path=http_path,
-            meta=meta,
-            annotations=annotations,
-            description=description,
-            mcp_envelope=mcp_envelope,
-            enabled=enabled,
-        )
-
-    return decorator
