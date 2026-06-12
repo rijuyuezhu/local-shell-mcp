@@ -3,7 +3,7 @@ import json
 import pytest
 
 from local_shell_mcp.auth import _is_mcp_discovery_request
-from local_shell_mcp.oauth import issue_access_token, validate_bearer_token
+from local_shell_mcp.oauth import _authorize_form, issue_access_token, validate_bearer_token
 from local_shell_mcp.settings import get_settings
 from local_shell_mcp.tools import build_mcp
 
@@ -78,3 +78,23 @@ def test_oauth_access_tokens_do_not_expire_by_default(tmp_path, monkeypatch):
 
     assert "exp" not in claims
     assert claims["client_id"] == "test-client"
+
+
+def test_oauth_authorize_form_escapes_reflected_fields(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    marker = chr(60) + "unsafe" + chr(62)
+    response = _authorize_form(
+        {
+            "client_id": "client",
+            "redirect_uri": f"https://example.test/cb?x={marker}",
+            "resource": f"https://resource.test/{marker}",
+            "scope": f"shell:read {marker}",
+        },
+        error=f"bad {marker}",
+    )
+    body = response.body.decode("utf-8")
+
+    assert marker not in body
+    assert "&lt;unsafe&gt;" in body
