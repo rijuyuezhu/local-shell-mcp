@@ -23,7 +23,7 @@ from .auth.oauth import (
     oauth_token,
 )
 from .config.settings import get_settings
-from .remote import remote_routes
+from .remote.http import remote_routes
 from .tools.base import McpToolContext
 from .tools.discovery import discover_tool_registries
 from .tools.registry.common import (

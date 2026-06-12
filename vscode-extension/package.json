@@ -7,11 +7,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/fwerkor/local-shell-mcp"
+    "url": "https://github.com/rijuyuezhu/local-shell-mcp"
   },
-  "homepage": "https://github.com/fwerkor/local-shell-mcp",
+  "homepage": "https://github.com/rijuyuezhu/local-shell-mcp",
   "bugs": {
-    "url": "https://github.com/fwerkor/local-shell-mcp/issues"
+    "url": "https://github.com/rijuyuezhu/local-shell-mcp/issues"
   },
   "engines": {
     "vscode": "^1.92.0"
