@@ -72,6 +72,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, and todo behavior. |
 | `src/local_shell_mcp/remote/` | Remote invite management, shared worker tool specs, worker routes, bundle assembly, and worker CLI helpers. |
 | `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge, including shared service helpers used by MCP and REST adapters. |
+| `src/local_shell_mcp/responses.py` | Shared response envelope builders for tool and remote endpoint responses. |
 | `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
 | `tests/` | Unit, compatibility, and e2e tests. |
 | `scripts/` | Development, probing, generated-config, entrypoint, and release helper scripts. |
@@ -84,7 +85,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 - Do not add a second global tool table. MCP and REST surfaces should be derived from category registries.
 - Routed tool calls are audited centrally. Avoid per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured.
-- Tool results use a consistent `ok`, `message`, and `data` shape where possible.
+- Tool and remote endpoint responses should use shared envelope builders from `local_shell_mcp.responses`, with tool-specific handling layered in `tools.responses`.
 - File tools avoid reading full binary files by default and enforce configured read/write limits.
 - Remote workers run matching operation categories on the worker machine and return results through the control server.
 - Remote worker proxy routes, HTTP handlers, and worker-side allowlists should derive from `remote.tool_specs` so new remote proxies are not registered in multiple places by hand.
