@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import html as html_lib
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -272,16 +273,8 @@ def _validate_authorize_params(params: dict[str, str]) -> str | None:
 def _hidden_inputs(params: dict[str, str]) -> str:
     """Preserve validated authorization parameters as hidden fields in the approval form."""
 
-    def esc(value: str) -> str:
-        return (
-            value.replace("&", "&amp;")
-            .replace('"', "&quot;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
-
     return "\n".join(
-        f'<input type="hidden" name="{esc(k)}" value="{esc(v)}" />'
+        f'<input type="hidden" name="{html_lib.escape(k, quote=True)}" value="{html_lib.escape(v, quote=True)}" />'
         for k, v in params.items()
     )
 
@@ -293,7 +286,11 @@ def _authorize_form(
     settings = get_settings()
     scope = params.get("scope") or _default_scope()
     resource = params.get("resource") or resource_url()
-    error_html = f'<p style="color:#b00020">{error}</p>' if error else ""
+    error_html = (
+        f'<p style="color:#b00020">{html_lib.escape(error)}</p>'
+        if error
+        else ""
+    )
     pin_hint = "Enter LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN to approve this ChatGPT connector."
     if not settings.oauth_admin_pin:
         pin_hint = "No admin PIN is configured. Click Approve to continue. Set LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN before exposing this publicly."
@@ -303,13 +300,13 @@ def _authorize_form(
 <body style="font-family: system-ui, sans-serif; max-width: 720px; margin: 48px auto; line-height: 1.45;">
   <h1>Authorize local-shell-mcp</h1>
   <p>This grants ChatGPT access to tools that can execute shell commands inside the configured container workspace.</p>
-  <p><strong>Resource:</strong> {resource}</p>
-  <p><strong>Scopes:</strong> {scope}</p>
+  <p><strong>Resource:</strong> {html_lib.escape(resource)}</p>
+  <p><strong>Scopes:</strong> {html_lib.escape(scope)}</p>
   {error_html}
   <form method="post" action="/oauth/authorize">
     {_hidden_inputs(params)}
     <label>Admin PIN<br><input type="password" name="pin" autofocus style="width: 320px; padding: 8px;" /></label>
-    <p style="color:#555">{pin_hint}</p>
+    <p style="color:#555">{html_lib.escape(pin_hint)}</p>
     <button type="submit" style="padding: 8px 14px;">Approve</button>
   </form>
 </body>

@@ -218,6 +218,10 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "__REMOTE_WORKER_BUNDLE_PATH__" not in join_script
         assert f"SERVER={base_url}" in join_script
         assert 'BUNDLE_URL="$SERVER/remote/worker-bundle.tgz"' in join_script
+        assert (
+            'export PYTHONPATH="$TMPDIR:$TMPDIR/vendor:${PYTHONPATH:-}"'
+            in join_script
+        )
 
         async with httpx.AsyncClient(timeout=20) as http_client:
             bundle_response = await http_client.get(
