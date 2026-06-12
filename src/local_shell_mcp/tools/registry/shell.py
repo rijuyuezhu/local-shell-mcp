@@ -62,6 +62,7 @@ async def _shell_list(args: dict[str, Any]) -> dict[str, Any]:
 
 SHELL_HTTP_ROUTES = (
     HttpToolRoute("POST", "/tools/run_shell", "run_shell_tool"),
+    HttpToolRoute("POST", "/tools/run_python", "run_python_tool"),
     HttpToolRoute("POST", "/tools/shell_start", "shell_start"),
     HttpToolRoute("POST", "/tools/shell_send", "shell_send"),
     HttpToolRoute("POST", "/tools/shell_read", "shell_read"),
