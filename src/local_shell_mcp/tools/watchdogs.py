@@ -16,7 +16,7 @@ from ..audit import (
     audit_tool_call_start,
     new_audit_call_id,
 )
-from ..ops.shell_ops import public_tool_timeout_s
+from ..ops.command_ops import public_tool_timeout_s
 from .responses import handled_error
 
 

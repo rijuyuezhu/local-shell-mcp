@@ -7,7 +7,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...config.settings import get_settings, safe_settings_dump
-from ...ops.shell_ops import effective_tool_limits, run_shell
+from ...ops.command_ops import effective_tool_limits, run_shell
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
 from ..responses import handled_error, ok_response
 
