@@ -3,105 +3,26 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from .models import AgentCapabilityRegistry
-from .redaction import (
-    _redact_text,
-    redact_configured_value_tree,
-    redact_configured_values,
-    redact_mapping,
-)
 from .registry import build_agent_registry
-from .skills import activate_skill
+from .service import (
+    activate_agent_skill_payload,
+    agent_config_status_payload,
+    call_agent_mcp_tool_payload,
+    list_agent_mcp_servers_payload,
+    list_agent_mcp_tools_payload,
+    list_agent_skills_payload,
+    redact_configured_value_tree,
+    tool_value,
+)
 from .state import agent_config_fingerprint
 
 type OkFn = Callable[..., dict[str, Any]]
 type HandledErrorFn = Callable[[Exception], dict[str, Any]]
-
-
-def _tool_value(source: Any, name: str, default: Any = None) -> Any:
-    """Read a tool attribute from either a mapping-style or object-style MCP representation."""
-    if isinstance(source, dict):
-        return source.get(name, default)
-    return getattr(source, name, default)
-
-
-def _tool_row(
-    server: str,
-    tool: Any,
-    env: dict[str, str],
-    headers: dict[str, str],
-    dynamic_tool_name: str | None = None,
-) -> dict[str, Any]:
-    """Convert an upstream MCP tool into a redacted status row with schema and dynamic-name metadata."""
-    model_dump = getattr(tool, "model_dump", None)
-    if is_dataclass(tool) and not isinstance(tool, type):
-        data = asdict(tool)
-    elif callable(model_dump):
-        dumped = model_dump(mode="json")
-        data = dumped if isinstance(dumped, Mapping) else {}
-    elif isinstance(tool, dict):
-        data = tool
-    else:
-        data = {}
-
-    input_schema = data.get("input_schema")
-    if input_schema is None:
-        input_schema = data.get("inputSchema")
-    if input_schema is None:
-        input_schema = _tool_value(tool, "input_schema")
-    if input_schema is None:
-        input_schema = _tool_value(tool, "inputSchema", {})
-
-    row = {
-        "server": server,
-        "tool": redact_configured_value_tree(
-            str(data.get("name") or _tool_value(tool, "name", "")), env, headers
-        ),
-        "description": redact_configured_value_tree(
-            str(
-                data.get("description")
-                or _tool_value(tool, "description", "")
-                or ""
-            ),
-            env,
-            headers,
-        ),
-        "input_schema": redact_configured_value_tree(
-            input_schema or {}, env, headers
-        ),
-    }
-    if dynamic_tool_name is not None:
-        row["dynamic_tool_name"] = redact_configured_value_tree(
-            dynamic_tool_name, env, headers
-        )
-    return row
-
-
-def _redacted_mcp_call_error(
-    exc: Exception, *maps: dict[str, str]
-) -> ValueError:
-    """Wrap upstream MCP call failures after removing configured secrets and token-like values."""
-    error = _redact_text(redact_configured_values(str(exc), *maps))
-    return ValueError(f"Agent MCP tool call failed: {error}")
-
-
-def _redact_mcp_payload_strings(value: Any, *maps: dict[str, str]) -> Any:
-    """Redact secret-bearing strings inside arbitrary MCP payload objects."""
-    return redact_configured_value_tree(value, *maps)
-
-
-def _redact_mcp_error_payload(data: Any, *maps: dict[str, str]) -> Any:
-    """Redact only MCP tool-result payloads that are explicitly marked as errors."""
-    if not isinstance(data, dict) or not (
-        data.get("is_error") or data.get("isError")
-    ):
-        return data
-    return _redact_mcp_payload_strings(redact_mapping(data), *maps)
 
 
 class AgentBridgeToolReloader:
@@ -177,10 +98,10 @@ class AgentBridgeToolReloader:
             tool = next(
                 candidate
                 for candidate in server_record.tools
-                if str(_tool_value(candidate, "name", "")) == record.tool_name
+                if str(tool_value(candidate, "name", "")) == record.tool_name
             )
             tool_description = redact_configured_value_tree(
-                str(_tool_value(tool, "description", "") or record.tool_name),
+                str(tool_value(tool, "description", "") or record.tool_name),
                 server_record.config.env,
                 server_record.config.headers,
             )
@@ -210,9 +131,11 @@ def make_skill_handler(reloader: AgentBridgeToolReloader, skill_name: str):
 
     async def handler() -> dict:
         try:
-            registry = reloader.current_registry()
-            skill = registry.skills[skill_name]
-            return reloader.ok(activate_skill(registry.config_dir, skill))
+            return reloader.ok(
+                activate_agent_skill_payload(
+                    reloader.current_registry(), skill_name
+                )
+            )
         except Exception as exc:
             return reloader.handled_error(exc)
 
@@ -226,23 +149,9 @@ def make_mcp_handler(
 
     async def handler(args: dict[str, Any] | None = None) -> dict:
         try:
-            registry = reloader.current_registry()
-            record = registry.mcp_servers[server_name]
-            try:
-                data = await registry.client_manager.call_tool(
-                    server_name, record.config, tool_name, args or {}
-                )
-            except Exception as exc:
-                raise _redacted_mcp_call_error(
-                    exc,
-                    record.config.env,
-                    record.config.headers,
-                ) from None
             return reloader.ok(
-                _redact_mcp_error_payload(
-                    data,
-                    record.config.env,
-                    record.config.headers,
+                await call_agent_mcp_tool_payload(
+                    reloader.current_registry(), server_name, tool_name, args
                 )
             )
         except Exception as exc:
@@ -295,66 +204,37 @@ def register_agent_bridge_tools(
     @mcp.tool(meta=meta)
     async def agent_config_status() -> dict:
         """Return agent bridge configuration status."""
-        return ok(reloader.current_registry().config_status())
+        return ok(agent_config_status_payload(reloader.current_registry()))
 
     @mcp.tool(meta=meta)
     async def list_agent_skills() -> dict:
         """List agent skills discovered from config."""
-        current = reloader.current_registry()
-        return ok(
-            {
-                "skills": [asdict(skill) for skill in current.skills.values()],
-                "warnings": current.skill_warnings,
-            }
-        )
+        return ok(list_agent_skills_payload(reloader.current_registry()))
 
     @mcp.tool(meta=meta)
     async def activate_agent_skill(name: str) -> dict:
         """Load an agent skill's instructions."""
         try:
-            current = reloader.current_registry()
-            skill = current.skills.get(name)
-            if skill is None:
-                raise ValueError(f"Unknown agent skill: {name}")
-            return ok(activate_skill(current.config_dir, skill))
+            return ok(
+                activate_agent_skill_payload(reloader.current_registry(), name)
+            )
         except Exception as exc:
             return handled_error(exc)
 
     @mcp.tool(meta=meta)
     async def list_agent_mcp_servers() -> dict:
         """List configured agent MCP servers."""
-        return ok(reloader.current_registry().config_status()["mcp_servers"])
+        return ok(list_agent_mcp_servers_payload(reloader.current_registry()))
 
     @mcp.tool(meta=meta)
     async def list_agent_mcp_tools(server: str | None = None) -> dict:
         """List tools exposed by configured agent MCP servers."""
         try:
-            current = reloader.current_registry()
-            if server is not None and server not in current.mcp_servers:
-                raise ValueError(f"Unknown agent MCP server: {server}")
-            records = (
-                [(server, current.mcp_servers[server])]
-                if server is not None
-                else current.mcp_servers.items()
-            )
-            dynamic_names = {
-                (record.server_name, record.tool_name): dynamic_name
-                for dynamic_name, record in current.dynamic_mcp_tool_map.items()
-            }
-            rows = [
-                _tool_row(
-                    server_name,
-                    tool,
-                    record.config.env,
-                    record.config.headers,
-                    dynamic_names.get(
-                        (server_name, str(_tool_value(tool, "name", "")))
-                    ),
+            return ok(
+                list_agent_mcp_tools_payload(
+                    reloader.current_registry(), server
                 )
-                for server_name, record in records
-                for tool in record.tools
-            ]
-            return ok({"tools": rows})
+            )
         except Exception as exc:
             return handled_error(exc)
 
@@ -364,40 +244,9 @@ def register_agent_bridge_tools(
     ) -> dict:
         """Call a tool on a configured agent MCP server."""
         try:
-            current = reloader.current_registry()
-            record = current.mcp_servers.get(server)
-            if record is None:
-                raise ValueError(f"Unknown agent MCP server: {server}")
-            if not record.config.enabled:
-                raise ValueError(f"MCP server {server} is disabled")
-            if not record.available:
-                error = (
-                    _redact_text(
-                        redact_configured_values(
-                            record.error,
-                            record.config.env,
-                            record.config.headers,
-                        )
-                    )
-                    if record.error
-                    else "unknown error"
-                )
-                raise ValueError(f"MCP server {server} is unavailable: {error}")
-            try:
-                data = await current.client_manager.call_tool(
-                    server, record.config, tool, args or {}
-                )
-            except Exception as exc:
-                raise _redacted_mcp_call_error(
-                    exc,
-                    record.config.env,
-                    record.config.headers,
-                ) from None
             return ok(
-                _redact_mcp_error_payload(
-                    data,
-                    record.config.env,
-                    record.config.headers,
+                await call_agent_mcp_tool_payload(
+                    reloader.current_registry(), server, tool, args
                 )
             )
         except Exception as exc:

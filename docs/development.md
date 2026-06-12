@@ -71,7 +71,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/auth/` | Authentication middleware and OAuth server. |
 | `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, and todo behavior. |
 | `src/local_shell_mcp/remote/` | Remote invite management, worker routes, bundle assembly, and worker CLI helpers. |
-| `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge. |
+| `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge, including shared service helpers used by MCP and REST adapters. |
 | `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
 | `tests/` | Unit, compatibility, and e2e tests. |
 | `scripts/` | Development, probing, generated-config, entrypoint, and release helper scripts. |
@@ -87,6 +87,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 - File tools avoid reading full binary files by default and enforce configured read/write limits.
 - Remote workers run matching operation categories on the worker machine and return results through the control server.
 - Agent bridge config is treated as external input and redacts configured secrets from status and error payloads.
+- Agent bridge MCP and REST adapters should share behavior through `agent_bridge.service` instead of duplicating status, skill, and upstream MCP call logic.
 
 ## Release checks
 
