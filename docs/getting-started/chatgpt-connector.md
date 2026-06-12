@@ -39,7 +39,7 @@ Regular connector clients can use the read-only `search` and `fetch` tools. Full
 After connecting, use a low-risk prompt:
 
 ```text
-Use local-shell-mcp to run environment_info and summarize the workspace root, auth mode, and tool limits.
+Use local-shell-mcp to run environment_info and summarize the workspace root, auth mode, and environment probe.
 ```
 
 Then try:

@@ -13,7 +13,7 @@ from ..remote.service import (
     rename_remote_machine,
     revoke_remote_machine,
 )
-from ..tools.base import McpToolContext
+from ..tools.contracts import McpToolContext
 from ..tools.responses import handled_error, ok_response
 
 

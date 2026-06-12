@@ -12,7 +12,11 @@ from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_SPECS,
 )
 from local_shell_mcp.remote.worker import WORKER_TOOL_NAMES
-from local_shell_mcp.tools.base import HttpMethod, HttpToolRoute, ToolRegistry
+from local_shell_mcp.tools.contracts import (
+    HttpMethod,
+    HttpToolRoute,
+    ToolRegistry,
+)
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
     call_local_tool,
@@ -109,6 +113,10 @@ def test_remote_worker_specs_drive_http_and_worker_allowlist():
         assert route.path == spec.http_path
 
 
+def _mcp_payload_data(response):
+    return json.loads(mcp_text(response))["data"]
+
+
 @pytest.mark.asyncio
 async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
     (tmp_path / "alpha.txt").write_text("hello", encoding="utf-8")
@@ -123,9 +131,40 @@ async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
         .json()
     )
     mcp_response = await build_mcp().call_tool("list_files", {"path": "."})
-    mcp_payload = json.loads(mcp_text(mcp_response))
+    assert http_payload == _mcp_payload_data(mcp_response)
 
-    assert http_payload == mcp_payload["data"]
+
+@pytest.mark.asyncio
+async def test_http_todo_read_matches_mcp_tool_payload(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    http_payload = TestClient(build_http_app()).get("/tools/todo").json()
+    mcp_response = await build_mcp().call_tool("todo_read_tool", {})
+
+    assert http_payload == _mcp_payload_data(mcp_response)
+
+
+@pytest.mark.asyncio
+async def test_http_secret_scan_matches_mcp_tool_payload(tmp_path, monkeypatch):
+    (tmp_path / "safe.txt").write_text("hello\n", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    args = {"cwd": ".", "max_results": 10}
+    http_payload = (
+        TestClient(build_http_app())
+        .post("/tools/secret_scan", json=args)
+        .json()
+    )
+    mcp_response = await build_mcp().call_tool("secret_scan", args)
+
+    assert http_payload == _mcp_payload_data(mcp_response)
 
 
 def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):

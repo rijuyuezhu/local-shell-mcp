@@ -249,12 +249,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 remote_workspace
             )
             assert remote_env["settings"]["auth_mode"] == "none"
-            assert (
-                remote_env["effective_tool_limits"]["run_shell_tool"][
-                    "max_timeout_s"
-                ]
-                == 10
-            )
+            assert "effective_tool_limits" not in remote_env
             assert remote_env["probe"]["ok"] is True
             assert str(remote_workspace) in remote_env["probe"]["stdout"]
 

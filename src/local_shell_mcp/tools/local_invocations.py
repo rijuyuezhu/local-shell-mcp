@@ -13,7 +13,7 @@ from ..audit import (
     audit_tool_call_start,
     new_audit_call_id,
 )
-from .base import ToolHandler
+from .contracts import ToolHandler
 from .discovery import discover_tool_registries
 
 

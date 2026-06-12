@@ -15,30 +15,54 @@ from ...remote.service import (
     revoke_remote_machine,
 )
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
-from ..base import (
-    HttpToolRoute,
-    McpToolContext,
-    StaticHttpToolRegistry,
-    ToolHandler,
-)
+from ..contracts import HttpToolRoute, McpToolContext, ToolHandler
+from ..declarative import DeclarativeToolRegistry
 
 
-async def _remote_invite(args: dict[str, Any]) -> dict[str, Any]:
-    return await create_remote_invite(
-        args.get("name"), args.get("workdir"), args.get("ttl_s")
-    )
+class RemoteToolRegistry(DeclarativeToolRegistry):
+    """Register remote-worker proxy tools."""
+
+    name = "remote"
+
+    def http_routes(self):
+        return (*super().http_routes(), *REMOTE_WORKER_HTTP_ROUTES)
+
+    def http_handlers(self):
+        return {**super().http_handlers(), **REMOTE_WORKER_HTTP_HANDLERS}
+
+    def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
+        register_remote_mcp(mcp, context)
 
 
-async def _remote_list_machines(args: dict[str, Any]) -> dict[str, Any]:
+local_tool = RemoteToolRegistry.get_tool_decorator()
+
+
+@local_tool(http_method="POST", http_path="/tools/remote_invite")
+async def remote_invite(
+    name: str | None = None,
+    workdir: str | None = None,
+    ttl_s: int | None = None,
+) -> dict[str, Any]:
+    """Create a one-time remote-worker invite."""
+    return await create_remote_invite(name, workdir, ttl_s)
+
+
+@local_tool(http_method="GET", http_path="/tools/remote_list_machines")
+async def remote_list_machines() -> dict[str, Any]:
+    """List remote worker machines currently known to the control server."""
     return list_remote_machines()
 
 
-async def _remote_revoke_machine(args: dict[str, Any]) -> dict[str, Any]:
-    return revoke_remote_machine(args["machine"])
+@local_tool(http_method="POST", http_path="/tools/remote_revoke_machine")
+async def remote_revoke_machine(machine: str) -> dict[str, Any]:
+    """Revoke and remove a remote worker machine."""
+    return revoke_remote_machine(machine)
 
 
-async def _remote_rename_machine(args: dict[str, Any]) -> dict[str, Any]:
-    return rename_remote_machine(args["machine"], args["new_name"])
+@local_tool(http_method="POST", http_path="/tools/remote_rename_machine")
+async def remote_rename_machine(machine: str, new_name: str) -> dict[str, Any]:
+    """Rename a remote worker machine."""
+    return rename_remote_machine(machine, new_name)
 
 
 def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
@@ -74,49 +98,16 @@ def _make_remote_worker_handler(
     return handler
 
 
-REMOTE_CONTROL_HTTP_ROUTES = (
-    HttpToolRoute("POST", "/tools/remote_invite", "remote_invite"),
-    HttpToolRoute("GET", "/tools/remote_list_machines", "remote_list_machines"),
-    HttpToolRoute(
-        "POST", "/tools/remote_revoke_machine", "remote_revoke_machine"
-    ),
-    HttpToolRoute(
-        "POST", "/tools/remote_rename_machine", "remote_rename_machine"
-    ),
-)
-
-REMOTE_HTTP_ROUTES = REMOTE_CONTROL_HTTP_ROUTES + tuple(
+REMOTE_WORKER_HTTP_ROUTES = tuple(
     HttpToolRoute("POST", spec.http_path, spec.public_name)
     for spec in REMOTE_WORKER_TOOL_SPECS
 )
 
-REMOTE_CONTROL_HTTP_HANDLERS: dict[str, ToolHandler] = {
-    "remote_invite": _remote_invite,
-    "remote_list_machines": _remote_list_machines,
-    "remote_revoke_machine": _remote_revoke_machine,
-    "remote_rename_machine": _remote_rename_machine,
+REMOTE_WORKER_HTTP_HANDLERS: dict[str, ToolHandler] = {
+    spec.public_name: _make_remote_worker_handler(
+        spec.worker_tool,
+        timeout_arg=spec.timeout_arg,
+        default_timeout=spec.default_timeout,
+    )
+    for spec in REMOTE_WORKER_TOOL_SPECS
 }
-
-REMOTE_HTTP_HANDLERS: dict[str, ToolHandler] = {
-    **REMOTE_CONTROL_HTTP_HANDLERS,
-    **{
-        spec.public_name: _make_remote_worker_handler(
-            spec.worker_tool,
-            timeout_arg=spec.timeout_arg,
-            default_timeout=spec.default_timeout,
-        )
-        for spec in REMOTE_WORKER_TOOL_SPECS
-    },
-}
-
-
-class RemoteToolRegistry(StaticHttpToolRegistry):
-    """Register remote-worker proxy tools."""
-
-    name = "remote"
-
-    routes = REMOTE_HTTP_ROUTES
-    handlers = REMOTE_HTTP_HANDLERS
-
-    def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
-        register_remote_mcp(mcp, context)
