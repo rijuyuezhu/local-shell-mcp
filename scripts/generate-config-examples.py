@@ -82,8 +82,7 @@ def generate_env_example() -> str:
         section: [] for section in SECTION_ORDER
     }
     for spec in SETTING_SPECS:
-        if getattr(spec, "exposed", True):
-            specs_by_section[spec.section].append(spec)
+        specs_by_section[spec.section].append(spec)
 
     for section in SECTION_ORDER:
         lines.extend(["", f"# {section}."])
@@ -146,8 +145,7 @@ def generate_yaml_example() -> str:
     ]
     specs_by_section = {section: [] for section in SECTION_ORDER}
     for spec in SETTING_SPECS:
-        if getattr(spec, "exposed", True):
-            specs_by_section[spec.section].append(spec)
+        specs_by_section[spec.section].append(spec)
 
     for section in SECTION_ORDER:
         lines.extend(["", f"# {section}."])

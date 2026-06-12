@@ -51,11 +51,8 @@ def test_every_setting_has_cli_option():
     help_text = cli._build_parser().format_help()
 
     for spec in SETTING_SPECS:
-        if getattr(spec, "exposed", True):
-            assert spec.cli_flag in help_text
-            assert spec.env_var in help_text
-        else:
-            assert spec.cli_flag not in help_text
+        assert spec.cli_flag in help_text
+        assert spec.env_var in help_text
 
 
 def test_bool_cli_values_parse_explicitly():
