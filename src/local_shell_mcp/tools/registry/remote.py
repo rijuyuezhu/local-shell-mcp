@@ -20,7 +20,7 @@ from ..base import (
     StaticHttpToolRegistry,
     ToolHandler,
 )
-from .remote_mcp import register_remote_mcp
+from ..remote_mcp import register_remote_mcp
 
 
 async def _remote_invite(args: dict[str, Any]) -> dict[str, Any]:

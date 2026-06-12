@@ -6,15 +6,15 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ...remote.service import (
+from ..remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
     list_remote_machines,
     rename_remote_machine,
     revoke_remote_machine,
 )
-from ..base import McpToolContext
-from ..responses import handled_error, ok_response
+from .base import McpToolContext
+from .responses import handled_error, ok_response
 
 
 async def _remote_call(
