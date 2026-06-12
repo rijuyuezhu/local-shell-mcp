@@ -117,6 +117,8 @@ class ToolDefinition:
                 return context.connector_meta
             case "protected":
                 return context.protected_meta
+            case _:
+                raise ValueError(f"Invalid meta: {self.meta}")
 
     def _mcp_annotations(
         self, context: McpToolContext
@@ -126,6 +128,8 @@ class ToolDefinition:
                 return context.read_only_tool
             case None:
                 return None
+            case _:
+                raise ValueError(f"Invalid annotations: {self.annotations}")
 
     def _mcp_description(self, context: McpToolContext) -> str | None:
         if callable(self.description):

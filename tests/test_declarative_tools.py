@@ -1,4 +1,5 @@
 import pytest
+from mcp.types import ToolAnnotations
 
 from local_shell_mcp.tools.declarative import ToolDefinition
 
@@ -76,3 +77,53 @@ async def test_tool_definition_call_from_mapping_ignores_varargs_and_kwargs():
         "keyword": 5,
         "kwargs": {},
     }
+
+
+def _sample_context():
+    from local_shell_mcp.config.settings import Settings
+    from local_shell_mcp.tools.contracts import McpToolContext
+
+    return McpToolContext(
+        settings=Settings(),
+        read_only_tool=ToolAnnotations(readOnlyHint=True),
+        connector_meta={"openai/toolInvocation/invoking": "Reading"},
+        protected_meta={"openai/toolInvocation/invoking": "Working"},
+        ok=lambda data, message="": {
+            "ok": True,
+            "message": message,
+            "data": data,
+        },
+        handled_error=lambda exc: {"ok": False, "message": str(exc)},
+    )
+
+
+async def _sample_tool() -> dict:
+    return {}
+
+
+def test_tool_definition_rejects_unknown_meta():
+    definition = ToolDefinition(
+        func=_sample_tool,
+        name="sample_tool",
+        http_method="POST",
+        http_path="/tools/sample_tool",
+        meta="future-meta",  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(ValueError, match="Invalid meta: future-meta"):
+        definition._mcp_meta(_sample_context())
+
+
+def test_tool_definition_rejects_unknown_annotations():
+    definition = ToolDefinition(
+        func=_sample_tool,
+        name="sample_tool",
+        http_method="POST",
+        http_path="/tools/sample_tool",
+        annotations="future-annotation",  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(
+        ValueError, match="Invalid annotations: future-annotation"
+    ):
+        definition._mcp_annotations(_sample_context())
