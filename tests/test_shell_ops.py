@@ -10,7 +10,7 @@ from local_shell_mcp.mcp_app import build_mcp
 from local_shell_mcp.ops.command_ops import public_run_shell_timeout, run_shell
 from local_shell_mcp.ops.shell_models import CommandResult
 from local_shell_mcp.ops.tmux_ops import send_shell
-from local_shell_mcp.tools.registry import filesystem as fs_tools_module
+from local_shell_mcp.tools.registry import files as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_text
 
