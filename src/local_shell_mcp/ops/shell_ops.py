@@ -16,8 +16,6 @@ from ..config.settings import get_settings
 from ..models import CommandResult
 from .fs_ops import relative_display, resolve_path
 
-PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S = 10
-PUBLIC_RUN_SHELL_TIMEOUT_CAP_S = 60
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2
 READER_DRAIN_TIMEOUT_S = 2
@@ -65,23 +63,46 @@ def check_command_policy(command: str) -> None:
 def clamp_timeout(timeout_s: int | None) -> int:
     """Clamp requested command timeouts to configured server bounds."""
     settings = get_settings()
-    timeout = timeout_s or settings.default_timeout_s
-    return max(1, min(timeout, settings.max_timeout_s))
+    timeout = timeout_s or settings.internal_shell_default_timeout_s
+    return max(1, min(timeout, settings.internal_shell_max_timeout_s))
 
 
 def public_run_shell_timeout(timeout_s: int | None) -> int:
-    """Apply stricter public shell defaults while still respecting the global maximum timeout."""
-    if timeout_s is not None and timeout_s > PUBLIC_RUN_SHELL_TIMEOUT_CAP_S:
+    """Resolve public run_shell_tool timeout from explicit public settings."""
+    settings = get_settings()
+    default = max(1, settings.public_run_shell_default_timeout_s)
+    cap = max(1, settings.public_run_shell_max_timeout_s)
+    if timeout_s is not None and timeout_s > cap:
         raise ValueError(
-            f"timeout_s must be <= {PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} seconds for public run_shell"
+            f"timeout_s must be <= {cap} seconds for run_shell_tool; "
+            "use shell_start for long-running or streaming commands"
         )
-    return max(
-        1,
-        min(
-            timeout_s or PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S,
-            PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
-        ),
-    )
+    return max(1, min(timeout_s or default, cap))
+
+
+def public_tool_timeout_s() -> float:
+    """Return the public MCP/HTTP tool watchdog timeout in seconds."""
+    return max(0.001, get_settings().public_tool_timeout_s)
+
+
+def effective_tool_limits() -> dict[str, object]:
+    """Return user-facing effective limits for public tools and internal shell execution."""
+    settings = get_settings()
+    return {
+        "public_tool_watchdog_s": public_tool_timeout_s(),
+        "run_shell_tool": {
+            "default_timeout_s": max(
+                1, settings.public_run_shell_default_timeout_s
+            ),
+            "max_timeout_s": max(1, settings.public_run_shell_max_timeout_s),
+        },
+        "internal_run_shell": {
+            "default_timeout_s": max(
+                1, settings.internal_shell_default_timeout_s
+            ),
+            "max_timeout_s": max(1, settings.internal_shell_max_timeout_s),
+        },
+    }
 
 
 def clamp_output(

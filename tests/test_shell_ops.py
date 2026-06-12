@@ -4,7 +4,6 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.http_app as http_app_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http_app import build_http_app
 from local_shell_mcp.mcp_app import build_mcp
@@ -14,7 +13,6 @@ from local_shell_mcp.ops.shell_ops import (
     run_shell,
     send_shell,
 )
-from local_shell_mcp.tools.registry import common as common_tools_module
 from local_shell_mcp.tools.registry import filesystem as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_text
@@ -32,13 +30,13 @@ async def test_run_shell_tool_rejects_timeout_above_public_cap(
     )
     payload = mcp_text(response)
 
-    assert "timeout_s must be <= 60 seconds for public run_shell" in payload
+    assert "timeout_s must be <= 60 seconds for run_shell_tool" in payload
 
 
 @pytest.mark.asyncio
 async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
     async def hanging_public_run_shell(
@@ -64,7 +62,7 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setattr(http_app_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
     async def hanging_run_shell_handler(args: dict):
@@ -87,7 +85,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
 def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setattr(http_app_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
     def blocking_list_dir(*args, **kwargs):
@@ -107,7 +105,7 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setattr(common_tools_module, "PUBLIC_TOOL_TIMEOUT_S", 0.01)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
     def blocking_list_dir(*args, **kwargs):
@@ -126,7 +124,9 @@ def test_public_run_shell_timeout_uses_ten_second_default(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_DEFAULT_TIMEOUT_S", "3600")
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_INTERNAL_SHELL_DEFAULT_TIMEOUT_S", "3600"
+    )
     clear_settings_cache()
 
     assert public_run_shell_timeout(None) == 10

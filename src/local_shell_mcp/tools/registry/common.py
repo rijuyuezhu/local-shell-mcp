@@ -30,8 +30,8 @@ from ...ops.fs_ops import (
     temp_dir,
 )
 from ...ops.shell_ops import (
-    PUBLIC_RUN_SHELL_TIMEOUT_CAP_S,
     public_run_shell_timeout,
+    public_tool_timeout_s,
     run_shell,
 )
 
@@ -133,7 +133,6 @@ OAUTH_SECURITY_SCHEMES = [
     }
 ]
 NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
-PUBLIC_TOOL_TIMEOUT_S = PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 
 
 class AuditedMcpToolFn(Protocol):
@@ -207,17 +206,17 @@ def _mcp_tool_audit_watchdog_wrapper(
         )
         try:
             result = await asyncio.wait_for(
-                original(*args, **kwargs), timeout=PUBLIC_TOOL_TIMEOUT_S
+                original(*args, **kwargs), timeout=public_tool_timeout_s()
             )
         except TimeoutError:
             exc = PublicToolTimeoutError(
-                f"{tool_name} exceeded {PUBLIC_TOOL_TIMEOUT_S} second public tool timeout"
+                f"{tool_name} exceeded {public_tool_timeout_s()} second public tool timeout"
             )
             duration_ms = int((time.time() - start) * 1000)
             audit(
                 "tool_timeout",
                 tool=tool_name,
-                timeout_s=PUBLIC_TOOL_TIMEOUT_S,
+                timeout_s=public_tool_timeout_s(),
             )
             payload = _timeout_payload_for_tool(tool_name, exc)
             audit_tool_call_end(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from ...ops.shell_ops import PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 from ...remote import remote_manager
 from ..base import McpToolContext, ToolRegistry
 from .common import handled_error, ok_response
@@ -87,7 +86,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         meta=protected_meta,
         description=(
             "Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. "
-            f"timeout_s is in seconds and should stay within the public tool timeout cap of {PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} seconds on the worker; "
+            f"timeout_s is in seconds and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds on the worker; "
             f"max_output_bytes caps returned output and the worker default cap is max_output_bytes={settings.max_output_bytes}. "
             "For long-running or interactive remote processes, use remote_shell_start with remote_shell_send and remote_shell_read."
         ),
@@ -117,7 +116,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         description=(
             "Write Python code to a temporary file and execute it on a remote worker. "
             "Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. "
-            f"cwd is resolved on the remote worker and timeout_s defaults to 60 seconds; keep it within the public tool timeout cap of {PUBLIC_RUN_SHELL_TIMEOUT_CAP_S} seconds."
+            f"cwd is resolved on the remote worker and timeout_s defaults to 60 seconds; keep it within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds."
         ),
     )
     async def remote_run_python_tool(

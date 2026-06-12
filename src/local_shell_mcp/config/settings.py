@@ -55,8 +55,12 @@ class Settings(BaseSettings):
     # without changing server-side authentication, authorization, or command policy.
     relaxed_client_tool_hints: bool = False
 
-    default_timeout_s: int = 60
-    max_timeout_s: int = 3600
+    # Public MCP/HTTP tool calls are guarded separately from internal command execution.
+    public_tool_timeout_s: float = 60
+    public_run_shell_default_timeout_s: int = 10
+    public_run_shell_max_timeout_s: int = 60
+    internal_shell_default_timeout_s: int = 60
+    internal_shell_max_timeout_s: int = 3600
     max_output_bytes: int = 200_000
     max_file_read_bytes: int = 512_000
     max_file_write_bytes: int = 5_000_000
