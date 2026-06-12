@@ -61,8 +61,18 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Server transport mode.",
         # we do not set metavar here to get the choices
     ),
-    SettingSpec("host", "Server", "Bind host for HTTP/MCP transports.", "HOST"),
-    SettingSpec("port", "Server", "Bind port for HTTP/MCP transports.", "PORT"),
+    SettingSpec(
+        "host",
+        "Server",
+        "Bind host for HTTP/MCP transports.",
+        "HOST",
+    ),
+    SettingSpec(
+        "port",
+        "Server",
+        "Bind port for HTTP/MCP transports.",
+        "PORT",
+    ),
     SettingSpec(
         "workspace_root",
         "Paths and state",
@@ -352,9 +362,24 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Shell executable used for shell commands.",
         "PATH",
     ),
-    SettingSpec("tmux_bin", "Tool executables", "tmux executable.", "PATH"),
-    SettingSpec("rg_bin", "Tool executables", "ripgrep executable.", "PATH"),
-    SettingSpec("python_bin", "Tool executables", "Python executable.", "PATH"),
+    SettingSpec(
+        "tmux_bin",
+        "Tool executables",
+        "tmux executable.",
+        "PATH",
+    ),
+    SettingSpec(
+        "rg_bin",
+        "Tool executables",
+        "ripgrep executable.",
+        "PATH",
+    ),
+    SettingSpec(
+        "python_bin",
+        "Tool executables",
+        "Python executable.",
+        "PATH",
+    ),
 )
 
 type SpecBySection = list[tuple[SectionName, list[SettingSpec]]]
@@ -420,8 +445,8 @@ def yaml_default(value: Any) -> Any:
 def argparse_type_for(name: str):
     """Return an argparse type callable for a Settings field."""
     annotation = Settings.model_fields[name].annotation
-    if annotation is int:
-        return int
+    if annotation in (int, float):
+        return annotation
     return str
 
 
@@ -464,8 +489,11 @@ def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
             if choices:
                 kwargs["choices"] = choices
 
-            if Settings.model_fields[spec.name].annotation is int:
-                kwargs["type"] = int
+            if (annotation := Settings.model_fields[spec.name].annotation) in (
+                int,
+                float,
+            ):
+                kwargs["type"] = annotation
             elif is_bool_setting(spec.name):
                 kwargs["action"] = BoolChoiceAction
             group.add_argument(spec.cli_flag, **kwargs)
