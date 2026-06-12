@@ -63,6 +63,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/main.py` | CLI parsing and mode dispatch. |
 | `src/local_shell_mcp/mcp/` | MCP stdio/HTTP transport app assembly, client-facing metadata, server instructions, remote MCP companion registration, and tool watchdogs. |
 | `src/local_shell_mcp/tools/base.py` | Shared tool registry, context, HTTP route metadata, and local handler types. |
+| `src/local_shell_mcp/tools/definitions.py` | Declarative static tool definitions that derive MCP registration and HTTP handlers from one typed function. |
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries. |
 | `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper and routed REST auditing. |
 | `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries discovered at runtime. |
@@ -82,7 +83,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 
 - Tool registration is registry-based. Keep concrete behavior in `ops/`; registry modules adapt parameters, response envelopes, descriptions, and metadata.
 - Transport app assembly lives in `mcp.app` and `http.app`.
-- Registry modules with static REST routes and handlers should inherit `StaticHttpToolRegistry`; keep custom `http_routes()` or `http_handlers()` methods only when runtime settings affect the surface.
+- Prefer `DeclarativeToolRegistry` for static tools so MCP registration and HTTP handlers derive from one typed function. Use `StaticHttpToolRegistry` only when a registry still needs hand-written static handler maps, and keep custom `http_routes()` or `http_handlers()` methods only when runtime settings affect the surface.
 - Large registry implementations may delegate focused MCP registration code to transport-specific companion modules, as `remote.py` does with `mcp.remote_tools`, so `tools.registry` stays focused on discovered registry definitions.
 - Configuration surface metadata lives in `config.surface`.
 - Do not add a second global tool table. MCP and REST surfaces should be derived from category registries.
