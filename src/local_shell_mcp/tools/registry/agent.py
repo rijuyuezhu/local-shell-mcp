@@ -16,7 +16,7 @@ from ...agent_bridge.service import (
     list_agent_mcp_tools_payload,
     list_agent_skills_payload,
 )
-from ...agent_bridge.tools import register_agent_bridge_tools
+from ...agent_bridge.tools import register_agent_bridge_dynamic_tools
 from ...config.settings import Settings
 from ..base import McpToolContext
 from ..definitions import DeclarativeToolRegistry
@@ -39,7 +39,10 @@ class AgentBridgeToolRegistry(DeclarativeToolRegistry):
     name = "agent_bridge"
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
-        register_agent_bridge_mcp(mcp, context)
+        if not context.settings.agent_bridge_enabled:
+            return
+        super().register_mcp(mcp, context)
+        register_agent_bridge_dynamic_mcp(mcp, context)
 
 
 local_tool = AgentBridgeToolRegistry.get_tool_decorator()
@@ -109,21 +112,22 @@ async def call_agent_mcp_tool(
     )
 
 
-def register_agent_bridge_mcp(mcp: FastMCP, context: McpToolContext) -> None:
-    """Register MCP tools for this tool group."""
+def register_agent_bridge_dynamic_mcp(
+    mcp: FastMCP, context: McpToolContext
+) -> None:
+    """Register dynamic MCP tools for this tool group."""
     settings = context.settings
     protected_meta = context.protected_meta
-    if settings.agent_bridge_enabled:
-        registry = build_agent_registry_from_settings(
-            settings, AgentMcpClientManager
-        )
-        register_agent_bridge_tools(
-            mcp,
-            registry,
-            protected_meta,
-            ok_response,
-            handled_error,
-            settings.agent_mcp_probe_timeout_s,
-            None if settings.agent_dynamic_mcp_tools else False,
-            None if settings.agent_dynamic_skill_tools else False,
-        )
+    registry = build_agent_registry_from_settings(
+        settings, AgentMcpClientManager
+    )
+    register_agent_bridge_dynamic_tools(
+        mcp,
+        registry,
+        protected_meta,
+        ok_response,
+        handled_error,
+        settings.agent_mcp_probe_timeout_s,
+        None if settings.agent_dynamic_mcp_tools else False,
+        None if settings.agent_dynamic_skill_tools else False,
+    )

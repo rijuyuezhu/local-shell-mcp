@@ -11,11 +11,7 @@ from .models import AgentCapabilityRegistry
 from .registry import build_agent_registry
 from .service import (
     activate_agent_skill_payload,
-    agent_config_status_payload,
     call_agent_mcp_tool_payload,
-    list_agent_mcp_servers_payload,
-    list_agent_mcp_tools_payload,
-    list_agent_skills_payload,
     redact_configured_value_tree,
     tool_value,
 )
@@ -179,7 +175,7 @@ def _install_agent_bridge_reload_hooks(
     mcp.call_tool = call_tool_with_agent_reload
 
 
-def register_agent_bridge_tools(
+def register_agent_bridge_dynamic_tools(
     mcp: Any,
     registry: AgentCapabilityRegistry,
     meta: dict[str, Any],
@@ -189,7 +185,7 @@ def register_agent_bridge_tools(
     dynamic_mcp_tools: bool | None = None,
     dynamic_skill_tools: bool | None = None,
 ) -> None:
-    """Register static bridge-management tools and initialize optional dynamic skill and MCP tool handlers."""
+    """Register dynamic bridge tools and install config-reload hooks."""
     reloader = AgentBridgeToolReloader(
         mcp,
         registry,
@@ -200,57 +196,5 @@ def register_agent_bridge_tools(
         dynamic_mcp_tools,
         dynamic_skill_tools,
     )
-
-    @mcp.tool(meta=meta)
-    async def agent_config_status() -> dict:
-        """Return agent bridge configuration status."""
-        return ok(agent_config_status_payload(reloader.current_registry()))
-
-    @mcp.tool(meta=meta)
-    async def list_agent_skills() -> dict:
-        """List agent skills discovered from config."""
-        return ok(list_agent_skills_payload(reloader.current_registry()))
-
-    @mcp.tool(meta=meta)
-    async def activate_agent_skill(name: str) -> dict:
-        """Load an agent skill's instructions."""
-        try:
-            return ok(
-                activate_agent_skill_payload(reloader.current_registry(), name)
-            )
-        except Exception as exc:
-            return handled_error(exc)
-
-    @mcp.tool(meta=meta)
-    async def list_agent_mcp_servers() -> dict:
-        """List configured agent MCP servers."""
-        return ok(list_agent_mcp_servers_payload(reloader.current_registry()))
-
-    @mcp.tool(meta=meta)
-    async def list_agent_mcp_tools(server: str | None = None) -> dict:
-        """List tools exposed by configured agent MCP servers."""
-        try:
-            return ok(
-                list_agent_mcp_tools_payload(
-                    reloader.current_registry(), server
-                )
-            )
-        except Exception as exc:
-            return handled_error(exc)
-
-    @mcp.tool(meta=meta)
-    async def call_agent_mcp_tool(
-        server: str, tool: str, args: dict[str, Any] | None = None
-    ) -> dict:
-        """Call a tool on a configured agent MCP server."""
-        try:
-            return ok(
-                await call_agent_mcp_tool_payload(
-                    reloader.current_registry(), server, tool, args
-                )
-            )
-        except Exception as exc:
-            return handled_error(exc)
-
     reloader.register_dynamic_tools()
     _install_agent_bridge_reload_hooks(mcp, reloader)
