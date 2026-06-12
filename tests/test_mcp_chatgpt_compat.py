@@ -11,7 +11,7 @@ from local_shell_mcp.auth.oauth import (
     validate_bearer_token,
 )
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.mcp_app import _transport_security_settings, build_mcp
+from local_shell_mcp.mcp.app import _transport_security_settings, build_mcp
 from local_shell_mcp.tools.registry import agent as tools_module
 
 

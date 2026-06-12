@@ -13,8 +13,8 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
-from .auth.middleware import AuthMiddleware
-from .auth.oauth import (
+from ..auth.middleware import AuthMiddleware
+from ..auth.oauth import (
     oauth_authorize_get,
     oauth_authorize_post,
     oauth_protected_resource,
@@ -22,19 +22,19 @@ from .auth.oauth import (
     oauth_server_metadata,
     oauth_token,
 )
-from .config.settings import get_settings
-from .remote.http import remote_routes
-from .server_instructions import SERVER_INSTRUCTIONS
-from .tools.base import McpToolContext
-from .tools.discovery import discover_tool_registries
-from .tools.metadata import (
+from ..config.settings import get_settings
+from ..remote.http import remote_routes
+from ..tools.base import McpToolContext
+from ..tools.discovery import discover_tool_registries
+from ..tools.responses import handled_error, ok_response
+from .instructions import SERVER_INSTRUCTIONS
+from .metadata import (
     NOAUTH_SECURITY_SCHEMES,
     OAUTH_SECURITY_SCHEMES,
     install_full_container_auto_approval_hints,
     security_meta,
 )
-from .tools.responses import handled_error, ok_response
-from .tools.watchdogs import install_mcp_tool_watchdogs
+from .watchdogs import install_mcp_tool_watchdogs
 
 
 def _host_header_name(hostname: str) -> str:

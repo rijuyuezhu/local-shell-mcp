@@ -17,7 +17,7 @@ from ..audit import (
     new_audit_call_id,
 )
 from ..ops.command_ops import public_tool_timeout_s
-from .responses import handled_error
+from ..tools.responses import handled_error
 
 
 class AuditedMcpToolFn(Protocol):

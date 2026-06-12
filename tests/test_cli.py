@@ -1,5 +1,5 @@
 import local_shell_mcp.main as cli
-from local_shell_mcp.config.registry import (
+from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     cli_overrides_from_args,
 )

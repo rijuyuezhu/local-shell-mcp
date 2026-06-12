@@ -2,26 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import shlex
-import uuid
 
 from .command_ops import run_shell
-from .path_ops import (
-    assert_text_input_size,
-    prune_temp_dir,
-    relative_display,
-    temp_dir,
-)
+from .path_ops import relative_display
+from .temp_file_ops import write_temp_text_file
 
 
 async def apply_patch_text(patch: str, cwd: str = ".") -> dict:
     """Apply a unified diff through git apply and return the command result envelope."""
-    assert_text_input_size("patch", patch)
-    await asyncio.to_thread(prune_temp_dir)
-    patch_path = temp_dir() / f"patch-{uuid.uuid4().hex}.diff"
-    patch_path.parent.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(patch_path.write_text, patch, encoding="utf-8")
+    patch_path = await write_temp_text_file("patch", patch, "patch", "diff")
     quoted = shlex.quote(str(patch_path))
     result = await run_shell(
         f"git apply --check {quoted} && git apply {quoted}",

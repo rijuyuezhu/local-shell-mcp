@@ -10,7 +10,12 @@ from mcp.server.fastmcp import FastMCP
 from ...audit import audit
 from ...ops.fs_ops import read_text
 from ...ops.search_ops import grep
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import to_thread
 
 
@@ -95,16 +100,13 @@ WORKSPACE_HTTP_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-class WorkspaceConnectorToolRegistry(ToolRegistry):
+class WorkspaceConnectorToolRegistry(StaticHttpToolRegistry):
     """Register ChatGPT connector-compatible workspace tools."""
 
     name = "workspace_connector"
 
-    def http_routes(self):
-        return WORKSPACE_HTTP_ROUTES
-
-    def http_handlers(self):
-        return WORKSPACE_HTTP_HANDLERS
+    routes = WORKSPACE_HTTP_ROUTES
+    handlers = WORKSPACE_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_workspace_connector_mcp(mcp, context)

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from local_shell_mcp.config.registry import (
+from local_shell_mcp.config.surface import (
     SECTION_ORDER,
     SETTING_SPECS,
     SettingSpec,

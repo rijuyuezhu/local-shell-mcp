@@ -8,7 +8,12 @@ from mcp.server.fastmcp import FastMCP
 
 from ...ops.fs_ops import glob_paths
 from ...ops.search_ops import grep, tree
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import handled_error, ok_response, to_thread
 
 
@@ -55,16 +60,13 @@ SEARCH_HTTP_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-class SearchToolRegistry(ToolRegistry):
+class SearchToolRegistry(StaticHttpToolRegistry):
     """Register search and tree-view tools."""
 
     name = "search_ops"
 
-    def http_routes(self):
-        return SEARCH_HTTP_ROUTES
-
-    def http_handlers(self):
-        return SEARCH_HTTP_HANDLERS
+    routes = SEARCH_HTTP_ROUTES
+    handlers = SEARCH_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_search_mcp(mcp, context)

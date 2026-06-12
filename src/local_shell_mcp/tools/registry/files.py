@@ -15,7 +15,12 @@ from ...ops.fs_ops import (
     read_text,
     write_text,
 )
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import handled_error, ok_response, to_thread
 
 
@@ -97,16 +102,13 @@ FILE_HTTP_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-class FileToolRegistry(ToolRegistry):
+class FileToolRegistry(StaticHttpToolRegistry):
     """Register file operation tools."""
 
     name = "files"
 
-    def http_routes(self):
-        return FILE_HTTP_ROUTES
-
-    def http_handlers(self):
-        return FILE_HTTP_HANDLERS
+    routes = FILE_HTTP_ROUTES
+    handlers = FILE_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_file_mcp(mcp, context)

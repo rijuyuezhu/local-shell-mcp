@@ -8,7 +8,12 @@ from mcp.server.fastmcp import FastMCP
 
 from ...config.settings import get_settings, safe_settings_dump
 from ...ops.command_ops import effective_tool_limits, run_shell
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import handled_error, ok_response
 
 
@@ -35,16 +40,13 @@ ENVIRONMENT_HTTP_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-class EnvironmentToolRegistry(ToolRegistry):
+class EnvironmentToolRegistry(StaticHttpToolRegistry):
     """Register environment/probe tools."""
 
     name = "environment"
 
-    def http_routes(self):
-        return ENVIRONMENT_HTTP_ROUTES
-
-    def http_handlers(self):
-        return ENVIRONMENT_HTTP_HANDLERS
+    routes = ENVIRONMENT_HTTP_ROUTES
+    handlers = ENVIRONMENT_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_environment_mcp(mcp, context)

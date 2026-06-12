@@ -1,11 +1,11 @@
 import re
 from pathlib import Path
 
-from local_shell_mcp.config.registry import (
+from local_shell_mcp.config.settings import Settings, load_settings
+from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     validate_setting_specs,
 )
-from local_shell_mcp.config.settings import Settings, load_settings
 
 
 def test_setting_specs_cover_settings_fields():

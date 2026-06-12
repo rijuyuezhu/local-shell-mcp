@@ -3,7 +3,7 @@ from typing import Any, cast
 from starlette.applications import Starlette
 from starlette.routing import Route
 
-import local_shell_mcp.mcp_app as mcp_app
+import local_shell_mcp.mcp.app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
 
 

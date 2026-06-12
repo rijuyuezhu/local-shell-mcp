@@ -61,17 +61,18 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | Path | Purpose |
 |---|---|
 | `src/local_shell_mcp/main.py` | CLI parsing and mode dispatch. |
-| `src/local_shell_mcp/mcp_app.py` | MCP stdio/HTTP transport startup and OAuth/remote ASGI route wrapping. |
+| `src/local_shell_mcp/mcp/` | MCP stdio/HTTP transport app assembly, client-facing metadata, server instructions, remote MCP companion registration, and tool watchdogs. |
 | `src/local_shell_mcp/tools/base.py` | Shared tool registry, context, HTTP route metadata, and local handler types. |
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries. |
 | `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper and routed REST auditing. |
-| `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries. |
-| `src/local_shell_mcp/http_app.py` | REST debug API and HTTP protocol adapter. |
-| `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and generated metadata. |
+| `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries discovered at runtime. |
+| `src/local_shell_mcp/http/` | REST debug API assembly for local tool endpoints and HTTP protocol adapter. |
+| `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and configuration surface metadata. |
 | `src/local_shell_mcp/auth/` | Authentication middleware and OAuth server. |
-| `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, and todo behavior. |
-| `src/local_shell_mcp/remote/` | Remote invite management, worker routes, bundle assembly, and worker CLI helpers. |
-| `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge. |
+| `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, todo, and shared operation helpers. |
+| `src/local_shell_mcp/remote/` | Remote invite management, shared worker tool specs and services, worker routes, bundle assembly, and worker CLI helpers. |
+| `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge, including shared service helpers used by MCP and REST adapters. |
+| `src/local_shell_mcp/responses.py` | Shared response envelope builders for tool and remote endpoint responses. |
 | `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
 | `tests/` | Unit, compatibility, and e2e tests. |
 | `scripts/` | Development, probing, generated-config, entrypoint, and release helper scripts. |
@@ -80,13 +81,21 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 ## Implementation notes
 
 - Tool registration is registry-based. Keep concrete behavior in `ops/`; registry modules adapt parameters, response envelopes, descriptions, and metadata.
+- Transport app assembly lives in `mcp.app` and `http.app`.
+- Registry modules with static REST routes and handlers should inherit `StaticHttpToolRegistry`; keep custom `http_routes()` or `http_handlers()` methods only when runtime settings affect the surface.
+- Large registry implementations may delegate focused MCP registration code to transport-specific companion modules, as `remote.py` does with `mcp.remote_tools`, so `tools.registry` stays focused on discovered registry definitions.
+- Configuration surface metadata lives in `config.surface`.
 - Do not add a second global tool table. MCP and REST surfaces should be derived from category registries.
 - Routed tool calls are audited centrally. Avoid per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured.
-- Tool results use a consistent `ok`, `message`, and `data` shape where possible.
+- Tool and remote endpoint responses should use shared envelope builders from `local_shell_mcp.responses`, with tool-specific handling layered in `tools.responses`.
 - File tools avoid reading full binary files by default and enforce configured read/write limits.
+- Operation modules that need managed temporary text files should use `ops.temp_file_ops` so temp pruning, size checks, and filename generation stay consistent.
 - Remote workers run matching operation categories on the worker machine and return results through the control server.
+- Remote registry adapters should call remote manager behavior through `remote.service` helpers rather than reaching into the manager directly.
+- Remote worker proxy routes, HTTP handlers, and worker-side allowlists should derive from `remote.tool_specs` so new remote proxies are not registered in multiple places by hand.
 - Agent bridge config is treated as external input and redacts configured secrets from status and error payloads.
+- Agent bridge MCP and REST adapters should share behavior through `agent_bridge.service` instead of duplicating status, skill, and upstream MCP call logic.
 
 ## Release checks
 

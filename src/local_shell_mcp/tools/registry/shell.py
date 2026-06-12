@@ -15,7 +15,12 @@ from ...ops.tmux_ops import (
     send_shell,
     start_shell,
 )
-from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
+from ..base import (
+    HttpToolRoute,
+    McpToolContext,
+    StaticHttpToolRegistry,
+    ToolHandler,
+)
 from ..responses import handled_error, ok_response
 
 
@@ -81,16 +86,13 @@ SHELL_HTTP_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-class ShellToolRegistry(ToolRegistry):
+class ShellToolRegistry(StaticHttpToolRegistry):
     """Register shell execution and session tools."""
 
     name = "shell"
 
-    def http_routes(self):
-        return SHELL_HTTP_ROUTES
-
-    def http_handlers(self):
-        return SHELL_HTTP_HANDLERS
+    routes = SHELL_HTTP_ROUTES
+    handlers = SHELL_HTTP_HANDLERS
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         register_shell_mcp(mcp, context)
