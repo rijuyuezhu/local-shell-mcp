@@ -70,7 +70,7 @@ async def exercise_filesystem_and_search_tools(
     )
 
     listing = await client.call_tool("list_files", {"path": "notes"})
-    assert any(row["name"] == "demo.txt" for row in listing)
+    assert any(row.get("path") == "notes/demo.txt" for row in listing)
 
     tree = await client.call_tool("tree_view", {"cwd": ".", "depth": 2})
     assert tree["exists"] is True
@@ -134,7 +134,7 @@ async def exercise_filesystem_and_search_tools(
 
     scan_file = workspace / "notes" / "token.txt"
     scan_file.write_text(
-        "TOKEN = 'ghp_1234567890123456789012345678901234567890'\n",
+        "password = 'local-only-test-value'\n",
         encoding="utf-8",
     )
     scan_result = await client.call_tool(
@@ -184,11 +184,17 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
         pytest.skip("tmux is required for interactive shell e2e coverage")
 
     await assert_required_tools(client, INTERACTIVE_SHELL_TOOL_NAMES)
-    started = await client.call_tool(
-        "shell_start", {"name": "e2e", "command": "printf ready"}
-    )
+    started = await client.call_tool("shell_start", {"name": "e2e"})
     session_id = started["session_id"]
     try:
+        await client.call_tool(
+            "shell_send",
+            {
+                "session_id": session_id,
+                "input_text": "printf ready",
+                "enter": True,
+            },
+        )
         deadline = time.monotonic() + 5
         output = ""
         while time.monotonic() < deadline:
