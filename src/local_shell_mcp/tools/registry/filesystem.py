@@ -12,19 +12,15 @@ from ...ops.fs_ops import (
     glob_paths,
     list_dir,
     multi_edit_text,
+    read_many_files_sync,
     read_text,
     write_text,
 )
+from ...ops.patch_ops import apply_patch_text
 from ...ops.search_ops import grep, tree
+from ...ops.secret_scan_ops import run_secret_scan
 from ..base import HttpToolRoute, McpToolContext, ToolHandler, ToolRegistry
-from .common import (
-    apply_patch_text,
-    handled_error,
-    ok_response,
-    read_many_files_sync,
-    run_secret_scan,
-    to_thread,
-)
+from .common import handled_error, ok_response, to_thread
 
 
 async def _list_files(args: dict[str, Any]) -> list[dict[str, Any]]:
