@@ -1,12 +1,8 @@
-# Tools
+# Tools reference
 
-`local-shell-mcp` exposes a small read-only connector surface plus a full coding-agent surface. Tool availability depends on the MCP client and server configuration.
-
-Regular ChatGPT connectors and Deep Research-style clients can use `search` and `fetch`. ChatGPT Developer Mode and full MCP clients can use the complete tool set.
+Tool availability depends on the MCP client and server configuration. Regular ChatGPT connectors and Deep Research-style clients can use `search` and `fetch`. ChatGPT Developer Mode and full MCP clients can use the complete tool set.
 
 All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-container mode is enabled. Remote tools perform the same category of operation on a connected remote worker and add a required `machine` argument.
-
-Tool definitions are registered through category registries under `src/local_shell_mcp/tools/registry/`. The MCP surface and REST debug API are derived from those registries; `tools/local_invocations.py` only aggregates registry-provided HTTP handlers.
 
 ## Read-only connector tools
 
@@ -22,21 +18,17 @@ Tool definitions are registered through category registries under `src/local_she
 | `environment_info` | Return workspace, auth, policy, and basic runtime information. |
 | `secret_scan` | Scan workspace text files for common secret patterns before commit, push, release, or sharing logs. |
 
-The audit log is still populated internally at the MCP and REST routing layers. Normal tool calls produce paired `tool_call_start` and `tool_call_end` records with the full input and output payloads, linked by `call_id`. Shell/auth/remote subsystems may add more specialized events such as `run_shell_start`, `auth_ok`, and `remote_worker_registered`. There is no model-facing audit-tail tool.
-
 ## Shell and Python
 
 | Tool | Purpose |
 |---|---|
-| `run_shell_tool` | Run a bounded non-interactive shell command in the workspace. Use this for git workflows. |
+| `run_shell_tool` | Run a bounded non-interactive shell command in the workspace. Use this for Git workflows. |
 | `run_python_tool` | Write Python code to a temporary file and execute it. |
 | `shell_start` | Start a persistent tmux-backed shell session. |
 | `shell_send` | Send input to a persistent shell session. |
 | `shell_read` | Read recent output from a persistent shell session. |
 | `shell_kill` | Kill a persistent shell session. |
 | `shell_list` | List persistent shell sessions. |
-
-Command execution is limited by timeout, output-size, and concurrency settings. Public shell calls use a stricter public timeout cap than the internal maximum. Persistent shells are useful for long-running REPLs, dev servers, and interactive commands. Dedicated git tools are intentionally not exposed; run git through `run_shell_tool` or a persistent shell.
 
 ## Filesystem and search
 
@@ -54,18 +46,12 @@ Command execution is limited by timeout, output-size, and concurrency settings. 
 | `delete_file_or_dir` | Delete a file or directory. |
 | `apply_patch` | Apply a unified diff using `git apply` as a file-editing primitive. |
 
-The file tools reject path escapes outside the workspace unless `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true`. Text reads and writes are bounded by configured byte limits. Binary files are not returned as text unless an explicit preview mode is requested.
-
-Run `secret_scan` and inspect diffs before committing or pushing.
-
 ## Todo state
 
 | Tool | Purpose |
 |---|---|
 | `todo_read_tool` | Read the agent todo list. |
 | `todo_write_tool` | Replace the agent todo list. |
-
-Todo state is stored under the server state directory and is bounded by configured count and byte limits.
 
 ## Remote worker management
 
@@ -77,13 +63,11 @@ Todo state is stored under the server state directory and is bounded by configur
 | `remote_rename_machine` | Rename a remote worker. |
 | `remote_environment_info` | Return environment information for a remote worker. |
 
-Remote workers connect back to the control server over outbound HTTP(S), long-poll for jobs, execute them locally, and return results.
-
 ## Remote shell and Python
 
 | Tool | Purpose |
 |---|---|
-| `remote_run_shell_tool` | Run a shell command on a remote worker. Use this for remote git workflows. |
+| `remote_run_shell_tool` | Run a shell command on a remote worker. Use this for remote Git workflows. |
 | `remote_run_python_tool` | Write Python code to a temporary file and execute it on a remote worker. |
 | `remote_shell_start` | Start a persistent remote shell session. |
 | `remote_shell_send` | Send input to a remote shell session. |
@@ -107,8 +91,6 @@ Remote workers connect back to the control server over outbound HTTP(S), long-po
 | `remote_delete_file_or_dir` | Delete a remote file or directory. |
 | `remote_apply_patch` | Apply a unified diff on a remote worker. |
 
-Dedicated remote git tools are intentionally not exposed. Use `remote_run_shell_tool` for one-shot remote git commands or `remote_shell_start` for longer interactive remote workflows.
-
 ## Agent capability bridge tools
 
 These tools are registered when `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED=true`.
@@ -119,12 +101,10 @@ These tools are registered when `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED=true`.
 | `activate_agent_skill` | Return the contents of a discovered `SKILL.md`. |
 | `call_agent_mcp_tool` | Call a tool from a configured external MCP server through a fixed bridge. |
 
-If dynamic tools are enabled in both environment settings and the bridge manifest, discovered skills and external MCP tools can also appear as individual MCP tools. Dynamic tools are hot-reloaded when the manifest changes.
-
 ## Safety-related behavior
 
 - Path operations are restricted to the workspace by default.
 - Default path denylists block sensitive fragments such as `.env`, credentials, private SSH keys, and `.git/config`.
 - Default command denylists block host-control fragments such as Docker socket access, mounting, shutdown, reboot, firewall manipulation, and similar commands.
-- `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true` disables built-in path and command restrictions and adds auto-approval hints for command-capable tools. Use it only in disposable containers or VMs.
-- OAuth/bootstrap metadata, health checks, and remote-worker join/poll/result endpoints are public. MCP-over-HTTP tool calls require OAuth unless `auth_mode=none` is configured. Localhost auth bypass is limited to the REST debug API (`--mode http`).
+- Full-container mode disables built-in path and command restrictions and adds auto-approval hints for command-capable tools.
+- OAuth/bootstrap metadata, health checks, and remote-worker join/poll/result endpoints are public. MCP-over-HTTP tool calls require OAuth unless `auth_mode=none` is configured.
