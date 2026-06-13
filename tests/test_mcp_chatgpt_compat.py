@@ -1,7 +1,12 @@
+import base64
+import hashlib
 import json
 import time
+from urllib.parse import parse_qs, urlparse
 
 import pytest
+from fastapi.testclient import TestClient
+from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.auth.oauth import (
@@ -11,7 +16,11 @@ from local_shell_mcp.auth.oauth import (
     validate_bearer_token,
 )
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.mcp.app import _transport_security_settings, build_mcp
+from local_shell_mcp.mcp.app import (
+    _transport_security_settings,
+    build_mcp,
+    with_oauth_routes,
+)
 from local_shell_mcp.tools.registry import agent as tools_module
 
 
@@ -225,6 +234,105 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
     assert tools["run_shell_tool"].annotations is None
+
+
+def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
+    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
+    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
+    clear_settings_cache()
+
+    client = TestClient(with_oauth_routes(Starlette()))
+    register_response = client.post(
+        "/oauth/register",
+        json={
+            "client_name": "Regression Client",
+            "redirect_uris": ["https://client.example/callback"],
+        },
+    )
+
+    assert register_response.status_code == 201
+    assert register_response.headers["cache-control"] == "no-store"
+    registration = register_response.json()
+    assert registration["client_id"].startswith("local-shell-mcp-")
+    assert registration["client_name"] == "Regression Client"
+    assert registration["redirect_uris"] == ["https://client.example/callback"]
+
+    verifier = "v" * 64
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    authorize_response = client.post(
+        "/oauth/authorize",
+        data={
+            "response_type": "code",
+            "client_id": registration["client_id"],
+            "redirect_uri": "https://client.example/callback",
+            "resource": "https://local-shell-mcp.example.com/mcp",
+            "scope": "shell:read shell:execute",
+            "state": "opaque-state",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "pin": "1234",
+        },
+        follow_redirects=False,
+    )
+
+    assert authorize_response.status_code == 302
+    redirect = urlparse(authorize_response.headers["location"])
+    assert f"{redirect.scheme}://{redirect.netloc}{redirect.path}" == (
+        "https://client.example/callback"
+    )
+    redirect_query = parse_qs(redirect.query)
+    assert redirect_query["iss"] == ["https://local-shell-mcp.example.com"]
+    assert redirect_query["state"] == ["opaque-state"]
+    code = redirect_query["code"][0]
+
+    token_response = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": registration["client_id"],
+            "redirect_uri": "https://client.example/callback",
+            "resource": "https://local-shell-mcp.example.com/mcp",
+            "code_verifier": verifier,
+        },
+    )
+
+    assert token_response.status_code == 200
+    assert token_response.headers["cache-control"] == "no-store"
+    token_payload = token_response.json()
+    assert token_payload["token_type"] == "Bearer"
+    assert token_payload["scope"] == "shell:read shell:execute"
+    assert token_payload["expires_in"] > 0
+
+    claims = validate_bearer_token(token_payload["access_token"])
+    assert claims["iss"] == "https://local-shell-mcp.example.com"
+    assert claims["aud"] == "https://local-shell-mcp.example.com/mcp"
+    assert claims["client_id"] == registration["client_id"]
+    assert claims["scope"] == "shell:read shell:execute"
+
+    reuse_response = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": registration["client_id"],
+            "redirect_uri": "https://client.example/callback",
+            "resource": "https://local-shell-mcp.example.com/mcp",
+            "code_verifier": verifier,
+        },
+    )
+
+    assert reuse_response.status_code == 400
+    assert reuse_response.json() == {
+        "error": "invalid_grant",
+        "error_description": "Unknown or used code",
+    }
 
 
 def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
