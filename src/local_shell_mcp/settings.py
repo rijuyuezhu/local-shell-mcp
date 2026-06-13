@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     max_concurrent_commands: int = 4
     max_tmux_sessions: int = 16
 
+    file_download_enabled: bool = True
+    file_download_default_ttl_s: int = 3600
+    file_download_max_ttl_s: int = 604800
+    file_download_default_max_downloads: int = 0
+    file_download_max_file_bytes: int = 0
+
     # Remote worker mode is enabled by default. Remote machines join with one-time
     # invites, poll for jobs over outbound HTTP(S), and expose near-parity tools.
     remote_enabled: bool = True

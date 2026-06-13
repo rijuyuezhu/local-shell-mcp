@@ -6,6 +6,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .auth import CloudflareAccessMiddleware, Principal, verify_request
+from .downloads import (
+    create_download_link,
+    download_endpoint,
+    list_download_links,
+    revoke_download_link,
+)
 from .fs_ops import (
     delete_path,
     edit_text,
@@ -140,6 +146,28 @@ def build_http_app() -> FastAPI:
     @app.post("/tools/grep")
     async def api_grep(body: dict, _: Principal = PRINCIPAL_DEP):
         return await grep(body["query"], body.get("cwd", "."), body.get("glob"), body.get("regex", True), body.get("case_sensitive", True), body.get("max_results"))
+
+    @app.api_route("/download/{token}", methods=["GET", "HEAD"])
+    async def api_download(request: Request):
+        return await download_endpoint(request)
+
+    @app.post("/tools/download/create")
+    async def api_create_download_link(body: dict, _: Principal = PRINCIPAL_DEP):
+        return await _blocking(
+            create_download_link,
+            body["path"],
+            body.get("ttl_s"),
+            body.get("filename"),
+            body.get("max_downloads"),
+        )
+
+    @app.get("/tools/download/list")
+    async def api_list_download_links(include_expired: bool = False, _: Principal = PRINCIPAL_DEP):
+        return await _blocking(list_download_links, include_expired)
+
+    @app.post("/tools/download/revoke")
+    async def api_revoke_download_link(body: dict, _: Principal = PRINCIPAL_DEP):
+        return await _blocking(revoke_download_link, body["token"])
 
     @app.post("/tools/read_file")
     async def api_read_file(body: dict, _: Principal = PRINCIPAL_DEP):

@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from .auth import AuthMiddleware
+from .downloads import download_routes
 from .http_app import build_http_app
 from .oauth import (
     oauth_authorize_get,
@@ -44,6 +45,7 @@ def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
             Mount("/", app=inner_app),
         ]
     settings = get_settings()
+    routes[2:2] = download_routes()
     if settings.remote_enabled:
         routes[2:2] = remote_routes()
     return Starlette(

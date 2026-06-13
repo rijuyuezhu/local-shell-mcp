@@ -535,6 +535,33 @@ def build_mcp() -> FastMCP:
             return _handled_error(exc)
 
     @mcp.tool(meta=oauth_meta)
+    async def create_file_link(path: str, ttl_s: int | None = None, filename: str | None = None, max_downloads: int | None = None) -> dict:
+        """Create a temporary browser-accessible download URL for a file. max_downloads=0 means unlimited until expiry."""
+        try:
+            mod = __import__("local_shell_mcp.downloads", fromlist=["create_share_link"])
+            return _ok(await _to_thread(mod.create_share_link, path, ttl_s, filename, max_downloads))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def list_file_links(include_expired: bool = False) -> dict:
+        """List generated file download URLs."""
+        try:
+            mod = __import__("local_shell_mcp.downloads", fromlist=["list_share_links"])
+            return _ok(await _to_thread(mod.list_share_links, include_expired))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
+    async def revoke_file_link(token: str) -> dict:
+        """Revoke a generated file download URL."""
+        try:
+            mod = __import__("local_shell_mcp.downloads", fromlist=["revoke_share_link"])
+            return _ok(await _to_thread(mod.revoke_share_link, token))
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(meta=oauth_meta)
     async def write_file(path: str, content: str, overwrite: bool = True) -> dict:
         """Write a UTF-8 text file."""
         try:
