@@ -34,6 +34,7 @@ from .oauth_metadata import (
     protected_resource_metadata,
 )
 from .oauth_models import _CLIENTS, _CODES, AuthCode, OAuthClient
+from .oauth_registration import oauth_register
 from .oauth_responses import (
     _invalid_grant,
     _invalid_request,
@@ -99,43 +100,6 @@ def _jwt_secret() -> str:
     secret_path.write_text(secret + "\n", encoding="utf-8")
     secret_path.chmod(0o600)
     return secret
-
-
-async def oauth_register(request: Request) -> JSONResponse:
-    """Accept dynamic client registration and persist the issued client identifier."""
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
-    redirect_uris = [
-        str(x) for x in body.get("redirect_uris", []) if isinstance(x, str)
-    ]
-    client = OAuthClient(
-        client_id=client_id,
-        redirect_uris=redirect_uris,
-        client_name=body.get("client_name")
-        if isinstance(body.get("client_name"), str)
-        else None,
-    )
-    _CLIENTS[client_id] = client
-    audit(
-        "oauth_client_registered",
-        client_id=client_id,
-        redirect_uris=redirect_uris,
-    )
-    return _json(
-        {
-            "client_id": client_id,
-            "client_id_issued_at": client.created_at,
-            "client_name": client.client_name or "ChatGPT",
-            "redirect_uris": redirect_uris,
-            "grant_types": ["authorization_code"],
-            "response_types": ["code"],
-            "token_endpoint_auth_method": "none",
-        },
-        status_code=201,
-    )
 
 
 def _validate_authorize_params(params: dict[str, str]) -> str | None:
