@@ -89,7 +89,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 - Do not add a second global tool table. MCP and REST surfaces should be derived from category registries.
 - Routed tool calls are audited centrally. Avoid per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured.
-- OAuth HTTP mode is split by responsibility: models/state, URL helpers, metadata endpoints, response serialization, dynamic client registration, authorization form/code flow, and token/JWT validation. Import from the focused `auth.oauth_*` modules rather than a compatibility facade.
+- OAuth HTTP mode is split by responsibility: models/state, URL helpers, metadata endpoints, response serialization, dynamic client registration, authorization form/code flow, token/JWT validation, and ASGI route wrapping. Import from the focused `auth.oauth_*` modules rather than a compatibility facade.
 - Tool and remote endpoint responses should use shared envelope builders from `local_shell_mcp.responses`, with tool-specific handling layered in `tools.responses`.
 - File tools avoid reading full binary files by default and enforce configured read/write limits.
 - Operation modules that need managed temporary text files should use `ops.temp_file_ops` so temp pruning, size checks, and filename generation stay consistent.

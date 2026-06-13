@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
 import uvicorn
@@ -10,17 +9,9 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route
 
 from ..auth.middleware import AuthMiddleware
-from ..auth.oauth_authorization import oauth_authorize_get, oauth_authorize_post
-from ..auth.oauth_metadata import (
-    oauth_protected_resource,
-    oauth_server_metadata,
-)
-from ..auth.oauth_registration import oauth_register
-from ..auth.oauth_tokens import oauth_token
+from ..auth.oauth_routes import wrap_with_oauth_routes
 from ..config.settings import get_settings
 from ..remote.http import remote_routes
 from ..tools.contracts import McpToolContext
@@ -145,59 +136,16 @@ def build_mcp() -> FastMCP:
     return mcp
 
 
-def with_oauth_routes(inner_app: Starlette) -> Starlette:
-    """Wrap the MCP ASGI app with health, OAuth, and remote-worker routes."""
-
-    @asynccontextmanager
-    async def lifespan(app: Starlette):
-        async with inner_app.router.lifespan_context(inner_app):
-            yield
-
-    routes = [
-        Route(
-            "/healthz",
-            lambda request: JSONResponse({"ok": True}),
-            methods=["GET"],
-        ),
-        Route(
-            "/readyz",
-            lambda request: JSONResponse({"ok": True}),
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/oauth-protected-resource",
-            oauth_protected_resource,
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/oauth-authorization-server",
-            oauth_server_metadata,
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/openid-configuration",
-            oauth_server_metadata,
-            methods=["GET"],
-        ),
-        Route("/oauth/register", oauth_register, methods=["POST"]),
-        Route("/oauth/authorize", oauth_authorize_get, methods=["GET"]),
-        Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
-        Route("/oauth/token", oauth_token, methods=["POST"]),
-        Mount("/", app=inner_app),
-    ]
-    settings = get_settings()
-    if settings.remote_enabled:
-        routes[2:2] = remote_routes()
-    return Starlette(routes=routes, lifespan=lifespan)
-
-
 def build_mcp_http_app(mcp: FastMCP) -> Starlette:
     """Build the MCP HTTP ASGI app for the current settings and SDK version."""
     settings = get_settings()
     for attr in ("streamable_http_app", "sse_app"):
         if hasattr(mcp, attr):
             inner: Starlette = getattr(mcp, attr)()
-            app = with_oauth_routes(inner)
+            app = wrap_with_oauth_routes(
+                inner,
+                extra_routes=remote_routes() if settings.remote_enabled else (),
+            )
             if settings.auth_mode != "none":
                 app.add_middleware(AuthMiddleware)
             return app
