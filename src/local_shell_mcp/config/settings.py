@@ -210,9 +210,8 @@ class Settings(BaseSettings):
     @classmethod
     def expand_path(cls, value: str | Path) -> Path:
         """Expand user and environment variables for path settings before validation."""
-        return Path(
-            os.path.expandvars(os.path.expanduser(str(value)))
-        ).resolve()
+        expanded = os.path.expandvars(os.path.expanduser(str(value)))
+        return Path(os.path.abspath(expanded))
 
     @field_validator("command_denylist", "path_denylist", mode="before")
     @classmethod
