@@ -7,7 +7,7 @@ The agent capability bridge exposes externally synced agent capabilities from a 
 With the default Docker Compose layout, write files on the host under:
 
 ```text
-workspaces/default/agent/local-shell-mcp-config/
+workspaces/default/.local-shell-mcp/agent_config/
   config.json
   skills/
     <skill-name>/
@@ -17,7 +17,7 @@ workspaces/default/agent/local-shell-mcp-config/
 The container reads the same files from:
 
 ```text
-/home/agent/local-shell-mcp-config
+/workspace/.local-shell-mcp/agent_config
 ```
 
 The default Compose workspace mount is read-write, but `local-shell-mcp` does not mutate this directory. Mount it read-only in stricter deployments.
@@ -60,7 +60,7 @@ When dynamic tools are enabled in both environment settings and the bridge manif
 | Variable | Default | Meaning |
 |---|---:|---|
 | `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED` | `true` | Enable agent bridge tools |
-| `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/home/agent/local-shell-mcp-config` | Read-only capability config directory |
+| `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/workspace/.local-shell-mcp/agent_config` | Read-only capability config directory |
 | `LOCAL_SHELL_MCP_AGENT_MCP_PROBE_TIMEOUT_S` | `5` | Probe timeout for external MCP servers |
 | `LOCAL_SHELL_MCP_AGENT_MCP_CALL_TIMEOUT_S` | `60` | External MCP tool-call timeout |
 | `LOCAL_SHELL_MCP_AGENT_DYNAMIC_MCP_TOOLS` | `true` | Register dynamic MCP bridge tools |
