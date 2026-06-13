@@ -100,7 +100,8 @@ async def test_client_manager_list_tools_accumulates_paginated_pages(
         def __init__(self):
             self.cursors = []
 
-        async def list_tools(self, cursor=None):
+        async def list_tools(self, *, params=None):
+            cursor = params.cursor if params else None
             self.cursors.append(cursor)
             if cursor is None:
                 return SimpleNamespace(
@@ -189,7 +190,8 @@ async def test_client_manager_list_tools_cleans_up_session_on_use_error(
     events = []
 
     class FakeSession:
-        async def list_tools(self, cursor=None):
+        async def list_tools(self, *, params=None):
+            cursor = params.cursor if params else None
             events.append(("list_tools", cursor))
             raise RuntimeError("list failed")
 

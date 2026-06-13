@@ -1,7 +1,7 @@
 """Normalize upstream MCP protocol objects and manage client sessions for configured agent bridge servers."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -11,6 +11,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.types import PaginatedRequestParams
 
 from .models import AgentMcpServerConfig
 
@@ -88,7 +89,7 @@ class AgentMcpClientManager:
     @asynccontextmanager
     async def _session(
         self, name: str, server: AgentMcpServerConfig
-    ) -> AsyncIterator[ClientSession]:
+    ) -> AsyncGenerator[ClientSession]:
         """Open and initialize the transport-specific MCP client session for one configured server."""
         match server.type:
             case "stdio":
@@ -146,7 +147,9 @@ class AgentMcpClientManager:
                 tools: list[AgentMcpTool] = []
                 cursor: str | None = None
                 while True:
-                    result = await session.list_tools(cursor=cursor)
+                    result = await session.list_tools(
+                        params=PaginatedRequestParams(cursor=cursor)
+                    )
                     tools.extend(
                         normalize_mcp_tool(tool)
                         for tool in _value(result, "tools", result)
