@@ -4,8 +4,6 @@ Security model: see ``docs/security.md#oauth-security``. This middleware is the
 resource-server boundary for tool and MCP requests.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -143,7 +141,7 @@ def verify_request(request: Request) -> Principal:
 class AuthMiddleware:
     """ASGI middleware for OAuth bearer verification."""
 
-    def __init__(self, app: ASGIApp):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     async def __call__(
@@ -170,7 +168,7 @@ class AuthMiddleware:
             principal = verify_request(request)
             scope.setdefault("state", {})["principal"] = principal
         except HTTPException as exc:
-            headers = getattr(exc, "headers", None) or {}
+            headers = exc.headers or {}
             response = JSONResponse(
                 {"detail": exc.detail},
                 status_code=exc.status_code,

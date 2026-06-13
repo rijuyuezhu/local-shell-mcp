@@ -1,7 +1,5 @@
 """HTTP routes for remote worker bootstrap, polling, and results."""
 
-from __future__ import annotations
-
 import shlex
 from importlib import resources
 

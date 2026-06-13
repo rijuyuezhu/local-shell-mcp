@@ -5,8 +5,6 @@ permissive for MCP onboarding; local approval and redirect/resource checks occur
 later in the authorization flow.
 """
 
-from __future__ import annotations
-
 import secrets
 
 from starlette.requests import Request

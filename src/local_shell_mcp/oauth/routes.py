@@ -4,12 +4,11 @@ Security model: see ``docs/security.md#oauth-security``. Route ordering keeps
 OAuth discovery/public bootstrap ahead of the mounted protected MCP app.
 """
 
-from __future__ import annotations
-
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Mount, Route
 
@@ -25,19 +24,25 @@ def wrap_http_app(
     """Wrap an inner ASGI app with health, OAuth, optional extra, and fallback routes."""
 
     @asynccontextmanager
-    async def lifespan(app: Starlette):
+    async def lifespan(app: Starlette) -> AsyncGenerator[None]:
         async with inner_app.router.lifespan_context(inner_app):
             yield
+
+    def healthz(request: Request) -> JSONResponse:
+        return JSONResponse({"ok": True})
+
+    def readyz(request: Request) -> JSONResponse:
+        return JSONResponse({"ok": True})
 
     routes = [
         Route(
             "/healthz",
-            lambda request: JSONResponse({"ok": True}),
+            healthz,
             methods=["GET"],
         ),
         Route(
             "/readyz",
-            lambda request: JSONResponse({"ok": True}),
+            readyz,
             methods=["GET"],
         ),
         *extra_routes,

@@ -1,7 +1,5 @@
 """Build and run the MCP ASGI/stdio application."""
 
-from __future__ import annotations
-
 from urllib.parse import urlparse
 
 import uvicorn

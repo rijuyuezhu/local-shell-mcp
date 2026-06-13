@@ -1,7 +1,5 @@
 """Skill discovery and activation helpers for the agent bridge."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 from typing import Any

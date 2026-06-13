@@ -1,7 +1,5 @@
 """Remote worker-side tool dispatch, process loop, and CLI helpers."""
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import os

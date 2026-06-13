@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Generate config.example.yaml and .env.example from the settings registry."""
 
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path

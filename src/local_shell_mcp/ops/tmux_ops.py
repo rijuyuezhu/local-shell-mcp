@@ -1,7 +1,5 @@
 """tmux-backed persistent shell session helpers."""
 
-from __future__ import annotations
-
 import re
 import shlex
 import uuid

@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 import asyncio
 import os
 import subprocess
 import sys
 import tarfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -45,7 +43,7 @@ REMOTE_TOOL_NAMES = {
 @asynccontextmanager
 async def run_remote_enabled_mcp_process(
     tmp_path: Path,
-) -> AsyncIterator[tuple[str, Path, Path]]:
+) -> AsyncGenerator[tuple[str, Path, Path]]:
     control_workspace = tmp_path / "workspace-control"
     remote_workspace = tmp_path / "workspace-remote"
     control_workspace.mkdir()

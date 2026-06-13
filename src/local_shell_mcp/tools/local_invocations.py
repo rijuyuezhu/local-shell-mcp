@@ -1,7 +1,5 @@
 """Shared local tool invocation helpers used by HTTP adapters."""
 
-from __future__ import annotations
-
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass

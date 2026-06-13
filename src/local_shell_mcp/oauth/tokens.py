@@ -4,8 +4,6 @@ Security model: see ``docs/security.md#oauth-security``. Token exchange binds
 authorization codes to client, redirect URI, resource, PKCE, and one-time use.
 """
 
-from __future__ import annotations
-
 import secrets
 import time
 from typing import Any

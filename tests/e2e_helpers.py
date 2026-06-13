@@ -1,12 +1,10 @@
-from __future__ import annotations
-
 import asyncio
 import json
 import os
 import socket
 import subprocess
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +14,7 @@ import httpx
 import pytest
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
@@ -103,7 +101,7 @@ async def wait_for_http_ready(
 @asynccontextmanager
 async def run_http_process(
     tmp_path: Path, *, mode: str
-) -> AsyncIterator[tuple[str, Path]]:
+) -> AsyncGenerator[tuple[str, Path]]:
     workspace = tmp_path / f"workspace-{mode}"
     workspace.mkdir()
     port = free_tcp_port()
@@ -240,11 +238,14 @@ class McpSessionToolClient:
 @asynccontextmanager
 async def streamable_http_tool_client(
     base_url: str,
-) -> AsyncIterator[McpSessionToolClient]:
+) -> AsyncGenerator[McpSessionToolClient]:
     async with (
-        streamablehttp_client(
-            f"{base_url}/mcp", timeout=20, sse_read_timeout=20
-        ) as (read, write, _),
+        httpx.AsyncClient(timeout=20) as client,
+        streamable_http_client(f"{base_url}/mcp", http_client=client) as (
+            read,
+            write,
+            _,
+        ),
         ClientSession(read, write) as session,
     ):
         await session.initialize()
@@ -254,7 +255,7 @@ async def streamable_http_tool_client(
 @asynccontextmanager
 async def stdio_tool_client(
     tmp_path: Path,
-) -> AsyncIterator[tuple[McpSessionToolClient, Path]]:
+) -> AsyncGenerator[tuple[McpSessionToolClient, Path]]:
     workspace = tmp_path / "workspace-stdio"
     workspace.mkdir()
     params = StdioServerParameters(

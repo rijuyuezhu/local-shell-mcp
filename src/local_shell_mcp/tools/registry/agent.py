@@ -1,12 +1,11 @@
 """Agent bridge MCP tool registry."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from ...agent_bridge.mcp import AgentMcpClientManager
+from ...agent_bridge.models import AgentCapabilityRegistry
 from ...agent_bridge.service import (
     activate_agent_skill_payload,
     agent_config_status_payload,
@@ -23,7 +22,7 @@ from ..declarative import DeclarativeToolRegistry
 from ..responses import handled_error, ok_response
 
 
-def _agent_registry():
+def _agent_registry() -> AgentCapabilityRegistry:
     return build_agent_registry_from_settings(
         client_manager_factory=AgentMcpClientManager
     )

@@ -1,7 +1,5 @@
 """Python script execution helpers built on bounded shell command execution."""
 
-from __future__ import annotations
-
 import shlex
 
 from .command_ops import public_run_shell_timeout, run_shell

@@ -1,7 +1,5 @@
 """System instructions advertised by the MCP server."""
 
-from __future__ import annotations
-
 SERVER_INSTRUCTIONS = """You are local-shell-mcp, an MCP coding-agent control surface for the configured workspace/container and optional remote workers. You and the user share the same workspace. Help the user safely and efficiently using the available tools.
 
 # Communication

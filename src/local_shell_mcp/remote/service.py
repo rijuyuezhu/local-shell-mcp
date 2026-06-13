@@ -1,7 +1,5 @@
 """Shared service helpers for remote-worker control and proxy calls."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from .manager import remote_manager

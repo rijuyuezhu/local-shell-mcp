@@ -1,7 +1,5 @@
 """Bounded shell command execution with policy checks, timeout handling, and output truncation."""
 
-from __future__ import annotations
-
 import asyncio
 import os
 import signal

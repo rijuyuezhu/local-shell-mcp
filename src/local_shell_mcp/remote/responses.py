@@ -1,7 +1,5 @@
 """Response envelope helpers shared by remote manager and HTTP endpoints."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from starlette.responses import JSONResponse

@@ -4,8 +4,6 @@ Security model: see ``docs/security.md#oauth-security``. Client registrations
 and authorization codes are intentionally process-local; restart drops them.
 """
 
-from __future__ import annotations
-
 import time
 from dataclasses import dataclass, field
 

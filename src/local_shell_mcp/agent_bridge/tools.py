@@ -1,9 +1,7 @@
 """Register agent bridge skills and upstream MCP tools as callable tools on the public FastMCP server."""
 
-from __future__ import annotations
-
 import threading
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any
 
@@ -19,6 +17,8 @@ from .state import agent_config_fingerprint
 
 type OkFn = Callable[..., dict[str, Any]]
 type HandledErrorFn = Callable[[Exception], dict[str, Any]]
+type SkillHandler = Callable[[], Awaitable[dict[str, Any]]]
+type McpHandler = Callable[..., Awaitable[dict[str, Any]]]
 
 
 class AgentBridgeToolReloader:
@@ -122,10 +122,12 @@ class AgentBridgeToolReloader:
         self._dynamic_tool_names.clear()
 
 
-def make_skill_handler(reloader: AgentBridgeToolReloader, skill_name: str):
+def make_skill_handler(
+    reloader: AgentBridgeToolReloader, skill_name: str
+) -> SkillHandler:
     """Create a FastMCP handler that activates one discovered skill from the current registry."""
 
-    async def handler() -> dict:
+    async def handler():
         try:
             return reloader.ok(
                 activate_agent_skill_payload(
@@ -140,10 +142,10 @@ def make_skill_handler(reloader: AgentBridgeToolReloader, skill_name: str):
 
 def make_mcp_handler(
     reloader: AgentBridgeToolReloader, server_name: str, tool_name: str
-):
+) -> McpHandler:
     """Create a FastMCP handler that proxies one upstream MCP tool with redacted arguments and errors."""
 
-    async def handler(args: dict[str, Any] | None = None) -> dict:
+    async def handler(args: dict[str, Any] | None = None):
         try:
             return reloader.ok(
                 await call_agent_mcp_tool_payload(
@@ -163,11 +165,13 @@ def _install_agent_bridge_reload_hooks(
     original_list_tools = mcp.list_tools
     original_call_tool = mcp.call_tool
 
-    async def list_tools_with_agent_reload():
+    async def list_tools_with_agent_reload() -> Any:
         reloader.refresh_if_needed()
         return await original_list_tools()
 
-    async def call_tool_with_agent_reload(name: str, arguments: dict[str, Any]):
+    async def call_tool_with_agent_reload(
+        name: str, arguments: dict[str, Any]
+    ) -> Any:
         reloader.refresh_if_needed()
         return await original_call_tool(name, arguments)
 

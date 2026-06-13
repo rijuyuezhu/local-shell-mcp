@@ -1,7 +1,5 @@
 """Search and tree-view tool registry."""
 
-from __future__ import annotations
-
 import asyncio
 
 from ...ops.fs_ops import glob_paths

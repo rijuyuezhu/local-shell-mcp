@@ -1,7 +1,5 @@
 """Workspace connector MCP tool registry."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 

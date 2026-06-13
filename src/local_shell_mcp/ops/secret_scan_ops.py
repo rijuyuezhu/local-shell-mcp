@@ -1,7 +1,5 @@
 """Scan workspace text files for credential-like strings."""
 
-from __future__ import annotations
-
 import asyncio
 import re
 from typing import Any

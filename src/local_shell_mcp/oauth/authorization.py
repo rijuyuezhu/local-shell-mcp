@@ -4,8 +4,6 @@ Security model: see ``docs/security.md#oauth-security``. Authorization requests
 are validated before rendering local approval UI or issuing one-time codes.
 """
 
-from __future__ import annotations
-
 import hmac
 import html as html_lib
 import secrets

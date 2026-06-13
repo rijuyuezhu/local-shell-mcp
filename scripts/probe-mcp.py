@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 import argparse
 import asyncio
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 
 async def oauth_token(base_url: str, pin: str) -> str:
@@ -55,12 +53,8 @@ async def oauth_token(base_url: str, pin: str) -> str:
 async def list_tools(mcp_url: str, token: str | None = None) -> list[str]:
     headers = {"Authorization": f"Bearer {token}"} if token else None
     async with (
-        streamablehttp_client(
-            mcp_url,
-            headers=headers,
-            timeout=20,
-            sse_read_timeout=20,
-        ) as (read, write, _),
+        httpx.AsyncClient(headers=headers, timeout=20) as client,
+        streamable_http_client(mcp_url, http_client=client) as (read, write, _),
         ClientSession(read, write) as session,
     ):
         await session.initialize()
@@ -70,12 +64,10 @@ async def list_tools(mcp_url: str, token: str | None = None) -> list[str]:
 
 async def call_environment_info(mcp_url: str, token: str) -> bool:
     async with (
-        streamablehttp_client(
-            mcp_url,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=20,
-            sse_read_timeout=20,
-        ) as (read, write, _),
+        httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {token}"}, timeout=20
+        ) as client,
+        streamable_http_client(mcp_url, http_client=client) as (read, write, _),
         ClientSession(read, write) as session,
     ):
         await session.initialize()

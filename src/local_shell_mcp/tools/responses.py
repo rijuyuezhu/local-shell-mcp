@@ -1,7 +1,5 @@
 """Shared tool response envelopes and error conversion helpers."""
 
-from __future__ import annotations
-
 from contextlib import suppress
 from typing import Any
 

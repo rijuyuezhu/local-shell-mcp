@@ -1,7 +1,5 @@
 """Apply patch operations through bounded shell execution."""
 
-from __future__ import annotations
-
 import shlex
 
 from .command_ops import run_shell

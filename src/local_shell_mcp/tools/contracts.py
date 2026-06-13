@@ -1,7 +1,5 @@
 """Shared tool registry contracts and transport-facing metadata types."""
 
-from __future__ import annotations
-
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal

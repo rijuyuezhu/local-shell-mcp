@@ -1,7 +1,5 @@
 """Secret scanning tool registry."""
 
-from __future__ import annotations
-
 from ...ops.secret_scan_ops import run_secret_scan
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry

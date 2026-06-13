@@ -1,7 +1,5 @@
 """Build and serve the source/dependency bundle used by remote workers."""
 
-from __future__ import annotations
-
 import importlib.metadata as importlib_metadata
 import re
 import tarfile
