@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse, urlunparse
+
 from starlette.requests import Request
 
 from ..config.settings import get_settings
@@ -37,6 +39,25 @@ def resource_url(request: Request | None = None) -> str:
     # Use the MCP endpoint, not just the origin, so access tokens are audience-bound
     # to this server rather than every service on the same host.
     return (public_base_url(request).rstrip("/") + "/mcp").rstrip("/")
+
+
+def protected_resource_metadata_url(request: Request | None = None) -> str:
+    """Return the RFC9728 metadata URL for the canonical protected resource."""
+    parsed = urlparse(resource_url(request))
+    path = parsed.path or ""
+    if path == "/":
+        path = ""
+    metadata_path = "/.well-known/oauth-protected-resource" + path
+    return urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            metadata_path,
+            "",
+            parsed.query,
+            "",
+        )
+    )
 
 
 def _normalize_resource(value: str) -> str:

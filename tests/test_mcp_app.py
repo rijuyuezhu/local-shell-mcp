@@ -2,6 +2,7 @@ from typing import Any, cast
 
 from starlette.applications import Starlette
 from starlette.routing import Route
+from starlette.testclient import TestClient
 
 import local_shell_mcp.mcp.app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
@@ -66,3 +67,36 @@ def test_run_mcp_uses_stdio_transport(monkeypatch):
     mcp_app.run_mcp()
 
     assert dummy.transports == ["stdio"]
+
+
+def test_oauth_challenge_metadata_url_matches_rfc9728_path_resource():
+    configure_settings(
+        Settings(
+            mode="mcp",
+            auth_mode="oauth",
+            remote_enabled=False,
+            public_base_url="https://local-shell-mcp.example.com",
+        )
+    )
+
+    app = mcp_app.build_mcp_http_app(cast(Any, _DummyMcp()))
+    client = TestClient(app)
+
+    response = client.get("/mcp")
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == (
+        'Bearer resource_metadata="https://local-shell-mcp.example.com'
+        '/.well-known/oauth-protected-resource/mcp"'
+    )
+
+    metadata = client.get("/.well-known/oauth-protected-resource/mcp")
+
+    assert metadata.status_code == 200
+    assert (
+        metadata.json()["resource"] == "https://local-shell-mcp.example.com/mcp"
+    )
+
+    wrong_metadata = client.get("/.well-known/oauth-protected-resource/other")
+
+    assert wrong_metadata.status_code == 404
