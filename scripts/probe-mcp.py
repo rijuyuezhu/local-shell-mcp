@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 import argparse
 import asyncio
 from urllib.parse import parse_qs, urlparse

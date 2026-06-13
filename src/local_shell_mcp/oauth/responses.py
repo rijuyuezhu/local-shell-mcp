@@ -4,8 +4,6 @@ Security model: see ``docs/security.md#oauth-security``. OAuth responses are
 kept cache-resistant because they may contain tokens or discovery metadata.
 """
 
-from __future__ import annotations
-
 from authlib.oauth2.rfc6749.errors import (
     InvalidGrantError,
     InvalidRequestError,

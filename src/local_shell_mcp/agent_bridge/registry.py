@@ -1,7 +1,5 @@
 """Build agent bridge capability registries from manifests, skills, and MCP probes."""
 
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import queue

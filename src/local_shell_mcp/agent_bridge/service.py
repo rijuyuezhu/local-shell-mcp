@@ -1,7 +1,5 @@
 """Shared service helpers for agent bridge tool adapters."""
 
-from __future__ import annotations
-
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, is_dataclass
 from typing import Any

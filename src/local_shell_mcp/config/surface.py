@@ -5,8 +5,6 @@ text; this registry controls grouping, CLI flags, and generated example
 configuration files.
 """
 
-from __future__ import annotations
-
 import argparse
 from dataclasses import dataclass
 from pathlib import Path

@@ -1,7 +1,5 @@
 """Patch application tool registry."""
 
-from __future__ import annotations
-
 from ...ops.patch_ops import apply_patch_text
 from ..declarative import DeclarativeToolRegistry
 

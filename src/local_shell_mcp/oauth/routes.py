@@ -4,8 +4,6 @@ Security model: see ``docs/security.md#oauth-security``. Route ordering keeps
 OAuth discovery/public bootstrap ahead of the mounted protected MCP app.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
 

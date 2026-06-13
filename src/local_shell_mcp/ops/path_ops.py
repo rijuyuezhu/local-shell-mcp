@@ -1,7 +1,5 @@
 """Workspace path, temporary-file, and text-size helpers."""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

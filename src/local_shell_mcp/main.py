@@ -1,7 +1,5 @@
 """Provide command-line entry points for stdio MCP, HTTP server, and remote-worker modes."""
 
-from __future__ import annotations
-
 import argparse
 
 from .config.settings import configure_settings, load_settings

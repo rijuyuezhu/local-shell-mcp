@@ -1,7 +1,5 @@
 """Persist the agent-visible todo list as JSON in the server state directory."""
 
-from __future__ import annotations
-
 import json
 import time
 from pathlib import Path

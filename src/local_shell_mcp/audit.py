@@ -1,7 +1,5 @@
 """Append structured audit events to a bounded JSONL log in the server state directory."""
 
-from __future__ import annotations
-
 import json
 import time
 import uuid

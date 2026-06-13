@@ -1,7 +1,5 @@
 """Declarative tool registration shared by MCP and HTTP adapters."""
 
-from __future__ import annotations
-
 import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass

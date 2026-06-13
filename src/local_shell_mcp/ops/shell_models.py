@@ -1,7 +1,5 @@
 """Response models for shell command execution."""
 
-from __future__ import annotations
-
 from pydantic import BaseModel
 
 

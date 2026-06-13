@@ -1,7 +1,5 @@
 """Server-side state and coordination for remote workers."""
 
-from __future__ import annotations
-
 import asyncio
 import os
 import secrets

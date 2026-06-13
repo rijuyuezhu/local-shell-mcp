@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.e2e_helpers import RestToolClient, run_http_process

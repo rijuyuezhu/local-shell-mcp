@@ -1,7 +1,5 @@
 """Shell MCP tool registry."""
 
-from __future__ import annotations
-
 from ...ops.command_ops import public_run_shell
 from ...ops.python_ops import run_python_script
 from ...ops.tmux_ops import (

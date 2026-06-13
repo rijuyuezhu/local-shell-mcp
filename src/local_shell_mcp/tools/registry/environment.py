@@ -1,7 +1,5 @@
 """Environment info MCP tool registry."""
 
-from __future__ import annotations
-
 from ...config.settings import get_settings, safe_settings_dump
 from ...ops.command_ops import run_shell
 from ..declarative import DeclarativeToolRegistry

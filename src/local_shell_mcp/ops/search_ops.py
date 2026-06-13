@@ -1,7 +1,5 @@
 """Search workspace text files and produce compact directory trees for code-navigation tools."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import shlex

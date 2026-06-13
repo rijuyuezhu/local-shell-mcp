@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.e2e_helpers import stdio_tool_client

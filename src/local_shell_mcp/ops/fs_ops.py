@@ -1,7 +1,5 @@
 """Provide workspace-aware filesystem operations with path containment, binary detection, and bounded file output."""
 
-from __future__ import annotations
-
 import base64
 import binascii
 import fnmatch

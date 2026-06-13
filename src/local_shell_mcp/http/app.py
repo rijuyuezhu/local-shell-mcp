@@ -1,7 +1,5 @@
 """Build the FastAPI REST application that exposes local tool endpoints."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

@@ -1,7 +1,5 @@
 """Small shared response envelope builders."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from starlette.responses import JSONResponse

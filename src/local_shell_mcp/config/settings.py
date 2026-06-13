@@ -1,7 +1,5 @@
 """Load, normalize, and validate runtime settings for workspace boundaries, authentication, tools, and remote workers."""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 from typing import Annotated, Any, Literal

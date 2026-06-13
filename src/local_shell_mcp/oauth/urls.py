@@ -5,8 +5,6 @@ the canonical issuer/resource values that later metadata and token validation
 must use consistently.
 """
 
-from __future__ import annotations
-
 from urllib.parse import urlparse, urlunparse
 
 from starlette.requests import Request

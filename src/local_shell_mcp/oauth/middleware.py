@@ -4,8 +4,6 @@ Security model: see ``docs/security.md#oauth-security``. This middleware is the
 resource-server boundary for tool and MCP requests.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 

@@ -1,7 +1,5 @@
 """Client-facing tool metadata and approval-hint helpers."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP

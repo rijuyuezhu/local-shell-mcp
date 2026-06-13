@@ -1,7 +1,5 @@
 """Register agent bridge skills and upstream MCP tools as callable tools on the public FastMCP server."""
 
-from __future__ import annotations
-
 import threading
 from collections.abc import Callable
 from contextlib import suppress
