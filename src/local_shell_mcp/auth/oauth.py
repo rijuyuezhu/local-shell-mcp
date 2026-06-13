@@ -27,6 +27,12 @@ from starlette.responses import (
 
 from ..audit import audit
 from ..config.settings import get_settings
+from .oauth_metadata import (
+    authorization_server_metadata,
+    oauth_protected_resource,
+    oauth_server_metadata,
+    protected_resource_metadata,
+)
 from .oauth_models import _CLIENTS, _CODES, AuthCode, OAuthClient
 from .oauth_responses import (
     _invalid_grant,
@@ -42,6 +48,39 @@ from .oauth_urls import (
     public_base_url,
     resource_url,
 )
+
+__all__ = [
+    "AuthCode",
+    "OAuthClient",
+    "_CLIENTS",
+    "_CODES",
+    "_authorize_form",
+    "_default_scope",
+    "_hidden_inputs",
+    "_invalid_grant",
+    "_invalid_request",
+    "_json",
+    "_jwt_secret",
+    "_make_redirect",
+    "_normalize_resource",
+    "_oauth_error",
+    "_scopes",
+    "_validate_authorize_params",
+    "_verify_pkce",
+    "authorization_server_metadata",
+    "issue_access_token",
+    "issuer_url",
+    "oauth_authorize_get",
+    "oauth_authorize_post",
+    "oauth_protected_resource",
+    "oauth_register",
+    "oauth_server_metadata",
+    "oauth_token",
+    "protected_resource_metadata",
+    "public_base_url",
+    "resource_url",
+    "validate_bearer_token",
+]
 
 
 def _jwt_secret() -> str:
@@ -60,44 +99,6 @@ def _jwt_secret() -> str:
     secret_path.write_text(secret + "\n", encoding="utf-8")
     secret_path.chmod(0o600)
     return secret
-
-
-def protected_resource_metadata(request: Request) -> dict[str, Any]:
-    """Build RFC-style protected-resource metadata for MCP clients discovering authorization servers."""
-    return {
-        "resource": resource_url(request),
-        "authorization_servers": [issuer_url(request)],
-        "scopes_supported": _scopes(),
-        "resource_documentation": f"{public_base_url(request)}/docs",
-    }
-
-
-def authorization_server_metadata(request: Request) -> dict[str, Any]:
-    """Build OAuth authorization-server metadata for dynamic clients and PKCE code flow."""
-    issuer = issuer_url(request)
-    return {
-        "issuer": issuer,
-        "authorization_endpoint": f"{issuer}/oauth/authorize",
-        "token_endpoint": f"{issuer}/oauth/token",
-        "registration_endpoint": f"{issuer}/oauth/register",
-        "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code"],
-        "code_challenge_methods_supported": ["S256", "plain"],
-        "token_endpoint_auth_methods_supported": ["none"],
-        "scopes_supported": _scopes(),
-        "authorization_response_iss_parameter_supported": True,
-        "resource_parameter_supported": True,
-    }
-
-
-async def oauth_protected_resource(request: Request) -> JSONResponse:
-    """Serve protected-resource metadata from the well-known OAuth endpoint."""
-    return _json(protected_resource_metadata(request))
-
-
-async def oauth_server_metadata(request: Request) -> JSONResponse:
-    """Serve authorization-server metadata from the well-known OAuth endpoint."""
-    return _json(authorization_server_metadata(request))
 
 
 async def oauth_register(request: Request) -> JSONResponse:
