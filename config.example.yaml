@@ -127,7 +127,7 @@ remote_job_timeout_s: 3600
 # Enable agent capability bridge tools.
 agent_bridge_enabled: true
 # Read-only capability config directory.
-agent_config_dir: "/home/agent/local-shell-mcp-config"
+agent_config_dir: "/workspace/.local-shell-mcp/agent_config"
 # Agent MCP server probe timeout in seconds.
 agent_mcp_probe_timeout_s: 5
 # Agent MCP tool-call timeout in seconds.

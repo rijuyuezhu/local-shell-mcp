@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
 DEFAULT_AUDIT_LOG_PATH = DEFAULT_STATE_DIR / "audit.jsonl"
-DEFAULT_AGENT_CONFIG_DIR = Path("/home/agent/local-shell-mcp-config")
+DEFAULT_AGENT_CONFIG_DIR = DEFAULT_STATE_DIR / "agent_config"
 ENV_PREFIX = "LOCAL_SHELL_MCP_"
 
 SENSITIVE_SETTING_KEYS = {
@@ -225,22 +225,6 @@ class Settings(BaseSettings):
             self.path_denylist = []
         return self
 
-    def with_workspace_relative_defaults(self) -> Settings:
-        """Resolve state and audit paths relative to the workspace when they were left at defaults."""
-        if self.workspace_root == DEFAULT_WORKSPACE_ROOT:
-            return self
-
-        updates: dict[str, Path] = {}
-        if self.state_dir == DEFAULT_STATE_DIR:
-            updates["state_dir"] = self.workspace_root / ".local-shell-mcp"
-        if self.audit_log_path == DEFAULT_AUDIT_LOG_PATH:
-            state_dir = updates.get("state_dir", self.state_dir)
-            updates["audit_log_path"] = state_dir / "audit.jsonl"
-
-        if not updates:
-            return self
-        return self.model_copy(update=updates)
-
 
 def _flatten_config(data: dict[str, Any]) -> dict[str, Any]:
     """Flatten one level of grouped YAML keys into Settings field names."""
@@ -287,8 +271,7 @@ def _env_overrides() -> dict[str, Any]:
 
 
 def _prepare_settings(settings: Settings, *, create_dirs: bool) -> Settings:
-    """Apply derived defaults and create runtime directories when requested."""
-    settings = settings.with_workspace_relative_defaults()
+    """Create runtime directories when requested."""
     if create_dirs:
         settings.workspace_root.mkdir(parents=True, exist_ok=True)
         settings.state_dir.mkdir(parents=True, exist_ok=True)

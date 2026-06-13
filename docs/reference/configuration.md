@@ -35,7 +35,7 @@ Docker image startup knobs use `DOCKER_*` variables because they are consumed by
 | Remote worker routes | `--remote-enabled true/false` | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` |
 | MCP request auth | `--require-auth-for-mcp-discovery true/false` | `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY` | `true` |
 | OAuth token TTL | advanced flag omitted from examples | `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` | `3600` |
-| Agent bridge config | `--agent-config-dir` | `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/home/agent/local-shell-mcp-config` |
+| Agent bridge config | `--agent-config-dir` | `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/workspace/.local-shell-mcp/agent_config` |
 
 ## Safety and resource limits
 

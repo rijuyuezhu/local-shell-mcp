@@ -7,19 +7,31 @@ from local_shell_mcp.agent_bridge.models import (
 )
 from local_shell_mcp.agent_bridge.redaction import _redact_text, redact_mapping
 from local_shell_mcp.agent_bridge.state import load_agent_manifest
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.config.settings import (
+    DEFAULT_AGENT_CONFIG_DIR,
+    DEFAULT_AUDIT_LOG_PATH,
+    DEFAULT_STATE_DIR,
+    clear_settings_cache,
+    get_settings,
+    load_settings,
+)
 
 
-def test_agent_config_dir_defaults_to_home_agent(monkeypatch, tmp_path):
+def test_workspace_root_does_not_rewrite_default_state_paths(
+    monkeypatch, tmp_path
+):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.delenv("LOCAL_SHELL_MCP_STATE_DIR", raising=False)
+    monkeypatch.delenv("LOCAL_SHELL_MCP_AUDIT_LOG_PATH", raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", raising=False)
     clear_settings_cache()
 
-    settings = get_settings()
+    settings = load_settings(create_dirs=False)
 
-    assert (
-        str(settings.agent_config_dir) == "/home/agent/local-shell-mcp-config"
-    )
+    assert settings.workspace_root == tmp_path.resolve()
+    assert settings.state_dir == DEFAULT_STATE_DIR.resolve()
+    assert settings.audit_log_path == DEFAULT_AUDIT_LOG_PATH.resolve()
+    assert settings.agent_config_dir == DEFAULT_AGENT_CONFIG_DIR.resolve()
     assert settings.agent_bridge_enabled is True
     assert settings.agent_mcp_probe_timeout_s == 5
 
