@@ -8,8 +8,8 @@ from urllib.parse import urlparse
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from .oauth_responses import _json
-from .oauth_urls import (
+from .responses import _json
+from .urls import (
     _scopes,
     issuer_url,
     protected_resource_metadata_url,
@@ -46,7 +46,9 @@ def authorization_server_metadata(request: Request) -> dict[str, Any]:
     }
 
 
-async def oauth_protected_resource(request: Request) -> JSONResponse | Response:
+async def protected_resource_endpoint(
+    request: Request,
+) -> JSONResponse | Response:
     """Serve protected-resource metadata from the RFC9728 well-known URL."""
     expected_path = urlparse(protected_resource_metadata_url(request)).path
     if request.url.path != expected_path:
@@ -54,6 +56,6 @@ async def oauth_protected_resource(request: Request) -> JSONResponse | Response:
     return _json(protected_resource_metadata(request))
 
 
-async def oauth_server_metadata(request: Request) -> JSONResponse:
+async def server_metadata_endpoint(request: Request) -> JSONResponse:
     """Serve authorization-server metadata from the well-known OAuth endpoint."""
     return _json(authorization_server_metadata(request))

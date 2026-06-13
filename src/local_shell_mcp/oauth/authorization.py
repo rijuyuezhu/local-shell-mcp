@@ -15,22 +15,22 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from ..audit import audit
 from ..config.settings import get_settings
-from .oauth_models import _CLIENTS, _CODES, AuthCode
-from .oauth_urls import (
+from .models import _CLIENTS, _CODES, AuthCode
+from .urls import (
     _default_scope,
     _normalize_resource,
     issuer_url,
     resource_url,
 )
 
-_AUTHORIZE_TEMPLATE = "oauth_authorize.html"
+_AUTHORIZE_TEMPLATE = "authorize.html"
 
 
 @lru_cache(maxsize=1)
 def _authorize_template() -> str:
     """Read the package HTML template used by the local approval form."""
     return (
-        files("local_shell_mcp.auth")
+        files("local_shell_mcp.oauth")
         .joinpath(_AUTHORIZE_TEMPLATE)
         .read_text(encoding="utf-8")
     )
@@ -109,7 +109,7 @@ def _make_redirect(
     )
 
 
-async def oauth_authorize_get(request: Request) -> Response:
+async def authorize_get(request: Request) -> Response:
     """Validate authorization input and render the approval form for the local user."""
     params = {k: v for k, v in request.query_params.items()}
     error = _validate_authorize_params(params)
@@ -118,7 +118,7 @@ async def oauth_authorize_get(request: Request) -> Response:
     return _authorize_form(params)
 
 
-async def oauth_authorize_post(request: Request) -> Response:
+async def authorize_post(request: Request) -> Response:
     """Issue an authorization code after form approval and redirect the client back."""
     form = await request.form()
     params = {k: str(v) for k, v in form.items() if k != "pin"}

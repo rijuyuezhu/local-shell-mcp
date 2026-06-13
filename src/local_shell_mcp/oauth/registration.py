@@ -8,11 +8,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from ..audit import audit
-from .oauth_models import _CLIENTS, OAuthClient
-from .oauth_responses import _json
+from .models import _CLIENTS, OAuthClient
+from .responses import _json
 
 
-async def oauth_register(request: Request) -> JSONResponse:
+async def register_client(request: Request) -> JSONResponse:
     """Accept dynamic client registration and persist the issued client identifier."""
     try:
         body = await request.json()

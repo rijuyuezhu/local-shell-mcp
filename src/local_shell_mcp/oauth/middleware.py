@@ -12,8 +12,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..audit import audit
 from ..config.settings import Settings, get_settings
-from .oauth_tokens import validate_bearer_token
-from .oauth_urls import protected_resource_metadata_url
+from .tokens import validate_bearer_token
+from .urls import protected_resource_metadata_url
 
 PUBLIC_PATHS = {
     "/healthz",

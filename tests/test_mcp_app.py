@@ -27,7 +27,7 @@ def _route_paths(app: Starlette) -> list[str]:
     return [getattr(route, "path", "") for route in app.routes]
 
 
-def test_build_mcp_http_app_wraps_mcp_with_oauth_routes():
+def test_build_mcp_http_app_wraps_mcp_with_oauth_route_app():
     configure_settings(
         Settings(mode="mcp", auth_mode="none", remote_enabled=False)
     )

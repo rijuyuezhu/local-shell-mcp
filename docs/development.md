@@ -69,7 +69,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries discovered at runtime. |
 | `src/local_shell_mcp/http/` | REST debug API assembly for local tool endpoints and HTTP protocol adapter. |
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and configuration surface metadata. |
-| `src/local_shell_mcp/auth/` | Authentication middleware and OAuth server. |
+| `src/local_shell_mcp/oauth/` | OAuth middleware, server metadata, authorization flow, token handling, and HTTP route wrapping. |
 | `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, todo, and shared operation helpers. |
 | `src/local_shell_mcp/remote/` | Remote invite management, shared worker tool specs and services, worker routes, bundle assembly, and worker CLI helpers. |
 | `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge, including shared service helpers used by MCP and REST adapters. |
@@ -89,7 +89,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 - Do not add a second global tool table. MCP and REST surfaces should be derived from category registries.
 - Routed tool calls are audited centrally. Avoid per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured.
-- OAuth HTTP mode is split by responsibility: models/state, URL helpers, metadata endpoints, response serialization, dynamic client registration, authorization form/code flow, token/JWT validation, and ASGI route wrapping. Import from the focused `auth.oauth_*` modules rather than a compatibility facade.
+- OAuth HTTP mode is split by responsibility: models/state, URL helpers, metadata endpoints, response serialization, dynamic client registration, authorization form/code flow, token/JWT validation, and ASGI route wrapping. Import from the focused `oauth.*` modules rather than a compatibility facade.
 - Tool and remote endpoint responses should use shared envelope builders from `local_shell_mcp.responses`, with tool-specific handling layered in `tools.responses`.
 - File tools avoid reading full binary files by default and enforce configured read/write limits.
 - Operation modules that need managed temporary text files should use `ops.temp_file_ops` so temp pruning, size checks, and filename generation stay consistent.

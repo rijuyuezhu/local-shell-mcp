@@ -9,13 +9,13 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Mount, Route
 
-from .oauth_authorization import oauth_authorize_get, oauth_authorize_post
-from .oauth_metadata import oauth_protected_resource, oauth_server_metadata
-from .oauth_registration import oauth_register
-from .oauth_tokens import oauth_token
+from .authorization import authorize_get, authorize_post
+from .metadata import protected_resource_endpoint, server_metadata_endpoint
+from .registration import register_client
+from .tokens import token_endpoint
 
 
-def wrap_with_oauth_routes(
+def wrap_http_app(
     inner_app: Starlette, *, extra_routes: Sequence[BaseRoute] = ()
 ) -> Starlette:
     """Wrap an inner ASGI app with health, OAuth, optional extra, and fallback routes."""
@@ -39,28 +39,28 @@ def wrap_with_oauth_routes(
         *extra_routes,
         Route(
             "/.well-known/oauth-protected-resource",
-            oauth_protected_resource,
+            protected_resource_endpoint,
             methods=["GET"],
         ),
         Route(
             "/.well-known/oauth-protected-resource/{resource_path:path}",
-            oauth_protected_resource,
+            protected_resource_endpoint,
             methods=["GET"],
         ),
         Route(
             "/.well-known/oauth-authorization-server",
-            oauth_server_metadata,
+            server_metadata_endpoint,
             methods=["GET"],
         ),
         Route(
             "/.well-known/openid-configuration",
-            oauth_server_metadata,
+            server_metadata_endpoint,
             methods=["GET"],
         ),
-        Route("/oauth/register", oauth_register, methods=["POST"]),
-        Route("/oauth/authorize", oauth_authorize_get, methods=["GET"]),
-        Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
-        Route("/oauth/token", oauth_token, methods=["POST"]),
+        Route("/oauth/register", register_client, methods=["POST"]),
+        Route("/oauth/authorize", authorize_get, methods=["GET"]),
+        Route("/oauth/authorize", authorize_post, methods=["POST"]),
+        Route("/oauth/token", token_endpoint, methods=["POST"]),
         Mount("/", app=inner_app),
     ]
     return Starlette(routes=routes, lifespan=lifespan)

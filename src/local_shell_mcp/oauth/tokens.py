@@ -18,14 +18,14 @@ from starlette.responses import JSONResponse
 
 from ..audit import audit
 from ..config.settings import get_settings
-from .oauth_models import _CODES, AuthCode
-from .oauth_responses import (
+from .models import _CODES, AuthCode
+from .responses import (
     _invalid_grant,
     _invalid_request,
     _json,
     _oauth_error,
 )
-from .oauth_urls import _normalize_resource, issuer_url, resource_url
+from .urls import _normalize_resource, issuer_url, resource_url
 
 
 def _jwt_secret() -> str:
@@ -77,7 +77,7 @@ def issue_access_token(
     return jwt.encode(payload, _jwt_secret(), algorithm="HS256")
 
 
-async def oauth_token(request: Request) -> JSONResponse:
+async def token_endpoint(request: Request) -> JSONResponse:
     """Exchange an authorization code for an access token after client, redirect, expiry, and PKCE checks."""
     form = await request.form()
     grant_type = str(form.get("grant_type") or "")

@@ -10,9 +10,9 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
 
-from ..auth.middleware import AuthMiddleware
-from ..auth.oauth_routes import wrap_with_oauth_routes
 from ..config.settings import get_settings
+from ..oauth.middleware import AuthMiddleware
+from ..oauth.routes import wrap_http_app
 from ..remote.http import remote_routes
 from ..tools.contracts import McpToolContext
 from ..tools.discovery import discover_tool_registries
@@ -142,7 +142,7 @@ def build_mcp_http_app(mcp: FastMCP) -> Starlette:
     for attr in ("streamable_http_app", "sse_app"):
         if hasattr(mcp, attr):
             inner: Starlette = getattr(mcp, attr)()
-            app = wrap_with_oauth_routes(
+            app = wrap_http_app(
                 inner,
                 extra_routes=remote_routes() if settings.remote_enabled else (),
             )
