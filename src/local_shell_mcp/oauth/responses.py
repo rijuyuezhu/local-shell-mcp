@@ -1,4 +1,8 @@
-"""OAuth JSON response and error serialization helpers."""
+"""OAuth JSON response and error serialization helpers.
+
+Security model: see ``docs/security.md#oauth-security``. OAuth responses are
+kept cache-resistant because they may contain tokens or discovery metadata.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +16,8 @@ from starlette.responses import JSONResponse
 
 def _json(data: dict, status_code: int = 200) -> JSONResponse:
     """Return compact JSON responses with the media type expected by OAuth metadata clients."""
+    # Docs compliance: avoid intermediary caching for OAuth JSON responses,
+    # especially token and error payloads.
     return JSONResponse(
         data, status_code=status_code, headers={"Cache-Control": "no-store"}
     )

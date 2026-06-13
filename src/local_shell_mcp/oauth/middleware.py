@@ -1,4 +1,8 @@
-"""Authenticate HTTP and MCP requests while keeping OAuth bootstrap routes public."""
+"""Authenticate HTTP and MCP requests while keeping OAuth bootstrap routes public.
+
+Security model: see ``docs/security.md#oauth-security``. This middleware is the
+resource-server boundary for tool and MCP requests.
+"""
 
 from __future__ import annotations
 
@@ -61,6 +65,8 @@ def _extract_token(request: Request) -> str | None:
 
 def _bearer_challenge(request: Request, *, error: str | None = None) -> str:
     """Build the OAuth challenge advertised to MCP clients when auth is missing or invalid."""
+    # Docs compliance: MCP requires 401 challenges to advertise protected
+    # resource metadata through the RFC 9728 ``resource_metadata`` parameter.
     metadata_url = protected_resource_metadata_url(request)
     parts = [f'resource_metadata="{metadata_url}"']
     if error:
@@ -78,6 +84,8 @@ def _verify_oauth(request: Request, settings: Settings) -> Principal:
             headers={"WWW-Authenticate": _bearer_challenge(request)},
         )
     try:
+        # Docs compliance: inbound bearer tokens must be validated before any
+        # tool request is processed, including issuer and audience checks.
         claims = validate_bearer_token(token, request)
     except jwt.PyJWTError as exc:
         audit(
@@ -147,6 +155,8 @@ class AuthMiddleware:
             return
 
         path = scope.get("path", "")
+        # Docs compliance: OAuth discovery and bootstrap endpoints must remain
+        # reachable without a bearer token; tool/MCP routes remain protected.
         if (
             path in PUBLIC_PATHS
             or path.startswith("/.well-known/")

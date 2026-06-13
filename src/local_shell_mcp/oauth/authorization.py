@@ -1,4 +1,8 @@
-"""OAuth authorization endpoint, local approval form, and code issuance."""
+"""OAuth authorization endpoint, local approval form, and code issuance.
+
+Security model: see ``docs/security.md#oauth-security``. Authorization requests
+are validated before rendering local approval UI or issuing one-time codes.
+"""
 
 from __future__ import annotations
 
@@ -38,6 +42,8 @@ def _authorize_template() -> str:
 
 def _validate_authorize_params(params: dict[str, str]) -> str | None:
     """Validate authorization request parameters before rendering the consent form or redirecting."""
+    # Docs compliance: this server intentionally supports the authorization
+    # code flow only; token/implicit-style authorization responses are rejected.
     if params.get("response_type") != "code":
         return "Only response_type=code is supported"
     if not params.get("client_id"):
@@ -46,6 +52,8 @@ def _validate_authorize_params(params: dict[str, str]) -> str | None:
         return "Missing redirect_uri"
     if not params.get("resource"):
         return "Missing resource"
+    # Docs compliance: MCP clients must send RFC 8707 ``resource`` and it must
+    # match this server before a code can be issued.
     if _normalize_resource(params["resource"]) != resource_url():
         return "resource does not match this MCP server"
     client = _CLIENTS.get(params["client_id"])
@@ -55,6 +63,8 @@ def _validate_authorize_params(params: dict[str, str]) -> str | None:
         and params["redirect_uri"] not in client.redirect_uris
     ):
         return "redirect_uri is not registered for this client"
+    # Docs compliance: accept only syntactically valid PKCE challenge material;
+    # S256 is advertised and preferred, while plain remains for compatibility.
     challenge = params.get("code_challenge")
     if challenge and not CODE_CHALLENGE_PATTERN.match(challenge):
         return "Invalid code_challenge"
@@ -129,6 +139,8 @@ async def authorize_post(request: Request) -> Response:
     settings = get_settings()
     expected_pin = settings.oauth_admin_pin
     submitted_pin = str(form.get("pin") or "")
+    # Docs compliance: the optional admin PIN gates local user approval; use a
+    # constant-time comparison so failed PIN attempts do not leak prefix timing.
     if expected_pin and not hmac.compare_digest(submitted_pin, expected_pin):
         audit("oauth_pin_failed", client_id=params.get("client_id"))
         return _authorize_form(params, error="Invalid admin PIN")

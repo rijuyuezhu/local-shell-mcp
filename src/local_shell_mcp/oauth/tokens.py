@@ -1,4 +1,8 @@
-"""OAuth token exchange, JWT signing, PKCE verification, and bearer validation."""
+"""OAuth token exchange, JWT signing, PKCE verification, and bearer validation.
+
+Security model: see ``docs/security.md#oauth-security``. Token exchange binds
+authorization codes to client, redirect URI, resource, PKCE, and one-time use.
+"""
 
 from __future__ import annotations
 
@@ -31,6 +35,9 @@ from .urls import _normalize_resource, issuer_url, resource_url
 def _jwt_secret() -> str:
     """Return a configured or persisted signing secret for local bearer tokens."""
     settings = get_settings()
+    # Docs compliance: bearer tokens are signed locally with state-directory
+    # key material. Operators must protect and rotate this state between trust
+    # domains because there is no central revocation service.
     secret_path = settings.state_dir / "oauth-jwt-secret"
     try:
         secret = secret_path.read_text(encoding="utf-8").strip()
@@ -48,6 +55,9 @@ def _jwt_secret() -> str:
 
 def _verify_pkce(code_obj: AuthCode, verifier: str | None) -> bool:
     """Validate PKCE using Authlib's RFC7636 challenge helpers."""
+    # Docs compliance: authorization-code exchange verifies PKCE when the
+    # authorization request included a challenge; S256 uses Authlib's RFC 7636
+    # comparison helper.
     if not code_obj.code_challenge:
         return verifier is None
     if not verifier or not CODE_VERIFIER_PATTERN.match(verifier):
@@ -88,6 +98,8 @@ async def token_endpoint(request: Request) -> JSONResponse:
     redirect_uri = str(form.get("redirect_uri") or "")
     verifier = str(form.get("code_verifier") or "") or None
     resource = str(form.get("resource") or "")
+    # Docs compliance: MCP requires RFC 8707 ``resource`` in token requests, and
+    # the resource must match the one bound to the authorization code.
     if not resource:
         return _invalid_request("Missing resource")
     code_obj = _CODES.get(code)
@@ -120,6 +132,8 @@ def validate_bearer_token(
     token: str, request: Request | None = None
 ) -> dict[str, Any]:
     """Decode and validate issuer, audience, resource, and scope claims for incoming bearer tokens."""
+    # Docs compliance: resource-server validation requires accepting only tokens
+    # issued by this issuer and audience-bound to this MCP resource.
     return jwt.decode(
         token,
         _jwt_secret(),

@@ -1,4 +1,9 @@
-"""OAuth protected-resource and authorization-server metadata."""
+"""OAuth protected-resource and authorization-server metadata.
+
+Security model: see ``docs/security.md#oauth-security``. This module exposes the
+metadata documents required for MCP clients to discover the authorization server
+without guessing endpoints.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +25,8 @@ from .urls import (
 
 def protected_resource_metadata(request: Request) -> dict[str, Any]:
     """Build RFC-style protected-resource metadata for MCP clients discovering authorization servers."""
+    # Docs compliance: MCP requires protected-resource metadata to include the
+    # canonical resource and at least one authorization server.
     return {
         "resource": resource_url(request),
         "authorization_servers": [issuer_url(request)],
@@ -31,6 +38,8 @@ def protected_resource_metadata(request: Request) -> dict[str, Any]:
 def authorization_server_metadata(request: Request) -> dict[str, Any]:
     """Build OAuth authorization-server metadata for dynamic clients and PKCE code flow."""
     issuer = issuer_url(request)
+    # Docs compliance: RFC 8414 authorization-server metadata advertises the
+    # endpoints and capabilities used by dynamic clients and PKCE code flow.
     return {
         "issuer": issuer,
         "authorization_endpoint": f"{issuer}/oauth/authorize",
@@ -50,6 +59,9 @@ async def protected_resource_endpoint(
     request: Request,
 ) -> JSONResponse | Response:
     """Serve protected-resource metadata from the RFC9728 well-known URL."""
+    # Docs compliance: path-based protected resources must only serve metadata
+    # at their RFC 9728-derived well-known URL. Mismatched suffixes are rejected
+    # so ``/.well-known/oauth-protected-resource/other`` cannot describe ``/mcp``.
     expected_path = urlparse(protected_resource_metadata_url(request)).path
     if request.url.path != expected_path:
         return Response(status_code=404)

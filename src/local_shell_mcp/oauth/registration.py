@@ -1,4 +1,9 @@
-"""OAuth dynamic client registration endpoint."""
+"""OAuth dynamic client registration endpoint.
+
+Security model: see ``docs/security.md#oauth-security``. Registration is
+permissive for MCP onboarding; local approval and redirect/resource checks occur
+later in the authorization flow.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,9 @@ async def register_client(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:
         body = {}
+    # Docs compliance: dynamic registration is intentionally low-friction, but
+    # issues opaque client IDs and relies on later local approval before token
+    # issuance.
     client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
     redirect_uris = [
         str(x) for x in body.get("redirect_uris", []) if isinstance(x, str)

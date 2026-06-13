@@ -1,4 +1,8 @@
-"""ASGI route assembly for OAuth-protected HTTP mode."""
+"""ASGI route assembly for OAuth-protected HTTP mode.
+
+Security model: see ``docs/security.md#oauth-security``. Route ordering keeps
+OAuth discovery/public bootstrap ahead of the mounted protected MCP app.
+"""
 
 from __future__ import annotations
 
@@ -37,6 +41,8 @@ def wrap_http_app(
             methods=["GET"],
         ),
         *extra_routes,
+        # Docs compliance: protected-resource metadata and AS metadata are
+        # public discovery routes; AuthMiddleware protects the mounted app.
         Route(
             "/.well-known/oauth-protected-resource",
             protected_resource_endpoint,

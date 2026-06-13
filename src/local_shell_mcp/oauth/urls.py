@@ -1,4 +1,9 @@
-"""OAuth public URL, issuer, resource, and scope helpers."""
+"""OAuth public URL, issuer, resource, and scope helpers.
+
+Security model: see ``docs/security.md#oauth-security``. These helpers define
+the canonical issuer/resource values that later metadata and token validation
+must use consistently.
+"""
 
 from __future__ import annotations
 
@@ -36,8 +41,9 @@ def resource_url(request: Request | None = None) -> str:
     settings = get_settings()
     if settings.oauth_resource:
         return settings.oauth_resource.rstrip("/")
-    # Use the MCP endpoint, not just the origin, so access tokens are audience-bound
-    # to this server rather than every service on the same host.
+    # Docs compliance: OAuth security requires token audience binding to the
+    # most specific MCP resource. Use the MCP endpoint, not just the origin, so
+    # access tokens are not valid for every service on the same host.
     return (public_base_url(request).rstrip("/") + "/mcp").rstrip("/")
 
 
@@ -47,6 +53,8 @@ def protected_resource_metadata_url(request: Request | None = None) -> str:
     path = parsed.path or ""
     if path == "/":
         path = ""
+    # Docs compliance: RFC 9728 inserts the well-known protected-resource
+    # suffix between the host and the protected resource path/query.
     metadata_path = "/.well-known/oauth-protected-resource" + path
     return urlunparse(
         (
