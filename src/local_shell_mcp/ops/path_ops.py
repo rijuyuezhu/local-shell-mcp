@@ -81,9 +81,10 @@ def resolve_path(
     raw = Path(os.path.expandvars(os.path.expanduser(str(path))))
     if not raw.is_absolute():
         raw = root / raw
-    resolved = raw.resolve(strict=False)
-
-    if not settings.allow_full_container:
+    if settings.allow_full_container:
+        resolved = Path(os.path.abspath(raw))
+    else:
+        resolved = raw.resolve(strict=False)
         try:
             resolved.relative_to(root)
         except ValueError as exc:
