@@ -9,12 +9,12 @@ from fastapi.testclient import TestClient
 from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
-from local_shell_mcp.auth.oauth import (
-    _authorize_form,
+from local_shell_mcp.auth.oauth_authorization import _authorize_form
+from local_shell_mcp.auth.oauth_tokens import (
     issue_access_token,
-    resource_url,
     validate_bearer_token,
 )
+from local_shell_mcp.auth.oauth_urls import resource_url
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.mcp.app import (
     _transport_security_settings,

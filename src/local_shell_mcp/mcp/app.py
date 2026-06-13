@@ -14,14 +14,13 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from ..auth.middleware import AuthMiddleware
-from ..auth.oauth import (
-    oauth_authorize_get,
-    oauth_authorize_post,
+from ..auth.oauth_authorization import oauth_authorize_get, oauth_authorize_post
+from ..auth.oauth_metadata import (
     oauth_protected_resource,
-    oauth_register,
     oauth_server_metadata,
-    oauth_token,
 )
+from ..auth.oauth_registration import oauth_register
+from ..auth.oauth_tokens import oauth_token
 from ..config.settings import get_settings
 from ..remote.http import remote_routes
 from ..tools.contracts import McpToolContext

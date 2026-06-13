@@ -12,6 +12,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..audit import audit
 from ..config.settings import Settings, get_settings
+from .oauth_metadata import protected_resource_metadata
+from .oauth_tokens import validate_bearer_token
 
 PUBLIC_PATHS = {
     "/healthz",
@@ -59,8 +61,6 @@ def _extract_token(request: Request) -> str | None:
 
 def _bearer_challenge(request: Request, *, error: str | None = None) -> str:
     """Build the OAuth challenge advertised to MCP clients when auth is missing or invalid."""
-    from .oauth import protected_resource_metadata
-
     metadata_url = (
         protected_resource_metadata(request)["resource"].rstrip("/")
         + "/.well-known/oauth-protected-resource"
@@ -73,8 +73,6 @@ def _bearer_challenge(request: Request, *, error: str | None = None) -> str:
 
 def _verify_oauth(request: Request, settings: Settings) -> Principal:
     """Validate an OAuth bearer token and return the subject claims used by downstream handlers."""
-    from .oauth import validate_bearer_token
-
     token = _extract_token(request)
     if not token:
         raise HTTPException(
