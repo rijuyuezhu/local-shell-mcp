@@ -109,6 +109,7 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
     env.update(
         {
             "PYTHONPATH": pythonpath,
+            "LOCAL_SHELL_MCP_WORKSPACE_ROOT": str(remote_workspace),
             "LOCAL_SHELL_MCP_STATE_DIR": str(
                 remote_workspace / ".local-shell-mcp"
             ),
