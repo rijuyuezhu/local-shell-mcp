@@ -1,6 +1,6 @@
 """Shared service helpers for agent bridge tool adapters."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
@@ -149,7 +149,9 @@ def list_agent_mcp_servers_payload(
     return registry.config_status()["mcp_servers"]
 
 
-def _agent_mcp_records(registry: AgentCapabilityRegistry, server: str | None):
+def _agent_mcp_records(
+    registry: AgentCapabilityRegistry, server: str | None
+) -> Iterable[tuple[str, AgentMcpServerRecord]]:
     """Iterate MCP server records after validating an optional server filter."""
     if server is not None and server not in registry.mcp_servers:
         raise ValueError(f"Unknown agent MCP server: {server}")

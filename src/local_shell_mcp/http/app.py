@@ -1,11 +1,14 @@
 """Build the FastAPI REST application that exposes local tool endpoints."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.responses import Response
 
 from ..config.settings import get_settings
 from ..oauth.middleware import (
@@ -16,6 +19,8 @@ from ..oauth.middleware import (
 from ..ops.command_ops import public_tool_timeout_s
 from ..tools.discovery import discover_tool_registries
 from ..tools.local_invocations import call_local_tool
+
+type ToolRouteHandler = Callable[..., Awaitable[Any]]
 
 
 def principal_dep(request: Request) -> Principal:
@@ -45,8 +50,8 @@ def _register_http_tool_routes(app: FastAPI) -> None:
                 )
 
 
-def _make_get_tool_handler(tool_name: str):
-    async def get_handler(principal: Principal = PRINCIPAL_DEP):
+def _make_get_tool_handler(tool_name: str) -> ToolRouteHandler:
+    async def get_handler(principal: Principal = PRINCIPAL_DEP) -> Any:
         return await call_local_tool(
             tool_name,
             None,
@@ -59,11 +64,11 @@ def _make_get_tool_handler(tool_name: str):
     return get_handler
 
 
-def _make_post_tool_handler(tool_name: str):
+def _make_post_tool_handler(tool_name: str) -> ToolRouteHandler:
     async def post_handler(
         body: dict[str, Any] | None = None,
         principal: Principal = PRINCIPAL_DEP,
-    ):
+    ) -> Any:
         return await call_local_tool(
             tool_name,
             body,
@@ -84,7 +89,9 @@ def build_http_app() -> FastAPI:
         app.add_middleware(AuthMiddleware)
 
     @app.exception_handler(ValueError)
-    async def value_error_handler(request: Request, exc: ValueError):
+    async def value_error_handler(
+        request: Request, exc: ValueError
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=400,
             content={
@@ -95,21 +102,27 @@ def build_http_app() -> FastAPI:
         )
 
     @app.exception_handler(KeyError)
-    async def key_error_handler(request: Request, exc: KeyError):
+    async def key_error_handler(
+        request: Request, exc: KeyError
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=404,
             content={"ok": False, "error": "unknown_tool", "message": str(exc)},
         )
 
     @app.exception_handler(HTTPException)
-    async def http_error_handler(request: Request, exc: HTTPException):
+    async def http_error_handler(
+        request: Request, exc: HTTPException
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content={"ok": False, "error": "http_error", "message": exc.detail},
         )
 
     @app.middleware("http")
-    async def tools_timeout_middleware(request: Request, call_next):
+    async def tools_timeout_middleware(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         if not request.url.path.startswith("/tools/"):
             return await call_next(request)
         try:
@@ -127,11 +140,11 @@ def build_http_app() -> FastAPI:
             )
 
     @app.get("/healthz")
-    async def healthz():
+    async def healthz() -> dict[str, bool]:
         return {"ok": True}
 
     @app.get("/readyz")
-    async def readyz():
+    async def readyz() -> dict[str, bool | str]:
         return {"ok": True, "workspace_root": str(settings.workspace_root)}
 
     _register_http_tool_routes(app)

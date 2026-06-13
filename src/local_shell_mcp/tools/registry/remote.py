@@ -1,6 +1,7 @@
 """Remote worker MCP tool registry."""
 
-from typing import Any
+from collections.abc import Iterable, Mapping
+from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
 
@@ -22,10 +23,10 @@ class RemoteToolRegistry(DeclarativeToolRegistry):
 
     name = "remote"
 
-    def http_routes(self):
+    def http_routes(self) -> Iterable[HttpToolRoute]:
         return (*super().http_routes(), *REMOTE_WORKER_HTTP_ROUTES)
 
-    def http_handlers(self):
+    def http_handlers(self) -> Mapping[str, ToolHandler]:
         return {**super().http_handlers(), **REMOTE_WORKER_HTTP_HANDLERS}
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
@@ -75,7 +76,11 @@ async def _remote_worker_tool(
     )
     if result.get("ok", False):
         data = result.get("data")
-        return data if isinstance(data, dict) else {"result": data}
+        return (
+            cast(dict[str, Any], data)
+            if isinstance(data, dict)
+            else {"result": data}
+        )
     return result
 
 

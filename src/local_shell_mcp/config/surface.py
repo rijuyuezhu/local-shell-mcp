@@ -6,9 +6,10 @@ configuration files.
 """
 
 import argparse
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, get_args, get_origin
+from typing import Any, Literal, cast, get_args, get_origin
 
 from .settings import ENV_PREFIX, Settings
 
@@ -233,7 +234,8 @@ def default_to_string(value: Any) -> str:
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, list):
-        return ",".join(str(item) for item in value)
+        items = cast(list[Any], value)
+        return ",".join(str(item) for item in items)
     return str(value)
 
 
@@ -244,11 +246,13 @@ def yaml_default(value: Any) -> Any:
     return value
 
 
-def argparse_type_for(name: str):
+def argparse_type_for(name: str) -> type[int] | type[float] | type[str]:
     """Return an argparse type callable for a Settings field."""
     annotation = Settings.model_fields[name].annotation
-    if annotation in (int, float):
-        return annotation
+    if annotation is int:
+        return int
+    if annotation is float:
+        return float
     return str
 
 
@@ -268,7 +272,13 @@ def is_bool_setting(name: str) -> bool:
 
 
 class BoolChoiceAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ) -> None:
         if values not in ("true", "false"):
             raise argparse.ArgumentTypeError(f"Invalid boolean value: {values}")
         setattr(namespace, self.dest, values == "true")

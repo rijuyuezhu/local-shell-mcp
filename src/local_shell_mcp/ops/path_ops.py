@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Any
 
 from ..config.settings import get_settings
 
@@ -109,7 +110,9 @@ def relative_display(path: Path) -> str:
         return str(path)
 
 
-def missing_path_context(path: str | Path, *, max_entries: int = 50) -> dict:
+def missing_path_context(
+    path: str | Path, *, max_entries: int = 50
+) -> dict[str, Any]:
     """Describe the nearest existing parent and sibling entries for a missing path diagnostic."""
     resolved = resolve_path(path)
     nearest = next(

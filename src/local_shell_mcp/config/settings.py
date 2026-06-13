@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 import yaml
 from pydantic import Field, field_validator, model_validator
@@ -213,7 +213,7 @@ class Settings(BaseSettings):
 
     @field_validator("command_denylist", "path_denylist", mode="before")
     @classmethod
-    def split_csv_fields(cls, value):
+    def split_csv_fields(cls, value: str | list[str] | None) -> list[str]:
         """Normalize comma-delimited restriction lists supplied through environment variables."""
         return _split_csv(value)
 
@@ -230,7 +230,7 @@ class Settings(BaseSettings):
         if self.workspace_root == DEFAULT_WORKSPACE_ROOT:
             return self
 
-        updates = {}
+        updates: dict[str, Path] = {}
         if self.state_dir == DEFAULT_STATE_DIR:
             updates["state_dir"] = self.workspace_root / ".local-shell-mcp"
         if self.audit_log_path == DEFAULT_AUDIT_LOG_PATH:
@@ -247,7 +247,8 @@ def _flatten_config(data: dict[str, Any]) -> dict[str, Any]:
     flat: dict[str, Any] = {}
     for key, value in data.items():
         if isinstance(value, dict):
-            for child_key, child_value in value.items():
+            nested = cast(dict[str, Any], value)
+            for child_key, child_value in nested.items():
                 flat[f"{key}_{child_key}"] = child_value
         else:
             flat[key] = value
@@ -261,10 +262,12 @@ def read_config_file(path: str | Path | None) -> dict[str, Any]:
     config_path = Path(path).expanduser()
     if not config_path.exists():
         raise FileNotFoundError(config_path)
-    data = yaml.safe_load(config_path.read_text()) or {}
-    if not isinstance(data, dict):
+    loaded = yaml.safe_load(config_path.read_text())
+    if loaded is None:
+        return {}
+    if not isinstance(loaded, dict):
         raise ValueError(f"Config file must contain a mapping: {config_path}")
-    return _flatten_config(data)
+    return _flatten_config(cast(dict[str, Any], loaded))
 
 
 def _env_overrides() -> dict[str, Any]:
@@ -330,7 +333,7 @@ def clear_settings_cache() -> None:
     _configured_settings = None
 
 
-def safe_settings_dump(settings: Settings | None = None) -> dict:
+def safe_settings_dump(settings: Settings | None = None) -> dict[str, Any]:
     """Return settings for diagnostics without exposing credentials or auth secrets."""
 
     data = (settings or get_settings()).model_dump(mode="json")
