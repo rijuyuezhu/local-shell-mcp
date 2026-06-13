@@ -5,6 +5,8 @@ from __future__ import annotations
 import hmac
 import html as html_lib
 import secrets
+from functools import lru_cache
+from importlib.resources import files
 from urllib.parse import urlencode
 
 from authlib.oauth2.rfc7636.challenge import CODE_CHALLENGE_PATTERN
@@ -20,6 +22,18 @@ from .oauth_urls import (
     issuer_url,
     resource_url,
 )
+
+_AUTHORIZE_TEMPLATE = "oauth_authorize.html"
+
+
+@lru_cache(maxsize=1)
+def _authorize_template() -> str:
+    """Read the package HTML template used by the local approval form."""
+    return (
+        files("local_shell_mcp.auth")
+        .joinpath(_AUTHORIZE_TEMPLATE)
+        .read_text(encoding="utf-8")
+    )
 
 
 def _validate_authorize_params(params: dict[str, str]) -> str | None:
@@ -74,23 +88,14 @@ def _authorize_form(
     pin_hint = "Enter LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN to approve this ChatGPT connector."
     if not settings.oauth_admin_pin:
         pin_hint = "No admin PIN is configured. Click Approve to continue. Set LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN before exposing this publicly."
-    html = f"""<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>Authorize local-shell-mcp</title></head>
-<body style="font-family: system-ui, sans-serif; max-width: 720px; margin: 48px auto; line-height: 1.45;">
-  <h1>Authorize local-shell-mcp</h1>
-  <p>This grants ChatGPT access to tools that can execute shell commands inside the configured container workspace.</p>
-  <p><strong>Resource:</strong> {html_lib.escape(resource)}</p>
-  <p><strong>Scopes:</strong> {html_lib.escape(scope)}</p>
-  {error_html}
-  <form method="post" action="/oauth/authorize">
-    {_hidden_inputs(params)}
-    <label>Admin PIN<br><input type="password" name="pin" autofocus style="width: 320px; padding: 8px;" /></label>
-    <p style="color:#555">{html_lib.escape(pin_hint)}</p>
-    <button type="submit" style="padding: 8px 14px;">Approve</button>
-  </form>
-</body>
-</html>"""
+    html = (
+        _authorize_template()
+        .replace("{{RESOURCE}}", html_lib.escape(resource))
+        .replace("{{SCOPE}}", html_lib.escape(scope))
+        .replace("{{ERROR_HTML}}", error_html)
+        .replace("{{HIDDEN_INPUTS}}", _hidden_inputs(params))
+        .replace("{{PIN_HINT}}", html_lib.escape(pin_hint))
+    )
     return HTMLResponse(html)
 
 
