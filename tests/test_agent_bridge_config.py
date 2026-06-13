@@ -13,6 +13,7 @@ from local_shell_mcp.config.settings import (
     DEFAULT_STATE_DIR,
     clear_settings_cache,
     get_settings,
+    load_settings,
 )
 
 
@@ -25,8 +26,9 @@ def test_workspace_root_does_not_rewrite_default_state_paths(
     monkeypatch.delenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", raising=False)
     clear_settings_cache()
 
-    settings = get_settings()
+    settings = load_settings(create_dirs=False)
 
+    assert settings.workspace_root == tmp_path.resolve()
     assert settings.state_dir == DEFAULT_STATE_DIR.resolve()
     assert settings.audit_log_path == DEFAULT_AUDIT_LOG_PATH.resolve()
     assert settings.agent_config_dir == DEFAULT_AGENT_CONFIG_DIR.resolve()
