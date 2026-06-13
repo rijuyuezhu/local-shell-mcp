@@ -10,12 +10,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import jwt
-from authlib.oauth2.rfc6749.errors import (
-    InvalidGrantError,
-    InvalidRequestError,
-    OAuth2Error,
-    UnsupportedGrantTypeError,
-)
+from authlib.oauth2.rfc6749.errors import UnsupportedGrantTypeError
 from authlib.oauth2.rfc7636.challenge import (
     CODE_CHALLENGE_PATTERN,
     CODE_VERIFIER_PATTERN,
@@ -33,6 +28,12 @@ from starlette.responses import (
 from ..audit import audit
 from ..config.settings import get_settings
 from .oauth_models import _CLIENTS, _CODES, AuthCode, OAuthClient
+from .oauth_responses import (
+    _invalid_grant,
+    _invalid_request,
+    _json,
+    _oauth_error,
+)
 from .oauth_urls import (
     _default_scope,
     _normalize_resource,
@@ -87,31 +88,6 @@ def authorization_server_metadata(request: Request) -> dict[str, Any]:
         "authorization_response_iss_parameter_supported": True,
         "resource_parameter_supported": True,
     }
-
-
-def _json(data: dict, status_code: int = 200) -> JSONResponse:
-    """Return compact JSON responses with the media type expected by OAuth metadata clients."""
-    return JSONResponse(
-        data, status_code=status_code, headers={"Cache-Control": "no-store"}
-    )
-
-
-def _oauth_error(exc: OAuth2Error, status_code: int = 400) -> JSONResponse:
-    """Serialize Authlib OAuth errors in the RFC6749 JSON shape."""
-    body = {"error": exc.error}
-    if exc.description:
-        body["error_description"] = exc.description
-    return _json(body, status_code=status_code)
-
-
-def _invalid_request(description: str) -> JSONResponse:
-    """Return an Authlib-backed invalid_request response."""
-    return _oauth_error(InvalidRequestError(description=description))
-
-
-def _invalid_grant(description: str) -> JSONResponse:
-    """Return an Authlib-backed invalid_grant response."""
-    return _oauth_error(InvalidGrantError(description=description))
 
 
 async def oauth_protected_resource(request: Request) -> JSONResponse:
