@@ -9,7 +9,7 @@ import argparse
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast, get_args, get_origin
+from typing import Annotated, Any, Literal, cast, get_args, get_origin
 
 from .settings import ENV_PREFIX, Settings
 
@@ -24,6 +24,7 @@ type SectionName = Literal[
 ]
 
 SECTION_ORDER: tuple[SectionName, ...] = get_args(SectionName.__value__)
+CLI_UNSET = object()
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,11 @@ class SettingSpec:
     def cli_flag(self) -> str:
         """Return the canonical CLI flag for this setting."""
         return f"--{self.name.replace('_', '-')}"
+
+    @property
+    def unset_cli_flag(self) -> str:
+        """Return the CLI flag that explicitly unsets this setting."""
+        return f"--unset-{self.name.replace('_', '-')}"
 
 
 SETTING_SPECS: tuple[SettingSpec, ...] = (
@@ -246,9 +252,29 @@ def yaml_default(value: Any) -> Any:
     return value
 
 
+def _setting_annotation(name: str) -> Any:
+    """Return a Settings field annotation after unwrapping Annotated."""
+    annotation = Settings.model_fields[name].annotation
+    if get_origin(annotation) is Annotated:
+        return get_args(annotation)[0]
+    return annotation
+
+
+def _non_none_annotation(name: str) -> Any:
+    """Return a Settings field annotation with an optional None member removed."""
+    annotation = _setting_annotation(name)
+    args = get_args(annotation)
+    if type(None) not in args:
+        return annotation
+    non_none_args = tuple(arg for arg in args if arg is not type(None))
+    if len(non_none_args) == 1:
+        return non_none_args[0]
+    return annotation
+
+
 def argparse_type_for(name: str) -> type[int] | type[float] | type[str]:
     """Return an argparse type callable for a Settings field."""
-    annotation = Settings.model_fields[name].annotation
+    annotation = _non_none_annotation(name)
     if annotation is int:
         return int
     if annotation is float:
@@ -258,7 +284,7 @@ def argparse_type_for(name: str) -> type[int] | type[float] | type[str]:
 
 def argparse_choices_for(name: str) -> tuple[str, ...] | None:
     """Return argparse choices for Literal settings."""
-    annotation = Settings.model_fields[name].annotation
+    annotation = _non_none_annotation(name)
     if get_origin(annotation) is Literal:
         return tuple(str(item) for item in get_args(annotation))
     elif is_bool_setting(name):
@@ -268,7 +294,12 @@ def argparse_choices_for(name: str) -> tuple[str, ...] | None:
 
 def is_bool_setting(name: str) -> bool:
     """Return whether a Settings field is boolean."""
-    return Settings.model_fields[name].annotation is bool
+    return _non_none_annotation(name) is bool
+
+
+def is_nullable_setting(name: str) -> bool:
+    """Return whether a Settings field accepts None as a concrete value."""
+    return type(None) in get_args(_setting_annotation(name))
 
 
 class BoolChoiceAction(argparse.Action):
@@ -292,7 +323,7 @@ def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
         for spec in specs:
             kwargs: dict[str, Any] = {
                 "dest": spec.name,
-                "default": None,
+                "default": CLI_UNSET,
                 "help": f"{spec.help} Overrides {spec.env_var} and config files. Default: {default_to_string(default_value(spec.name)) or 'unset'}.",
             }
             if spec.metavar:
@@ -301,14 +332,27 @@ def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
             if choices:
                 kwargs["choices"] = choices
 
-            if (annotation := Settings.model_fields[spec.name].annotation) in (
-                int,
-                float,
-            ):
-                kwargs["type"] = annotation
+            if (argparse_type := argparse_type_for(spec.name)) in (int, float):
+                kwargs["type"] = argparse_type
             elif is_bool_setting(spec.name):
                 kwargs["action"] = BoolChoiceAction
-            group.add_argument(spec.cli_flag, **kwargs)
+
+            target = group
+            if is_nullable_setting(spec.name):
+                target = group.add_mutually_exclusive_group()
+            target.add_argument(spec.cli_flag, **kwargs)
+            if is_nullable_setting(spec.name):
+                target.add_argument(
+                    spec.unset_cli_flag,
+                    action="store_const",
+                    const=None,
+                    default=CLI_UNSET,
+                    dest=spec.name,
+                    help=(
+                        f"Clear {spec.name.replace('_', '-')} by setting it to "
+                        f"null. Overrides {spec.env_var} and config files."
+                    ),
+                )
 
 
 def cli_overrides_from_args(args: argparse.Namespace) -> dict[str, object]:
@@ -317,5 +361,5 @@ def cli_overrides_from_args(args: argparse.Namespace) -> dict[str, object]:
     return {
         spec.name: value
         for spec in SETTING_SPECS
-        if (value := getattr(args, spec.name, None)) is not None
+        if (value := getattr(args, spec.name, CLI_UNSET)) is not CLI_UNSET
     }

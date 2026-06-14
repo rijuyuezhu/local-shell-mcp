@@ -1,7 +1,10 @@
+import pytest
+
 import local_shell_mcp.main as cli
 from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     cli_overrides_from_args,
+    is_nullable_setting,
 )
 
 
@@ -50,9 +53,40 @@ def test_server_options_parse_to_default_handler():
 def test_every_setting_has_cli_option():
     help_text = cli._build_parser().format_help()
 
+    assert "<object object at" not in help_text
     for spec in SETTING_SPECS:
         assert spec.cli_flag in help_text
         assert spec.env_var in help_text
+        if is_nullable_setting(spec.name):
+            assert spec.unset_cli_flag in help_text
+        else:
+            assert spec.unset_cli_flag not in help_text
+
+
+def test_nullable_cli_values_can_be_explicitly_unset():
+    args = cli._build_parser().parse_args(
+        ["--unset-public-base-url", "--unset-oauth-admin-pin"]
+    )
+
+    assert args.public_base_url is None
+    assert args.oauth_admin_pin is None
+    assert cli_overrides_from_args(args) == {
+        "public_base_url": None,
+        "oauth_admin_pin": None,
+    }
+
+
+def test_nullable_cli_value_and_unset_flag_are_mutually_exclusive():
+    parser = cli._build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "--public-base-url",
+                "https://example.com",
+                "--unset-public-base-url",
+            ]
+        )
 
 
 def test_bool_cli_values_parse_explicitly():
