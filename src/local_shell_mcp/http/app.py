@@ -18,7 +18,7 @@ from ..oauth.middleware import (
 )
 from ..ops.command_ops import public_tool_timeout_s
 from ..tools.discovery import discover_tool_registries
-from ..tools.local_invocations import call_local_tool
+from ..tools.local_invocations import UnknownLocalToolError, call_local_tool
 
 type ToolRouteHandler = Callable[..., Awaitable[Any]]
 
@@ -101,9 +101,9 @@ def build_http_app() -> FastAPI:
             },
         )
 
-    @app.exception_handler(KeyError)
-    async def key_error_handler(
-        request: Request, exc: KeyError
+    @app.exception_handler(UnknownLocalToolError)
+    async def unknown_tool_handler(
+        request: Request, exc: UnknownLocalToolError
     ) -> JSONResponse:
         return JSONResponse(
             status_code=404,
@@ -117,6 +117,7 @@ def build_http_app() -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content={"ok": False, "error": "http_error", "message": exc.detail},
+            headers=exc.headers,
         )
 
     @app.middleware("http")

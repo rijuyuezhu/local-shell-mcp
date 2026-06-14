@@ -71,8 +71,11 @@ def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
 async def _remote_worker_tool(
     args: dict[str, Any], tool_name: str, timeout_s: int | None = None
 ) -> dict[str, Any]:
+    machine = args.get("machine")
+    if machine is None:
+        raise ValueError("Missing required argument: machine")
     result = await call_remote_worker_tool(
-        args["machine"], tool_name, _remote_worker_args(args), timeout_s
+        str(machine), tool_name, _remote_worker_args(args), timeout_s
     )
     if result.get("ok", False):
         data = result.get("data")
