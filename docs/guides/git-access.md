@@ -1,6 +1,6 @@
 # Git access
 
-`local-shell-mcp` does not expose dedicated Git tools. Use `run_shell_tool` or a persistent shell for Git workflows.
+`local-shell-mcp` does not expose dedicated Git tools. Use `run_shell_command` or a persistent shell for Git workflows.
 
 ## Recommended credential approach
 

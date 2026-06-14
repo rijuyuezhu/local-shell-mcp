@@ -66,14 +66,14 @@ def clamp_timeout(timeout_s: int | None) -> int:
 
 
 def public_run_shell_timeout(timeout_s: int | None) -> int:
-    """Resolve public run_shell_tool timeout from explicit public settings."""
+    """Resolve public run_shell_command timeout from explicit public settings."""
     settings = get_settings()
     default = max(1, settings.public_run_shell_default_timeout_s)
     cap = max(1, settings.public_run_shell_max_timeout_s)
     if timeout_s is not None and timeout_s > cap:
         raise ValueError(
-            f"timeout_s must be <= {cap} seconds for run_shell_tool; "
-            "use shell_start for long-running or streaming commands"
+            f"timeout_s must be <= {cap} seconds for run_shell_command; "
+            "use start_persistent_shell for long-running or streaming commands"
         )
     return max(1, min(timeout_s or default, cap))
 
@@ -213,7 +213,7 @@ async def run_shell(
     check_command_policy(command)
     resolved_cwd = resolve_path(cwd, must_exist=True)
     start = time.time()
-    audit("run_shell_start", command=command, cwd=str(resolved_cwd))
+    audit("run_shell_command_start", command=command, cwd=str(resolved_cwd))
     timeout = clamp_timeout(timeout_s)
 
     proc: asyncio.subprocess.Process | None = None
@@ -288,7 +288,7 @@ async def run_shell(
         truncated=truncated,
     )
     audit(
-        "run_shell_end",
+        "run_shell_command_end",
         command=command,
         cwd=str(resolved_cwd),
         exit_code=proc.returncode if proc is not None else None,

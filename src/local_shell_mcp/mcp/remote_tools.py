@@ -122,10 +122,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=oauth_security_meta,
         description=_description(
-            f"""Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. Timeout: timeout_s is in seconds and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds on the worker. Output: max_output_bytes caps returned output and the worker default cap is max_output_bytes={settings.max_output_bytes}. For long-running or interactive remote processes, use remote_shell_start with remote_shell_send and remote_shell_read."""
+            f"""Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. Timeout: timeout_s is in seconds and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds on the worker. Output: max_output_bytes caps returned output and the worker default cap is max_output_bytes={settings.max_output_bytes}. For long-running or interactive remote processes, use start_remote_persistent_shell with send_remote_persistent_shell_input and read_remote_persistent_shell_output."""
         ),
     )
-    async def remote_run_shell_tool(
+    async def run_remote_shell_command(
         machine: str,
         command: str,
         cwd: str = ".",
@@ -135,7 +135,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         """Run one non-interactive shell command on a remote worker."""
         return await _remote_call(
             machine,
-            "run_shell_tool",
+            "run_shell_command",
             {
                 "command": command,
                 "cwd": cwd,
@@ -152,39 +152,39 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             f"""Write Python code to a temporary file and execute it on a remote worker. Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. Parameters: cwd is resolved on the remote worker and timeout_s defaults to 60 seconds. Timeout: keep timeout_s within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds."""
         ),
     )
-    async def remote_run_python_tool(
+    async def run_remote_python_code(
         machine: str, code: str, cwd: str = ".", timeout_s: int = 60
     ) -> ToolResult:
         """Write Python code to a temporary file and execute it on a remote worker."""
         return await _remote_call(
             machine,
-            "run_python_tool",
+            "run_python_code",
             {"code": code, "cwd": cwd, "timeout_s": timeout_s},
             timeout_s,
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
-    async def remote_shell_start(
+    async def start_remote_persistent_shell(
         machine: str,
         cwd: str = ".",
         name: str | None = None,
         command: str | None = None,
     ) -> ToolResult:
-        """Start a persistent shell session on a remote worker. Use for remote development servers, watches, REPLs, or interactive commands whose output must be read incrementally. For one-shot commands, use remote_run_shell_tool."""
+        """Start a persistent shell session on a remote worker. Use for remote development servers, watches, REPLs, or interactive commands whose output must be read incrementally. For one-shot commands, use run_remote_shell_command."""
         return await _remote_call(
             machine,
-            "shell_start",
+            "start_persistent_shell",
             {"cwd": cwd, "name": name, "command": command},
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
-    async def remote_shell_send(
+    async def send_remote_persistent_shell_input(
         machine: str, session_id: str, input_text: str, enter: bool = True
     ) -> ToolResult:
-        """Send input to a persistent remote shell session. Use after remote_shell_start when the remote process is waiting for commands or interactive input. enter=false sends partial input without a newline."""
+        """Send input to a persistent remote shell session. Use after start_remote_persistent_shell when the remote process is waiting for commands or interactive input. enter=false sends partial input without a newline."""
         return await _remote_call(
             machine,
-            "shell_send",
+            "send_persistent_shell_input",
             {
                 "session_id": session_id,
                 "input_text": input_text,
@@ -193,25 +193,29 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
-    async def remote_shell_read(
+    async def read_remote_persistent_shell_output(
         machine: str, session_id: str, lines: int = 200
     ) -> ToolResult:
         """Read recent output from a persistent remote shell session. Use to inspect output from remote long-running or interactive commands. lines bounds the returned recent output."""
         return await _remote_call(
-            machine, "shell_read", {"session_id": session_id, "lines": lines}
+            machine,
+            "read_persistent_shell_output",
+            {"session_id": session_id, "lines": lines},
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
-    async def remote_shell_kill(machine: str, session_id: str) -> ToolResult:
+    async def kill_remote_persistent_shell(
+        machine: str, session_id: str
+    ) -> ToolResult:
         """Terminate a persistent remote shell session. Use when a remote server, watch, REPL, or stuck command is no longer needed. This affects only the named session on the selected worker."""
         return await _remote_call(
-            machine, "shell_kill", {"session_id": session_id}
+            machine, "kill_persistent_shell", {"session_id": session_id}
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
-    async def remote_shell_list(machine: str) -> ToolResult:
+    async def list_remote_persistent_shells(machine: str) -> ToolResult:
         """List persistent shell sessions on a remote worker. Use before reading, sending to, or killing remote sessions when you need the session_id or active-process overview."""
-        return await _remote_call(machine, "shell_list", {})
+        return await _remote_call(machine, "list_persistent_shells", {})
 
     @mcp.tool(
         structured_output=True,

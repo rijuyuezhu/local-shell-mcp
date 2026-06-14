@@ -50,7 +50,10 @@ async def start_shell(
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
     audit(
-        "shell_start", session=session, cwd=str(resolved_cwd), command=initial
+        "start_persistent_shell",
+        session=session,
+        cwd=str(resolved_cwd),
+        command=initial,
     )
     return {
         "session_id": session,
@@ -70,7 +73,7 @@ async def send_shell(
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
     audit(
-        "shell_send",
+        "send_persistent_shell_input",
         session=session_id,
         bytes=len(input_text.encode()),
         enter=enter,
@@ -89,14 +92,14 @@ async def read_shell(session_id: str, lines: int = 200) -> dict:
     )
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
-    audit("shell_read", session=session_id, lines=lines)
+    audit("read_persistent_shell_output", session=session_id, lines=lines)
     return {"session_id": session_id, "output": result.stdout}
 
 
 async def kill_shell(session_id: str) -> dict:
     """Terminate a persistent shell session by its normalized tmux session id."""
     result = await tmux(["kill-session", "-t", session_id])
-    audit("shell_kill", session=session_id, ok=result.ok)
+    audit("kill_persistent_shell", session=session_id, ok=result.ok)
     return {
         "session_id": session_id,
         "killed": result.ok,

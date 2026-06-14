@@ -17,18 +17,18 @@ from tests.helpers import mcp_text
 
 
 @pytest.mark.asyncio
-async def test_run_shell_tool_rejects_timeout_above_public_cap(
+async def test_run_shell_command_rejects_timeout_above_public_cap(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
     response = await build_mcp().call_tool(
-        "run_shell_tool", {"command": "echo ok", "timeout_s": 3600}
+        "run_shell_command", {"command": "echo ok", "timeout_s": 3600}
     )
     payload = mcp_text(response)
 
-    assert "timeout_s must be <= 60 seconds for run_shell_tool" in payload
+    assert "timeout_s must be <= 60 seconds for run_shell_command" in payload
 
 
 @pytest.mark.asyncio
@@ -37,7 +37,7 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    async def hanging_public_run_shell(
+    async def hanging_run_shell_command_execute(
         command: str,
         cwd: str = ".",
         timeout_s: int | None = None,
@@ -46,15 +46,19 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        shell_tools_module, "public_run_shell", hanging_public_run_shell
+        shell_tools_module,
+        "run_shell_command_execute",
+        hanging_run_shell_command_execute,
     )
 
     response = await build_mcp().call_tool(
-        "run_shell_tool", {"command": "echo ok"}
+        "run_shell_command", {"command": "echo ok"}
     )
     payload = mcp_text(response)
 
-    assert "run_shell_tool exceeded 0.01 second public tool timeout" in payload
+    assert (
+        "run_shell_command exceeded 0.01 second public tool timeout" in payload
+    )
 
 
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
@@ -71,7 +75,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     )
 
     response = TestClient(build_http_app()).post(
-        "/tools/run_shell", json={"command": "echo ok"}
+        "/tools/run_shell_command", json={"command": "echo ok"}
     )
 
     assert response.status_code == 504
@@ -136,7 +140,7 @@ def test_public_run_shell_timeout_allows_explicit_cap(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_shell_timeout_includes_subprocess_spawn(
+async def test_run_shell_command_timeout_includes_subprocess_spawn(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -158,7 +162,7 @@ async def test_run_shell_timeout_includes_subprocess_spawn(
 
 
 @pytest.mark.asyncio
-async def test_run_shell_fast_command_succeeds(tmp_path, monkeypatch):
+async def test_run_shell_command_fast_command_succeeds(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
@@ -170,7 +174,9 @@ async def test_run_shell_fast_command_succeeds(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_shell_streams_and_bounds_large_output(tmp_path, monkeypatch):
+async def test_run_shell_command_streams_and_bounds_large_output(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
@@ -186,7 +192,7 @@ async def test_run_shell_streams_and_bounds_large_output(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_shell_timeout_marks_result_and_cleans_up(
+async def test_run_shell_command_timeout_marks_result_and_cleans_up(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -224,7 +230,9 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_shell_filters_server_environment(monkeypatch, tmp_path):
+async def test_run_shell_command_filters_server_environment(
+    monkeypatch, tmp_path
+):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "should-not-leak")

@@ -186,15 +186,21 @@ REST_ROUTES: dict[str, tuple[str, str]] = {
     "list_file_links": ("GET", "/tools/file_link/list"),
     "revoke_file_link": ("POST", "/tools/file_link/revoke"),
     "secret_scan": ("POST", "/tools/secret_scan"),
-    "run_shell_tool": ("POST", "/tools/run_shell"),
-    "run_python_tool": ("POST", "/tools/run_python"),
-    "shell_list": ("GET", "/tools/shell_list"),
-    "shell_start": ("POST", "/tools/shell_start"),
-    "shell_send": ("POST", "/tools/shell_send"),
-    "shell_read": ("POST", "/tools/shell_read"),
-    "shell_kill": ("POST", "/tools/shell_kill"),
-    "todo_read_tool": ("GET", "/tools/todo"),
-    "todo_write_tool": ("POST", "/tools/todo"),
+    "run_shell_command": ("POST", "/tools/run_shell_command"),
+    "run_python_code": ("POST", "/tools/run_python_code"),
+    "list_persistent_shells": ("GET", "/tools/list_persistent_shells"),
+    "start_persistent_shell": ("POST", "/tools/start_persistent_shell"),
+    "send_persistent_shell_input": (
+        "POST",
+        "/tools/send_persistent_shell_input",
+    ),
+    "read_persistent_shell_output": (
+        "POST",
+        "/tools/read_persistent_shell_output",
+    ),
+    "kill_persistent_shell": ("POST", "/tools/kill_persistent_shell"),
+    "read_todos": ("GET", "/tools/todo"),
+    "write_todos": ("POST", "/tools/todo"),
 }
 
 

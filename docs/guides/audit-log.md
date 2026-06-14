@@ -36,7 +36,7 @@ Every normal routed MCP or REST debug tool call produces a start/end pair linked
 
 Failures and timeouts are also linked by `call_id`.
 
-Other event families may appear alongside routed tool calls, including `run_shell_start`, `run_shell_end`, `shell_start`, `shell_send`, `shell_read`, `shell_kill`, `auth_ok`, `oauth_*`, `tool_error`, `tool_timeout`, and `remote_worker_registered`.
+Other event families may appear alongside routed tool calls, including `run_start_persistent_shell`, `run_shell_command_end`, `start_persistent_shell`, `send_persistent_shell_input`, `read_persistent_shell_output`, `kill_persistent_shell`, `auth_ok`, `oauth_*`, `tool_error`, `tool_timeout`, and `remote_worker_registered`.
 
 ## Sensitive data warning
 

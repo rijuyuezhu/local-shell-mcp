@@ -30,8 +30,8 @@ REMOTE_TOOL_NAMES = {
     "remote_revoke_machine",
     "remote_rename_machine",
     "remote_environment_info",
-    "remote_run_shell_tool",
-    "remote_run_python_tool",
+    "run_remote_shell_command",
+    "run_remote_python_code",
     "remote_list_files",
     "remote_read_file",
     "remote_read_many_files",
@@ -300,7 +300,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             )
 
             shell_result = await client.call_tool(
-                "remote_run_shell_tool",
+                "run_remote_shell_command",
                 {
                     "machine": machine,
                     "command": "printf remote-shell-ok",
@@ -311,7 +311,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert shell_result["stdout"] == "remote-shell-ok"
 
             python_result = await client.call_tool(
-                "remote_run_python_tool",
+                "run_remote_python_code",
                 {
                     "machine": machine,
                     "code": "from pathlib import Path; print(Path.cwd().name)",

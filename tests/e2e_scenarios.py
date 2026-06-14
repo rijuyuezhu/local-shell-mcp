@@ -23,18 +23,18 @@ CORE_TOOL_NAMES = {
     "delete_file_or_dir",
     "apply_patch",
     "secret_scan",
-    "run_shell_tool",
-    "run_python_tool",
-    "shell_list",
-    "todo_read_tool",
-    "todo_write_tool",
+    "run_shell_command",
+    "run_python_code",
+    "list_persistent_shells",
+    "read_todos",
+    "write_todos",
 }
 
 INTERACTIVE_SHELL_TOOL_NAMES = {
-    "shell_start",
-    "shell_send",
-    "shell_read",
-    "shell_kill",
+    "start_persistent_shell",
+    "send_persistent_shell_input",
+    "read_persistent_shell_output",
+    "kill_persistent_shell",
 }
 
 
@@ -161,13 +161,13 @@ async def exercise_workspace_connector_tools(client: ToolClient) -> None:
 
 async def exercise_shell_tools(client: ToolClient) -> None:
     shell_result = await client.call_tool(
-        "run_shell_tool", {"command": "printf e2e-shell", "timeout_s": 5}
+        "run_shell_command", {"command": "printf e2e-shell", "timeout_s": 5}
     )
     assert shell_result["ok"] is True
     assert shell_result["stdout"] == "e2e-shell"
 
     python_result = await client.call_tool(
-        "run_python_tool",
+        "run_python_code",
         {
             "code": "import json; print(json.dumps({'e2e': 314}))",
             "timeout_s": 5,
@@ -176,8 +176,8 @@ async def exercise_shell_tools(client: ToolClient) -> None:
     assert python_result["ok"] is True
     assert json.loads(python_result["stdout"])["e2e"] == 314
 
-    shell_list = await client.call_tool("shell_list")
-    assert "sessions" in shell_list
+    list_persistent_shells = await client.call_tool("list_persistent_shells")
+    assert "sessions" in list_persistent_shells
 
 
 async def exercise_interactive_shell_tools(client: ToolClient) -> None:
@@ -185,11 +185,11 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
         pytest.skip("tmux is required for interactive shell e2e coverage")
 
     await assert_required_tools(client, INTERACTIVE_SHELL_TOOL_NAMES)
-    started = await client.call_tool("shell_start", {"name": "e2e"})
+    started = await client.call_tool("start_persistent_shell", {"name": "e2e"})
     session_id = started["session_id"]
     try:
         await client.call_tool(
-            "shell_send",
+            "send_persistent_shell_input",
             {
                 "session_id": session_id,
                 "input_text": "printf ready",
@@ -200,7 +200,7 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
         output = ""
         while time.monotonic() < deadline:
             read = await client.call_tool(
-                "shell_read", {"session_id": session_id}
+                "read_persistent_shell_output", {"session_id": session_id}
             )
             output = read.get("output", "")
             if "ready" in output:
@@ -208,7 +208,9 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
             time.sleep(0.1)
         assert "ready" in output
     finally:
-        await client.call_tool("shell_kill", {"session_id": session_id})
+        await client.call_tool(
+            "kill_persistent_shell", {"session_id": session_id}
+        )
 
 
 async def exercise_todo_tools(client: ToolClient) -> None:
@@ -220,8 +222,8 @@ async def exercise_todo_tools(client: ToolClient) -> None:
             "priority": "high",
         }
     ]
-    write_result = await client.call_tool("todo_write_tool", {"todos": todos})
+    write_result = await client.call_tool("write_todos", {"todos": todos})
     assert write_result["todos"] == todos
 
-    read_result = await client.call_tool("todo_read_tool")
+    read_result = await client.call_tool("read_todos")
     assert read_result["todos"] == todos

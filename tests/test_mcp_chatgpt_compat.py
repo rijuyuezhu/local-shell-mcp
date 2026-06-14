@@ -65,10 +65,14 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert environment_meta["securitySchemes"][0]["type"] == "oauth2"
 
     assert all(tool.outputSchema is not None for tool in tools.values())
-    run_shell_schema = tools["run_shell_tool"].outputSchema
-    assert run_shell_schema is not None
-    assert run_shell_schema["title"] == "ToolResult"
-    assert set(run_shell_schema["properties"]) == {"ok", "message", "data"}
+    run_shell_command_schema = tools["run_shell_command"].outputSchema
+    assert run_shell_command_schema is not None
+    assert run_shell_command_schema["title"] == "ToolResult"
+    assert set(run_shell_command_schema["properties"]) == {
+        "ok",
+        "message",
+        "data",
+    }
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
     assert search_schema["properties"]["result"]["type"] == "string"
@@ -87,9 +91,9 @@ async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    run_shell_description = tools["run_shell_tool"].description or ""
+    run_shell_command_description = tools["run_shell_command"].description or ""
     grep_description = tools["grep_search"].description or ""
-    assert "max_output_bytes=12345" in run_shell_description
+    assert "max_output_bytes=12345" in run_shell_command_description
     assert "max_grep_results=678" in grep_description
 
 
@@ -139,7 +143,7 @@ async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    annotations = tools["run_shell_tool"].annotations
+    annotations = tools["run_shell_command"].annotations
     search_annotations = tools["search"].annotations
     assert annotations is not None
     assert search_annotations is not None
@@ -196,9 +200,9 @@ async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    run_shell_annotations = tools["run_shell_tool"].annotations
-    assert run_shell_annotations is not None
-    assert run_shell_annotations.openWorldHint is False
+    run_shell_command_annotations = tools["run_shell_command"].annotations
+    assert run_shell_command_annotations is not None
+    assert run_shell_command_annotations.openWorldHint is False
     assert tools["call_agent_mcp_tool"].annotations is None
     assert tools["agent_mcp__docs__search"].annotations is None
 
@@ -214,13 +218,13 @@ async def test_relaxed_client_tool_hints_marks_command_tools_without_full_contai
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    annotations = tools["run_shell_tool"].annotations
+    annotations = tools["run_shell_command"].annotations
     assert annotations is not None
     assert annotations.readOnlyHint is False
     assert annotations.destructiveHint is False
     assert annotations.idempotentHint is False
     assert annotations.openWorldHint is False
-    assert tools["run_shell_tool"].meta == {
+    assert tools["run_shell_command"].meta == {
         "securitySchemes": [
             {
                 "type": "oauth2",
@@ -244,7 +248,7 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    assert tools["run_shell_tool"].annotations is None
+    assert tools["run_shell_command"].annotations is None
 
 
 def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
