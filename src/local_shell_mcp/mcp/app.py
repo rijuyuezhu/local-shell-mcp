@@ -9,6 +9,7 @@ from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
 
 from ..config.settings import get_settings
+from ..http.downloads import download_routes
 from ..oauth.middleware import AuthMiddleware
 from ..oauth.routes import wrap_http_app
 from ..remote.http import remote_routes
@@ -142,7 +143,10 @@ def build_mcp_http_app(mcp: FastMCP) -> Starlette:
             inner: Starlette = getattr(mcp, attr)()
             app = wrap_http_app(
                 inner,
-                extra_routes=remote_routes() if settings.remote_enabled else (),
+                extra_routes=(
+                    *(remote_routes() if settings.remote_enabled else ()),
+                    *download_routes(),
+                ),
             )
             if settings.auth_mode != "none":
                 app.add_middleware(AuthMiddleware)

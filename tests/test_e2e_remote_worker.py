@@ -37,6 +37,10 @@ REMOTE_TOOL_NAMES = {
     "remote_read_many_files",
     "remote_write_file",
     "remote_delete_file_or_dir",
+    "remote_pull_file",
+    "remote_push_file",
+    "remote_pull_dir",
+    "remote_push_dir",
 }
 
 
@@ -316,6 +320,74 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             )
             assert python_result["ok"] is True
             assert python_result["stdout"].strip() == remote_workspace.name
+
+            (control_workspace / "local.bin").write_bytes(
+                b"local-to-remote-\x00-payload"
+            )
+            push_file = await client.call_tool(
+                "remote_push_file",
+                {
+                    "local_path": "local.bin",
+                    "machine": machine,
+                    "remote_path": "remote/pushed.bin",
+                    "chunk_size": 5,
+                },
+            )
+            assert push_file["bytes"] == len(b"local-to-remote-\x00-payload")
+            assert push_file["chunks"] > 1
+            assert (
+                remote_workspace / "remote" / "pushed.bin"
+            ).read_bytes() == (b"local-to-remote-\x00-payload")
+
+            pull_file = await client.call_tool(
+                "remote_pull_file",
+                {
+                    "machine": machine,
+                    "remote_path": "remote/pushed.bin",
+                    "local_path": "pulled.bin",
+                    "chunk_size": 4,
+                },
+            )
+            assert pull_file["chunks"] > 1
+            assert (control_workspace / "pulled.bin").read_bytes() == (
+                b"local-to-remote-\x00-payload"
+            )
+
+            (control_workspace / "tree" / "nested").mkdir(parents=True)
+            (control_workspace / "tree" / "nested" / "file.txt").write_text(
+                "directory payload", encoding="utf-8"
+            )
+            push_dir = await client.call_tool(
+                "remote_push_dir",
+                {
+                    "local_path": "tree",
+                    "machine": machine,
+                    "remote_path": "remote/tree-copy",
+                    "chunk_size": 128,
+                },
+            )
+            assert push_dir["entries"] >= 1
+            assert (
+                remote_workspace
+                / "remote"
+                / "tree-copy"
+                / "nested"
+                / "file.txt"
+            ).read_text(encoding="utf-8") == "directory payload"
+
+            pull_dir = await client.call_tool(
+                "remote_pull_dir",
+                {
+                    "machine": machine,
+                    "remote_path": "remote/tree-copy",
+                    "local_path": "tree-pulled",
+                    "chunk_size": 128,
+                },
+            )
+            assert pull_dir["entries"] >= 1
+            assert (
+                control_workspace / "tree-pulled" / "nested" / "file.txt"
+            ).read_text(encoding="utf-8") == "directory payload"
 
             await client.call_tool(
                 "remote_delete_file_or_dir",

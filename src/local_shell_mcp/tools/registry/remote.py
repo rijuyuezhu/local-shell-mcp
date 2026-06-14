@@ -14,6 +14,14 @@ from ...remote.service import (
     revoke_remote_machine,
 )
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
+from ...remote.transfer import (
+    copy_local_dir_to_remote,
+    copy_local_file_to_remote,
+    copy_remote_dir_to_local,
+    copy_remote_dir_to_remote,
+    copy_remote_file_to_local,
+    copy_remote_file_to_remote,
+)
 from ..contracts import HttpToolRoute, McpToolContext, ToolHandler
 from ..declarative import DeclarativeToolRegistry
 
@@ -104,9 +112,96 @@ def _make_remote_worker_handler(
     return handler
 
 
+@local_tool(http_method="POST", http_path="/tools/remote_copy_file")
+async def remote_copy_file(
+    src_machine: str,
+    src_path: str,
+    dst_machine: str,
+    dst_path: str,
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+) -> dict[str, Any]:
+    """Copy a file from one remote worker machine to another through the control server."""
+    return await copy_remote_file_to_remote(
+        src_machine, src_path, dst_machine, dst_path, overwrite, chunk_size
+    )
+
+
+@local_tool(http_method="POST", http_path="/tools/remote_copy_dir")
+async def remote_copy_dir(
+    src_machine: str,
+    src_path: str,
+    dst_machine: str,
+    dst_path: str,
+    overwrite: bool = False,
+    chunk_size: int | None = None,
+) -> dict[str, Any]:
+    """Copy a directory tree from one remote worker machine to another through the control server."""
+    return await copy_remote_dir_to_remote(
+        src_machine, src_path, dst_machine, dst_path, overwrite, chunk_size
+    )
+
+
+@local_tool(http_method="POST", http_path="/tools/remote_pull_file")
+async def remote_pull_file(
+    machine: str,
+    remote_path: str,
+    local_path: str,
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+) -> dict[str, Any]:
+    """Copy a file from a remote worker to the control server workspace."""
+    return await copy_remote_file_to_local(
+        machine, remote_path, local_path, overwrite, chunk_size
+    )
+
+
+@local_tool(http_method="POST", http_path="/tools/remote_push_file")
+async def remote_push_file(
+    local_path: str,
+    machine: str,
+    remote_path: str,
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+) -> dict[str, Any]:
+    """Copy a file from the control server workspace to a remote worker."""
+    return await copy_local_file_to_remote(
+        local_path, machine, remote_path, overwrite, chunk_size
+    )
+
+
+@local_tool(http_method="POST", http_path="/tools/remote_pull_dir")
+async def remote_pull_dir(
+    machine: str,
+    remote_path: str,
+    local_path: str,
+    overwrite: bool = False,
+    chunk_size: int | None = None,
+) -> dict[str, Any]:
+    """Copy a directory tree from a remote worker to the control server workspace."""
+    return await copy_remote_dir_to_local(
+        machine, remote_path, local_path, overwrite, chunk_size
+    )
+
+
+@local_tool(http_method="POST", http_path="/tools/remote_push_dir")
+async def remote_push_dir(
+    local_path: str,
+    machine: str,
+    remote_path: str,
+    overwrite: bool = False,
+    chunk_size: int | None = None,
+) -> dict[str, Any]:
+    """Copy a directory tree from the control server workspace to a remote worker."""
+    return await copy_local_dir_to_remote(
+        local_path, machine, remote_path, overwrite, chunk_size
+    )
+
+
 REMOTE_WORKER_HTTP_ROUTES = tuple(
     HttpToolRoute("POST", spec.http_path, spec.public_name)
     for spec in REMOTE_WORKER_TOOL_SPECS
+    if spec.expose_http and spec.http_path is not None
 )
 
 REMOTE_WORKER_HTTP_HANDLERS: dict[str, ToolHandler] = {
@@ -116,4 +211,5 @@ REMOTE_WORKER_HTTP_HANDLERS: dict[str, ToolHandler] = {
         default_timeout=spec.default_timeout,
     )
     for spec in REMOTE_WORKER_TOOL_SPECS
+    if spec.expose_http
 }

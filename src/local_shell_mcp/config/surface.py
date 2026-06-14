@@ -166,6 +166,27 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "max_tmux_sessions", "Safety and resource limits", metavar="COUNT"
     ),
+    SettingSpec("file_download_enabled", "Safety and resource limits"),
+    SettingSpec(
+        "file_download_default_ttl_s",
+        "Safety and resource limits",
+        metavar="SECONDS",
+    ),
+    SettingSpec(
+        "file_download_max_ttl_s",
+        "Safety and resource limits",
+        metavar="SECONDS",
+    ),
+    SettingSpec(
+        "file_download_default_max_downloads",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "file_download_max_file_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
     SettingSpec(
         "command_denylist", "Safety and resource limits", metavar="CSV"
     ),

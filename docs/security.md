@@ -34,7 +34,7 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 
 ### Controls implemented
 
-- OAuth bootstrap routes, well-known metadata, health checks, and remote-worker enrollment endpoints remain public; MCP and REST tool routes are protected by middleware unless `auth_mode=none` or the explicit localhost bypass applies.
+- OAuth bootstrap routes, well-known metadata, health checks, remote-worker enrollment endpoints, and tokenized `/download/{token}` file links remain public; MCP and REST tool routes are protected by middleware unless `auth_mode=none` or the explicit localhost bypass applies.
 - The canonical resource defaults to the `/mcp` endpoint, not merely the origin, so a token for `https://example.com/mcp` is not accepted for every service on `https://example.com`.
 - The authorization request must include `response_type=code`, `client_id`, `redirect_uri`, and `resource`; the `resource` must match this server.
 - Dynamically registered clients bind authorization codes to registered redirect URIs. Token exchange must present the same `client_id`, `redirect_uri`, `resource`, and PKCE verifier.
@@ -65,6 +65,18 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true` is an explicit full-control mode. It disables built-in command and path denylists and adds auto-approval hints for command-capable tools.
 
 In the Docker image, the server still normally runs as the `agent` user after entrypoint setup; that user has passwordless `sudo` for commands that intentionally need root. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
+
+## Tokenized file download links
+
+`create_file_link` creates public `/download/{token}` URLs for regular files under the workspace. Creating, listing, and revoking links remain protected tool operations; only the generated download URL is public. Treat generated URLs as bearer secrets: anyone with the URL can download the file until the link expires, is revoked, reaches its configured download-count limit, or the target file disappears.
+
+Operational guidance:
+
+- Set `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` for public deployments so generated links use the externally reachable HTTPS origin.
+- Use short TTLs for sensitive artifacts and prefer `max_downloads=1` for one-time handoff.
+- Set `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES` if large artifact downloads could exhaust bandwidth or storage-backed response capacity.
+- Disable the feature with `LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED=false` when public artifact URLs are not needed.
+- Remember that audit logs record link creation, revocation, and serving events, but the tokenized URL itself should still be treated as sensitive until expiry.
 
 ## Audit log handling
 

@@ -36,11 +36,12 @@ def test_build_mcp_http_app_wraps_mcp_with_oauth_route_app():
 
     assert app is not None
     paths = _route_paths(app)
-    assert paths[:3] == [
-        "/healthz",
-        "/readyz",
-        "/.well-known/oauth-protected-resource",
-    ]
+    assert paths[:2] == ["/healthz", "/readyz"]
+    assert "/download/{token}" in paths
+    assert "/.well-known/oauth-protected-resource" in paths
+    assert paths.index("/download/{token}") < paths.index(
+        "/.well-known/oauth-protected-resource"
+    )
     assert "/oauth/token" in paths
     assert paths[-1] == ""
 

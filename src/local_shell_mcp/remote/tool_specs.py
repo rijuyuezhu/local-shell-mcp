@@ -5,13 +5,18 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RemoteWorkerToolSpec:
-    """Describe one public remote_* proxy for a worker-side local tool."""
+    """Describe one remote worker tool and its optional public REST proxy."""
 
     public_name: str
     worker_tool: str
-    http_path: str
+    http_path: str | None
     timeout_arg: str | None = None
     default_timeout: int | None = None
+
+    @property
+    def expose_http(self) -> bool:
+        """Return whether this worker tool has a public REST proxy."""
+        return bool(self.public_name and self.http_path)
 
 
 REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
@@ -85,6 +90,15 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec(
         "remote_apply_patch", "apply_patch", "/tools/remote_apply_patch"
     ),
+    RemoteWorkerToolSpec("", "transfer_stat", None),
+    RemoteWorkerToolSpec("", "transfer_read_chunk", None),
+    RemoteWorkerToolSpec("", "transfer_begin_write", None),
+    RemoteWorkerToolSpec("", "transfer_write_chunk", None),
+    RemoteWorkerToolSpec("", "transfer_finish_write", None),
+    RemoteWorkerToolSpec("", "transfer_abort_write", None),
+    RemoteWorkerToolSpec("", "transfer_alloc_temp_path", None),
+    RemoteWorkerToolSpec("", "transfer_pack_dir", None),
+    RemoteWorkerToolSpec("", "transfer_unpack_archive", None),
 )
 
 REMOTE_WORKER_TOOL_NAMES = frozenset(

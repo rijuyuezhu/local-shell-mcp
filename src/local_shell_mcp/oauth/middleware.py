@@ -159,6 +159,7 @@ class AuthMiddleware:
             path in PUBLIC_PATHS
             or path.startswith("/.well-known/")
             or path.startswith("/oauth/")
+            or path.startswith("/download/")
         ):
             await self.app(scope, receive, send)
             return
