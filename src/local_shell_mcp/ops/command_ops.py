@@ -65,7 +65,7 @@ def clamp_timeout(timeout_s: int | None) -> int:
     return max(1, min(timeout, settings.internal_shell_max_timeout_s))
 
 
-def public_run_shell_timeout(timeout_s: int | None) -> int:
+def run_shell_command_timeout(timeout_s: int | None) -> int:
     """Resolve public run_shell_command timeout from explicit public settings."""
     settings = get_settings()
     default = max(1, settings.public_run_shell_default_timeout_s)
@@ -299,7 +299,7 @@ async def run_shell(
     return result
 
 
-async def public_run_shell(
+async def run_shell_command_execute(
     command: str,
     cwd: str = ".",
     timeout_s: int | None = None,
@@ -307,5 +307,5 @@ async def public_run_shell(
 ) -> CommandResult:
     """Execute a shell command through the public API using stricter timeout defaults."""
     return await run_shell(
-        command, cwd, public_run_shell_timeout(timeout_s), max_output_bytes
+        command, cwd, run_shell_command_timeout(timeout_s), max_output_bytes
     )

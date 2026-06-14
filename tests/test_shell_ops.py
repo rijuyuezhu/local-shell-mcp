@@ -8,9 +8,9 @@ import local_shell_mcp.http.app as http_app_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http.app import build_http_app
 from local_shell_mcp.mcp.app import build_mcp
-from local_shell_mcp.ops.command_ops import public_run_shell_timeout, run_shell
+from local_shell_mcp.ops.command_ops import run_shell, run_shell_command_timeout
 from local_shell_mcp.ops.shell_models import CommandResult
-from local_shell_mcp.ops.tmux_ops import send_shell
+from local_shell_mcp.ops.tmux_ops import send_persistent_shell_input_execute
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_text
@@ -120,7 +120,7 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     assert "list_files exceeded 0.01 second public tool timeout" in payload
 
 
-def test_public_run_shell_timeout_uses_ten_second_default(
+def test_run_shell_command_timeout_uses_ten_second_default(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -129,14 +129,14 @@ def test_public_run_shell_timeout_uses_ten_second_default(
     )
     clear_settings_cache()
 
-    assert public_run_shell_timeout(None) == 10
+    assert run_shell_command_timeout(None) == 10
 
 
-def test_public_run_shell_timeout_allows_explicit_cap(tmp_path, monkeypatch):
+def test_run_shell_command_timeout_allows_explicit_cap(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
-    assert public_run_shell_timeout(60) == 60
+    assert run_shell_command_timeout(60) == 60
 
 
 @pytest.mark.asyncio
@@ -222,7 +222,8 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
     monkeypatch.setattr("local_shell_mcp.ops.tmux_ops.tmux", fake_tmux)
 
     result = await asyncio.wait_for(
-        send_shell("session-1", "echo ok", enter=True), timeout=1
+        send_persistent_shell_input_execute("session-1", "echo ok", enter=True),
+        timeout=1,
     )
 
     assert result == {"session_id": "session-1", "sent_bytes": 7, "enter": True}

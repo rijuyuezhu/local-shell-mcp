@@ -2,8 +2,7 @@
 
 import asyncio
 
-from ...ops.todo_ops import todo_read as read_todos_execute
-from ...ops.todo_ops import todo_write as write_todos_execute
+from ...ops.todo_ops import read_todos_execute, write_todos_execute
 from ..declarative import DeclarativeToolRegistry
 
 

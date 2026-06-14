@@ -23,12 +23,12 @@ async def tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
     return await run_shell(cmd, cwd=".", timeout_s=timeout_s)
 
 
-async def start_shell(
+async def start_persistent_shell_execute(
     cwd: str = ".", name: str | None = None, command: str | None = None
 ) -> dict:
     """Start or replace a tmux-backed persistent shell session in a resolved working directory."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
-    sessions = await list_shells()
+    sessions = await list_persistent_shells_execute()
     max_sessions = max(1, get_settings().max_tmux_sessions)
     if len(sessions.get("sessions", [])) >= max_sessions:
         raise RuntimeError(
@@ -62,7 +62,7 @@ async def start_shell(
     }
 
 
-async def send_shell(
+async def send_persistent_shell_input_execute(
     session_id: str, input_text: str, enter: bool = True
 ) -> dict:
     """Send input to a persistent shell session, optionally appending Enter."""
@@ -85,7 +85,9 @@ async def send_shell(
     }
 
 
-async def read_shell(session_id: str, lines: int = 200) -> dict:
+async def read_persistent_shell_output_execute(
+    session_id: str, lines: int = 200
+) -> dict:
     """Read recent output from a persistent shell session through tmux capture-pane."""
     result = await tmux(
         ["capture-pane", "-p", "-t", session_id, "-S", f"-{max(1, lines)}"]
@@ -96,7 +98,7 @@ async def read_shell(session_id: str, lines: int = 200) -> dict:
     return {"session_id": session_id, "output": result.stdout}
 
 
-async def kill_shell(session_id: str) -> dict:
+async def kill_persistent_shell_execute(session_id: str) -> dict:
     """Terminate a persistent shell session by its normalized tmux session id."""
     result = await tmux(["kill-session", "-t", session_id])
     audit("kill_persistent_shell", session=session_id, ok=result.ok)
@@ -107,7 +109,7 @@ async def kill_shell(session_id: str) -> dict:
     }
 
 
-async def list_shells() -> dict:
+async def list_persistent_shells_execute() -> dict:
     """List active tmux-backed shell sessions managed by local-shell-mcp."""
     result = await tmux(
         [
