@@ -13,11 +13,14 @@ OAUTH_SECURITY_SCHEMES = [
         "scopes": ["shell:read", "shell:write", "shell:execute"],
     }
 ]
+# Client-facing hint used by connector-compatible read-only search/fetch tools.
+# This does not bypass AuthMiddleware; it only helps connector-style clients
+# discover these tools as a document-source style search/fetch surface.
 NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
 
 
 def security_meta(schemes: list[dict[str, Any]]) -> dict[str, Any]:
-    """Attach security-scheme metadata to tools when HTTP OAuth mode requires authenticated calls."""
+    """Attach client-facing MCP securitySchemes metadata to a tool."""
     return {"securitySchemes": schemes}
 
 

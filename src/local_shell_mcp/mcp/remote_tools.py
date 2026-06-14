@@ -56,12 +56,12 @@ async def _remote_call(
 
 def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
-    protected_meta = context.protected_meta
+    oauth_security_meta = context.oauth_security_meta
     settings = context.settings
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Create a one-time command for a remote machine to join this control server. "
             "Use when you need to run workspace tools on another worker. "
@@ -80,7 +80,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_list_machines() -> ToolResult:
         """List remote worker machines currently known to the control server. Use before running any remote_* tool when you need the machine name or want to verify that a worker is connected."""
         try:
@@ -88,7 +88,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_revoke_machine(machine: str) -> ToolResult:
         """Revoke and remove a remote worker machine. Use when a worker should no longer receive jobs or has become stale/untrusted. This is a control-plane action and cannot be undone except by re-inviting the worker."""
         try:
@@ -96,7 +96,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_rename_machine(machine: str, new_name: str) -> ToolResult:
         """Rename a remote worker machine. Use to give a connected worker a clearer stable name before issuing remote jobs. This changes the control-server name used by later remote_* calls."""
         try:
@@ -104,14 +104,14 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_environment_info(machine: str) -> ToolResult:
         """Return workspace, auth, policy, and basic environment information from a remote worker. Use to verify the remote machine, working directory, runtime versions, and limits before running remote commands or editing remote files."""
         return await _remote_call(machine, "environment_info", {})
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. "
             f"timeout_s is in seconds and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds on the worker; "
@@ -141,7 +141,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Write Python code to a temporary file and execute it on a remote worker. "
             "Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. "
@@ -159,7 +159,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             timeout_s,
         )
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_shell_start(
         machine: str,
         cwd: str = ".",
@@ -173,7 +173,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"cwd": cwd, "name": name, "command": command},
         )
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_shell_send(
         machine: str, session_id: str, input_text: str, enter: bool = True
     ) -> ToolResult:
@@ -188,7 +188,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_shell_read(
         machine: str, session_id: str, lines: int = 200
     ) -> ToolResult:
@@ -197,21 +197,21 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "shell_read", {"session_id": session_id, "lines": lines}
         )
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_shell_kill(machine: str, session_id: str) -> ToolResult:
         """Terminate a persistent remote shell session. Use when a remote server, watch, REPL, or stuck command is no longer needed. This affects only the named session on the selected worker."""
         return await _remote_call(
             machine, "shell_kill", {"session_id": session_id}
         )
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_shell_list(machine: str) -> ToolResult:
         """List persistent shell sessions on a remote worker. Use before reading, sending to, or killing remote sessions when you need the session_id or active-process overview."""
         return await _remote_call(machine, "shell_list", {})
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "List files and directories on a remote worker. Use for quick remote directory inspection. "
             f"path is resolved on the remote worker; recursive controls traversal; max_entries defaults to 500 and is capped by max_directory_entries={settings.max_directory_entries}."
@@ -232,7 +232,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Return a compact directory tree from a remote worker. Use to understand remote project layout before reading or editing files. "
             f"depth defaults to 3; max_entries defaults to 500 and is capped by max_tree_entries={settings.max_tree_entries}."
@@ -250,7 +250,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Find files by glob pattern on a remote worker. Use when you know remote filename patterns and need matching paths. "
             f"cwd narrows the search root; max_results defaults to 500 and is capped by max_glob_results={settings.max_glob_results}."
@@ -268,7 +268,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Search remote file contents using ripgrep. Use to locate symbols, usages, or text on a remote worker before reading or editing. "
             f"query is regex by default; glob, cwd, and case_sensitive narrow the search; max_results is optional and capped by max_grep_results={settings.max_grep_results}."
@@ -299,7 +299,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Read a UTF-8 text file on a remote worker, optionally by line range. Use after locating a remote file to inspect exact content before editing. "
             f"start_line and end_line page large files; binary_preview requests bounded binary preview behavior; per-file reads are capped by max_file_read_bytes={settings.max_file_read_bytes}."
@@ -328,7 +328,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Read multiple UTF-8 text files on a remote worker with the same optional line range. Use for targeted remote context gathering across known paths. "
             f"Server-side limits bound file count and total bytes: max_read_many_files={settings.max_read_many_files}, max_read_many_total_bytes={settings.max_read_many_total_bytes}."
@@ -357,7 +357,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Write a UTF-8 text file on a remote worker. Use to create or intentionally replace a whole remote file. "
             f"Writes are capped by max_file_write_bytes={settings.max_file_write_bytes}; overwrite=false protects existing files; for precise changes prefer remote_edit_file or remote_apply_patch."
@@ -375,7 +375,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=protected_meta,
+        meta=oauth_security_meta,
         description=(
             "Replace exact text in a remote file. Use for small precise remote edits after reading the target file. "
             f"old must match exactly; replace_all=true should be used only when every exact occurrence should change. Writes are capped by max_file_write_bytes={settings.max_file_write_bytes}."
@@ -391,7 +391,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"path": path, "old": old, "new": new, "replace_all": replace_all},
         )
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_multi_edit_file(
         machine: str, path: str, edits: list[dict]
     ) -> ToolResult:
@@ -400,7 +400,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine, "multi_edit_file", {"path": path, "edits": edits}
         )
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_delete_file_or_dir(
         machine: str, path: str, recursive: bool = False
     ) -> ToolResult:
@@ -411,7 +411,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"path": path, "recursive": recursive},
         )
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_copy_file(
         src_machine: str,
         src_path: str,
@@ -420,7 +420,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         overwrite: bool = True,
         chunk_size: int | None = None,
     ) -> ToolResult:
-        """Copy a file from one remote worker machine to another through the control server. Use for binary-safe remote-to-remote file transfer without loading the whole file at once."""
+        """Copy one file between two remote worker machines through the control server. Use for binary-safe remote-to-remote transfer. Parameters: src_machine and dst_machine are exact names from remote_list_machines; src_path is the source file on src_machine; dst_path is the destination file path on dst_machine; overwrite controls replacing an existing destination file; chunk_size optionally overrides the transfer chunk size and usually should be omitted."""
         try:
             return ok_response(
                 await copy_remote_file_to_remote(
@@ -435,7 +435,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_copy_dir(
         src_machine: str,
         src_path: str,
@@ -444,7 +444,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         overwrite: bool = False,
         chunk_size: int | None = None,
     ) -> ToolResult:
-        """Copy a directory tree from one remote worker machine to another through the control server using a temporary tar archive."""
+        """Copy a directory tree between two remote worker machines through the control server. Parameters: src_machine and dst_machine are exact names from remote_list_machines; src_path is the source directory; dst_path is the destination directory; overwrite controls replacing an existing destination; chunk_size usually should be omitted."""
         try:
             return ok_response(
                 await copy_remote_dir_to_remote(
@@ -459,7 +459,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_pull_file(
         machine: str,
         remote_path: str,
@@ -467,7 +467,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         overwrite: bool = True,
         chunk_size: int | None = None,
     ) -> ToolResult:
-        """Copy a file from a remote worker to the control server workspace using chunked transfer."""
+        """Copy one file from a remote worker into the control server workspace. Parameters: machine is the exact remote name from remote_list_machines; remote_path is the source file on that worker; local_path is the local destination file; overwrite controls replacing an existing local file; chunk_size usually should be omitted."""
         try:
             return ok_response(
                 await copy_remote_file_to_local(
@@ -477,7 +477,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_push_file(
         local_path: str,
         machine: str,
@@ -485,7 +485,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         overwrite: bool = True,
         chunk_size: int | None = None,
     ) -> ToolResult:
-        """Copy a file from the control server workspace to a remote worker using chunked transfer."""
+        """Copy one file from the control server workspace to a remote worker. Parameters: local_path is the source file in the local workspace; machine is the exact remote name from remote_list_machines; remote_path is the target file on that worker; overwrite controls replacing an existing remote file; chunk_size usually should be omitted."""
         try:
             return ok_response(
                 await copy_local_file_to_remote(
@@ -495,7 +495,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_pull_dir(
         machine: str,
         remote_path: str,
@@ -503,7 +503,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         overwrite: bool = False,
         chunk_size: int | None = None,
     ) -> ToolResult:
-        """Copy a directory tree from a remote worker to the control server workspace using a temporary tar archive."""
+        """Copy a directory tree from a remote worker into the control server workspace. Parameters: machine is the exact remote name from remote_list_machines; remote_path is the source directory on that worker; local_path is the local target directory; overwrite controls replacing an existing local target; chunk_size usually should be omitted."""
         try:
             return ok_response(
                 await copy_remote_dir_to_local(
@@ -513,7 +513,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_push_dir(
         local_path: str,
         machine: str,
@@ -521,7 +521,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         overwrite: bool = False,
         chunk_size: int | None = None,
     ) -> ToolResult:
-        """Copy a directory tree from the control server workspace to a remote worker using a temporary tar archive."""
+        """Copy a directory tree from the control server workspace to a remote worker. Parameters: local_path is the source directory in the local workspace; machine is the exact remote name from remote_list_machines; remote_path is the target directory; overwrite controls replacing an existing target; chunk_size usually should be omitted."""
         try:
             return ok_response(
                 await copy_local_dir_to_remote(
@@ -531,7 +531,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(structured_output=True, meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_apply_patch(
         machine: str, patch: str, cwd: str = "."
     ) -> ToolResult:

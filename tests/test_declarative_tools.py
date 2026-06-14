@@ -84,8 +84,10 @@ def _sample_context():
     return McpToolContext(
         settings=Settings(),
         read_only_tool=ToolAnnotations(readOnlyHint=True),
-        connector_meta={"openai/toolInvocation/invoking": "Reading"},
-        protected_meta={"openai/toolInvocation/invoking": "Working"},
+        connector_compatible_security_meta={
+            "openai/toolInvocation/invoking": "Reading"
+        },
+        oauth_security_meta={"openai/toolInvocation/invoking": "Working"},
         ok=lambda data, message="": {
             "ok": True,
             "message": message,
@@ -99,17 +101,19 @@ async def _sample_tool() -> dict:
     return {}
 
 
-def test_tool_definition_rejects_unknown_meta():
+def test_tool_definition_rejects_unknown_mcp_security_profile():
     definition = ToolDefinition(
         func=_sample_tool,
         name="sample_tool",
         http_method="POST",
         http_path="/tools/sample_tool",
-        meta="future-meta",  # type: ignore[arg-type]
+        mcp_security_profile="future-profile",  # type: ignore[arg-type]
     )
 
-    with pytest.raises(ValueError, match="Invalid meta: future-meta"):
-        definition._mcp_meta(_sample_context())
+    with pytest.raises(
+        ValueError, match="Invalid MCP security profile: future-profile"
+    ):
+        definition._mcp_security_meta(_sample_context())
 
 
 def test_tool_definition_rejects_unknown_annotations():

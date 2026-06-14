@@ -1,32 +1,16 @@
-"""Workspace connector MCP tool registry."""
+"""Connector-compatible workspace document search/fetch operations."""
 
 import asyncio
 import json
+from typing import Any
 
-from ...audit import audit
-from ...ops.fs_ops import read_text
-from ...ops.search_ops import grep
-from ..declarative import DeclarativeToolRegistry
-
-
-class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):
-    """Register ChatGPT connector-compatible workspace tools."""
-
-    name = "workspace_connector"
+from ..audit import audit
+from .fs_ops import read_text
+from .search_ops import grep
 
 
-local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
-
-
-@local_tool(
-    http_method="POST",
-    http_path="/tools/search",
-    meta="connector",
-    annotations="read_only",
-    mcp_envelope=False,
-)
-async def search(query: str) -> str:
-    """Search workspace text files and return ChatGPT connector-compatible search results. Use this when a connector-style client needs file result ids rather than raw ripgrep matches. The search is case-insensitive literal text, limited to concise file-level results; use grep_search for regex searches, line matches, globs, or larger code-navigation tasks."""
+async def workspace_connector_search(query: str) -> str:
+    """Return connector-compatible result cards for a workspace text search."""
     try:
         result = await grep(
             query,
@@ -36,7 +20,7 @@ async def search(query: str) -> str:
             max_results=20,
         )
         seen: set[str] = set()
-        rows = []
+        rows: list[dict[str, Any]] = []
         for match in result.get("matches", []):
             path = match.get("path")
             if not path or path in seen:
@@ -57,15 +41,8 @@ async def search(query: str) -> str:
         return json.dumps({"results": []}, ensure_ascii=False)
 
 
-@local_tool(
-    http_method="POST",
-    http_path="/tools/fetch",
-    meta="connector",
-    annotations="read_only",
-    mcp_envelope=False,
-)
-async def fetch(id: str) -> str:
-    """Fetch a workspace file by id returned from search and format it as a ChatGPT connector document. Use only after search has returned an id. For coding work, prefer read_file because it supports line ranges, binary previews, and richer diagnostics."""
+async def workspace_connector_fetch(id: str) -> str:
+    """Return one connector-compatible document for a workspace result id."""
     try:
         data = await asyncio.to_thread(read_text, id)
         path = data.get("path") or id

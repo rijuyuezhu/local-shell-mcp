@@ -50,7 +50,7 @@ async def remote_invite(
     workdir: str | None = None,
     ttl_s: int | None = None,
 ) -> dict[str, Any]:
-    """Create a one-time remote-worker invite."""
+    """Create a one-time command for a remote worker to join this control server. Parameters: name is an optional friendly worker name; workdir is the worker starting directory; ttl_s is invite lifetime in seconds."""
     return await create_remote_invite(name, workdir, ttl_s)
 
 
@@ -62,13 +62,13 @@ async def remote_list_machines() -> dict[str, Any]:
 
 @local_tool(http_method="POST", http_path="/tools/remote_revoke_machine")
 async def remote_revoke_machine(machine: str) -> dict[str, Any]:
-    """Revoke and remove a remote worker machine."""
+    """Revoke and remove a remote worker machine. Parameter machine must be an exact name from remote_list_machines; use when a worker is stale or should no longer receive jobs."""
     return revoke_remote_machine(machine)
 
 
 @local_tool(http_method="POST", http_path="/tools/remote_rename_machine")
 async def remote_rename_machine(machine: str, new_name: str) -> dict[str, Any]:
-    """Rename a remote worker machine."""
+    """Rename a remote worker machine. Parameters: machine is the current exact name from remote_list_machines; new_name is the stable name to use for later remote_* calls."""
     return rename_remote_machine(machine, new_name)
 
 
@@ -121,7 +121,7 @@ async def remote_copy_file(
     overwrite: bool = True,
     chunk_size: int | None = None,
 ) -> dict[str, Any]:
-    """Copy a file from one remote worker machine to another through the control server."""
+    """Copy one file between two remote worker machines through the control server. src_machine and dst_machine are exact names from remote_list_machines; src_path is the source file; dst_path is the target file; overwrite controls replacing an existing target; chunk_size usually should be omitted."""
     return await copy_remote_file_to_remote(
         src_machine, src_path, dst_machine, dst_path, overwrite, chunk_size
     )
@@ -136,7 +136,7 @@ async def remote_copy_dir(
     overwrite: bool = False,
     chunk_size: int | None = None,
 ) -> dict[str, Any]:
-    """Copy a directory tree from one remote worker machine to another through the control server."""
+    """Copy a directory tree between two remote worker machines through the control server. src_machine and dst_machine are exact names from remote_list_machines; src_path is the source directory; dst_path is the target directory; overwrite controls replacing an existing target; chunk_size usually should be omitted."""
     return await copy_remote_dir_to_remote(
         src_machine, src_path, dst_machine, dst_path, overwrite, chunk_size
     )
@@ -150,7 +150,7 @@ async def remote_pull_file(
     overwrite: bool = True,
     chunk_size: int | None = None,
 ) -> dict[str, Any]:
-    """Copy a file from a remote worker to the control server workspace."""
+    """Copy one file from a remote worker to the control server workspace. machine is the exact name from remote_list_machines; remote_path is the source file on that worker; local_path is the local target file; overwrite controls replacing an existing local target; chunk_size usually should be omitted."""
     return await copy_remote_file_to_local(
         machine, remote_path, local_path, overwrite, chunk_size
     )
@@ -164,7 +164,7 @@ async def remote_push_file(
     overwrite: bool = True,
     chunk_size: int | None = None,
 ) -> dict[str, Any]:
-    """Copy a file from the control server workspace to a remote worker."""
+    """Copy one file from the control server workspace to a remote worker. local_path is the local source file; machine is the exact name from remote_list_machines; remote_path is the target file on that worker; overwrite controls replacing an existing remote target; chunk_size usually should be omitted."""
     return await copy_local_file_to_remote(
         local_path, machine, remote_path, overwrite, chunk_size
     )
@@ -178,7 +178,7 @@ async def remote_pull_dir(
     overwrite: bool = False,
     chunk_size: int | None = None,
 ) -> dict[str, Any]:
-    """Copy a directory tree from a remote worker to the control server workspace."""
+    """Copy a directory tree from a remote worker to the control server workspace. machine is the exact name from remote_list_machines; remote_path is the source directory on that worker; local_path is the local target directory; overwrite controls replacing an existing local target; chunk_size usually should be omitted."""
     return await copy_remote_dir_to_local(
         machine, remote_path, local_path, overwrite, chunk_size
     )
@@ -192,7 +192,7 @@ async def remote_push_dir(
     overwrite: bool = False,
     chunk_size: int | None = None,
 ) -> dict[str, Any]:
-    """Copy a directory tree from the control server workspace to a remote worker."""
+    """Copy a directory tree from the control server workspace to a remote worker. local_path is the local source directory; machine is the exact name from remote_list_machines; remote_path is the target directory on that worker; overwrite controls replacing an existing remote target; chunk_size usually should be omitted."""
     return await copy_local_dir_to_remote(
         local_path, machine, remote_path, overwrite, chunk_size
     )

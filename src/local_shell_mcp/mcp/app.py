@@ -117,14 +117,16 @@ def build_mcp() -> FastMCP:
     )
     # Tool-level securitySchemes are client-facing MCP metadata only. Actual
     # HTTP/MCP authentication is enforced by AuthMiddleware at the transport
-    # boundary, not by these per-tool advertisements.
+    # boundary, not by these per-tool advertisements. The noauth-or-oauth
+    # profile exists only for connector-compatible read-only search/fetch
+    # clients; it is not a server-side auth bypass.
     context = McpToolContext(
         settings=settings,
         read_only_tool=read_only_tool,
-        connector_meta=security_meta(
+        connector_compatible_security_meta=security_meta(
             [*NOAUTH_SECURITY_SCHEMES, *OAUTH_SECURITY_SCHEMES]
         ),
-        protected_meta=security_meta(OAUTH_SECURITY_SCHEMES),
+        oauth_security_meta=security_meta(OAUTH_SECURITY_SCHEMES),
         ok=ok_response,
         handled_error=handled_error,
     )
