@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from ..config.settings import Settings
+from ..models import ToolResult
 from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
 
 ToolMeta = Literal["protected", "connector"]
@@ -149,12 +150,17 @@ class ToolDefinition:
 
         mcp_handler.__name__ = self.name
         mcp_handler.__qualname__ = self.name
-        mcp_handler.__signature__ = self.signature  # type: ignore[attr-defined]
+        if self.mcp_envelope:
+            signature = self.signature.replace(return_annotation=ToolResult)
+            mcp_handler.__signature__ = signature  # type: ignore[attr-defined]
+            mcp_handler.__annotations__["return"] = ToolResult
+        else:
+            mcp_handler.__signature__ = self.signature  # type: ignore[attr-defined]
         mcp.tool(
             description=self._mcp_description(context),
             annotations=self._mcp_annotations(context),
             meta=self._mcp_meta(context),
-            structured_output=False if self.mcp_envelope else None,
+            structured_output=True,
         )(mcp_handler)
 
 

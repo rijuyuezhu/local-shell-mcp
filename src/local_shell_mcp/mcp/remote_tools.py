@@ -4,6 +4,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from ..models import ToolResult
 from ..remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
@@ -20,7 +21,22 @@ from ..remote.transfer import (
     copy_remote_file_to_remote,
 )
 from ..tools.contracts import McpToolContext
-from ..tools.responses import handled_error, ok_response
+from ..tools.responses import (
+    handled_error as handled_error_payload,
+)
+from ..tools.responses import (
+    ok_response as ok_response_payload,
+)
+
+
+def ok_response(data: Any = None, message: str = "") -> ToolResult:
+    """Return a typed MCP tool result envelope."""
+    return ToolResult.model_validate(ok_response_payload(data, message))
+
+
+def handled_error(exc: Exception) -> ToolResult:
+    """Return a typed handled-error MCP tool result envelope."""
+    return ToolResult.model_validate(handled_error_payload(exc))
 
 
 async def _remote_call(
@@ -28,10 +44,12 @@ async def _remote_call(
     tool: str,
     args: dict[str, Any],
     timeout_s: int | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Call a worker-side tool and convert manager failures into tool envelopes."""
     try:
-        return await call_remote_worker_tool(machine, tool, args, timeout_s)
+        return ToolResult.model_validate(
+            await call_remote_worker_tool(machine, tool, args, timeout_s)
+        )
     except Exception as exc:
         return handled_error(exc)
 
@@ -42,6 +60,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     settings = context.settings
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Create a one-time command for a remote machine to join this control server. "
@@ -54,43 +73,44 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         name: str | None = None,
         workdir: str | None = None,
         ttl_s: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Create a one-time remote-worker invite."""
         try:
             return ok_response(await create_remote_invite(name, workdir, ttl_s))
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
-    async def remote_list_machines() -> dict:
+    @mcp.tool(structured_output=True, meta=protected_meta)
+    async def remote_list_machines() -> ToolResult:
         """List remote worker machines currently known to the control server. Use before running any remote_* tool when you need the machine name or want to verify that a worker is connected."""
         try:
             return ok_response(list_remote_machines())
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
-    async def remote_revoke_machine(machine: str) -> dict:
+    @mcp.tool(structured_output=True, meta=protected_meta)
+    async def remote_revoke_machine(machine: str) -> ToolResult:
         """Revoke and remove a remote worker machine. Use when a worker should no longer receive jobs or has become stale/untrusted. This is a control-plane action and cannot be undone except by re-inviting the worker."""
         try:
             return ok_response(revoke_remote_machine(machine))
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
-    async def remote_rename_machine(machine: str, new_name: str) -> dict:
+    @mcp.tool(structured_output=True, meta=protected_meta)
+    async def remote_rename_machine(machine: str, new_name: str) -> ToolResult:
         """Rename a remote worker machine. Use to give a connected worker a clearer stable name before issuing remote jobs. This changes the control-server name used by later remote_* calls."""
         try:
             return ok_response(rename_remote_machine(machine, new_name))
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
-    async def remote_environment_info(machine: str) -> dict:
+    @mcp.tool(structured_output=True, meta=protected_meta)
+    async def remote_environment_info(machine: str) -> ToolResult:
         """Return workspace, auth, policy, and basic environment information from a remote worker. Use to verify the remote machine, working directory, runtime versions, and limits before running remote commands or editing remote files."""
         return await _remote_call(machine, "environment_info", {})
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. "
@@ -105,7 +125,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         cwd: str = ".",
         timeout_s: int | None = None,
         max_output_bytes: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Run one non-interactive shell command on a remote worker."""
         return await _remote_call(
             machine,
@@ -120,6 +140,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Write Python code to a temporary file and execute it on a remote worker. "
@@ -129,7 +150,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     )
     async def remote_run_python_tool(
         machine: str, code: str, cwd: str = ".", timeout_s: int = 60
-    ) -> dict:
+    ) -> ToolResult:
         """Write Python code to a temporary file and execute it on a remote worker."""
         return await _remote_call(
             machine,
@@ -138,13 +159,13 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             timeout_s,
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_shell_start(
         machine: str,
         cwd: str = ".",
         name: str | None = None,
         command: str | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Start a persistent shell session on a remote worker. Use for remote development servers, watches, REPLs, or interactive commands whose output must be read incrementally. Prefer remote_run_shell_tool for one-shot commands."""
         return await _remote_call(
             machine,
@@ -152,10 +173,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"cwd": cwd, "name": name, "command": command},
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_shell_send(
         machine: str, session_id: str, input_text: str, enter: bool = True
-    ) -> dict:
+    ) -> ToolResult:
         """Send input to a persistent remote shell session. Use after remote_shell_start when the remote process is waiting for commands or interactive input. enter=false sends partial input without a newline."""
         return await _remote_call(
             machine,
@@ -167,28 +188,29 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             },
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_shell_read(
         machine: str, session_id: str, lines: int = 200
-    ) -> dict:
+    ) -> ToolResult:
         """Read recent output from a persistent remote shell session. Use to inspect output from remote long-running or interactive commands. lines bounds the returned recent output."""
         return await _remote_call(
             machine, "shell_read", {"session_id": session_id, "lines": lines}
         )
 
-    @mcp.tool(meta=protected_meta)
-    async def remote_shell_kill(machine: str, session_id: str) -> dict:
+    @mcp.tool(structured_output=True, meta=protected_meta)
+    async def remote_shell_kill(machine: str, session_id: str) -> ToolResult:
         """Terminate a persistent remote shell session. Use when a remote server, watch, REPL, or stuck command is no longer needed. This affects only the named session on the selected worker."""
         return await _remote_call(
             machine, "shell_kill", {"session_id": session_id}
         )
 
-    @mcp.tool(meta=protected_meta)
-    async def remote_shell_list(machine: str) -> dict:
+    @mcp.tool(structured_output=True, meta=protected_meta)
+    async def remote_shell_list(machine: str) -> ToolResult:
         """List persistent shell sessions on a remote worker. Use before reading, sending to, or killing remote sessions when you need the session_id or active-process overview."""
         return await _remote_call(machine, "shell_list", {})
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "List files and directories on a remote worker. Use for quick remote directory inspection. "
@@ -200,7 +222,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         path: str = ".",
         recursive: bool = False,
         max_entries: int = 500,
-    ) -> dict:
+    ) -> ToolResult:
         """List files and directories on a remote worker."""
         return await _remote_call(
             machine,
@@ -209,6 +231,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Return a compact directory tree from a remote worker. Use to understand remote project layout before reading or editing files. "
@@ -217,7 +240,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     )
     async def remote_tree_view(
         machine: str, cwd: str = ".", depth: int = 3, max_entries: int = 500
-    ) -> dict:
+    ) -> ToolResult:
         """Return a compact directory tree from a remote worker."""
         return await _remote_call(
             machine,
@@ -226,6 +249,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Find files by glob pattern on a remote worker. Use when you know remote filename patterns and need matching paths. "
@@ -234,7 +258,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     )
     async def remote_glob_search(
         machine: str, pattern: str, cwd: str = ".", max_results: int = 500
-    ) -> dict:
+    ) -> ToolResult:
         """Find files by glob pattern on a remote worker."""
         return await _remote_call(
             machine,
@@ -243,6 +267,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Search remote file contents using ripgrep. Use to locate symbols, usages, or text on a remote worker before reading or editing. "
@@ -257,7 +282,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         regex: bool = True,
         case_sensitive: bool = True,
         max_results: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Search remote file contents using ripgrep."""
         return await _remote_call(
             machine,
@@ -273,6 +298,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Read a UTF-8 text file on a remote worker, optionally by line range. Use after locating a remote file to inspect exact content before editing. "
@@ -286,7 +312,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         end_line: int | None = None,
         binary_preview: str | None = None,
         binary_preview_bytes: int = 256,
-    ) -> dict:
+    ) -> ToolResult:
         """Read a UTF-8 text file on a remote worker."""
         return await _remote_call(
             machine,
@@ -301,6 +327,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Read multiple UTF-8 text files on a remote worker with the same optional line range. Use for targeted remote context gathering across known paths. "
@@ -314,7 +341,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         end_line: int | None = None,
         binary_preview: str | None = None,
         binary_preview_bytes: int = 256,
-    ) -> dict:
+    ) -> ToolResult:
         """Read multiple UTF-8 text files on a remote worker."""
         return await _remote_call(
             machine,
@@ -329,6 +356,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Write a UTF-8 text file on a remote worker. Use to create or intentionally replace a whole remote file. "
@@ -337,7 +365,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     )
     async def remote_write_file(
         machine: str, path: str, content: str, overwrite: bool = True
-    ) -> dict:
+    ) -> ToolResult:
         """Write a UTF-8 text file on a remote worker."""
         return await _remote_call(
             machine,
@@ -346,6 +374,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         )
 
     @mcp.tool(
+        structured_output=True,
         meta=protected_meta,
         description=(
             "Replace exact text in a remote file. Use for small precise remote edits after reading the target file. "
@@ -354,7 +383,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     )
     async def remote_edit_file(
         machine: str, path: str, old: str, new: str, replace_all: bool = False
-    ) -> dict:
+    ) -> ToolResult:
         """Replace exact text in a remote file."""
         return await _remote_call(
             machine,
@@ -362,19 +391,19 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"path": path, "old": old, "new": new, "replace_all": replace_all},
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_multi_edit_file(
         machine: str, path: str, edits: list[dict]
-    ) -> dict:
+    ) -> ToolResult:
         """Apply multiple exact-text edits to one remote file. Use when several small remote replacements should be made together. Each edit needs old, new, and optional replace_all; read the file first to avoid stale or ambiguous edits."""
         return await _remote_call(
             machine, "multi_edit_file", {"path": path, "edits": edits}
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_delete_file_or_dir(
         machine: str, path: str, recursive: bool = False
-    ) -> dict:
+    ) -> ToolResult:
         """Delete a file or directory on a remote worker. Use only when remote removal is intentional. recursive=false deletes files or empty directories; recursive=true is required for non-empty directories and should be used carefully."""
         return await _remote_call(
             machine,
@@ -382,7 +411,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             {"path": path, "recursive": recursive},
         )
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_copy_file(
         src_machine: str,
         src_path: str,
@@ -390,7 +419,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         dst_path: str,
         overwrite: bool = True,
         chunk_size: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Copy a file from one remote worker machine to another through the control server. Use for binary-safe remote-to-remote file transfer without loading the whole file at once."""
         try:
             return ok_response(
@@ -406,7 +435,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_copy_dir(
         src_machine: str,
         src_path: str,
@@ -414,7 +443,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         dst_path: str,
         overwrite: bool = False,
         chunk_size: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Copy a directory tree from one remote worker machine to another through the control server using a temporary tar archive."""
         try:
             return ok_response(
@@ -430,14 +459,14 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_pull_file(
         machine: str,
         remote_path: str,
         local_path: str,
         overwrite: bool = True,
         chunk_size: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Copy a file from a remote worker to the control server workspace using chunked transfer."""
         try:
             return ok_response(
@@ -448,14 +477,14 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_push_file(
         local_path: str,
         machine: str,
         remote_path: str,
         overwrite: bool = True,
         chunk_size: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Copy a file from the control server workspace to a remote worker using chunked transfer."""
         try:
             return ok_response(
@@ -466,14 +495,14 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_pull_dir(
         machine: str,
         remote_path: str,
         local_path: str,
         overwrite: bool = False,
         chunk_size: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Copy a directory tree from a remote worker to the control server workspace using a temporary tar archive."""
         try:
             return ok_response(
@@ -484,14 +513,14 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_push_dir(
         local_path: str,
         machine: str,
         remote_path: str,
         overwrite: bool = False,
         chunk_size: int | None = None,
-    ) -> dict:
+    ) -> ToolResult:
         """Copy a directory tree from the control server workspace to a remote worker using a temporary tar archive."""
         try:
             return ok_response(
@@ -502,10 +531,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         except Exception as exc:
             return handled_error(exc)
 
-    @mcp.tool(meta=protected_meta)
+    @mcp.tool(structured_output=True, meta=protected_meta)
     async def remote_apply_patch(
         machine: str, patch: str, cwd: str = "."
-    ) -> dict:
+    ) -> ToolResult:
         """Apply a unified diff on a remote worker using git apply. Use for larger remote edits, multi-file changes, additions, and deletions when a patch is clearer than exact replacements. cwd controls where patch paths resolve on the remote worker."""
         return await _remote_call(
             machine, "apply_patch", {"patch": patch, "cwd": cwd}

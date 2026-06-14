@@ -19,6 +19,7 @@ from local_shell_mcp.oauth.tokens import (
 )
 from local_shell_mcp.oauth.urls import resource_url
 from local_shell_mcp.tools.registry import agent as tools_module
+from tests.helpers import mcp_structured
 
 
 def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
@@ -62,6 +63,19 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert environment_meta is not None
     assert search_meta["securitySchemes"][0]["type"] == "noauth"
     assert environment_meta["securitySchemes"][0]["type"] == "oauth2"
+
+    assert all(tool.outputSchema is not None for tool in tools.values())
+    run_shell_schema = tools["run_shell_tool"].outputSchema
+    assert run_shell_schema is not None
+    assert run_shell_schema["title"] == "ToolResult"
+    assert set(run_shell_schema["properties"]) == {"ok", "message", "data"}
+    search_schema = tools["search"].outputSchema
+    assert search_schema is not None
+    assert search_schema["properties"]["result"]["type"] == "string"
+
+    structured = mcp_structured(await mcp.call_tool("environment_info", {}))
+    assert structured["ok"] is True
+    assert "workspace_root" in structured["data"]["settings"]
 
 
 @pytest.mark.asyncio
