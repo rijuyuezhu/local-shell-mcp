@@ -22,13 +22,13 @@ All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-cont
 
 | Tool | Purpose |
 |---|---|
-| `run_shell_tool` | Run a bounded non-interactive shell command in the workspace. Use this for Git workflows. |
-| `run_python_tool` | Write Python code to a temporary file and execute it. |
-| `shell_start` | Start a persistent tmux-backed shell session. |
-| `shell_send` | Send input to a persistent shell session. |
-| `shell_read` | Read recent output from a persistent shell session. |
-| `shell_kill` | Kill a persistent shell session. |
-| `shell_list` | List persistent shell sessions. |
+| `run_shell_command` | Run a bounded non-interactive shell command in the workspace. Use this for Git workflows. |
+| `run_python_code` | Write Python code to a temporary file and execute it. |
+| `start_persistent_shell` | Start a persistent tmux-backed shell session. |
+| `send_persistent_shell_input` | Send input to a persistent shell session. |
+| `read_persistent_shell_output` | Read recent output from a persistent shell session. |
+| `kill_persistent_shell` | Kill a persistent shell session. |
+| `list_persistent_shells` | List persistent shell sessions. |
 
 ## Filesystem and search
 
@@ -60,8 +60,8 @@ These tools create and manage tokenized browser-accessible links for files in th
 
 | Tool | Purpose |
 |---|---|
-| `todo_read_tool` | Read the agent todo list. |
-| `todo_write_tool` | Replace the agent todo list. |
+| `read_todos` | Read the agent todo list. |
+| `write_todos` | Replace the agent todo list. |
 
 ## Remote worker management
 
@@ -77,13 +77,13 @@ These tools create and manage tokenized browser-accessible links for files in th
 
 | Tool | Purpose |
 |---|---|
-| `remote_run_shell_tool` | Run a shell command on a remote worker. Use this for remote Git workflows. |
-| `remote_run_python_tool` | Write Python code to a temporary file and execute it on a remote worker. |
-| `remote_shell_start` | Start a persistent remote shell session. |
-| `remote_shell_send` | Send input to a remote shell session. |
-| `remote_shell_read` | Read recent output from a remote shell session. |
-| `remote_shell_kill` | Kill a remote shell session. |
-| `remote_shell_list` | List remote shell sessions. |
+| `run_remote_shell_command` | Run a shell command on a remote worker. Use this for remote Git workflows. |
+| `run_remote_python_code` | Write Python code to a temporary file and execute it on a remote worker. |
+| `start_remote_persistent_shell` | Start a persistent remote shell session. |
+| `send_remote_persistent_shell_input` | Send input to a remote shell session. |
+| `read_remote_persistent_shell_output` | Read recent output from a remote shell session. |
+| `kill_remote_persistent_shell` | Kill a remote shell session. |
+| `list_remote_persistent_shells` | List remote shell sessions. |
 
 ## Remote filesystem and search
 

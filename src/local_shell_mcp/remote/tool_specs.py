@@ -26,32 +26,42 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
         "/tools/remote_environment_info",
     ),
     RemoteWorkerToolSpec(
-        "remote_run_shell_tool",
-        "run_shell_tool",
-        "/tools/remote_run_shell",
+        "run_remote_shell_command",
+        "run_shell_command",
+        "/tools/run_remote_shell_command",
         timeout_arg="timeout_s",
     ),
     RemoteWorkerToolSpec(
-        "remote_run_python_tool",
-        "run_python_tool",
-        "/tools/remote_run_python",
+        "run_remote_python_code",
+        "run_python_code",
+        "/tools/run_remote_python_code",
         timeout_arg="timeout_s",
         default_timeout=60,
     ),
     RemoteWorkerToolSpec(
-        "remote_shell_start", "shell_start", "/tools/remote_shell_start"
+        "start_remote_persistent_shell",
+        "start_persistent_shell",
+        "/tools/start_remote_persistent_shell",
     ),
     RemoteWorkerToolSpec(
-        "remote_shell_send", "shell_send", "/tools/remote_shell_send"
+        "send_remote_persistent_shell_input",
+        "send_persistent_shell_input",
+        "/tools/send_remote_persistent_shell_input",
     ),
     RemoteWorkerToolSpec(
-        "remote_shell_read", "shell_read", "/tools/remote_shell_read"
+        "read_remote_persistent_shell_output",
+        "read_persistent_shell_output",
+        "/tools/read_remote_persistent_shell_output",
     ),
     RemoteWorkerToolSpec(
-        "remote_shell_kill", "shell_kill", "/tools/remote_shell_kill"
+        "kill_remote_persistent_shell",
+        "kill_persistent_shell",
+        "/tools/kill_remote_persistent_shell",
     ),
     RemoteWorkerToolSpec(
-        "remote_shell_list", "shell_list", "/tools/remote_shell_list"
+        "list_remote_persistent_shells",
+        "list_persistent_shells",
+        "/tools/list_remote_persistent_shells",
     ),
     RemoteWorkerToolSpec(
         "remote_list_files", "list_files", "/tools/remote_list_files"

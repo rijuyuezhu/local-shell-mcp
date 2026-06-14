@@ -53,7 +53,7 @@ local_tool = AgentBridgeToolRegistry.get_tool_decorator()
     enabled=_agent_bridge_enabled,
 )
 async def agent_config_status() -> dict[str, Any]:
-    """Return agent bridge configuration status."""
+    """Return agent bridge configuration status, discovered skills, configured MCP servers, and load errors."""
     return agent_config_status_payload(_agent_registry())
 
 
@@ -63,7 +63,7 @@ async def agent_config_status() -> dict[str, Any]:
     enabled=_agent_bridge_enabled,
 )
 async def list_agent_skills() -> dict[str, Any]:
-    """List agent skills discovered from config."""
+    """List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them."""
     return list_agent_skills_payload(_agent_registry())
 
 
@@ -73,7 +73,7 @@ async def list_agent_skills() -> dict[str, Any]:
     enabled=_agent_bridge_enabled,
 )
 async def activate_agent_skill(name: str) -> dict[str, Any]:
-    """Load an agent skill's instructions."""
+    """Load an agent skill's instructions. Parameter name must be the exact skill name returned by list_agent_skills; use before tasks that need that specialized guidance."""
     return activate_agent_skill_payload(_agent_registry(), name)
 
 
@@ -83,7 +83,7 @@ async def activate_agent_skill(name: str) -> dict[str, Any]:
     enabled=_agent_bridge_enabled,
 )
 async def list_agent_mcp_servers() -> dict[str, Any]:
-    """List configured agent MCP servers."""
+    """List configured agent MCP servers. Use to find exact server names and connection status before listing or calling bridged MCP tools."""
     return list_agent_mcp_servers_payload(_agent_registry())
 
 
@@ -93,7 +93,7 @@ async def list_agent_mcp_servers() -> dict[str, Any]:
     enabled=_agent_bridge_enabled,
 )
 async def list_agent_mcp_tools(server: str | None = None) -> dict[str, Any]:
-    """List tools exposed by configured agent MCP servers."""
+    """List tools exposed by configured agent MCP servers. Parameter server is optional; omit it for all servers or pass an exact server name before call_agent_mcp_tool."""
     return list_agent_mcp_tools_payload(_agent_registry(), server)
 
 
@@ -105,7 +105,7 @@ async def list_agent_mcp_tools(server: str | None = None) -> dict[str, Any]:
 async def call_agent_mcp_tool(
     server: str, tool: str, args: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """Call a tool on a configured agent MCP server."""
+    """Call a tool on a configured agent MCP server. Parameters: server and tool must match list_agent_mcp_tools; args is a JSON object matching that tool schema, or empty for no-argument tools."""
     return await call_agent_mcp_tool_payload(
         _agent_registry(), server, tool, args or {}
     )
@@ -116,14 +116,14 @@ def register_agent_bridge_dynamic_mcp(
 ) -> None:
     """Register dynamic MCP tools for this tool group."""
     settings = context.settings
-    protected_meta = context.protected_meta
+    oauth_security_meta = context.oauth_security_meta
     registry = build_agent_registry_from_settings(
         settings, AgentMcpClientManager
     )
     register_agent_bridge_dynamic_tools(
         mcp,
         registry,
-        protected_meta,
+        oauth_security_meta,
         ok_response,
         handled_error,
         settings.agent_mcp_probe_timeout_s,

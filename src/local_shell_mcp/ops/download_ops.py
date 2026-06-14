@@ -141,7 +141,7 @@ def prune_download_links_locked(
     return changed
 
 
-def create_share_link(
+def create_file_link_execute(
     path: str,
     ttl_s: int | None = None,
     filename: str | None = None,
@@ -193,7 +193,7 @@ def create_share_link(
     return download_link_summary(token, link)
 
 
-def list_share_links(include_expired: bool = False) -> dict[str, Any]:
+def list_file_links_execute(include_expired: bool = False) -> dict[str, Any]:
     """List generated download links."""
     with STORE_LOCK:
         store = read_download_store_locked()
@@ -210,7 +210,7 @@ def list_share_links(include_expired: bool = False) -> dict[str, Any]:
     return {"links": links}
 
 
-def revoke_share_link(token: str) -> dict[str, Any]:
+def revoke_file_link_execute(token: str) -> dict[str, Any]:
     """Revoke one generated download link."""
     with STORE_LOCK:
         store = read_download_store_locked()
@@ -298,6 +298,6 @@ def claim_download(
     return path, link
 
 
-create_download_link = create_share_link
-list_download_links = list_share_links
-revoke_download_link = revoke_share_link
+create_download_link = create_file_link_execute
+list_download_links = list_file_links_execute
+revoke_download_link = revoke_file_link_execute

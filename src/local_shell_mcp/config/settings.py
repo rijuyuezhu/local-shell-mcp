@@ -68,13 +68,13 @@ class Settings(BaseSettings):
     public_tool_timeout_s: float = 60
     """Public MCP/HTTP tool watchdog timeout in seconds."""
     public_run_shell_default_timeout_s: int = 10
-    """Default timeout for public run_shell_tool calls in seconds."""
+    """Default timeout for public run_shell_command calls in seconds."""
     public_run_shell_max_timeout_s: int = 60
-    """Maximum timeout accepted by public run_shell_tool calls in seconds."""
+    """Maximum timeout accepted by public run_shell_command calls in seconds."""
     internal_shell_default_timeout_s: int = 60
-    """Advanced internal shell command default timeout in seconds; public run_shell_tool uses stricter public settings."""
+    """Advanced internal shell command default timeout in seconds; public run_shell_command uses stricter public settings."""
     internal_shell_max_timeout_s: int = 3600
-    """Advanced internal shell command maximum timeout in seconds; public run_shell_tool uses stricter public settings."""
+    """Advanced internal shell command maximum timeout in seconds; public run_shell_command uses stricter public settings."""
     max_output_bytes: int = 200_000
     """Command output truncation limit in bytes."""
     max_file_read_bytes: int = 512_000

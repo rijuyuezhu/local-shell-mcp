@@ -7,7 +7,7 @@ from .path_ops import relative_display
 from .temp_file_ops import write_temp_text_file
 
 
-async def apply_patch_text(patch: str, cwd: str = ".") -> dict:
+async def apply_patch_execute(patch: str, cwd: str = ".") -> dict:
     """Apply a unified diff through git apply and return the command result envelope."""
     patch_path = await write_temp_text_file("patch", patch, "patch", "diff")
     quoted = shlex.quote(str(patch_path))

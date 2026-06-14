@@ -1,6 +1,7 @@
 """Declarative tool registration shared by MCP and HTTP adapters."""
 
 import inspect
+import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from functools import wraps
@@ -13,7 +14,7 @@ from ..config.settings import Settings
 from ..models import ToolResult
 from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
 
-ToolMeta = Literal["protected", "connector"]
+McpSecurityProfile = Literal["oauth", "connector_compatible"]
 ToolAnnotation = Literal["read_only"]
 ToolDescription = str | Callable[[McpToolContext], str]
 ToolEnabled = Callable[[Settings], bool]
@@ -29,7 +30,7 @@ class LocalToolDecoratorFactory(Protocol):
         http_method: HttpMethod | None,
         http_path: str | None,
         name: str | None = None,
-        meta: ToolMeta = "protected",
+        mcp_security_profile: McpSecurityProfile = "oauth",
         annotations: ToolAnnotation | None = None,
         description: ToolDescription | None = None,
         mcp_envelope: bool = True,
@@ -39,6 +40,16 @@ class LocalToolDecoratorFactory(Protocol):
 
 def _always_enabled(settings: Settings) -> bool:
     return True
+
+
+def _normalize_description(text: str) -> str:
+    """Return a clean MCP tool description from source text."""
+    paragraphs = re.split(r"\n\s*\n", inspect.cleandoc(text))
+    return "\n\n".join(
+        " ".join(paragraph.split())
+        for paragraph in paragraphs
+        if paragraph.split()
+    )
 
 
 def _tool_kwargs_from_mapping(
@@ -70,8 +81,8 @@ class ToolDefinition:
     """HTTP method for the REST adapter route, or None for MCP-only tools."""
     http_path: str | None
     """HTTP path for the REST adapter route, or None for MCP-only tools."""
-    meta: ToolMeta = "protected"
-    """MCP metadata class advertised for this tool."""
+    mcp_security_profile: McpSecurityProfile = "oauth"
+    """Client-facing MCP securitySchemes profile advertised for this tool."""
     annotations: ToolAnnotation | None = None
     """Optional MCP tool annotations applied during registration."""
     description: ToolDescription | None = None
@@ -110,14 +121,16 @@ class ToolDefinition:
 
         return handler
 
-    def _mcp_meta(self, context: McpToolContext) -> dict[str, Any]:
-        match self.meta:
-            case "connector":
-                return context.connector_meta
-            case "protected":
-                return context.protected_meta
+    def _mcp_security_meta(self, context: McpToolContext) -> dict[str, Any]:
+        match self.mcp_security_profile:
+            case "connector_compatible":
+                return context.connector_compatible_security_meta
+            case "oauth":
+                return context.oauth_security_meta
             case _:
-                raise ValueError(f"Invalid meta: {self.meta}")
+                raise ValueError(
+                    f"Invalid MCP security profile: {self.mcp_security_profile}"
+                )
 
     def _mcp_annotations(
         self, context: McpToolContext
@@ -132,8 +145,13 @@ class ToolDefinition:
 
     def _mcp_description(self, context: McpToolContext) -> str | None:
         if callable(self.description):
-            return self.description(context)
-        return self.description
+            description = self.description(context)
+        elif self.description is not None:
+            description = self.description
+        else:
+            description = self.func.__doc__ or ""
+        normalized = _normalize_description(description)
+        return normalized or None
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         """Register this tool on the provided FastMCP app."""
@@ -159,7 +177,7 @@ class ToolDefinition:
         mcp.tool(
             description=self._mcp_description(context),
             annotations=self._mcp_annotations(context),
-            meta=self._mcp_meta(context),
+            meta=self._mcp_security_meta(context),
             structured_output=True,
         )(mcp_handler)
 
@@ -192,7 +210,7 @@ class DeclarativeToolRegistry(ToolRegistry):
             http_method: HttpMethod | None,
             http_path: str | None,
             name: str | None = None,
-            meta: ToolMeta = "protected",
+            mcp_security_profile: McpSecurityProfile = "oauth",
             annotations: ToolAnnotation | None = None,
             description: ToolDescription | None = None,
             mcp_envelope: bool = True,
@@ -205,7 +223,7 @@ class DeclarativeToolRegistry(ToolRegistry):
                         name=name or func.__name__,
                         http_method=http_method,
                         http_path=http_path,
-                        meta=meta,
+                        mcp_security_profile=mcp_security_profile,
                         annotations=annotations,
                         description=description,
                         mcp_envelope=mcp_envelope,

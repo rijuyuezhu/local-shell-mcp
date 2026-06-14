@@ -48,7 +48,7 @@ Use local-shell-mcp to show git status, summarize the diff, and run secret_scan 
 
 ## Work with long-running commands
 
-Use `run_shell_tool` for bounded one-shot commands. Use persistent shells for dev servers, REPLs, and interactive processes:
+Use `run_shell_command` for bounded one-shot commands. Use persistent shells for dev servers, REPLs, and interactive processes:
 
 ```text
 Use local-shell-mcp to start a persistent shell session for the development server, read the first output, and tell me the local URL.

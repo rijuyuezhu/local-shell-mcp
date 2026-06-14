@@ -34,10 +34,10 @@ class McpToolContext:
     """Runtime settings object shared by all tool registries."""
     read_only_tool: ToolAnnotations
     """MCP annotation applied to read-only tools."""
-    connector_meta: dict[str, Any]
-    """Client-facing metadata advertised for connector-style read-only MCP tools."""
-    protected_meta: dict[str, Any]
-    """Client-facing metadata advertised for protected MCP tools."""
+    connector_compatible_security_meta: dict[str, Any]
+    """Client-facing securitySchemes metadata for connector-compatible search/fetch tools."""
+    oauth_security_meta: dict[str, Any]
+    """Client-facing securitySchemes metadata for OAuth-protected MCP tools."""
     ok: Callable[[Any, str], dict[str, Any]]
     """Helper that wraps successful tool responses in the public envelope."""
     handled_error: Callable[[Exception], dict[str, Any]]

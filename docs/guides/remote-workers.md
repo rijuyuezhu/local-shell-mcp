@@ -13,8 +13,8 @@ Remote worker mode lets a machine behind NAT, a firewall, or an HPC login node c
 Local tools keep their original behavior. Remote tools add a required `machine` argument.
 
 ```text
-run_shell_tool(command="pwd")
-remote_run_shell_tool(machine="npu-4card", command="pwd")
+run_shell_command(command="pwd")
+run_remote_shell_command(machine="npu-4card", command="pwd")
 ```
 
 ## Create an invite
@@ -64,8 +64,8 @@ Use local-shell-mcp remote_environment_info for machine=npu-4card.
 
 ## Common remote operations
 
-- `remote_run_shell_tool` for one-shot shell and Git commands.
-- `remote_shell_start`, `remote_shell_send`, and `remote_shell_read` for long-running remote sessions.
+- `run_remote_shell_command` for one-shot shell and Git commands.
+- `start_remote_persistent_shell`, `send_remote_persistent_shell_input`, and `read_remote_persistent_shell_output` for long-running remote sessions.
 - `remote_read_file`, `remote_write_file`, and `remote_apply_patch` for remote file edits.
 - `remote_grep_search`, `remote_glob_search`, and `remote_tree_view` for code navigation.
 

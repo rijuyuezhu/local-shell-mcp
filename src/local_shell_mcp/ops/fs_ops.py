@@ -15,7 +15,7 @@ BINARY_PREVIEW_BYTES = 256
 BINARY_MESSAGE = "Refusing to read binary file as text"
 
 
-def list_dir(
+def list_files_execute(
     path: str = ".", recursive: bool = False, max_entries: int = 500
 ) -> list[dict]:
     """List directory entries within configured limits using workspace-relative display paths."""
@@ -48,7 +48,7 @@ def list_dir(
     return out
 
 
-def glob_paths(
+def glob_search_execute(
     pattern: str, cwd: str = ".", max_results: int = 500
 ) -> list[str]:
     """Find workspace paths matching a glob pattern without exceeding the configured result limit."""
@@ -124,7 +124,7 @@ def _assert_text_file(p: Path) -> None:
         raise ValueError(BINARY_MESSAGE)
 
 
-def read_text(
+def read_file_execute(
     path: str,
     start_line: int | None = None,
     end_line: int | None = None,
@@ -169,7 +169,7 @@ def read_text(
     }
 
 
-def read_many_files_sync(
+def read_many_files_execute(
     paths: list[str],
     start_line: int | None = None,
     end_line: int | None = None,
@@ -186,7 +186,7 @@ def read_many_files_sync(
     files = []
     total_content_bytes = 0
     for path in paths:
-        item = read_text(
+        item = read_file_execute(
             path, start_line, end_line, binary_preview, binary_preview_bytes
         )
         content = item.get("content")
@@ -204,7 +204,7 @@ def read_many_files_sync(
     return {"files": files, "total_content_bytes": total_content_bytes}
 
 
-def write_text(path: str, content: str, overwrite: bool = True) -> dict:
+def write_file_execute(path: str, content: str, overwrite: bool = True) -> dict:
     """Write a text file after path validation, parent creation, and overwrite checks."""
     settings = get_settings()
     data = content.encode("utf-8")
@@ -225,7 +225,9 @@ def write_text(path: str, content: str, overwrite: bool = True) -> dict:
     }
 
 
-def edit_text(path: str, old: str, new: str, replace_all: bool = False) -> dict:
+def edit_file_execute(
+    path: str, old: str, new: str, replace_all: bool = False
+) -> dict:
     """Replace exact text in a validated text file and report how many occurrences changed."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
@@ -257,7 +259,7 @@ def edit_text(path: str, old: str, new: str, replace_all: bool = False) -> dict:
     }
 
 
-def multi_edit_text(path: str, edits: list[dict]) -> dict:
+def multi_edit_file_execute(path: str, edits: list[dict]) -> dict:
     """Apply a sequence of exact-text replacements and write the file only after all edits validate."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
@@ -290,7 +292,7 @@ def multi_edit_text(path: str, edits: list[dict]) -> dict:
     return {"path": relative_display(p), "replacements": total}
 
 
-def delete_path(path: str, recursive: bool = False) -> dict:
+def delete_file_or_dir_execute(path: str, recursive: bool = False) -> dict:
     """Delete a file or directory after enforcing recursive-directory semantics."""
     p = resolve_path(path, must_exist=True)
     if p.is_dir():

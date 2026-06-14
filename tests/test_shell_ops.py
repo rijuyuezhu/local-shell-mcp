@@ -8,27 +8,27 @@ import local_shell_mcp.http.app as http_app_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http.app import build_http_app
 from local_shell_mcp.mcp.app import build_mcp
-from local_shell_mcp.ops.command_ops import public_run_shell_timeout, run_shell
+from local_shell_mcp.ops.command_ops import run_shell, run_shell_command_timeout
 from local_shell_mcp.ops.shell_models import CommandResult
-from local_shell_mcp.ops.tmux_ops import send_shell
+from local_shell_mcp.ops.tmux_ops import send_persistent_shell_input_execute
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_text
 
 
 @pytest.mark.asyncio
-async def test_run_shell_tool_rejects_timeout_above_public_cap(
+async def test_run_shell_command_rejects_timeout_above_public_cap(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
     response = await build_mcp().call_tool(
-        "run_shell_tool", {"command": "echo ok", "timeout_s": 3600}
+        "run_shell_command", {"command": "echo ok", "timeout_s": 3600}
     )
     payload = mcp_text(response)
 
-    assert "timeout_s must be <= 60 seconds for run_shell_tool" in payload
+    assert "timeout_s must be <= 60 seconds for run_shell_command" in payload
 
 
 @pytest.mark.asyncio
@@ -37,7 +37,7 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    async def hanging_public_run_shell(
+    async def hanging_run_shell_command_execute(
         command: str,
         cwd: str = ".",
         timeout_s: int | None = None,
@@ -46,15 +46,19 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        shell_tools_module, "public_run_shell", hanging_public_run_shell
+        shell_tools_module,
+        "run_shell_command_execute",
+        hanging_run_shell_command_execute,
     )
 
     response = await build_mcp().call_tool(
-        "run_shell_tool", {"command": "echo ok"}
+        "run_shell_command", {"command": "echo ok"}
     )
     payload = mcp_text(response)
 
-    assert "run_shell_tool exceeded 0.01 second public tool timeout" in payload
+    assert (
+        "run_shell_command exceeded 0.01 second public tool timeout" in payload
+    )
 
 
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
@@ -71,7 +75,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     )
 
     response = TestClient(build_http_app()).post(
-        "/tools/run_shell", json={"command": "echo ok"}
+        "/tools/run_shell_command", json={"command": "echo ok"}
     )
 
     assert response.status_code == 504
@@ -88,7 +92,9 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
         time.sleep(0.2)
         return []
 
-    monkeypatch.setattr(fs_tools_module, "list_dir", blocking_list_dir)
+    monkeypatch.setattr(
+        fs_tools_module, "list_files_execute", blocking_list_dir
+    )
 
     response = TestClient(build_http_app()).post(
         "/tools/list_files", json={"path": "."}
@@ -108,7 +114,9 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
         time.sleep(0.2)
         return []
 
-    monkeypatch.setattr(fs_tools_module, "list_dir", blocking_list_dir)
+    monkeypatch.setattr(
+        fs_tools_module, "list_files_execute", blocking_list_dir
+    )
 
     response = await build_mcp().call_tool("list_files", {"path": "."})
     payload = mcp_text(response)
@@ -116,7 +124,7 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     assert "list_files exceeded 0.01 second public tool timeout" in payload
 
 
-def test_public_run_shell_timeout_uses_ten_second_default(
+def test_run_shell_command_timeout_uses_ten_second_default(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -125,18 +133,18 @@ def test_public_run_shell_timeout_uses_ten_second_default(
     )
     clear_settings_cache()
 
-    assert public_run_shell_timeout(None) == 10
+    assert run_shell_command_timeout(None) == 10
 
 
-def test_public_run_shell_timeout_allows_explicit_cap(tmp_path, monkeypatch):
+def test_run_shell_command_timeout_allows_explicit_cap(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
-    assert public_run_shell_timeout(60) == 60
+    assert run_shell_command_timeout(60) == 60
 
 
 @pytest.mark.asyncio
-async def test_run_shell_timeout_includes_subprocess_spawn(
+async def test_run_shell_command_timeout_includes_subprocess_spawn(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -158,7 +166,7 @@ async def test_run_shell_timeout_includes_subprocess_spawn(
 
 
 @pytest.mark.asyncio
-async def test_run_shell_fast_command_succeeds(tmp_path, monkeypatch):
+async def test_run_shell_command_fast_command_succeeds(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
@@ -170,7 +178,9 @@ async def test_run_shell_fast_command_succeeds(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_shell_streams_and_bounds_large_output(tmp_path, monkeypatch):
+async def test_run_shell_command_streams_and_bounds_large_output(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
@@ -186,7 +196,7 @@ async def test_run_shell_streams_and_bounds_large_output(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_shell_timeout_marks_result_and_cleans_up(
+async def test_run_shell_command_timeout_marks_result_and_cleans_up(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -216,7 +226,8 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
     monkeypatch.setattr("local_shell_mcp.ops.tmux_ops.tmux", fake_tmux)
 
     result = await asyncio.wait_for(
-        send_shell("session-1", "echo ok", enter=True), timeout=1
+        send_persistent_shell_input_execute("session-1", "echo ok", enter=True),
+        timeout=1,
     )
 
     assert result == {"session_id": "session-1", "sent_bytes": 7, "enter": True}
@@ -224,7 +235,9 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_shell_filters_server_environment(monkeypatch, tmp_path):
+async def test_run_shell_command_filters_server_environment(
+    monkeypatch, tmp_path
+):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "should-not-leak")
@@ -238,7 +251,7 @@ async def test_run_shell_filters_server_environment(monkeypatch, tmp_path):
 
     result = await run_shell(
         (
-            "env | grep -E "
+            "env | grep_search_execute -E "
             "'^(PYTHONPATH|LOCAL_SHELL_MCP_|DOCKER_|CLOUDFLARE_TUNNEL_TOKEN=)' "
             "|| true"
         ),

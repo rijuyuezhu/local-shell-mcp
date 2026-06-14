@@ -14,7 +14,7 @@ def _todo_path() -> Path:
     return path
 
 
-def todo_read() -> dict:
+def read_todos_execute() -> dict:
     """Read the persisted todo list, treating missing state as an empty list."""
     path = _todo_path()
     if not path.exists():
@@ -28,7 +28,7 @@ def todo_read() -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def todo_write(todos: list[dict]) -> dict:
+def write_todos_execute(todos: list[dict]) -> dict:
     """Normalize todo entries and enforce count and byte limits before replacing persisted state."""
     settings = get_settings()
     if len(todos) > settings.max_todos:

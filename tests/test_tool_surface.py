@@ -30,13 +30,13 @@ LOCAL_MCP_TOOL_NAMES = {
     "search",
     "fetch",
     "environment_info",
-    "run_shell_tool",
-    "run_python_tool",
-    "shell_start",
-    "shell_send",
-    "shell_read",
-    "shell_kill",
-    "shell_list",
+    "run_shell_command",
+    "run_python_code",
+    "start_persistent_shell",
+    "send_persistent_shell_input",
+    "read_persistent_shell_output",
+    "kill_persistent_shell",
+    "list_persistent_shells",
     "list_files",
     "tree_view",
     "glob_search",
@@ -52,8 +52,8 @@ LOCAL_MCP_TOOL_NAMES = {
     "list_file_links",
     "revoke_file_link",
     "secret_scan",
-    "todo_read_tool",
-    "todo_write_tool",
+    "read_todos",
+    "write_todos",
 }
 
 
@@ -63,13 +63,13 @@ REMOTE_MCP_TOOL_NAMES = {
     "remote_revoke_machine",
     "remote_rename_machine",
     "remote_environment_info",
-    "remote_run_shell_tool",
-    "remote_run_python_tool",
-    "remote_shell_start",
-    "remote_shell_send",
-    "remote_shell_read",
-    "remote_shell_kill",
-    "remote_shell_list",
+    "run_remote_shell_command",
+    "run_remote_python_code",
+    "start_remote_persistent_shell",
+    "send_remote_persistent_shell_input",
+    "read_remote_persistent_shell_output",
+    "kill_remote_persistent_shell",
+    "list_remote_persistent_shells",
     "remote_list_files",
     "remote_tree_view",
     "remote_glob_search",
@@ -149,7 +149,7 @@ async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_http_todo_read_matches_mcp_tool_payload(tmp_path, monkeypatch):
+async def test_http_read_todos_matches_mcp_tool_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
@@ -157,7 +157,7 @@ async def test_http_todo_read_matches_mcp_tool_payload(tmp_path, monkeypatch):
     clear_settings_cache()
 
     http_payload = TestClient(build_http_app()).get("/tools/todo").json()
-    mcp_response = await build_mcp().call_tool("todo_read_tool", {})
+    mcp_response = await build_mcp().call_tool("read_todos", {})
 
     assert http_payload == _mcp_payload_data(mcp_response)
 
@@ -188,7 +188,7 @@ def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
     clear_settings_cache()
 
     response = TestClient(build_http_app()).get(
-        "/tools/todo", params={"tool_name": "shell_list"}
+        "/tools/todo", params={"tool_name": "list_persistent_shells"}
     )
 
     assert response.status_code == 200
@@ -222,7 +222,7 @@ def test_http_remote_worker_missing_machine_returns_validation_error(
     clear_settings_cache()
 
     response = TestClient(build_http_app()).post(
-        "/tools/remote_run_shell", json={"command": "echo ok"}
+        "/tools/run_remote_shell_command", json={"command": "echo ok"}
     )
 
     assert response.status_code == 400
@@ -256,10 +256,11 @@ async def test_mcp_remote_worker_missing_machine_uses_fastmcp_tool_error(
     clear_settings_cache()
 
     with pytest.raises(
-        ToolError, match="validation error for remote_run_shell_toolArguments"
+        ToolError,
+        match="validation error for run_remote_shell_commandArguments",
     ):
         await build_mcp().call_tool(
-            "remote_run_shell_tool", {"command": "echo ok"}
+            "run_remote_shell_command", {"command": "echo ok"}
         )
 
 
@@ -278,7 +279,7 @@ def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
         def http_routes(self):
             return [
                 HttpToolRoute(
-                    cast(HttpMethod, "PUT"), "/tools/example", "todo_read_tool"
+                    cast(HttpMethod, "PUT"), "/tools/example", "read_todos"
                 )
             ]
 
@@ -396,7 +397,7 @@ async def test_apply_patch_tool_creates_temp_file(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_python_tool_creates_temp_file(tmp_path, monkeypatch):
+async def test_run_python_code_creates_temp_file(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
@@ -404,7 +405,7 @@ async def test_run_python_tool_creates_temp_file(tmp_path, monkeypatch):
     clear_settings_cache()
 
     payload = await call_local_tool(
-        "run_python_tool", {"code": "print('py314')", "cwd": "."}
+        "run_python_code", {"code": "print('py314')", "cwd": "."}
     )
 
     assert payload["ok"] is True
