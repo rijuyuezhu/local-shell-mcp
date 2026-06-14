@@ -119,3 +119,4 @@ Some upstream commits are intentionally recorded without porting their code when
 | Upstream commit | Decision | Rationale |
 |---|---|---|
 | `78fd6d5` Raise public shell timeout cap to 120 seconds | Skipped | The current configuration keeps `public_run_shell_max_timeout_s=60` and `public_tool_timeout_s=60`. Raising only the shell cap would be inconsistent with the existing tool watchdog policy, and this sync intentionally keeps the timeout behavior unchanged. |
+| `8e5a988` Bump version to 2.3.0 | Skipped | The origin line is already at `3.5.0`; applying this upstream release-version bump would downgrade package and VS Code extension versions rather than port functionality. |
