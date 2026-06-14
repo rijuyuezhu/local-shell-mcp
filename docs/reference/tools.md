@@ -46,6 +46,16 @@ All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-cont
 | `delete_file_or_dir` | Delete a file or directory. |
 | `apply_patch` | Apply a unified diff using `git apply` as a file-editing primitive. |
 
+## File download links
+
+These tools create and manage tokenized browser-accessible links for files in the workspace. The management tools require the normal MCP/REST authentication; the generated `/download/{token}` URL is public but protected by a high-entropy token, TTL, optional download-count limit, optional size limit, and revocation.
+
+| Tool | Purpose |
+|---|---|
+| `create_file_link` | Create a temporary download URL for a regular workspace file. |
+| `list_file_links` | List active generated download URLs. |
+| `revoke_file_link` | Revoke a generated download URL by token. |
+
 ## Todo state
 
 | Tool | Purpose |

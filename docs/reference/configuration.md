@@ -52,6 +52,20 @@ Important limits include:
 | `LOCAL_SHELL_MCP_MAX_CONCURRENT_COMMANDS` | Concurrent command limit | `4` |
 | `LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS` | Persistent shell session limit | `16` |
 
+## File download links
+
+`create_file_link` can create public `/download/{token}` URLs for regular files in the workspace. The creation/list/revoke tools are authenticated like other tools, while the generated URL is intentionally public so browsers and MCP clients can fetch artifacts directly.
+
+| Environment | Meaning | Default |
+|---|---|---:|
+| `LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED` | Enable tokenized public download links created by protected tools | `true` |
+| `LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_TTL_S` | Default generated-link lifetime in seconds | `3600` |
+| `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_TTL_S` | Maximum accepted generated-link lifetime in seconds | `604800` |
+| `LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS` | Default download-count limit; `0` means unlimited until expiry | `0` |
+| `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES` | Maximum linked file size; `0` disables this size limit | `0` |
+
+Set `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` for public deployments so generated URLs use the externally reachable HTTPS origin instead of the bind host.
+
 ## Denylists
 
 By default, command and path denylists block common high-risk operations and sensitive paths.

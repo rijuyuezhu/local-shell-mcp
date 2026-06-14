@@ -108,6 +108,17 @@ class Settings(BaseSettings):
     max_tmux_sessions: int = 16
     """Persistent shell session limit."""
 
+    file_download_enabled: bool = True
+    """Enable tokenized public download links created by protected tools."""
+    file_download_default_ttl_s: int = 3600
+    """Default lifetime for generated file download links in seconds."""
+    file_download_max_ttl_s: int = 604800
+    """Maximum lifetime accepted for generated file download links in seconds."""
+    file_download_default_max_downloads: int = 0
+    """Default download-count limit for file links; 0 means unlimited until expiry."""
+    file_download_max_file_bytes: int = 0
+    """Maximum file size allowed for download links; 0 disables this size limit."""
+
     # Remote worker mode is enabled by default. Remote machines join with one-time
     # invites, poll for jobs over outbound HTTP(S), and expose near-parity tools.
     remote_enabled: bool = True
