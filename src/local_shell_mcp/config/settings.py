@@ -289,7 +289,8 @@ def load_settings(
     config_path = config_path or os.getenv("LOCAL_SHELL_MCP_CONFIG")
     values = read_config_file(config_path)
     values.update(_env_overrides())
-    values.update({k: v for k, v in (overrides or {}).items() if v is not None})
+    if overrides:
+        values.update(overrides)
     return _prepare_settings(Settings(**values), create_dirs=create_dirs)
 
 
