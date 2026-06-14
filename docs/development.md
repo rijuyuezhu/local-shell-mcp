@@ -111,3 +111,11 @@ uv run mkdocs build --strict
 ```
 
 Also test the Docker image and at least one MCP connection path before publishing.
+
+## Selective upstream sync notes
+
+Some upstream commits are intentionally recorded without porting their code when the current tree has a different policy or version line.
+
+| Upstream commit | Decision | Rationale |
+|---|---|---|
+| `78fd6d5` Raise public shell timeout cap to 120 seconds | Skipped | The current configuration keeps `public_run_shell_max_timeout_s=60` and `public_tool_timeout_s=60`. Raising only the shell cap would be inconsistent with the existing tool watchdog policy, and this sync intentionally keeps the timeout behavior unchanged. |
