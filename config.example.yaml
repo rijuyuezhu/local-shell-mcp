@@ -90,6 +90,16 @@ max_tmp_bytes: 50000000
 max_concurrent_commands: 4
 # Persistent shell session limit.
 max_tmux_sessions: 16
+# Enable tokenized public download links created by protected tools.
+file_download_enabled: true
+# Default lifetime for generated file download links in seconds.
+file_download_default_ttl_s: 3600
+# Maximum lifetime accepted for generated file download links in seconds.
+file_download_max_ttl_s: 604800
+# Default download-count limit for file links; 0 means unlimited until expiry.
+file_download_default_max_downloads: 0
+# Maximum file size allowed for download links; 0 disables this size limit.
+file_download_max_file_bytes: 0
 # Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when
 # full-container mode is enabled.
 command_denylist:

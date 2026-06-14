@@ -19,6 +19,7 @@ from ..oauth.middleware import (
 from ..ops.command_ops import public_tool_timeout_s
 from ..tools.discovery import discover_tool_registries
 from ..tools.local_invocations import UnknownLocalToolError, call_local_tool
+from .downloads import download_endpoint
 
 type ToolRouteHandler = Callable[..., Awaitable[Any]]
 
@@ -147,6 +148,10 @@ def build_http_app() -> FastAPI:
     @app.get("/readyz")
     async def readyz() -> dict[str, bool | str]:
         return {"ok": True, "workspace_root": str(settings.workspace_root)}
+
+    @app.api_route("/download/{token}", methods=["GET", "HEAD"])
+    async def api_download(request: Request) -> Response:
+        return await download_endpoint(request)
 
     _register_http_tool_routes(app)
     return app
