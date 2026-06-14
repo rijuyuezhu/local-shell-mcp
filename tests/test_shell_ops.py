@@ -92,7 +92,9 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
         time.sleep(0.2)
         return []
 
-    monkeypatch.setattr(fs_tools_module, "list_dir", blocking_list_dir)
+    monkeypatch.setattr(
+        fs_tools_module, "list_files_execute", blocking_list_dir
+    )
 
     response = TestClient(build_http_app()).post(
         "/tools/list_files", json={"path": "."}
@@ -112,7 +114,9 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
         time.sleep(0.2)
         return []
 
-    monkeypatch.setattr(fs_tools_module, "list_dir", blocking_list_dir)
+    monkeypatch.setattr(
+        fs_tools_module, "list_files_execute", blocking_list_dir
+    )
 
     response = await build_mcp().call_tool("list_files", {"path": "."})
     payload = mcp_text(response)
@@ -247,7 +251,7 @@ async def test_run_shell_command_filters_server_environment(
 
     result = await run_shell(
         (
-            "env | grep -E "
+            "env | grep_search_execute -E "
             "'^(PYTHONPATH|LOCAL_SHELL_MCP_|DOCKER_|CLOUDFLARE_TUNNEL_TOKEN=)' "
             "|| true"
         ),

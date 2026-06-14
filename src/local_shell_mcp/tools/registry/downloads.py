@@ -4,9 +4,9 @@ import asyncio
 from typing import Any
 
 from ...ops.download_ops import (
-    create_share_link,
-    list_share_links,
-    revoke_share_link,
+    create_file_link_execute,
+    list_file_links_execute,
+    revoke_file_link_execute,
 )
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
@@ -39,17 +39,17 @@ async def create_file_link(
 ) -> dict[str, Any]:
     """Create a temporary tokenized browser download URL for one file."""
     return await asyncio.to_thread(
-        create_share_link, path, ttl_s, filename, max_downloads
+        create_file_link_execute, path, ttl_s, filename, max_downloads
     )
 
 
 @local_tool(http_method="GET", http_path="/tools/file_link/list")
 async def list_file_links(include_expired: bool = False) -> dict[str, Any]:
     """List tokenized file download links created by create_file_link. Use this to audit what is currently shareable, find a token before revoking it, or include expired links for cleanup/debugging. Parameter: include_expired defaults to false and hides links that are already expired or exhausted; set it true when you need historical entries. Each entry summarizes the token, URL, source display path, browser filename, expiry, download count, and max_downloads limit."""
-    return await asyncio.to_thread(list_share_links, include_expired)
+    return await asyncio.to_thread(list_file_links_execute, include_expired)
 
 
 @local_tool(http_method="POST", http_path="/tools/file_link/revoke")
 async def revoke_file_link(token: str) -> dict[str, Any]:
     """Revoke a tokenized file download link created by create_file_link. Use this when a shared artifact should stop being browser-accessible before its TTL or download limit expires. Parameter: token is the share token returned by create_file_link or list_file_links, not the full URL. The operation is safe to call for missing or already-expired tokens; the response reports whether a link was actually removed."""
-    return await asyncio.to_thread(revoke_share_link, token)
+    return await asyncio.to_thread(revoke_file_link_execute, token)

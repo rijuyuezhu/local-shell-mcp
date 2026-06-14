@@ -8,8 +8,8 @@ from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http.downloads import download_routes
 from local_shell_mcp.mcp.app import build_mcp
 from local_shell_mcp.ops.download_ops import (
-    create_share_link,
-    revoke_share_link,
+    create_file_link_execute,
+    revoke_file_link_execute,
 )
 
 
@@ -27,7 +27,7 @@ def test_create_share_link_serves_file(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
-    link = create_share_link(
+    link = create_file_link_execute(
         "hello.txt", ttl_s=60, filename="result.txt", max_downloads=2
     )
 
@@ -44,14 +44,14 @@ def test_share_link_expires_and_can_be_revoked(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
-    link = create_share_link("hello.txt", ttl_s=1)
+    link = create_file_link_execute("hello.txt", ttl_s=1)
     token = link["token"]
-    assert revoke_share_link(token)["revoked"] is True
+    assert revoke_file_link_execute(token)["revoked"] is True
 
     app = Starlette(routes=download_routes())
     assert TestClient(app).get(link["url"]).status_code == 404
 
-    link = create_share_link("hello.txt", ttl_s=1)
+    link = create_file_link_execute("hello.txt", ttl_s=1)
     time.sleep(1.05)
     assert TestClient(app).get(link["url"]).status_code == 410
 
@@ -59,7 +59,7 @@ def test_share_link_expires_and_can_be_revoked(tmp_path, monkeypatch):
 def test_share_link_download_limit(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
-    link = create_share_link("hello.txt", ttl_s=60, max_downloads=1)
+    link = create_file_link_execute("hello.txt", ttl_s=60, max_downloads=1)
     client = TestClient(Starlette(routes=download_routes()))
 
     assert client.get(link["url"]).status_code == 200
@@ -73,7 +73,7 @@ def test_share_link_can_be_disabled(tmp_path, monkeypatch):
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
     with pytest.raises(PermissionError):
-        create_share_link("hello.txt", ttl_s=60)
+        create_file_link_execute("hello.txt", ttl_s=60)
 
 
 @pytest.mark.asyncio

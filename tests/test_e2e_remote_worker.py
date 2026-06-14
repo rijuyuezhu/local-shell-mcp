@@ -353,16 +353,18 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 b"local-to-remote-\x00-payload"
             )
 
-            (control_workspace / "tree" / "nested").mkdir(parents=True)
-            (control_workspace / "tree" / "nested" / "file.txt").write_text(
-                "directory payload", encoding="utf-8"
+            (control_workspace / "tree_view_execute" / "nested").mkdir(
+                parents=True
             )
+            (
+                control_workspace / "tree_view_execute" / "nested" / "file.txt"
+            ).write_text("directory payload", encoding="utf-8")
             push_dir = await client.call_tool(
                 "remote_push_dir",
                 {
-                    "local_path": "tree",
+                    "local_path": "tree_view_execute",
                     "machine": machine,
-                    "remote_path": "remote/tree-copy",
+                    "remote_path": "remote/tree_view_execute-copy",
                     "chunk_size": 128,
                 },
             )
@@ -370,7 +372,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert (
                 remote_workspace
                 / "remote"
-                / "tree-copy"
+                / "tree_view_execute-copy"
                 / "nested"
                 / "file.txt"
             ).read_text(encoding="utf-8") == "directory payload"
@@ -379,14 +381,17 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 "remote_pull_dir",
                 {
                     "machine": machine,
-                    "remote_path": "remote/tree-copy",
-                    "local_path": "tree-pulled",
+                    "remote_path": "remote/tree_view_execute-copy",
+                    "local_path": "tree_view_execute-pulled",
                     "chunk_size": 128,
                 },
             )
             assert pull_dir["entries"] >= 1
             assert (
-                control_workspace / "tree-pulled" / "nested" / "file.txt"
+                control_workspace
+                / "tree_view_execute-pulled"
+                / "nested"
+                / "file.txt"
             ).read_text(encoding="utf-8") == "directory payload"
 
             await client.call_tool(

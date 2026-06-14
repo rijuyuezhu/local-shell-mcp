@@ -11,7 +11,7 @@ from .command_ops import run_shell
 from .path_ops import missing_path_context, resolve_path
 
 
-async def grep(
+async def grep_search_execute(
     query: str,
     cwd: str = ".",
     glob: str | None = None,
@@ -94,7 +94,7 @@ async def grep(
     }
 
 
-def tree_sync(
+def tree_view_sync(
     cwd: str = ".", depth: int = 3, max_entries: int = 500
 ) -> dict[str, Any]:
     """Build a compact, depth-limited directory tree while skipping common generated directories."""
@@ -167,8 +167,8 @@ def tree_sync(
     }
 
 
-async def tree(
+async def tree_view_execute(
     cwd: str = ".", depth: int = 3, max_entries: int = 500
 ) -> dict[str, Any]:
     """Expose tree generation through an async API used by MCP and HTTP handlers."""
-    return await asyncio.to_thread(tree_sync, cwd, depth, max_entries)
+    return await asyncio.to_thread(tree_view_sync, cwd, depth, max_entries)

@@ -5,14 +5,14 @@ import json
 from typing import Any
 
 from ..audit import audit
-from .fs_ops import read_text
-from .search_ops import grep
+from .fs_ops import read_file_execute
+from .search_ops import grep_search_execute
 
 
-async def workspace_connector_search(query: str) -> str:
+async def search_execute(query: str) -> str:
     """Return connector-compatible result cards for a workspace text search."""
     try:
-        result = await grep(
+        result = await grep_search_execute(
             query,
             cwd=".",
             regex=False,
@@ -41,10 +41,10 @@ async def workspace_connector_search(query: str) -> str:
         return json.dumps({"results": []}, ensure_ascii=False)
 
 
-async def workspace_connector_fetch(id: str) -> str:
+async def fetch_execute(id: str) -> str:
     """Return one connector-compatible document for a workspace result id."""
     try:
-        data = await asyncio.to_thread(read_text, id)
+        data = await asyncio.to_thread(read_file_execute, id)
         path = data.get("path") or id
         binary = bool(data.get("binary"))
         return json.dumps(

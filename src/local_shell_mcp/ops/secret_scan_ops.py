@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from ..config.settings import get_settings
-from .fs_ops import read_text
+from .fs_ops import read_file_execute
 from .path_ops import relative_display, resolve_path
 
 SECRET_PATTERNS = {
@@ -16,7 +16,7 @@ SECRET_PATTERNS = {
 }
 
 
-def run_secret_scan_sync(
+def secret_scan_sync(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
 ) -> dict[str, Any]:
     """Scan workspace text files for credential-like strings while respecting limits."""
@@ -31,7 +31,7 @@ def run_secret_scan_sync(
         if glob and not path.match(glob):
             continue
         try:
-            data = read_text(str(path))
+            data = read_file_execute(str(path))
         except Exception:
             continue
         if data.get("binary"):
@@ -58,8 +58,8 @@ def run_secret_scan_sync(
     }
 
 
-async def run_secret_scan(
+async def secret_scan_execute(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
 ) -> dict[str, Any]:
     """Expose secret scanning through an async wrapper for tool handlers."""
-    return await asyncio.to_thread(run_secret_scan_sync, cwd, glob, max_results)
+    return await asyncio.to_thread(secret_scan_sync, cwd, glob, max_results)

@@ -4,13 +4,13 @@ import asyncio
 from typing import Any
 
 from ...ops.fs_ops import (
-    delete_path,
-    edit_text,
-    list_dir,
-    multi_edit_text,
-    read_many_files_sync,
-    read_text,
-    write_text,
+    delete_file_or_dir_execute,
+    edit_file_execute,
+    list_files_execute,
+    multi_edit_file_execute,
+    read_file_execute,
+    read_many_files_execute,
+    write_file_execute,
 )
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
@@ -59,7 +59,9 @@ async def list_files(
     path: str = ".", recursive: bool = False, max_entries: int = 500
 ) -> list[dict[str, Any]]:
     """List files and directories under a path."""
-    return await asyncio.to_thread(list_dir, path, recursive, max_entries)
+    return await asyncio.to_thread(
+        list_files_execute, path, recursive, max_entries
+    )
 
 
 @local_tool(
@@ -76,7 +78,7 @@ async def read_file(
 ) -> dict:
     """Read a UTF-8 text file, optionally by line range."""
     return await asyncio.to_thread(
-        read_text,
+        read_file_execute,
         path,
         start_line,
         end_line,
@@ -99,7 +101,7 @@ async def read_many_files(
 ) -> dict:
     """Read multiple UTF-8 text files with the same optional line range."""
     return await asyncio.to_thread(
-        read_many_files_sync,
+        read_many_files_execute,
         paths,
         start_line,
         end_line,
@@ -115,7 +117,7 @@ async def read_many_files(
 )
 async def write_file(path: str, content: str, overwrite: bool = True) -> dict:
     """Write a UTF-8 text file."""
-    return await asyncio.to_thread(write_text, path, content, overwrite)
+    return await asyncio.to_thread(write_file_execute, path, content, overwrite)
 
 
 @local_tool(
@@ -127,16 +129,18 @@ async def edit_file(
     path: str, old: str, new: str, replace_all: bool = False
 ) -> dict:
     """Replace exact text in a file."""
-    return await asyncio.to_thread(edit_text, path, old, new, replace_all)
+    return await asyncio.to_thread(
+        edit_file_execute, path, old, new, replace_all
+    )
 
 
 @local_tool(http_method="POST", http_path="/tools/multi_edit_file")
 async def multi_edit_file(path: str, edits: list[dict]) -> dict:
     """Apply multiple exact-text edits to one file. Use when several small replacements in the same file should be made together. Each edit must provide old, new, and optional replace_all; each old string must match exactly. Read the file first to avoid stale or ambiguous edits."""
-    return await asyncio.to_thread(multi_edit_text, path, edits)
+    return await asyncio.to_thread(multi_edit_file_execute, path, edits)
 
 
 @local_tool(http_method="POST", http_path="/tools/delete")
 async def delete_file_or_dir(path: str, recursive: bool = False) -> dict:
     """Delete a file or directory inside the controlled workspace/container. Use only when removal is intentional. recursive=false deletes files or empty directories; recursive=true is required for non-empty directories and should be used carefully."""
-    return await asyncio.to_thread(delete_path, path, recursive)
+    return await asyncio.to_thread(delete_file_or_dir_execute, path, recursive)

@@ -1,6 +1,6 @@
 """Secret scanning tool registry."""
 
-from ...ops.secret_scan_ops import run_secret_scan
+from ...ops.secret_scan_ops import secret_scan_execute
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
 
@@ -28,4 +28,4 @@ async def secret_scan(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
 ) -> dict:
     """Scan workspace text files for common secrets."""
-    return await run_secret_scan(cwd, glob, max_results)
+    return await secret_scan_execute(cwd, glob, max_results)

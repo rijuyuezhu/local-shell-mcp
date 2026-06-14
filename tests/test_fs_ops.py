@@ -7,10 +7,10 @@ from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.mcp.app import build_mcp
 from local_shell_mcp.ops.command_ops import check_command_policy
 from local_shell_mcp.ops.fs_ops import (
-    edit_text,
-    multi_edit_text,
-    read_text,
-    write_text,
+    edit_file_execute,
+    multi_edit_file_execute,
+    read_file_execute,
+    write_file_execute,
 )
 from local_shell_mcp.ops.path_ops import resolve_path
 from tests.helpers import mcp_text, nested_mcp_text
@@ -19,10 +19,10 @@ from tests.helpers import mcp_text, nested_mcp_text
 def test_write_read_edit(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
-    write_text("a.txt", "hello world")
-    assert read_text("a.txt")["content"] == "hello world"
-    edit_text("a.txt", "world", "mcp")
-    assert read_text("a.txt")["content"] == "hello mcp"
+    write_file_execute("a.txt", "hello world")
+    assert read_file_execute("a.txt")["content"] == "hello world"
+    edit_file_execute("a.txt", "world", "mcp")
+    assert read_file_execute("a.txt")["content"] == "hello mcp"
 
 
 def test_read_text_refuses_binary_without_decoding(tmp_path, monkeypatch):
@@ -31,7 +31,7 @@ def test_read_text_refuses_binary_without_decoding(tmp_path, monkeypatch):
     payload = b"\x89PNG\r\n\x1a\n\x00binary"
     (tmp_path / "image.png").write_bytes(payload)
 
-    result = read_text("image.png")
+    result = read_file_execute("image.png")
 
     assert result == {
         "path": "image.png",
@@ -49,7 +49,9 @@ def test_read_text_binary_preview_is_explicit_and_limited(
     clear_settings_cache()
     (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02\x03\x04")
 
-    result = read_text("blob.bin", binary_preview="hex", binary_preview_bytes=2)
+    result = read_file_execute(
+        "blob.bin", binary_preview="hex", binary_preview_bytes=2
+    )
 
     assert result["content"] is None
     assert result["preview"] == "0001"
@@ -69,7 +71,9 @@ def test_binary_preview_does_not_read_entire_file(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
 
-    result = read_text("blob.bin", binary_preview="hex", binary_preview_bytes=2)
+    result = read_file_execute(
+        "blob.bin", binary_preview="hex", binary_preview_bytes=2
+    )
 
     assert result["preview"] == "0001"
 
@@ -80,7 +84,7 @@ def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
     clear_settings_cache()
     (tmp_path / "long.txt").write_text("hello world", encoding="utf-8")
 
-    result = read_text("long.txt")
+    result = read_file_execute("long.txt")
 
     assert result["bytes"] == 11
     assert result["bytes_read"] == 5
@@ -97,11 +101,13 @@ def test_write_text_does_not_read_existing_file_before_overwrite(
     (tmp_path / "existing.txt").write_text("old", encoding="utf-8")
 
     def fail_read_text(self, *args, **kwargs):
-        raise AssertionError("write_text should not read old file contents")
+        raise AssertionError(
+            "write_file_execute should not read old file contents"
+        )
 
     monkeypatch.setattr(Path, "read_text", fail_read_text)
 
-    result = write_text("existing.txt", "new")
+    result = write_file_execute("existing.txt", "new")
 
     assert result["created"] is False
     assert (tmp_path / "existing.txt").read_bytes().decode("utf-8") == "new"
@@ -114,7 +120,7 @@ def test_edit_refuses_files_above_write_limit(tmp_path, monkeypatch):
     (tmp_path / "large.txt").write_text("hello world", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Refusing to edit"):
-        edit_text("large.txt", "world", "mcp")
+        edit_file_execute("large.txt", "world", "mcp")
 
 
 def test_edits_refuse_binary_files(tmp_path, monkeypatch):
@@ -126,11 +132,11 @@ def test_edits_refuse_binary_files(tmp_path, monkeypatch):
     with pytest.raises(
         ValueError, match="Refusing to read binary file as text"
     ):
-        edit_text("blob.bin", "world", "mcp")
+        edit_file_execute("blob.bin", "world", "mcp")
     with pytest.raises(
         ValueError, match="Refusing to read binary file as text"
     ):
-        multi_edit_text("blob.bin", [{"old": "world", "new": "mcp"}])
+        multi_edit_file_execute("blob.bin", [{"old": "world", "new": "mcp"}])
 
     assert (tmp_path / "blob.bin").read_bytes() == original
 
@@ -195,7 +201,7 @@ def test_read_text_handles_truncated_utf8_sequence(tmp_path, monkeypatch):
     clear_settings_cache()
     (tmp_path / "utf8.txt").write_text("你好", encoding="utf-8")
 
-    result = read_text("utf8.txt")
+    result = read_file_execute("utf8.txt")
 
     assert result["truncated"] is True
     assert result["bytes_read"] == 4

@@ -4,7 +4,7 @@ import asyncio
 from contextlib import suppress
 from typing import Any
 
-from ..ops.fs_ops import delete_path
+from ..ops.fs_ops import delete_file_or_dir_execute
 from ..ops.transfer_ops import (
     normalize_chunk_size,
     transfer_abort_write,
@@ -394,7 +394,7 @@ async def copy_local_dir_to_remote(
         raise
     finally:
         with suppress(Exception):
-            delete_path(pack.get("archive_path", ""), False)
+            delete_file_or_dir_execute(pack.get("archive_path", ""), False)
     return {
         "source": {"machine": "controller", "path": pack["path"]},
         "destination": {"machine": dst_machine, "path": unpack["path"]},

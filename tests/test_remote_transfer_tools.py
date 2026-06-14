@@ -4,7 +4,7 @@ import pytest
 
 import local_shell_mcp.remote.transfer as remote_transfer
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.fs_ops import delete_path
+from local_shell_mcp.ops.fs_ops import delete_file_or_dir_execute
 from local_shell_mcp.ops.transfer_ops import (
     transfer_abort_write,
     transfer_alloc_temp_path,
@@ -68,7 +68,9 @@ async def fake_remote_worker_call(
                 args.get("cleanup_archive", True),
             )
         elif tool == "delete_file_or_dir":
-            data = delete_path(args["path"], args.get("recursive", False))
+            data = delete_file_or_dir_execute(
+                args["path"], args.get("recursive", False)
+            )
         else:
             raise ValueError(f"unsupported fake remote tool: {tool}")
         return {"ok": True, "message": "", "data": data}
