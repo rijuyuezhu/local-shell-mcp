@@ -36,7 +36,14 @@ async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
 
 def worker_capabilities() -> list[str]:
     """List tool categories available in the worker environment."""
-    return ["shell", "persistent_shell", "files", "search", "python"]
+    return [
+        "shell",
+        "persistent_shell",
+        "files",
+        "search",
+        "python",
+        "transfer",
+    ]
 
 
 def worker_info(workdir: str) -> dict[str, Any]:
