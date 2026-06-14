@@ -1,5 +1,7 @@
 """MCP tool registration for remote-worker proxy tools."""
 
+import inspect
+import re
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -27,6 +29,16 @@ from ..tools.responses import (
 from ..tools.responses import (
     ok_response as ok_response_payload,
 )
+
+
+def _description(text: str) -> str:
+    """Return a clean MCP tool description from source text."""
+    paragraphs = re.split(r"\n\s*\n", inspect.cleandoc(text))
+    return "\n\n".join(
+        " ".join(paragraph.split())
+        for paragraph in paragraphs
+        if paragraph.split()
+    )
 
 
 def ok_response(data: Any = None, message: str = "") -> ToolResult:
@@ -62,11 +74,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Create a one-time command for a remote machine to join this control server. "
-            "Use when you need to run workspace tools on another worker. "
-            f"ttl_s defaults to the configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted. "
-            "The invite should be treated as sensitive because it grants enrollment capability."
+        description=_description(
+            f"""Create a one-time command for a remote machine to join this control server. Use when you need to run workspace tools on another worker. Defaults: ttl_s defaults to the configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted. Security: treat the invite as sensitive because it grants enrollment capability."""
         ),
     )
     async def remote_invite(
@@ -112,11 +121,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. "
-            f"timeout_s is in seconds and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds on the worker; "
-            f"max_output_bytes caps returned output and the worker default cap is max_output_bytes={settings.max_output_bytes}. "
-            "For long-running or interactive remote processes, use remote_shell_start with remote_shell_send and remote_shell_read."
+        description=_description(
+            f"""Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. Timeout: timeout_s is in seconds and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds on the worker. Output: max_output_bytes caps returned output and the worker default cap is max_output_bytes={settings.max_output_bytes}. For long-running or interactive remote processes, use remote_shell_start with remote_shell_send and remote_shell_read."""
         ),
     )
     async def remote_run_shell_tool(
@@ -142,10 +148,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Write Python code to a temporary file and execute it on a remote worker. "
-            "Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. "
-            f"cwd is resolved on the remote worker and timeout_s defaults to 60 seconds; keep it within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds."
+        description=_description(
+            f"""Write Python code to a temporary file and execute it on a remote worker. Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. Parameters: cwd is resolved on the remote worker and timeout_s defaults to 60 seconds. Timeout: keep timeout_s within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds."""
         ),
     )
     async def remote_run_python_tool(
@@ -166,7 +170,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         name: str | None = None,
         command: str | None = None,
     ) -> ToolResult:
-        """Start a persistent shell session on a remote worker. Use for remote development servers, watches, REPLs, or interactive commands whose output must be read incrementally. Prefer remote_run_shell_tool for one-shot commands."""
+        """Start a persistent shell session on a remote worker. Use for remote development servers, watches, REPLs, or interactive commands whose output must be read incrementally. For one-shot commands, use remote_run_shell_tool."""
         return await _remote_call(
             machine,
             "shell_start",
@@ -212,9 +216,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "List files and directories on a remote worker. Use for quick remote directory inspection. "
-            f"path is resolved on the remote worker; recursive controls traversal; max_entries defaults to 500 and is capped by max_directory_entries={settings.max_directory_entries}."
+        description=_description(
+            f"""List files and directories on a remote worker. Use for quick remote directory inspection. Parameters: path is resolved on the remote worker; recursive controls traversal. Limits: max_entries defaults to 500 and is capped by max_directory_entries={settings.max_directory_entries}."""
         ),
     )
     async def remote_list_files(
@@ -233,9 +236,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Return a compact directory tree from a remote worker. Use to understand remote project layout before reading or editing files. "
-            f"depth defaults to 3; max_entries defaults to 500 and is capped by max_tree_entries={settings.max_tree_entries}."
+        description=_description(
+            f"""Return a compact directory tree from a remote worker. Use to understand remote project layout before reading or editing files. Parameters: depth defaults to 3. Limits: max_entries defaults to 500 and is capped by max_tree_entries={settings.max_tree_entries}."""
         ),
     )
     async def remote_tree_view(
@@ -251,9 +253,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Find files by glob pattern on a remote worker. Use when you know remote filename patterns and need matching paths. "
-            f"cwd narrows the search root; max_results defaults to 500 and is capped by max_glob_results={settings.max_glob_results}."
+        description=_description(
+            f"""Find files by glob pattern on a remote worker. Use when you know remote filename patterns and need matching paths. Parameters: cwd narrows the search root. Limits: max_results defaults to 500 and is capped by max_glob_results={settings.max_glob_results}."""
         ),
     )
     async def remote_glob_search(
@@ -269,9 +270,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Search remote file contents using ripgrep. Use to locate symbols, usages, or text on a remote worker before reading or editing. "
-            f"query is regex by default; glob, cwd, and case_sensitive narrow the search; max_results is optional and capped by max_grep_results={settings.max_grep_results}."
+        description=_description(
+            f"""Search remote file contents using ripgrep. Use to locate symbols, usages, or text on a remote worker before reading or editing. Parameters: query is regex by default; glob, cwd, and case_sensitive narrow the search. Limits: max_results is optional and capped by max_grep_results={settings.max_grep_results}."""
         ),
     )
     async def remote_grep_search(
@@ -300,9 +300,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Read a UTF-8 text file on a remote worker, optionally by line range. Use after locating a remote file to inspect exact content before editing. "
-            f"start_line and end_line page large files; binary_preview requests bounded binary preview behavior; per-file reads are capped by max_file_read_bytes={settings.max_file_read_bytes}."
+        description=_description(
+            f"""Read a UTF-8 text file on a remote worker, optionally by line range. Use after locating a remote file to inspect exact content before editing. Parameters: start_line and end_line page large files; binary_preview requests bounded binary preview behavior. Limits: per-file reads are capped by max_file_read_bytes={settings.max_file_read_bytes}."""
         ),
     )
     async def remote_read_file(
@@ -329,9 +328,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Read multiple UTF-8 text files on a remote worker with the same optional line range. Use for targeted remote context gathering across known paths. "
-            f"Server-side limits bound file count and total bytes: max_read_many_files={settings.max_read_many_files}, max_read_many_total_bytes={settings.max_read_many_total_bytes}."
+        description=_description(
+            f"""Read multiple UTF-8 text files on a remote worker with the same optional line range. Use for targeted remote context gathering across known paths. Limits: max_read_many_files={settings.max_read_many_files}, max_read_many_total_bytes={settings.max_read_many_total_bytes}."""
         ),
     )
     async def remote_read_many_files(
@@ -358,9 +356,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Write a UTF-8 text file on a remote worker. Use to create or intentionally replace a whole remote file. "
-            f"Writes are capped by max_file_write_bytes={settings.max_file_write_bytes}; overwrite=false protects existing files; for precise changes prefer remote_edit_file or remote_apply_patch."
+        description=_description(
+            f"""Write a UTF-8 text file on a remote worker. Use to create or intentionally replace a whole remote file. Parameters: overwrite=false protects existing files. Limits: writes are capped by max_file_write_bytes={settings.max_file_write_bytes}. For precise changes, use remote_edit_file or remote_apply_patch."""
         ),
     )
     async def remote_write_file(
@@ -376,9 +373,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     @mcp.tool(
         structured_output=True,
         meta=oauth_security_meta,
-        description=(
-            "Replace exact text in a remote file. Use for small precise remote edits after reading the target file. "
-            f"old must match exactly; replace_all=true should be used only when every exact occurrence should change. Writes are capped by max_file_write_bytes={settings.max_file_write_bytes}."
+        description=_description(
+            f"""Replace exact text in a remote file. Use for small precise remote edits after reading the target file. Parameters: old must match exactly; replace_all=true should be used only when every exact occurrence should change. Limits: writes are capped by max_file_write_bytes={settings.max_file_write_bytes}."""
         ),
     )
     async def remote_edit_file(

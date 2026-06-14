@@ -16,11 +16,7 @@ local_tool = SecretScanToolRegistry.get_tool_decorator()
 
 def _secret_scan_description(context: McpToolContext) -> str:
     settings = context.settings
-    return (
-        "Scan workspace text files for common secrets before commit, push, release, or sharing logs. "
-        "Use as a precaution after editing configuration, credentials, CI, deployment, or documentation files. "
-        f"glob can narrow the scan and max_results bounds findings; max_results is capped by max_grep_results={settings.max_grep_results}. Results are heuristic and do not prove the workspace is secret-free."
-    )
+    return f"""Scan workspace text files for common secrets before commit, push, release, or sharing logs. Use as a precaution after editing configuration, credentials, CI, deployment, or documentation files. Parameters: glob can narrow the scan and max_results bounds findings. Limits: max_results is capped by max_grep_results={settings.max_grep_results}. Results are heuristic and do not prove the workspace is secret-free."""
 
 
 @local_tool(

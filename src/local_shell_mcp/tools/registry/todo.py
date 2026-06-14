@@ -23,5 +23,5 @@ async def todo_read_tool() -> dict:
 
 @local_tool(http_method="POST", http_path="/tools/todo")
 async def todo_write_tool(todos: list[dict]) -> dict:
-    """Replace the current structured agent todo list. Use for multi-step work where progress should be tracked explicitly. Each todo should include id, content, status, and priority; keep statuses current rather than storing unrelated notes."""
+    """Replace the current structured agent todo list. Use for multi-step work where progress should be tracked explicitly. Each todo should include id, content, status, and priority; keep statuses current and omit unrelated notes."""
     return await asyncio.to_thread(todo_write, todos)

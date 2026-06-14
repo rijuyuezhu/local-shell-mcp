@@ -1,6 +1,7 @@
 """Declarative tool registration shared by MCP and HTTP adapters."""
 
 import inspect
+import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from functools import wraps
@@ -39,6 +40,16 @@ class LocalToolDecoratorFactory(Protocol):
 
 def _always_enabled(settings: Settings) -> bool:
     return True
+
+
+def _normalize_description(text: str) -> str:
+    """Return a clean MCP tool description from source text."""
+    paragraphs = re.split(r"\n\s*\n", inspect.cleandoc(text))
+    return "\n\n".join(
+        " ".join(paragraph.split())
+        for paragraph in paragraphs
+        if paragraph.split()
+    )
 
 
 def _tool_kwargs_from_mapping(
@@ -134,8 +145,13 @@ class ToolDefinition:
 
     def _mcp_description(self, context: McpToolContext) -> str | None:
         if callable(self.description):
-            return self.description(context)
-        return self.description
+            description = self.description(context)
+        elif self.description is not None:
+            description = self.description
+        else:
+            description = self.func.__doc__ or ""
+        normalized = _normalize_description(description)
+        return normalized or None
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         """Register this tool on the provided FastMCP app."""

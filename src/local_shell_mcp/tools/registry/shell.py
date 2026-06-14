@@ -24,26 +24,12 @@ local_tool = ShellToolRegistry.get_tool_decorator()
 
 def _run_shell_tool_description(context: McpToolContext) -> str:
     settings = context.settings
-    return (
-        "Run one non-interactive shell command in the controlled workspace/container. "
-        "Use for build, test, package-manager, git, and inspection commands that should finish promptly. "
-        "Parameters: command is the shell command string; cwd defaults to '.' and is resolved relative to the workspace "
-        "unless an allowed absolute path is supplied; timeout_s is in seconds, optional, "
-        f"defaults to {settings.public_run_shell_default_timeout_s} and must be 1..{settings.public_run_shell_max_timeout_s}; "
-        f"max_output_bytes is optional and is capped by max_output_bytes={settings.max_output_bytes}. "
-        "For long-running, interactive, or streaming processes, use shell_start with shell_send and shell_read instead."
-    )
+    return f"""Run one non-interactive shell command in the controlled workspace/container. Use for build, test, package-manager, git, and inspection commands that should finish promptly. Parameters: command is the shell command string; cwd defaults to '.' and is resolved relative to the workspace unless an allowed absolute path is supplied. Timeouts: timeout_s is optional, defaults to {settings.public_run_shell_default_timeout_s}, and must be 1..{settings.public_run_shell_max_timeout_s}. Output: max_output_bytes is optional and is capped by max_output_bytes={settings.max_output_bytes}. For long-running, interactive, or streaming processes, use shell_start with shell_send and shell_read instead."""
 
 
 def _run_python_tool_description(context: McpToolContext) -> str:
     settings = context.settings
-    return (
-        "Write Python code to a temporary file and execute it in the controlled workspace/container. "
-        "Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. "
-        "Parameters: code is the full Python source to run; cwd defaults to '.' and is workspace-relative unless an allowed absolute path is supplied; "
-        f"timeout_s is in seconds, defaults to 60, and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds. "
-        f"Returned output is capped by max_output_bytes={settings.max_output_bytes}. Keep code non-interactive and write durable outputs explicitly if needed."
-    )
+    return f"""Write Python code to a temporary file and execute it in the controlled workspace/container. Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. Parameters: code is the full Python source to run; cwd defaults to '.' and is workspace-relative unless an allowed absolute path is supplied. Timeouts: timeout_s is in seconds, defaults to {settings.public_run_shell_max_timeout_s}, and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds. Output is capped by max_output_bytes={settings.max_output_bytes}. Keep code non-interactive and write durable outputs explicitly if needed."""
 
 
 @local_tool(
@@ -79,7 +65,7 @@ async def run_python_tool(
 async def shell_start(
     cwd: str = ".", name: str | None = None, command: str | None = None
 ) -> dict:
-    """Start a persistent tmux-backed shell session. Use for interactive programs, development servers, REPLs, long-running watches, or commands whose output must be read incrementally. Parameters: cwd defaults to '.' and is resolved relative to the workspace unless an allowed absolute path is supplied; name is an optional human-readable session label; command is optional and starts immediately in the session. For one-shot commands, prefer run_shell_tool."""
+    """Start a persistent tmux-backed shell session. Use for interactive programs, development servers, REPLs, long-running watches, or commands whose output must be read incrementally. Parameters: cwd defaults to '.' and is resolved relative to the workspace unless an allowed absolute path is supplied; name is an optional human-readable session label; command is optional and starts immediately in the session. For one-shot commands, use run_shell_tool."""
     return await start_shell(cwd, name, command)
 
 
