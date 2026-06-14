@@ -46,6 +46,16 @@ All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-cont
 | `delete_file_or_dir` | Delete a file or directory. |
 | `apply_patch` | Apply a unified diff using `git apply` as a file-editing primitive. |
 
+## File download links
+
+These tools create and manage tokenized browser-accessible links for files in the workspace. The management tools require the normal MCP/REST authentication; the generated `/download/{token}` URL is public but protected by a high-entropy token, TTL, optional download-count limit, optional size limit, and revocation.
+
+| Tool | Purpose |
+|---|---|
+| `create_file_link` | Create a temporary download URL for a regular workspace file. |
+| `list_file_links` | List active generated download URLs. |
+| `revoke_file_link` | Revoke a generated download URL by token. |
+
 ## Todo state
 
 | Tool | Purpose |
@@ -90,6 +100,19 @@ All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-cont
 | `remote_multi_edit_file` | Apply multiple exact-text edits to one remote file. |
 | `remote_delete_file_or_dir` | Delete a remote file or directory. |
 | `remote_apply_patch` | Apply a unified diff on a remote worker. |
+
+## Remote file transfer
+
+| Tool | Purpose |
+|---|---|
+| `remote_push_file` | Copy a workspace file to a remote worker. |
+| `remote_pull_file` | Copy a file from a remote worker into the workspace. |
+| `remote_copy_file` | Copy a file from one remote worker to another. |
+| `remote_push_dir` | Copy a workspace directory tree to a remote worker. |
+| `remote_pull_dir` | Copy a directory tree from a remote worker into the workspace. |
+| `remote_copy_dir` | Copy a directory tree from one remote worker to another. |
+
+These tools use chunked transfer for files and temporary archives for directory trees, so they are better suited than text read/write tools for binary files and large artifacts.
 
 ## Agent capability bridge tools
 
