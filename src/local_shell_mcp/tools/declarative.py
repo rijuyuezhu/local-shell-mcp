@@ -53,7 +53,7 @@ def _tool_kwargs_from_mapping(
         if name in args:
             kwargs[name] = args[name]
         elif parameter.default is inspect.Parameter.empty:
-            raise KeyError(name)
+            raise ValueError(f"Missing required argument: {name}")
     return kwargs
 
 

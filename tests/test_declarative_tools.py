@@ -36,10 +36,8 @@ async def test_tool_definition_call_from_mapping_reports_missing_required_arg():
         http_path="/tools/sample_tool",
     )
 
-    with pytest.raises(KeyError) as exc_info:
+    with pytest.raises(ValueError, match="Missing required argument: required"):
         await definition.call_from_mapping({"optional": 9})
-
-    assert exc_info.value.args == ("required",)
 
 
 @pytest.mark.asyncio

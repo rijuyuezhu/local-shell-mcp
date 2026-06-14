@@ -3,6 +3,7 @@ from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
+from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http.app import build_http_app
@@ -19,6 +20,7 @@ from local_shell_mcp.tools.contracts import (
 )
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
+    UnknownLocalToolError,
     call_local_tool,
     local_tool_handlers,
 )
@@ -181,6 +183,84 @@ def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
     assert "todos" in response.json()
 
 
+def test_http_tool_missing_required_arg_returns_validation_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).post("/tools/read_file", json={})
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": "validation_error",
+        "message": "Missing required argument: path",
+    }
+
+
+def test_http_remote_worker_missing_machine_returns_validation_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).post(
+        "/tools/remote_run_shell", json={"command": "echo ok"}
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": "validation_error",
+        "message": "Missing required argument: machine",
+    }
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_missing_required_arg_uses_fastmcp_tool_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    with pytest.raises(
+        ToolError, match="validation error for read_fileArguments"
+    ):
+        await build_mcp().call_tool("read_file", {})
+
+
+@pytest.mark.asyncio
+async def test_mcp_remote_worker_missing_machine_uses_fastmcp_tool_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    with pytest.raises(
+        ToolError, match="validation error for remote_run_shell_toolArguments"
+    ):
+        await build_mcp().call_tool(
+            "remote_run_shell_tool", {"command": "echo ok"}
+        )
+
+
+@pytest.mark.asyncio
+async def test_mcp_unknown_tool_uses_fastmcp_tool_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    with pytest.raises(ToolError, match="Unknown tool: no_such_tool"):
+        await build_mcp().call_tool("no_such_tool", {})
+
+
 def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
     class RegistryWithUnsupportedRoute:
         def http_routes(self):
@@ -197,6 +277,26 @@ def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
 
     with pytest.raises(ValueError, match="Unsupported HTTP tool method 'PUT'"):
         build_http_app()
+
+
+@pytest.mark.asyncio
+async def test_local_invocations_report_unknown_tool(monkeypatch):
+    class EmptyRegistry(ToolRegistry):
+        pass
+
+    monkeypatch.setattr(
+        "local_shell_mcp.tools.local_invocations.discover_tool_registries",
+        lambda: [EmptyRegistry()],
+    )
+    local_tool_handlers.cache_clear()
+
+    try:
+        with pytest.raises(
+            UnknownLocalToolError, match="Unknown local tool: example_tool"
+        ):
+            await call_local_tool("example_tool", {})
+    finally:
+        local_tool_handlers.cache_clear()
 
 
 @pytest.mark.asyncio

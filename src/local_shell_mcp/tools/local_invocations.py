@@ -15,6 +15,10 @@ from .contracts import ToolHandler
 from .discovery import discover_tool_registries
 
 
+class UnknownLocalToolError(LookupError):
+    """Raised when a local tool name has no registered invocation handler."""
+
+
 @lru_cache(maxsize=1)
 def local_tool_handlers() -> Mapping[str, ToolHandler]:
     """Collect canonical local invocation handlers from discovered registries."""
@@ -43,7 +47,7 @@ async def call_local_tool(
     try:
         handler = local_tool_handlers()[tool_name]
     except KeyError as exc:
-        raise KeyError(f"Unknown local tool: {tool_name}") from exc
+        raise UnknownLocalToolError(f"Unknown local tool: {tool_name}") from exc
 
     payload = args or {}
     context = audit_context or {}
