@@ -101,6 +101,19 @@ These tools create and manage tokenized browser-accessible links for files in th
 | `remote_delete_file_or_dir` | Delete a remote file or directory. |
 | `remote_apply_patch` | Apply a unified diff on a remote worker. |
 
+## Remote file transfer
+
+| Tool | Purpose |
+|---|---|
+| `remote_push_file` | Copy a workspace file to a remote worker. |
+| `remote_pull_file` | Copy a file from a remote worker into the workspace. |
+| `remote_copy_file` | Copy a file from one remote worker to another. |
+| `remote_push_dir` | Copy a workspace directory tree to a remote worker. |
+| `remote_pull_dir` | Copy a directory tree from a remote worker into the workspace. |
+| `remote_copy_dir` | Copy a directory tree from one remote worker to another. |
+
+These tools use chunked transfer for files and temporary archives for directory trees, so they are better suited than text read/write tools for binary files and large artifacts.
+
 ## Agent capability bridge tools
 
 These tools are registered when `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED=true`.

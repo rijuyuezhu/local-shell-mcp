@@ -80,6 +80,12 @@ REMOTE_MCP_TOOL_NAMES = {
     "remote_edit_file",
     "remote_multi_edit_file",
     "remote_delete_file_or_dir",
+    "remote_copy_file",
+    "remote_copy_dir",
+    "remote_pull_file",
+    "remote_push_file",
+    "remote_pull_dir",
+    "remote_push_dir",
     "remote_apply_patch",
 }
 
@@ -98,7 +104,10 @@ async def test_mcp_local_and_remote_tool_surface_is_stable(
 
 
 def test_remote_worker_specs_drive_http_and_worker_allowlist():
-    spec_names = {spec.public_name for spec in REMOTE_WORKER_TOOL_SPECS}
+    exposed_specs = [
+        spec for spec in REMOTE_WORKER_TOOL_SPECS if spec.expose_http
+    ]
+    spec_names = {spec.public_name for spec in exposed_specs}
     worker_tools = {spec.worker_tool for spec in REMOTE_WORKER_TOOL_SPECS}
     route_by_name = {
         route.tool_name: route
@@ -107,12 +116,12 @@ def test_remote_worker_specs_drive_http_and_worker_allowlist():
     }
     handler_names = set(local_tool_handlers())
 
-    assert len(spec_names) == len(REMOTE_WORKER_TOOL_SPECS)
+    assert len(spec_names) == len(exposed_specs)
     assert worker_tools == REMOTE_WORKER_TOOL_NAMES
     assert WORKER_TOOL_NAMES == REMOTE_WORKER_TOOL_NAMES
     assert spec_names <= set(route_by_name)
     assert spec_names <= handler_names
-    for spec in REMOTE_WORKER_TOOL_SPECS:
+    for spec in exposed_specs:
         route = route_by_name[spec.public_name]
         assert route.method == "POST"
         assert route.path == spec.http_path
@@ -351,8 +360,14 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
         }
         handler_tool_names = set(local_tool_handlers())
 
+        internal_worker_handlers = REMOTE_WORKER_TOOL_NAMES - {
+            spec.worker_tool
+            for spec in REMOTE_WORKER_TOOL_SPECS
+            if spec.expose_http
+        }
+
         assert route_tool_names == mcp_tool_names
-        assert handler_tool_names == mcp_tool_names
+        assert handler_tool_names == mcp_tool_names | internal_worker_handlers
     finally:
         local_tool_handlers.cache_clear()
 

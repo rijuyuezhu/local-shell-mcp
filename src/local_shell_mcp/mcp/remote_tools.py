@@ -11,6 +11,14 @@ from ..remote.service import (
     rename_remote_machine,
     revoke_remote_machine,
 )
+from ..remote.transfer import (
+    copy_local_dir_to_remote,
+    copy_local_file_to_remote,
+    copy_remote_dir_to_local,
+    copy_remote_dir_to_remote,
+    copy_remote_file_to_local,
+    copy_remote_file_to_remote,
+)
 from ..tools.contracts import McpToolContext
 from ..tools.responses import handled_error, ok_response
 
@@ -373,6 +381,126 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             "delete_file_or_dir",
             {"path": path, "recursive": recursive},
         )
+
+    @mcp.tool(meta=protected_meta)
+    async def remote_copy_file(
+        src_machine: str,
+        src_path: str,
+        dst_machine: str,
+        dst_path: str,
+        overwrite: bool = True,
+        chunk_size: int | None = None,
+    ) -> dict:
+        """Copy a file from one remote worker machine to another through the control server. Use for binary-safe remote-to-remote file transfer without loading the whole file at once."""
+        try:
+            return ok_response(
+                await copy_remote_file_to_remote(
+                    src_machine,
+                    src_path,
+                    dst_machine,
+                    dst_path,
+                    overwrite,
+                    chunk_size,
+                )
+            )
+        except Exception as exc:
+            return handled_error(exc)
+
+    @mcp.tool(meta=protected_meta)
+    async def remote_copy_dir(
+        src_machine: str,
+        src_path: str,
+        dst_machine: str,
+        dst_path: str,
+        overwrite: bool = False,
+        chunk_size: int | None = None,
+    ) -> dict:
+        """Copy a directory tree from one remote worker machine to another through the control server using a temporary tar archive."""
+        try:
+            return ok_response(
+                await copy_remote_dir_to_remote(
+                    src_machine,
+                    src_path,
+                    dst_machine,
+                    dst_path,
+                    overwrite,
+                    chunk_size,
+                )
+            )
+        except Exception as exc:
+            return handled_error(exc)
+
+    @mcp.tool(meta=protected_meta)
+    async def remote_pull_file(
+        machine: str,
+        remote_path: str,
+        local_path: str,
+        overwrite: bool = True,
+        chunk_size: int | None = None,
+    ) -> dict:
+        """Copy a file from a remote worker to the control server workspace using chunked transfer."""
+        try:
+            return ok_response(
+                await copy_remote_file_to_local(
+                    machine, remote_path, local_path, overwrite, chunk_size
+                )
+            )
+        except Exception as exc:
+            return handled_error(exc)
+
+    @mcp.tool(meta=protected_meta)
+    async def remote_push_file(
+        local_path: str,
+        machine: str,
+        remote_path: str,
+        overwrite: bool = True,
+        chunk_size: int | None = None,
+    ) -> dict:
+        """Copy a file from the control server workspace to a remote worker using chunked transfer."""
+        try:
+            return ok_response(
+                await copy_local_file_to_remote(
+                    local_path, machine, remote_path, overwrite, chunk_size
+                )
+            )
+        except Exception as exc:
+            return handled_error(exc)
+
+    @mcp.tool(meta=protected_meta)
+    async def remote_pull_dir(
+        machine: str,
+        remote_path: str,
+        local_path: str,
+        overwrite: bool = False,
+        chunk_size: int | None = None,
+    ) -> dict:
+        """Copy a directory tree from a remote worker to the control server workspace using a temporary tar archive."""
+        try:
+            return ok_response(
+                await copy_remote_dir_to_local(
+                    machine, remote_path, local_path, overwrite, chunk_size
+                )
+            )
+        except Exception as exc:
+            return handled_error(exc)
+
+    @mcp.tool(meta=protected_meta)
+    async def remote_push_dir(
+        local_path: str,
+        machine: str,
+        remote_path: str,
+        overwrite: bool = False,
+        chunk_size: int | None = None,
+    ) -> dict:
+        """Copy a directory tree from the control server workspace to a remote worker using a temporary tar archive."""
+        try:
+            return ok_response(
+                await copy_local_dir_to_remote(
+                    local_path, machine, remote_path, overwrite, chunk_size
+                )
+            )
+        except Exception as exc:
+            return handled_error(exc)
 
     @mcp.tool(meta=protected_meta)
     async def remote_apply_patch(
