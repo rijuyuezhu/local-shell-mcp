@@ -76,7 +76,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/responses.py` | Shared response envelope builders for tool and remote endpoint responses. |
 | `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
 | `tests/` | Unit, compatibility, and e2e tests. |
-| `scripts/` | Development, probing, generated-config, entrypoint, and release helper scripts. |
+| `scripts/` | Generated-config, tool export, entrypoint, tunnel, and release helper scripts. |
 | `vscode-extension/` | VS Code extension source and packaging metadata. |
 
 ## Implementation notes
