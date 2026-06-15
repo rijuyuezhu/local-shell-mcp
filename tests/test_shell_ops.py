@@ -4,7 +4,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.http.app as http_app_module
+import local_shell_mcp.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.http.app import build_http_app
 from local_shell_mcp.mcp.app import build_mcp
@@ -71,7 +71,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        http_app_module, "call_local_tool", hanging_call_local_tool
+        http_tool_routes_module, "call_local_tool", hanging_call_local_tool
     )
 
     response = TestClient(build_http_app()).post(
