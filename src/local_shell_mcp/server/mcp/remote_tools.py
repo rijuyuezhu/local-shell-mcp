@@ -6,7 +6,6 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ...models import ToolResult
 from ...remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
@@ -22,7 +21,7 @@ from ...remote.transfer import (
     copy_remote_file_to_local,
     copy_remote_file_to_remote,
 )
-from ...tools.contracts import McpToolContext
+from ...tools.contracts import McpToolContext, ToolResult
 from ...tools.responses import (
     handled_error as handled_error_payload,
 )

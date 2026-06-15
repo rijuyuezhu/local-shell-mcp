@@ -1,6 +1,7 @@
 import pytest
 
 import local_shell_mcp.main as cli
+from local_shell_mcp import __version__
 from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     cli_overrides_from_args,
@@ -48,6 +49,16 @@ def test_server_options_parse_to_default_handler():
     assert args.allow_full_container is True
     assert args.agent_config_dir == "/tmp/agent-config"
     assert args.remote_enabled is False
+
+
+def test_version_option_prints_package_version(capsys):
+    parser = cli._build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["--version"])
+
+    assert exc_info.value.code == 0
+    assert capsys.readouterr().out == f"local-shell-mcp {__version__}\n"
 
 
 def test_every_setting_has_cli_option():

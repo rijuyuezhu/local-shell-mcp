@@ -5,12 +5,11 @@ from typing import Any
 
 from ..audit import audit
 from ..ops.path_ops import missing_path_context
-from ..responses import ok_envelope
 
 
 def ok_response(data: Any = None, message: str = "") -> dict[str, Any]:
     """Wrap successful tool data in the response envelope used by MCP handlers."""
-    return ok_envelope(data, message)
+    return {"ok": True, "message": message, "data": data}
 
 
 def handled_error(exc: Exception) -> dict[str, Any]:
