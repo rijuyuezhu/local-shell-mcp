@@ -5,6 +5,7 @@ from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
 
+from ...config.settings import Settings
 from ...mcp.remote_tools import register_remote_mcp
 from ...remote.service import (
     call_remote_worker_tool,
@@ -26,18 +27,28 @@ from ..contracts import HttpToolRoute, McpToolContext, ToolHandler
 from ..declarative import DeclarativeToolRegistry
 
 
+def _remote_tools_enabled(settings: Settings) -> bool:
+    return settings.remote_enabled and settings.mode == "mcp"
+
+
 class RemoteToolRegistry(DeclarativeToolRegistry):
     """Register remote-worker proxy tools."""
 
     name = "remote"
 
     def http_routes(self) -> Iterable[HttpToolRoute]:
+        if not _remote_tools_enabled(self._settings()):
+            return ()
         return (*super().http_routes(), *REMOTE_WORKER_HTTP_ROUTES)
 
     def http_handlers(self) -> Mapping[str, ToolHandler]:
+        if not _remote_tools_enabled(self._settings()):
+            return {}
         return {**super().http_handlers(), **REMOTE_WORKER_HTTP_HANDLERS}
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
+        if not _remote_tools_enabled(context.settings):
+            return
         register_remote_mcp(mcp, context)
 
 

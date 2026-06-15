@@ -3,6 +3,7 @@ import shutil
 import time
 from pathlib import Path
 
+import httpx
 import pytest
 
 from tests.e2e_helpers import ToolClient, assert_required_tools
@@ -159,6 +160,52 @@ async def exercise_workspace_connector_tools(client: ToolClient) -> None:
     fetched = await client.call_tool("fetch", {"id": "notes/demo.txt"})
     assert fetched["id"] == "notes/demo.txt"
     assert "patched line" in fetched["text"]
+
+
+async def exercise_file_download_links(
+    client: ToolClient, base_url: str, workspace: Path
+) -> None:
+    payload = b"download-payload-\x00-binary"
+    (workspace / "artifact.bin").write_bytes(payload)
+
+    await assert_required_tools(
+        client,
+        {"create_file_link", "list_file_links", "revoke_file_link"},
+    )
+    link = await client.call_tool(
+        "create_file_link",
+        {
+            "path": "artifact.bin",
+            "ttl_s": 60,
+            "filename": "result.bin",
+            "max_downloads": 1,
+        },
+    )
+    assert link["url"].startswith(f"{base_url}/download/")
+
+    async with httpx.AsyncClient(timeout=10) as http_client:
+        response = await http_client.get(link["url"])
+        assert response.status_code == 200
+        assert response.content == payload
+        assert "result.bin" in response.headers["content-disposition"]
+
+        exhausted = await http_client.get(link["url"])
+        assert exhausted.status_code == 410
+
+    listed = await client.call_tool("list_file_links")
+    assert listed == {"links": []}
+
+    second = await client.call_tool(
+        "create_file_link", {"path": "artifact.bin", "ttl_s": 60}
+    )
+    revoked = await client.call_tool(
+        "revoke_file_link", {"token": second["token"]}
+    )
+    assert revoked == {"revoked": True, "token": second["token"]}
+
+    async with httpx.AsyncClient(timeout=10) as http_client:
+        missing = await http_client.get(second["url"])
+    assert missing.status_code == 404
 
 
 async def exercise_shell_tools(client: ToolClient) -> None:
