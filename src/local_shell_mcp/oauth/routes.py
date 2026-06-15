@@ -8,8 +8,6 @@ from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 
 from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Mount, Route
 
 from .authorization import authorize_get, authorize_post
@@ -21,30 +19,14 @@ from .tokens import token_endpoint
 def wrap_http_app(
     inner_app: Starlette, *, extra_routes: Sequence[BaseRoute] = ()
 ) -> Starlette:
-    """Wrap an inner ASGI app with health, OAuth, optional extra, and fallback routes."""
+    """Wrap an inner ASGI app with public, OAuth, and fallback routes."""
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:
         async with inner_app.router.lifespan_context(inner_app):
             yield
 
-    def healthz(request: Request) -> JSONResponse:
-        return JSONResponse({"ok": True})
-
-    def readyz(request: Request) -> JSONResponse:
-        return JSONResponse({"ok": True})
-
     routes = [
-        Route(
-            "/healthz",
-            healthz,
-            methods=["GET"],
-        ),
-        Route(
-            "/readyz",
-            readyz,
-            methods=["GET"],
-        ),
         *extra_routes,
         # Docs compliance: protected-resource metadata and AS metadata are
         # public discovery routes; AuthMiddleware protects the mounted app.

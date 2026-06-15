@@ -284,7 +284,7 @@ def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
             ]
 
     monkeypatch.setattr(
-        "local_shell_mcp.http.app.discover_tool_registries",
+        "local_shell_mcp.http.tool_routes.discover_tool_registries",
         lambda: [RegistryWithUnsupportedRoute()],
     )
 
