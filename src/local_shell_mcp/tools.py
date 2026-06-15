@@ -234,6 +234,16 @@ def _install_mcp_tool_watchdogs(mcp: FastMCP) -> None:
         tool.fn = wrapped
 
 
+
+def _remove_remote_tools_when_disabled(mcp: FastMCP) -> None:
+    if get_settings().remote_enabled:
+        return
+    tools = mcp._tool_manager._tools  # noqa: SLF001
+    for name in list(tools):
+        if name.startswith("remote_"):
+            tools.pop(name, None)
+
+
 def _install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
     if not get_settings().allow_full_container:
         return
@@ -1362,6 +1372,7 @@ def build_mcp() -> FastMCP:
         """Run a full Python Playwright script on a remote worker."""
         return await _remote_call(machine, "playwright_run_script_tool", {"script": script, "cwd": cwd, "timeout_s": timeout_s}, timeout_s)
 
+    _remove_remote_tools_when_disabled(mcp)
     _install_full_container_auto_approval_hints(mcp)
     _install_mcp_tool_watchdogs(mcp)
     return mcp
