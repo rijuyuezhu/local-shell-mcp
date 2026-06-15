@@ -12,6 +12,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
 DEFAULT_AUDIT_LOG_PATH = DEFAULT_STATE_DIR / "audit.jsonl"
+DEFAULT_AGENT_CONFIG_DIR = DEFAULT_STATE_DIR / "agent_config"
 
 SENSITIVE_SETTING_KEYS = {
     "cf_access_audience",
@@ -46,6 +47,7 @@ class Settings(BaseSettings):
     workspace_root: Path = DEFAULT_WORKSPACE_ROOT
     audit_log_path: Path = DEFAULT_AUDIT_LOG_PATH
     state_dir: Path = DEFAULT_STATE_DIR
+    agent_config_dir: Path = DEFAULT_AGENT_CONFIG_DIR
 
     # By default, tools are limited to workspace_root. Set true only inside a disposable container.
     allow_full_container: bool = False
@@ -70,6 +72,14 @@ class Settings(BaseSettings):
     max_tmp_bytes: int = 50_000_000
     max_concurrent_commands: int = 4
     max_tmux_sessions: int = 16
+
+    # Optional agent capability bridge. When enabled, local-shell-mcp can expose
+    # externally synced MCP servers and Markdown skills from agent_config_dir.
+    agent_bridge_enabled: bool = False
+    agent_mcp_probe_timeout_s: float = 5.0
+    agent_mcp_call_timeout_s: float = 60.0
+    agent_dynamic_mcp_tools: bool = False
+    agent_dynamic_skill_tools: bool = False
 
     file_download_enabled: bool = True
     file_download_default_ttl_s: int = 3600
@@ -134,7 +144,7 @@ class Settings(BaseSettings):
         ]
     )
 
-    @field_validator("workspace_root", "audit_log_path", "state_dir", mode="before")
+    @field_validator("workspace_root", "audit_log_path", "state_dir", "agent_config_dir", mode="before")
     @classmethod
     def expand_path(cls, value: str | Path) -> Path:
         return Path(os.path.expandvars(os.path.expanduser(str(value)))).resolve()
@@ -173,9 +183,11 @@ class Settings(BaseSettings):
         updates = {}
         if self.state_dir == DEFAULT_STATE_DIR:
             updates["state_dir"] = self.workspace_root / ".local-shell-mcp"
+        state_dir = updates.get("state_dir", self.state_dir)
         if self.audit_log_path == DEFAULT_AUDIT_LOG_PATH:
-            state_dir = updates.get("state_dir", self.state_dir)
             updates["audit_log_path"] = state_dir / "audit.jsonl"
+        if self.agent_config_dir == DEFAULT_AGENT_CONFIG_DIR:
+            updates["agent_config_dir"] = state_dir / "agent_config"
 
         if not updates:
             return self
@@ -192,6 +204,7 @@ def get_settings() -> Settings:
     settings.workspace_root.mkdir(parents=True, exist_ok=True)
     settings.state_dir.mkdir(parents=True, exist_ok=True)
     settings.audit_log_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.agent_config_dir.mkdir(parents=True, exist_ok=True)
     return settings
 
 
