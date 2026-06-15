@@ -8,14 +8,14 @@ from typing import Any, Protocol, cast
 
 from mcp.server.fastmcp import FastMCP
 
-from ..audit import (
+from ...audit import (
     audit,
     audit_tool_call_end,
     audit_tool_call_start,
     new_audit_call_id,
 )
-from ..ops.command_ops import public_tool_timeout_s
-from ..tools.responses import handled_error
+from ...ops.command_ops import public_tool_timeout_s
+from ...tools.responses import handled_error
 
 
 class AuditedMcpToolFn(Protocol):

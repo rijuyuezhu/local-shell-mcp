@@ -10,7 +10,6 @@ from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.mcp.app import _transport_security_settings, build_mcp
 from local_shell_mcp.oauth.authorization import _authorize_form
 from local_shell_mcp.oauth.routes import wrap_http_app
 from local_shell_mcp.oauth.tokens import (
@@ -18,6 +17,10 @@ from local_shell_mcp.oauth.tokens import (
     validate_bearer_token,
 )
 from local_shell_mcp.oauth.urls import resource_url
+from local_shell_mcp.server.mcp.app import (
+    _transport_security_settings,
+    build_mcp,
+)
 from local_shell_mcp.tools.registry import agent as tools_module
 from tests.helpers import mcp_structured
 

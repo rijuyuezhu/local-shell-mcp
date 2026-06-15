@@ -6,7 +6,6 @@ from typing import Any, cast
 from mcp.server.fastmcp import FastMCP
 
 from ...config.settings import Settings
-from ...mcp.remote_tools import register_remote_mcp
 from ...remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
@@ -23,6 +22,7 @@ from ...remote.transfer import (
     copy_remote_file_to_local,
     copy_remote_file_to_remote,
 )
+from ...server.mcp.remote_tools import register_remote_mcp
 from ..contracts import HttpToolRoute, McpToolContext, ToolHandler
 from ..declarative import DeclarativeToolRegistry
 

@@ -3,7 +3,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from ..tools.local_invocations import UnknownLocalToolError
+from ...tools.local_invocations import UnknownLocalToolError
 
 
 def install_error_handlers(app: FastAPI) -> None:

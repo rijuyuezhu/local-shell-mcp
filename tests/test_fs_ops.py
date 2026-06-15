@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.mcp.app import build_mcp
 from local_shell_mcp.ops.command_ops import check_command_policy
 from local_shell_mcp.ops.fs_ops import (
     edit_file_execute,
@@ -13,6 +12,7 @@ from local_shell_mcp.ops.fs_ops import (
     write_file_execute,
 )
 from local_shell_mcp.ops.path_ops import resolve_path
+from local_shell_mcp.server.mcp.app import build_mcp
 from tests.helpers import mcp_text, nested_mcp_text
 
 

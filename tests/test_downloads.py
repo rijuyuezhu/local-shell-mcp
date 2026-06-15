@@ -5,12 +5,12 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.http.downloads import download_routes
-from local_shell_mcp.mcp.app import build_mcp
 from local_shell_mcp.ops.download_ops import (
     create_file_link_execute,
     revoke_file_link_execute,
 )
+from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.server.shared.downloads import download_routes
 
 
 def _reset(tmp_path, monkeypatch):

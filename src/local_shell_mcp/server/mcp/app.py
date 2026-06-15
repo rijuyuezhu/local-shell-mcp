@@ -8,14 +8,14 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
 
-from ..config.settings import get_settings
-from ..http.public_routes import public_http_routes
-from ..oauth.middleware import AuthMiddleware
-from ..oauth.routes import wrap_http_app
-from ..remote.http import remote_routes
-from ..tools.contracts import McpToolContext
-from ..tools.discovery import discover_tool_registries
-from ..tools.responses import handled_error, ok_response
+from ...config.settings import get_settings
+from ...oauth.middleware import AuthMiddleware
+from ...oauth.routes import wrap_http_app
+from ...remote.http import remote_routes
+from ...tools.contracts import McpToolContext
+from ...tools.discovery import discover_tool_registries
+from ...tools.responses import handled_error, ok_response
+from ..shared.public_routes import public_http_routes
 from .instructions import SERVER_INSTRUCTIONS
 from .metadata import (
     NOAUTH_SECURITY_SCHEMES,
