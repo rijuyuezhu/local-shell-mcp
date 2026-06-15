@@ -79,6 +79,22 @@ def test_share_link_can_be_disabled(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_file_link_tools_are_registered(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
+    clear_settings_cache()
     names = {tool.name for tool in await build_mcp().list_tools()}
 
     assert {"create_file_link", "list_file_links", "revoke_file_link"} <= names
+
+
+@pytest.mark.asyncio
+async def test_file_link_tools_are_hidden_in_stdio(tmp_path, monkeypatch):
+    _reset(tmp_path, monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "stdio")
+    clear_settings_cache()
+    names = {tool.name for tool in await build_mcp().list_tools()}
+
+    assert {
+        "create_file_link",
+        "list_file_links",
+        "revoke_file_link",
+    }.isdisjoint(names)

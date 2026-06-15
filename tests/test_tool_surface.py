@@ -94,16 +94,41 @@ REMOTE_MCP_TOOL_NAMES = {
 async def test_mcp_local_and_remote_tool_surface_is_stable(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
+    local_tool_handlers.cache_clear()
 
     names = {tool.name for tool in await build_mcp().list_tools()}
 
     assert names == LOCAL_MCP_TOOL_NAMES | REMOTE_MCP_TOOL_NAMES
 
 
-def test_remote_worker_specs_drive_http_and_worker_allowlist():
+@pytest.mark.asyncio
+async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "stdio")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    names = {tool.name for tool in await build_mcp().list_tools()}
+
+    assert names == LOCAL_MCP_TOOL_NAMES - {
+        "create_file_link",
+        "list_file_links",
+        "revoke_file_link",
+    }
+    assert names.isdisjoint(REMOTE_MCP_TOOL_NAMES)
+
+
+def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
     exposed_specs = [
         spec for spec in REMOTE_WORKER_TOOL_SPECS if spec.expose_http
     ]
@@ -213,24 +238,20 @@ def test_http_tool_missing_required_arg_returns_validation_error(
     }
 
 
-def test_http_remote_worker_missing_machine_returns_validation_error(
-    tmp_path, monkeypatch
-):
+def test_http_mode_hides_remote_worker_routes(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
+    local_tool_handlers.cache_clear()
 
     response = TestClient(build_http_app()).post(
         "/tools/run_remote_shell_command", json={"command": "echo ok"}
     )
 
-    assert response.status_code == 400
-    assert response.json() == {
-        "ok": False,
-        "error": "validation_error",
-        "message": "Missing required argument: machine",
-    }
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Not Found"}
 
 
 @pytest.mark.asyncio
