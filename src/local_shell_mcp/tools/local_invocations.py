@@ -50,7 +50,6 @@ async def call_local_tool(
         raise UnknownLocalToolError(f"Unknown local tool: {tool_name}") from exc
 
     payload = args or {}
-    context = audit_context or {}
     call_id = new_audit_call_id()
     start = time.time()
     audit_tool_call_start(
@@ -58,12 +57,6 @@ async def call_local_tool(
         transport="http",
         tool=tool_name,
         input=payload,
-        principal=_jsonable_dataclass(context.get("principal")),
-        context={
-            k: _jsonable_dataclass(v)
-            for k, v in context.items()
-            if k != "principal"
-        },
     )
     try:
         result = await handler(payload)

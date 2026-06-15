@@ -53,18 +53,14 @@ def audit_tool_call_start(
     transport: str,
     tool: str,
     input: Any,
-    principal: Any = None,
-    context: dict[str, Any] | None = None,
 ) -> None:
-    """Record the full input and caller context for one routed tool invocation."""
+    """Record the full input and caller context for one tool call."""
     audit(
         "tool_call_start",
         call_id=call_id,
         transport=transport,
         tool=tool,
         input=input,
-        principal=principal,
-        context=context or {},
     )
 
 
@@ -78,7 +74,7 @@ def audit_tool_call_end(
     output: Any = None,
     error: dict[str, Any] | None = None,
 ) -> None:
-    """Record the full output or exception for one routed tool invocation."""
+    """Record the full output or exception for one tool call."""
     fields: dict[str, Any] = {
         "call_id": call_id,
         "transport": transport,

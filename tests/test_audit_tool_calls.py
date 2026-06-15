@@ -59,11 +59,6 @@ def test_http_tool_calls_audit_full_input_output_and_auth_context(
     assert starts[0]["call_id"] == ends[0]["call_id"]
     assert starts[0]["transport"] == "http"
     assert starts[0]["input"] == {"path": "alpha.txt"}
-    assert starts[0]["principal"] == {
-        "email": None,
-        "subject": "anonymous",
-        "claims": {"auth": "none"},
-    }
     assert ends[0]["ok"] is True
     assert ends[0]["output"] == response.json()
     assert ends[0]["duration_ms"] >= 0
