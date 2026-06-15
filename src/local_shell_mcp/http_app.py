@@ -80,6 +80,22 @@ def build_http_app() -> FastAPI:
     async def value_error_handler(request: Request, exc: ValueError):  # noqa: ARG001
         return JSONResponse(status_code=400, content={"ok": False, "error": "validation_error", "message": str(exc)})
 
+    @app.exception_handler(KeyError)
+    async def key_error_handler(request: Request, exc: KeyError):  # noqa: ARG001
+        missing = str(exc.args[0]) if exc.args else "unknown"
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "validation_error", "message": f"Missing required argument: {missing}"},
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_error_handler(request: Request, exc: HTTPException):  # noqa: ARG001
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"ok": False, "error": "http_error", "message": exc.detail},
+            headers=exc.headers,
+        )
+
     @app.middleware("http")
     async def tools_timeout_middleware(request: Request, call_next):  # noqa: ANN001
         if not request.url.path.startswith("/tools/"):
