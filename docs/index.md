@@ -84,4 +84,4 @@ The intended isolation boundary is the container or VM running the service. Do n
 
 ## Language
 
-This site includes English documentation and a Chinese section under [中文](zh/index.md). The top-right language selector points to the main language landing pages.
+This site is built with the native MkDocs i18n plugin. Use the language selector in the header to switch between English and translated pages.

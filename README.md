@@ -11,7 +11,7 @@
 [![Docker](https://img.shields.io/badge/docker-ready-2496ed?logo=docker&logoColor=white)](https://github.com/fwerkor/local-shell-mcp/pkgs/container/local-shell-mcp)
 [![License](https://img.shields.io/github/license/fwerkor/local-shell-mcp)](LICENSE)
 
-[Documentation](https://fwerkor.github.io/local-shell-mcp/) · [中文](https://fwerkor.github.io/local-shell-mcp/zh/) · [日本語](https://fwerkor.github.io/local-shell-mcp/ja/) · [Español](https://fwerkor.github.io/local-shell-mcp/es/) · [Quickstart](https://fwerkor.github.io/local-shell-mcp/getting-started/quickstart/) · [ChatGPT connector](https://fwerkor.github.io/local-shell-mcp/getting-started/chatgpt-connector/) · [Remote workers](https://fwerkor.github.io/local-shell-mcp/guides/remote-workers/) · [Releases](https://github.com/fwerkor/local-shell-mcp/releases)
+[Documentation](https://fwerkor.github.io/local-shell-mcp/) · [Quickstart](https://fwerkor.github.io/local-shell-mcp/getting-started/quickstart/) · [ChatGPT connector](https://fwerkor.github.io/local-shell-mcp/getting-started/chatgpt-connector/) · [Remote workers](https://fwerkor.github.io/local-shell-mcp/guides/remote-workers/) · [Releases](https://github.com/fwerkor/local-shell-mcp/releases)
 
 </div>
 
@@ -200,7 +200,6 @@ Contribution workflow is documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Project documents
 
 - [Documentation site](https://fwerkor.github.io/local-shell-mcp/)
-- [Multilingual documentation](https://fwerkor.github.io/local-shell-mcp/#language)
 - [Contributing guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)

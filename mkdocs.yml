@@ -21,23 +21,6 @@ nav:
       - REST API: reference/rest-api.md
   - Security: security.md
   - Troubleshooting: troubleshooting.md
-  - Languages:
-      - 简体中文: zh/index.md
-      - 繁體中文: zh-hant/index.md
-      - 日本語: ja/index.md
-      - 한국어: ko/index.md
-      - Español: es/index.md
-      - Français: fr/index.md
-      - Deutsch: de/index.md
-      - Русский: ru/index.md
-      - Português: pt-br/index.md
-      - Italiano: it/index.md
-      - العربية: ar/index.md
-      - हिन्दी: hi/index.md
-      - Bahasa Indonesia: id/index.md
-      - Tiếng Việt: vi/index.md
-      - Türkçe: tr/index.md
-      - Polski: pl/index.md
 markdown_extensions:
   - admonition
   - attr_list
@@ -52,12 +35,214 @@ markdown_extensions:
   - pymdownx.snippets
   - toc:
       permalink: true
-
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          name: English
+          build: true
+          default: true
+        - locale: zh
+          name: 简体中文
+          build: true
+          nav_translations:
+            Home: 首页
+            Getting started: 快速开始
+            Quickstart: 快速开始
+            ChatGPT connector: ChatGPT 连接器
+            Guides: 指南
+            Deployment: 部署
+            Remote workers: 远程节点
+            File links: 文件链接
+            Audit log: 审计日志
+            Git access: Git 访问
+            VS Code extension: VS Code 扩展
+            Reference: 参考
+            Tools: 工具
+            Configuration: 配置
+            REST API: REST API
+            Security: 安全
+            Troubleshooting: 故障排查
+        - locale: zh-Hant
+          name: 繁體中文
+          build: true
+          nav_translations:
+            Home: 首頁
+            Getting started: 快速開始
+            Quickstart: 快速開始
+            ChatGPT connector: ChatGPT 連接器
+            Guides: 指南
+            Deployment: 部署
+            Remote workers: 遠端節點
+            File links: 檔案連結
+            Audit log: 稽核日誌
+            Git access: Git 存取
+            VS Code extension: VS Code 擴充
+            Reference: 參考
+            Tools: 工具
+            Configuration: 設定
+            REST API: REST API
+            Security: 安全
+            Troubleshooting: 疑難排解
+        - locale: ja
+          name: 日本語
+          build: true
+          nav_translations:
+            Home: ホーム
+            Getting started: はじめに
+            Quickstart: クイックスタート
+            ChatGPT connector: ChatGPT コネクタ
+            Guides: ガイド
+            Deployment: デプロイ
+            Remote workers: リモートワーカー
+            File links: ファイルリンク
+            Audit log: 監査ログ
+            Git access: Git アクセス
+            VS Code extension: VS Code 拡張
+            Reference: リファレンス
+            Tools: ツール
+            Configuration: 設定
+            REST API: REST API
+            Security: セキュリティ
+            Troubleshooting: トラブルシューティング
+        - locale: ko
+          name: 한국어
+          build: true
+          nav_translations:
+            Home: 홈
+            Getting started: 시작하기
+            Quickstart: 빠른 시작
+            ChatGPT connector: ChatGPT 커넥터
+            Guides: 가이드
+            Deployment: 배포
+            Remote workers: 원격 워커
+            File links: 파일 링크
+            Audit log: 감사 로그
+            Git access: Git 접근
+            VS Code extension: VS Code 확장
+            Reference: 참조
+            Tools: 도구
+            Configuration: 설정
+            REST API: REST API
+            Security: 보안
+            Troubleshooting: 문제 해결
+        - locale: es
+          name: Español
+          build: true
+          nav_translations:
+            Home: Inicio
+            Getting started: Primeros pasos
+            Quickstart: Inicio rápido
+            ChatGPT connector: Conector ChatGPT
+            Guides: Guías
+            Deployment: Despliegue
+            Remote workers: Workers remotos
+            File links: Enlaces de archivos
+            Audit log: Registro de auditoría
+            Git access: Acceso Git
+            VS Code extension: Extensión VS Code
+            Reference: Referencia
+            Tools: Herramientas
+            Configuration: Configuración
+            REST API: REST API
+            Security: Seguridad
+            Troubleshooting: Solución de problemas
+        - locale: fr
+          name: Français
+          build: true
+          nav_translations:
+            Home: Accueil
+            Getting started: Démarrage
+            Quickstart: Démarrage rapide
+            ChatGPT connector: Connecteur ChatGPT
+            Guides: Guides
+            Deployment: Déploiement
+            Remote workers: Workers distants
+            File links: Liens de fichiers
+            Audit log: Journal d’audit
+            Git access: Accès Git
+            VS Code extension: Extension VS Code
+            Reference: Référence
+            Tools: Outils
+            Configuration: Configuration
+            REST API: REST API
+            Security: Sécurité
+            Troubleshooting: Dépannage
+        - locale: de
+          name: Deutsch
+          build: true
+          nav_translations:
+            Home: Start
+            Getting started: Einstieg
+            Quickstart: Schnellstart
+            ChatGPT connector: ChatGPT-Connector
+            Guides: Anleitungen
+            Deployment: Deployment
+            Remote workers: Remote-Worker
+            File links: Dateilinks
+            Audit log: Audit-Log
+            Git access: Git-Zugriff
+            VS Code extension: VS Code-Erweiterung
+            Reference: Referenz
+            Tools: Tools
+            Configuration: Konfiguration
+            REST API: REST API
+            Security: Sicherheit
+            Troubleshooting: Fehlerbehebung
+        - locale: ru
+          name: Русский
+          build: true
+          nav_translations:
+            Home: Главная
+            Getting started: Начало
+            Quickstart: Быстрый старт
+            ChatGPT connector: Коннектор ChatGPT
+            Guides: Руководства
+            Deployment: Развертывание
+            Remote workers: Удалённые workers
+            File links: Ссылки на файлы
+            Audit log: Журнал аудита
+            Git access: Доступ к Git
+            VS Code extension: Расширение VS Code
+            Reference: Справочник
+            Tools: Инструменты
+            Configuration: Конфигурация
+            REST API: REST API
+            Security: Безопасность
+            Troubleshooting: Диагностика
+        - locale: pt-BR
+          name: Português
+          build: true
+        - locale: it
+          name: Italiano
+          build: true
+        - locale: ar
+          name: العربية
+          build: true
+        - locale: hi
+          name: हिन्दी
+          build: true
+        - locale: id
+          name: Bahasa Indonesia
+          build: true
+        - locale: vi
+          name: Tiếng Việt
+          build: true
+        - locale: tr
+          name: Türkçe
+          build: true
+        - locale: pl
+          name: Polski
+          build: true
 theme:
   name: material
   language: en
   features:
-    - navigation.instant
     - navigation.tracking
     - navigation.tabs
     - navigation.sections
@@ -82,58 +267,5 @@ theme:
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
-extra:
-  alternate:
-    - name: English
-      link: /
-      lang: en
-    - name: 简体中文
-      link: /zh/
-      lang: zh
-    - name: 繁體中文
-      link: /zh-hant/
-      lang: zh-hant
-    - name: 日本語
-      link: /ja/
-      lang: ja
-    - name: 한국어
-      link: /ko/
-      lang: ko
-    - name: Español
-      link: /es/
-      lang: es
-    - name: Français
-      link: /fr/
-      lang: fr
-    - name: Deutsch
-      link: /de/
-      lang: de
-    - name: Русский
-      link: /ru/
-      lang: ru
-    - name: Português
-      link: /pt-br/
-      lang: pt-br
-    - name: Italiano
-      link: /it/
-      lang: it
-    - name: العربية
-      link: /ar/
-      lang: ar
-    - name: हिन्दी
-      link: /hi/
-      lang: hi
-    - name: Bahasa Indonesia
-      link: /id/
-      lang: id
-    - name: Tiếng Việt
-      link: /vi/
-      lang: vi
-    - name: Türkçe
-      link: /tr/
-      lang: tr
-    - name: Polski
-      link: /pl/
-      lang: pl
 extra_css:
   - assets/stylesheets/extra.css
