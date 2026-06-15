@@ -6,13 +6,13 @@ from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.http.app import build_http_app
-from local_shell_mcp.mcp.app import build_mcp
 from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_NAMES,
     REMOTE_WORKER_TOOL_SPECS,
 )
 from local_shell_mcp.remote.worker import WORKER_TOOL_NAMES
+from local_shell_mcp.server.http.app import build_http_app
+from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tools.contracts import (
     HttpMethod,
     HttpToolRoute,
@@ -305,7 +305,7 @@ def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
             ]
 
     monkeypatch.setattr(
-        "local_shell_mcp.http.tool_routes.discover_tool_registries",
+        "local_shell_mcp.server.http.tool_routes.discover_tool_registries",
         lambda: [RegistryWithUnsupportedRoute()],
     )
 

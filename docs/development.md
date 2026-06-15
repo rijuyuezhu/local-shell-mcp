@@ -61,13 +61,12 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | Path | Purpose |
 |---|---|
 | `src/local_shell_mcp/main.py` | CLI parsing and mode dispatch. |
-| `src/local_shell_mcp/mcp/` | MCP stdio/HTTP transport app assembly, client-facing metadata, server instructions, remote MCP companion registration, and tool watchdogs. |
+| `src/local_shell_mcp/server/` | Server app assembly for REST HTTP, MCP HTTP/stdio, shared public ASGI routes, MCP metadata, instructions, remote MCP registration, and tool watchdogs. |
 | `src/local_shell_mcp/tools/contracts.py` | Shared tool registry contracts, context, HTTP route metadata, and local handler types. |
 | `src/local_shell_mcp/tools/declarative.py` | Declarative tool registration that derives MCP registration and HTTP handlers from one typed function. |
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries. |
 | `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper and routed REST auditing. |
 | `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries discovered at runtime. |
-| `src/local_shell_mcp/http/` | REST debug API assembly for local tool endpoints and HTTP protocol adapter. |
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and configuration surface metadata. |
 | `src/local_shell_mcp/oauth/` | OAuth middleware, server metadata, authorization flow, token handling, and HTTP route wrapping. |
 | `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, todo, and shared operation helpers. |

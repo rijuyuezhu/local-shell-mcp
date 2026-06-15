@@ -4,13 +4,13 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.http.tool_routes as http_tool_routes_module
+import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.http.app import build_http_app
-from local_shell_mcp.mcp.app import build_mcp
 from local_shell_mcp.ops.command_ops import run_shell, run_shell_command_timeout
 from local_shell_mcp.ops.shell_models import CommandResult
 from local_shell_mcp.ops.tmux_ops import send_persistent_shell_input_execute
+from local_shell_mcp.server.http.app import build_http_app
+from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_text

@@ -6,15 +6,15 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ..models import ToolResult
-from ..remote.service import (
+from ...models import ToolResult
+from ...remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
     list_remote_machines,
     rename_remote_machine,
     revoke_remote_machine,
 )
-from ..remote.transfer import (
+from ...remote.transfer import (
     copy_local_dir_to_remote,
     copy_local_file_to_remote,
     copy_remote_dir_to_local,
@@ -22,11 +22,11 @@ from ..remote.transfer import (
     copy_remote_file_to_local,
     copy_remote_file_to_remote,
 )
-from ..tools.contracts import McpToolContext
-from ..tools.responses import (
+from ...tools.contracts import McpToolContext
+from ...tools.responses import (
     handled_error as handled_error_payload,
 )
-from ..tools.responses import (
+from ...tools.responses import (
     ok_response as ok_response_payload,
 )
 

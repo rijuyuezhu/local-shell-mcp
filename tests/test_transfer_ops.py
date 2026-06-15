@@ -4,7 +4,6 @@ import tarfile
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.mcp.app import build_mcp
 from local_shell_mcp.ops.transfer_ops import (
     transfer_abort_write,
     transfer_begin_write,
@@ -15,6 +14,7 @@ from local_shell_mcp.ops.transfer_ops import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
+from local_shell_mcp.server.mcp.app import build_mcp
 
 
 def _workspace(tmp_path, monkeypatch):

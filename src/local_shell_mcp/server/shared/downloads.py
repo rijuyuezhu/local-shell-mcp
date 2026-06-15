@@ -8,8 +8,8 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
-from ..audit import audit
-from ..ops.download_ops import DOWNLOAD_PREFIX, claim_download
+from ...audit import audit
+from ...ops.download_ops import DOWNLOAD_PREFIX, claim_download
 
 
 def download_error_response(payload: dict[str, Any]) -> JSONResponse:

@@ -3,10 +3,10 @@
 import uvicorn
 from fastapi import FastAPI
 
-from ..config.settings import get_settings
-from ..oauth.middleware import AuthMiddleware
+from ...config.settings import get_settings
+from ...oauth.middleware import AuthMiddleware
+from ..shared.public_routes import install_public_http_routes
 from .errors import install_error_handlers
-from .public_routes import install_public_http_routes
 from .tool_routes import (
     install_tools_timeout_middleware,
     register_http_tool_routes,

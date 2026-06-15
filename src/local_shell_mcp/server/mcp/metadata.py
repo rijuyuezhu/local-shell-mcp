@@ -5,7 +5,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from ..config.settings import get_settings
+from ...config.settings import get_settings
 
 OAUTH_SECURITY_SCHEMES = [
     {

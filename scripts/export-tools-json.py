@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.mcp.app import build_mcp
+from local_shell_mcp.server.mcp.app import build_mcp
 
 
 def _jsonable_tool(tool: Any) -> dict[str, Any]:
