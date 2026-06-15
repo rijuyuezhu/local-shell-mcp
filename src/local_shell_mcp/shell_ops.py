@@ -88,6 +88,17 @@ def _command_semaphore() -> asyncio.Semaphore:
     return _COMMAND_SEMAPHORE
 
 
+def _subprocess_env() -> dict[str, str]:
+    settings = get_settings()
+    blocked = set(settings.shell_env_blocklist)
+    prefixes = tuple(settings.shell_env_blocked_prefixes)
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key not in blocked and not key.startswith(prefixes)
+    }
+
+
 async def _spawn_process(command: str, cwd: str) -> asyncio.subprocess.Process:
     settings = get_settings()
     return await asyncio.create_subprocess_exec(
@@ -95,6 +106,7 @@ async def _spawn_process(command: str, cwd: str) -> asyncio.subprocess.Process:
         "-lc",
         command,
         cwd=cwd,
+        env=_subprocess_env(),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,

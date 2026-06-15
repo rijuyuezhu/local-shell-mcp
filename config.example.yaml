@@ -5,3 +5,10 @@ port: 8765
 mode: mcp
 workspace_root: /workspace
 auth_mode: oauth
+
+# Environment exposed to user shell commands.
+shell_env_blocklist:
+  - CLOUDFLARE_TUNNEL_TOKEN
+shell_env_blocked_prefixes:
+  - LOCAL_SHELL_MCP_
+  - DOCKER_

@@ -3,11 +3,11 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import yaml
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     remote_job_timeout_s: int = 3600
 
     shell_executable: str = "/bin/bash"
+    shell_env_blocklist: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["CLOUDFLARE_TUNNEL_TOKEN"])
+    shell_env_blocked_prefixes: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["LOCAL_SHELL_MCP_", "DOCKER_"])
     tmux_bin: str = "tmux"
     rg_bin: str = "rg"
     git_bin: str = "git"
@@ -107,7 +109,7 @@ class Settings(BaseSettings):
     oauth_code_ttl_s: int = 300
 
     # Command policy. Set denylist empty if this container is intentionally disposable.
-    command_denylist: list[str] = Field(
+    command_denylist: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             "docker.sock",
             "/var/run/docker.sock",
@@ -121,7 +123,7 @@ class Settings(BaseSettings):
             "nft ",
         ]
     )
-    path_denylist: list[str] = Field(
+    path_denylist: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             ".ssh/id_rsa",
             ".ssh/id_ed25519",
@@ -137,7 +139,7 @@ class Settings(BaseSettings):
     def expand_path(cls, value: str | Path) -> Path:
         return Path(os.path.expandvars(os.path.expanduser(str(value)))).resolve()
 
-    @field_validator("command_denylist", "path_denylist", mode="before")
+    @field_validator("command_denylist", "path_denylist", "shell_env_blocklist", "shell_env_blocked_prefixes", mode="before")
     @classmethod
     def split_csv_fields(cls, value):  # noqa: ANN001
         return _split_csv(value)
