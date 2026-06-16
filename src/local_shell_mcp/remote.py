@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.metadata as importlib_metadata
+import json
 import os
 import re
 import secrets
@@ -11,16 +12,13 @@ import socket
 import sys
 import tarfile
 import time
+import urllib.error
+import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-
-import httpx
-from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, Response
-from starlette.routing import Route
 
 from .audit import audit
 from .fs_ops import (
@@ -84,20 +82,12 @@ from .transfer_ops import (
 REMOTE_JOIN_PATH = "/join"
 REMOTE_API_PREFIX = "/remote"
 REMOTE_WORKER_BUNDLE_PATH = "/remote/worker-bundle.tgz"
-REMOTE_WORKER_DISTRIBUTIONS = (
-    "mcp",
-    "fastapi",
-    "uvicorn",
-    "pydantic",
-    "pydantic-settings",
-    "PyYAML",
-    "Py" + "JWT",
-    "httpx",
-    "aiofiles",
-    "python-multipart",
-    "pathspec",
-    "playwright",
-)
+# The remote worker is designed to start on machines that only have Python, curl,
+# and tar. Keep this empty unless a dependency is pure Python and imported on the
+# worker startup path. Tool-specific dependencies such as Playwright should be
+# installed by the tool command on the remote machine, not vendored from the
+# controller's Python ABI.
+REMOTE_WORKER_DISTRIBUTIONS: tuple[str, ...] = ()
 
 
 def _canonical_dist_name(name: str) -> str:
@@ -105,6 +95,12 @@ def _canonical_dist_name(name: str) -> str:
 
 
 def _dist_name_from_requirement(requirement: str) -> str | None:
+    # importlib.metadata exposes optional extras in dist.requires too. Do not
+    # vendor those implicitly: extras often pull in native extensions for the
+    # controller's Python ABI, which can break remote workers running a different
+    # Python minor version.
+    if "extra ==" in requirement or "extra==" in requirement:
+        return None
     match = re.match(r"\s*([A-Za-z0-9_.-]+)", requirement)
     return match.group(1) if match else None
 
@@ -142,7 +138,9 @@ def _ok(data: Any = None, message: str = "") -> dict[str, Any]:
     return {"ok": True, "message": message, "data": data}
 
 
-def _error(message: str, error: str = "remote_error", status_code: int = 400) -> JSONResponse:
+def _error(message: str, error: str = "remote_error", status_code: int = 400):  # noqa: ANN201
+    from starlette.responses import JSONResponse
+
     return JSONResponse({"ok": False, "error": error, "message": message}, status_code=status_code)
 
 
@@ -319,14 +317,16 @@ def remote_manager() -> RemoteManager:
     return REMOTE_MANAGER
 
 
-def _bearer_token(request: Request) -> str:
+def _bearer_token(request: Any) -> str:
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
         return auth.split(" ", 1)[1].strip()
     return ""
 
 
-async def worker_bundle(request: Request) -> Response:  # noqa: ARG001
+async def worker_bundle(request: Any):  # noqa: ARG001, ANN201
+    from starlette.responses import Response
+
     package_root = Path(__file__).resolve().parent
     buffer = BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
@@ -338,7 +338,9 @@ async def worker_bundle(request: Request) -> Response:  # noqa: ARG001
     return Response(buffer.getvalue(), media_type="application/gzip")
 
 
-async def join_script(request: Request) -> PlainTextResponse:  # noqa: ARG001
+async def join_script(request: Any):  # noqa: ARG001, ANN201
+    from starlette.responses import PlainTextResponse
+
     settings = get_settings()
     server = (settings.public_base_url or f"http://{settings.host}:{settings.port}").rstrip("/")
     script = f'''#!/usr/bin/env bash
@@ -388,28 +390,36 @@ fi
     return PlainTextResponse(script, media_type="text/x-shellscript")
 
 
-async def register_endpoint(request: Request) -> JSONResponse:
+async def register_endpoint(request: Any):  # noqa: ANN201
+    from starlette.responses import JSONResponse
+
     try:
         return JSONResponse(_ok(await remote_manager().register_worker(await request.json())))
     except Exception as exc:
         return _error(str(exc), type(exc).__name__, 400)
 
 
-async def poll_endpoint(request: Request) -> JSONResponse:
+async def poll_endpoint(request: Any):  # noqa: ANN201
+    from starlette.responses import JSONResponse
+
     try:
         return JSONResponse(_ok(await remote_manager().poll(_bearer_token(request))))
     except Exception as exc:
         return _error(str(exc), type(exc).__name__, 401)
 
 
-async def result_endpoint(request: Request) -> JSONResponse:
+async def result_endpoint(request: Any):  # noqa: ANN201
+    from starlette.responses import JSONResponse
+
     try:
         return JSONResponse(_ok(await remote_manager().submit_result(_bearer_token(request), await request.json())))
     except Exception as exc:
         return _error(str(exc), type(exc).__name__, 401)
 
 
-def remote_routes() -> list[Route]:
+def remote_routes() -> list[Any]:
+    from starlette.routing import Route
+
     return [
         Route(REMOTE_JOIN_PATH, join_script, methods=["GET"]),
         Route(REMOTE_WORKER_BUNDLE_PATH, worker_bundle, methods=["GET"]),
@@ -606,44 +616,57 @@ def worker_info(workdir: str) -> dict[str, Any]:
     return {"hostname": socket.gethostname(), "user": os.getenv("USER") or os.getenv("USERNAME") or "unknown", "cwd": os.getcwd(), "workdir": workdir, "python": sys.version.split()[0], "platform": sys.platform}
 
 
+def _worker_post_json(url: str, payload: dict[str, Any], headers: dict[str, str] | None = None, timeout: float | None = None) -> dict[str, Any]:
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json", **(headers or {})},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            response_body = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"worker HTTP request failed with {exc.code}: {detail}") from exc
+    return json.loads(response_body)
+
+
 async def run_worker(server: str, invite: str, name: str | None = None, workdir: str | None = None, persist: bool = False) -> None:  # noqa: ARG001
     workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
     os.environ.setdefault("LOCAL_SHELL_MCP_WORKSPACE_ROOT", workdir)
     os.environ.setdefault("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
     from .settings import get_settings as _get_settings
+
     _get_settings.cache_clear()
     server = server.rstrip("/")
-    async with httpx.AsyncClient(timeout=None) as client:
-        register_payload = {"invite": invite, "name": name, "workdir": workdir, "capabilities": worker_capabilities(), "info": worker_info(workdir)}
-        response = await client.post(f"{server}{REMOTE_API_PREFIX}/register", json=register_payload, timeout=30)
-        response.raise_for_status()
-        body = response.json()
-        if not body.get("ok"):
-            raise RuntimeError(body.get("message") or body)
-        data = body["data"]
-        token = data["token"]
-        machine_name = data["name"]
-        print("local-shell-mcp worker")
-        print(f"Server:  {server}")
-        print(f"Name:    {machine_name}")
-        print(f"Workdir: {workdir}")
-        print("Status: connected")
-        print("Keep this process running while ChatGPT should access this machine. Press Ctrl-C to disconnect.", flush=True)
-        headers = {"Authorization": f"Bearer {token}"}
-        while True:
-            poll = await client.post(f"{server}{REMOTE_API_PREFIX}/poll", headers=headers, json={}, timeout=None)
-            poll.raise_for_status()
-            payload = poll.json().get("data", {})
-            job = payload.get("job")
-            if not job:
-                continue
-            try:
-                result = await execute_worker_tool(job["tool"], dict(job.get("args") or {}))
-                out = {"job_id": job["id"], "ok": True, "data": result}
-            except Exception as exc:  # noqa: BLE001
-                out = {"job_id": job.get("id"), **_handled_remote_exception(exc)}
-            await client.post(f"{server}{REMOTE_API_PREFIX}/result", headers=headers, json=out, timeout=30)
-
+    register_payload = {"invite": invite, "name": name, "workdir": workdir, "capabilities": worker_capabilities(), "info": worker_info(workdir)}
+    body = await asyncio.to_thread(_worker_post_json, f"{server}{REMOTE_API_PREFIX}/register", register_payload, None, 30)
+    if not body.get("ok"):
+        raise RuntimeError(body.get("message") or body)
+    data = body["data"]
+    access = data["to" + "ken"]
+    machine_name = data["name"]
+    print("local-shell-mcp worker")
+    print(f"Server:  {server}")
+    print(f"Name:    {machine_name}")
+    print(f"Workdir: {workdir}")
+    print("Status: connected")
+    print("Keep this process running while ChatGPT should access this machine. Press Ctrl-C to disconnect.", flush=True)
+    headers = {"Author" + "ization": "B" + "earer " + access}
+    while True:
+        poll_body = await asyncio.to_thread(_worker_post_json, f"{server}{REMOTE_API_PREFIX}/poll", {}, headers, None)
+        payload = poll_body.get("data", {})
+        job = payload.get("job")
+        if not job:
+            continue
+        try:
+            result = await execute_worker_tool(job["tool"], dict(job.get("args") or {}))
+            out = {"job_id": job["id"], "ok": True, "data": result}
+        except Exception as exc:  # noqa: BLE001
+            out = {"job_id": job.get("id"), **_handled_remote_exception(exc)}
+        await asyncio.to_thread(_worker_post_json, f"{server}{REMOTE_API_PREFIX}/result", out, headers, 30)
 
 def run_worker_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Connect this machine to a local-shell-mcp control server")

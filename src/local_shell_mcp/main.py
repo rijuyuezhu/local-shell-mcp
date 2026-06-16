@@ -3,47 +3,44 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from contextlib import asynccontextmanager
-
-import uvicorn
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route
-
-from .auth import AuthMiddleware
-from .downloads import download_routes
-from .http_app import build_http_app
-from .oauth import (
-    oauth_authorize_get,
-    oauth_authorize_post,
-    oauth_protected_resource,
-    oauth_register,
-    oauth_server_metadata,
-    oauth_token,
-)
-from .remote import remote_routes, run_worker_cli
-from .settings import get_settings, validate_public_oauth_configuration
-from .tools import build_mcp
 
 
-def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
+def _with_oauth_routes(inner_app):  # noqa: ANN001
+    from contextlib import asynccontextmanager
+
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Mount, Route
+
+    from .downloads import download_routes
+    from .oauth import (
+        oauth_authorize_get,
+        oauth_authorize_post,
+        oauth_protected_resource,
+        oauth_register,
+        oauth_server_metadata,
+        oauth_token,
+    )
+    from .remote import remote_routes
+    from .settings import get_settings
+
     @asynccontextmanager
     async def lifespan(app):  # noqa: ANN001
         async with inner_app.router.lifespan_context(inner_app):
             yield
 
     routes = [
-            Route("/healthz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
-            Route("/readyz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
-            Route("/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
-            Route("/.well-known/oauth-authorization-server", oauth_server_metadata, methods=["GET"]),
-            Route("/.well-known/openid-configuration", oauth_server_metadata, methods=["GET"]),
-            Route("/oauth/register", oauth_register, methods=["POST"]),
-            Route("/oauth/authorize", oauth_authorize_get, methods=["GET"]),
-            Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
-            Route("/oauth/token", oauth_token, methods=["POST"]),
-            Mount("/", app=inner_app),
-        ]
+        Route("/healthz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
+        Route("/readyz", lambda request: JSONResponse({"ok": True}), methods=["GET"]),
+        Route("/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
+        Route("/.well-known/oauth-authorization-server", oauth_server_metadata, methods=["GET"]),
+        Route("/.well-known/openid-configuration", oauth_server_metadata, methods=["GET"]),
+        Route("/oauth/register", oauth_register, methods=["POST"]),
+        Route("/oauth/authorize", oauth_authorize_get, methods=["GET"]),
+        Route("/oauth/authorize", oauth_authorize_post, methods=["POST"]),
+        Route("/oauth/token", oauth_token, methods=["POST"]),
+        Mount("/", app=inner_app),
+    ]
     settings = get_settings()
     routes[2:2] = download_routes()
     if settings.remote_enabled:
@@ -55,6 +52,12 @@ def _with_oauth_routes(inner_app) -> Starlette:  # noqa: ANN001
 
 
 def run_mcp() -> None:
+    import uvicorn
+
+    from .auth import AuthMiddleware
+    from .settings import get_settings, validate_public_oauth_configuration
+    from .tools import build_mcp
+
     settings = get_settings()
     validate_public_oauth_configuration(settings)
     mcp = build_mcp()
@@ -81,6 +84,11 @@ def run_mcp() -> None:
 
 
 def run_http() -> None:
+    import uvicorn
+
+    from .http_app import build_http_app
+    from .settings import get_settings, validate_public_oauth_configuration
+
     settings = get_settings()
     validate_public_oauth_configuration(settings)
     app = build_http_app()
@@ -90,6 +98,8 @@ def run_http() -> None:
 def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv and argv[0] == "worker":
+        from .remote import run_worker_cli
+
         run_worker_cli(argv[1:])
         return
 
@@ -105,6 +115,8 @@ def main(argv: list[str] | None = None) -> None:
         os.environ["LOCAL_SHELL_MCP_MODE"] = args.mode
     if args.remote is not None:
         os.environ["LOCAL_SHELL_MCP_REMOTE_ENABLED"] = "true" if args.remote else "false"
+
+    from .settings import get_settings
 
     settings = get_settings()
     if settings.mode == "http":
