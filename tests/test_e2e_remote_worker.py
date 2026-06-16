@@ -227,6 +227,10 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             'export PYTHONPATH="$TMPDIR:$TMPDIR/vendor:${PYTHONPATH:-}"'
             in join_script
         )
+        assert "Downloading worker bundle" in join_script
+        assert "curl -fL --progress-bar" in join_script
+        assert "python3 -m local_shell_mcp.remote_worker" in join_script
+        assert "python3 -m local_shell_mcp.main worker" not in join_script
 
         async with httpx.AsyncClient(timeout=20) as http_client:
             bundle_response = await http_client.get(
@@ -236,7 +240,9 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         bundle_path = tmp_path / "worker-bundle.tgz"
         bundle_path.write_bytes(bundle_response.content)
         with tarfile.open(bundle_path) as bundle:
-            assert "local_shell_mcp/remote/join_worker.sh" in bundle.getnames()
+            names = bundle.getnames()
+            assert "local_shell_mcp/remote/join_worker.sh" in names
+            assert "local_shell_mcp/" + "remote" + "_worker.py" in names
 
         worker = start_worker_process(
             base_url, invite["code"], machine, remote_workspace

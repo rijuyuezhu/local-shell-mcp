@@ -113,7 +113,7 @@ Also test the Docker image and at least one MCP connection path before publishin
 
 ## Selective upstream sync notes
 
-Some upstream commits are intentionally recorded without porting their code when the current tree has a different policy or version line.
+Some upstream commits are intentionally recorded without porting their code when the current tree has a different policy or version line. Detailed per-range sync ledgers live under `docs/maintenance/upstream-sync/`.
 
 | Upstream commit | Decision | Rationale |
 |---|---|---|
