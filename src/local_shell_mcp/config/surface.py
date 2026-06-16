@@ -138,7 +138,6 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("port", "Server", metavar="PORT"),
     SettingSpec("workspace_root", "Paths and state", metavar="PATH"),
     SettingSpec("state_dir", "Paths and state", metavar="PATH"),
-    SettingSpec("audit_log_path", "Paths and state", metavar="PATH"),
     SettingSpec("auth_mode", "Authentication and OAuth"),
     SettingSpec("auth_bypass_localhost", "Authentication and OAuth"),
     SettingSpec("require_auth_for_mcp_discovery", "Authentication and OAuth"),
@@ -260,7 +259,6 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("remote_poll_timeout_s", "Remote workers", metavar="SECONDS"),
     SettingSpec("remote_job_timeout_s", "Remote workers", metavar="SECONDS"),
     SettingSpec("agent_bridge_enabled", "Agent capability bridge"),
-    SettingSpec("agent_config_dir", "Agent capability bridge", metavar="PATH"),
     SettingSpec(
         "agent_mcp_probe_timeout_s",
         "Agent capability bridge",

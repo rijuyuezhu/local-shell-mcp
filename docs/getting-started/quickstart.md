@@ -83,7 +83,7 @@ Use local-shell-mcp to inspect this repository, run the tests, and summarize wha
 Audit records are written to the configured audit log. In the default Docker workspace:
 
 ```bash
-docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit.jsonl
+docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit_log/audit.jsonl
 ```
 
 The audit log includes full tool inputs and outputs. Treat it as sensitive session state.

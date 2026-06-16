@@ -48,9 +48,6 @@ def server_env(
             "LOCAL_SHELL_MCP_STATE_DIR": str(
                 workspace_root / ".local-shell-mcp"
             ),
-            "LOCAL_SHELL_MCP_AUDIT_LOG_PATH": str(
-                workspace_root / ".local-shell-mcp" / "audit.jsonl"
-            ),
             "LOCAL_SHELL_MCP_MODE": mode,
             "LOCAL_SHELL_MCP_HOST": "127.0.0.1",
             "LOCAL_SHELL_MCP_AUTH_MODE": "none",

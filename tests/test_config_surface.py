@@ -20,6 +20,7 @@ class FakeField:
 
 def test_setting_specs_cover_settings_fields():
     validate_setting_specs()
+    assert list(Settings.model_fields) == [spec.name for spec in SETTING_SPECS]
 
 
 def test_generated_config_examples_are_current():

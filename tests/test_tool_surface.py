@@ -377,9 +377,7 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
     tmp_path, monkeypatch, agent_bridge_enabled
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agents")
-    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / "agents"))
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", agent_bridge_enabled
     )

@@ -82,7 +82,7 @@ Operational guidance:
 
 Audit records are intentionally complete and may include tool inputs, tool outputs, file contents, command output, OAuth claims, bearer-token-derived authentication context, and other sensitive values visible to the server.
 
-Treat `/workspace/.local-shell-mcp/audit.jsonl` as sensitive session state, not as a sanitized telemetry stream. Keep it in the controlled workspace/state directory, rely on the configured size cap for short-term retention, and avoid uploading it to third-party log aggregation unless that system is trusted for the same secrets.
+Treat `/workspace/.local-shell-mcp/audit_log/audit.jsonl` as sensitive session state, not as a sanitized telemetry stream. Keep it in the controlled workspace/state directory, rely on the configured size cap for short-term retention, and avoid uploading it to third-party log aggregation unless that system is trusted for the same secrets.
 
 ## Threats considered
 

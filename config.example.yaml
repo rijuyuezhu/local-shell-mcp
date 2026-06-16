@@ -11,12 +11,10 @@ host: "0.0.0.0"
 port: 8765
 
 # Paths and state.
-# Root directory for normal file and command operations.
+# Root directory for workspace.
 workspace_root: "/workspace"
-# Directory for runtime state such as audit logs and temporary files.
+# Directory for runtime state. Including audit logs, temporary files, and config
 state_dir: "/workspace/.local-shell-mcp"
-# Path to the JSONL audit log.
-audit_log_path: "/workspace/.local-shell-mcp/audit.jsonl"
 
 # Authentication and OAuth.
 # Authentication mode. Do not expose public services with none.
@@ -41,24 +39,22 @@ oauth_access_token_ttl_s: 3600
 oauth_code_ttl_s: 300
 
 # Safety and resource limits.
-# Disable built-in workspace and command restrictions; use only in disposable containers or VMs.
+# Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This
+# enforces relaxed_client_tool_hints.
 allow_full_container: false
 # Allow network-capable operations.
 allow_network: true
-# Advertise lower-risk MCP client hints for local tools without changing server-side authentication or
-# command policy.
+# Advertise lower-risk MCP client hints for tools so that clients can run them without confirmation.
 relaxed_client_tool_hints: false
-# Public MCP/HTTP tool watchdog timeout in seconds.
+# Public MCP/HTTP tool timeout in seconds.
 public_tool_timeout_s: 60
 # Default timeout for public run_shell_command calls in seconds.
 public_run_shell_default_timeout_s: 10
 # Maximum timeout accepted by public run_shell_command calls in seconds.
 public_run_shell_max_timeout_s: 60
-# Advanced internal shell command default timeout in seconds; public run_shell_command uses stricter
-# public settings.
+# Internal shell command default timeout in seconds.
 internal_shell_default_timeout_s: 60
-# Advanced internal shell command maximum timeout in seconds; public run_shell_command uses stricter
-# public settings.
+# Internal shell command maximum timeout in seconds.
 internal_shell_max_timeout_s: 3600
 # Command output truncation limit in bytes.
 max_output_bytes: 200000
@@ -138,8 +134,6 @@ remote_job_timeout_s: 3600
 # Agent capability bridge.
 # Enable agent capability bridge tools.
 agent_bridge_enabled: true
-# Read-only capability config directory.
-agent_config_dir: "/workspace/.local-shell-mcp/agent_config"
 # Agent MCP server probe timeout in seconds.
 agent_mcp_probe_timeout_s: 5
 # Agent MCP tool-call timeout in seconds.

@@ -117,9 +117,6 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
             "LOCAL_SHELL_MCP_STATE_DIR": str(
                 remote_workspace / ".local-shell-mcp"
             ),
-            "LOCAL_SHELL_MCP_AUDIT_LOG_PATH": str(
-                remote_workspace / ".local-shell-mcp" / "audit.jsonl"
-            ),
             "LOCAL_SHELL_MCP_AUTH_MODE": "none",
             "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
             "LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",

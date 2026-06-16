@@ -7,13 +7,13 @@ The audit log is a short-term JSONL record of routed tool activity. It is intend
 By default, the audit log is stored at:
 
 ```text
-/workspace/.local-shell-mcp/audit.jsonl
+/workspace/.local-shell-mcp/audit_log/audit.jsonl
 ```
 
-The path is controlled by:
+The path is derived from `LOCAL_SHELL_MCP_STATE_DIR`; only the size limit is configurable:
 
 ```env
-LOCAL_SHELL_MCP_AUDIT_LOG_PATH=/workspace/.local-shell-mcp/audit.jsonl
+LOCAL_SHELL_MCP_STATE_DIR=/workspace/.local-shell-mcp
 LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES=20000000
 ```
 
@@ -22,7 +22,7 @@ LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES=20000000
 In Docker Compose:
 
 ```bash
-docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit.jsonl
+docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit_log/audit.jsonl
 ```
 
 ## Record shape

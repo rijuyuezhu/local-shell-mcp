@@ -65,7 +65,7 @@ Use local-shell-mcp to list persistent shell sessions and kill the development s
 Watch the audit log from the host or container:
 
 ```bash
-docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit.jsonl
+docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit_log/audit.jsonl
 ```
 
 Each routed MCP or REST tool call should produce paired `tool_call_start` and `tool_call_end` records linked by `call_id`.

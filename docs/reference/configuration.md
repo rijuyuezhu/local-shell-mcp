@@ -18,6 +18,8 @@ Use:
 
 Docker image startup knobs use `DOCKER_*` variables because they are consumed by the container entrypoint before the application starts.
 
+`audit_log_path` and `agent_config_dir` are not configurable settings. They are derived from `state_dir` as `audit_log/audit.jsonl` and `agent_config`.
+
 ## Common application settings
 
 | Setting | CLI | Environment | Default |
@@ -27,7 +29,6 @@ Docker image startup knobs use `DOCKER_*` variables because they are consumed by
 | Bind port | `--port` | `LOCAL_SHELL_MCP_PORT` | `8765` |
 | Workspace root | `--workspace-root` | `LOCAL_SHELL_MCP_WORKSPACE_ROOT` | `/workspace` |
 | State directory | `--state-dir` | `LOCAL_SHELL_MCP_STATE_DIR` | `/workspace/.local-shell-mcp` |
-| Audit log path | `--audit-log-path` | `LOCAL_SHELL_MCP_AUDIT_LOG_PATH` | `/workspace/.local-shell-mcp/audit.jsonl` |
 | Auth mode | `--auth-mode` | `LOCAL_SHELL_MCP_AUTH_MODE` | `oauth` |
 | Public OAuth origin | `--public-base-url` | `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` | unset |
 | OAuth approval PIN | `--oauth-admin-pin` | `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | unset |
@@ -35,7 +36,6 @@ Docker image startup knobs use `DOCKER_*` variables because they are consumed by
 | Remote worker routes | `--remote-enabled true/false` | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` |
 | MCP request auth | `--require-auth-for-mcp-discovery true/false` | `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY` | `true` |
 | OAuth token TTL | advanced flag omitted from examples | `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` | `3600` |
-| Agent bridge config | `--agent-config-dir` | `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/workspace/.local-shell-mcp/agent_config` |
 
 ## Safety and resource limits
 

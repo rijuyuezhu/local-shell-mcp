@@ -162,8 +162,8 @@ async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints
 async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -192,7 +192,7 @@ async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     monkeypatch.setenv("LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS", "true")
     monkeypatch.setattr(
         tools_module,
