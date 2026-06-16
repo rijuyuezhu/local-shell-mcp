@@ -11,7 +11,6 @@ from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     SettingSpec,
     default_to_string,
-    default_value,
     validate_setting_specs,
     yaml_default,
 )
@@ -69,10 +68,30 @@ def _env_line(name: str, value: Any) -> str:
     return f"{name}={default_to_string(value)}"
 
 
+def _choices_comment(spec: SettingSpec) -> str | None:
+    """Return a comment describing accepted non-boolean values for settings with choices."""
+    if spec.is_bool:
+        return None
+    choices = spec.choices
+    if not choices:
+        return None
+    return f"Choices: {', '.join(choices)}."
+
+
+def _setting_comment_lines(spec: SettingSpec) -> list[str]:
+    """Return wrapped help and choices comment lines for one setting."""
+    comments = list(_wrap_comment(spec.help))
+    if choices_comment := _choices_comment(spec):
+        comments.extend(_wrap_comment(choices_comment))
+    return comments
+
+
 def generate_env_example() -> str:
     """Generate .env.example content."""
     validate_setting_specs()
     lines: list[str] = [
+        "# shellcheck shell=sh",
+        "# shellcheck disable=SC2034",
         "# Docker Compose uses this file as the main container environment via `env_file: .env`.",
         "# Copy it with: cp .env.example .env",
     ]
@@ -85,9 +104,9 @@ def generate_env_example() -> str:
     for section in SECTION_ORDER:
         lines.extend(["", f"# {section}."])
         for spec in specs_by_section[section]:
-            for comment in _wrap_comment(spec.help):
+            for comment in _setting_comment_lines(spec):
                 lines.append(f"# {comment}")
-            lines.append(_env_line(spec.env_var, default_value(spec.name)))
+            lines.append(_env_line(spec.env_var, spec.default))
 
     lines.extend(
         [
@@ -148,9 +167,9 @@ def generate_yaml_example() -> str:
     for section in SECTION_ORDER:
         lines.extend(["", f"# {section}."])
         for spec in specs_by_section[section]:
-            for comment in _wrap_comment(spec.help):
+            for comment in _setting_comment_lines(spec):
                 lines.append(f"# {comment}")
-            value = _yaml_scalar(default_value(spec.name))
+            value = _yaml_scalar(spec.default)
             if "\n" in value:
                 lines.append(f"{spec.name}:{value}")
             else:

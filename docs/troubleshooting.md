@@ -15,7 +15,7 @@ Enable Developer Mode for the full coding-agent surface, then refresh the connec
 Check:
 
 ```env
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=...
 ```
@@ -40,7 +40,7 @@ Then check the tunnel or reverse proxy:
 
 - It must forward to the server port, usually `8765`.
 - It must preserve HTTPS externally for ChatGPT.
-- The public hostname must match `LOCAL_SHELL_MCP_PUBLIC_BASE_URL`.
+- The public hostname must match `LOCAL_SHELL_MCP_BASE_URL`.
 
 ## Container cannot write state
 
@@ -57,9 +57,9 @@ docker compose restart local-shell-mcp
 Public tool calls are bounded by strict watchdogs and shell timeouts. Check these settings:
 
 ```env
-LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S=60
-LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S=10
-LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_MAX_TIMEOUT_S=60
+LOCAL_SHELL_MCP_TOOL_TIMEOUT_S=60
+LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S=10
+LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S=60
 ```
 
 Use persistent shells for long-running dev servers, REPLs, or interactive commands.

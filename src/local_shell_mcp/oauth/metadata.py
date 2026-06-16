@@ -14,9 +14,9 @@ from starlette.responses import JSONResponse, Response
 from .responses import _json
 from .urls import (
     _scopes,
+    base_url,
     issuer_url,
     protected_resource_metadata_url,
-    public_base_url,
     resource_url,
 )
 
@@ -29,7 +29,7 @@ def protected_resource_metadata(request: Request) -> dict[str, Any]:
         "resource": resource_url(request),
         "authorization_servers": [issuer_url(request)],
         "scopes_supported": _scopes(),
-        "resource_documentation": f"{public_base_url(request)}/docs",
+        "resource_documentation": f"{base_url(request)}/docs",
     }
 
 

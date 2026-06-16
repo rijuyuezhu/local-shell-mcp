@@ -13,10 +13,10 @@ cp .env.example .env
 Minimum public ChatGPT setup:
 
 ```env
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
-LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=false
+LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 CLOUDFLARE_TUNNEL_TOKEN=
 ```
 
@@ -59,15 +59,15 @@ sudo chown -R 10001:10001 workspaces/default
 docker compose restart local-shell-mcp
 ```
 
-## Full-container mode
+## Full-control mode
 
 Keep this disabled by default:
 
 ```env
-LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=false
+LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 ```
 
-`LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true` disables built-in workspace and command restrictions. Use it only in disposable containers or VMs.
+`LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` disables built-in workspace and command restrictions. Use it only in disposable containers or VMs.
 
 ## Stop and reset
 

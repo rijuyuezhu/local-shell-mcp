@@ -2,7 +2,7 @@
 
 Tool availability depends on the MCP client and server configuration. Regular ChatGPT connectors and Deep Research-style clients can use `search` and `fetch`. ChatGPT Developer Mode and full MCP clients can use the complete tool set.
 
-All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-container mode is enabled. Remote tools perform the same category of operation on a connected remote worker and add a required `machine` argument.
+All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-control mode is enabled. Remote tools perform the same category of operation on a connected remote worker and add a required `machine` argument.
 
 ## Read-only connector tools
 
@@ -129,5 +129,5 @@ These tools are registered when `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED=true`.
 - Path operations are restricted to the workspace by default.
 - Default path denylists block sensitive fragments such as `.env`, credentials, private SSH keys, and `.git/config`.
 - Default command denylists block host-control fragments such as Docker socket access, mounting, shutdown, reboot, firewall manipulation, and similar commands.
-- Full-container mode disables built-in path and command restrictions and adds auto-approval hints for command-capable tools.
+- Full-control mode disables built-in path and command restrictions and adds auto-approval hints for command-capable tools.
 - OAuth/bootstrap metadata, health checks, and remote-worker join/poll/result endpoints are public. MCP-over-HTTP tool calls require OAuth unless `auth_mode=none` is configured.

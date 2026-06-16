@@ -72,7 +72,7 @@ def resolve_path(
 ) -> Path:
     """Resolve a path, optionally restricting it to workspace_root.
 
-    In normal mode, absolute paths outside workspace are rejected. In full-container mode,
+    In normal mode, absolute paths outside workspace are rejected. In full-control mode,
     any absolute path inside the container is allowed.
     """
     settings = get_settings()
@@ -80,7 +80,7 @@ def resolve_path(
     raw = Path(os.path.expandvars(os.path.expanduser(str(path))))
     if not raw.is_absolute():
         raw = root / raw
-    if settings.allow_full_container:
+    if settings.allow_full_control:
         resolved = Path(os.path.abspath(raw))
     else:
         resolved = raw.resolve(strict=False)

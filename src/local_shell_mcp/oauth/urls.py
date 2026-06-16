@@ -12,11 +12,11 @@ from starlette.requests import Request
 from ..config.settings import get_settings
 
 
-def public_base_url(request: Request | None = None) -> str:
+def base_url(request: Request | None = None) -> str:
     """Determine the externally visible base URL from configured public URL or request headers."""
     settings = get_settings()
-    if settings.public_base_url:
-        return settings.public_base_url.rstrip("/")
+    if settings.base_url:
+        return settings.base_url.rstrip("/")
     if request is not None:
         proto = request.headers.get("x-forwarded-proto") or request.url.scheme
         host = (
@@ -31,7 +31,7 @@ def public_base_url(request: Request | None = None) -> str:
 def issuer_url(request: Request | None = None) -> str:
     """Return the OAuth issuer URL advertised in metadata and encoded into access tokens."""
     settings = get_settings()
-    return (settings.oauth_issuer or public_base_url(request)).rstrip("/")
+    return (settings.oauth_issuer or base_url(request)).rstrip("/")
 
 
 def resource_url(request: Request | None = None) -> str:
@@ -42,7 +42,7 @@ def resource_url(request: Request | None = None) -> str:
     # Docs compliance: OAuth security requires token audience binding to the
     # most specific MCP resource. Use the MCP endpoint, not just the origin, so
     # access tokens are not valid for every service on the same host.
-    return (public_base_url(request).rstrip("/") + "/mcp").rstrip("/")
+    return (base_url(request).rstrip("/") + "/mcp").rstrip("/")
 
 
 def protected_resource_metadata_url(request: Request | None = None) -> str:

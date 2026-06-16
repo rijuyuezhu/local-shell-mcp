@@ -89,7 +89,7 @@ async def test_fixed_bridge_tools_exist_with_missing_config(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agent-config")
+        "LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp")
     )
     clear_settings_cache()
 
@@ -112,7 +112,7 @@ async def test_agent_config_status_reports_missing_config(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agent-config")
+        "LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp")
     )
     clear_settings_cache()
 
@@ -124,8 +124,8 @@ async def test_agent_config_status_reports_missing_config(
 
 @pytest.mark.asyncio
 async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -160,7 +160,7 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
@@ -174,8 +174,8 @@ async def test_agent_config_status_redacts_probe_error(tmp_path, monkeypatch):
 async def test_agent_config_status_redacts_env_and_header_values(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     env_token = "ghp_1234567890abcdef1234567890abcdef123456"
     header_value = "Bearer supersecret"
     (config_dir / "config.json").write_text(
@@ -198,7 +198,7 @@ async def test_agent_config_status_redacts_env_and_header_values(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
@@ -215,8 +215,8 @@ async def test_agent_config_status_redacts_env_and_header_values(
 async def test_agent_config_status_redacts_serialized_configured_values(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -249,7 +249,7 @@ async def test_agent_config_status_redacts_serialized_configured_values(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     response = await build_mcp().call_tool("agent_config_status", {})
@@ -263,7 +263,7 @@ async def test_agent_config_status_redacts_serialized_configured_values(
 async def test_activate_agent_skill_returns_skill_content(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
     skill_dir = config_dir / "skills" / "debugging"
     skill_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
@@ -275,7 +275,7 @@ async def test_activate_agent_skill_returns_skill_content(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     response = await build_mcp().call_tool(
@@ -291,8 +291,8 @@ async def test_activate_agent_skill_returns_skill_content(
 async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -342,7 +342,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     mcp = build_mcp()
@@ -423,8 +423,8 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
 async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -466,7 +466,7 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     response = await build_mcp().call_tool(
@@ -481,8 +481,8 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
 
 @pytest.mark.asyncio
 async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -523,7 +523,7 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     response = await build_mcp().call_tool(
@@ -539,8 +539,8 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
 async def test_call_agent_mcp_tool_redacts_serialized_configured_values(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -577,7 +577,7 @@ async def test_call_agent_mcp_tool_redacts_serialized_configured_values(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     response = await build_mcp().call_tool(
@@ -591,8 +591,8 @@ async def test_call_agent_mcp_tool_redacts_serialized_configured_values(
 
 @pytest.mark.asyncio
 async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -650,7 +650,7 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     response = await build_mcp().call_tool(
@@ -672,8 +672,8 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
 async def test_agent_mcp_public_metadata_redacts_configured_values(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     high_confidence_token = "sk-1234567890abcdef1234567890abcdef"
     upstream_tool_name = f"search-{CONFIGURED_ENV_VALUE}-{CONFIGURED_HEADER_VALUE}-{high_confidence_token}"
     schema_secret_key = f"query_{CONFIGURED_ENV_VALUE}"
@@ -731,7 +731,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     mcp = build_mcp()
@@ -808,7 +808,7 @@ class FakeDynamicMcpManager:
 async def test_dynamic_skill_tool_is_visible_and_callable(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
     skill_dir = config_dir / "skills" / "paper-writer"
     skill_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
@@ -820,7 +820,7 @@ async def test_dynamic_skill_tool_is_visible_and_callable(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     mcp = build_mcp()
@@ -833,8 +833,8 @@ async def test_dynamic_skill_tool_is_visible_and_callable(
 
 @pytest.mark.asyncio
 async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -849,7 +849,7 @@ async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     monkeypatch.setattr(
         tools_module,
         "AgentMcpClientManager",
@@ -871,8 +871,8 @@ async def test_dynamic_mcp_tool_is_visible_and_callable(tmp_path, monkeypatch):
 async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -906,7 +906,7 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     monkeypatch.setattr(
         tools_module,
         "AgentMcpClientManager",
@@ -924,8 +924,8 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
 
 @pytest.mark.asyncio
 async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps(
             {
@@ -978,7 +978,7 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     monkeypatch.setattr(
         tools_module,
         "AgentMcpClientManager",
@@ -1005,7 +1005,7 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
 async def test_build_mcp_respects_manifest_dynamic_tool_disable(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
     skill_dir = config_dir / "skills" / "paper-writer"
     skill_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
@@ -1026,7 +1026,7 @@ async def test_build_mcp_respects_manifest_dynamic_tool_disable(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     monkeypatch.setattr(
         tools_module,
         "AgentMcpClientManager",
@@ -1047,7 +1047,7 @@ async def test_build_mcp_respects_manifest_dynamic_tool_disable(
 async def test_agent_bridge_hot_reloads_dynamic_skill_tools(
     tmp_path, monkeypatch
 ):
-    config_dir = tmp_path / "agent-config"
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
     skill_dir = config_dir / "skills" / "paper-writer"
     skill_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
@@ -1059,7 +1059,7 @@ async def test_agent_bridge_hot_reloads_dynamic_skill_tools(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     mcp = build_mcp()
@@ -1087,8 +1087,8 @@ async def test_agent_bridge_hot_reloads_dynamic_skill_tools(
 
 @pytest.mark.asyncio
 async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
-    config_dir = tmp_path / "agent-config"
-    config_dir.mkdir()
+    config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
+    config_dir.mkdir(parents=True)
     (config_dir / "config.json").write_text(
         json.dumps({"version": 1}), encoding="utf-8"
     )
@@ -1117,7 +1117,7 @@ async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     monkeypatch.setattr(
         tools_module, "AgentMcpClientManager", lambda _timeout: fake_manager
     )

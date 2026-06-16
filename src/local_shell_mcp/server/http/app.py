@@ -3,6 +3,7 @@
 import uvicorn
 from fastapi import FastAPI
 
+from ... import __version__
 from ...config.settings import get_settings
 from ...oauth.middleware import AuthMiddleware
 from ..shared.public_routes import install_public_http_routes
@@ -16,7 +17,7 @@ from .tool_routes import (
 def build_http_app() -> FastAPI:
     """Construct the authenticated REST API and register local tool routes."""
     settings = get_settings()
-    app = FastAPI(title="local-shell-mcp REST API", version="0.1.0")
+    app = FastAPI(title="local-shell-mcp REST API", version=__version__)
     if settings.auth_mode != "none":
         app.add_middleware(AuthMiddleware)
 

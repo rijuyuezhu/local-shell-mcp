@@ -8,8 +8,8 @@ from local_shell_mcp.agent_bridge.models import (
 from local_shell_mcp.agent_bridge.redaction import _redact_text, redact_mapping
 from local_shell_mcp.agent_bridge.state import load_agent_manifest
 from local_shell_mcp.config.settings import (
-    DEFAULT_AGENT_CONFIG_DIR,
-    DEFAULT_AUDIT_LOG_PATH,
+    AGENT_CONFIG_STATE_DIR_NAME,
+    AUDIT_LOG_STATE_DIR_NAME,
     DEFAULT_STATE_DIR,
     clear_settings_cache,
     get_settings,
@@ -22,26 +22,32 @@ def test_workspace_root_does_not_rewrite_default_state_paths(
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.delenv("LOCAL_SHELL_MCP_STATE_DIR", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_AUDIT_LOG_PATH", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", raising=False)
     clear_settings_cache()
 
     settings = load_settings(create_dirs=False)
 
     assert settings.workspace_root == tmp_path.resolve()
     assert settings.state_dir == DEFAULT_STATE_DIR.resolve()
-    assert settings.audit_log_path == DEFAULT_AUDIT_LOG_PATH.resolve()
-    assert settings.agent_config_dir == DEFAULT_AGENT_CONFIG_DIR.resolve()
+    assert (
+        settings.audit_log_path
+        == (
+            DEFAULT_STATE_DIR / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl"
+        ).resolve()
+    )
+    assert (
+        settings.agent_config_dir
+        == (DEFAULT_STATE_DIR / AGENT_CONFIG_STATE_DIR_NAME).resolve()
+    )
     assert settings.agent_bridge_enabled is True
     assert settings.agent_mcp_probe_timeout_s == 5
 
 
-def test_agent_config_dir_env_override(monkeypatch, tmp_path):
-    config_dir = tmp_path / "agent-config"
+def test_agent_config_dir_is_derived_from_state_dir(monkeypatch, tmp_path):
+    config_dir = tmp_path / ".local-shell-mcp" / AGENT_CONFIG_STATE_DIR_NAME
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
     assert get_settings().agent_config_dir == config_dir.resolve()

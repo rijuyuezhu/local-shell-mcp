@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
+from local_shell_mcp import __version__
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_NAMES,
@@ -150,6 +151,18 @@ def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):
         route = route_by_name[spec.public_name]
         assert route.method == "POST"
         assert route.path == spec.http_path
+
+
+def test_http_openapi_version_matches_package_version(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).get("/openapi.json")
+
+    assert response.status_code == 200
+    assert response.json()["info"]["version"] == __version__
 
 
 def _mcp_payload_data(response):
@@ -364,9 +377,7 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
     tmp_path, monkeypatch, agent_bridge_enabled
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(tmp_path / "agents")
-    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / "agents"))
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", agent_bridge_enabled
     )

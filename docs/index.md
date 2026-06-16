@@ -65,4 +65,4 @@ Use it when you want an AI coding agent to inspect a repository, edit files, run
 
 This project intentionally exposes powerful tools. Treat any connected model as able to read and modify the configured workspace, execute commands, use mounted credentials, and operate remote workers you invite.
 
-Default safeguards include workspace path restrictions, timeout and output limits, default command/path denylists, audit logs, and OAuth for public connector use. Full-container mode disables built-in path and command restrictions and should only be used in disposable containers or VMs.
+Default safeguards include workspace path restrictions, timeout and output limits, default command/path denylists, audit logs, and OAuth for public connector use. Full-control mode disables built-in path and command restrictions and should only be used in disposable containers or VMs.

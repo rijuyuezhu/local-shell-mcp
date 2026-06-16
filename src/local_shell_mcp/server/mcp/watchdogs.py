@@ -14,7 +14,7 @@ from ...audit import (
     audit_tool_call_start,
     new_audit_call_id,
 )
-from ...ops.command_ops import public_tool_timeout_s
+from ...ops.command_ops import tool_timeout_s
 from ...tools.responses import handled_error
 
 
@@ -71,7 +71,7 @@ def _mcp_tool_input(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
 def _mcp_tool_audit_watchdog_wrapper(
     original: Callable[..., Awaitable[Any]], tool_name: str
 ) -> AuditedMcpToolFn:
-    """Return a wrapper that audits every MCP tool call and enforces the public timeout."""
+    """Return a wrapper that audits every MCP tool call and enforces the tool timeout."""
 
     async def wrapped(*args: Any, **kwargs: Any) -> Any:
         call_id = new_audit_call_id()
@@ -84,17 +84,17 @@ def _mcp_tool_audit_watchdog_wrapper(
         )
         try:
             result = await asyncio.wait_for(
-                original(*args, **kwargs), timeout=public_tool_timeout_s()
+                original(*args, **kwargs), timeout=tool_timeout_s()
             )
         except TimeoutError:
             exc = PublicToolTimeoutError(
-                f"{tool_name} exceeded {public_tool_timeout_s()} second public tool timeout"
+                f"{tool_name} exceeded {tool_timeout_s()} second tool timeout"
             )
             duration_ms = int((time.time() - start) * 1000)
             audit(
                 "tool_timeout",
                 tool=tool_name,
-                timeout_s=public_tool_timeout_s(),
+                timeout_s=tool_timeout_s(),
             )
             payload = _timeout_payload_for_tool(tool_name, exc)
             audit_tool_call_end(

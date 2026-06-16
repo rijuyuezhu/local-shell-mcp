@@ -16,9 +16,7 @@ from local_shell_mcp.server.shared.downloads import download_routes
 def _reset(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://files.example.test"
-    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://files.example.test")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 

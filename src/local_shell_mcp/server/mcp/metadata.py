@@ -32,9 +32,7 @@ def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
     behavior, and they intentionally do not mark mutating tools as read-only.
     """
     settings = get_settings()
-    if not (
-        settings.allow_full_container or settings.relaxed_client_tool_hints
-    ):
+    if not (settings.allow_full_control or settings.relaxed_client_tool_hints):
         return
     for tool in mcp._tool_manager._tools.values():
         if tool.name == "call_agent_mcp_tool" or tool.name.startswith(

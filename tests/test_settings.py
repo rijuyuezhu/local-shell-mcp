@@ -42,14 +42,14 @@ def test_settings_rejects_non_mapping_config(tmp_path):
 
 def test_none_overrides_clear_config_and_env_values(monkeypatch, tmp_path):
     config = tmp_path / "config.yaml"
-    config.write_text("public_base_url: https://example.com\n")
+    config.write_text("base_url: https://example.com\n")
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "test-pin")
 
     settings = load_settings(
         config,
-        {"public_base_url": None, "oauth_admin_pin": None},
+        {"base_url": None, "oauth_admin_pin": None},
         create_dirs=False,
     )
 
-    assert settings.public_base_url is None
+    assert settings.base_url is None
     assert settings.oauth_admin_pin is None

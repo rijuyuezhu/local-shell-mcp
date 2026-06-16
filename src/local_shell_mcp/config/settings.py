@@ -1,4 +1,4 @@
-"""Load, normalize, and validate runtime settings for workspace boundaries, authentication, tools, and remote workers."""
+"""Runtime settings. It provides configuration for the local shell MCP server."""
 
 import os
 from pathlib import Path
@@ -10,8 +10,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
-DEFAULT_AUDIT_LOG_PATH = DEFAULT_STATE_DIR / "audit.jsonl"
-DEFAULT_AGENT_CONFIG_DIR = DEFAULT_STATE_DIR / "agent_config"
+AUDIT_LOG_STATE_DIR_NAME = "audit_log"
+AGENT_CONFIG_STATE_DIR_NAME = "agent_config"
 ENV_PREFIX = "LOCAL_SHELL_MCP_"
 
 SENSITIVE_SETTING_KEYS = {
@@ -20,7 +20,7 @@ SENSITIVE_SETTING_KEYS = {
 
 
 def _split_csv(value: str | list[str] | None) -> list[str]:
-    """Normalize comma-delimited environment values into trimmed non-empty items."""
+    """Normalize comma-delimited environment values into list."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -40,41 +40,51 @@ class Settings(BaseSettings):
         env_prefix=ENV_PREFIX, extra="ignore", use_attribute_docstrings=True
     )
 
+    # Server.
+    mode: Literal["mcp", "http", "both", "stdio"] = "mcp"
+    """Server transport mode."""
     host: str = "0.0.0.0"
     """Bind host for HTTP/MCP transports."""
     port: int = 8765
     """Bind port for HTTP/MCP transports."""
-    mode: Literal["mcp", "http", "both", "stdio"] = "mcp"
-    """Server transport mode."""
 
+    # Paths and state.
     workspace_root: Path = DEFAULT_WORKSPACE_ROOT
-    """Root directory for normal file and command operations."""
-    audit_log_path: Path = DEFAULT_AUDIT_LOG_PATH
-    """Path to the JSONL audit log."""
+    """Root directory for workspace."""
     state_dir: Path = DEFAULT_STATE_DIR
-    """Directory for runtime state such as audit logs and temporary files."""
+    """Directory for runtime state. Including audit logs, temporary files, and config"""
 
-    # By default, tools are limited to workspace_root. Set true only inside a disposable container.
-    allow_full_container: bool = False
-    """Disable built-in workspace and command restrictions; use only in disposable containers or VMs."""
+    # Authentication and OAuth.
+    auth_mode: Literal["none", "oauth"] = "oauth"
+    """Authentication mode. Do not expose public services with none."""
+    auth_bypass_localhost: bool = True
+    """Allow localhost requests without bearer authentication."""
+    base_url: str | None = None
+    """Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, request-aware routes derive it from forwarded/Host headers, and non-request generated links fall back to the bind host and port."""
+    oauth_issuer: str | None = None
+    """Override URL for OAuth issuer metadata; usually derived from base_url."""
+    oauth_resource: str | None = None
+    """Override URL for OAuth resource metadata; usually derived from base_url plus /mcp."""
+    oauth_admin_pin: str | None = None
+    """Admin PIN required to approve OAuth authorization."""
+    oauth_access_token_ttl_s: int = 3600
+    """Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed."""
+    oauth_code_ttl_s: int = 300
+    """OAuth authorization-code lifetime in seconds. The authorization must be done within this time."""
+
+    # Safety and resource limits.
+    allow_full_control: bool = False
+    """Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints."""
     allow_network: bool = True
     """Allow network-capable operations."""
-    # Client-facing hint only: reduces MCP client confirmations for local tools
-    # without changing server-side authentication, authorization, or command policy.
     relaxed_client_tool_hints: bool = False
-    """Advertise lower-risk MCP client hints for local tools without changing server-side authentication or command policy."""
-
-    # Public MCP/HTTP tool calls are guarded separately from internal command execution.
-    public_tool_timeout_s: float = 60
-    """Public MCP/HTTP tool watchdog timeout in seconds."""
-    public_run_shell_default_timeout_s: int = 10
-    """Default timeout for public run_shell_command calls in seconds."""
-    public_run_shell_max_timeout_s: int = 60
-    """Maximum timeout accepted by public run_shell_command calls in seconds."""
-    internal_shell_default_timeout_s: int = 60
-    """Advanced internal shell command default timeout in seconds; public run_shell_command uses stricter public settings."""
-    internal_shell_max_timeout_s: int = 3600
-    """Advanced internal shell command maximum timeout in seconds; public run_shell_command uses stricter public settings."""
+    """Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations."""
+    tool_timeout_s: float = 60
+    """MCP/HTTP tool watchdog timeout in seconds."""
+    run_shell_default_timeout_s: int = 10
+    """Default timeout for run_shell_command calls in seconds."""
+    run_shell_max_timeout_s: int = 60
+    """Maximum timeout accepted by run_shell_command calls in seconds."""
     max_output_bytes: int = 200_000
     """Command output truncation limit in bytes."""
     max_file_read_bytes: int = 512_000
@@ -107,7 +117,6 @@ class Settings(BaseSettings):
     """Concurrent command limit."""
     max_tmux_sessions: int = 16
     """Persistent shell session limit."""
-
     file_download_enabled: bool = True
     """Enable tokenized public download links created by protected tools."""
     file_download_default_ttl_s: int = 3600
@@ -118,70 +127,6 @@ class Settings(BaseSettings):
     """Default download-count limit for file links; 0 means unlimited until expiry."""
     file_download_max_file_bytes: int = 0
     """Maximum file size allowed for download links; 0 disables this size limit."""
-
-    # Remote worker mode is enabled by default. Remote machines join with one-time
-    # invites, poll for jobs over outbound HTTP(S), and expose near-parity tools.
-    remote_enabled: bool = True
-    """Enable remote worker routes and MCP tools."""
-    remote_invite_ttl_s: int = 600
-    """One-time remote worker invite lifetime in seconds."""
-    remote_poll_timeout_s: int = 25
-    """Remote worker long-poll heartbeat timeout in seconds."""
-    remote_job_timeout_s: int = 3600
-    """Control-side remote job result timeout in seconds."""
-
-    # Agent capability bridge. External sync tools write normalized MCP and skill
-    # config here; local-shell-mcp reads it without mutating it.
-    agent_bridge_enabled: bool = True
-    """Enable agent capability bridge tools."""
-    agent_config_dir: Path = DEFAULT_AGENT_CONFIG_DIR
-    """Read-only capability config directory."""
-    agent_mcp_probe_timeout_s: int = 5
-    """Agent MCP server probe timeout in seconds."""
-    agent_mcp_call_timeout_s: int = 60
-    """Agent MCP tool-call timeout in seconds."""
-    agent_dynamic_mcp_tools: bool = True
-    """Register dynamic MCP bridge tools."""
-    agent_dynamic_skill_tools: bool = True
-    """Register dynamic skill bridge tools."""
-
-    shell_executable: str = "/bin/bash"
-    """Shell executable used for shell commands."""
-    tmux_bin: str = "tmux"
-    """tmux executable."""
-    rg_bin: str = "rg"
-    """ripgrep executable."""
-    python_bin: str = "python3"
-    """Python executable."""
-
-    # Authentication. OAuth is the default for ChatGPT custom connectors.
-    auth_mode: Literal["none", "oauth"] = "oauth"
-    """Authentication mode: oauth or none. Do not expose public services with none."""
-    auth_bypass_localhost: bool = True
-    """Allow localhost requests without bearer authentication."""
-    # MCP-over-HTTP requests are protected by default; only OAuth/bootstrap
-    # metadata routes stay public. Kept for backwards-compatible config parsing.
-    require_auth_for_mcp_discovery: bool = True
-    """Require bearer auth for MCP-over-HTTP requests; OAuth/bootstrap routes remain public."""
-
-    # Built-in OAuth 2.1 authorization server for ChatGPT MCP connectors.
-    # Set public_base_url to the externally reachable HTTPS origin, e.g. https://local-shell-mcp.example.com
-    public_base_url: str | None = None
-    """Public HTTPS origin used in OAuth metadata and callbacks."""
-    oauth_issuer: str | None = None
-    """Advanced compatibility override for OAuth issuer metadata; usually derived from public_base_url."""
-    oauth_resource: str | None = None
-    """Advanced compatibility override for OAuth resource metadata; usually derived from public_base_url plus /mcp."""
-    oauth_admin_pin: str | None = None
-    """PIN required to approve OAuth authorization."""
-    # Keep the embedded single-user authorization flow simple, but avoid
-    # issuing permanent bearer tokens by default.
-    oauth_access_token_ttl_s: int = 3600
-    """Advanced bearer token lifetime in seconds."""
-    oauth_code_ttl_s: int = 300
-    """Advanced OAuth authorization-code lifetime in seconds."""
-
-    # Command policy. Set denylist empty if this container is intentionally disposable.
     command_denylist: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             "docker.sock",
@@ -196,7 +141,7 @@ class Settings(BaseSettings):
             "nft",
         ]
     )
-    """Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled."""
+    """Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled."""
     path_denylist: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             ".ssh/id_rsa",
@@ -207,13 +152,53 @@ class Settings(BaseSettings):
             ".git/config",
         ]
     )
-    """Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled."""
+    """Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled."""
+
+    # Remote workers.
+    remote_enabled: bool = True
+    """Enable remote worker routes and MCP tools."""
+    remote_invite_ttl_s: int = 600
+    """One-time remote worker invite lifetime in seconds."""
+    remote_poll_timeout_s: int = 25
+    """Remote worker long-poll heartbeat timeout in seconds."""
+    remote_job_timeout_s: int = 3600
+    """Control-side remote job result timeout in seconds."""
+
+    # Agent capability bridge.
+    agent_bridge_enabled: bool = True
+    """Enable agent capability bridge tools."""
+    agent_mcp_probe_timeout_s: int = 5
+    """Agent MCP server probe timeout in seconds."""
+    agent_mcp_call_timeout_s: int = 60
+    """Agent MCP tool-call timeout in seconds."""
+    agent_dynamic_mcp_tools: bool = True
+    """Register dynamic MCP bridge tools."""
+    agent_dynamic_skill_tools: bool = True
+    """Register dynamic skill bridge tools."""
+
+    # Tool executables.
+    shell_executable: str = "/bin/bash"
+    """Shell executable used for shell commands."""
+    tmux_bin: str = "tmux"
+    """tmux executable."""
+    rg_bin: str = "rg"
+    """ripgrep executable."""
+    python_bin: str = "python3"
+    """Python executable."""
+
+    @property
+    def audit_log_path(self) -> Path:
+        """Path to the JSONL audit log, derived from state_dir."""
+        return self.state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl"
+
+    @property
+    def agent_config_dir(self) -> Path:
+        """Read-only capability config directory, derived from state_dir."""
+        return self.state_dir / AGENT_CONFIG_STATE_DIR_NAME
 
     @field_validator(
         "workspace_root",
-        "audit_log_path",
         "state_dir",
-        "agent_config_dir",
         mode="before",
     )
     @classmethod
@@ -230,8 +215,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def disable_builtin_restrictions_in_full_container_mode(self) -> Settings:
-        """Remove built-in command and path restrictions when full-container mode is explicitly enabled."""
-        if self.allow_full_container:
+        """Remove built-in command and path restrictions when full-control mode is explicitly enabled."""
+        if self.allow_full_control:
             self.command_denylist = []
             self.path_denylist = []
         return self

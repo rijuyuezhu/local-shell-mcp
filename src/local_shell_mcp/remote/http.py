@@ -32,7 +32,7 @@ async def join_script(request: Request) -> PlainTextResponse:
     """Serve a shell script that installs and starts a remote worker for a pending invite."""
     settings = get_settings()
     server = (
-        settings.public_base_url or f"http://{settings.host}:{settings.port}"
+        settings.base_url or f"http://{settings.host}:{settings.port}"
     ).rstrip("/")
     script = (
         resources.files(__package__)

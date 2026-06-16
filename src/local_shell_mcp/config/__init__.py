@@ -1,1 +1,1 @@
-"""Runtime configuration schema, loading, and presentation metadata."""
+"""Configuration definition and resolution."""

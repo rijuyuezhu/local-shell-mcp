@@ -34,15 +34,15 @@ def _host_header_name(hostname: str) -> str:
 
 
 def _default_port_for_scheme(scheme: str) -> int | None:
-    """Return the default network port for schemes accepted in public_base_url."""
+    """Return the default network port for schemes accepted in base_url."""
     return {"http": 80, "https": 443}.get(scheme)
 
 
-def _add_public_base_url_transport_allowlist(
-    allowed_hosts: set[str], allowed_origins: set[str], public_base_url: str
+def _add_base_url_transport_allowlist(
+    allowed_hosts: set[str], allowed_origins: set[str], base_url: str
 ) -> None:
     """Allow exactly the configured public origin and compatible default-port Host forms."""
-    parsed = urlparse(public_base_url)
+    parsed = urlparse(base_url)
     scheme = parsed.scheme.lower()
     if scheme not in {"http", "https"} or not parsed.hostname:
         return
@@ -89,9 +89,9 @@ def _transport_security_settings() -> TransportSecuritySettings:
         "https://chat.openai.com",
     }
 
-    if settings.public_base_url:
-        _add_public_base_url_transport_allowlist(
-            allowed_hosts, allowed_origins, settings.public_base_url
+    if settings.base_url:
+        _add_base_url_transport_allowlist(
+            allowed_hosts, allowed_origins, settings.base_url
         )
 
     return TransportSecuritySettings(

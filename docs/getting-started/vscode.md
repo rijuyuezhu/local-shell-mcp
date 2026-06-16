@@ -22,11 +22,11 @@ Then install the VS Code extension package from the GitHub release assets. Confi
 
 ## Recommended settings
 
-For direct host usage, keep `local-shell-mcp.allowFullContainer` disabled so tools stay scoped to the selected workspace root.
+For direct host usage, keep `local-shell-mcp.allowFullControl` disabled so tools stay scoped to the selected workspace root.
 
 Use `local-shell-mcp.authMode = oauth` when connecting ChatGPT. Use `none` only for trusted localhost testing.
 
-If ChatGPT cannot reach your local machine directly, expose `127.0.0.1:8765` through an HTTPS tunnel and set `local-shell-mcp.publicBaseUrl` to that origin. The MCP endpoint is then:
+If ChatGPT cannot reach your local machine directly, expose `127.0.0.1:8765` through an HTTPS tunnel and set `local-shell-mcp.baseUrl` to that origin. The MCP endpoint is then:
 
 ```text
 https://your-public-origin.example.com/mcp

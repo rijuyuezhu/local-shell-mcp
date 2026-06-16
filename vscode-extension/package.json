@@ -101,7 +101,7 @@
           "default": "oauth",
           "description": "Authentication mode. Use oauth for ChatGPT connector usage; none is only for trusted local testing."
         },
-        "local-shell-mcp.publicBaseUrl": {
+        "local-shell-mcp.baseUrl": {
           "type": "string",
           "default": "",
           "description": "Externally reachable HTTPS origin, for example a tunnel URL. Empty uses the local http://host:port URL."
@@ -111,10 +111,10 @@
           "default": "",
           "description": "Optional OAuth admin PIN. Leave empty for local testing or set a value when exposing the server publicly."
         },
-        "local-shell-mcp.allowFullContainer": {
+        "local-shell-mcp.allowFullControl": {
           "type": "boolean",
           "default": false,
-          "description": "Set LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER. Keep disabled for direct host usage; enable only inside a disposable container."
+          "description": "Set LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL. Keep disabled for direct host usage; enable only inside a disposable container."
         },
         "local-shell-mcp.extraEnv": {
           "type": "object",

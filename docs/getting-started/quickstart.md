@@ -21,10 +21,10 @@ cp .env.example .env
 Edit `.env` and set at least:
 
 ```env
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
-LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=false
+LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 ```
 
 The bearer-token signing secret is generated automatically and persisted under the configured state directory.
@@ -83,7 +83,7 @@ Use local-shell-mcp to inspect this repository, run the tests, and summarize wha
 Audit records are written to the configured audit log. In the default Docker workspace:
 
 ```bash
-docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit.jsonl
+docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit_log/audit.jsonl
 ```
 
 The audit log includes full tool inputs and outputs. Treat it as sensitive session state.

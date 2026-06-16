@@ -20,7 +20,7 @@ The container reads the same files from:
 /workspace/.local-shell-mcp/agent_config
 ```
 
-The default Compose workspace mount is read-write, but `local-shell-mcp` does not mutate this directory. Mount it read-only in stricter deployments.
+The default Compose workspace mount is read-write, but `local-shell-mcp` does not mutate this directory. The directory path is derived from `LOCAL_SHELL_MCP_STATE_DIR` and is not separately configurable. Mount it read-only in stricter deployments.
 
 ## Example config
 
@@ -60,7 +60,7 @@ When dynamic tools are enabled in both environment settings and the bridge manif
 | Variable | Default | Meaning |
 |---|---:|---|
 | `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED` | `true` | Enable agent bridge tools |
-| `LOCAL_SHELL_MCP_AGENT_CONFIG_DIR` | `/workspace/.local-shell-mcp/agent_config` | Read-only capability config directory |
+| `LOCAL_SHELL_MCP_STATE_DIR` | `/workspace/.local-shell-mcp` | Runtime state root; agent config is read from its `agent_config` child directory |
 | `LOCAL_SHELL_MCP_AGENT_MCP_PROBE_TIMEOUT_S` | `5` | Probe timeout for external MCP servers |
 | `LOCAL_SHELL_MCP_AGENT_MCP_CALL_TIMEOUT_S` | `60` | External MCP tool-call timeout |
 | `LOCAL_SHELL_MCP_AGENT_DYNAMIC_MCP_TOOLS` | `true` | Register dynamic MCP bridge tools |

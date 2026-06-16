@@ -11,8 +11,13 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from ..config.settings import Settings
-from ..models import ToolResult
-from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
+from .contracts import (
+    HttpMethod,
+    HttpToolRoute,
+    McpToolContext,
+    ToolRegistry,
+    ToolResult,
+)
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]
 ToolAnnotation = Literal["read_only"]

@@ -6,7 +6,6 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ...models import ToolResult
 from ...remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
@@ -22,7 +21,7 @@ from ...remote.transfer import (
     copy_remote_file_to_local,
     copy_remote_file_to_remote,
 )
-from ...tools.contracts import McpToolContext
+from ...tools.contracts import McpToolContext, ToolResult
 from ...tools.responses import (
     handled_error as handled_error_payload,
 )
@@ -122,7 +121,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=oauth_security_meta,
         description=_description(
-            f"""Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. Timeout: timeout_s is in seconds and should stay within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds on the worker. Output: max_output_bytes caps returned output and the worker default cap is max_output_bytes={settings.max_output_bytes}. For long-running or interactive remote processes, use start_remote_persistent_shell with send_remote_persistent_shell_input and read_remote_persistent_shell_output."""
+            f"""Run one non-interactive shell command on a remote worker. Use for build, test, package-manager, git, and inspection commands that should finish promptly on that worker. Timeout: timeout_s is in seconds and should stay within the run_shell cap of {settings.run_shell_max_timeout_s} seconds on the worker. Output: max_output_bytes caps returned output and the worker default cap is max_output_bytes={settings.max_output_bytes}. For long-running or interactive remote processes, use start_remote_persistent_shell with send_remote_persistent_shell_input and read_remote_persistent_shell_output."""
         ),
     )
     async def run_remote_shell_command(
@@ -149,7 +148,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=oauth_security_meta,
         description=_description(
-            f"""Write Python code to a temporary file and execute it on a remote worker. Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. Parameters: cwd is resolved on the remote worker and timeout_s defaults to 60 seconds. Timeout: keep timeout_s within the public run_shell cap of {settings.public_run_shell_max_timeout_s} seconds."""
+            f"""Write Python code to a temporary file and execute it on a remote worker. Use for short remote scripts, structured analysis, or file transformations that are easier in Python than shell. Parameters: cwd is resolved on the remote worker and timeout_s defaults to 60 seconds. Timeout: keep timeout_s within the run_shell cap of {settings.run_shell_max_timeout_s} seconds."""
         ),
     )
     async def run_remote_python_code(

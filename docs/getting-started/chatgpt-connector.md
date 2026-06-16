@@ -7,7 +7,7 @@
 Before adding the connector, confirm:
 
 1. The server is reachable through a public HTTPS origin.
-2. `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` exactly matches that public origin.
+2. `LOCAL_SHELL_MCP_BASE_URL` exactly matches that public origin.
 3. `LOCAL_SHELL_MCP_AUTH_MODE=oauth` is set for public access.
 4. `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` is set to a long random value.
 

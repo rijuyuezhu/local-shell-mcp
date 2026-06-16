@@ -175,7 +175,7 @@ async def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
 
 def test_reject_path_escape(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
     clear_settings_cache()
     with pytest.raises(ValueError):
         resolve_path("/etc/passwd")
@@ -185,7 +185,7 @@ def test_full_container_mode_disables_builtin_restrictions(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "true")
     clear_settings_cache()
 
     settings = get_settings()

@@ -73,7 +73,7 @@ Use local-shell-mcp remote_environment_info for machine=npu-4card.
 
 Use `remote_push_file` and `remote_pull_file` for binary-safe file movement between the control workspace and a worker. Use `remote_push_dir` and `remote_pull_dir` for directory trees. `remote_copy_file` and `remote_copy_dir` copy between two connected workers through the control server.
 
-These operations still resolve paths under the relevant workspace roots unless full-container mode changes the path policy.
+These operations still resolve paths under the relevant workspace roots unless full-control mode changes the path policy.
 
 ## Settings
 

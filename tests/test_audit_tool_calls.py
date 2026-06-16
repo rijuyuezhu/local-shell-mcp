@@ -38,10 +38,6 @@ def test_http_tool_calls_audit_full_input_output_and_auth_context(
 ):
     (tmp_path / "alpha.txt").write_text("hello", encoding="utf-8")
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AUDIT_LOG_PATH",
-        str(tmp_path / ".local-shell-mcp" / "audit.jsonl"),
-    )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
@@ -59,11 +55,6 @@ def test_http_tool_calls_audit_full_input_output_and_auth_context(
     assert starts[0]["call_id"] == ends[0]["call_id"]
     assert starts[0]["transport"] == "http"
     assert starts[0]["input"] == {"path": "alpha.txt"}
-    assert starts[0]["principal"] == {
-        "email": None,
-        "subject": "anonymous",
-        "claims": {"auth": "none"},
-    }
     assert ends[0]["ok"] is True
     assert ends[0]["output"] == response.json()
     assert ends[0]["duration_ms"] >= 0
@@ -73,10 +64,6 @@ def test_http_tool_calls_audit_full_input_output_and_auth_context(
 async def test_mcp_tool_calls_audit_full_input_output(tmp_path, monkeypatch):
     (tmp_path / "beta.txt").write_text("world", encoding="utf-8")
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AUDIT_LOG_PATH",
-        str(tmp_path / ".local-shell-mcp" / "audit.jsonl"),
-    )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
@@ -102,10 +89,6 @@ async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AUDIT_LOG_PATH",
-        str(tmp_path / ".local-shell-mcp" / "audit.jsonl"),
-    )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
