@@ -22,40 +22,36 @@ state_dir: "/workspace/.local-shell-mcp"
 auth_mode: "oauth"
 # Allow localhost requests without bearer authentication.
 auth_bypass_localhost: true
-# Require bearer auth for MCP-over-HTTP requests; OAuth/bootstrap routes remain public.
-require_auth_for_mcp_discovery: true
-# Public HTTPS origin used in OAuth metadata and callbacks.
-public_base_url: null
-# Advanced compatibility override for OAuth issuer metadata; usually derived from public_base_url.
+# Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset,
+# request-aware routes derive it from forwarded/Host headers, and non-request generated links fall
+# back to the bind host and port.
+base_url: null
+# Override URL for OAuth issuer metadata; usually derived from base_url.
 oauth_issuer: null
-# Advanced compatibility override for OAuth resource metadata; usually derived from public_base_url
-# plus /mcp.
+# Override URL for OAuth resource metadata; usually derived from base_url plus /mcp.
 oauth_resource: null
-# PIN required to approve OAuth authorization.
+# Admin PIN required to approve OAuth authorization.
 oauth_admin_pin: null
-# Advanced bearer token lifetime in seconds.
+# Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed.
 oauth_access_token_ttl_s: 3600
-# Advanced OAuth authorization-code lifetime in seconds.
+# OAuth authorization-code lifetime in seconds. The authorization must be done within this time.
 oauth_code_ttl_s: 300
 
 # Safety and resource limits.
 # Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This
 # enforces relaxed_client_tool_hints.
-allow_full_container: false
+allow_full_control: false
 # Allow network-capable operations.
 allow_network: true
-# Advertise lower-risk MCP client hints for tools so that clients can run them without confirmation.
+# Advertise lower-risk MCP client hints for tools so that clients can run them with fewer
+# confirmations.
 relaxed_client_tool_hints: false
-# Public MCP/HTTP tool timeout in seconds.
-public_tool_timeout_s: 60
-# Default timeout for public run_shell_command calls in seconds.
-public_run_shell_default_timeout_s: 10
-# Maximum timeout accepted by public run_shell_command calls in seconds.
-public_run_shell_max_timeout_s: 60
-# Internal shell command default timeout in seconds.
-internal_shell_default_timeout_s: 60
-# Internal shell command maximum timeout in seconds.
-internal_shell_max_timeout_s: 3600
+# MCP/HTTP tool watchdog timeout in seconds.
+tool_timeout_s: 60
+# Default timeout for run_shell_command calls in seconds.
+run_shell_default_timeout_s: 10
+# Maximum timeout accepted by run_shell_command calls in seconds.
+run_shell_max_timeout_s: 60
 # Command output truncation limit in bytes.
 max_output_bytes: 200000
 # Per-file read limit in bytes.
@@ -99,7 +95,7 @@ file_download_default_max_downloads: 0
 # Maximum file size allowed for download links; 0 disables this size limit.
 file_download_max_file_bytes: 0
 # Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when
-# full-container mode is enabled.
+# full-control mode is enabled.
 command_denylist:
   - "docker.sock"
   - "/var/run/docker.sock"
@@ -111,8 +107,8 @@ command_denylist:
   - "systemctl"
   - "iptables"
   - "nft"
-# Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when
-# full-container mode is enabled.
+# Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-control
+# mode is enabled.
 path_denylist:
   - ".ssh/id_rsa"
   - ".ssh/id_ed25519"

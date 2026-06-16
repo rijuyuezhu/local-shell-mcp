@@ -68,12 +68,12 @@ class SettingSpec:
 
     @property
     def cli_flag(self) -> str:
-        """Return the canonical CLI flag for this setting. For example `--public-base-url`"""
+        """Return the canonical CLI flag for this setting. For example `--base-url`"""
         return f"--{self.name.replace('_', '-')}"
 
     @property
     def unset_cli_flag(self) -> str:
-        """Return the CLI flag that explicitly unsets this setting. For example, `--unset-public-base-url`"""
+        """Return the CLI flag that explicitly unsets this setting. For example, `--unset-base-url`"""
         return f"--unset-{self.name.replace('_', '-')}"
 
     @property
@@ -140,8 +140,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("state_dir", "Paths and state", metavar="PATH"),
     SettingSpec("auth_mode", "Authentication and OAuth"),
     SettingSpec("auth_bypass_localhost", "Authentication and OAuth"),
-    SettingSpec("require_auth_for_mcp_discovery", "Authentication and OAuth"),
-    SettingSpec("public_base_url", "Authentication and OAuth", metavar="URL"),
+    SettingSpec("base_url", "Authentication and OAuth", metavar="URL"),
     SettingSpec("oauth_issuer", "Authentication and OAuth", metavar="URL"),
     SettingSpec(
         "oauth_resource",
@@ -159,29 +158,19 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Authentication and OAuth",
         metavar="SECONDS",
     ),
-    SettingSpec("allow_full_container", "Safety and resource limits"),
+    SettingSpec("allow_full_control", "Safety and resource limits"),
     SettingSpec("allow_network", "Safety and resource limits"),
     SettingSpec("relaxed_client_tool_hints", "Safety and resource limits"),
     SettingSpec(
-        "public_tool_timeout_s", "Safety and resource limits", metavar="SECONDS"
+        "tool_timeout_s", "Safety and resource limits", metavar="SECONDS"
     ),
     SettingSpec(
-        "public_run_shell_default_timeout_s",
+        "run_shell_default_timeout_s",
         "Safety and resource limits",
         metavar="SECONDS",
     ),
     SettingSpec(
-        "public_run_shell_max_timeout_s",
-        "Safety and resource limits",
-        metavar="SECONDS",
-    ),
-    SettingSpec(
-        "internal_shell_default_timeout_s",
-        "Safety and resource limits",
-        metavar="SECONDS",
-    ),
-    SettingSpec(
-        "internal_shell_max_timeout_s",
+        "run_shell_max_timeout_s",
         "Safety and resource limits",
         metavar="SECONDS",
     ),

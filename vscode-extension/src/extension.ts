@@ -12,9 +12,9 @@ interface ExtensionConfig {
   port: number;
   workspaceRoot: string;
   authMode: 'oauth' | 'none';
-  publicBaseUrl: string;
+  baseUrl: string;
   oauthAdminPin: string;
-  allowFullContainer: boolean;
+  allowFullControl: boolean;
   extraEnv: Record<string, unknown>;
 }
 
@@ -42,9 +42,9 @@ function getConfig(): ExtensionConfig {
     port: cfg.get<number>('port', 8765),
     workspaceRoot,
     authMode,
-    publicBaseUrl: normalizeBaseUrl(cfg.get<string>('publicBaseUrl', '')),
+    baseUrl: normalizeBaseUrl(cfg.get<string>('baseUrl', '')),
     oauthAdminPin: cfg.get<string>('oauthAdminPin', ''),
-    allowFullContainer: cfg.get<boolean>('allowFullContainer', false),
+    allowFullControl: cfg.get<boolean>('allowFullControl', false),
     extraEnv: cfg.get<Record<string, unknown>>('extraEnv', {}) ?? {},
   };
 }
@@ -58,7 +58,7 @@ function localBaseUrl(config: ExtensionConfig): string {
 }
 
 function mcpBaseUrl(config: ExtensionConfig): string {
-  return config.publicBaseUrl || localBaseUrl(config);
+  return config.baseUrl || localBaseUrl(config);
 }
 
 function mcpUrl(config: ExtensionConfig): string {
@@ -88,11 +88,11 @@ async function buildEnvironment(
     LOCAL_SHELL_MCP_MODE: 'mcp',
     LOCAL_SHELL_MCP_WORKSPACE_ROOT: config.workspaceRoot,
     LOCAL_SHELL_MCP_AUTH_MODE: config.authMode,
-    LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER: config.allowFullContainer ? 'true' : 'false',
+    LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL: config.allowFullControl ? 'true' : 'false',
   };
 
-  if (config.publicBaseUrl) {
-    env.LOCAL_SHELL_MCP_PUBLIC_BASE_URL = config.publicBaseUrl;
+  if (config.baseUrl) {
+    env.LOCAL_SHELL_MCP_BASE_URL = config.baseUrl;
   }
   if (config.oauthAdminPin) {
     env.LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN = config.oauthAdminPin;

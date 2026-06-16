@@ -111,7 +111,7 @@ async def run_worker(
     """Register with a server, poll for jobs, execute tools locally, and submit results until stopped."""
     workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
     os.environ.setdefault("LOCAL_SHELL_MCP_WORKSPACE_ROOT", workdir)
-    os.environ.setdefault("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
+    os.environ.setdefault("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "true")
     from ..config.settings import clear_settings_cache
 
     clear_settings_cache()

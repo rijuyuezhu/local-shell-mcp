@@ -69,22 +69,22 @@ def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
 
     assert settings.command_denylist == defaults.command_denylist
     assert settings.path_denylist == defaults.path_denylist
-    assert settings.allow_full_container == defaults.allow_full_container
+    assert settings.allow_full_control == defaults.allow_full_control
 
 
 def test_setting_spec_properties_cover_current_setting_shapes():
     assert SPECS_BY_NAME["port"].argparse_type is int
-    assert SPECS_BY_NAME["public_tool_timeout_s"].argparse_type is float
+    assert SPECS_BY_NAME["tool_timeout_s"].argparse_type is float
     assert SPECS_BY_NAME["host"].argparse_type is str
-    assert SPECS_BY_NAME["public_base_url"].argparse_type is str
+    assert SPECS_BY_NAME["base_url"].argparse_type is str
 
     assert SPECS_BY_NAME["mode"].choices == ("mcp", "http", "both", "stdio")
     assert SPECS_BY_NAME["allow_network"].choices == ("true", "false")
     assert SPECS_BY_NAME["host"].choices is None
 
     assert SPECS_BY_NAME["allow_network"].is_bool
-    assert not SPECS_BY_NAME["public_base_url"].is_bool
-    assert SPECS_BY_NAME["public_base_url"].is_nullable
+    assert not SPECS_BY_NAME["base_url"].is_bool
+    assert SPECS_BY_NAME["base_url"].is_nullable
     assert not SPECS_BY_NAME["command_denylist"].is_nullable
 
 

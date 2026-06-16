@@ -10,7 +10,7 @@
 - Do not mount host root.
 - Do not mount unrestricted SSH keys or all of `~/.ssh`.
 - Use single-repository deploy keys or short-lived GitHub App installation tokens.
-- Leave `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=false` by default.
+- Leave `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false` by default.
 - Review audit logs after each session, then rotate or discard them with the rest of the short-lived state.
 
 Cloudflare Tunnel is a convenient public transport. Cloudflare Access is optional and is not the built-in authentication layer.
@@ -45,7 +45,7 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 
 ### Operational requirements
 
-- Serve public deployments over HTTPS and set `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` to the externally visible origin. This keeps metadata, issuer, resource, redirect, and transport allowlist calculations stable behind a tunnel or reverse proxy.
+- Serve public deployments over HTTPS and set `LOCAL_SHELL_MCP_BASE_URL` to the externally visible origin. This keeps metadata, issuer, resource, redirect, and transport allowlist calculations stable behind a tunnel or reverse proxy.
 - Set `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` before exposing the server beyond localhost. Treat the PIN as an approval secret, not as a user account password.
 - Keep `LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST=false` for shared hosts or any environment where local processes are not fully trusted.
 - Keep the state directory private. It contains the JWT signing secret and may coexist with audit logs that include sensitive request context.
@@ -60,9 +60,9 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 - Bearer tokens are not proof-of-possession tokens. Anyone who obtains a valid token can use it until expiry.
 - Metadata is unsigned. Clients should use HTTPS and validate the metadata resource value and issuer before trusting it.
 
-## Full-container mode
+## Full-control mode
 
-`LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true` is an explicit full-control mode. It disables built-in command and path denylists and adds auto-approval hints for command-capable tools.
+`LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` is an explicit full-control mode. It disables built-in command and path denylists and adds auto-approval hints for command-capable tools.
 
 In the Docker image, the server still normally runs as the `agent` user after entrypoint setup; that user has passwordless `sudo` for commands that intentionally need root. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
 
@@ -72,7 +72,7 @@ In the Docker image, the server still normally runs as the `agent` user after en
 
 Operational guidance:
 
-- Set `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` for public deployments so generated links use the externally reachable HTTPS origin.
+- Set `LOCAL_SHELL_MCP_BASE_URL` for public deployments so generated links use the externally reachable HTTPS origin.
 - Use short TTLs for sensitive artifacts and prefer `max_downloads=1` for one-time handoff.
 - Set `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES` if large artifact downloads could exhaust bandwidth or storage-backed response capacity.
 - Disable the feature with `LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED=false` when public artifact URLs are not needed.

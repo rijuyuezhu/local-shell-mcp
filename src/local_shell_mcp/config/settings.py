@@ -59,38 +59,32 @@ class Settings(BaseSettings):
     """Authentication mode. Do not expose public services with none."""
     auth_bypass_localhost: bool = True
     """Allow localhost requests without bearer authentication."""
-    require_auth_for_mcp_discovery: bool = True
-    """Require bearer auth for MCP-over-HTTP requests; OAuth/bootstrap routes remain public."""
-    public_base_url: str | None = None
-    """Public HTTPS origin used in OAuth metadata and callbacks."""
+    base_url: str | None = None
+    """Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, request-aware routes derive it from forwarded/Host headers, and non-request generated links fall back to the bind host and port."""
     oauth_issuer: str | None = None
-    """Advanced compatibility override for OAuth issuer metadata; usually derived from public_base_url."""
+    """Override URL for OAuth issuer metadata; usually derived from base_url."""
     oauth_resource: str | None = None
-    """Advanced compatibility override for OAuth resource metadata; usually derived from public_base_url plus /mcp."""
+    """Override URL for OAuth resource metadata; usually derived from base_url plus /mcp."""
     oauth_admin_pin: str | None = None
-    """PIN required to approve OAuth authorization."""
+    """Admin PIN required to approve OAuth authorization."""
     oauth_access_token_ttl_s: int = 3600
-    """Advanced bearer token lifetime in seconds."""
+    """Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed."""
     oauth_code_ttl_s: int = 300
-    """Advanced OAuth authorization-code lifetime in seconds."""
+    """OAuth authorization-code lifetime in seconds. The authorization must be done within this time."""
 
     # Safety and resource limits.
-    allow_full_container: bool = False
+    allow_full_control: bool = False
     """Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints."""
     allow_network: bool = True
     """Allow network-capable operations."""
     relaxed_client_tool_hints: bool = False
-    """Advertise lower-risk MCP client hints for tools so that clients can run them without confirmation."""
-    public_tool_timeout_s: float = 60
-    """Public MCP/HTTP tool timeout in seconds."""
-    public_run_shell_default_timeout_s: int = 10
-    """Default timeout for public run_shell_command calls in seconds."""
-    public_run_shell_max_timeout_s: int = 60
-    """Maximum timeout accepted by public run_shell_command calls in seconds."""
-    internal_shell_default_timeout_s: int = 60
-    """Internal shell command default timeout in seconds."""
-    internal_shell_max_timeout_s: int = 3600
-    """Internal shell command maximum timeout in seconds."""
+    """Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations."""
+    tool_timeout_s: float = 60
+    """MCP/HTTP tool watchdog timeout in seconds."""
+    run_shell_default_timeout_s: int = 10
+    """Default timeout for run_shell_command calls in seconds."""
+    run_shell_max_timeout_s: int = 60
+    """Maximum timeout accepted by run_shell_command calls in seconds."""
     max_output_bytes: int = 200_000
     """Command output truncation limit in bytes."""
     max_file_read_bytes: int = 512_000
@@ -147,7 +141,7 @@ class Settings(BaseSettings):
             "nft",
         ]
     )
-    """Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled."""
+    """Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled."""
     path_denylist: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             ".ssh/id_rsa",
@@ -158,7 +152,7 @@ class Settings(BaseSettings):
             ".git/config",
         ]
     )
-    """Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-container mode is enabled."""
+    """Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled."""
 
     # Remote workers.
     remote_enabled: bool = True
@@ -221,8 +215,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def disable_builtin_restrictions_in_full_container_mode(self) -> Settings:
-        """Remove built-in command and path restrictions when full-container mode is explicitly enabled."""
-        if self.allow_full_container:
+        """Remove built-in command and path restrictions when full-control mode is explicitly enabled."""
+        if self.allow_full_control:
             self.command_denylist = []
             self.path_denylist = []
         return self

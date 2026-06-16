@@ -76,7 +76,7 @@ def test_oauth_challenge_metadata_url_matches_rfc9728_path_resource():
             mode="mcp",
             auth_mode="oauth",
             remote_enabled=False,
-            public_base_url="https://local-shell-mcp.example.com",
+            base_url="https://local-shell-mcp.example.com",
         )
     )
 

@@ -53,14 +53,14 @@ def server_env(
             "LOCAL_SHELL_MCP_AUTH_MODE": "none",
             "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
             "LOCAL_SHELL_MCP_REMOTE_ENABLED": "false",
-            "LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
-            "LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_MAX_TIMEOUT_S": "10",
-            "LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S": "15",
+            "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
+            "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
+            "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S": "15",
         }
     )
     if port is not None:
         env["LOCAL_SHELL_MCP_PORT"] = str(port)
-        env["LOCAL_SHELL_MCP_PUBLIC_BASE_URL"] = f"http://127.0.0.1:{port}"
+        env["LOCAL_SHELL_MCP_BASE_URL"] = f"http://127.0.0.1:{port}"
     return env
 
 

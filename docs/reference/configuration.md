@@ -30,9 +30,9 @@ Docker image startup knobs use `DOCKER_*` variables because they are consumed by
 | Workspace root | `--workspace-root` | `LOCAL_SHELL_MCP_WORKSPACE_ROOT` | `/workspace` |
 | State directory | `--state-dir` | `LOCAL_SHELL_MCP_STATE_DIR` | `/workspace/.local-shell-mcp` |
 | Auth mode | `--auth-mode` | `LOCAL_SHELL_MCP_AUTH_MODE` | `oauth` |
-| Public OAuth origin | `--public-base-url` | `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` | unset |
+| Base URL | `--base-url` | `LOCAL_SHELL_MCP_BASE_URL` | unset |
 | OAuth approval PIN | `--oauth-admin-pin` | `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` | unset |
-| Full-container mode | `--allow-full-container true/false` | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER` | `false` |
+| Full-control mode | `--allow-full-control true/false` | `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL` | `false` |
 | Remote worker routes | `--remote-enabled true/false` | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` |
 | MCP request auth | `--require-auth-for-mcp-discovery true/false` | `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY` | `true` |
 | OAuth token TTL | advanced flag omitted from examples | `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S` | `3600` |
@@ -43,9 +43,9 @@ Important limits include:
 
 | Environment | Meaning | Default |
 |---|---|---:|
-| `LOCAL_SHELL_MCP_PUBLIC_TOOL_TIMEOUT_S` | Public MCP/HTTP tool watchdog timeout | `60` |
-| `LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S` | Default public shell timeout | `10` |
-| `LOCAL_SHELL_MCP_PUBLIC_RUN_SHELL_MAX_TIMEOUT_S` | Maximum public shell timeout | `60` |
+| `LOCAL_SHELL_MCP_TOOL_TIMEOUT_S` | MCP/HTTP tool watchdog timeout | `60` |
+| `LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S` | Default run_shell_command timeout | `10` |
+| `LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S` | Maximum run_shell_command timeout | `60` |
 | `LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES` | Command output truncation limit | `200000` |
 | `LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES` | Per-file read limit | `512000` |
 | `LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES` | Per-file write/edit limit | `5000000` |
@@ -64,7 +64,7 @@ Important limits include:
 | `LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS` | Default download-count limit; `0` means unlimited until expiry | `0` |
 | `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES` | Maximum linked file size; `0` disables this size limit | `0` |
 
-Set `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` for public deployments so generated URLs use the externally reachable HTTPS origin instead of the bind host.
+Set `LOCAL_SHELL_MCP_BASE_URL` for public deployments so generated URLs use the externally reachable HTTPS origin instead of the bind host.
 
 ## Denylists
 
@@ -75,7 +75,7 @@ LOCAL_SHELL_MCP_COMMAND_DENYLIST=docker.sock,/var/run/docker.sock,mkfs,mount,umo
 LOCAL_SHELL_MCP_PATH_DENYLIST=.ssh/id_rsa,.ssh/id_ed25519,.env,secrets,credentials,.git/config
 ```
 
-`LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=true` clears built-in command and path restrictions. Use it only in disposable containers or VMs.
+`LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` clears built-in command and path restrictions. Use it only in disposable containers or VMs.
 
 ## Complete examples
 

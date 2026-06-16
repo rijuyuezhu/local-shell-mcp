@@ -17,6 +17,8 @@ from .shell_models import CommandResult
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2
 READER_DRAIN_TIMEOUT_S = 2
+INTERNAL_SHELL_DEFAULT_TIMEOUT_S = 60
+INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
 _COMMAND_SEMAPHORE_SIZE: int | None = None
 
@@ -58,18 +60,33 @@ def check_command_policy(command: str) -> None:
             )
 
 
+def _effective_shell_default_timeout_s() -> int:
+    """Return the effective internal shell default timeout."""
+    return max(
+        1,
+        INTERNAL_SHELL_DEFAULT_TIMEOUT_S,
+        get_settings().run_shell_default_timeout_s,
+    )
+
+
+def _effective_shell_max_timeout_s() -> int:
+    """Return the effective internal shell timeout cap."""
+    return max(
+        1, INTERNAL_SHELL_MAX_TIMEOUT_S, get_settings().run_shell_max_timeout_s
+    )
+
+
 def clamp_timeout(timeout_s: int | None) -> int:
-    """Clamp requested command timeouts to configured server bounds."""
-    settings = get_settings()
-    timeout = timeout_s or settings.internal_shell_default_timeout_s
-    return max(1, min(timeout, settings.internal_shell_max_timeout_s))
+    """Clamp requested internal command timeouts to the effective server bounds."""
+    timeout = timeout_s or _effective_shell_default_timeout_s()
+    return max(1, min(timeout, _effective_shell_max_timeout_s()))
 
 
 def run_shell_command_timeout(timeout_s: int | None) -> int:
-    """Resolve public run_shell_command timeout from explicit public settings."""
+    """Resolve run_shell_command timeout from configured defaults and caps."""
     settings = get_settings()
-    default = max(1, settings.public_run_shell_default_timeout_s)
-    cap = max(1, settings.public_run_shell_max_timeout_s)
+    default = max(1, settings.run_shell_default_timeout_s)
+    cap = max(1, settings.run_shell_max_timeout_s)
     if timeout_s is not None and timeout_s > cap:
         raise ValueError(
             f"timeout_s must be <= {cap} seconds for run_shell_command; "
@@ -78,9 +95,9 @@ def run_shell_command_timeout(timeout_s: int | None) -> int:
     return max(1, min(timeout_s or default, cap))
 
 
-def public_tool_timeout_s() -> float:
-    """Return the public MCP/HTTP tool watchdog timeout in seconds."""
-    return max(0.001, get_settings().public_tool_timeout_s)
+def tool_timeout_s() -> float:
+    """Return the MCP/HTTP tool watchdog timeout in seconds."""
+    return max(0.001, get_settings().tool_timeout_s)
 
 
 def clamp_output(

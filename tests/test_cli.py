@@ -23,11 +23,11 @@ def test_server_options_parse_to_default_handler():
             "/tmp/work",
             "--auth-mode",
             "none",
-            "--public-base-url",
+            "--base-url",
             "https://example.com",
             "--oauth-admin-pin",
             "pin",
-            "--allow-full-container",
+            "--allow-full-control",
             "true",
             "--remote-enabled",
             "false",
@@ -41,9 +41,9 @@ def test_server_options_parse_to_default_handler():
     assert args.port == 9999
     assert args.workspace_root == "/tmp/work"
     assert args.auth_mode == "none"
-    assert args.public_base_url == "https://example.com"
+    assert args.base_url == "https://example.com"
     assert args.oauth_admin_pin == "pin"
-    assert args.allow_full_container is True
+    assert args.allow_full_control is True
     assert args.remote_enabled is False
 
 
@@ -74,13 +74,13 @@ def test_every_setting_has_cli_option():
 
 def test_nullable_cli_values_can_be_explicitly_unset():
     args = cli._build_parser().parse_args(
-        ["--unset-public-base-url", "--unset-oauth-admin-pin"]
+        ["--unset-base-url", "--unset-oauth-admin-pin"]
     )
 
-    assert args.public_base_url is None
+    assert args.base_url is None
     assert args.oauth_admin_pin is None
     assert cli_overrides_from_args(args) == {
-        "public_base_url": None,
+        "base_url": None,
         "oauth_admin_pin": None,
     }
 
@@ -91,9 +91,9 @@ def test_nullable_cli_value_and_unset_flag_are_mutually_exclusive():
     with pytest.raises(SystemExit):
         parser.parse_args(
             [
-                "--public-base-url",
+                "--base-url",
                 "https://example.com",
-                "--unset-public-base-url",
+                "--unset-base-url",
             ]
         )
 
@@ -102,15 +102,11 @@ def test_bool_cli_values_parse_explicitly():
     parser = cli._build_parser()
 
     assert (
-        parser.parse_args(
-            ["--allow-full-container", "true"]
-        ).allow_full_container
+        parser.parse_args(["--allow-full-control", "true"]).allow_full_control
         is True
     )
     assert (
-        parser.parse_args(
-            ["--allow-full-container", "false"]
-        ).allow_full_container
+        parser.parse_args(["--allow-full-control", "false"]).allow_full_control
         is False
     )
     assert (

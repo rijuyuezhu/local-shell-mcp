@@ -62,11 +62,11 @@ def write_download_store_locked(store: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
-def public_base_url() -> str:
+def base_url() -> str:
     """Return the externally usable base URL for generated download links."""
     settings = get_settings()
-    if settings.public_base_url:
-        return settings.public_base_url.rstrip("/")
+    if settings.base_url:
+        return settings.base_url.rstrip("/")
     host = settings.host
     if host in {"", "0.0.0.0", "::"}:
         host = "127.0.0.1"
@@ -110,7 +110,7 @@ def download_link_summary(token: str, link: dict[str, Any]) -> dict[str, Any]:
     """Return the public summary for a stored download link."""
     return {
         "token": token,
-        "url": f"{public_base_url()}{DOWNLOAD_PREFIX}/{token}",
+        "url": f"{base_url()}{DOWNLOAD_PREFIX}/{token}",
         "path": link.get("display_path"),
         "filename": link.get("filename"),
         "bytes": link.get("bytes"),

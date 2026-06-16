@@ -10,7 +10,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from ...oauth.middleware import Principal, verify_request
-from ...ops.command_ops import public_tool_timeout_s
+from ...ops.command_ops import tool_timeout_s
 from ...tools.discovery import discover_tool_registries
 from ...tools.local_invocations import call_local_tool
 
@@ -26,7 +26,7 @@ PRINCIPAL_DEP = Depends(principal_dep)
 
 
 def install_tools_timeout_middleware(app: FastAPI) -> None:
-    """Install the public timeout middleware for REST tool routes."""
+    """Install the tool timeout middleware for REST tool routes."""
 
     @app.middleware("http")
     async def tools_timeout_middleware(
@@ -36,7 +36,7 @@ def install_tools_timeout_middleware(app: FastAPI) -> None:
             return await call_next(request)
         try:
             return await asyncio.wait_for(
-                call_next(request), timeout=public_tool_timeout_s()
+                call_next(request), timeout=tool_timeout_s()
             )
         except TimeoutError:
             return JSONResponse(
@@ -44,7 +44,7 @@ def install_tools_timeout_middleware(app: FastAPI) -> None:
                 content={
                     "ok": False,
                     "error": "tool_timeout",
-                    "message": f"{request.url.path} exceeded {public_tool_timeout_s()} second public tool timeout",
+                    "message": f"{request.url.path} exceeded {tool_timeout_s()} second tool timeout",
                 },
             )
 

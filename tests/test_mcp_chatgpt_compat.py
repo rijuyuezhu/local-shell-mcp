@@ -28,7 +28,7 @@ from tests.helpers import mcp_structured
 def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://local-shell-mcp.example.com"
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
     )
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
     clear_settings_cache()
@@ -40,7 +40,7 @@ def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
 async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://local-shell-mcp.example.com"
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
     )
     clear_settings_cache()
 
@@ -100,13 +100,9 @@ async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
     assert "max_grep_results=678" in grep_description
 
 
-def test_transport_security_uses_exact_public_base_url_host(
-    tmp_path, monkeypatch
-):
+def test_transport_security_uses_exact_base_url_host(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://example.com:8443"
-    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://example.com:8443")
     clear_settings_cache()
 
     transport_security = _transport_security_settings()
@@ -122,9 +118,7 @@ def test_transport_security_handles_default_ports_and_ipv6(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://[2001:db8::1]:443"
-    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://[2001:db8::1]:443")
     clear_settings_cache()
 
     transport_security = _transport_security_settings()
@@ -141,7 +135,7 @@ async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "true")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "true")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -215,7 +209,7 @@ async def test_relaxed_client_tool_hints_marks_command_tools_without_full_contai
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
     monkeypatch.setenv("LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS", "true")
     clear_settings_cache()
 
@@ -246,7 +240,7 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -257,7 +251,7 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
 def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://local-shell-mcp.example.com"
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
@@ -355,7 +349,7 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
 
 def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.delenv("LOCAL_SHELL_MCP_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("LOCAL_SHELL_MCP_BASE_URL", raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
     clear_settings_cache()

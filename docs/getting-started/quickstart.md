@@ -21,10 +21,10 @@ cp .env.example .env
 Edit `.env` and set at least:
 
 ```env
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
-LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER=false
+LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 ```
 
 The bearer-token signing secret is generated automatically and persisted under the configured state directory.

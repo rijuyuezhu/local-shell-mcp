@@ -47,7 +47,7 @@ LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project uv run local-shell-mcp --mode mc
 Boolean CLI values are explicit:
 
 ```bash
-local-shell-mcp --allow-full-container false
+local-shell-mcp --allow-full-control false
 local-shell-mcp --remote-enabled true
 ```
 

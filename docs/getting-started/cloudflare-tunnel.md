@@ -14,7 +14,7 @@ Put the tunnel token in `.env`:
 
 ```env
 CLOUDFLARE_TUNNEL_TOKEN=...
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 ```
 
 Start both services:
@@ -38,7 +38,7 @@ For a non-Docker source checkout, `scripts/run-with-cloudflare-tunnel.sh` starts
 Set the required values in `.env`:
 
 ```env
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 CLOUDFLARE_TUNNEL_TOKEN=...
 ```
 
