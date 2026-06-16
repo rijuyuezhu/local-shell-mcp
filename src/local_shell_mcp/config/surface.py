@@ -1,4 +1,4 @@
-"""Central registry for runtime configuration surfaces.
+"""Central registry for configuration surfaces.
 
 Settings field docstrings are the source of truth for application setting help
 text; this registry controls grouping, CLI flags, and generated example
@@ -29,18 +29,27 @@ CLI_UNSET = object()
 
 @dataclass(frozen=True)
 class SettingSpec:
-    """Metadata for one application setting covered by env, YAML, and CLI."""
+    """Specification for one setting of the server."""
 
     name: str
     """Settings attribute name on the Settings model."""
     section: SectionName
-    """Documentation and config-file section where this setting is grouped."""
+    """CLI group and config-file section where this setting is in."""
     help_override: str | None = None
     """Optional explicit help text; Settings field descriptions are used by default."""
     metavar: str | None = None
-    """Optional placeholder shown for CLI arguments that take values."""
+    """Optional placeholder shown for CLI arguments."""
     example_default: Any | None = None
     """Optional value used when rendering example configuration files."""
+
+    def __post_init__(self) -> None:
+        """Run validation checks on the setting specification."""
+        if not self.name.isidentifier():
+            raise ValueError(f"Invalid setting name: {self.name}")
+        if self.name not in Settings.model_fields:
+            raise ValueError(
+                f"Setting name not found in Settings model: {self.name}"
+            )
 
     @property
     def help(self) -> str:
@@ -54,18 +63,73 @@ class SettingSpec:
 
     @property
     def env_var(self) -> str:
-        """Return the LOCAL_SHELL_MCP_* variable for this setting."""
+        """Return the LOCAL_SHELL_MCP_* environment variable name for this setting."""
         return f"{ENV_PREFIX}{self.name.upper()}"
 
     @property
     def cli_flag(self) -> str:
-        """Return the canonical CLI flag for this setting."""
+        """Return the canonical CLI flag for this setting. For example `--public-base-url`"""
         return f"--{self.name.replace('_', '-')}"
 
     @property
     def unset_cli_flag(self) -> str:
-        """Return the CLI flag that explicitly unsets this setting."""
+        """Return the CLI flag that explicitly unsets this setting. For example, `--unset-public-base-url`"""
         return f"--unset-{self.name.replace('_', '-')}"
+
+    @property
+    def default(self) -> Any:
+        """Return the example/default value used by generated config surfaces."""
+        if self.example_default is not None:
+            return self.example_default
+        field = Settings.model_fields[self.name]
+        return field.get_default(call_default_factory=True)
+
+    @property
+    def annotation(self) -> Any:
+        """Return this setting's annotation after unwrapping Annotated."""
+        annotation = Settings.model_fields[self.name].annotation
+        if get_origin(annotation) is Annotated:
+            return get_args(annotation)[0]
+        return annotation
+
+    @property
+    def is_nullable(self) -> bool:
+        """Return whether this setting accepts None as a concrete value."""
+        return type(None) in get_args(self.annotation)
+
+    @property
+    def non_none_annotation(self) -> Any:
+        """Return this setting's annotation with an optional None member removed."""
+        if not self.is_nullable:
+            return self.annotation
+        args = get_args(self.annotation)
+        non_none_args = tuple(arg for arg in args if arg is not type(None))
+        if len(non_none_args) == 1:
+            return non_none_args[0]
+        return self.annotation
+
+    @property
+    def argparse_type(self) -> type[int] | type[float] | type[str]:
+        """Return an argparse type callable for this setting."""
+        annotation = self.non_none_annotation
+        if annotation in (int, float):
+            return annotation
+        return str
+
+    @property
+    def choices(self) -> tuple[str, ...] | None:
+        """Return accepted string choices for this setting, when finite."""
+        annotation = self.non_none_annotation
+        if get_origin(annotation) is Literal:
+            return tuple(str(item) for item in get_args(annotation))
+        if self.is_bool:
+            return ("true", "false")
+        return None
+
+    @property
+    def is_bool(self) -> bool:
+        """Return whether this setting is boolean."""
+        return self.non_none_annotation is bool
 
 
 SETTING_SPECS: tuple[SettingSpec, ...] = (
@@ -75,7 +139,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("workspace_root", "Paths and state", metavar="PATH"),
     SettingSpec("state_dir", "Paths and state", metavar="PATH"),
     SettingSpec("audit_log_path", "Paths and state", metavar="PATH"),
-    SettingSpec("auth_mode", "Authentication and OAuth", metavar="MODE"),
+    SettingSpec("auth_mode", "Authentication and OAuth"),
     SettingSpec("auth_bypass_localhost", "Authentication and OAuth"),
     SettingSpec("require_auth_for_mcp_discovery", "Authentication and OAuth"),
     SettingSpec("public_base_url", "Authentication and OAuth", metavar="URL"),
@@ -223,7 +287,7 @@ def _group_setting_specs_by_section() -> SpecBySection:
     }
     for spec in SETTING_SPECS:
         specs_by_section[spec.section].append(spec)
-    return [(section, specs_by_section[section]) for section in SECTION_ORDER]
+    return list(specs_by_section.items())
 
 
 SETTING_SPECS_BY_SECTION: SpecBySection = _group_setting_specs_by_section()
@@ -233,7 +297,7 @@ SPECS_BY_NAME: dict[str, SettingSpec] = {
 
 
 def validate_setting_specs() -> None:
-    """Ensure every Settings field has exactly one registry entry."""
+    """Ensure every Settings field has exactly one registry entry, and vice versa."""
     fields = set(Settings.model_fields)
     specs = set(SPECS_BY_NAME)
     missing = sorted(fields - specs)
@@ -242,14 +306,6 @@ def validate_setting_specs() -> None:
         raise RuntimeError(
             f"Setting spec mismatch: missing={missing}, extra={extra}"
         )
-
-
-def default_value(name: str) -> Any:
-    """Return the concrete default for a Settings field."""
-    if (spec := SPECS_BY_NAME.get(name)) and spec.example_default is not None:
-        return spec.example_default
-    field = Settings.model_fields[name]
-    return field.get_default(call_default_factory=True)
 
 
 def default_to_string(value: Any) -> str:
@@ -273,57 +329,9 @@ def yaml_default(value: Any) -> Any:
     return value
 
 
-def _setting_annotation(name: str) -> Any:
-    """Return a Settings field annotation after unwrapping Annotated."""
-    annotation = Settings.model_fields[name].annotation
-    if get_origin(annotation) is Annotated:
-        return get_args(annotation)[0]
-    return annotation
-
-
-def _non_none_annotation(name: str) -> Any:
-    """Return a Settings field annotation with an optional None member removed."""
-    annotation = _setting_annotation(name)
-    args = get_args(annotation)
-    if type(None) not in args:
-        return annotation
-    non_none_args = tuple(arg for arg in args if arg is not type(None))
-    if len(non_none_args) == 1:
-        return non_none_args[0]
-    return annotation
-
-
-def argparse_type_for(name: str) -> type[int] | type[float] | type[str]:
-    """Return an argparse type callable for a Settings field."""
-    annotation = _non_none_annotation(name)
-    if annotation is int:
-        return int
-    if annotation is float:
-        return float
-    return str
-
-
-def argparse_choices_for(name: str) -> tuple[str, ...] | None:
-    """Return argparse choices for Literal settings."""
-    annotation = _non_none_annotation(name)
-    if get_origin(annotation) is Literal:
-        return tuple(str(item) for item in get_args(annotation))
-    elif is_bool_setting(name):
-        return ("true", "false")
-    return None
-
-
-def is_bool_setting(name: str) -> bool:
-    """Return whether a Settings field is boolean."""
-    return _non_none_annotation(name) is bool
-
-
-def is_nullable_setting(name: str) -> bool:
-    """Return whether a Settings field accepts None as a concrete value."""
-    return type(None) in get_args(_setting_annotation(name))
-
-
 class BoolChoiceAction(argparse.Action):
+    """Action for parsing boolean choice arguments."""
+
     def __call__(
         self,
         parser: argparse.ArgumentParser,
@@ -345,24 +353,24 @@ def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
             kwargs: dict[str, Any] = {
                 "dest": spec.name,
                 "default": CLI_UNSET,
-                "help": f"{spec.help} Overrides {spec.env_var} and config files. Default: {default_to_string(default_value(spec.name)) or 'unset'}.",
+                "help": f"{spec.help} Overrides {spec.env_var} and config files. Default: {default_to_string(spec.default) or 'unset'}.",
             }
             if spec.metavar:
                 kwargs["metavar"] = spec.metavar
-            choices = argparse_choices_for(spec.name)
+            choices = spec.choices
             if choices:
                 kwargs["choices"] = choices
 
-            if (argparse_type := argparse_type_for(spec.name)) in (int, float):
+            if (argparse_type := spec.argparse_type) in (int, float):
                 kwargs["type"] = argparse_type
-            elif is_bool_setting(spec.name):
+            elif spec.is_bool:
                 kwargs["action"] = BoolChoiceAction
 
             target = group
-            if is_nullable_setting(spec.name):
+            if spec.is_nullable:
                 target = group.add_mutually_exclusive_group()
             target.add_argument(spec.cli_flag, **kwargs)
-            if is_nullable_setting(spec.name):
+            if spec.is_nullable:
                 target.add_argument(
                     spec.unset_cli_flag,
                     action="store_const",
@@ -377,7 +385,7 @@ def register_setting_cli_args(parser: argparse.ArgumentParser) -> None:
 
 
 def cli_overrides_from_args(args: argparse.Namespace) -> dict[str, object]:
-    """Collect explicit CLI server options as Settings field overrides."""
+    """Let given explicit CLI server options override Settings field."""
     validate_setting_specs()
     return {
         spec.name: value

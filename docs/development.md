@@ -62,7 +62,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 |---|---|
 | `src/local_shell_mcp/main.py` | CLI parsing and mode dispatch. |
 | `src/local_shell_mcp/server/` | Server app assembly for REST HTTP, MCP HTTP/stdio, shared public ASGI routes, MCP metadata, instructions, remote MCP registration, and tool watchdogs. |
-| `src/local_shell_mcp/tools/contracts.py` | Shared tool registry contracts, context, HTTP route metadata, and local handler types. |
+| `src/local_shell_mcp/tools/contracts.py` | Shared tool registry contracts, context, response schema types, HTTP route metadata, and local handler types. |
 | `src/local_shell_mcp/tools/declarative.py` | Declarative tool registration that derives MCP registration and HTTP handlers from one typed function. |
 | `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries. |
 | `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper and routed REST auditing. |
@@ -72,7 +72,8 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, todo, and shared operation helpers. |
 | `src/local_shell_mcp/remote/` | Remote invite management, shared worker tool specs and services, worker routes, bundle assembly, and worker CLI helpers. |
 | `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge, including shared service helpers used by MCP and REST adapters. |
-| `src/local_shell_mcp/responses.py` | Shared response envelope builders for tool and remote endpoint responses. |
+| `src/local_shell_mcp/tools/responses.py` | Tool response envelope builders and handled-error conversion. |
+| `src/local_shell_mcp/remote/responses.py` | Remote worker endpoint response envelope builders. |
 | `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
 | `tests/` | Unit, compatibility, and e2e tests. |
 | `scripts/` | Generated-config, tool export, entrypoint, tunnel, and release helper scripts. |
@@ -89,7 +90,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 - Routed tool calls are audited centrally. Avoid per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured.
 - OAuth HTTP mode is split by responsibility: models/state, URL helpers, metadata endpoints, response serialization, dynamic client registration, authorization form/code flow, token/JWT validation, and ASGI route wrapping. Import from the focused `oauth.*` modules rather than a compatibility facade.
-- Tool and remote endpoint responses should use shared envelope builders from `local_shell_mcp.responses`, with tool-specific handling layered in `tools.responses`.
+- Tool response envelopes should use `tools.responses`; remote worker HTTP endpoint envelopes should use `remote.responses`.
 - File tools avoid reading full binary files by default and enforce configured read/write limits.
 - Operation modules that need managed temporary text files should use `ops.temp_file_ops` so temp pruning, size checks, and filename generation stay consistent.
 - Remote workers run matching operation categories on the worker machine and return results through the control server.

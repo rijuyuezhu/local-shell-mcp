@@ -3,6 +3,7 @@
 
 # Server.
 # Server transport mode.
+# Choices: mcp, http, both, stdio.
 mode: "mcp"
 # Bind host for HTTP/MCP transports.
 host: "0.0.0.0"
@@ -18,7 +19,8 @@ state_dir: "/workspace/.local-shell-mcp"
 audit_log_path: "/workspace/.local-shell-mcp/audit.jsonl"
 
 # Authentication and OAuth.
-# Authentication mode: oauth or none. Do not expose public services with none.
+# Authentication mode. Do not expose public services with none.
+# Choices: none, oauth.
 auth_mode: "oauth"
 # Allow localhost requests without bearer authentication.
 auth_bypass_localhost: true

@@ -156,7 +156,7 @@ class Settings(BaseSettings):
 
     # Authentication. OAuth is the default for ChatGPT custom connectors.
     auth_mode: Literal["none", "oauth"] = "oauth"
-    """Authentication mode: oauth or none. Do not expose public services with none."""
+    """Authentication mode. Do not expose public services with none."""
     auth_bypass_localhost: bool = True
     """Allow localhost requests without bearer authentication."""
     # MCP-over-HTTP requests are protected by default; only OAuth/bootstrap

@@ -7,10 +7,8 @@ import local_shell_mcp.config.surface as surface
 from local_shell_mcp.config.settings import Settings, load_settings
 from local_shell_mcp.config.surface import (
     SETTING_SPECS,
-    argparse_choices_for,
-    argparse_type_for,
-    is_bool_setting,
-    is_nullable_setting,
+    SPECS_BY_NAME,
+    SettingSpec,
     validate_setting_specs,
 )
 
@@ -50,6 +48,16 @@ def test_config_examples_include_every_registered_setting():
             assert word in yaml_example
 
 
+def test_generated_config_examples_document_non_bool_choices_only():
+    env_example = Path(".env.example").read_text()
+    yaml_example = Path("config.example.yaml").read_text()
+
+    for example in (env_example, yaml_example):
+        assert "# Choices: mcp, http, both, stdio." in example
+        assert "# Choices: none, oauth." in example
+        assert "# Choices: true, false." not in example
+
+
 def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
     for spec in SETTING_SPECS:
         monkeypatch.delenv(spec.env_var, raising=False)
@@ -63,23 +71,23 @@ def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
     assert settings.allow_full_container == defaults.allow_full_container
 
 
-def test_typing_helpers_cover_current_setting_shapes():
-    assert argparse_type_for("port") is int
-    assert argparse_type_for("public_tool_timeout_s") is float
-    assert argparse_type_for("host") is str
-    assert argparse_type_for("public_base_url") is str
+def test_setting_spec_properties_cover_current_setting_shapes():
+    assert SPECS_BY_NAME["port"].argparse_type is int
+    assert SPECS_BY_NAME["public_tool_timeout_s"].argparse_type is float
+    assert SPECS_BY_NAME["host"].argparse_type is str
+    assert SPECS_BY_NAME["public_base_url"].argparse_type is str
 
-    assert argparse_choices_for("mode") == ("mcp", "http", "both", "stdio")
-    assert argparse_choices_for("allow_network") == ("true", "false")
-    assert argparse_choices_for("host") is None
+    assert SPECS_BY_NAME["mode"].choices == ("mcp", "http", "both", "stdio")
+    assert SPECS_BY_NAME["allow_network"].choices == ("true", "false")
+    assert SPECS_BY_NAME["host"].choices is None
 
-    assert is_bool_setting("allow_network")
-    assert not is_bool_setting("public_base_url")
-    assert is_nullable_setting("public_base_url")
-    assert not is_nullable_setting("command_denylist")
+    assert SPECS_BY_NAME["allow_network"].is_bool
+    assert not SPECS_BY_NAME["public_base_url"].is_bool
+    assert SPECS_BY_NAME["public_base_url"].is_nullable
+    assert not SPECS_BY_NAME["command_denylist"].is_nullable
 
 
-def test_typing_helpers_cover_future_nullable_shapes(monkeypatch):
+def test_setting_spec_properties_cover_future_nullable_shapes(monkeypatch):
     monkeypatch.setattr(
         surface.Settings,
         "model_fields",
@@ -99,22 +107,27 @@ def test_typing_helpers_cover_future_nullable_shapes(monkeypatch):
         },
     )
 
-    assert argparse_type_for("optional_int") is int
-    assert argparse_type_for("optional_float") is float
-    assert argparse_type_for("optional_bool") is str
-    assert argparse_type_for("optional_literal") is str
-    assert argparse_type_for("annotated_optional_int") is int
-    assert argparse_type_for("wide_optional") is str
+    specs = {
+        name: SettingSpec(name, "Server")
+        for name in surface.Settings.model_fields
+    }
 
-    assert argparse_choices_for("optional_bool") == ("true", "false")
-    assert argparse_choices_for("optional_literal") == ("alpha", "beta")
-    assert argparse_choices_for("annotated_optional_literal") == ("one", "two")
-    assert argparse_choices_for("annotated_list") is None
-    assert argparse_choices_for("wide_optional") is None
+    assert specs["optional_int"].argparse_type is int
+    assert specs["optional_float"].argparse_type is float
+    assert specs["optional_bool"].argparse_type is str
+    assert specs["optional_literal"].argparse_type is str
+    assert specs["annotated_optional_int"].argparse_type is int
+    assert specs["wide_optional"].argparse_type is str
 
-    assert is_bool_setting("optional_bool")
-    assert not is_bool_setting("optional_int")
-    assert is_nullable_setting("optional_int")
-    assert is_nullable_setting("annotated_optional_int")
-    assert is_nullable_setting("wide_optional")
-    assert not is_nullable_setting("annotated_list")
+    assert specs["optional_bool"].choices == ("true", "false")
+    assert specs["optional_literal"].choices == ("alpha", "beta")
+    assert specs["annotated_optional_literal"].choices == ("one", "two")
+    assert specs["annotated_list"].choices is None
+    assert specs["wide_optional"].choices is None
+
+    assert specs["optional_bool"].is_bool
+    assert not specs["optional_int"].is_bool
+    assert specs["optional_int"].is_nullable
+    assert specs["annotated_optional_int"].is_nullable
+    assert specs["wide_optional"].is_nullable
+    assert not specs["annotated_list"].is_nullable

@@ -5,7 +5,6 @@ from local_shell_mcp import __version__
 from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     cli_overrides_from_args,
-    is_nullable_setting,
 )
 
 
@@ -68,7 +67,7 @@ def test_every_setting_has_cli_option():
     for spec in SETTING_SPECS:
         assert spec.cli_flag in help_text
         assert spec.env_var in help_text
-        if is_nullable_setting(spec.name):
+        if spec.is_nullable:
             assert spec.unset_cli_flag in help_text
         else:
             assert spec.unset_cli_flag not in help_text
