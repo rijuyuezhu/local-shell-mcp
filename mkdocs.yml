@@ -73,5 +73,28 @@ nav:
       - CLI: reference/cli.md
       - Tools: reference/tools.md
   - Security: security.md
+  - Community:
+      - Code of conduct: community/code-of-conduct.md
+      - Contributing: community/contributing.md
+      - Support: community/support.md
+      - Security policy: community/security-policy.md
+  - Maintenance:
+      - Upstream sync ledger: maintenance/upstream-sync/README.md
+      - Selective sync through 3382d10:
+          - Overview: maintenance/upstream-sync/b30781c/README.md
+          - Tool surface: maintenance/upstream-sync/b30781c/01-tool-surface.md
+          - REST validation: maintenance/upstream-sync/b30781c/02-rest-validation.md
+          - Routed audit: maintenance/upstream-sync/b30781c/03-routed-audit.md
+          - Shell environment filtering: maintenance/upstream-sync/b30781c/04-shell-env-filtering.md
+          - Tool descriptions: maintenance/upstream-sync/b30781c/05-tool-descriptions.md
+          - HTTP/MCP parity: maintenance/upstream-sync/b30781c/06-http-mcp-parity.md
+          - Remote capabilities: maintenance/upstream-sync/b30781c/07-remote-capabilities.md
+          - Export tools: maintenance/upstream-sync/b30781c/08-export-tools.md
+          - Docs site i18n: maintenance/upstream-sync/b30781c/09-docs-site-i18n.md
+          - Agent bridge: maintenance/upstream-sync/b30781c/10-agent-bridge.md
+          - Windows shell: maintenance/upstream-sync/b30781c/11-windows-shell.md
+          - Release metadata: maintenance/upstream-sync/b30781c/12-release-metadata.md
+          - Community files: maintenance/upstream-sync/b30781c/14-community-files.md
+          - Worker dependency bootstrap: maintenance/upstream-sync/b30781c/15-worker-dependency-bootstrap.md
   - Troubleshooting: troubleshooting.md
   - Development: development.md
