@@ -53,3 +53,38 @@ def test_none_overrides_clear_config_and_env_values(monkeypatch, tmp_path):
 
     assert settings.base_url is None
     assert settings.oauth_admin_pin is None
+
+
+def test_resolved_base_url_prefers_configured_base_url():
+    settings = load_settings(
+        overrides={"base_url": "https://example.com/"}, create_dirs=False
+    )
+
+    assert settings.resolved_base_url == "https://example.com"
+
+
+def test_resolved_base_url_falls_back_to_host_and_port():
+    settings = load_settings(
+        overrides={"base_url": None, "host": "127.0.0.1", "port": 9999},
+        create_dirs=False,
+    )
+
+    assert settings.resolved_base_url == "http://127.0.0.1:9999"
+
+
+def test_resolved_base_url_normalizes_wildcard_host():
+    settings = load_settings(
+        overrides={"base_url": None, "host": "0.0.0.0", "port": 9999},
+        create_dirs=False,
+    )
+
+    assert settings.resolved_base_url == "http://127.0.0.1:9999"
+
+
+def test_resolved_base_url_brackets_ipv6_host():
+    settings = load_settings(
+        overrides={"base_url": None, "host": "::1", "port": 9999},
+        create_dirs=False,
+    )
+
+    assert settings.resolved_base_url == "http://[::1]:9999"

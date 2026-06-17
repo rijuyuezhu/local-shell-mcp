@@ -196,6 +196,18 @@ class Settings(BaseSettings):
         """Read-only capability config directory, derived from state_dir."""
         return self.state_dir / AGENT_CONFIG_STATE_DIR_NAME
 
+    @property
+    def resolved_base_url(self) -> str:
+        """Configured base_url, or a local HTTP URL derived from host and port."""
+        if self.base_url:
+            return self.base_url.rstrip("/")
+        host = self.host
+        if host in {"", "0.0.0.0", "::"}:
+            host = "127.0.0.1"
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{self.port}"
+
     @field_validator(
         "workspace_root",
         "state_dir",
