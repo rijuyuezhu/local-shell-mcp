@@ -1,9 +1,9 @@
 """MCP tool audit and timeout watchdog helpers."""
 
 import asyncio
-import json
 import time
 from collections.abc import Awaitable, Callable
+from functools import wraps
 from typing import Any, Protocol, cast
 
 from mcp.server.fastmcp import FastMCP
@@ -15,6 +15,10 @@ from ...audit import (
     new_audit_call_id,
 )
 from ...ops.command_ops import tool_timeout_s
+from ...tools.declarative import (
+    mcp_handler_error_handler,
+    mcp_handler_uses_envelope,
+)
 from ...tools.responses import handled_error
 
 
@@ -30,32 +34,6 @@ class PublicToolTimeoutError(TimeoutError):
     """Signals that a public tool timed out and should return structured retry guidance instead of a generic failure."""
 
     pass
-
-
-def _timeout_payload_for_tool(
-    tool_name: str, exc: Exception
-) -> dict[str, Any] | str:
-    """Build an actionable timeout payload that reports limits and next-step guidance for the failed tool."""
-    match tool_name:
-        # TODO: this hard-coded error response should be replaced with a more generic error handler
-        case "search":
-            return json.dumps({"results": []}, ensure_ascii=False)
-        case "fetch":
-            return json.dumps(
-                {
-                    "id": "",
-                    "title": "",
-                    "text": str(exc),
-                    "url": "file:///workspace/",
-                    "metadata": {
-                        "source": "workspace",
-                        "error": type(exc).__name__,
-                    },
-                },
-                ensure_ascii=False,
-            )
-        case _:
-            return handled_error(exc)
 
 
 def _mcp_tool_input(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
@@ -74,6 +52,10 @@ def _mcp_tool_audit_watchdog_wrapper(
 ) -> AuditedMcpToolFn:
     """Return a wrapper that audits every MCP tool call and enforces the tool timeout."""
 
+    mcp_envelope = mcp_handler_uses_envelope(original)
+    mcp_error_handler = mcp_handler_error_handler(original)
+
+    @wraps(original)
     async def wrapped(*args: Any, **kwargs: Any) -> Any:
         call_id = new_audit_call_id()
         start = time.time()
@@ -97,7 +79,13 @@ def _mcp_tool_audit_watchdog_wrapper(
                 tool=tool_name,
                 timeout_s=tool_timeout_s(),
             )
-            payload = _timeout_payload_for_tool(tool_name, exc)
+            if mcp_error_handler is not None:
+                payload = mcp_error_handler(exc, args, kwargs)
+            elif mcp_envelope:
+                payload = handled_error(exc)
+            else:
+                # raise directly -- the default behavior for connector
+                payload = None
             audit_tool_call_end(
                 call_id=call_id,
                 transport="mcp",
@@ -111,6 +99,8 @@ def _mcp_tool_audit_watchdog_wrapper(
                     "repr": repr(exc),
                 },
             )
+            if payload is None:
+                raise exc from None
             return payload
         except BaseException as exc:
             duration_ms = int((time.time() - start) * 1000)
@@ -138,6 +128,8 @@ def _mcp_tool_audit_watchdog_wrapper(
         )
         return result
 
+    if hasattr(original, "__signature__"):
+        wrapped.__signature__ = original.__signature__  # type: ignore[attr-defined]
     audited = cast(AuditedMcpToolFn, wrapped)
     audited.__local_shell_mcp_audit_watchdog__ = True
     return audited
