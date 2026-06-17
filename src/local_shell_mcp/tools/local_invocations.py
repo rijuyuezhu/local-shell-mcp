@@ -40,8 +40,6 @@ def _jsonable_dataclass(value: Any) -> Any:
 async def call_local_tool(
     tool_name: str,
     args: dict[str, Any] | None = None,
-    *,
-    audit_context: dict[str, Any] | None = None,
 ) -> Any:
     """Invoke a local tool by canonical MCP tool name and audit the routed call."""
     try:
