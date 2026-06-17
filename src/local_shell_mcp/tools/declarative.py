@@ -235,7 +235,7 @@ class ToolDefinition:
 
 
 class DeclarativeToolRegistry(ToolRegistry):
-    """Registry base for static tools registered by local-tool decorators."""
+    """Registry base for tool registries that are in a declarative fashion."""
 
     tools: ClassVar[tuple[ToolDefinition, ...]] = ()
     _context: McpToolContext | None = None
