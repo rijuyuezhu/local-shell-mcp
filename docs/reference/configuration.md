@@ -16,6 +16,8 @@ Use:
 - `.env` and `LOCAL_SHELL_MCP_*` variables for Compose deployments.
 - `config.example.yaml` when a file-based configuration is more convenient.
 
+YAML config files use the same flat setting names shown in `config.example.yaml`, such as `auth_mode` and `workspace_root`. Nested groups such as `auth: {mode: none}` are ignored by the application settings loader.
+
 Docker image startup knobs use `DOCKER_*` variables because they are consumed by the container entrypoint before the application starts.
 
 `audit_log_path` and `agent_config_dir` are not configurable settings. They are derived from `state_dir` as `audit_log/audit.jsonl` and `agent_config`.
@@ -46,7 +48,7 @@ Important limits include:
 | `LOCAL_SHELL_MCP_TOOL_TIMEOUT_S` | MCP/HTTP tool watchdog timeout | `60` |
 | `LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S` | Default run_shell_command timeout | `10` |
 | `LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S` | Maximum run_shell_command timeout | `60` |
-| `LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES` | Command output truncation limit | `200000` |
+| `LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES` | Command output limit | `200000` |
 | `LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES` | Per-file read limit | `512000` |
 | `LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES` | Per-file write/edit limit | `5000000` |
 | `LOCAL_SHELL_MCP_MAX_CONCURRENT_COMMANDS` | Concurrent command limit | `4` |
@@ -58,7 +60,7 @@ Important limits include:
 
 | Environment | Meaning | Default |
 |---|---|---:|
-| `LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED` | Enable tokenized public download links created by protected tools | `true` |
+| `LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED` | Enable download links created by protected tools | `true` |
 | `LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_TTL_S` | Default generated-link lifetime in seconds | `3600` |
 | `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_TTL_S` | Maximum accepted generated-link lifetime in seconds | `604800` |
 | `LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS` | Default download-count limit; `0` means unlimited until expiry | `0` |

@@ -220,7 +220,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=oauth_security_meta,
         description=_description(
-            f"""List files and directories on a remote worker. Use for quick remote directory inspection. Parameters: path is resolved on the remote worker; recursive controls traversal. Limits: max_entries defaults to 500 and is capped by max_directory_entries={settings.max_directory_entries}."""
+            f"""List files and directories on a remote worker. Use for quick remote directory inspection. Parameters: path is resolved on the remote worker; recursive controls traversal. Result: returns file_info plus limit_count, count, and is_truncated to indicate whether the listing was complete within the limit. Limits: max_entries defaults to 500 and must be between 0 and max_directory_entries={settings.max_directory_entries}."""
         ),
     )
     async def remote_list_files(

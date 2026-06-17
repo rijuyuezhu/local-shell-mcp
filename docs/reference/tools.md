@@ -34,7 +34,7 @@ All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-cont
 
 | Tool | Purpose |
 |---|---|
-| `list_files` | List files and directories. |
+| `list_files` | List files and directories and return `file_info`, `count`, `limit_count`, and `is_truncated`; `max_entries` must be within the configured directory-entry limit. |
 | `tree_view` | Return a compact directory tree. |
 | `glob_search` | Find files by glob pattern. |
 | `grep_search` | Search file contents with ripgrep. |
@@ -89,7 +89,7 @@ These tools create and manage tokenized browser-accessible links for files in th
 
 | Tool | Purpose |
 |---|---|
-| `remote_list_files` | List remote files and directories. |
+| `remote_list_files` | List remote files and directories with the same `file_info`, `count`, `limit_count`, and `is_truncated` result shape; `max_entries` must be within the configured directory-entry limit. |
 | `remote_tree_view` | Return a compact remote directory tree. |
 | `remote_glob_search` | Find remote files by glob pattern. |
 | `remote_grep_search` | Search remote file contents with ripgrep. |
