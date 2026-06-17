@@ -1,4 +1,4 @@
-"""Build and run the MCP ASGI/stdio application."""
+"""Build and run the MCP server."""
 
 from urllib.parse import urlparse
 

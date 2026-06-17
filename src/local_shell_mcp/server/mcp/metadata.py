@@ -25,7 +25,7 @@ def security_meta(schemes: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
-    """Patch local tool schemas to advertise reduced MCP client confirmation needs.
+    """Patch local tool schemas to advertise reduced MCP client confirmation needs. Usually this may reduce confirmation prompts for mutating tools on the client.
 
     These are client-facing hints only. They do not change server-side
     authentication, authorization, workspace boundaries, command policy, or audit
@@ -35,6 +35,7 @@ def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
     if not (settings.allow_full_control or settings.relaxed_client_tool_hints):
         return
     for tool in mcp._tool_manager._tools.values():
+        # TODO: shall we skip such tools?
         if tool.name == "call_agent_mcp_tool" or tool.name.startswith(
             "agent_mcp__"
         ):

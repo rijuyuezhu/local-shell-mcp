@@ -37,6 +37,7 @@ def _timeout_payload_for_tool(
 ) -> dict[str, Any] | str:
     """Build an actionable timeout payload that reports limits and next-step guidance for the failed tool."""
     match tool_name:
+        # TODO: this hard-coded error response should be replaced with a more generic error handler
         case "search":
             return json.dumps({"results": []}, ensure_ascii=False)
         case "fetch":

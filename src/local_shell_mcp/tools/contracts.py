@@ -1,4 +1,4 @@
-"""Shared tool registry contracts and transport-facing metadata types."""
+"""Tool registry contracts and transport-facing metadata types."""
 
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
@@ -16,11 +16,14 @@ type HttpMethod = Literal["GET", "POST"]
 
 
 class ToolResult(BaseModel):
-    """Structured output schema for normal MCP tool response envelopes."""
+    """Structured output schema for normal MCP tool response."""
 
     ok: bool = True
+    """Indicates whether the tool execution was successful."""
     message: str = ""
+    """Human-readable message describing the result."""
     data: Any = None
+    """Structured data returned by the tool."""
 
 
 @dataclass(frozen=True)
@@ -32,7 +35,7 @@ class HttpToolRoute:
     path: str
     """Absolute REST path registered on the FastAPI app."""
     tool_name: str
-    """Canonical local tool name dispatched by this route."""
+    """Local tool name dispatched by this route."""
 
 
 @dataclass(frozen=True)
@@ -54,7 +57,7 @@ class McpToolContext:
 
 
 class ToolRegistry:
-    """Base class for modules that describe MCP and HTTP tool exposure."""
+    """Base class that registers MCP and HTTP tool routes for a group of related tools. Derived classes are automatically registered if they are placed in the `local_shell_mcp.tools.registry.*` module"""
 
     name: str = ""
 
