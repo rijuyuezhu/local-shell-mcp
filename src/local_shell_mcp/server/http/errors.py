@@ -1,4 +1,4 @@
-"""HTTP exception handlers shared by the REST app."""
+"""HTTP exception handlers."""
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -28,7 +28,11 @@ def install_error_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=404,
-            content={"ok": False, "error": "unknown_tool", "message": str(exc)},
+            content={
+                "ok": False,
+                "error": "unknown_tool",
+                "message": str(exc),
+            },
         )
 
     @app.exception_handler(HTTPException)
@@ -37,6 +41,10 @@ def install_error_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content={"ok": False, "error": "http_error", "message": exc.detail},
+            content={
+                "ok": False,
+                "error": "http_error",
+                "message": exc.detail,
+            },
             headers=exc.headers,
         )

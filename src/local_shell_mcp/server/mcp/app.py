@@ -162,7 +162,7 @@ def build_mcp_http_app(mcp: FastMCP) -> Starlette:
 
 
 def run_mcp() -> None:
-    """Run the FastMCP server through stdio or HTTP transport."""
+    """Run the FastMCP server."""
     settings = get_settings()
     mcp = build_mcp()
 
