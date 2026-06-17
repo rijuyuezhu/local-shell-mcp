@@ -7,6 +7,7 @@ LOCAL_TOOL_NAMES = {
     "search",
     "fetch",
     "environment_info",
+    "version_info",
     "run_shell_tool",
     "run_python_tool",
     "shell_start",

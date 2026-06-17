@@ -66,6 +66,7 @@ from .shell_ops import (
     start_shell,
 )
 from .todo_ops import todo_read, todo_write
+from .version import version_info as get_version_info
 from .transfer_ops import (
     normalize_chunk_size,
     transfer_abort_write,
@@ -787,6 +788,14 @@ def build_mcp() -> FastMCP:
         try:
             result = await run_shell("uname -a; echo '---'; id; echo '---'; pwd; echo '---'; python3 --version; git --version", cwd=".", timeout_s=10)
             return _ok({"settings": safe_settings_dump(settings), "probe": result.model_dump()})
+        except Exception as exc:
+            return _handled_error(exc)
+
+    @mcp.tool(structured_output=True, meta=oauth_meta)
+    async def version_info() -> ToolResult:
+        """Return the local-shell-mcp version, installed package version, Python version, platform, and executable path."""
+        try:
+            return _ok(get_version_info())
         except Exception as exc:
             return _handled_error(exc)
 

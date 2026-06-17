@@ -55,6 +55,7 @@ from .shell_ops import (
     start_shell,
 )
 from .todo_ops import todo_read, todo_write
+from .version import version_info
 
 PUBLIC_TOOL_TIMEOUT_S = PUBLIC_RUN_SHELL_TIMEOUT_CAP_S
 
@@ -119,6 +120,14 @@ def build_http_app() -> FastAPI:
     @app.get("/readyz")
     async def readyz():
         return {"ok": True, "workspace_root": str(settings.workspace_root)}
+
+    @app.get("/version")
+    async def api_version():
+        return version_info()
+
+    @app.get("/tools/version")
+    async def api_tool_version(_: Principal = PRINCIPAL_DEP):
+        return version_info()
 
     @app.post("/tools/run_shell")
     async def api_run_shell(body: dict, _: Principal = PRINCIPAL_DEP):

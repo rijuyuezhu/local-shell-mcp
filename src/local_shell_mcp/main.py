@@ -102,6 +102,16 @@ def main(argv: list[str] | None = None) -> None:
 
         run_worker_cli(argv[1:])
         return
+    if argv and argv[0] == "version":
+        from .version import format_version_info
+
+        print(format_version_info())
+        return
+    if argv and argv[0] in {"--version", "-V"}:
+        from . import __version__
+
+        print(__version__)
+        return
 
     parser = argparse.ArgumentParser(description="local-shell-mcp")
     parser.add_argument("--mode", choices=["mcp", "http", "stdio"], default=None)
