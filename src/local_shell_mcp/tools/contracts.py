@@ -50,10 +50,6 @@ class McpToolContext:
     """Client-facing securitySchemes metadata for connector-compatible search/fetch tools."""
     oauth_security_meta: dict[str, Any]
     """Client-facing securitySchemes metadata for OAuth-protected MCP tools."""
-    ok: Callable[[Any, str], dict[str, Any]]
-    """Helper that wraps successful tool responses in the public envelope."""
-    handled_error: Callable[[Exception], dict[str, Any]]
-    """Helper that converts handled exceptions into public error envelopes."""
 
 
 class ToolRegistry:

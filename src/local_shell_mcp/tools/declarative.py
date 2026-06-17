@@ -18,6 +18,7 @@ from .contracts import (
     ToolRegistry,
     ToolResult,
 )
+from .responses import handled_error, ok_response
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]
 ToolAnnotation = Literal["read_only"]
@@ -209,11 +210,11 @@ class ToolDefinition:
                 # 2. Return a handled error envelope if mcp_envelope is True
                 if not self.mcp_envelope:
                     raise
-                return context.handled_error(exc)
+                return handled_error(exc)
 
             if not self.mcp_envelope:
                 return result
-            return context.ok(result, "")
+            return ok_response(result, "")
 
         mcp_handler.__name__ = self.name
         mcp_handler.__qualname__ = self.name

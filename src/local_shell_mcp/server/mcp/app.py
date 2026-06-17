@@ -14,7 +14,6 @@ from ...oauth.routes import wrap_http_app
 from ...remote.http import remote_routes
 from ...tools.contracts import McpToolContext
 from ...tools.discovery import discover_tool_registries
-from ...tools.responses import handled_error, ok_response
 from ..shared.public_routes import public_http_routes
 from .instructions import SERVER_INSTRUCTIONS
 from .metadata import (
@@ -127,8 +126,6 @@ def build_mcp() -> FastMCP:
             [*NOAUTH_SECURITY_SCHEMES, *OAUTH_SECURITY_SCHEMES]
         ),
         oauth_security_meta=security_meta(OAUTH_SECURITY_SCHEMES),
-        ok=ok_response,
-        handled_error=handled_error,
     )
     for registry in discover_tool_registries():
         registry.register_mcp(mcp, context)
