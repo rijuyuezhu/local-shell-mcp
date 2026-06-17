@@ -1,4 +1,4 @@
-"""Declarative tool registration shared by MCP and HTTP adapters."""
+"""Declarative tool registration."""
 
 import inspect
 import re
@@ -27,7 +27,7 @@ ToolFunc = Callable[..., Awaitable[Any]]
 
 
 class LocalToolDecoratorFactory(Protocol):
-    """Callable factory returned by a declarative registry for tool registration."""
+    """Decorator factory for tool registration."""
 
     def __call__(
         self,
@@ -48,7 +48,7 @@ def _always_enabled(settings: Settings) -> bool:
 
 
 def _normalize_description(text: str) -> str:
-    """Return a clean MCP tool description from source text."""
+    """Return a clean MCP tool description from source text. This strips out any leading/trailing whitespace and normalizes paragraph spacing."""
     paragraphs = re.split(r"\n\s*\n", inspect.cleandoc(text))
     return "\n\n".join(
         " ".join(paragraph.split())

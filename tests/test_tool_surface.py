@@ -19,6 +19,7 @@ from local_shell_mcp.tools.contracts import (
     HttpToolRoute,
     ToolRegistry,
 )
+from local_shell_mcp.tools.declarative import _normalize_description
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
     UnknownLocalToolError,
@@ -56,6 +57,22 @@ LOCAL_MCP_TOOL_NAMES = {
     "read_todos",
     "write_todos",
 }
+
+
+def test_normalize_description_cleans_docstring_text():
+    assert _normalize_description(
+        """
+        First line with   extra   spaces.
+          Continued line.
+
+            Second paragraph
+            with tabs	and spaces.
+
+        """
+    ) == (
+        "First line with extra spaces. Continued line.\n\n"
+        "Second paragraph with tabs and spaces."
+    )
 
 
 REMOTE_MCP_TOOL_NAMES = {
