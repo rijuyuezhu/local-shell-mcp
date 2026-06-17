@@ -1,4 +1,4 @@
-"""Shared tool response envelopes and error conversion helpers."""
+"""Tool response envelopes and error conversion helpers."""
 
 from contextlib import suppress
 from typing import Any
@@ -33,5 +33,5 @@ def handled_error(exc: Exception) -> dict[str, Any]:
             "error_type": type(exc).__name__,
             "message": str(exc),
         },
-        message=f"Tool handled {type(exc).__name__}",
+        message=f"Tool error: {type(exc).__name__}",
     )
