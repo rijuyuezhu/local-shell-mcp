@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     run_shell_max_timeout_s: int = 60
     """Maximum timeout accepted by run_shell_command calls in seconds."""
     max_output_bytes: int = 200_000
-    """Command output truncation limit in bytes."""
+    """Command output limit in bytes."""
     max_file_read_bytes: int = 512_000
     """Per-file read limit in bytes."""
     max_file_write_bytes: int = 5_000_000
@@ -100,29 +100,29 @@ class Settings(BaseSettings):
     max_tree_entries: int = 5_000
     """Maximum tree-view entries."""
     max_read_many_files: int = 100
-    """Maximum files read by a multi-file read operation."""
+    """Maximum files allowed to be read by read_many_files tool."""
     max_read_many_total_bytes: int = 5_000_000
-    """Combined byte limit for multi-file reads."""
+    """Maximum total byte limit for read_many_files tool."""
     max_todos: int = 1_000
     """Todo-list item limit."""
     max_todo_bytes: int = 1_000_000
-    """Todo-list serialized byte limit."""
+    """Todo-list total byte limit."""
     max_audit_log_bytes: int = 20_000_000
-    """Audit-log rotation threshold in bytes."""
+    """Audit-log threshold in bytes. If exceeded, the log is rotated."""
     max_tmp_files: int = 500
-    """Temporary-file count limit."""
+    """Temporary-file count limit. When exceeded, old files are deleted."""
     max_tmp_bytes: int = 50_000_000
-    """Temporary-file byte limit."""
+    """Temporary-file byte limit. When exceeded, old files are deleted."""
     max_concurrent_commands: int = 4
     """Concurrent command limit."""
     max_tmux_sessions: int = 16
     """Persistent shell session limit."""
     file_download_enabled: bool = True
-    """Enable tokenized public download links created by protected tools."""
+    """Enable download links created by protected tools."""
     file_download_default_ttl_s: int = 3600
-    """Default lifetime for generated file download links in seconds."""
+    """Default lifetime for file download links in seconds."""
     file_download_max_ttl_s: int = 604800
-    """Maximum lifetime accepted for generated file download links in seconds."""
+    """Maximum lifetime accepted for file download links in seconds."""
     file_download_default_max_downloads: int = 0
     """Default download-count limit for file links; 0 means unlimited until expiry."""
     file_download_max_file_bytes: int = 0

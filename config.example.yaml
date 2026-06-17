@@ -52,7 +52,7 @@ tool_timeout_s: 60
 run_shell_default_timeout_s: 10
 # Maximum timeout accepted by run_shell_command calls in seconds.
 run_shell_max_timeout_s: 60
-# Command output truncation limit in bytes.
+# Command output limit in bytes.
 max_output_bytes: 200000
 # Per-file read limit in bytes.
 max_file_read_bytes: 512000
@@ -66,29 +66,29 @@ max_directory_entries: 5000
 max_glob_results: 5000
 # Maximum tree-view entries.
 max_tree_entries: 5000
-# Maximum files read by a multi-file read operation.
+# Maximum files allowed to be read by read_many_files tool.
 max_read_many_files: 100
-# Combined byte limit for multi-file reads.
+# Maximum total byte limit for read_many_files tool.
 max_read_many_total_bytes: 5000000
 # Todo-list item limit.
 max_todos: 1000
-# Todo-list serialized byte limit.
+# Todo-list total byte limit.
 max_todo_bytes: 1000000
-# Audit-log rotation threshold in bytes.
+# Audit-log threshold in bytes. If exceeded, the log is rotated.
 max_audit_log_bytes: 20000000
-# Temporary-file count limit.
+# Temporary-file count limit. When exceeded, old files are deleted.
 max_tmp_files: 500
-# Temporary-file byte limit.
+# Temporary-file byte limit. When exceeded, old files are deleted.
 max_tmp_bytes: 50000000
 # Concurrent command limit.
 max_concurrent_commands: 4
 # Persistent shell session limit.
 max_tmux_sessions: 16
-# Enable tokenized public download links created by protected tools.
+# Enable download links created by protected tools.
 file_download_enabled: true
-# Default lifetime for generated file download links in seconds.
+# Default lifetime for file download links in seconds.
 file_download_default_ttl_s: 3600
-# Maximum lifetime accepted for generated file download links in seconds.
+# Maximum lifetime accepted for file download links in seconds.
 file_download_max_ttl_s: 604800
 # Default download-count limit for file links; 0 means unlimited until expiry.
 file_download_default_max_downloads: 0
