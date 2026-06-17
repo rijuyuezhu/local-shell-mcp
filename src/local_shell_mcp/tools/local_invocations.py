@@ -1,8 +1,7 @@
-"""Shared local tool invocation helpers used by HTTP adapters."""
+"""Local tool invocation helpers used by HTTP adapters."""
 
 import time
 from collections.abc import Mapping
-from dataclasses import asdict, is_dataclass
 from functools import lru_cache
 from typing import Any
 
@@ -29,12 +28,6 @@ def local_tool_handlers() -> Mapping[str, ToolHandler]:
                 raise ValueError(f"Duplicate local tool handler: {tool_name}")
             handlers[tool_name] = handler
     return handlers
-
-
-def _jsonable_dataclass(value: Any) -> Any:
-    if is_dataclass(value) and not isinstance(value, type):
-        return asdict(value)
-    return value
 
 
 async def call_local_tool(
