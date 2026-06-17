@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import Field, field_validator, model_validator
@@ -234,19 +234,6 @@ class Settings(BaseSettings):
         return self
 
 
-def _flatten_config(data: dict[str, Any]) -> dict[str, Any]:
-    """Flatten one level of grouped YAML keys into Settings field names."""
-    flat: dict[str, Any] = {}
-    for key, value in data.items():
-        if isinstance(value, dict):
-            nested = cast(dict[str, Any], value)
-            for child_key, child_value in nested.items():
-                flat[f"{key}_{child_key}"] = child_value
-        else:
-            flat[key] = value
-    return flat
-
-
 def read_config_file(path: str | Path | None) -> dict[str, Any]:
     """Read optional YAML configuration values."""
     if not path:
@@ -259,7 +246,7 @@ def read_config_file(path: str | Path | None) -> dict[str, Any]:
         return {}
     if not isinstance(loaded, dict):
         raise ValueError(f"Config file must contain a mapping: {config_path}")
-    return _flatten_config(cast(dict[str, Any], loaded))
+    return loaded
 
 
 def _env_overrides() -> dict[str, Any]:

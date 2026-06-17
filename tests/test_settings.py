@@ -40,6 +40,23 @@ def test_settings_rejects_non_mapping_config(tmp_path):
         raise AssertionError("expected ValueError")
 
 
+def test_config_file_uses_flat_keys_only(monkeypatch, tmp_path):
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        """
+host: 127.0.0.1
+auth:
+  mode: none
+""".strip()
+    )
+    monkeypatch.delenv("LOCAL_SHELL_MCP_AUTH_MODE", raising=False)
+
+    settings = load_settings(config, create_dirs=False)
+
+    assert settings.host == "127.0.0.1"
+    assert settings.auth_mode == "oauth"
+
+
 def test_none_overrides_clear_config_and_env_values(monkeypatch, tmp_path):
     config = tmp_path / "config.yaml"
     config.write_text("base_url: https://example.com\n")
