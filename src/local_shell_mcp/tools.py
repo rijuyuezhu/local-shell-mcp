@@ -233,6 +233,25 @@ def _audit_tool_arguments(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict
     }
 
 
+def _audit_tool_purpose(tool_name: str, purpose: str | None = None, explanation: str | None = None) -> dict[str, str]:
+    details: dict[str, str] = {}
+    if purpose is not None:
+        purpose = purpose.strip()
+        if len(purpose) > 500:
+            raise ValueError("purpose must be <= 500 characters")
+        if purpose:
+            details["purpose"] = purpose
+    if explanation is not None:
+        explanation = explanation.strip()
+        if len(explanation) > 2000:
+            raise ValueError("explanation must be <= 2000 characters")
+        if explanation:
+            details["explanation"] = explanation
+    if details:
+        audit("tool_call_purpose", tool=tool_name, **details)
+    return details
+
+
 def _timeout_payload_for_tool(tool_name: str, exc: Exception) -> dict | str:
     if tool_name == "search":
         return json.dumps({"results": []}, ensure_ascii=False)
@@ -771,25 +790,28 @@ def build_mcp() -> FastMCP:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def run_shell_tool(command: str, cwd: str = ".", timeout_s: int | None = None, max_output_bytes: int | None = None) -> ToolResult:
-        """Run one non-interactive shell command in the controlled workspace/container. Use for build, test, package-manager, git, and inspection commands that should finish promptly. Parameters: command is the shell command string; cwd defaults to '.' and is resolved relative to the workspace unless full-container mode allows absolute paths. timeout_s defaults to 10 seconds and may be set to at most 120 seconds. For long-running, interactive, or streaming processes, use shell_start with shell_send and shell_read."""
+    async def run_shell_tool(command: str, cwd: str = ".", timeout_s: int | None = None, max_output_bytes: int | None = None, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Run one non-interactive shell command in the controlled workspace/container. Use for build, test, package-manager, git, and inspection commands that should finish promptly. Parameters: command is the shell command string; cwd defaults to '.' and is resolved relative to the workspace unless full-container mode allows absolute paths. timeout_s defaults to 10 seconds and may be set to at most 120 seconds. For long-running, interactive, or streaming processes, use shell_start with shell_send and shell_read. Optional purpose/explanation fields let agents state why the command is being run."""
         try:
+            _audit_tool_purpose("run_shell_tool", purpose, explanation)
             return _ok((await public_run_shell(command, cwd, timeout_s, max_output_bytes)).model_dump())
         except Exception as exc:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def run_python_tool(code: str, cwd: str = ".", timeout_s: int = 60) -> ToolResult:
-        """Write Python code to a temporary file and execute it in the controlled workspace/container. Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. Keep code non-interactive and write durable outputs explicitly if needed."""
+    async def run_python_tool(code: str, cwd: str = ".", timeout_s: int = 60, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Write Python code to a temporary file and execute it in the controlled workspace/container. Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. Keep code non-interactive and write durable outputs explicitly if needed. Optional purpose/explanation fields let agents state why the script is being run."""
         try:
+            _audit_tool_purpose("run_python_tool", purpose, explanation)
             return _ok(await _run_python(code, cwd, timeout_s))
         except Exception as exc:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def shell_start(cwd: str = ".", name: str | None = None, command: str | None = None) -> ToolResult:
-        """Start a persistent shell session using tmux on Unix-like platforms, ConPTY on Windows when pywinpty is available, and native process fallback on Windows. Use for interactive programs, development servers, REPLs, long-running watches, or commands whose output must be read incrementally. For one-shot commands, use run_shell_tool."""
+    async def shell_start(cwd: str = ".", name: str | None = None, command: str | None = None, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Start a persistent shell session using tmux on Unix-like platforms, ConPTY on Windows when pywinpty is available, and native process fallback on Windows. Use for interactive programs, development servers, REPLs, long-running watches, or commands whose output must be read incrementally. For one-shot commands, use run_shell_tool. Optional purpose/explanation fields let agents state why the session is being started."""
         try:
+            _audit_tool_purpose("shell_start", purpose, explanation)
             return _ok(await start_shell(cwd, name, command))
         except Exception as exc:
             return _handled_error(exc)
@@ -923,41 +945,46 @@ def build_mcp() -> FastMCP:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def write_file(path: str, content: str, overwrite: bool = True) -> ToolResult:
-        """Write a UTF-8 text file. Use to create a new file or intentionally replace a whole file. overwrite defaults to true; set overwrite=false when creating only if absent. For precise modifications to existing files, use edit_file or apply_patch."""
+    async def write_file(path: str, content: str, overwrite: bool = True, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Write a UTF-8 text file. Use to create a new file or intentionally replace a whole file. overwrite defaults to true; set overwrite=false when creating only if absent. For precise modifications to existing files, use edit_file or apply_patch. Optional purpose/explanation fields let agents state why the file write is needed."""
         try:
+            _audit_tool_purpose("write_file", purpose, explanation)
             return _ok(await _to_thread(write_text, path, content, overwrite))
         except Exception as exc:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def edit_file(path: str, old: str, new: str, replace_all: bool = False) -> ToolResult:
-        """Replace exact text in a file. Use for small precise edits after reading the target file. old must match exactly, including whitespace and indentation; replace_all should be true only when every exact occurrence should change."""
+    async def edit_file(path: str, old: str, new: str, replace_all: bool = False, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Replace exact text in a file. Use for small precise edits after reading the target file. old must match exactly, including whitespace and indentation; replace_all should be true only when every exact occurrence should change. Optional purpose/explanation fields let agents state why the edit is needed."""
         try:
+            _audit_tool_purpose("edit_file", purpose, explanation)
             return _ok(await _to_thread(edit_text, path, old, new, replace_all))
         except Exception as exc:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def multi_edit_file(path: str, edits: list[dict]) -> ToolResult:
-        """Apply multiple exact-text edits to one file. Use when several small replacements in the same file should be made together. Each old string must match exactly; read the file first to avoid stale or ambiguous edits."""
+    async def multi_edit_file(path: str, edits: list[dict], purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Apply multiple exact-text edits to one file. Use when several small replacements in the same file should be made together. Each old string must match exactly; read the file first to avoid stale or ambiguous edits. Optional purpose/explanation fields let agents state why the edits are needed."""
         try:
+            _audit_tool_purpose("multi_edit_file", purpose, explanation)
             return _ok(await _to_thread(multi_edit_text, path, edits))
         except Exception as exc:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def delete_file_or_dir(path: str, recursive: bool = False) -> ToolResult:
-        """Delete a file or directory inside the controlled workspace/container. Use only when removal is intentional. recursive=false deletes files or empty directories; recursive=true is required for non-empty directories and should be used carefully."""
+    async def delete_file_or_dir(path: str, recursive: bool = False, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Delete a file or directory inside the controlled workspace/container. Use only when removal is intentional. recursive=false deletes files or empty directories; recursive=true is required for non-empty directories and should be used carefully. Optional purpose/explanation fields let agents state why deletion is needed."""
         try:
+            _audit_tool_purpose("delete_file_or_dir", purpose, explanation)
             return _ok(await _to_thread(delete_path, path, recursive))
         except Exception as exc:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def apply_patch(patch: str, cwd: str = ".") -> ToolResult:
-        """Apply a unified diff using git apply. Use for larger or multi-file edits where an exact patch is clearer than multiple edit_file calls. The patch is checked before application and cwd is workspace-relative unless full-container mode allows absolute paths."""
+    async def apply_patch(patch: str, cwd: str = ".", purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Apply a unified diff using git apply. Use for larger or multi-file edits where an exact patch is clearer than multiple edit_file calls. The patch is checked before application and cwd is workspace-relative unless full-container mode allows absolute paths. Optional purpose/explanation fields let agents state why the patch is needed."""
         try:
+            _audit_tool_purpose("apply_patch", purpose, explanation)
             return _ok(await _apply_patch_text(patch, cwd))
         except Exception as exc:
             return _handled_error(exc)
@@ -1027,17 +1054,19 @@ def build_mcp() -> FastMCP:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def git_commit_tool(cwd: str, message: str, all_changes: bool = False) -> ToolResult:
-        """Create a git commit."""
+    async def git_commit_tool(cwd: str, message: str, all_changes: bool = False, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Create a git commit. Optional purpose/explanation fields let agents state why the commit is being created."""
         try:
+            _audit_tool_purpose("git_commit_tool", purpose, explanation)
             return _ok(await git_commit(cwd, message, all_changes))
         except Exception as exc:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def git_push_tool(cwd: str, remote: str = "origin", branch: str | None = None, set_upstream: bool = True) -> ToolResult:
-        """Push current HEAD to a remote branch."""
+    async def git_push_tool(cwd: str, remote: str = "origin", branch: str | None = None, set_upstream: bool = True, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Push current HEAD to a remote branch. Optional purpose/explanation fields let agents state why the push is being performed."""
         try:
+            _audit_tool_purpose("git_push_tool", purpose, explanation)
             return _ok(await git_push(cwd, remote, branch, set_upstream))
         except Exception as exc:
             return _handled_error(exc)
@@ -1184,19 +1213,19 @@ def build_mcp() -> FastMCP:
         return await _remote_call(machine, "environment_info", {})
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def remote_run_shell_tool(machine: str, command: str, cwd: str = ".", timeout_s: int | None = None, max_output_bytes: int | None = None) -> ToolResult:
-        """Run a shell command on a remote worker machine. timeout_s defaults to 10 seconds and may be set to at most 120 seconds."""
-        return await _remote_call(machine, "run_shell_tool", {"command": command, "cwd": cwd, "timeout_s": timeout_s, "max_output_bytes": max_output_bytes}, timeout_s)
+    async def remote_run_shell_tool(machine: str, command: str, cwd: str = ".", timeout_s: int | None = None, max_output_bytes: int | None = None, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Run a shell command on a remote worker machine. timeout_s defaults to 10 seconds and may be set to at most 120 seconds. Optional purpose/explanation fields let agents state why the command is being run."""
+        return await _remote_call(machine, "run_shell_tool", {"command": command, "cwd": cwd, "timeout_s": timeout_s, "max_output_bytes": max_output_bytes, "purpose": purpose, "explanation": explanation}, timeout_s)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def remote_run_python_tool(machine: str, code: str, cwd: str = ".", timeout_s: int = 60) -> ToolResult:
-        """Write Python code to a temporary file and execute it on a remote worker."""
-        return await _remote_call(machine, "run_python_tool", {"code": code, "cwd": cwd, "timeout_s": timeout_s}, timeout_s)
+    async def remote_run_python_tool(machine: str, code: str, cwd: str = ".", timeout_s: int = 60, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Write Python code to a temporary file and execute it on a remote worker. Optional purpose/explanation fields let agents state why the script is being run."""
+        return await _remote_call(machine, "run_python_tool", {"code": code, "cwd": cwd, "timeout_s": timeout_s, "purpose": purpose, "explanation": explanation}, timeout_s)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def remote_shell_start(machine: str, cwd: str = ".", name: str | None = None, command: str | None = None) -> ToolResult:
-        """Start a persistent shell session on a remote worker."""
-        return await _remote_call(machine, "shell_start", {"cwd": cwd, "name": name, "command": command})
+    async def remote_shell_start(machine: str, cwd: str = ".", name: str | None = None, command: str | None = None, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Start a persistent shell session on a remote worker. Optional purpose/explanation fields let agents state why the session is being started."""
+        return await _remote_call(machine, "shell_start", {"cwd": cwd, "name": name, "command": command, "purpose": purpose, "explanation": explanation})
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
     async def remote_shell_send(machine: str, session_id: str, input_text: str, enter: bool = True) -> ToolResult:
@@ -1317,9 +1346,9 @@ def build_mcp() -> FastMCP:
             return _handled_error(exc)
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def remote_apply_patch(machine: str, patch: str, cwd: str = ".") -> ToolResult:
-        """Apply a unified diff on a remote worker using git apply."""
-        return await _remote_call(machine, "apply_patch", {"patch": patch, "cwd": cwd})
+    async def remote_apply_patch(machine: str, patch: str, cwd: str = ".", purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Apply a unified diff on a remote worker using git apply. Optional purpose/explanation fields let agents state why the patch is needed."""
+        return await _remote_call(machine, "apply_patch", {"patch": patch, "cwd": cwd, "purpose": purpose, "explanation": explanation})
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
     async def remote_git_clone_tool(machine: str, repo_url: str, dest: str | None = None, branch: str | None = None, cwd: str = ".") -> ToolResult:
@@ -1362,14 +1391,14 @@ def build_mcp() -> FastMCP:
         return await _remote_call(machine, "git_add_tool", {"cwd": cwd, "paths": paths})
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def remote_git_commit_tool(machine: str, cwd: str, message: str, all_changes: bool = False) -> ToolResult:
-        """Create a git commit on a remote worker."""
-        return await _remote_call(machine, "git_commit_tool", {"cwd": cwd, "message": message, "all_changes": all_changes})
+    async def remote_git_commit_tool(machine: str, cwd: str, message: str, all_changes: bool = False, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Create a git commit on a remote worker. Optional purpose/explanation fields let agents state why the commit is being created."""
+        return await _remote_call(machine, "git_commit_tool", {"cwd": cwd, "message": message, "all_changes": all_changes, "purpose": purpose, "explanation": explanation})
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
-    async def remote_git_push_tool(machine: str, cwd: str, remote: str = "origin", branch: str | None = None, set_upstream: bool = True) -> ToolResult:
-        """Push current HEAD from a remote worker."""
-        return await _remote_call(machine, "git_push_tool", {"cwd": cwd, "remote": remote, "branch": branch, "set_upstream": set_upstream})
+    async def remote_git_push_tool(machine: str, cwd: str, remote: str = "origin", branch: str | None = None, set_upstream: bool = True, purpose: str | None = None, explanation: str | None = None) -> ToolResult:
+        """Push current HEAD from a remote worker. Optional purpose/explanation fields let agents state why the push is being performed."""
+        return await _remote_call(machine, "git_push_tool", {"cwd": cwd, "remote": remote, "branch": branch, "set_upstream": set_upstream, "purpose": purpose, "explanation": explanation})
 
     @mcp.tool(structured_output=True, meta=oauth_meta)
     async def remote_git_show_tool(machine: str, cwd: str = ".", ref: str = "HEAD", path: str | None = None) -> ToolResult:
