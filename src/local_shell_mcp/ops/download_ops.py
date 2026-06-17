@@ -62,19 +62,6 @@ def write_download_store_locked(store: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
-def base_url() -> str:
-    """Return the externally usable base URL for generated download links."""
-    settings = get_settings()
-    if settings.base_url:
-        return settings.base_url.rstrip("/")
-    host = settings.host
-    if host in {"", "0.0.0.0", "::"}:
-        host = "127.0.0.1"
-    if ":" in host and not host.startswith("["):
-        host = f"[{host}]"
-    return f"http://{host}:{settings.port}"
-
-
 def coerce_download_ttl(ttl_s: int | None) -> int:
     """Clamp requested download-link lifetime to configured limits."""
     settings = get_settings()
@@ -110,7 +97,7 @@ def download_link_summary(token: str, link: dict[str, Any]) -> dict[str, Any]:
     """Return the public summary for a stored download link."""
     return {
         "token": token,
-        "url": f"{base_url()}{DOWNLOAD_PREFIX}/{token}",
+        "url": f"{get_settings().resolved_base_url}{DOWNLOAD_PREFIX}/{token}",
         "path": link.get("display_path"),
         "filename": link.get("filename"),
         "bytes": link.get("bytes"),

@@ -25,7 +25,7 @@ def base_url(request: Request | None = None) -> str:
             or request.url.netloc
         )
         return f"{proto}://{host}".rstrip("/")
-    return "http://127.0.0.1:8765"
+    return settings.resolved_base_url
 
 
 def issuer_url(request: Request | None = None) -> str:

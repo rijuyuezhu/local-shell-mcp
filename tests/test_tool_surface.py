@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
+import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp import __version__
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.remote.tool_specs import (
@@ -19,6 +20,7 @@ from local_shell_mcp.tools.contracts import (
     HttpToolRoute,
     ToolRegistry,
 )
+from local_shell_mcp.tools.declarative import _normalize_description
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
     UnknownLocalToolError,
@@ -56,6 +58,22 @@ LOCAL_MCP_TOOL_NAMES = {
     "read_todos",
     "write_todos",
 }
+
+
+def test_normalize_description_cleans_docstring_text():
+    assert _normalize_description(
+        """
+        First line with   extra   spaces.
+          Continued line.
+
+            Second paragraph
+            with tabs	and spaces.
+
+        """
+    ) == (
+        "First line with extra spaces. Continued line.\n\n"
+        "Second paragraph with tabs and spaces."
+    )
 
 
 REMOTE_MCP_TOOL_NAMES = {
@@ -248,6 +266,66 @@ def test_http_tool_missing_required_arg_returns_validation_error(
         "ok": False,
         "error": "validation_error",
         "message": "Missing required argument: path",
+    }
+
+
+def test_http_tool_directory_error_returns_json_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).post(
+        "/tools/read_file", json={"path": "."}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["ok"] is False
+    assert response.json()["error"] == "IsADirectoryError"
+    assert response.json()["message"].startswith("IsADirectoryError: ")
+    assert "Is a directory" in response.json()["message"]
+
+
+def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).post(
+        "/tools/read_file", json={"path": "missing.txt"}
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": "FileNotFoundError",
+        "message": f"FileNotFoundError: {tmp_path / 'missing.txt'}",
+    }
+
+
+def test_http_tool_unexpected_error_returns_json_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    async def broken_call_local_tool(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        http_tool_routes_module, "call_local_tool", broken_call_local_tool
+    )
+
+    response = TestClient(build_http_app(), raise_server_exceptions=False).post(
+        "/tools/read_file", json={"path": "a.txt"}
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "ok": False,
+        "error": "internal_error",
+        "message": "Unhandled RuntimeError: boom",
     }
 
 

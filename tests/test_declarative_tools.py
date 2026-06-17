@@ -88,12 +88,6 @@ def _sample_context():
             "openai/toolInvocation/invoking": "Reading"
         },
         oauth_security_meta={"openai/toolInvocation/invoking": "Working"},
-        ok=lambda data, message="": {
-            "ok": True,
-            "message": message,
-            "data": data,
-        },
-        handled_error=lambda exc: {"ok": False, "message": str(exc)},
     )
 
 

@@ -69,7 +69,9 @@ async def exercise_filesystem_and_search_tools(
     )
 
     listing = await client.call_tool("list_files", {"path": "notes"})
-    assert any(row.get("path") == "notes/demo.txt" for row in listing)
+    assert any(
+        row.get("path") == "notes/demo.txt" for row in listing["file_info"]
+    )
 
     tree_view_execute = await client.call_tool(
         "tree_view", {"cwd": ".", "depth": 2}

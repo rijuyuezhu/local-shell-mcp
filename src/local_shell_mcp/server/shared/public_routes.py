@@ -1,7 +1,7 @@
 """Shared public HTTP route assembly for REST and MCP transports."""
 
 from starlette.applications import Starlette
-from starlette.routing import BaseRoute
+from starlette.routing import Route
 
 from ...config.settings import Settings
 from .downloads import download_routes
@@ -10,7 +10,7 @@ from .health import health_routes
 
 def public_http_routes(
     settings: Settings, *, readyz_include_workspace_root: bool
-) -> list[BaseRoute]:
+) -> list[Route]:
     """Return public non-OAuth routes shared by REST and MCP HTTP apps."""
     return [
         *health_routes(
@@ -23,6 +23,13 @@ def public_http_routes(
 
 def install_public_http_routes(app: Starlette, settings: Settings) -> None:
     """Install shared public routes on the REST app."""
-    app.router.routes.extend(
-        public_http_routes(settings, readyz_include_workspace_root=True)
-    )
+    for route in public_http_routes(
+        settings, readyz_include_workspace_root=True
+    ):
+        app.add_route(
+            route.path,
+            route.endpoint,
+            methods=sorted(route.methods or []),
+            name=route.name,
+            include_in_schema=route.include_in_schema,
+        )

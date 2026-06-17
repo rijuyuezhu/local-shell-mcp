@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import Field, field_validator, model_validator
@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     run_shell_max_timeout_s: int = 60
     """Maximum timeout accepted by run_shell_command calls in seconds."""
     max_output_bytes: int = 200_000
-    """Command output truncation limit in bytes."""
+    """Command output limit in bytes."""
     max_file_read_bytes: int = 512_000
     """Per-file read limit in bytes."""
     max_file_write_bytes: int = 5_000_000
@@ -100,29 +100,29 @@ class Settings(BaseSettings):
     max_tree_entries: int = 5_000
     """Maximum tree-view entries."""
     max_read_many_files: int = 100
-    """Maximum files read by a multi-file read operation."""
+    """Maximum files allowed to be read by read_many_files tool."""
     max_read_many_total_bytes: int = 5_000_000
-    """Combined byte limit for multi-file reads."""
+    """Maximum total byte limit for read_many_files tool."""
     max_todos: int = 1_000
     """Todo-list item limit."""
     max_todo_bytes: int = 1_000_000
-    """Todo-list serialized byte limit."""
+    """Todo-list total byte limit."""
     max_audit_log_bytes: int = 20_000_000
-    """Audit-log rotation threshold in bytes."""
+    """Audit-log threshold in bytes. If exceeded, the log is rotated."""
     max_tmp_files: int = 500
-    """Temporary-file count limit."""
+    """Temporary-file count limit. When exceeded, old files are deleted."""
     max_tmp_bytes: int = 50_000_000
-    """Temporary-file byte limit."""
+    """Temporary-file byte limit. When exceeded, old files are deleted."""
     max_concurrent_commands: int = 4
     """Concurrent command limit."""
     max_tmux_sessions: int = 16
     """Persistent shell session limit."""
     file_download_enabled: bool = True
-    """Enable tokenized public download links created by protected tools."""
+    """Enable download links created by protected tools."""
     file_download_default_ttl_s: int = 3600
-    """Default lifetime for generated file download links in seconds."""
+    """Default lifetime for file download links in seconds."""
     file_download_max_ttl_s: int = 604800
-    """Maximum lifetime accepted for generated file download links in seconds."""
+    """Maximum lifetime accepted for file download links in seconds."""
     file_download_default_max_downloads: int = 0
     """Default download-count limit for file links; 0 means unlimited until expiry."""
     file_download_max_file_bytes: int = 0
@@ -196,6 +196,18 @@ class Settings(BaseSettings):
         """Read-only capability config directory, derived from state_dir."""
         return self.state_dir / AGENT_CONFIG_STATE_DIR_NAME
 
+    @property
+    def resolved_base_url(self) -> str:
+        """Configured base_url, or a local HTTP URL derived from host and port."""
+        if self.base_url:
+            return self.base_url.rstrip("/")
+        host = self.host
+        if host in {"", "0.0.0.0", "::"}:
+            host = "127.0.0.1"
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{self.port}"
+
     @field_validator(
         "workspace_root",
         "state_dir",
@@ -222,19 +234,6 @@ class Settings(BaseSettings):
         return self
 
 
-def _flatten_config(data: dict[str, Any]) -> dict[str, Any]:
-    """Flatten one level of grouped YAML keys into Settings field names."""
-    flat: dict[str, Any] = {}
-    for key, value in data.items():
-        if isinstance(value, dict):
-            nested = cast(dict[str, Any], value)
-            for child_key, child_value in nested.items():
-                flat[f"{key}_{child_key}"] = child_value
-        else:
-            flat[key] = value
-    return flat
-
-
 def read_config_file(path: str | Path | None) -> dict[str, Any]:
     """Read optional YAML configuration values."""
     if not path:
@@ -247,10 +246,10 @@ def read_config_file(path: str | Path | None) -> dict[str, Any]:
         return {}
     if not isinstance(loaded, dict):
         raise ValueError(f"Config file must contain a mapping: {config_path}")
-    return _flatten_config(cast(dict[str, Any], loaded))
+    return loaded
 
 
-def _env_overrides() -> dict[str, Any]:
+def env_overrides() -> dict[str, Any]:
     """Return settings explicitly present in the process environment."""
     present = {
         name: field_name
@@ -281,10 +280,10 @@ def load_settings(
     *,
     create_dirs: bool = True,
 ) -> Settings:
-    """Load settings with precedence: defaults < config file < environment < explicit overrides."""
+    """Load settings with precedence: defaults < config file < environment < explicit overrides. Here the explicit overrides usually come from the CLI."""
     config_path = config_path or os.getenv("LOCAL_SHELL_MCP_CONFIG")
     values = read_config_file(config_path)
-    values.update(_env_overrides())
+    values.update(env_overrides())
     if overrides:
         values.update(overrides)
     return _prepare_settings(Settings(**values), create_dirs=create_dirs)
@@ -294,7 +293,7 @@ _configured_settings: Settings | None = None
 
 
 def get_settings() -> Settings:
-    """Return cached settings, optionally primed by configure_settings."""
+    """Return cached settings, optionally primed by configure_settings. If no settings are cached, a new one is loaded from load_settings without any CLI overrides."""
     global _configured_settings
     if _configured_settings is None:
         _configured_settings = load_settings()

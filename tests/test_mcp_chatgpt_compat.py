@@ -78,7 +78,16 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     }
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
-    assert search_schema["properties"]["result"]["type"] == "string"
+    assert "results" in search_schema["properties"]
+    fetch_schema = tools["fetch"].outputSchema
+    assert fetch_schema is not None
+    assert set(fetch_schema["properties"]) == {
+        "id",
+        "title",
+        "text",
+        "url",
+        "metadata",
+    }
 
     structured = mcp_structured(await mcp.call_tool("environment_info", {}))
     assert structured["ok"] is True

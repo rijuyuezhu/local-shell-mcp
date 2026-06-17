@@ -1,15 +1,66 @@
 """Connector-compatible workspace document search/fetch operations."""
 
 import asyncio
-import json
 from typing import Any
+
+from pydantic import BaseModel
 
 from ..audit import audit
 from .fs_ops import read_file_execute
 from .search_ops import grep_search_execute
 
 
-async def search_execute(query: str) -> str:
+class SearchResult(BaseModel):
+    id: str
+    title: str
+    url: str
+
+
+class SearchOutput(BaseModel):
+    results: list[SearchResult]
+
+
+class FetchOutput(BaseModel):
+    id: str
+    title: str
+    text: str
+    url: str
+    metadata: dict[str, Any] | None = None
+
+
+def search_error_output(
+    exc: Exception, args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> SearchOutput:
+    """Return connector-compatible search output for MCP tool errors."""
+    return SearchOutput(results=[])
+
+
+def _fetch_id_from_call(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+    if "id" in kwargs:
+        return str(kwargs["id"])
+    if args:
+        return str(args[0])
+    return ""
+
+
+def fetch_error_output(
+    exc: Exception, args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> FetchOutput:
+    """Return connector-compatible fetch output for MCP tool errors."""
+    id = _fetch_id_from_call(args, kwargs)
+    return FetchOutput(
+        id=id,
+        title=id,
+        text=f"Unable to fetch file: {type(exc).__name__}: {exc}",
+        url=f"file:///workspace/{id}",
+        metadata={
+            "source": "workspace",
+            "error": type(exc).__name__,
+        },
+    )
+
+
+async def search_execute(query: str) -> SearchOutput:
     """Return connector-compatible result cards for a workspace text search."""
     try:
         result = await grep_search_execute(
@@ -20,7 +71,7 @@ async def search_execute(query: str) -> str:
             max_results=20,
         )
         seen: set[str] = set()
-        rows: list[dict[str, Any]] = []
+        rows: list[SearchResult] = []
         for match in result.get("matches", []):
             path = match.get("path")
             if not path or path in seen:
@@ -29,52 +80,38 @@ async def search_execute(query: str) -> str:
             line = match.get("line")
             suffix = f":{line}" if line else ""
             rows.append(
-                {
-                    "id": path,
-                    "title": f"{path}{suffix}",
-                    "url": f"file:///workspace/{path}",
-                }
+                SearchResult(
+                    id=path,
+                    title=f"{path}{suffix}",
+                    url=f"file:///workspace/{path}",
+                )
             )
-        return json.dumps({"results": rows}, ensure_ascii=False)
+        return SearchOutput(results=rows)
     except Exception as exc:
         audit("tool_error", error=repr(exc))
-        return json.dumps({"results": []}, ensure_ascii=False)
+        return search_error_output(exc, (), {"query": query})
 
 
-async def fetch_execute(id: str) -> str:
+async def fetch_execute(id: str) -> FetchOutput:
     """Return one connector-compatible document for a workspace result id."""
     try:
         data = await asyncio.to_thread(read_file_execute, id)
-        path = data.get("path") or id
+        path = str(data.get("path") or id)
         binary = bool(data.get("binary"))
-        return json.dumps(
-            {
-                "id": path,
-                "title": path,
-                "text": data.get("content")
-                if not binary
-                else data.get("message", "Binary file omitted"),
-                "url": f"file:///workspace/{path}",
-                "metadata": {
-                    "source": "workspace",
-                    "binary": binary,
-                    "bytes": data.get("bytes"),
-                },
+        text = data.get("content")
+        if binary:
+            text = data.get("message", "Binary file omitted")
+        return FetchOutput(
+            id=path,
+            title=path,
+            text=str(text or ""),
+            url=f"file:///workspace/{path}",
+            metadata={
+                "source": "workspace",
+                "binary": binary,
+                "bytes": data.get("bytes"),
             },
-            ensure_ascii=False,
         )
     except Exception as exc:
         audit("tool_error", error=repr(exc))
-        return json.dumps(
-            {
-                "id": id,
-                "title": id,
-                "text": f"Unable to fetch file: {type(exc).__name__}: {exc}",
-                "url": f"file:///workspace/{id}",
-                "metadata": {
-                    "source": "workspace",
-                    "error": type(exc).__name__,
-                },
-            },
-            ensure_ascii=False,
-        )
+        return fetch_error_output(exc, (), {"id": id})

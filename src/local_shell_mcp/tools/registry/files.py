@@ -27,7 +27,7 @@ local_tool = FileToolRegistry.get_tool_decorator()
 
 def _list_files_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""List files and directories under a path. Use for quick directory inspection when a compact listing is enough. Parameters: path defaults to '.' and is workspace-relative unless an allowed absolute path is supplied; recursive defaults to false and lists one level, while true walks descendants. Limits: max_entries defaults to 500 and is capped by max_directory_entries={settings.max_directory_entries}."""
+    return f"""List files and directories under a path. Use for quick directory inspection when a compact listing is enough. Parameters: path defaults to '.' and is workspace-relative unless an absolute path is supplied; recursive defaults to false and lists one level, while true walks descendants. Result: returns file_info plus limit_count, count, and is_truncated to indicate whether the listing was complete within the limit. Limits: max_entries defaults to 500 and must be between 0 and max_directory_entries={settings.max_directory_entries}."""
 
 
 def _read_file_description(context: McpToolContext) -> str:
@@ -57,7 +57,7 @@ def _edit_file_description(context: McpToolContext) -> str:
 )
 async def list_files(
     path: str = ".", recursive: bool = False, max_entries: int = 500
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """List files and directories under a path."""
     return await asyncio.to_thread(
         list_files_execute, path, recursive, max_entries

@@ -1,8 +1,7 @@
-"""Shared local tool invocation helpers used by HTTP adapters."""
+"""Local tool invocation helpers used by HTTP adapters."""
 
 import time
 from collections.abc import Mapping
-from dataclasses import asdict, is_dataclass
 from functools import lru_cache
 from typing import Any
 
@@ -31,17 +30,9 @@ def local_tool_handlers() -> Mapping[str, ToolHandler]:
     return handlers
 
 
-def _jsonable_dataclass(value: Any) -> Any:
-    if is_dataclass(value) and not isinstance(value, type):
-        return asdict(value)
-    return value
-
-
 async def call_local_tool(
     tool_name: str,
     args: dict[str, Any] | None = None,
-    *,
-    audit_context: dict[str, Any] | None = None,
 ) -> Any:
     """Invoke a local tool by canonical MCP tool name and audit the routed call."""
     try:

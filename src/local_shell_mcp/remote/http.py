@@ -31,9 +31,7 @@ def _bearer_token(request: Request) -> str:
 async def join_script(request: Request) -> PlainTextResponse:
     """Serve a shell script that installs and starts a remote worker for a pending invite."""
     settings = get_settings()
-    server = (
-        settings.base_url or f"http://{settings.host}:{settings.port}"
-    ).rstrip("/")
+    server = settings.resolved_base_url
     script = (
         resources.files(__package__)
         .joinpath(JOIN_SCRIPT_RESOURCE)

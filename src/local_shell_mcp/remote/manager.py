@@ -73,8 +73,7 @@ class RemoteManager:
     def _join_url(self) -> str:
         """Build the copy-paste registration command for a pending invite."""
         settings = get_settings()
-        base = settings.base_url or f"http://{settings.host}:{settings.port}"
-        return base.rstrip("/") + REMOTE_JOIN_PATH
+        return settings.resolved_base_url + REMOTE_JOIN_PATH
 
     async def create_invite(
         self,

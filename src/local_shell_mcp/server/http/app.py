@@ -1,4 +1,4 @@
-"""Build the FastAPI REST application that exposes local tool endpoints."""
+"""Build the FastAPI REST HTTP application."""
 
 import uvicorn
 from fastapi import FastAPI
@@ -29,7 +29,7 @@ def build_http_app() -> FastAPI:
 
 
 def run_http() -> None:
-    """Run the HTTP server with REST tool routes and health endpoints."""
+    """Run the REST HTTP server."""
     settings = get_settings()
     app = build_http_app()
     uvicorn.run(app, host=settings.host, port=settings.port)

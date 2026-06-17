@@ -29,11 +29,7 @@ async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
         raise ValueError(f"unsupported remote worker tool: {tool}")
     from ..tools.local_invocations import call_local_tool
 
-    return await call_local_tool(
-        tool,
-        args,
-        audit_context={"remote_worker": True},
-    )
+    return await call_local_tool(tool, args)
 
 
 def _open_worker_request(

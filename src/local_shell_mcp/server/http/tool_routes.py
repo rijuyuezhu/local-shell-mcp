@@ -4,25 +4,16 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
-from ...oauth.middleware import Principal, verify_request
 from ...ops.command_ops import tool_timeout_s
 from ...tools.discovery import discover_tool_registries
 from ...tools.local_invocations import call_local_tool
 
 type ToolRouteHandler = Callable[..., Awaitable[Any]]
-
-
-def principal_dep(request: Request) -> Principal:
-    """Expose the principal installed by auth middleware to FastAPI route handlers."""
-    return verify_request(request)
-
-
-PRINCIPAL_DEP = Depends(principal_dep)
 
 
 def install_tools_timeout_middleware(app: FastAPI) -> None:
@@ -50,7 +41,7 @@ def install_tools_timeout_middleware(app: FastAPI) -> None:
 
 
 def register_http_tool_routes(app: FastAPI) -> None:
-    """Register REST tool endpoints from the shared local tool routing table."""
+    """Register REST tool endpoints from the local tool routing table."""
     routes = [
         route
         for registry in discover_tool_registries()
@@ -69,31 +60,14 @@ def register_http_tool_routes(app: FastAPI) -> None:
 
 
 def _make_get_tool_handler(tool_name: str) -> ToolRouteHandler:
-    async def get_handler(principal: Principal = PRINCIPAL_DEP) -> Any:
-        return await call_local_tool(
-            tool_name,
-            None,
-            audit_context={
-                "principal": principal,
-                "path": f"/tools/{tool_name}",
-            },
-        )
+    async def get_handler() -> Any:
+        return await call_local_tool(tool_name, None)
 
     return get_handler
 
 
 def _make_post_tool_handler(tool_name: str) -> ToolRouteHandler:
-    async def post_handler(
-        body: dict[str, Any] | None = None,
-        principal: Principal = PRINCIPAL_DEP,
-    ) -> Any:
-        return await call_local_tool(
-            tool_name,
-            body,
-            audit_context={
-                "principal": principal,
-                "path": f"/tools/{tool_name}",
-            },
-        )
+    async def post_handler(body: dict[str, Any] | None = None) -> Any:
+        return await call_local_tool(tool_name, body)
 
     return post_handler
