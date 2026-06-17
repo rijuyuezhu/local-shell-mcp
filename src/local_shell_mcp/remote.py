@@ -365,12 +365,29 @@ class RemoteManager:
     def list_machines(self) -> dict[str, Any]:
         self._load_registry_unlocked()
         now = _utc()
+        offline_after_s = max(2 * get_settings().remote_poll_timeout_s, 60)
         rows = []
+        counts = {"online": 0, "offline": 0}
         for worker in self.workers.values():
-            status = "online" if now - worker.last_seen <= max(2 * get_settings().remote_poll_timeout_s, 60) else "offline"
+            last_seen_age_s = None if not worker.last_seen else max(0.0, now - worker.last_seen)
+            status = "online" if last_seen_age_s is not None and last_seen_age_s <= offline_after_s else "offline"
             worker.status = status
-            rows.append({"name": worker.name, "status": status, "workdir": worker.workdir, "last_seen": worker.last_seen, "capabilities": worker.capabilities, "info": worker.info})
-        return {"machines": sorted(rows, key=lambda item: item["name"])}
+            counts[status] += 1
+            rows.append(
+                {
+                    "name": worker.name,
+                    "status": status,
+                    "workdir": worker.workdir,
+                    "last_seen": worker.last_seen,
+                    "last_seen_age_s": last_seen_age_s,
+                    "offline_after_s": offline_after_s,
+                    "queue_depth": worker.queue.qsize(),
+                    "capabilities": worker.capabilities,
+                    "info": worker.info,
+                }
+            )
+        rows.sort(key=lambda item: (item["status"] != "online", item["name"]))
+        return {"machines": rows, "counts": {**counts, "total": len(rows)}}
 
     def revoke(self, machine: str) -> dict[str, Any]:
         self._load_registry_unlocked()
