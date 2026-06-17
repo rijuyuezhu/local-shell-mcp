@@ -278,7 +278,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             )
             assert any(
                 item.get("path") == "remote/demo.txt"
-                for item in listing["files"]
+                for item in listing["file_info"]
             )
 
             read_result = await client.call_tool(

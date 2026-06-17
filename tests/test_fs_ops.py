@@ -37,14 +37,14 @@ def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
     limited = list_files_execute("listed", max_entries=1)
     complete = list_files_execute("listed", max_entries=10)
 
-    assert limited["limit"] == 1
+    assert limited["limit_count"] == 1
     assert limited["count"] == 1
-    assert limited["truncated"] is True
-    assert len(limited["files"]) == 1
+    assert limited["is_truncated"] is True
+    assert len(limited["file_info"]) == 1
     assert "total_count" not in limited
 
     assert complete["count"] == 2
-    assert complete["truncated"] is False
+    assert complete["is_truncated"] is False
 
 
 def test_read_text_refuses_binary_without_decoding(tmp_path, monkeypatch):
