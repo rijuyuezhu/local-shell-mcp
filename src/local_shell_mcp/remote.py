@@ -36,7 +36,6 @@ from .fs_ops import (
     temp_dir,
     write_text,
 )
-from .jobs import list_jobs, retry_job, start_job, stop_job, tail_job
 from .git_ops import (
     git_add,
     git_checkout,
@@ -51,6 +50,7 @@ from .git_ops import (
     git_show,
     git_status,
 )
+from .jobs import list_jobs, retry_job, start_job, stop_job, tail_job
 from .playwright_ops import (
     browser_eval,
     browser_get_text,

@@ -66,7 +66,6 @@ from .shell_ops import (
     start_shell,
 )
 from .todo_ops import todo_read, todo_write
-from .version import version_info as get_version_info
 from .transfer_ops import (
     normalize_chunk_size,
     transfer_abort_write,
@@ -79,6 +78,7 @@ from .transfer_ops import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
+from .version import version_info as get_version_info
 
 
 def _ok(data: Any = None, message: str = "") -> dict:

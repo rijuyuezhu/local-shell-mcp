@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
@@ -45,10 +46,8 @@ def _save_store(store: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(path.name + ".tmp")
     tmp_path.write_text(json.dumps(store, indent=2, sort_keys=True), encoding="utf-8")
-    try:
+    with contextlib.suppress(OSError):
         tmp_path.chmod(0o600)
-    except OSError:
-        pass
     tmp_path.replace(path)
 
 
