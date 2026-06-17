@@ -7,6 +7,7 @@ from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.command_ops import check_command_policy
 from local_shell_mcp.ops.fs_ops import (
     edit_file_execute,
+    list_files_execute,
     multi_edit_file_execute,
     read_file_execute,
     write_file_execute,
@@ -23,6 +24,27 @@ def test_write_read_edit(tmp_path, monkeypatch):
     assert read_file_execute("a.txt")["content"] == "hello world"
     edit_file_execute("a.txt", "world", "mcp")
     assert read_file_execute("a.txt")["content"] == "hello mcp"
+
+
+def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    listed_dir = tmp_path / "listed"
+    listed_dir.mkdir()
+    (listed_dir / "a.txt").write_text("a", encoding="utf-8")
+    (listed_dir / "b.txt").write_text("b", encoding="utf-8")
+
+    limited = list_files_execute("listed", max_entries=1)
+    complete = list_files_execute("listed", max_entries=10)
+
+    assert limited["limit"] == 1
+    assert limited["count"] == 1
+    assert limited["truncated"] is True
+    assert len(limited["files"]) == 1
+    assert "total_count" not in limited
+
+    assert complete["count"] == 2
+    assert complete["truncated"] is False
 
 
 def test_read_text_refuses_binary_without_decoding(tmp_path, monkeypatch):

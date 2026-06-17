@@ -17,23 +17,31 @@ BINARY_MESSAGE = "Refusing to read binary file as text"
 
 def list_files_execute(
     path: str = ".", recursive: bool = False, max_entries: int = 500
-) -> list[dict]:
-    """List directory entries within configured limits using workspace-relative display paths."""
+) -> dict:
+    """List directory entries up to a limit and report whether results were truncated."""
     settings = get_settings()
     base = resolve_path(path, must_exist=True)
     if not base.is_dir():
         raise NotADirectoryError(str(base))
-    out: list[dict] = []
-    limit = max(1, min(max_entries, settings.max_directory_entries))
+    filelist: list[dict] = []
+    max_directory_entries = settings.max_directory_entries
+    if not (0 <= max_entries <= max_directory_entries):
+        raise ValueError(
+            f"max_entries must be between 0 and {max_directory_entries}"
+        )
+    limit = min(max_entries, max_directory_entries)
     iterator = base.rglob("*") if recursive else base.iterdir()
+
+    truncated = False
     for item in iterator:
-        if len(out) >= limit:
+        if len(filelist) >= limit:
+            truncated = True
             break
         try:
             stat = item.stat()
         except OSError:
             continue
-        out.append(
+        filelist.append(
             {
                 "path": relative_display(item),
                 "type": "dir"
@@ -45,7 +53,12 @@ def list_files_execute(
                 "modified": stat.st_mtime,
             }
         )
-    return out
+    return {
+        "limit_count": limit,
+        "count": len(filelist),
+        "is_truncated": truncated,
+        "file_info": filelist,
+    }
 
 
 def glob_search_execute(
