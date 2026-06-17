@@ -249,7 +249,7 @@ def read_config_file(path: str | Path | None) -> dict[str, Any]:
     return loaded
 
 
-def _env_overrides() -> dict[str, Any]:
+def env_overrides() -> dict[str, Any]:
     """Return settings explicitly present in the process environment."""
     present = {
         name: field_name
@@ -280,10 +280,10 @@ def load_settings(
     *,
     create_dirs: bool = True,
 ) -> Settings:
-    """Load settings with precedence: defaults < config file < environment < explicit overrides."""
+    """Load settings with precedence: defaults < config file < environment < explicit overrides. Here the explicit overrides usually come from the CLI."""
     config_path = config_path or os.getenv("LOCAL_SHELL_MCP_CONFIG")
     values = read_config_file(config_path)
-    values.update(_env_overrides())
+    values.update(env_overrides())
     if overrides:
         values.update(overrides)
     return _prepare_settings(Settings(**values), create_dirs=create_dirs)
@@ -293,7 +293,7 @@ _configured_settings: Settings | None = None
 
 
 def get_settings() -> Settings:
-    """Return cached settings, optionally primed by configure_settings."""
+    """Return cached settings, optionally primed by configure_settings. If no settings are cached, a new one is loaded from load_settings without any CLI overrides."""
     global _configured_settings
     if _configured_settings is None:
         _configured_settings = load_settings()
