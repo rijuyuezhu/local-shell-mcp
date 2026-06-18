@@ -8,11 +8,11 @@ from dataclasses import dataclass
 
 from ..audit import audit
 from ..config.settings import get_settings
+from ..schemas.result_models.shell import CommandResult, RunShellCommandOutput
 from .path_ops import (
     relative_display,
     resolve_path,
 )
-from .shell_models import CommandResult
 
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2
@@ -321,8 +321,12 @@ async def run_shell_command_execute(
     cwd: str = ".",
     timeout_s: int | None = None,
     max_output_bytes: int | None = None,
-) -> CommandResult:
+) -> RunShellCommandOutput:
     """Execute a shell command through the public API using stricter timeout defaults."""
-    return await run_shell(
-        command, cwd, run_shell_command_timeout(timeout_s), max_output_bytes
+    result = await run_shell(
+        command,
+        cwd,
+        run_shell_command_timeout(timeout_s),
+        max_output_bytes,
     )
+    return RunShellCommandOutput.model_validate(result.model_dump(mode="json"))

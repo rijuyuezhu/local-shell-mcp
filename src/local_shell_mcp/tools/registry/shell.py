@@ -67,12 +67,8 @@ async def run_shell_command(
     max_output_bytes: MaxOutputBytesArg = None,
 ) -> RunShellCommandOutput:
     """Run one non-interactive shell command."""
-    return RunShellCommandOutput.model_validate(
-        (
-            await run_shell_command_execute(
-                command, cwd, timeout_s, max_output_bytes
-            )
-        ).model_dump()
+    return await run_shell_command_execute(
+        command, cwd, timeout_s, max_output_bytes
     )
 
 
@@ -85,9 +81,7 @@ async def run_python_code(
     code: PythonCodeArg, cwd: CwdArg = ".", timeout_s: PythonTimeoutArg = 60
 ) -> RunPythonCodeOutput:
     """Write Python code to a temporary file and execute it."""
-    return RunPythonCodeOutput.model_validate(
-        await run_python_code_execute(code, cwd, timeout_s)
-    )
+    return await run_python_code_execute(code, cwd, timeout_s)
 
 
 @local_tool(http_method="POST", http_path="/tools/start_persistent_shell")
