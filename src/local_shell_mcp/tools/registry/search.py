@@ -1,12 +1,25 @@
 """Search and tree-view tool registry."""
 
 import asyncio
-from typing import Any
 
 from ...ops.fs_ops import glob_search_execute
 from ...ops.search_ops import grep_search_execute, tree_view_execute
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
+from ..inputs.search import (
+    CaseSensitiveArg,
+    GlobMaxResultsArg,
+    GlobPatternArg,
+    GrepGlobArg,
+    GrepMaxResultsArg,
+    GrepQueryArg,
+    RegexArg,
+    SearchCwdArg,
+    TreeCwdArg,
+    TreeDepthArg,
+    TreeMaxEntriesArg,
+)
+from ..outputs.search import GlobSearchOutput, GrepSearchOutput, TreeViewOutput
 
 
 class SearchToolRegistry(DeclarativeToolRegistry):
@@ -20,17 +33,17 @@ local_tool = SearchToolRegistry.get_tool_decorator()
 
 def _tree_view_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Return a compact directory tree rooted at cwd. Use to understand project layout before reading files or making edits. Parameters: cwd defaults to '.' and is workspace-relative unless an allowed absolute path is supplied; depth defaults to 3 and controls nesting. Limits: max_entries defaults to 500 and is capped by max_tree_entries={settings.max_tree_entries}. Use this for high-level orientation before targeted file reads."""
+    return f"""Return a compact directory tree for high-level project orientation before targeted file reads. Current max tree entries: {settings.max_tree_entries}."""
 
 
 def _glob_search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Find files by glob pattern. Use when you know filename patterns such as *.py or **/pyproject.toml and need matching paths, not file contents. Parameters: pattern is the glob expression; cwd defaults to '.' and narrows the search root. Limits: max_results defaults to 500 and is capped by max_glob_results={settings.max_glob_results}."""
+    return f"""Find files by glob pattern when you know filename patterns and need matching paths, not file contents. Current max glob results: {settings.max_glob_results}."""
 
 
 def _grep_search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search file contents with ripgrep. Use to locate symbols, usages, error messages, or text before reading or editing files. Parameters: query is a regular expression by default; set regex=false for literal text; cwd defaults to '.' and narrows the search root. Filters: glob optionally filters files; case_sensitive defaults to true. Limits: max_results is optional and capped by max_grep_results={settings.max_grep_results}."""
+    return f"""Search file contents with ripgrep to locate symbols, usages, error messages, or text before reading or editing files. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(
@@ -39,10 +52,14 @@ def _grep_search_description(context: McpToolContext) -> str:
     description=_tree_view_description,
 )
 async def tree_view(
-    cwd: str = ".", depth: int = 3, max_entries: int = 500
-) -> dict[str, Any]:
+    cwd: TreeCwdArg = ".",
+    depth: TreeDepthArg = 3,
+    max_entries: TreeMaxEntriesArg = 500,
+) -> TreeViewOutput:
     """Return a compact directory tree rooted at cwd."""
-    return await tree_view_execute(cwd, depth, max_entries)
+    return TreeViewOutput.model_validate(
+        await tree_view_execute(cwd, depth, max_entries)
+    )
 
 
 @local_tool(
@@ -51,14 +68,16 @@ async def tree_view(
     description=_glob_search_description,
 )
 async def glob_search(
-    pattern: str, cwd: str = ".", max_results: int = 500
-) -> dict[str, Any]:
+    pattern: GlobPatternArg,
+    cwd: SearchCwdArg = ".",
+    max_results: GlobMaxResultsArg = 500,
+) -> GlobSearchOutput:
     """Find files by glob pattern."""
-    return {
-        "paths": await asyncio.to_thread(
+    return GlobSearchOutput(
+        paths=await asyncio.to_thread(
             glob_search_execute, pattern, cwd, max_results
         )
-    }
+    )
 
 
 @local_tool(
@@ -67,14 +86,16 @@ async def glob_search(
     description=_grep_search_description,
 )
 async def grep_search(
-    query: str,
-    cwd: str = ".",
-    glob: str | None = None,
-    regex: bool = True,
-    case_sensitive: bool = True,
-    max_results: int | None = None,
-) -> dict[str, Any]:
+    query: GrepQueryArg,
+    cwd: SearchCwdArg = ".",
+    glob: GrepGlobArg = None,
+    regex: RegexArg = True,
+    case_sensitive: CaseSensitiveArg = True,
+    max_results: GrepMaxResultsArg = None,
+) -> GrepSearchOutput:
     """Search file contents with ripgrep."""
-    return await grep_search_execute(
-        query, cwd, glob, regex, case_sensitive, max_results
+    return GrepSearchOutput.model_validate(
+        await grep_search_execute(
+            query, cwd, glob, regex, case_sensitive, max_results
+        )
     )

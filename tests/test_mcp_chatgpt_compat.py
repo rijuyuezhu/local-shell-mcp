@@ -179,6 +179,37 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
 
 
 @pytest.mark.asyncio
+async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    grep_tool = tools["grep_search"]
+    tree_tool = tools["tree_view"]
+
+    assert grep_tool.outputSchema["title"] == "GrepSearchOutput"
+    assert tree_tool.outputSchema["title"] == "TreeViewOutput"
+    assert grep_tool.inputSchema["properties"]["query"]["description"] == (
+        "Text or regular expression to search for, depending on the regex parameter."
+    )
+    assert (
+        "case-sensitive"
+        in grep_tool.inputSchema["properties"]["case_sensitive"]["description"]
+    )
+    assert (
+        grep_tool.outputSchema["properties"]["matches"]["description"]
+        == "Returned ripgrep matches."
+    )
+    assert (
+        tree_tool.outputSchema["properties"]["entries"]["description"]
+        == "Indented tree entries relative to root."
+    )
+
+
+@pytest.mark.asyncio
 async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES", "12345")
