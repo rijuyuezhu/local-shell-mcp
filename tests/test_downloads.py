@@ -79,9 +79,22 @@ async def test_file_link_tools_are_registered(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     clear_settings_cache()
-    names = {tool.name for tool in await build_mcp().list_tools()}
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    names = set(tools)
 
     assert {"create_file_link", "list_file_links", "revoke_file_link"} <= names
+
+    create_tool = tools["create_file_link"]
+    list_tool = tools["list_file_links"]
+    assert create_tool.outputSchema["title"] == "CreateFileLinkOutput"
+    assert list_tool.outputSchema["title"] == "ListFileLinksOutput"
+    assert create_tool.inputSchema["properties"]["path"]["description"] == (
+        "Existing regular file path to expose through a temporary tokenized download URL."
+    )
+    assert (
+        create_tool.outputSchema["properties"]["url"]["description"]
+        == "Browser-accessible download URL containing the token."
+    )
 
 
 @pytest.mark.asyncio
