@@ -61,9 +61,7 @@ async def tree_view(
     max_entries: TreeMaxEntriesArg = 500,
 ) -> TreeViewOutput:
     """Return a compact directory tree rooted at cwd."""
-    return TreeViewOutput.model_validate(
-        await tree_view_execute(cwd, depth, max_entries)
-    )
+    return await tree_view_execute(cwd, depth, max_entries)
 
 
 @local_tool(
@@ -98,8 +96,6 @@ async def grep_search(
     max_results: GrepMaxResultsArg = None,
 ) -> GrepSearchOutput:
     """Search file contents with ripgrep."""
-    return GrepSearchOutput.model_validate(
-        await grep_search_execute(
-            query, cwd, glob, regex, case_sensitive, max_results
-        )
+    return await grep_search_execute(
+        query, cwd, glob, regex, case_sensitive, max_results
     )

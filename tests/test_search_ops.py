@@ -19,10 +19,10 @@ async def test_tree_reports_existing_directory(tmp_path, monkeypatch):
 
     result = await tree_view_execute("project")
 
-    assert result["exists"] is True
-    assert result["is_directory"] is True
-    assert "src/" in result["entries"]
-    assert "README.md" in result["entries"]
+    assert result.exists is True
+    assert result.is_directory is True
+    assert "src/" in result.entries
+    assert "README.md" in result.entries
 
 
 @pytest.mark.asyncio
@@ -37,9 +37,9 @@ async def test_tree_clamps_entries_without_sorting_entire_tree(
 
     result = await tree_view_execute(".", max_entries=100)
 
-    assert result["count"] == 3
-    assert len(result["entries"]) == 3
-    assert result["truncated"] is True
+    assert result.count == 3
+    assert len(result.entries) == 3
+    assert result.truncated is True
 
 
 @pytest.mark.asyncio
@@ -52,11 +52,11 @@ async def test_tree_returns_context_for_missing_directory(
 
     result = await tree_view_execute("missing/project")
 
-    assert result["exists"] is False
-    assert result["is_directory"] is False
-    assert result["nearest_existing_parent"] == str(tmp_path)
-    assert "actual/" in result["nearest_parent_entries"]
-    assert "Path does not exist" in result["message"]
+    assert result.exists is False
+    assert result.is_directory is False
+    assert result.nearest_existing_parent == str(tmp_path)
+    assert "actual/" in result.nearest_parent_entries
+    assert "Path does not exist" in result.message
 
 
 def test_tool_error_returns_successful_not_found_result(tmp_path, monkeypatch):
@@ -99,6 +99,6 @@ async def test_grep_accepts_query_starting_with_dash(tmp_path, monkeypatch):
 
     result = await grep_search_execute(term, cwd=".", regex=False)
 
-    assert result["ok"] is True
-    assert result["count"] == 1
-    assert result["matches"][0]["path"].endswith("dash.txt")
+    assert result.ok is True
+    assert result.count == 1
+    assert result.matches[0].path.endswith("dash.txt")
