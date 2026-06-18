@@ -192,7 +192,7 @@ def list_agent_mcp_tools_payload(
         for server_name, record in records
         for tool in record.tools
     ]
-    return {"tools": rows}
+    return ListAgentMcpToolsOutput(tools=rows)
 
 
 def _agent_mcp_unavailable_error(record: AgentMcpServerRecord) -> str:

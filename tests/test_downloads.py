@@ -86,6 +86,8 @@ async def test_file_link_tools_are_registered(tmp_path, monkeypatch):
 
     create_tool = tools["create_file_link"]
     list_tool = tools["list_file_links"]
+    assert create_tool.outputSchema is not None
+    assert list_tool.outputSchema is not None
     assert create_tool.outputSchema["title"] == "CreateFileLinkOutput"
     assert list_tool.outputSchema["title"] == "ListFileLinksOutput"
     assert create_tool.inputSchema["properties"]["path"]["description"] == (

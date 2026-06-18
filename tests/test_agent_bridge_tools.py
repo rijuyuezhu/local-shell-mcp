@@ -1,4 +1,5 @@
 import json
+from typing import Any, cast
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
@@ -10,10 +11,10 @@ from local_shell_mcp.tools.registry import agent as tools_module
 from tests.helpers import mcp_text
 
 
-def _payload(response):
+def _payload(response: Any) -> dict[str, Any]:
     if isinstance(response, tuple):
-        return response[1]
-    return json.loads(mcp_text(response))
+        return cast(dict[str, Any], response[1])
+    return cast(dict[str, Any], json.loads(mcp_text(response)))
 
 
 REALISTIC_SECRET_ERROR = (

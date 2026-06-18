@@ -203,7 +203,7 @@ def list_file_links_execute(
             download_link_summary(token, link)
             for token, link in store.get("links", {}).items()
         ]
-    links.sort(key=lambda item: item.get("created_at", 0), reverse=True)
+    links.sort(key=lambda item: item.created_at or 0, reverse=True)
     return ListFileLinksOutput(links=links)
 
 

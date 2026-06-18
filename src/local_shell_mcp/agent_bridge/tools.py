@@ -15,8 +15,8 @@ from .service import (
 )
 from .state import agent_config_fingerprint
 
-type SkillHandler = Callable[[], Awaitable[dict[str, Any]]]
-type McpHandler = Callable[..., Awaitable[dict[str, Any]]]
+type SkillHandler = Callable[[], Awaitable[Any]]
+type McpHandler = Callable[..., Awaitable[Any]]
 
 
 class AgentBridgeToolReloader:

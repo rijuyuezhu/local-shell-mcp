@@ -117,6 +117,10 @@ class KillPersistentShellOutput(BaseModel):
         default=None,
         description="Whether tmux reported that the session was killed successfully.",
     )
+    stderr: str | None = Field(
+        default=None,
+        description="Captured tmux stderr from the kill operation, when available.",
+    )
 
 
 class PersistentShellInfo(BaseModel):

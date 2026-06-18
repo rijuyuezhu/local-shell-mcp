@@ -33,6 +33,7 @@ def test_chunked_transfer_round_trip_and_checksum(tmp_path, monkeypatch):
     (root / "source.bin").write_bytes(data)
 
     stat = transfer_stat("source.bin", sha256=True)
+    assert stat.size is not None
     begin = transfer_begin_write(
         "nested/dest.bin", overwrite=True, expected_bytes=stat.size
     )

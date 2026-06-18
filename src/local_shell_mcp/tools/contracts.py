@@ -6,24 +6,12 @@ from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel
 
 from ..config.settings import Settings
 
 type ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
 type HttpMethod = Literal["GET", "POST"]
-
-
-class ToolResult(BaseModel):
-    """Structured output schema for normal MCP tool response."""
-
-    ok: bool = True
-    """Indicates whether the tool execution was successful."""
-    message: str = ""
-    """Human-readable message describing the result."""
-    data: Any = None
-    """Structured data returned by the tool."""
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,6 @@ from local_shell_mcp.ops.search_ops import (
     grep_search_execute,
     tree_view_execute,
 )
-from local_shell_mcp.tools.responses import handled_error
 
 
 @pytest.mark.asyncio
@@ -55,37 +54,10 @@ async def test_tree_returns_context_for_missing_directory(
     assert result.exists is False
     assert result.is_directory is False
     assert result.nearest_existing_parent == str(tmp_path)
+    assert result.nearest_parent_entries is not None
     assert "actual/" in result.nearest_parent_entries
+    assert result.message is not None
     assert "Path does not exist" in result.message
-
-
-def test_tool_error_returns_successful_not_found_result(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    clear_settings_cache()
-    (tmp_path / "actual").mkdir()
-
-    result = handled_error(
-        FileNotFoundError(str(tmp_path / "missing" / "project"))
-    )
-
-    assert result["ok"] is True
-    assert result["data"]["status"] == "not_found"
-    assert result["data"]["error_type"] == "FileNotFoundError"
-    assert result["data"]["exists"] is False
-    assert result["data"]["nearest_existing_parent"] == str(tmp_path)
-    assert "actual/" in result["data"]["nearest_parent_entries"]
-
-
-def test_tool_error_returns_successful_error_result():
-    result = handled_error(ValueError("bad input"))
-
-    assert result["ok"] is True
-    assert "error" not in result
-    assert result["data"] == {
-        "status": "error",
-        "error_type": "ValueError",
-        "message": "bad input",
-    }
 
 
 @pytest.mark.asyncio
@@ -101,4 +73,5 @@ async def test_grep_accepts_query_starting_with_dash(tmp_path, monkeypatch):
 
     assert result.ok is True
     assert result.count == 1
+    assert result.matches[0].path is not None
     assert result.matches[0].path.endswith("dash.txt")

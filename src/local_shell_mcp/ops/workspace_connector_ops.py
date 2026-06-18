@@ -72,12 +72,12 @@ async def search_execute(query: str) -> SearchOutput:
         )
         seen: set[str] = set()
         rows: list[SearchResult] = []
-        for match in result.get("matches", []):
-            path = match.get("path")
+        for match in result.matches:
+            path = match.path
             if not path or path in seen:
                 continue
             seen.add(path)
-            line = match.get("line")
+            line = match.line
             suffix = f":{line}" if line else ""
             rows.append(
                 SearchResult(

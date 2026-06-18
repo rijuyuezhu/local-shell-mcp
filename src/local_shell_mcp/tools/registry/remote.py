@@ -115,12 +115,12 @@ async def _remote_worker_tool(
     )
     if result.get("ok", False):
         data = result.get("data")
-        return (
+        return RemoteWorkerToolOutput.model_validate(
             cast(dict[str, Any], data)
             if isinstance(data, dict)
             else {"result": data}
         )
-    return result
+    return RemoteWorkerToolOutput.model_validate(result)
 
 
 def _make_remote_worker_handler(
