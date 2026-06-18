@@ -1,27 +1,25 @@
 """Remote worker MCP tool registry."""
 
 from collections.abc import Iterable, Mapping
-from typing import Any, cast
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from ...config.settings import Settings
-from ...remote.service import (
-    call_remote_worker_tool,
-    create_remote_invite,
-    list_remote_machines,
-    rename_remote_machine,
-    revoke_remote_machine,
+from ...ops.remote import (
+    remote_copy_dir_execute,
+    remote_copy_file_execute,
+    remote_invite_execute,
+    remote_list_machines_execute,
+    remote_pull_dir_execute,
+    remote_pull_file_execute,
+    remote_push_dir_execute,
+    remote_push_file_execute,
+    remote_rename_machine_execute,
+    remote_revoke_machine_execute,
+    remote_worker_tool_execute,
 )
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
-from ...remote.transfer import (
-    copy_local_dir_to_remote,
-    copy_local_file_to_remote,
-    copy_remote_dir_to_local,
-    copy_remote_dir_to_remote,
-    copy_remote_file_to_local,
-    copy_remote_file_to_remote,
-)
 from ...schemas.input_models.remote import (
     LocalPathArg,
     RemoteChunkSizeArg,
@@ -35,7 +33,6 @@ from ...schemas.input_models.remote import (
     RemotePathArg,
     RemoteSourceMachineArg,
     RemoteSourcePathArg,
-    RemoteTimeoutArg,
     RemoteWorkdirArg,
 )
 from ...schemas.result_models.remote import (
@@ -87,13 +84,13 @@ async def remote_invite(
     ttl_s: RemoteInviteTtlArg = None,
 ) -> RemoteInviteOutput:
     """Create a one-time command for a remote worker to join this control server. Parameters: name is an optional friendly worker name; workdir is the worker starting directory; ttl_s is invite lifetime in seconds."""
-    return await create_remote_invite(name, workdir, ttl_s)
+    return await remote_invite_execute(name, workdir, ttl_s)
 
 
 @local_tool(http_method="GET", http_path="/tools/remote_list_machines")
 async def remote_list_machines() -> RemoteListMachinesOutput:
     """List remote worker machines currently known to the control server."""
-    return list_remote_machines()
+    return remote_list_machines_execute()
 
 
 @local_tool(http_method="POST", http_path="/tools/remote_revoke_machine")
@@ -101,7 +98,7 @@ async def remote_revoke_machine(
     machine: RemoteMachineArg,
 ) -> RemoteRevokeMachineOutput:
     """Revoke and remove a remote worker machine. Parameter machine must be an exact name from remote_list_machines; use when a worker is stale or should no longer receive jobs."""
-    return revoke_remote_machine(machine)
+    return remote_revoke_machine_execute(machine)
 
 
 @local_tool(http_method="POST", http_path="/tools/remote_rename_machine")
@@ -109,30 +106,7 @@ async def remote_rename_machine(
     machine: RemoteMachineArg, new_name: RemoteNewNameArg
 ) -> RemoteRenameMachineOutput:
     """Rename a remote worker machine. Parameters: machine is the current exact name from remote_list_machines; new_name is the stable name to use for later remote_* calls."""
-    return rename_remote_machine(machine, new_name)
-
-
-def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in args.items() if key != "machine"}
-
-
-async def _remote_worker_tool(
-    args: dict[str, Any], tool_name: str, timeout_s: RemoteTimeoutArg = None
-) -> RemoteWorkerToolOutput:
-    machine = args.get("machine")
-    if machine is None:
-        raise ValueError("Missing required argument: machine")
-    result = await call_remote_worker_tool(
-        str(machine), tool_name, _remote_worker_args(args), timeout_s
-    )
-    if result.get("ok", False):
-        data = result.get("data")
-        return RemoteWorkerToolOutput.model_validate(
-            cast(dict[str, Any], data)
-            if isinstance(data, dict)
-            else {"result": data}
-        )
-    return RemoteWorkerToolOutput.model_validate(result)
+    return remote_rename_machine_execute(machine, new_name)
 
 
 def _make_remote_worker_handler(
@@ -141,13 +115,15 @@ def _make_remote_worker_handler(
     timeout_arg: str | None = None,
     default_timeout: int | None = None,
 ) -> ToolHandler:
+    """Build an HTTP handler for a proxied remote-worker tool."""
+
     async def handler(args: dict[str, Any]) -> RemoteWorkerToolOutput:
         timeout_s = (
             args.get(timeout_arg, default_timeout)
             if timeout_arg is not None
             else None
         )
-        return await _remote_worker_tool(args, tool_name, timeout_s)
+        return await remote_worker_tool_execute(args, tool_name, timeout_s)
 
     return handler
 
@@ -162,7 +138,7 @@ async def remote_copy_file(
     chunk_size: RemoteChunkSizeArg = None,
 ) -> RemoteCopyFileOutput:
     """Copy one file between two remote worker machines through the control server. src_machine and dst_machine are exact names from remote_list_machines; src_path is the source file; dst_path is the target file; overwrite controls replacing an existing target; chunk_size usually should be omitted."""
-    return await copy_remote_file_to_remote(
+    return await remote_copy_file_execute(
         src_machine, src_path, dst_machine, dst_path, overwrite, chunk_size
     )
 
@@ -177,7 +153,7 @@ async def remote_copy_dir(
     chunk_size: RemoteChunkSizeArg = None,
 ) -> RemoteCopyDirOutput:
     """Copy a directory tree between two remote worker machines through the control server. src_machine and dst_machine are exact names from remote_list_machines; src_path is the source directory; dst_path is the target directory; overwrite controls replacing an existing target; chunk_size usually should be omitted."""
-    return await copy_remote_dir_to_remote(
+    return await remote_copy_dir_execute(
         src_machine, src_path, dst_machine, dst_path, overwrite, chunk_size
     )
 
@@ -191,7 +167,7 @@ async def remote_pull_file(
     chunk_size: RemoteChunkSizeArg = None,
 ) -> RemoteCopyFileOutput:
     """Copy one file from a remote worker to the control server workspace. machine is the exact name from remote_list_machines; remote_path is the source file on that worker; local_path is the local target file; overwrite controls replacing an existing local target; chunk_size usually should be omitted."""
-    return await copy_remote_file_to_local(
+    return await remote_pull_file_execute(
         machine, remote_path, local_path, overwrite, chunk_size
     )
 
@@ -205,7 +181,7 @@ async def remote_push_file(
     chunk_size: RemoteChunkSizeArg = None,
 ) -> RemoteCopyFileOutput:
     """Copy one file from the control server workspace to a remote worker. local_path is the local source file; machine is the exact name from remote_list_machines; remote_path is the target file on that worker; overwrite controls replacing an existing remote target; chunk_size usually should be omitted."""
-    return await copy_local_file_to_remote(
+    return await remote_push_file_execute(
         local_path, machine, remote_path, overwrite, chunk_size
     )
 
@@ -219,7 +195,7 @@ async def remote_pull_dir(
     chunk_size: RemoteChunkSizeArg = None,
 ) -> RemoteCopyDirOutput:
     """Copy a directory tree from a remote worker to the control server workspace. machine is the exact name from remote_list_machines; remote_path is the source directory on that worker; local_path is the local target directory; overwrite controls replacing an existing local target; chunk_size usually should be omitted."""
-    return await copy_remote_dir_to_local(
+    return await remote_pull_dir_execute(
         machine, remote_path, local_path, overwrite, chunk_size
     )
 
@@ -233,7 +209,7 @@ async def remote_push_dir(
     chunk_size: RemoteChunkSizeArg = None,
 ) -> RemoteCopyDirOutput:
     """Copy a directory tree from the control server workspace to a remote worker. local_path is the local source directory; machine is the exact name from remote_list_machines; remote_path is the target directory on that worker; overwrite controls replacing an existing remote target; chunk_size usually should be omitted."""
-    return await copy_local_dir_to_remote(
+    return await remote_push_dir_execute(
         local_path, machine, remote_path, overwrite, chunk_size
     )
 
