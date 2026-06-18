@@ -21,11 +21,11 @@ from ..schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
-from .path_ops import (
+from .utils.path import (
     relative_display,
     resolve_path,
 )
-from .temp_file_ops import write_temp_text_file
+from .utils.temp_file import write_temp_text_file
 
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2

@@ -12,8 +12,8 @@ from local_shell_mcp.ops.files_ops import (
     read_file_execute,
     write_file_execute,
 )
-from local_shell_mcp.ops.path_ops import resolve_path
 from local_shell_mcp.ops.shell_ops import check_command_policy
+from local_shell_mcp.ops.utils.path import resolve_path
 from local_shell_mcp.server.mcp.app import build_mcp
 from tests.helpers import nested_mcp_text
 

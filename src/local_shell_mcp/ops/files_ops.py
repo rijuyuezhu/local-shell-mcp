@@ -16,7 +16,7 @@ from ..schemas.result_models.files import (
     ReadManyFilesOutput,
     WriteFileOutput,
 )
-from .path_ops import relative_display, resolve_path
+from .utils.path import relative_display, resolve_path
 
 BINARY_CHECK_BYTES = 8192
 BINARY_CONTROL_RATIO = 0.30

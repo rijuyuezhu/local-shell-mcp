@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..config.settings import get_settings
+from ...config.settings import get_settings
 
 
 def workspace_root() -> Path:

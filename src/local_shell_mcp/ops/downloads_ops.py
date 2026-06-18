@@ -16,7 +16,7 @@ from ..schemas.result_models.downloads import (
     ListFileLinksOutput,
     RevokeFileLinkOutput,
 )
-from .path_ops import relative_display, resolve_path
+from .utils.path import relative_display, resolve_path
 
 DOWNLOAD_PREFIX = "/download"
 DOWNLOAD_STORE_VERSION = 1

@@ -3,9 +3,9 @@
 import shlex
 
 from ..schemas.result_models.patch import ApplyPatchOutput
-from .path_ops import relative_display
 from .shell_ops import run_shell
-from .temp_file_ops import write_temp_text_file
+from .utils.path import relative_display
+from .utils.temp_file import write_temp_text_file
 
 
 async def apply_patch_execute(patch: str, cwd: str = ".") -> ApplyPatchOutput:

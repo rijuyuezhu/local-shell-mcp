@@ -6,7 +6,7 @@ import re
 from ..config.settings import get_settings
 from ..schemas.result_models.secret_scan import SecretFinding, SecretScanOutput
 from .files_ops import read_file_execute
-from .path_ops import relative_display, resolve_path
+from .utils.path import relative_display, resolve_path
 
 SECRET_PATTERNS = {
     "github_token": r"gh[pousr]_[A-Za-z0-9_]{36,}",

@@ -18,7 +18,7 @@ from ..schemas.result_models.transfer import (
     TransferUnpackArchiveOutput,
     TransferWriteChunkOutput,
 )
-from .path_ops import relative_display, resolve_path, temp_dir
+from .utils.path import relative_display, resolve_path, temp_dir
 
 DEFAULT_TRANSFER_CHUNK_BYTES = 1024 * 1024
 MAX_TRANSFER_CHUNK_BYTES = 4 * 1024 * 1024

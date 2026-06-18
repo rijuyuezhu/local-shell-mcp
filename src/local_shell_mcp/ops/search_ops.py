@@ -14,8 +14,8 @@ from ..schemas.result_models.search import (
     GrepSearchOutput,
     TreeViewOutput,
 )
-from .path_ops import missing_path_context, relative_display, resolve_path
 from .shell_ops import run_shell
+from .utils.path import missing_path_context, relative_display, resolve_path
 
 
 def glob_search_execute(
