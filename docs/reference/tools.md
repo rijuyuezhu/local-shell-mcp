@@ -39,7 +39,7 @@ All normal tools operate under `LOCAL_SHELL_MCP_WORKSPACE_ROOT` unless full-cont
 | `glob_search` | Find files by glob pattern. |
 | `grep_search` | Search file contents with ripgrep. |
 | `read_file` | Read a UTF-8 text file, optionally by line range. |
-| `read_many_files` | Read several UTF-8 text files with a shared optional line range. |
+| `read_many_files` | Read several UTF-8 text files, each with its own optional line range. |
 | `write_file` | Write a UTF-8 text file. |
 | `edit_file` | Replace exact text in a file. |
 | `multi_edit_file` | Apply multiple exact-text edits to one file. |
@@ -94,7 +94,7 @@ These tools create and manage tokenized browser-accessible links for files in th
 | `remote_glob_search` | Find remote files by glob pattern. |
 | `remote_grep_search` | Search remote file contents with ripgrep. |
 | `remote_read_file` | Read a remote UTF-8 text file, optionally by line range. |
-| `remote_read_many_files` | Read several remote UTF-8 text files. |
+| `remote_read_many_files` | Read several remote UTF-8 text files, each with its own optional line range. |
 | `remote_write_file` | Write a remote UTF-8 text file. |
 | `remote_edit_file` | Replace exact text in a remote file. |
 | `remote_multi_edit_file` | Apply multiple exact-text edits to one remote file. |

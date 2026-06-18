@@ -294,7 +294,10 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 "remote_read_many_files",
                 {
                     "machine": machine,
-                    "paths": ["remote/demo.txt", "remote/other.txt"],
+                    "files": [
+                        {"path": "remote/demo.txt"},
+                        {"path": "remote/other.txt"},
+                    ],
                 },
             )
             assert many_result.isError

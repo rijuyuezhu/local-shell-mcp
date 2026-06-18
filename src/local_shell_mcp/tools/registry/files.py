@@ -2,6 +2,8 @@
 
 import asyncio
 
+from pydantic import TypeAdapter
+
 from ...ops.files import (
     delete_file_or_dir_execute,
     edit_file_execute,
@@ -21,7 +23,7 @@ from ...schemas.input_models.files import (
     NewTextArg,
     OldTextArg,
     OverwriteArg,
-    PathsArg,
+    ReadFilesArg,
     RecursiveArg,
     ReplaceAllArg,
     StartLineArg,
@@ -61,7 +63,7 @@ def _read_file_description(context: McpToolContext) -> str:
 
 def _read_many_files_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Read multiple UTF-8 text files with the same optional line range. Use for targeted context gathering across known paths. Current limits: {settings.max_read_many_files} files and {settings.max_read_many_total_bytes} returned bytes."""
+    return f"""Read multiple UTF-8 text files with optional per-file line ranges. Use for targeted context gathering across known paths. Current limits: {settings.max_read_many_files} files and {settings.max_read_many_total_bytes} returned bytes."""
 
 
 def _write_file_description(context: McpToolContext) -> str:
@@ -114,17 +116,11 @@ async def read_file(
     http_path="/tools/read_many_files",
     description=_read_many_files_description,
 )
-async def read_many_files(
-    paths: PathsArg,
-    start_line: StartLineArg = None,
-    end_line: EndLineArg = None,
-) -> ReadManyFilesOutput:
-    """Read multiple UTF-8 text files with the same optional line range."""
+async def read_many_files(files: ReadFilesArg) -> ReadManyFilesOutput:
+    """Read multiple UTF-8 text files with optional per-file line ranges."""
     return await asyncio.to_thread(
         read_many_files_execute,
-        paths,
-        start_line,
-        end_line,
+        TypeAdapter(ReadFilesArg).validate_python(files),
     )
 
 

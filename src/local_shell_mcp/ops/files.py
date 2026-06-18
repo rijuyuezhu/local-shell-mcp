@@ -2,8 +2,10 @@
 
 import codecs
 import shutil
+from collections.abc import Sequence
 
 from ..config.settings import get_settings
+from ..schemas.input_models.files import ReadFileRequest
 from ..schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditFileOutput,
@@ -99,21 +101,45 @@ def read_file_execute(
     )
 
 
+type _ReadManyFileSpec = (
+    ReadFileRequest
+    | tuple[str]
+    | tuple[str, int | None]
+    | tuple[str, int | None, int | None]
+)
+
+
+def _read_many_file_parts(
+    item: _ReadManyFileSpec,
+) -> tuple[str, int | None, int | None]:
+    """Normalize one read_many_files item into path and optional line range."""
+    if isinstance(item, ReadFileRequest):
+        return (
+            item.path,
+            item.start_line,
+            item.end_line,
+        )
+    return (
+        item[0],
+        item[1] if len(item) > 1 else None,
+        item[2] if len(item) > 2 else None,
+    )
+
+
 def read_many_files_execute(
-    paths: list[str],
-    start_line: int | None = None,
-    end_line: int | None = None,
+    files_to_read: Sequence[_ReadManyFileSpec],
 ) -> ReadManyFilesOutput:
-    """Read many files while preserving per-path success and error entries."""
+    """Read many files with per-file optional line ranges."""
     settings = get_settings()
-    if len(paths) > settings.max_read_many_files:
+    if len(files_to_read) > settings.max_read_many_files:
         raise ValueError(
-            f"Refusing to read {len(paths)} files; max is {settings.max_read_many_files}"
+            f"Refusing to read {len(files_to_read)} files; max is {settings.max_read_many_files}"
         )
 
     files: list[ReadFileOutput] = []
     total_content_bytes = 0
-    for path in paths:
+    for item_to_read in files_to_read:
+        path, start_line, end_line = _read_many_file_parts(item_to_read)
         item = read_file_execute(path, start_line, end_line)
         content = item.content
         total_content_bytes += len(content.encode("utf-8"))

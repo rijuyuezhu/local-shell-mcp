@@ -10,10 +10,12 @@ from local_shell_mcp.ops.files import (
     list_files_execute,
     multi_edit_file_execute,
     read_file_execute,
+    read_many_files_execute,
     write_file_execute,
 )
 from local_shell_mcp.ops.shell import check_command_policy
 from local_shell_mcp.ops.utils.path import resolve_path
+from local_shell_mcp.schemas.input_models.files import ReadFileRequest
 from local_shell_mcp.server.mcp.app import build_mcp
 from tests.helpers import nested_mcp_text
 
@@ -141,6 +143,23 @@ async def test_fetch_reports_non_utf8_errors(tmp_path, monkeypatch):
     assert payload["metadata"]["error"] == "UnicodeDecodeError"
 
 
+def test_read_many_files_supports_per_file_line_ranges(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "a.txt").write_text("a1\na2\na3\n", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("b1\nb2\nb3\n", encoding="utf-8")
+
+    result = read_many_files_execute(
+        [
+            ("a.txt", 2, 2),
+            ReadFileRequest(path="b.txt", start_line=1, end_line=2),
+        ]
+    )
+
+    assert [item.content for item in result.files] == ["a2", "b1\nb2"]
+    assert result.total_content_bytes == len(b"a2b1\nb2")
+
+
 @pytest.mark.asyncio
 async def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -151,7 +170,7 @@ async def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
 
     with pytest.raises(ToolError, match="Refusing to read 2 files; max is 1"):
         await build_mcp().call_tool(
-            "read_many_files", {"paths": ["a.txt", "b.txt"]}
+            "read_many_files", {"files": [{"path": "a.txt"}, {"path": "b.txt"}]}
         )
 
 
