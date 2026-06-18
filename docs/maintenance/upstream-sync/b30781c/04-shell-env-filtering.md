@@ -6,7 +6,7 @@
 
 ## Structure review
 
-Current main implements shell environment filtering in `ops/command_ops.py`, not upstream’s old `shell_ops.py`. It blocks server configuration prefixes and selected runtime variables before spawning user commands.
+Current main implements shell environment filtering in `ops/shell.py`, not upstream’s old `shell_ops.py`. It blocks server configuration prefixes and selected runtime variables before spawning user commands.
 
 ## Compatibility review
 
