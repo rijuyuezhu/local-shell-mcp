@@ -146,6 +146,39 @@ async def test_shell_tool_returns_per_tool_structured_content(
 
 
 @pytest.mark.asyncio
+async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    read_file_tool = tools["read_file"]
+    list_files_tool = tools["list_files"]
+
+    assert read_file_tool.outputSchema["title"] == "ReadFileOutput"
+    assert list_files_tool.outputSchema["title"] == "ListFilesOutput"
+    assert read_file_tool.inputSchema["properties"]["path"]["description"] == (
+        "Workspace-relative path, or an allowed absolute path, for the file or directory operation."
+    )
+    assert (
+        "binary preview encoding"
+        in read_file_tool.inputSchema["properties"]["binary_preview"][
+            "description"
+        ]
+    )
+    assert (
+        read_file_tool.outputSchema["properties"]["content"]["description"]
+        == "Decoded UTF-8 text content, or null for binary files."
+    )
+    assert (
+        list_files_tool.outputSchema["properties"]["file_info"]["description"]
+        == "Returned directory entries."
+    )
+
+
+@pytest.mark.asyncio
 async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES", "12345")
@@ -156,7 +189,10 @@ async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
 
     run_shell_command_description = tools["run_shell_command"].description or ""
     grep_description = tools["grep_search"].description or ""
-    assert "max_output_bytes=12345" in run_shell_command_description
+    assert (
+        "Current combined output cap: 12345 bytes"
+        in run_shell_command_description
+    )
     assert "max_grep_results=678" in grep_description
 
 

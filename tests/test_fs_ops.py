@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.command_ops import check_command_policy
@@ -14,7 +15,7 @@ from local_shell_mcp.ops.fs_ops import (
 )
 from local_shell_mcp.ops.path_ops import resolve_path
 from local_shell_mcp.server.mcp.app import build_mcp
-from tests.helpers import mcp_text, nested_mcp_text
+from tests.helpers import nested_mcp_text
 
 
 def test_write_read_edit(tmp_path, monkeypatch):
@@ -187,12 +188,10 @@ async def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "b.txt").write_text("b", encoding="utf-8")
 
-    response = await build_mcp().call_tool(
-        "read_many_files", {"paths": ["a.txt", "b.txt"]}
-    )
-    payload = mcp_text(response)
-
-    assert "Refusing to read 2 files; max is 1" in payload
+    with pytest.raises(ToolError, match="Refusing to read 2 files; max is 1"):
+        await build_mcp().call_tool(
+            "read_many_files", {"paths": ["a.txt", "b.txt"]}
+        )
 
 
 def test_reject_path_escape(tmp_path, monkeypatch):
