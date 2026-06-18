@@ -99,8 +99,8 @@ async def send_persistent_shell_input(
     session_id: SessionIdArg, input_text: InputTextArg, enter: EnterArg = True
 ) -> SendPersistentShellInputOutput:
     """Send input to an existing persistent shell session. Use after start_persistent_shell when a process is waiting for commands or interactive input. Set enter=false only when intentionally sending partial input without a newline."""
-    return SendPersistentShellInputOutput.model_validate(
-        await send_persistent_shell_input_execute(session_id, input_text, enter)
+    return await send_persistent_shell_input_execute(
+        session_id, input_text, enter
     )
 
 
