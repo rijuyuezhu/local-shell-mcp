@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 
@@ -28,3 +29,39 @@ def test_operation_modules_do_not_use_ops_suffix() -> None:
     assert not any(name.endswith("_ops") for name in operation_modules)
     assert Path("src/local_shell_mcp/ops/utils/path.py").exists()
     assert Path("src/local_shell_mcp/ops/utils/temp_file.py").exists()
+
+
+def _public_docstring_targets(path: Path) -> list[str]:
+    """Return public module/class/function docstring targets missing docs."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    missing: list[str] = []
+    if ast.get_docstring(tree) is None:
+        missing.append(f"{path}: module")
+    for node in tree.body:
+        if not isinstance(
+            node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+        ):
+            continue
+        if node.name.startswith("_"):
+            continue
+        if ast.get_docstring(node) is None:
+            missing.append(f"{path}: {node.name}")
+    return missing
+
+
+def test_tool_family_modules_keep_public_docstrings() -> None:
+    """Keep structured tool modules documented as they are split by family."""
+    module_paths = [
+        *Path("src/local_shell_mcp/ops").glob("*.py"),
+        *Path("src/local_shell_mcp/schemas/input_models").glob("*.py"),
+        *Path("src/local_shell_mcp/schemas/result_models").glob("*.py"),
+    ]
+
+    missing = [
+        target
+        for path in module_paths
+        if path.name != "__init__.py"
+        for target in _public_docstring_targets(path)
+    ]
+
+    assert missing == []
