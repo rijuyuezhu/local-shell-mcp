@@ -29,9 +29,9 @@ def test_create_share_link_serves_file(tmp_path, monkeypatch):
         "hello.txt", ttl_s=60, filename="result.txt", max_downloads=2
     )
 
-    assert link["url"].startswith("https://files.example.test/download/")
+    assert link.url.startswith("https://files.example.test/download/")
     app = Starlette(routes=download_routes())
-    response = TestClient(app).get(link["url"])
+    response = TestClient(app).get(link.url)
 
     assert response.status_code == 200
     assert response.text == "hello"
@@ -43,15 +43,15 @@ def test_share_link_expires_and_can_be_revoked(tmp_path, monkeypatch):
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
 
     link = create_file_link_execute("hello.txt", ttl_s=1)
-    token = link["token"]
-    assert revoke_file_link_execute(token)["revoked"] is True
+    token = link.token
+    assert revoke_file_link_execute(token).revoked is True
 
     app = Starlette(routes=download_routes())
-    assert TestClient(app).get(link["url"]).status_code == 404
+    assert TestClient(app).get(link.url).status_code == 404
 
     link = create_file_link_execute("hello.txt", ttl_s=1)
     time.sleep(1.05)
-    assert TestClient(app).get(link["url"]).status_code == 410
+    assert TestClient(app).get(link.url).status_code == 410
 
 
 def test_share_link_download_limit(tmp_path, monkeypatch):
@@ -60,8 +60,8 @@ def test_share_link_download_limit(tmp_path, monkeypatch):
     link = create_file_link_execute("hello.txt", ttl_s=60, max_downloads=1)
     client = TestClient(Starlette(routes=download_routes()))
 
-    assert client.get(link["url"]).status_code == 200
-    assert client.get(link["url"]).status_code == 410
+    assert client.get(link.url).status_code == 200
+    assert client.get(link.url).status_code == 410
 
 
 def test_share_link_can_be_disabled(tmp_path, monkeypatch):

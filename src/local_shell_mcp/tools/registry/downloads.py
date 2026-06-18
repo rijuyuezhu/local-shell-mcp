@@ -56,10 +56,8 @@ async def create_file_link(
     max_downloads: MaxDownloadsArg = None,
 ) -> CreateFileLinkOutput:
     """Create a temporary tokenized browser download URL for one file."""
-    return CreateFileLinkOutput.model_validate(
-        await asyncio.to_thread(
-            create_file_link_execute, path, ttl_s, filename, max_downloads
-        )
+    return await asyncio.to_thread(
+        create_file_link_execute, path, ttl_s, filename, max_downloads
     )
 
 
@@ -72,9 +70,7 @@ async def list_file_links(
     include_expired: IncludeExpiredArg = False,
 ) -> ListFileLinksOutput:
     """List tokenized file download links created by create_file_link."""
-    return ListFileLinksOutput.model_validate(
-        await asyncio.to_thread(list_file_links_execute, include_expired)
-    )
+    return await asyncio.to_thread(list_file_links_execute, include_expired)
 
 
 @local_tool(
@@ -84,6 +80,4 @@ async def list_file_links(
 )
 async def revoke_file_link(token: DownloadTokenArg) -> RevokeFileLinkOutput:
     """Revoke a tokenized file download link created by create_file_link."""
-    return RevokeFileLinkOutput.model_validate(
-        await asyncio.to_thread(revoke_file_link_execute, token)
-    )
+    return await asyncio.to_thread(revoke_file_link_execute, token)
