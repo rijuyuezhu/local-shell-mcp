@@ -1,3 +1,5 @@
+"""Binary-safe transfer primitives for remote-worker file and directory moves."""
+
 import base64
 import binascii
 import hashlib
@@ -26,6 +28,7 @@ _TRANSFER_TMP_MARKER = "local-shell-mcp-transfer"
 
 
 def normalize_chunk_size(chunk_size: int | None = None) -> int:
+    """Clamp a requested transfer chunk size to the supported byte range."""
     requested = (
         DEFAULT_TRANSFER_CHUNK_BYTES if chunk_size is None else int(chunk_size)
     )
@@ -48,6 +51,7 @@ def _sha256_file(
 
 
 def transfer_stat(path: str, sha256: bool = True) -> TransferStatOutput:
+    """Return transfer metadata for one workspace path."""
     p = resolve_path(path, must_exist=True)
     stat = p.stat()
     if p.is_file():
@@ -76,6 +80,7 @@ def transfer_stat(path: str, sha256: bool = True) -> TransferStatOutput:
 def transfer_read_chunk(
     path: str, offset: int = 0, chunk_size: int | None = None
 ) -> TransferReadChunkOutput:
+    """Read one bounded binary chunk and encode it for transport."""
     p = resolve_path(path, must_exist=True)
     if not p.is_file():
         raise IsADirectoryError(str(p))
@@ -109,6 +114,7 @@ def _transfer_temp_path(dst: Path, transfer_id: str) -> Path:
 def transfer_begin_write(
     path: str, overwrite: bool = True, expected_bytes: int | None = None
 ) -> TransferBeginWriteOutput:
+    """Create an atomic temporary destination for a chunked write."""
     dst = resolve_path(path)
     if dst.exists() and dst.is_dir():
         raise IsADirectoryError(str(dst))
@@ -137,6 +143,7 @@ def transfer_write_chunk(
     data_b64: str,
     expected_sha256: str | None = None,
 ) -> TransferWriteChunkOutput:
+    """Write one validated base64 chunk into an active transfer file."""
     dst = resolve_path(path)
     tmp = _transfer_temp_path(dst, transfer_id)
     if not tmp.exists():
@@ -169,6 +176,7 @@ def transfer_finish_write(
     expected_bytes: int | None = None,
     expected_sha256: str | None = None,
 ) -> TransferFinishWriteOutput:
+    """Validate and atomically publish a completed chunked write."""
     dst = resolve_path(path)
     tmp = _transfer_temp_path(dst, transfer_id)
     if not tmp.exists():
@@ -193,6 +201,7 @@ def transfer_finish_write(
 def transfer_abort_write(
     path: str, transfer_id: str
 ) -> TransferAbortWriteOutput:
+    """Abort an active chunked write and remove its temporary file."""
     dst = resolve_path(path)
     tmp = _transfer_temp_path(dst, transfer_id)
     deleted = False
@@ -209,6 +218,7 @@ def transfer_abort_write(
 def transfer_alloc_temp_path(
     suffix: str = ".bin",
 ) -> TransferAllocTempPathOutput:
+    """Allocate a safe temporary workspace path for transfer scratch data."""
     safe_suffix = (
         suffix
         if suffix.startswith(".") and "/" not in suffix and "\\" not in suffix
@@ -222,6 +232,7 @@ def transfer_alloc_temp_path(
 def transfer_pack_dir(
     path: str, compression: str = "gz"
 ) -> TransferPackDirOutput:
+    """Pack a directory into a temporary tar archive for transfer."""
     src = resolve_path(path, must_exist=True)
     if not src.is_dir():
         raise NotADirectoryError(str(src))
@@ -268,6 +279,7 @@ def transfer_unpack_archive(
     overwrite: bool = True,
     cleanup_archive: bool = True,
 ) -> TransferUnpackArchiveOutput:
+    """Safely unpack a transfer archive into a workspace destination."""
     archive = resolve_path(archive_path, must_exist=True)
     if not archive.is_file():
         raise FileNotFoundError(str(archive))
