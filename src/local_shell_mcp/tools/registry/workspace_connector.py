@@ -1,12 +1,18 @@
 """ChatGPT connector-compatible read-only workspace search/fetch tools."""
 
 from ...ops.workspace_connector_ops import (
-    FetchOutput,
-    SearchOutput,
     fetch_error_output,
     fetch_execute,
     search_error_output,
     search_execute,
+)
+from ...schemas.input_models.workspace_connector import (
+    ConnectorFetchIdArg,
+    ConnectorSearchQueryArg,
+)
+from ...schemas.result_models.workspace_connector import (
+    FetchOutput,
+    SearchOutput,
 )
 from ..declarative import DeclarativeToolRegistry
 
@@ -45,7 +51,7 @@ local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
     annotations="read_only",
     mcp_error_handler=search_error_output,
 )
-async def search(query: str) -> SearchOutput:
+async def search(query: ConnectorSearchQueryArg) -> SearchOutput:
     """Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as grep_search, glob_search, tree_view, read_file, or read_many_files. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch."""
     return await search_execute(query)
 
@@ -57,6 +63,6 @@ async def search(query: str) -> SearchOutput:
     annotations="read_only",
     mcp_error_handler=fetch_error_output,
 )
-async def fetch(id: str) -> FetchOutput:
+async def fetch(id: ConnectorFetchIdArg) -> FetchOutput:
     """Fetch one workspace file as a connector-compatible document. Use this after search has returned a result id. For code navigation or precise workspace inspection, read_file provides line ranges, binary previews, and richer diagnostics. Parameter: id is the exact result id from search, normally a workspace-relative file path. The response contains id, title, text, url, and metadata fields. Binary files are represented by an omission message."""
     return await fetch_execute(id)

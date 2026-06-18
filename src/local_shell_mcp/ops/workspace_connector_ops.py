@@ -3,29 +3,14 @@
 import asyncio
 from typing import Any
 
-from pydantic import BaseModel
-
 from ..audit import audit
+from ..schemas.result_models.workspace_connector import (
+    FetchOutput,
+    SearchOutput,
+    SearchResult,
+)
 from .files_ops import read_file_execute
 from .search_ops import grep_search_execute
-
-
-class SearchResult(BaseModel):
-    id: str
-    title: str
-    url: str
-
-
-class SearchOutput(BaseModel):
-    results: list[SearchResult]
-
-
-class FetchOutput(BaseModel):
-    id: str
-    title: str
-    text: str
-    url: str
-    metadata: dict[str, Any] | None = None
 
 
 def search_error_output(
