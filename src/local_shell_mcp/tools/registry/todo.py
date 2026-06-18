@@ -12,6 +12,7 @@ class TodoToolRegistry(DeclarativeToolRegistry):
     """Register todo-list tools."""
 
     name = "todo"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = TodoToolRegistry.get_tool_decorator()

@@ -45,6 +45,7 @@ class FileToolRegistry(DeclarativeToolRegistry):
     """Register file operation tools."""
 
     name = "file"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = FileToolRegistry.get_tool_decorator()

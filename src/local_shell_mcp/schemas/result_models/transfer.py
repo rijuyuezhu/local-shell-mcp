@@ -24,81 +24,120 @@ class TransferStatOutput(BaseModel):
 class TransferReadChunkOutput(BaseModel):
     """Base64-encoded chunk read from a file."""
 
-    path: str
-    offset: int
-    bytes: int
-    size: int
-    eof: bool
-    sha256: str
-    data_b64: str
+    path: str = Field(description="Workspace-relative file path that was read.")
+    offset: int = Field(description="Byte offset where this chunk starts.")
+    bytes: int = Field(
+        description="Number of raw bytes included in this chunk."
+    )
+    size: int = Field(description="Total source file size in bytes.")
+    eof: bool = Field(
+        description="Whether this chunk reaches the end of the file."
+    )
+    sha256: str = Field(description="SHA-256 digest of the source file.")
+    data_b64: str = Field(description="Base64-encoded chunk payload.")
 
 
 class TransferBeginWriteOutput(BaseModel):
     """State for a newly started chunked file write."""
 
-    path: str
-    temp_path: str
-    transfer_id: str
-    created: bool
-    expected_bytes: int | None = None
+    path: str = Field(description="Workspace-relative destination path.")
+    temp_path: str = Field(
+        description="Temporary file path used during the write."
+    )
+    transfer_id: str = Field(
+        description="Opaque identifier for this write transfer."
+    )
+    created: bool = Field(
+        description="Whether the destination did not already exist."
+    )
+    expected_bytes: int | None = Field(
+        default=None, description="Expected final byte count, when provided."
+    )
 
 
 class TransferWriteChunkOutput(BaseModel):
     """Result of writing one chunk to a temporary transfer file."""
 
-    path: str
-    temp_path: str
-    offset: int
-    bytes: int
-    sha256: str
+    path: str = Field(description="Workspace-relative destination path.")
+    temp_path: str = Field(description="Temporary file path receiving chunks.")
+    offset: int = Field(description="Byte offset where the chunk was written.")
+    bytes: int = Field(
+        description="Number of raw bytes written from this chunk."
+    )
+    sha256: str = Field(description="SHA-256 digest of bytes written so far.")
 
 
 class TransferFinishWriteOutput(BaseModel):
     """Result of atomically completing a chunked file write."""
 
-    path: str
-    bytes: int
-    sha256: str | None = None
-    completed: bool
+    path: str = Field(description="Workspace-relative destination path.")
+    bytes: int = Field(description="Final file size in bytes.")
+    sha256: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the completed file, when available.",
+    )
+    completed: bool = Field(
+        description="Whether the temporary file was moved into place."
+    )
 
 
 class TransferAbortWriteOutput(BaseModel):
     """Result of removing an in-progress temporary transfer file."""
 
-    path: str
-    temp_path: str
-    deleted: bool
+    path: str = Field(description="Workspace-relative destination path.")
+    temp_path: str = Field(
+        description="Temporary file path targeted for cleanup."
+    )
+    deleted: bool = Field(description="Whether the temporary file was deleted.")
 
 
 class TransferAllocTempPathOutput(BaseModel):
     """Allocated workspace-relative temporary transfer path."""
 
-    path: str
+    path: str = Field(
+        description="Allocated workspace-relative temporary path."
+    )
 
 
 class TransferPackDirOutput(BaseModel):
     """Archive created from a directory for transfer."""
 
-    path: str
-    archive_path: str
-    bytes: int
-    sha256: str
-    compression: str
+    path: str = Field(
+        description="Workspace-relative directory path that was packed."
+    )
+    archive_path: str = Field(
+        description="Workspace-relative archive path that was created."
+    )
+    bytes: int = Field(description="Archive size in bytes.")
+    sha256: str = Field(description="SHA-256 digest of the archive file.")
+    compression: str = Field(description="Archive compression format.")
 
 
 class TransferUnpackArchiveOutput(BaseModel):
     """Archive unpack result."""
 
-    path: str
-    archive_path: str
-    entries: int
-    completed: bool
-    archive_deleted: bool
+    path: str = Field(
+        description="Workspace-relative destination directory path."
+    )
+    archive_path: str = Field(
+        description="Workspace-relative archive path that was unpacked."
+    )
+    entries: int = Field(description="Number of archive entries unpacked.")
+    completed: bool = Field(
+        description="Whether archive unpacking completed successfully."
+    )
+    archive_deleted: bool = Field(
+        description="Whether the source archive was deleted after unpacking."
+    )
 
 
 class TransferGenericOutput(BaseModel):
     """Fallback transfer output for dynamically shaped transfer helpers."""
 
     model_config = ConfigDict(extra="allow")
+    """Allow dynamically shaped transfer output fields."""
 
-    root: dict[str, Any] | None = None
+    root: dict[str, Any] | None = Field(
+        default=None,
+        description="Generic transfer result payload, when present.",
+    )

@@ -9,6 +9,7 @@ class EnvironmentToolRegistry(DeclarativeToolRegistry):
     """Register environment/probe tools."""
 
     name = "environment"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = EnvironmentToolRegistry.get_tool_decorator()

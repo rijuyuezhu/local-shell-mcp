@@ -10,6 +10,7 @@ class PatchToolRegistry(DeclarativeToolRegistry):
     """Register patch application tools."""
 
     name = "patch"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = PatchToolRegistry.get_tool_decorator()

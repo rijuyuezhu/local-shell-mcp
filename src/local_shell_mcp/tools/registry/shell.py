@@ -40,6 +40,7 @@ class ShellToolRegistry(DeclarativeToolRegistry):
     """Register shell execution and session tools."""
 
     name = "shell"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = ShellToolRegistry.get_tool_decorator()

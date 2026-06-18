@@ -8,10 +8,15 @@ class RemoteWorkerToolSpec:
     """Describe one remote worker tool and its optional public REST proxy."""
 
     public_name: str
+    """Public proxy tool name exposed by the control server."""
     worker_tool: str
+    """Underlying tool name executed on the remote worker."""
     http_path: str | None
+    """Public REST path for the proxy, or None for worker-internal tools."""
     timeout_arg: str | None = None
+    """Optional argument name that should receive the proxy timeout."""
     default_timeout: int | None = None
+    """Default timeout passed through when the caller omits one."""
 
     @property
     def expose_http(self) -> bool:

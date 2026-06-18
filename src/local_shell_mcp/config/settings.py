@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX, extra="ignore", use_attribute_docstrings=True
     )
+    """Pydantic settings configuration for environment loading."""
 
     # Server.
     mode: Literal["mcp", "http", "both", "stdio"] = "mcp"
