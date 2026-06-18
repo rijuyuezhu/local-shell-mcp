@@ -1,11 +1,11 @@
 """Shell MCP tool registry."""
 
-from ...ops.command_ops import run_shell_command_execute
-from ...ops.python_ops import run_python_code_execute
-from ...ops.tmux_ops import (
+from ...ops.shell_ops import (
     kill_persistent_shell_execute,
     list_persistent_shells_execute,
     read_persistent_shell_output_execute,
+    run_python_code_execute,
+    run_shell_command_execute,
     send_persistent_shell_input_execute,
     start_persistent_shell_execute,
 )

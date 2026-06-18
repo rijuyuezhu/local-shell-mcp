@@ -3,7 +3,7 @@
 from ..config.settings import get_settings, safe_settings_dump
 from ..schemas.result_models.environment import EnvironmentInfoOutput
 from ..schemas.result_models.shell import RunShellCommandOutput
-from .command_ops import run_shell
+from .shell_ops import run_shell
 
 
 async def environment_info_execute() -> EnvironmentInfoOutput:
