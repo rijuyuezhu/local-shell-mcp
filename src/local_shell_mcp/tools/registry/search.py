@@ -1,6 +1,7 @@
 """Search and tree-view tool registry."""
 
 import asyncio
+from typing import Any
 
 from ...ops.fs_ops import glob_search_execute
 from ...ops.search_ops import grep_search_execute, tree_view_execute
@@ -39,7 +40,7 @@ def _grep_search_description(context: McpToolContext) -> str:
 )
 async def tree_view(
     cwd: str = ".", depth: int = 3, max_entries: int = 500
-) -> dict:
+) -> dict[str, Any]:
     """Return a compact directory tree rooted at cwd."""
     return await tree_view_execute(cwd, depth, max_entries)
 
@@ -51,7 +52,7 @@ async def tree_view(
 )
 async def glob_search(
     pattern: str, cwd: str = ".", max_results: int = 500
-) -> dict:
+) -> dict[str, Any]:
     """Find files by glob pattern."""
     return {
         "paths": await asyncio.to_thread(
@@ -72,7 +73,7 @@ async def grep_search(
     regex: bool = True,
     case_sensitive: bool = True,
     max_results: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Search file contents with ripgrep."""
     return await grep_search_execute(
         query, cwd, glob, regex, case_sensitive, max_results

@@ -3,6 +3,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
+from mcp.server.fastmcp.exceptions import ToolError
 
 import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
@@ -17,7 +18,6 @@ from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
-from tests.helpers import mcp_text
 
 
 @pytest.mark.asyncio
@@ -27,12 +27,13 @@ async def test_run_shell_command_rejects_timeout_above_public_cap(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
-    response = await build_mcp().call_tool(
-        "run_shell_command", {"command": "echo ok", "timeout_s": 3600}
-    )
-    payload = mcp_text(response)
-
-    assert "timeout_s must be <= 60 seconds for run_shell_command" in payload
+    with pytest.raises(
+        ToolError, match="timeout_s must be <= 60 seconds for run_shell_command"
+    ):
+        await build_mcp().call_tool(
+            "run_shell_command",
+            {"command": "echo ok", "timeout_s": 3600},
+        )
 
 
 @pytest.mark.asyncio
@@ -55,12 +56,11 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
         hanging_run_shell_command_execute,
     )
 
-    response = await build_mcp().call_tool(
-        "run_shell_command", {"command": "echo ok"}
-    )
-    payload = mcp_text(response)
-
-    assert "run_shell_command exceeded 0.01 second tool timeout" in payload
+    with pytest.raises(
+        ToolError,
+        match="run_shell_command exceeded 0.01 second tool timeout",
+    ):
+        await build_mcp().call_tool("run_shell_command", {"command": "echo ok"})
 
 
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
@@ -120,10 +120,10 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
         fs_tools_module, "list_files_execute", blocking_list_dir
     )
 
-    response = await build_mcp().call_tool("list_files", {"path": "."})
-    payload = mcp_text(response)
-
-    assert "list_files exceeded 0.01 second tool timeout" in payload
+    with pytest.raises(
+        ToolError, match="list_files exceeded 0.01 second tool timeout"
+    ):
+        await build_mcp().call_tool("list_files", {"path": "."})
 
 
 def test_run_shell_command_timeout_uses_ten_second_default(

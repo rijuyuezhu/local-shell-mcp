@@ -15,11 +15,8 @@ from ...audit import (
     new_audit_call_id,
 )
 from ...ops.command_ops import tool_timeout_s
-from ...tools.declarative import (
-    mcp_handler_error_handler,
-    mcp_handler_uses_envelope,
-)
-from ...tools.responses import handled_error
+from ...tools.declarative import mcp_handler_error_handler
+from ...tools.serialization import tool_output_jsonable
 
 
 class AuditedMcpToolFn(Protocol):
@@ -52,7 +49,6 @@ def _mcp_tool_audit_watchdog_wrapper(
 ) -> AuditedMcpToolFn:
     """Return a wrapper that audits every MCP tool call and enforces the tool timeout."""
 
-    mcp_envelope = mcp_handler_uses_envelope(original)
     mcp_error_handler = mcp_handler_error_handler(original)
 
     @wraps(original)
@@ -81,10 +77,8 @@ def _mcp_tool_audit_watchdog_wrapper(
             )
             if mcp_error_handler is not None:
                 payload = mcp_error_handler(exc, args, kwargs)
-            elif mcp_envelope:
-                payload = handled_error(exc)
             else:
-                # raise directly -- the default behavior for connector
+                # Let FastMCP report the timeout as a tool execution error.
                 payload = None
             audit_tool_call_end(
                 call_id=call_id,
@@ -92,7 +86,7 @@ def _mcp_tool_audit_watchdog_wrapper(
                 tool=tool_name,
                 ok=False,
                 duration_ms=duration_ms,
-                output=payload,
+                output=tool_output_jsonable(payload),
                 error={
                     "type": type(exc).__name__,
                     "message": str(exc),
@@ -124,7 +118,7 @@ def _mcp_tool_audit_watchdog_wrapper(
             tool=tool_name,
             ok=True,
             duration_ms=duration_ms,
-            output=result,
+            output=tool_output_jsonable(result),
         )
         return result
 

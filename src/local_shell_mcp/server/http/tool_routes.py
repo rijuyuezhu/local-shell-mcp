@@ -33,7 +33,6 @@ def install_tools_timeout_middleware(app: FastAPI) -> None:
             return JSONResponse(
                 status_code=504,
                 content={
-                    "ok": False,
                     "error": "tool_timeout",
                     "message": f"{request.url.path} exceeded {tool_timeout_s()} second tool timeout",
                 },

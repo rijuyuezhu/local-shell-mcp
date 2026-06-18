@@ -75,7 +75,7 @@ async def read_file(
     end_line: int | None = None,
     binary_preview: str | None = None,
     binary_preview_bytes: int = 256,
-) -> dict:
+) -> dict[str, Any]:
     """Read a UTF-8 text file, optionally by line range."""
     return await asyncio.to_thread(
         read_file_execute,
@@ -98,7 +98,7 @@ async def read_many_files(
     end_line: int | None = None,
     binary_preview: str | None = None,
     binary_preview_bytes: int = 256,
-) -> dict:
+) -> dict[str, Any]:
     """Read multiple UTF-8 text files with the same optional line range."""
     return await asyncio.to_thread(
         read_many_files_execute,
@@ -115,7 +115,9 @@ async def read_many_files(
     http_path="/tools/write_file",
     description=_write_file_description,
 )
-async def write_file(path: str, content: str, overwrite: bool = True) -> dict:
+async def write_file(
+    path: str, content: str, overwrite: bool = True
+) -> dict[str, Any]:
     """Write a UTF-8 text file."""
     return await asyncio.to_thread(write_file_execute, path, content, overwrite)
 
@@ -127,7 +129,7 @@ async def write_file(path: str, content: str, overwrite: bool = True) -> dict:
 )
 async def edit_file(
     path: str, old: str, new: str, replace_all: bool = False
-) -> dict:
+) -> dict[str, Any]:
     """Replace exact text in a file."""
     return await asyncio.to_thread(
         edit_file_execute, path, old, new, replace_all
@@ -135,12 +137,14 @@ async def edit_file(
 
 
 @local_tool(http_method="POST", http_path="/tools/multi_edit_file")
-async def multi_edit_file(path: str, edits: list[dict]) -> dict:
+async def multi_edit_file(path: str, edits: list[dict]) -> dict[str, Any]:
     """Apply multiple exact-text edits to one file. Use when several small replacements in the same file should be made together. Each edit must provide old, new, and optional replace_all; each old string must match exactly. Read the file first to avoid stale or ambiguous edits."""
     return await asyncio.to_thread(multi_edit_file_execute, path, edits)
 
 
 @local_tool(http_method="POST", http_path="/tools/delete")
-async def delete_file_or_dir(path: str, recursive: bool = False) -> dict:
+async def delete_file_or_dir(
+    path: str, recursive: bool = False
+) -> dict[str, Any]:
     """Delete a file or directory inside the controlled workspace/container. Use only when removal is intentional. recursive=false deletes files or empty directories; recursive=true is required for non-empty directories and should be used carefully."""
     return await asyncio.to_thread(delete_file_or_dir_execute, path, recursive)

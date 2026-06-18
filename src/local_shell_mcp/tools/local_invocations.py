@@ -12,6 +12,7 @@ from ..audit import (
 )
 from .contracts import ToolHandler
 from .discovery import discover_tool_registries
+from .serialization import tool_output_jsonable
 
 
 class UnknownLocalToolError(LookupError):
@@ -73,6 +74,6 @@ async def call_local_tool(
         tool=tool_name,
         ok=True,
         duration_ms=duration_ms,
-        output=result,
+        output=tool_output_jsonable(result),
     )
     return result

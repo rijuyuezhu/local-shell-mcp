@@ -1,10 +1,11 @@
 """Environment-info operation helpers."""
 
 from ..config.settings import get_settings, safe_settings_dump
+from ..tools.outputs.environment import EnvironmentInfoOutput
 from .command_ops import run_shell
 
 
-async def environment_info_execute() -> dict:
+async def environment_info_execute() -> EnvironmentInfoOutput:
     """Return safe settings and a small bounded environment probe."""
     settings = get_settings()
     result = await run_shell(
@@ -12,7 +13,7 @@ async def environment_info_execute() -> dict:
         cwd=".",
         timeout_s=10,
     )
-    return {
-        "settings": safe_settings_dump(settings),
-        "probe": result.model_dump(),
-    }
+    return EnvironmentInfoOutput(
+        settings=safe_settings_dump(settings),
+        probe=result.model_dump(),
+    )

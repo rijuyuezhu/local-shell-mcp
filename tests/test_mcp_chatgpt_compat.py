@@ -70,11 +70,17 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert all(tool.outputSchema is not None for tool in tools.values())
     run_shell_command_schema = tools["run_shell_command"].outputSchema
     assert run_shell_command_schema is not None
-    assert run_shell_command_schema["title"] == "ToolResult"
+    assert run_shell_command_schema["title"] == "RunShellCommandOutput"
     assert set(run_shell_command_schema["properties"]) == {
         "ok",
-        "message",
-        "data",
+        "exit_code",
+        "timed_out",
+        "duration_ms",
+        "cwd",
+        "command",
+        "stdout",
+        "stderr",
+        "truncated",
     }
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
@@ -90,8 +96,53 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     }
 
     structured = mcp_structured(await mcp.call_tool("environment_info", {}))
+    assert "workspace_root" in structured["settings"]
+    assert structured["probe"]["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tool = {tool.name: tool for tool in await build_mcp().list_tools()}[
+        "run_shell_command"
+    ]
+
+    command_input = tool.inputSchema["properties"]["command"]
+    timeout_input = tool.inputSchema["properties"]["timeout_s"]
+    stdout_output = tool.outputSchema["properties"]["stdout"]
+    exit_code_output = tool.outputSchema["properties"]["exit_code"]
+
+    assert command_input["description"] == (
+        "Shell command string executed with the configured shell."
+    )
+    assert "public tool timeout" in timeout_input["description"]
+    assert stdout_output["description"] == (
+        "Captured standard output after byte-limit truncation."
+    )
+    assert "Process exit code" in exit_code_output["description"]
+
+
+@pytest.mark.asyncio
+async def test_shell_tool_returns_per_tool_structured_content(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    structured = mcp_structured(
+        await build_mcp().call_tool("run_shell_command", {"command": "echo ok"})
+    )
+
     assert structured["ok"] is True
-    assert "workspace_root" in structured["data"]["settings"]
+    assert structured["command"] == "echo ok"
+    assert structured["stdout"] == "ok\n"
+    assert "data" not in structured
 
 
 @pytest.mark.asyncio

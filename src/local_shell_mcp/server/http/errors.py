@@ -16,7 +16,6 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=400,
             content={
-                "ok": False,
                 "error": "validation_error",
                 "message": str(exc),
             },
@@ -28,7 +27,6 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=400,
             content={
-                "ok": False,
                 "error": exc_type,
                 "message": f"{exc_type}: {exc}",
             },
@@ -41,7 +39,6 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=404,
             content={
-                "ok": False,
                 "error": "unknown_tool",
                 "message": str(exc),
             },
@@ -54,7 +51,6 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "ok": False,
                 "error": "http_error",
                 "message": exc.detail,
             },
@@ -68,7 +64,6 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=500,
             content={
-                "ok": False,
                 "error": "internal_error",
                 "message": f"Unhandled {type(exc).__name__}: {exc}",
             },

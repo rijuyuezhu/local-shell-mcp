@@ -27,8 +27,9 @@ class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):
        metadata only; AuthMiddleware still enforces real HTTP/MCP auth.
     2. annotations="read_only" marks the tools as non-mutating document-source
        operations.
-    3. mcp_envelope=False keeps the connector-facing search/fetch payloads in
-       the exact document-source shape expected by connector clients.
+    3. Their typed return models keep the connector-facing search/fetch
+       payloads in the exact document-source shape expected by connector
+       clients.
     """
 
     name = "workspace_connector"
@@ -42,7 +43,6 @@ local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
     http_path="/tools/search",
     mcp_security_profile="connector_compatible",
     annotations="read_only",
-    mcp_envelope=False,
     mcp_error_handler=search_error_output,
 )
 async def search(query: str) -> SearchOutput:
@@ -55,7 +55,6 @@ async def search(query: str) -> SearchOutput:
     http_path="/tools/fetch",
     mcp_security_profile="connector_compatible",
     annotations="read_only",
-    mcp_envelope=False,
     mcp_error_handler=fetch_error_output,
 )
 async def fetch(id: str) -> FetchOutput:
