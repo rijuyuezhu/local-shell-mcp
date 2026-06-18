@@ -52,6 +52,9 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
 
+extra_javascript:
+  - assets/reference-renderer.js
+
 nav:
   - Home: index.md
   - Getting started:

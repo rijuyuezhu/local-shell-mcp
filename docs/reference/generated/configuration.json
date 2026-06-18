@@ -27,6 +27,15 @@
     "LOCAL_SHELL_MCP_* environment variables",
     "CLI arguments"
   ],
+  "section_order": [
+    "Server",
+    "Paths and state",
+    "Authentication and OAuth",
+    "Safety and resource limits",
+    "Remote workers",
+    "Agent capability bridge",
+    "Tool executables"
+  ],
   "settings": [
     {
       "choices": [
