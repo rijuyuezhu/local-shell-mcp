@@ -9,6 +9,7 @@ from ..schemas.result_models.workspace_connector import (
     SearchOutput,
     SearchResult,
 )
+from ..utils.serialization import to_jsonable
 from .files import read_file_execute
 from .search import grep_search_execute
 
@@ -81,7 +82,7 @@ async def fetch_execute(id: str) -> FetchOutput:
     """Return one connector-compatible document for a workspace result id."""
     try:
         read_result = await asyncio.to_thread(read_file_execute, id)
-        data = read_result.model_dump(mode="json")
+        data = to_jsonable(read_result)
         path = str(data.get("path") or id)
         binary = bool(data.get("binary"))
         text = data.get("content")

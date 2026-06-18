@@ -16,6 +16,7 @@ from local_shell_mcp.ops.transfer import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
+from local_shell_mcp.utils.serialization import to_jsonable
 
 
 async def fake_remote_worker_call(
@@ -73,8 +74,7 @@ async def fake_remote_worker_call(
             )
         else:
             raise ValueError(f"unsupported fake remote tool: {tool}")
-        if hasattr(data, "model_dump"):
-            data = data.model_dump(mode="json")
+        data = to_jsonable(data)
         return {"ok": True, "message": "", "data": data}
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "message": str(exc)}

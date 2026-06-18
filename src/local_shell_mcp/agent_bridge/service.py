@@ -1,7 +1,7 @@
 """Shared service helpers for agent bridge tool adapters."""
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from typing import Any
 
 from ..config.settings import Settings, get_settings
@@ -13,6 +13,7 @@ from ..schemas.result_models.agent import (
     ListAgentMcpToolsOutput,
     ListAgentSkillsOutput,
 )
+from ..utils.serialization import to_jsonable
 from .mcp import AgentMcpClientManager
 from .models import AgentCapabilityRegistry, AgentMcpServerRecord
 from .redaction import (
@@ -57,16 +58,8 @@ def agent_mcp_tool_row(
     dynamic_tool_name: str | None = None,
 ) -> dict[str, Any]:
     """Convert an upstream MCP tool into a redacted status row."""
-    model_dump = getattr(tool, "model_dump", None)
-    if is_dataclass(tool) and not isinstance(tool, type):
-        data = asdict(tool)
-    elif callable(model_dump):
-        dumped = model_dump(mode="json")
-        data = dumped if isinstance(dumped, Mapping) else {}
-    elif isinstance(tool, dict):
-        data = tool
-    else:
-        data = {}
+    jsonable_tool = to_jsonable(tool)
+    data = jsonable_tool if isinstance(jsonable_tool, Mapping) else {}
 
     input_schema = data.get("input_schema")
     if input_schema is None:

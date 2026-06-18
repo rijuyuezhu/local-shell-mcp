@@ -10,9 +10,9 @@ from ..audit import (
     audit_tool_call_start,
     new_audit_call_id,
 )
+from ..utils.serialization import to_jsonable
 from .contracts import ToolHandler
 from .discovery import discover_tool_registries
-from .serialization import tool_output_jsonable
 
 
 class UnknownLocalToolError(LookupError):
@@ -74,6 +74,6 @@ async def call_local_tool(
         tool=tool_name,
         ok=True,
         duration_ms=duration_ms,
-        output=tool_output_jsonable(result),
+        output=to_jsonable(result),
     )
     return result

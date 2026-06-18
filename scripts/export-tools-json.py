@@ -10,12 +10,14 @@ from typing import Any
 
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.utils.serialization import to_jsonable
 
 
-def _jsonable_tool(tool: Any) -> dict[str, Any]:
+def _tool_to_jsonable_dict(tool: Any) -> dict[str, Any]:
     """Return a JSON-serializable representation of one MCP tool."""
-    if hasattr(tool, "model_dump"):
-        return tool.model_dump(mode="json", exclude_none=True)
+    data = to_jsonable(tool, exclude_none=True)
+    if isinstance(data, dict):
+        return data
     if hasattr(tool, "dict"):
         return tool.dict(exclude_none=True)
     raise TypeError(f"Unsupported tool object type: {type(tool)!r}")
@@ -25,7 +27,7 @@ async def export_tools() -> list[dict[str, Any]]:
     """Build the MCP app and return the tools it exposes to clients."""
     clear_settings_cache()
     tools = await build_mcp().list_tools()
-    return [_jsonable_tool(tool) for tool in tools]
+    return [_tool_to_jsonable_dict(tool) for tool in tools]
 
 
 def write_json(data: Any, output: Path | None) -> None:

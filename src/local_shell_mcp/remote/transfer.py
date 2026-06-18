@@ -21,7 +21,7 @@ from ..schemas.result_models.remote import (
     RemoteCopyDirOutput,
     RemoteCopyFileOutput,
 )
-from ..tools.serialization import tool_output_jsonable
+from ..utils.serialization import to_jsonable
 from .service import call_remote_worker_tool
 
 
@@ -59,7 +59,7 @@ async def _remote_transfer_data(
 async def _local_transfer_data(fn: Any, *args: Any) -> dict[str, Any]:
     """Run a local transfer primitive and return JSON-compatible data."""
     data = await asyncio.to_thread(fn, *args)
-    jsonable = tool_output_jsonable(data)
+    jsonable = to_jsonable(data)
     return jsonable if isinstance(jsonable, dict) else {"result": jsonable}
 
 

@@ -94,6 +94,7 @@ from ...schemas.result_models.shell import (
     StartPersistentShellOutput,
 )
 from ...tools.contracts import McpToolContext
+from ...utils.serialization import to_jsonable
 
 
 def _description(text: str) -> str:
@@ -109,10 +110,7 @@ def _description(text: str) -> str:
 def _remote_data(result: dict[str, Any]) -> dict[str, Any]:
     """Extract a worker data payload or raise a tool execution error."""
     if result.get("ok", False):
-        data = result.get("data")
-        model_dump = getattr(data, "model_dump", None)
-        if callable(model_dump):
-            data = model_dump(mode="json")
+        data = to_jsonable(result.get("data"))
         if isinstance(data, dict):
             if data.get("ok") is False or data.get("status") == "error":
                 message = (
