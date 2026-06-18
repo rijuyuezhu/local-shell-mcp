@@ -13,6 +13,7 @@ from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import PaginatedRequestParams
 
+from ..utils.serialization import to_jsonable
 from .models import AgentMcpServerConfig
 
 
@@ -52,10 +53,9 @@ def _normalize_content_item(item: Any) -> Any:
     """Convert MCP content blocks to JSON-serializable dictionaries while preserving unknown fields."""
     if _value(item, "type") == "text":
         return {"type": "text", "text": _value(item, "text", "")}
-    if hasattr(item, "model_dump"):
-        return item.model_dump(mode="json")
-    if isinstance(item, dict):
-        return item
+    jsonable_item = to_jsonable(item)
+    if isinstance(jsonable_item, dict):
+        return jsonable_item
     return {"type": "repr", "repr": repr(item)}
 
 
@@ -64,8 +64,7 @@ def normalize_tool_result(result: Any) -> dict[str, Any]:
     structured_content = _value(result, "structuredContent")
     if structured_content is None:
         structured_content = _value(result, "structured_content")
-    if hasattr(structured_content, "model_dump"):
-        structured_content = structured_content.model_dump(mode="json")
+    structured_content = to_jsonable(structured_content)
 
     return {
         "is_error": bool(

@@ -3,6 +3,7 @@
 from ..config.settings import get_settings, safe_settings_dump
 from ..schemas.result_models.environment import EnvironmentInfoOutput
 from ..schemas.result_models.shell import RunShellCommandOutput
+from ..utils.serialization import to_jsonable
 from .shell import run_shell
 
 
@@ -16,7 +17,5 @@ async def environment_info_execute() -> EnvironmentInfoOutput:
     )
     return EnvironmentInfoOutput(
         settings=safe_settings_dump(settings),
-        probe=RunShellCommandOutput.model_validate(
-            result.model_dump(mode="json")
-        ),
+        probe=RunShellCommandOutput.model_validate(to_jsonable(result)),
     )

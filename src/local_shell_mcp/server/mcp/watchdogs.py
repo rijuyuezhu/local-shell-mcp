@@ -16,7 +16,7 @@ from ...audit import (
 )
 from ...ops.shell import tool_timeout_s
 from ...tools.declarative import mcp_handler_error_handler
-from ...tools.serialization import tool_output_jsonable
+from ...utils.serialization import to_jsonable
 
 
 class AuditedMcpToolFn(Protocol):
@@ -86,7 +86,7 @@ def _mcp_tool_audit_watchdog_wrapper(
                 tool=tool_name,
                 ok=False,
                 duration_ms=duration_ms,
-                output=tool_output_jsonable(payload),
+                output=to_jsonable(payload),
                 error={
                     "type": type(exc).__name__,
                     "message": str(exc),
@@ -118,7 +118,7 @@ def _mcp_tool_audit_watchdog_wrapper(
             tool=tool_name,
             ok=True,
             duration_ms=duration_ms,
-            output=tool_output_jsonable(result),
+            output=to_jsonable(result),
         )
         return result
 

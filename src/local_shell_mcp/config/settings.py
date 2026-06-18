@@ -8,6 +8,8 @@ import yaml
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from ..utils.serialization import to_jsonable
+
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
 AUDIT_LOG_STATE_DIR_NAME = "audit_log"
@@ -316,7 +318,7 @@ def clear_settings_cache() -> None:
 def safe_settings_dump(settings: Settings | None = None) -> dict[str, Any]:
     """Return settings for diagnostics without exposing credentials or auth secrets."""
 
-    data = (settings or get_settings()).model_dump(mode="json")
+    data = to_jsonable(settings or get_settings())
     for key in SENSITIVE_SETTING_KEYS:
         if key in data:
             value = data[key]
