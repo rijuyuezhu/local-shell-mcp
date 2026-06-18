@@ -4,7 +4,9 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -102,8 +104,16 @@ def _tool_to_jsonable_dict(tool: Any) -> dict[str, Any]:
 
 async def export_tools() -> list[dict[str, Any]]:
     """Build the MCP app and return the tools it exposes to clients."""
-    clear_settings_cache()
-    tools = await build_mcp().list_tools()
+    with tempfile.TemporaryDirectory(prefix="local-shell-mcp-tools-") as tmp:
+        tmp_root = Path(tmp)
+        os.environ.setdefault(
+            "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_root / "workspace")
+        )
+        os.environ.setdefault(
+            "LOCAL_SHELL_MCP_STATE_DIR", str(tmp_root / "state")
+        )
+        clear_settings_cache()
+        tools = await build_mcp().list_tools()
     return [_tool_to_jsonable_dict(tool) for tool in tools]
 
 
