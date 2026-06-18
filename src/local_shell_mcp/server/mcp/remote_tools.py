@@ -418,7 +418,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=oauth_security_meta,
         description=_description(
-            f"""Read a UTF-8 text file on a remote worker, optionally by line range. Use after locating a remote file to inspect exact content before editing. Parameters: start_line and end_line page large files; binary_preview requests bounded binary preview behavior. Limits: per-file reads are capped by max_file_read_bytes={settings.max_file_read_bytes}."""
+            f"""Read a UTF-8 text file, optionally by line range. Limits: per-file reads are capped by max_file_read_bytes={settings.max_file_read_bytes}."""
         ),
     )
     async def remote_read_file(
@@ -426,8 +426,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         path: RemotePathArg,
         start_line: int | None = None,
         end_line: int | None = None,
-        binary_preview: str | None = None,
-        binary_preview_bytes: int = 256,
     ) -> ReadFileOutput:
         """Read a UTF-8 text file on a remote worker."""
         return await _remote_typed(
@@ -438,8 +436,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
                 "path": path,
                 "start_line": start_line,
                 "end_line": end_line,
-                "binary_preview": binary_preview,
-                "binary_preview_bytes": binary_preview_bytes,
             },
         )
 
@@ -455,8 +451,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         paths: list[str],
         start_line: int | None = None,
         end_line: int | None = None,
-        binary_preview: str | None = None,
-        binary_preview_bytes: int = 256,
     ) -> ReadManyFilesOutput:
         """Read multiple UTF-8 text files on a remote worker."""
         return await _remote_typed(
@@ -467,8 +461,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
                 "paths": paths,
                 "start_line": start_line,
                 "end_line": end_line,
-                "binary_preview": binary_preview,
-                "binary_preview_bytes": binary_preview_bytes,
             },
         )
 

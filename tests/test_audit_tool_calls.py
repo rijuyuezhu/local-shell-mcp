@@ -80,7 +80,7 @@ async def test_mcp_tool_calls_audit_full_input_output(tmp_path, monkeypatch):
     assert starts[0]["call_id"] == ends[0]["call_id"]
     assert starts[0]["transport"] == "mcp"
     assert starts[0]["input"]["path"] == "beta.txt"
-    assert starts[0]["input"]["binary_preview_bytes"] == 256
+    assert "binary_preview_bytes" not in starts[0]["input"]
     assert ends[0]["ok"] is True
     assert ends[0]["output"] == payload
 
@@ -103,7 +103,7 @@ async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     assert len(starts) == 1
     assert len(ends) == 1
     assert starts[0]["input"]["path"] == "missing.txt"
-    assert starts[0]["input"]["binary_preview_bytes"] == 256
+    assert "binary_preview_bytes" not in starts[0]["input"]
     assert ends[0]["ok"] is False
     assert ends[0]["error"]["type"] == "FileNotFoundError"
     assert "missing.txt" in ends[0]["error"]["message"]

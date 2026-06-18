@@ -12,8 +12,6 @@ from ...ops.files import (
     write_file_execute,
 )
 from ...schemas.input_models.files import (
-    BinaryPreviewArg,
-    BinaryPreviewBytesArg,
     EditsArg,
     EndLineArg,
     FileContentArg,
@@ -58,7 +56,7 @@ def _list_files_description(context: McpToolContext) -> str:
 
 def _read_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Read a UTF-8 text file, optionally by line range, or return safe metadata for binary files. Use after locating a file to inspect exact content before editing. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
+    return f"""Read a UTF-8 text file, optionally by line range. Use after locating a file to inspect exact content before editing. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
 
 
 def _read_many_files_description(context: McpToolContext) -> str:
@@ -101,8 +99,6 @@ async def read_file(
     path: FilePathArg,
     start_line: StartLineArg = None,
     end_line: EndLineArg = None,
-    binary_preview: BinaryPreviewArg = None,
-    binary_preview_bytes: BinaryPreviewBytesArg = 256,
 ) -> ReadFileOutput:
     """Read a UTF-8 text file, optionally by line range."""
     return await asyncio.to_thread(
@@ -110,8 +106,6 @@ async def read_file(
         path,
         start_line,
         end_line,
-        binary_preview,
-        binary_preview_bytes,
     )
 
 
@@ -124,8 +118,6 @@ async def read_many_files(
     paths: PathsArg,
     start_line: StartLineArg = None,
     end_line: EndLineArg = None,
-    binary_preview: BinaryPreviewArg = None,
-    binary_preview_bytes: BinaryPreviewBytesArg = 256,
 ) -> ReadManyFilesOutput:
     """Read multiple UTF-8 text files with the same optional line range."""
     return await asyncio.to_thread(
@@ -133,8 +125,6 @@ async def read_many_files(
         paths,
         start_line,
         end_line,
-        binary_preview,
-        binary_preview_bytes,
     )
 
 

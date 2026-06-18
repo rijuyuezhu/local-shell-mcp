@@ -31,7 +31,7 @@ class ListFilesOutput(BaseModel):
 
 
 class ReadFileOutput(BaseModel):
-    """Text file content or safe binary-file metadata."""
+    """UTF-8 text file content."""
 
     path: str = Field(description="Workspace-relative file path that was read.")
     bytes: int = Field(description="Total file size in bytes.")
@@ -43,9 +43,6 @@ class ReadFileOutput(BaseModel):
         default=None,
         description="Number of file bytes omitted due to the read limit, when applicable.",
     )
-    binary: bool = Field(
-        description="Whether the file was classified as binary."
-    )
     total_lines: int | None = Field(
         default=None,
         description="Total decoded text line count before optional line-range selection.",
@@ -54,26 +51,7 @@ class ReadFileOutput(BaseModel):
         default=False,
         description="Whether text content was truncated to fit the read limit.",
     )
-    content: str | None = Field(
-        default=None,
-        description="Decoded UTF-8 text content, or null for binary files.",
-    )
-    message: str | None = Field(
-        default=None,
-        description="Human-readable note for binary or otherwise special read results.",
-    )
-    preview: str | None = Field(
-        default=None,
-        description="Optional bounded binary preview encoded as requested.",
-    )
-    preview_encoding: str | None = Field(
-        default=None,
-        description="Encoding used for preview, such as hex or base64.",
-    )
-    preview_bytes: int | None = Field(
-        default=None,
-        description="Number of raw binary bytes included in preview.",
-    )
+    content: str = Field(description="Decoded UTF-8 text content.")
 
 
 class ReadManyFilesOutput(BaseModel):
@@ -83,7 +61,7 @@ class ReadManyFilesOutput(BaseModel):
         description="Per-file read results in request order."
     )
     total_content_bytes: int = Field(
-        description="Total UTF-8 bytes returned across text content and binary previews."
+        description="Total UTF-8 bytes returned across text content."
     )
 
 

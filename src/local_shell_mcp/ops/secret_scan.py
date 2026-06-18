@@ -34,11 +34,9 @@ def secret_scan_sync(
             data = read_file_execute(str(path))
         except Exception:
             continue
-        if data.binary:
-            continue
         if data.truncated:
             truncated_files += 1
-        text = data.content or ""
+        text = data.content
         for name, pattern in SECRET_PATTERNS.items():
             for match in re.finditer(pattern, text):
                 line = text.count("\n", 0, match.start()) + 1

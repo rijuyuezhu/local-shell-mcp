@@ -172,15 +172,13 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
     assert read_file_tool.inputSchema["properties"]["path"]["description"] == (
         "Workspace-relative path, or an allowed absolute path, for the file or directory operation."
     )
+    assert "binary_preview" not in read_file_tool.inputSchema["properties"]
     assert (
-        "binary preview encoding"
-        in read_file_tool.inputSchema["properties"]["binary_preview"][
-            "description"
-        ]
+        "binary_preview_bytes" not in read_file_tool.inputSchema["properties"]
     )
     assert (
         read_file_output_schema["properties"]["content"]["description"]
-        == "Decoded UTF-8 text content, or null for binary files."
+        == "Decoded UTF-8 text content."
     )
     assert (
         list_files_output_schema["properties"]["entries"]["description"]

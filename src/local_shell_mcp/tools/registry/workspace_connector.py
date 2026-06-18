@@ -65,5 +65,5 @@ async def search(query: ConnectorSearchQueryArg) -> SearchOutput:
     mcp_error_handler=fetch_error_output,
 )
 async def fetch(id: ConnectorFetchIdArg) -> FetchOutput:
-    """Fetch one workspace file as a connector-compatible document. Use this after search has returned a result id. For code navigation or precise workspace inspection, read_file provides line ranges, binary previews, and richer diagnostics. Parameter: id is the exact result id from search, normally a workspace-relative file path. The response contains id, title, text, url, and metadata fields. Binary files are represented by an omission message."""
+    """Fetch one workspace UTF-8 text file as a connector-compatible document."""
     return await fetch_execute(id)

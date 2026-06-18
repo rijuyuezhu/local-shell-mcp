@@ -48,57 +48,23 @@ def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
     assert complete.is_truncated is False
 
 
-def test_read_text_refuses_binary_without_decoding(tmp_path, monkeypatch):
+def test_read_text_rejects_invalid_utf8(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
-    payload = b"\x89PNG\r\n\x1a\n\x00binary"
-    (tmp_path / "image.png").write_bytes(payload)
+    (tmp_path / "invalid.bin").write_bytes(b"\xff\xfe\xfd")
 
-    result = read_file_execute("image.png")
-
-    assert result.model_dump(exclude_none=True) == {
-        "path": "image.png",
-        "bytes": len(payload),
-        "binary": True,
-        "truncated": False,
-        "message": "Refusing to read binary file as text",
-    }
+    with pytest.raises(UnicodeDecodeError):
+        read_file_execute("invalid.bin")
 
 
-def test_read_text_binary_preview_is_explicit_and_limited(
-    tmp_path, monkeypatch
-):
+def test_read_text_allows_valid_utf8_control_bytes(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
-    (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02\x03\x04")
+    (tmp_path / "nul.txt").write_bytes(b"abc\x00def")
 
-    result = read_file_execute(
-        "blob.bin", binary_preview="hex", binary_preview_bytes=2
-    )
+    result = read_file_execute("nul.txt")
 
-    assert result.content is None
-    assert result.preview == "0001"
-    assert result.preview_encoding == "hex"
-    assert result.preview_bytes == 2
-
-
-def test_binary_preview_does_not_read_entire_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    clear_settings_cache()
-    (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02\x03\x04")
-
-    def fail_read_bytes(self):
-        raise AssertionError(
-            "read_bytes should not be used for bounded previews"
-        )
-
-    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
-
-    result = read_file_execute(
-        "blob.bin", binary_preview="hex", binary_preview_bytes=2
-    )
-
-    assert result.preview == "0001"
+    assert result.content == "abc\x00def"
 
 
 def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
@@ -146,38 +112,33 @@ def test_edit_refuses_files_above_write_limit(tmp_path, monkeypatch):
         edit_file_execute("large.txt", "world", "mcp")
 
 
-def test_edits_refuse_binary_files(tmp_path, monkeypatch):
+def test_edits_reject_invalid_utf8_files(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
-    original = b"abc\x00world"
+    original = b"abc\xffworld"
     (tmp_path / "blob.bin").write_bytes(original)
 
-    with pytest.raises(
-        ValueError, match="Refusing to read binary file as text"
-    ):
+    with pytest.raises(UnicodeDecodeError):
         edit_file_execute("blob.bin", "world", "mcp")
-    with pytest.raises(
-        ValueError, match="Refusing to read binary file as text"
-    ):
+    with pytest.raises(UnicodeDecodeError):
         multi_edit_file_execute("blob.bin", [{"old": "world", "new": "mcp"}])
 
     assert (tmp_path / "blob.bin").read_bytes() == original
 
 
 @pytest.mark.asyncio
-async def test_fetch_omits_binary_content_from_text_field(
-    tmp_path, monkeypatch
-):
+async def test_fetch_reports_non_utf8_errors(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
-    (tmp_path / "blob.bin").write_bytes(b"abc\x00world")
+    (tmp_path / "blob.bin").write_bytes(b"abc\xffworld")
 
     response = await build_mcp().call_tool("fetch", {"id": "blob.bin"})
     payload = json.loads(nested_mcp_text(response))
 
-    assert payload["text"] == "Refusing to read binary file as text"
-    assert payload["metadata"]["binary"] is True
-    assert payload["metadata"]["bytes"] == 9
+    assert payload["text"].startswith(
+        "Unable to fetch file: UnicodeDecodeError:"
+    )
+    assert payload["metadata"]["error"] == "UnicodeDecodeError"
 
 
 @pytest.mark.asyncio
@@ -226,4 +187,4 @@ def test_read_text_handles_truncated_utf8_sequence(tmp_path, monkeypatch):
 
     assert result.truncated is True
     assert result.bytes_read == 4
-    assert result.content == "你�"
+    assert result.content == "你"

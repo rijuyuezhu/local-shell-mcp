@@ -40,18 +40,6 @@ EndLineArg = Annotated[
         description="Optional 1-based final line to include when reading text files. Omit to read through the end."
     ),
 ]
-BinaryPreviewArg = Annotated[
-    str | None,
-    Field(
-        description="Optional binary preview encoding for binary files. Supported values are 'hex' and 'base64'."
-    ),
-]
-BinaryPreviewBytesArg = Annotated[
-    int,
-    Field(
-        description="Maximum number of binary bytes to include in the optional preview, bounded by the server configuration."
-    ),
-]
 PathsArg = Annotated[
     list[str],
     Field(
