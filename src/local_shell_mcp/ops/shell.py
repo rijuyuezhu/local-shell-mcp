@@ -21,7 +21,6 @@ from ..schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
-from ..utils.serialization import to_jsonable
 from .utils.path import (
     relative_display,
     resolve_path,
@@ -343,7 +342,7 @@ async def run_shell_command_execute(
         run_shell_command_timeout(timeout_s),
         max_output_bytes,
     )
-    return RunShellCommandOutput.model_validate(to_jsonable(result))
+    return RunShellCommandOutput.model_validate(result.model_dump())
 
 
 async def run_python_code_execute(
@@ -358,7 +357,7 @@ async def run_python_code_execute(
         max_output_bytes=1_000_000,
     )
     return RunPythonCodeOutput.model_validate(
-        {**to_jsonable(result), "script_path": relative_display(path)}
+        {**result.model_dump(), "script_path": relative_display(path)}
     )
 
 
