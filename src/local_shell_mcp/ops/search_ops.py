@@ -1,6 +1,7 @@
 """Search workspace text files and produce compact directory trees for code-navigation tools."""
 
 import asyncio
+import fnmatch
 import json
 import shlex
 from pathlib import Path
@@ -8,12 +9,30 @@ from typing import Any, cast
 
 from ..config.settings import get_settings
 from ..schemas.result_models.search import (
+    GlobSearchOutput,
     GrepMatch,
     GrepSearchOutput,
     TreeViewOutput,
 )
 from .command_ops import run_shell
-from .path_ops import missing_path_context, resolve_path
+from .path_ops import missing_path_context, relative_display, resolve_path
+
+
+def glob_search_execute(
+    pattern: str, cwd: str = ".", max_results: int = 500
+) -> GlobSearchOutput:
+    """Find workspace paths matching a glob pattern without exceeding the configured result limit."""
+    settings = get_settings()
+    base = resolve_path(cwd, must_exist=True)
+    results: list[str] = []
+    limit = max(1, min(max_results, settings.max_glob_results))
+    for item in base.rglob("*"):
+        rel = str(item.relative_to(base))
+        if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(item.name, pattern):
+            results.append(relative_display(item))
+            if len(results) >= limit:
+                break
+    return GlobSearchOutput(paths=results)
 
 
 async def grep_search_execute(

@@ -2,7 +2,6 @@
 
 import base64
 import binascii
-import fnmatch
 import shutil
 from pathlib import Path
 
@@ -17,7 +16,6 @@ from ..schemas.result_models.files import (
     ReadManyFilesOutput,
     WriteFileOutput,
 )
-from ..schemas.result_models.search import GlobSearchOutput
 from .path_ops import relative_display, resolve_path
 
 BINARY_CHECK_BYTES = 8192
@@ -69,23 +67,6 @@ def list_files_execute(
         is_truncated=truncated,
         file_info=filelist,
     )
-
-
-def glob_search_execute(
-    pattern: str, cwd: str = ".", max_results: int = 500
-) -> GlobSearchOutput:
-    """Find workspace paths matching a glob pattern without exceeding the configured result limit."""
-    settings = get_settings()
-    base = resolve_path(cwd, must_exist=True)
-    results: list[str] = []
-    limit = max(1, min(max_results, settings.max_glob_results))
-    for item in base.rglob("*"):
-        rel = str(item.relative_to(base))
-        if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(item.name, pattern):
-            results.append(relative_display(item))
-            if len(results) >= limit:
-                break
-    return GlobSearchOutput(paths=results)
 
 
 def _is_probably_binary(sample: bytes) -> bool:

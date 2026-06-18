@@ -4,6 +4,7 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.search_ops import (
+    glob_search_execute,
     grep_search_execute,
     tree_view_execute,
 )
@@ -75,3 +76,15 @@ async def test_grep_accepts_query_starting_with_dash(tmp_path, monkeypatch):
     assert result.count == 1
     assert result.matches[0].path is not None
     assert result.matches[0].path.endswith("dash.txt")
+
+
+def test_glob_finds_matching_paths(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("print('x')", encoding="utf-8")
+    (tmp_path / "README.md").write_text("hello", encoding="utf-8")
+
+    result = glob_search_execute("*.py", cwd=".")
+
+    assert result.paths == ["src/app.py"]
