@@ -3,7 +3,7 @@
 import asyncio
 
 from ...config.settings import Settings
-from ...ops.downloads_ops import (
+from ...ops.downloads import (
     create_file_link_execute,
     list_file_links_execute,
     revoke_file_link_execute,

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
-from ...ops.shell_ops import tool_timeout_s
+from ...ops.shell import tool_timeout_s
 from ...tools.discovery import discover_tool_registries
 from ...tools.local_invocations import call_local_tool
 

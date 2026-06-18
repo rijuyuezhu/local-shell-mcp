@@ -1,6 +1,6 @@
 """ChatGPT connector-compatible read-only workspace search/fetch tools."""
 
-from ...ops.workspace_connector_ops import (
+from ...ops.workspace_connector import (
     fetch_error_output,
     fetch_execute,
     search_error_output,

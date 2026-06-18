@@ -7,7 +7,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.shell_ops import (
+from local_shell_mcp.ops.shell import (
     clamp_timeout,
     run_shell,
     run_shell_command_timeout,
@@ -176,7 +176,7 @@ async def test_run_shell_command_timeout_includes_subprocess_spawn(
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.shell_ops._spawn_process", hanging_spawn
+        "local_shell_mcp.ops.shell._spawn_process", hanging_spawn
     )
 
     result = await run_shell("echo never", timeout_s=1)
@@ -245,7 +245,7 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
             command="tmux",
         )
 
-    monkeypatch.setattr("local_shell_mcp.ops.shell_ops.tmux", fake_tmux)
+    monkeypatch.setattr("local_shell_mcp.ops.shell.tmux", fake_tmux)
 
     result = await asyncio.wait_for(
         send_persistent_shell_input_execute("session-1", "echo ok", enter=True),

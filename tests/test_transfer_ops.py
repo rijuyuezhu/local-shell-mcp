@@ -4,7 +4,7 @@ import tarfile
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.transfer_ops import (
+from local_shell_mcp.ops.transfer import (
     transfer_abort_write,
     transfer_begin_write,
     transfer_finish_write,

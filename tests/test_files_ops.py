@@ -5,14 +5,14 @@ import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.ops.files_ops import (
+from local_shell_mcp.ops.files import (
     edit_file_execute,
     list_files_execute,
     multi_edit_file_execute,
     read_file_execute,
     write_file_execute,
 )
-from local_shell_mcp.ops.shell_ops import check_command_policy
+from local_shell_mcp.ops.shell import check_command_policy
 from local_shell_mcp.ops.utils.path import resolve_path
 from local_shell_mcp.server.mcp.app import build_mcp
 from tests.helpers import nested_mcp_text

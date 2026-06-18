@@ -5,7 +5,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.downloads_ops import (
+from local_shell_mcp.ops.downloads import (
     create_file_link_execute,
     revoke_file_link_execute,
 )

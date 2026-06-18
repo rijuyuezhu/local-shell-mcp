@@ -14,7 +14,7 @@ from ...audit import (
     audit_tool_call_start,
     new_audit_call_id,
 )
-from ...ops.shell_ops import tool_timeout_s
+from ...ops.shell import tool_timeout_s
 from ...tools.declarative import mcp_handler_error_handler
 from ...tools.serialization import tool_output_jsonable
 

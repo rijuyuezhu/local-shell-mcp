@@ -9,8 +9,8 @@ from ..schemas.result_models.workspace_connector import (
     SearchOutput,
     SearchResult,
 )
-from .files_ops import read_file_execute
-from .search_ops import grep_search_execute
+from .files import read_file_execute
+from .search import grep_search_execute
 
 
 def search_error_output(

@@ -1,6 +1,6 @@
 """Secret scanning tool registry."""
 
-from ...ops.secret_scan_ops import secret_scan_execute
+from ...ops.secret_scan import secret_scan_execute
 from ...schemas.input_models.secret_scan import (
     SecretScanCwdArg,
     SecretScanGlobArg,

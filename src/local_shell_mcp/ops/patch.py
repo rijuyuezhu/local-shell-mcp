@@ -3,7 +3,7 @@
 import shlex
 
 from ..schemas.result_models.patch import ApplyPatchOutput
-from .shell_ops import run_shell
+from .shell import run_shell
 from .utils.path import relative_display
 from .utils.temp_file import write_temp_text_file
 

@@ -4,8 +4,8 @@ import asyncio
 from contextlib import suppress
 from typing import Any
 
-from ..ops.files_ops import delete_file_or_dir_execute
-from ..ops.transfer_ops import (
+from ..ops.files import delete_file_or_dir_execute
+from ..ops.transfer import (
     normalize_chunk_size,
     transfer_abort_write,
     transfer_alloc_temp_path,

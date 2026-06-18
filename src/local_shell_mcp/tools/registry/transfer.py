@@ -3,31 +3,31 @@
 import asyncio
 from typing import Any
 
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_abort_write as transfer_abort_write_sync,
 )
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_alloc_temp_path as transfer_alloc_temp_path_sync,
 )
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_begin_write as transfer_begin_write_sync,
 )
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_finish_write as transfer_finish_write_sync,
 )
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_pack_dir as transfer_pack_dir_sync,
 )
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_read_chunk as transfer_read_chunk_sync,
 )
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_stat as transfer_stat_sync,
 )
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_unpack_archive as transfer_unpack_archive_sync,
 )
-from ...ops.transfer_ops import (
+from ...ops.transfer import (
     transfer_write_chunk as transfer_write_chunk_sync,
 )
 from ...schemas.input_models.transfer import (

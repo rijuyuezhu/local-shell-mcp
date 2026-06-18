@@ -1,6 +1,6 @@
 """Shell MCP tool registry."""
 
-from ...ops.shell_ops import (
+from ...ops.shell import (
     kill_persistent_shell_execute,
     list_persistent_shells_execute,
     read_persistent_shell_output_execute,

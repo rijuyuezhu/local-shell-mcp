@@ -3,7 +3,7 @@ import shutil
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.ops.search_ops import (
+from local_shell_mcp.ops.search import (
     glob_search_execute,
     grep_search_execute,
     tree_view_execute,

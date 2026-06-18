@@ -7,7 +7,7 @@ from ...agent_bridge.models import AgentCapabilityRegistry
 from ...agent_bridge.service import build_agent_registry_from_settings
 from ...agent_bridge.tools import register_agent_bridge_dynamic_tools
 from ...config.settings import Settings
-from ...ops.agent_ops import (
+from ...ops.agent import (
     activate_agent_skill_execute,
     agent_config_status_execute,
     call_agent_mcp_tool_execute,

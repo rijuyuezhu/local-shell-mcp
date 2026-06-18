@@ -2,7 +2,7 @@
 
 import asyncio
 
-from ...ops.search_ops import (
+from ...ops.search import (
     glob_search_execute,
     grep_search_execute,
     tree_view_execute,
