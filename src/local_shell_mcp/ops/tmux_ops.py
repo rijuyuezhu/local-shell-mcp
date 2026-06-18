@@ -6,9 +6,16 @@ import uuid
 
 from ..audit import audit
 from ..config.settings import get_settings
+from ..schemas.result_models.shell import (
+    CommandResult,
+    KillPersistentShellOutput,
+    ListPersistentShellsOutput,
+    ReadPersistentShellOutput,
+    SendPersistentShellInputOutput,
+    StartPersistentShellOutput,
+)
 from .command_ops import check_command_policy, run_shell
 from .path_ops import relative_display, resolve_path
-from .shell_models import CommandResult
 
 
 def _tmux_session_name(name: str | None = None) -> str:
@@ -25,12 +32,12 @@ async def tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
 
 async def start_persistent_shell_execute(
     cwd: str = ".", name: str | None = None, command: str | None = None
-) -> dict:
+) -> StartPersistentShellOutput:
     """Start or replace a tmux-backed persistent shell session in a resolved working directory."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
     sessions = await list_persistent_shells_execute()
     max_sessions = max(1, get_settings().max_tmux_sessions)
-    if len(sessions.get("sessions", [])) >= max_sessions:
+    if len(sessions.sessions) >= max_sessions:
         raise RuntimeError(
             f"Refusing to start more than {max_sessions} tmux sessions"
         )
@@ -55,16 +62,16 @@ async def start_persistent_shell_execute(
         cwd=str(resolved_cwd),
         command=initial,
     )
-    return {
-        "session_id": session,
-        "cwd": relative_display(resolved_cwd),
-        "command": initial,
-    }
+    return StartPersistentShellOutput(
+        session_id=session,
+        cwd=relative_display(resolved_cwd),
+        command=initial,
+    )
 
 
 async def send_persistent_shell_input_execute(
     session_id: str, input_text: str, enter: bool = True
-) -> dict:
+) -> SendPersistentShellInputOutput:
     """Send input to a persistent shell session, optionally appending Enter."""
     args = ["send-keys", "-t", session_id, input_text]
     if enter:
@@ -78,16 +85,16 @@ async def send_persistent_shell_input_execute(
         bytes=len(input_text.encode()),
         enter=enter,
     )
-    return {
-        "session_id": session_id,
-        "sent_bytes": len(input_text.encode()),
-        "enter": enter,
-    }
+    return SendPersistentShellInputOutput(
+        session_id=session_id,
+        sent_bytes=len(input_text.encode()),
+        enter=enter,
+    )
 
 
 async def read_persistent_shell_output_execute(
     session_id: str, lines: int = 200
-) -> dict:
+) -> ReadPersistentShellOutput:
     """Read recent output from a persistent shell session through tmux capture-pane."""
     result = await tmux(
         ["capture-pane", "-p", "-t", session_id, "-S", f"-{max(1, lines)}"]
@@ -95,21 +102,25 @@ async def read_persistent_shell_output_execute(
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
     audit("read_persistent_shell_output", session=session_id, lines=lines)
-    return {"session_id": session_id, "output": result.stdout}
+    return ReadPersistentShellOutput(
+        session_id=session_id, output=result.stdout
+    )
 
 
-async def kill_persistent_shell_execute(session_id: str) -> dict:
+async def kill_persistent_shell_execute(
+    session_id: str,
+) -> KillPersistentShellOutput:
     """Terminate a persistent shell session by its normalized tmux session id."""
     result = await tmux(["kill-session", "-t", session_id])
     audit("kill_persistent_shell", session=session_id, ok=result.ok)
-    return {
-        "session_id": session_id,
-        "killed": result.ok,
-        "stderr": result.stderr,
-    }
+    return KillPersistentShellOutput(
+        session_id=session_id,
+        killed=result.ok,
+        stderr=result.stderr,
+    )
 
 
-async def list_persistent_shells_execute() -> dict:
+async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
     """List active tmux-backed shell sessions managed by local-shell-mcp."""
     result = await tmux(
         [
@@ -121,7 +132,7 @@ async def list_persistent_shells_execute() -> dict:
     )
     if not result.ok:
         # tmux exits nonzero when no server/sessions exist.
-        return {"sessions": []}
+        return ListPersistentShellsOutput(sessions=[])
     sessions = []
     for line in result.stdout.splitlines():
         parts = line.split("\t")
@@ -133,4 +144,4 @@ async def list_persistent_shells_execute() -> dict:
                     "attached": parts[2] if len(parts) > 2 else None,
                 }
             )
-    return {"sessions": sessions}
+    return ListPersistentShellsOutput(sessions=sessions)

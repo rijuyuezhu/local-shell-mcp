@@ -91,9 +91,7 @@ async def start_persistent_shell(
     command: InitialCommandArg = None,
 ) -> StartPersistentShellOutput:
     """Start a persistent tmux-backed shell session. Use for interactive programs, development servers, REPLs, long-running watches, or commands whose output must be read incrementally. Parameters: cwd defaults to '.' and is resolved relative to the workspace unless an allowed absolute path is supplied; name is an optional human-readable session label; command is optional and starts immediately in the session. For one-shot commands, use run_shell_command."""
-    return StartPersistentShellOutput.model_validate(
-        await start_persistent_shell_execute(cwd, name, command)
-    )
+    return await start_persistent_shell_execute(cwd, name, command)
 
 
 @local_tool(http_method="POST", http_path="/tools/send_persistent_shell_input")
@@ -111,9 +109,7 @@ async def read_persistent_shell_output(
     session_id: SessionIdArg, lines: LinesArg = 200
 ) -> ReadPersistentShellOutput:
     """Read recent output from a persistent shell session. Use after start_persistent_shell or send_persistent_shell_input to inspect incremental output without blocking. Parameters: session_id must be an id returned by start_persistent_shell or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."""
-    return ReadPersistentShellOutput.model_validate(
-        await read_persistent_shell_output_execute(session_id, lines)
-    )
+    return await read_persistent_shell_output_execute(session_id, lines)
 
 
 @local_tool(http_method="POST", http_path="/tools/kill_persistent_shell")
@@ -121,14 +117,10 @@ async def kill_persistent_shell(
     session_id: SessionIdArg,
 ) -> KillPersistentShellOutput:
     """Terminate a persistent shell session by session_id. Use when a server, watch process, REPL, or stuck command is no longer needed. This is destructive for that session but does not delete files."""
-    return KillPersistentShellOutput.model_validate(
-        await kill_persistent_shell_execute(session_id)
-    )
+    return await kill_persistent_shell_execute(session_id)
 
 
 @local_tool(http_method="GET", http_path="/tools/list_persistent_shells")
 async def list_persistent_shells() -> ListPersistentShellsOutput:
     """List active persistent shell sessions. Use before reading, sending to, or killing sessions when you do not know the session_id or need to check what long-running processes are active."""
-    return ListPersistentShellsOutput.model_validate(
-        await list_persistent_shells_execute()
-    )
+    return await list_persistent_shells_execute()

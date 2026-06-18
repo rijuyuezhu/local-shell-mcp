@@ -252,7 +252,11 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
         timeout=1,
     )
 
-    assert result == {"session_id": "session-1", "sent_bytes": 7, "enter": True}
+    assert result.model_dump() == {
+        "session_id": "session-1",
+        "sent_bytes": 7,
+        "enter": True,
+    }
     assert calls == [(["send-keys", "-t", "session-1", "echo ok", "Enter"], 10)]
 
 
