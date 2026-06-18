@@ -109,8 +109,8 @@ async def test_remote_copy_file_streams_between_workers(tmp_path, monkeypatch):
         128,
     )
 
-    assert result["chunks"] > 1
-    assert result["bytes"] == len(data)
+    assert result.chunks > 1
+    assert result.bytes == len(data)
     assert (root / "dst-machine" / "payload.bin").read_bytes() == data
 
 
@@ -134,7 +134,7 @@ async def test_remote_copy_dir_packs_transfers_and_unpacks(
         256,
     )
 
-    assert result["entries"] >= 1
+    assert result.entries >= 1
     assert (
         root / "dst-machine" / "run-copy" / "nested" / "result.txt"
     ).read_text(encoding="utf-8") == "ok"

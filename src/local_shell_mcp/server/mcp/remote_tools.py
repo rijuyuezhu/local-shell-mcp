@@ -22,6 +22,44 @@ from ...remote.transfer import (
     copy_remote_file_to_local,
     copy_remote_file_to_remote,
 )
+from ...schemas.input_models.remote import (
+    LocalPathArg,
+    RemoteCaseSensitiveArg,
+    RemoteChunkSizeArg,
+    RemoteCommandArg,
+    RemoteContentArg,
+    RemoteCwdArg,
+    RemoteDepthArg,
+    RemoteDestinationMachineArg,
+    RemoteDestinationPathArg,
+    RemoteEditsArg,
+    RemoteEnterArg,
+    RemoteGlobArg,
+    RemoteInputTextArg,
+    RemoteInviteNameArg,
+    RemoteInviteTtlArg,
+    RemoteLinesArg,
+    RemoteMachineArg,
+    RemoteMaxEntriesArg,
+    RemoteMaxResultsArg,
+    RemoteNewNameArg,
+    RemoteNewTextArg,
+    RemoteOldTextArg,
+    RemoteOverwriteArg,
+    RemotePatchArg,
+    RemotePathArg,
+    RemotePatternArg,
+    RemotePythonCodeArg,
+    RemoteQueryArg,
+    RemoteRecursiveArg,
+    RemoteRegexArg,
+    RemoteReplaceAllArg,
+    RemoteSessionIdArg,
+    RemoteSourceMachineArg,
+    RemoteSourcePathArg,
+    RemoteTimeoutArg,
+    RemoteWorkdirArg,
+)
 from ...schemas.result_models.environment import EnvironmentInfoOutput
 from ...schemas.result_models.files import (
     DeleteFileOrDirOutput,
@@ -93,10 +131,10 @@ def _remote_data(result: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _remote_call(
-    machine: str,
+    machine: RemoteMachineArg,
     tool: str,
     args: dict[str, Any],
-    timeout_s: int | None = None,
+    timeout_s: RemoteTimeoutArg = None,
 ) -> dict[str, Any]:
     """Call a worker-side tool and return its structured data payload."""
     return _remote_data(
@@ -106,10 +144,10 @@ async def _remote_call(
 
 async def _remote_typed[TModel: BaseModel](
     model: type[TModel],
-    machine: str,
+    machine: RemoteMachineArg,
     tool: str,
     args: dict[str, Any],
-    timeout_s: int | None = None,
+    timeout_s: RemoteTimeoutArg = None,
 ) -> TModel:
     """Call a remote worker tool and validate its data payload."""
     return model.model_validate(
@@ -130,38 +168,36 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_invite(
-        name: str | None = None,
-        workdir: str | None = None,
-        ttl_s: int | None = None,
+        name: RemoteInviteNameArg = None,
+        workdir: RemoteWorkdirArg = None,
+        ttl_s: RemoteInviteTtlArg = None,
     ) -> RemoteInviteOutput:
         """Create a one-time remote-worker invite."""
-        return RemoteInviteOutput.model_validate(
-            await create_remote_invite(name, workdir, ttl_s)
-        )
+        return await create_remote_invite(name, workdir, ttl_s)
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_list_machines() -> RemoteListMachinesOutput:
         """List remote worker machines currently known to the control server. Use before running any remote_* tool when you need the machine name or want to verify that a worker is connected."""
-        return RemoteListMachinesOutput.model_validate(list_remote_machines())
+        return list_remote_machines()
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
-    async def remote_revoke_machine(machine: str) -> RemoteRevokeMachineOutput:
+    async def remote_revoke_machine(
+        machine: RemoteMachineArg,
+    ) -> RemoteRevokeMachineOutput:
         """Revoke and remove a remote worker machine. Use when a worker should no longer receive jobs or has become stale/untrusted. This is a control-plane action and cannot be undone except by re-inviting the worker."""
-        return RemoteRevokeMachineOutput.model_validate(
-            revoke_remote_machine(machine)
-        )
+        return revoke_remote_machine(machine)
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_rename_machine(
-        machine: str, new_name: str
+        machine: RemoteMachineArg, new_name: RemoteNewNameArg
     ) -> RemoteRenameMachineOutput:
         """Rename a remote worker machine. Use to give a connected worker a clearer stable name before issuing remote jobs. This changes the control-server name used by later remote_* calls."""
-        return RemoteRenameMachineOutput.model_validate(
-            rename_remote_machine(machine, new_name)
-        )
+        return rename_remote_machine(machine, new_name)
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
-    async def remote_environment_info(machine: str) -> EnvironmentInfoOutput:
+    async def remote_environment_info(
+        machine: RemoteMachineArg,
+    ) -> EnvironmentInfoOutput:
         """Return workspace, auth, policy, and basic environment information from a remote worker. Use to verify the remote machine, working directory, runtime versions, and limits before running remote commands or editing remote files."""
         return await _remote_typed(
             EnvironmentInfoOutput, machine, "environment_info", {}
@@ -175,10 +211,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def run_remote_shell_command(
-        machine: str,
-        command: str,
-        cwd: str = ".",
-        timeout_s: int | None = None,
+        machine: RemoteMachineArg,
+        command: RemoteCommandArg,
+        cwd: RemoteCwdArg = ".",
+        timeout_s: RemoteTimeoutArg = None,
         max_output_bytes: int | None = None,
     ) -> RunShellCommandOutput:
         """Run one non-interactive shell command on a remote worker."""
@@ -203,7 +239,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def run_remote_python_code(
-        machine: str, code: str, cwd: str = ".", timeout_s: int = 60
+        machine: RemoteMachineArg,
+        code: RemotePythonCodeArg,
+        cwd: RemoteCwdArg = ".",
+        timeout_s: int = 60,
     ) -> RunPythonCodeOutput:
         """Write Python code to a temporary file and execute it on a remote worker."""
         return await _remote_typed(
@@ -216,9 +255,9 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def start_remote_persistent_shell(
-        machine: str,
-        cwd: str = ".",
-        name: str | None = None,
+        machine: RemoteMachineArg,
+        cwd: RemoteCwdArg = ".",
+        name: RemoteInviteNameArg = None,
         command: str | None = None,
     ) -> StartPersistentShellOutput:
         """Start a persistent shell session on a remote worker. Use for remote development servers, watches, REPLs, or interactive commands whose output must be read incrementally. For one-shot commands, use run_remote_shell_command."""
@@ -231,7 +270,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def send_remote_persistent_shell_input(
-        machine: str, session_id: str, input_text: str, enter: bool = True
+        machine: RemoteMachineArg,
+        session_id: RemoteSessionIdArg,
+        input_text: RemoteInputTextArg,
+        enter: RemoteEnterArg = True,
     ) -> SendPersistentShellInputOutput:
         """Send input to a persistent remote shell session. Use after start_remote_persistent_shell when the remote process is waiting for commands or interactive input. enter=false sends partial input without a newline."""
         return await _remote_typed(
@@ -247,7 +289,9 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def read_remote_persistent_shell_output(
-        machine: str, session_id: str, lines: int = 200
+        machine: RemoteMachineArg,
+        session_id: RemoteSessionIdArg,
+        lines: RemoteLinesArg = 200,
     ) -> ReadPersistentShellOutput:
         """Read recent output from a persistent remote shell session. Use to inspect output from remote long-running or interactive commands. lines bounds the returned recent output."""
         return await _remote_typed(
@@ -259,7 +303,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def kill_remote_persistent_shell(
-        machine: str, session_id: str
+        machine: RemoteMachineArg, session_id: RemoteSessionIdArg
     ) -> KillPersistentShellOutput:
         """Terminate a persistent remote shell session. Use when a remote server, watch, REPL, or stuck command is no longer needed. This affects only the named session on the selected worker."""
         return await _remote_typed(
@@ -271,7 +315,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def list_remote_persistent_shells(
-        machine: str,
+        machine: RemoteMachineArg,
     ) -> ListPersistentShellsOutput:
         """List persistent shell sessions on a remote worker. Use before reading, sending to, or killing remote sessions when you need the session_id or active-process overview."""
         return await _remote_typed(
@@ -286,10 +330,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_list_files(
-        machine: str,
-        path: str = ".",
-        recursive: bool = False,
-        max_entries: int = 500,
+        machine: RemoteMachineArg,
+        path: RemotePathArg = ".",
+        recursive: RemoteRecursiveArg = False,
+        max_entries: RemoteMaxEntriesArg = 500,
     ) -> ListFilesOutput:
         """List files and directories on a remote worker."""
         return await _remote_typed(
@@ -307,7 +351,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_tree_view(
-        machine: str, cwd: str = ".", depth: int = 3, max_entries: int = 500
+        machine: RemoteMachineArg,
+        cwd: RemoteCwdArg = ".",
+        depth: RemoteDepthArg = 3,
+        max_entries: RemoteMaxEntriesArg = 500,
     ) -> TreeViewOutput:
         """Return a compact directory tree from a remote worker."""
         return await _remote_typed(
@@ -325,7 +372,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_glob_search(
-        machine: str, pattern: str, cwd: str = ".", max_results: int = 500
+        machine: RemoteMachineArg,
+        pattern: RemotePatternArg,
+        cwd: RemoteCwdArg = ".",
+        max_results: RemoteMaxEntriesArg = 500,
     ) -> GlobSearchOutput:
         """Find files by glob pattern on a remote worker."""
         return await _remote_typed(
@@ -343,13 +393,13 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_grep_search(
-        machine: str,
-        query: str,
-        cwd: str = ".",
-        glob: str | None = None,
-        regex: bool = True,
-        case_sensitive: bool = True,
-        max_results: int | None = None,
+        machine: RemoteMachineArg,
+        query: RemoteQueryArg,
+        cwd: RemoteCwdArg = ".",
+        glob: RemoteGlobArg = None,
+        regex: RemoteRegexArg = True,
+        case_sensitive: RemoteCaseSensitiveArg = True,
+        max_results: RemoteMaxResultsArg = None,
     ) -> GrepSearchOutput:
         """Search remote file contents using ripgrep."""
         return await _remote_typed(
@@ -374,8 +424,8 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_read_file(
-        machine: str,
-        path: str,
+        machine: RemoteMachineArg,
+        path: RemotePathArg,
         start_line: int | None = None,
         end_line: int | None = None,
         binary_preview: str | None = None,
@@ -403,7 +453,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_read_many_files(
-        machine: str,
+        machine: RemoteMachineArg,
         paths: list[str],
         start_line: int | None = None,
         end_line: int | None = None,
@@ -432,7 +482,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_write_file(
-        machine: str, path: str, content: str, overwrite: bool = True
+        machine: RemoteMachineArg,
+        path: RemotePathArg,
+        content: RemoteContentArg,
+        overwrite: RemoteOverwriteArg = True,
     ) -> WriteFileOutput:
         """Write a UTF-8 text file on a remote worker."""
         return await _remote_typed(
@@ -450,7 +503,11 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         ),
     )
     async def remote_edit_file(
-        machine: str, path: str, old: str, new: str, replace_all: bool = False
+        machine: RemoteMachineArg,
+        path: RemotePathArg,
+        old: RemoteOldTextArg,
+        new: RemoteNewTextArg,
+        replace_all: RemoteReplaceAllArg = False,
     ) -> EditFileOutput:
         """Replace exact text in a remote file."""
         return await _remote_typed(
@@ -462,7 +519,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_multi_edit_file(
-        machine: str, path: str, edits: list[dict]
+        machine: RemoteMachineArg, path: RemotePathArg, edits: RemoteEditsArg
     ) -> MultiEditFileOutput:
         """Apply multiple exact-text edits to one remote file. Use when several small remote replacements should be made together. Each edit needs old, new, and optional replace_all; read the file first to avoid stale or ambiguous edits."""
         return await _remote_typed(
@@ -474,7 +531,9 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_delete_file_or_dir(
-        machine: str, path: str, recursive: bool = False
+        machine: RemoteMachineArg,
+        path: RemotePathArg,
+        recursive: RemoteRecursiveArg = False,
     ) -> DeleteFileOrDirOutput:
         """Delete a file or directory on a remote worker. Use only when remote removal is intentional. recursive=false deletes files or empty directories; recursive=true is required for non-empty directories and should be used carefully."""
         return await _remote_typed(
@@ -486,109 +545,99 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_copy_file(
-        src_machine: str,
-        src_path: str,
-        dst_machine: str,
-        dst_path: str,
-        overwrite: bool = True,
-        chunk_size: int | None = None,
+        src_machine: RemoteSourceMachineArg,
+        src_path: RemoteSourcePathArg,
+        dst_machine: RemoteDestinationMachineArg,
+        dst_path: RemoteDestinationPathArg,
+        overwrite: RemoteOverwriteArg = True,
+        chunk_size: RemoteChunkSizeArg = None,
     ) -> RemoteCopyFileOutput:
         """Copy one file between two remote worker machines through the control server. Use for binary-safe remote-to-remote transfer. Parameters: src_machine and dst_machine are exact names from remote_list_machines; src_path is the source file on src_machine; dst_path is the destination file path on dst_machine; overwrite controls replacing an existing destination file; chunk_size optionally overrides the transfer chunk size and usually should be omitted."""
-        return RemoteCopyFileOutput.model_validate(
-            await copy_remote_file_to_remote(
-                src_machine,
-                src_path,
-                dst_machine,
-                dst_path,
-                overwrite,
-                chunk_size,
-            )
+        return await copy_remote_file_to_remote(
+            src_machine,
+            src_path,
+            dst_machine,
+            dst_path,
+            overwrite,
+            chunk_size,
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_copy_dir(
-        src_machine: str,
-        src_path: str,
-        dst_machine: str,
-        dst_path: str,
-        overwrite: bool = False,
-        chunk_size: int | None = None,
+        src_machine: RemoteSourceMachineArg,
+        src_path: RemoteSourcePathArg,
+        dst_machine: RemoteDestinationMachineArg,
+        dst_path: RemoteDestinationPathArg,
+        overwrite: RemoteOverwriteArg = False,
+        chunk_size: RemoteChunkSizeArg = None,
     ) -> RemoteCopyDirOutput:
         """Copy a directory tree between two remote worker machines through the control server. Parameters: src_machine and dst_machine are exact names from remote_list_machines; src_path is the source directory; dst_path is the destination directory; overwrite controls replacing an existing destination; chunk_size usually should be omitted."""
-        return RemoteCopyDirOutput.model_validate(
-            await copy_remote_dir_to_remote(
-                src_machine,
-                src_path,
-                dst_machine,
-                dst_path,
-                overwrite,
-                chunk_size,
-            )
+        return await copy_remote_dir_to_remote(
+            src_machine,
+            src_path,
+            dst_machine,
+            dst_path,
+            overwrite,
+            chunk_size,
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_pull_file(
-        machine: str,
-        remote_path: str,
-        local_path: str,
-        overwrite: bool = True,
-        chunk_size: int | None = None,
+        machine: RemoteMachineArg,
+        remote_path: RemotePathArg,
+        local_path: LocalPathArg,
+        overwrite: RemoteOverwriteArg = True,
+        chunk_size: RemoteChunkSizeArg = None,
     ) -> RemoteCopyFileOutput:
         """Copy one file from a remote worker into the control server workspace. Parameters: machine is the exact remote name from remote_list_machines; remote_path is the source file on that worker; local_path is the local destination file; overwrite controls replacing an existing local file; chunk_size usually should be omitted."""
-        return RemoteCopyFileOutput.model_validate(
-            await copy_remote_file_to_local(
-                machine, remote_path, local_path, overwrite, chunk_size
-            )
+        return await copy_remote_file_to_local(
+            machine, remote_path, local_path, overwrite, chunk_size
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_push_file(
-        local_path: str,
-        machine: str,
-        remote_path: str,
-        overwrite: bool = True,
-        chunk_size: int | None = None,
+        local_path: LocalPathArg,
+        machine: RemoteMachineArg,
+        remote_path: RemotePathArg,
+        overwrite: RemoteOverwriteArg = True,
+        chunk_size: RemoteChunkSizeArg = None,
     ) -> RemoteCopyFileOutput:
         """Copy one file from the control server workspace to a remote worker. Parameters: local_path is the source file in the local workspace; machine is the exact remote name from remote_list_machines; remote_path is the target file on that worker; overwrite controls replacing an existing remote file; chunk_size usually should be omitted."""
-        return RemoteCopyFileOutput.model_validate(
-            await copy_local_file_to_remote(
-                local_path, machine, remote_path, overwrite, chunk_size
-            )
+        return await copy_local_file_to_remote(
+            local_path, machine, remote_path, overwrite, chunk_size
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_pull_dir(
-        machine: str,
-        remote_path: str,
-        local_path: str,
-        overwrite: bool = False,
-        chunk_size: int | None = None,
+        machine: RemoteMachineArg,
+        remote_path: RemotePathArg,
+        local_path: LocalPathArg,
+        overwrite: RemoteOverwriteArg = False,
+        chunk_size: RemoteChunkSizeArg = None,
     ) -> RemoteCopyDirOutput:
         """Copy a directory tree from a remote worker into the control server workspace. Parameters: machine is the exact remote name from remote_list_machines; remote_path is the source directory on that worker; local_path is the local target directory; overwrite controls replacing an existing local target; chunk_size usually should be omitted."""
-        return RemoteCopyDirOutput.model_validate(
-            await copy_remote_dir_to_local(
-                machine, remote_path, local_path, overwrite, chunk_size
-            )
+        return await copy_remote_dir_to_local(
+            machine, remote_path, local_path, overwrite, chunk_size
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_push_dir(
-        local_path: str,
-        machine: str,
-        remote_path: str,
-        overwrite: bool = False,
-        chunk_size: int | None = None,
+        local_path: LocalPathArg,
+        machine: RemoteMachineArg,
+        remote_path: RemotePathArg,
+        overwrite: RemoteOverwriteArg = False,
+        chunk_size: RemoteChunkSizeArg = None,
     ) -> RemoteCopyDirOutput:
         """Copy a directory tree from the control server workspace to a remote worker. Parameters: local_path is the source directory in the local workspace; machine is the exact remote name from remote_list_machines; remote_path is the target directory; overwrite controls replacing an existing target; chunk_size usually should be omitted."""
-        return RemoteCopyDirOutput.model_validate(
-            await copy_local_dir_to_remote(
-                local_path, machine, remote_path, overwrite, chunk_size
-            )
+        return await copy_local_dir_to_remote(
+            local_path, machine, remote_path, overwrite, chunk_size
         )
 
     @mcp.tool(structured_output=True, meta=oauth_security_meta)
     async def remote_apply_patch(
-        machine: str, patch: str, cwd: str = "."
+        machine: RemoteMachineArg,
+        patch: RemotePatchArg,
+        cwd: RemoteCwdArg = ".",
     ) -> ApplyPatchOutput:
         """Apply a unified diff on a remote worker using git apply. Use for larger remote edits, multi-file changes, additions, and deletions when a patch is clearer than exact replacements. cwd controls where patch paths resolve on the remote worker."""
         return await _remote_typed(
