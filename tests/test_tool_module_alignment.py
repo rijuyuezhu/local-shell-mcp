@@ -49,13 +49,9 @@ def _public_docstring_targets(path: Path) -> list[str]:
     return missing
 
 
-def test_tool_family_modules_keep_public_docstrings() -> None:
-    """Keep structured tool modules documented as they are split by family."""
-    module_paths = [
-        *Path("src/local_shell_mcp/ops").glob("*.py"),
-        *Path("src/local_shell_mcp/schemas/input_models").glob("*.py"),
-        *Path("src/local_shell_mcp/schemas/result_models").glob("*.py"),
-    ]
+def test_public_source_modules_keep_docstrings() -> None:
+    """Keep public source modules, classes, and functions documented."""
+    module_paths = list(Path("src/local_shell_mcp").rglob("*.py"))
 
     missing = [
         target
