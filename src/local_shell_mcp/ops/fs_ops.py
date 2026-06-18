@@ -7,6 +7,17 @@ import shutil
 from pathlib import Path
 
 from ..config.settings import get_settings
+from ..schemas.result_models.files import (
+    DeleteFileOrDirOutput,
+    EditFileOutput,
+    FileInfo,
+    ListFilesOutput,
+    MultiEditFileOutput,
+    ReadFileOutput,
+    ReadManyFilesOutput,
+    WriteFileOutput,
+)
+from ..schemas.result_models.search import GlobSearchOutput
 from .path_ops import relative_display, resolve_path
 
 BINARY_CHECK_BYTES = 8192
@@ -17,13 +28,13 @@ BINARY_MESSAGE = "Refusing to read binary file as text"
 
 def list_files_execute(
     path: str = ".", recursive: bool = False, max_entries: int = 500
-) -> dict:
+) -> ListFilesOutput:
     """List directory entries up to a limit and report whether results were truncated."""
     settings = get_settings()
     base = resolve_path(path, must_exist=True)
     if not base.is_dir():
         raise NotADirectoryError(str(base))
-    filelist: list[dict] = []
+    filelist: list[FileInfo] = []
     max_directory_entries = settings.max_directory_entries
     if not (0 <= max_entries <= max_directory_entries):
         raise ValueError(
@@ -41,29 +52,28 @@ def list_files_execute(
             stat = item.stat()
         except OSError:
             continue
-        filelist.append(
-            {
-                "path": relative_display(item),
-                "type": "dir"
-                if item.is_dir()
-                else "file"
-                if item.is_file()
-                else "other",
-                "size": stat.st_size if item.is_file() else None,
-                "modified": stat.st_mtime,
-            }
+        entry_type = (
+            "dir" if item.is_dir() else "file" if item.is_file() else "other"
         )
-    return {
-        "limit_count": limit,
-        "count": len(filelist),
-        "is_truncated": truncated,
-        "file_info": filelist,
-    }
+        filelist.append(
+            FileInfo(
+                path=relative_display(item),
+                type=entry_type,
+                size=stat.st_size if item.is_file() else None,
+                modified=stat.st_mtime,
+            )
+        )
+    return ListFilesOutput(
+        limit_count=limit,
+        count=len(filelist),
+        is_truncated=truncated,
+        file_info=filelist,
+    )
 
 
 def glob_search_execute(
     pattern: str, cwd: str = ".", max_results: int = 500
-) -> list[str]:
+) -> GlobSearchOutput:
     """Find workspace paths matching a glob pattern without exceeding the configured result limit."""
     settings = get_settings()
     base = resolve_path(cwd, must_exist=True)
@@ -75,7 +85,7 @@ def glob_search_execute(
             results.append(relative_display(item))
             if len(results) >= limit:
                 break
-    return results
+    return GlobSearchOutput(paths=results)
 
 
 def _is_probably_binary(sample: bytes) -> bool:
@@ -103,27 +113,27 @@ def _binary_metadata(
     size: int,
     preview: str | None = None,
     preview_bytes: int = BINARY_PREVIEW_BYTES,
-) -> dict:
+) -> ReadFileOutput:
     """Return structured metadata and optional base64 preview for a binary file read attempt."""
-    result = {
-        "path": relative_display(p),
-        "bytes": size,
-        "binary": True,
-        "content": None,
-        "message": BINARY_MESSAGE,
-    }
+    result = ReadFileOutput(
+        path=relative_display(p),
+        bytes=size,
+        binary=True,
+        content=None,
+        message=BINARY_MESSAGE,
+    )
     if preview:
         limit = max(0, min(preview_bytes, BINARY_PREVIEW_BYTES))
         with p.open("rb") as fh:
             data = fh.read(limit)
         if preview == "hex":
-            result["preview"] = binascii.hexlify(data).decode("ascii")
-            result["preview_encoding"] = "hex"
-            result["preview_bytes"] = len(data)
+            result.preview = binascii.hexlify(data).decode("ascii")
+            result.preview_encoding = "hex"
+            result.preview_bytes = len(data)
         elif preview == "base64":
-            result["preview"] = base64.b64encode(data).decode("ascii")
-            result["preview_encoding"] = "base64"
-            result["preview_bytes"] = len(data)
+            result.preview = base64.b64encode(data).decode("ascii")
+            result.preview_encoding = "base64"
+            result.preview_bytes = len(data)
         else:
             raise ValueError("binary_preview must be 'hex' or 'base64'")
     return result
@@ -143,7 +153,7 @@ def read_file_execute(
     end_line: int | None = None,
     binary_preview: str | None = None,
     binary_preview_bytes: int = BINARY_PREVIEW_BYTES,
-) -> dict:
+) -> ReadFileOutput:
     """Read text files by optional line range and return binary metadata instead of unsafe decoding."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
@@ -170,16 +180,16 @@ def read_file_execute(
         end = min(total_lines, end_line or total_lines)
         selected = lines[start - 1 : end]
         text = "\n".join(selected)
-    return {
-        "path": relative_display(p),
-        "bytes": size,
-        "bytes_read": len(data),
-        "truncated_bytes": truncated_bytes,
-        "binary": False,
-        "total_lines": total_lines,
-        "truncated": truncated,
-        "content": text,
-    }
+    return ReadFileOutput(
+        path=relative_display(p),
+        bytes=size,
+        bytes_read=len(data),
+        truncated_bytes=truncated_bytes,
+        binary=False,
+        total_lines=total_lines,
+        truncated=truncated,
+        content=text,
+    )
 
 
 def read_many_files_execute(
@@ -188,7 +198,7 @@ def read_many_files_execute(
     end_line: int | None = None,
     binary_preview: str | None = None,
     binary_preview_bytes: int = BINARY_PREVIEW_BYTES,
-) -> dict:
+) -> ReadManyFilesOutput:
     """Read many files while preserving per-path success and error entries."""
     settings = get_settings()
     if len(paths) > settings.max_read_many_files:
@@ -196,16 +206,16 @@ def read_many_files_execute(
             f"Refusing to read {len(paths)} files; max is {settings.max_read_many_files}"
         )
 
-    files = []
+    files: list[ReadFileOutput] = []
     total_content_bytes = 0
     for path in paths:
         item = read_file_execute(
             path, start_line, end_line, binary_preview, binary_preview_bytes
         )
-        content = item.get("content")
+        content = item.content
         if isinstance(content, str):
             total_content_bytes += len(content.encode("utf-8"))
-        preview = item.get("preview")
+        preview = item.preview
         if isinstance(preview, str):
             total_content_bytes += len(preview.encode("utf-8"))
         if total_content_bytes > settings.max_read_many_total_bytes:
@@ -214,10 +224,14 @@ def read_many_files_execute(
                 f"max is {settings.max_read_many_total_bytes}"
             )
         files.append(item)
-    return {"files": files, "total_content_bytes": total_content_bytes}
+    return ReadManyFilesOutput(
+        files=files, total_content_bytes=total_content_bytes
+    )
 
 
-def write_file_execute(path: str, content: str, overwrite: bool = True) -> dict:
+def write_file_execute(
+    path: str, content: str, overwrite: bool = True
+) -> WriteFileOutput:
     """Write a text file after path validation, parent creation, and overwrite checks."""
     settings = get_settings()
     data = content.encode("utf-8")
@@ -231,16 +245,14 @@ def write_file_execute(path: str, content: str, overwrite: bool = True) -> dict:
     p.parent.mkdir(parents=True, exist_ok=True)
     created = not p.exists()
     p.write_text(content, encoding="utf-8")
-    return {
-        "path": relative_display(p),
-        "bytes": len(data),
-        "created": created,
-    }
+    return WriteFileOutput(
+        path=relative_display(p), bytes=len(data), created=created
+    )
 
 
 def edit_file_execute(
     path: str, old: str, new: str, replace_all: bool = False
-) -> dict:
+) -> EditFileOutput:
     """Replace exact text in a validated text file and report how many occurrences changed."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
@@ -266,13 +278,14 @@ def edit_file_execute(
             f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
         )
     p.write_text(updated, encoding="utf-8")
-    return {
-        "path": relative_display(p),
-        "replacements": count if replace_all else 1,
-    }
+    return EditFileOutput(
+        path=relative_display(p), replacements=count if replace_all else 1
+    )
 
 
-def multi_edit_file_execute(path: str, edits: list[dict]) -> dict:
+def multi_edit_file_execute(
+    path: str, edits: list[dict]
+) -> MultiEditFileOutput:
     """Apply a sequence of exact-text replacements and write the file only after all edits validate."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
@@ -302,16 +315,20 @@ def multi_edit_file_execute(path: str, edits: list[dict]) -> dict:
             f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
         )
     p.write_text(text, encoding="utf-8")
-    return {"path": relative_display(p), "replacements": total}
+    return MultiEditFileOutput(path=relative_display(p), replacements=total)
 
 
-def delete_file_or_dir_execute(path: str, recursive: bool = False) -> dict:
+def delete_file_or_dir_execute(
+    path: str, recursive: bool = False
+) -> DeleteFileOrDirOutput:
     """Delete a file or directory after enforcing recursive-directory semantics."""
     p = resolve_path(path, must_exist=True)
     if p.is_dir():
         if not recursive:
             raise IsADirectoryError("Set recursive=true to delete a directory")
         shutil.rmtree(p)
-        return {"path": relative_display(p), "deleted": "directory"}
+        return DeleteFileOrDirOutput(
+            path=relative_display(p), deleted="directory"
+        )
     p.unlink()
-    return {"path": relative_display(p), "deleted": "file"}
+    return DeleteFileOrDirOutput(path=relative_display(p), deleted="file")

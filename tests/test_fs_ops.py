@@ -22,9 +22,9 @@ def test_write_read_edit(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     write_file_execute("a.txt", "hello world")
-    assert read_file_execute("a.txt")["content"] == "hello world"
+    assert read_file_execute("a.txt").content == "hello world"
     edit_file_execute("a.txt", "world", "mcp")
-    assert read_file_execute("a.txt")["content"] == "hello mcp"
+    assert read_file_execute("a.txt").content == "hello mcp"
 
 
 def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
@@ -38,14 +38,14 @@ def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
     limited = list_files_execute("listed", max_entries=1)
     complete = list_files_execute("listed", max_entries=10)
 
-    assert limited["limit_count"] == 1
-    assert limited["count"] == 1
-    assert limited["is_truncated"] is True
-    assert len(limited["file_info"]) == 1
-    assert "total_count" not in limited
+    assert limited.limit_count == 1
+    assert limited.count == 1
+    assert limited.is_truncated is True
+    assert len(limited.file_info) == 1
+    assert "total_count" not in limited.model_dump()
 
-    assert complete["count"] == 2
-    assert complete["is_truncated"] is False
+    assert complete.count == 2
+    assert complete.is_truncated is False
 
 
 def test_read_text_refuses_binary_without_decoding(tmp_path, monkeypatch):
@@ -56,11 +56,11 @@ def test_read_text_refuses_binary_without_decoding(tmp_path, monkeypatch):
 
     result = read_file_execute("image.png")
 
-    assert result == {
+    assert result.model_dump(exclude_none=True) == {
         "path": "image.png",
         "bytes": len(payload),
         "binary": True,
-        "content": None,
+        "truncated": False,
         "message": "Refusing to read binary file as text",
     }
 
@@ -76,10 +76,10 @@ def test_read_text_binary_preview_is_explicit_and_limited(
         "blob.bin", binary_preview="hex", binary_preview_bytes=2
     )
 
-    assert result["content"] is None
-    assert result["preview"] == "0001"
-    assert result["preview_encoding"] == "hex"
-    assert result["preview_bytes"] == 2
+    assert result.content is None
+    assert result.preview == "0001"
+    assert result.preview_encoding == "hex"
+    assert result.preview_bytes == 2
 
 
 def test_binary_preview_does_not_read_entire_file(tmp_path, monkeypatch):
@@ -98,7 +98,7 @@ def test_binary_preview_does_not_read_entire_file(tmp_path, monkeypatch):
         "blob.bin", binary_preview="hex", binary_preview_bytes=2
     )
 
-    assert result["preview"] == "0001"
+    assert result.preview == "0001"
 
 
 def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
@@ -109,11 +109,11 @@ def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
 
     result = read_file_execute("long.txt")
 
-    assert result["bytes"] == 11
-    assert result["bytes_read"] == 5
-    assert result["truncated_bytes"] == 6
-    assert result["truncated"] is True
-    assert result["content"] == "hello"
+    assert result.bytes == 11
+    assert result.bytes_read == 5
+    assert result.truncated_bytes == 6
+    assert result.truncated is True
+    assert result.content == "hello"
 
 
 def test_write_text_does_not_read_existing_file_before_overwrite(
@@ -132,7 +132,7 @@ def test_write_text_does_not_read_existing_file_before_overwrite(
 
     result = write_file_execute("existing.txt", "new")
 
-    assert result["created"] is False
+    assert result.created is False
     assert (tmp_path / "existing.txt").read_bytes().decode("utf-8") == "new"
 
 
@@ -224,6 +224,6 @@ def test_read_text_handles_truncated_utf8_sequence(tmp_path, monkeypatch):
 
     result = read_file_execute("utf8.txt")
 
-    assert result["truncated"] is True
-    assert result["bytes_read"] == 4
-    assert result["content"] == "你�"
+    assert result.truncated is True
+    assert result.bytes_read == 4
+    assert result.content == "你�"

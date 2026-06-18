@@ -86,10 +86,8 @@ async def list_files(
     max_entries: MaxEntriesArg = 500,
 ) -> ListFilesOutput:
     """List files and directories under a path."""
-    return ListFilesOutput.model_validate(
-        await asyncio.to_thread(
-            list_files_execute, path, recursive, max_entries
-        )
+    return await asyncio.to_thread(
+        list_files_execute, path, recursive, max_entries
     )
 
 
@@ -106,15 +104,13 @@ async def read_file(
     binary_preview_bytes: BinaryPreviewBytesArg = 256,
 ) -> ReadFileOutput:
     """Read a UTF-8 text file, optionally by line range."""
-    return ReadFileOutput.model_validate(
-        await asyncio.to_thread(
-            read_file_execute,
-            path,
-            start_line,
-            end_line,
-            binary_preview,
-            binary_preview_bytes,
-        )
+    return await asyncio.to_thread(
+        read_file_execute,
+        path,
+        start_line,
+        end_line,
+        binary_preview,
+        binary_preview_bytes,
     )
 
 
@@ -131,15 +127,13 @@ async def read_many_files(
     binary_preview_bytes: BinaryPreviewBytesArg = 256,
 ) -> ReadManyFilesOutput:
     """Read multiple UTF-8 text files with the same optional line range."""
-    return ReadManyFilesOutput.model_validate(
-        await asyncio.to_thread(
-            read_many_files_execute,
-            paths,
-            start_line,
-            end_line,
-            binary_preview,
-            binary_preview_bytes,
-        )
+    return await asyncio.to_thread(
+        read_many_files_execute,
+        paths,
+        start_line,
+        end_line,
+        binary_preview,
+        binary_preview_bytes,
     )
 
 
@@ -152,9 +146,7 @@ async def write_file(
     path: FilePathArg, content: FileContentArg, overwrite: OverwriteArg = True
 ) -> WriteFileOutput:
     """Write a UTF-8 text file."""
-    return WriteFileOutput.model_validate(
-        await asyncio.to_thread(write_file_execute, path, content, overwrite)
-    )
+    return await asyncio.to_thread(write_file_execute, path, content, overwrite)
 
 
 @local_tool(
@@ -169,8 +161,8 @@ async def edit_file(
     replace_all: ReplaceAllArg = False,
 ) -> EditFileOutput:
     """Replace exact text in a file."""
-    return EditFileOutput.model_validate(
-        await asyncio.to_thread(edit_file_execute, path, old, new, replace_all)
+    return await asyncio.to_thread(
+        edit_file_execute, path, old, new, replace_all
     )
 
 
@@ -179,9 +171,7 @@ async def multi_edit_file(
     path: FilePathArg, edits: EditsArg
 ) -> MultiEditFileOutput:
     """Apply multiple exact-text edits to one file."""
-    return MultiEditFileOutput.model_validate(
-        await asyncio.to_thread(multi_edit_file_execute, path, edits)
-    )
+    return await asyncio.to_thread(multi_edit_file_execute, path, edits)
 
 
 @local_tool(http_method="POST", http_path="/tools/delete")
@@ -189,6 +179,4 @@ async def delete_file_or_dir(
     path: FilePathArg, recursive: RecursiveArg = False
 ) -> DeleteFileOrDirOutput:
     """Delete a file or directory inside the controlled workspace/container."""
-    return DeleteFileOrDirOutput.model_validate(
-        await asyncio.to_thread(delete_file_or_dir_execute, path, recursive)
-    )
+    return await asyncio.to_thread(delete_file_or_dir_execute, path, recursive)

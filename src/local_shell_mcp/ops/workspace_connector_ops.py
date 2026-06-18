@@ -95,7 +95,8 @@ async def search_execute(query: str) -> SearchOutput:
 async def fetch_execute(id: str) -> FetchOutput:
     """Return one connector-compatible document for a workspace result id."""
     try:
-        data = await asyncio.to_thread(read_file_execute, id)
+        read_result = await asyncio.to_thread(read_file_execute, id)
+        data = read_result.model_dump(mode="json")
         path = str(data.get("path") or id)
         binary = bool(data.get("binary"))
         text = data.get("content")

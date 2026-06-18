@@ -75,10 +75,8 @@ async def glob_search(
     max_results: GlobMaxResultsArg = 500,
 ) -> GlobSearchOutput:
     """Find files by glob pattern."""
-    return GlobSearchOutput(
-        paths=await asyncio.to_thread(
-            glob_search_execute, pattern, cwd, max_results
-        )
+    return await asyncio.to_thread(
+        glob_search_execute, pattern, cwd, max_results
     )
 
 
