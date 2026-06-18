@@ -1,10 +1,10 @@
 # VS Code
 
-The VS Code extension is a thin wrapper around the `local-shell-mcp` server. It starts the server with the current VS Code workspace as the controlled workspace and gives you commands to copy the MCP URL and a ready-to-paste ChatGPT setup prompt.
+The VS Code extension is a thin wrapper around the `local-shell-mcp` server. It starts the server with the current VS Code workspace as the controlled workspace and gives you commands to copy the MCP URL and a setup prompt.
 
 ## Install
 
-Install `local-shell-mcp` first:
+Install the server first:
 
 ```bash
 pipx install local-shell-mcp
@@ -24,7 +24,7 @@ Then install the VS Code extension package from the GitHub release assets. Confi
 
 For direct host usage, keep `local-shell-mcp.allowFullControl` disabled so tools stay scoped to the selected workspace root.
 
-Use `local-shell-mcp.authMode = oauth` when connecting ChatGPT. Use `none` only for trusted localhost testing.
+Use `local-shell-mcp.authMode = oauth` when connecting ChatGPT through a public HTTPS tunnel. Use `none` only for trusted localhost testing.
 
 If ChatGPT cannot reach your local machine directly, expose `127.0.0.1:8765` through an HTTPS tunnel and set `local-shell-mcp.baseUrl` to that origin. The MCP endpoint is then:
 
