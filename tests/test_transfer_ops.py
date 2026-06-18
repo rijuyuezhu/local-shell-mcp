@@ -34,35 +34,35 @@ def test_chunked_transfer_round_trip_and_checksum(tmp_path, monkeypatch):
 
     stat = transfer_stat("source.bin", sha256=True)
     begin = transfer_begin_write(
-        "nested/dest.bin", overwrite=True, expected_bytes=stat["size"]
+        "nested/dest.bin", overwrite=True, expected_bytes=stat.size
     )
 
     offset = 0
     chunks = 0
-    while offset < stat["size"]:
+    while offset < stat.size:
         chunk = transfer_read_chunk(
             "source.bin", offset=offset, chunk_size=10_000
         )
         transfer_write_chunk(
             "nested/dest.bin",
-            begin["transfer_id"],
+            begin.transfer_id,
             offset,
-            chunk["data_b64"],
-            chunk["sha256"],
+            chunk.data_b64,
+            chunk.sha256,
         )
-        offset += chunk["bytes"]
+        offset += chunk.bytes
         chunks += 1
 
     finish = transfer_finish_write(
         "nested/dest.bin",
-        begin["transfer_id"],
-        expected_bytes=stat["size"],
-        expected_sha256=stat["sha256"],
+        begin.transfer_id,
+        expected_bytes=stat.size,
+        expected_sha256=stat.sha256,
     )
 
     assert chunks > 1
-    assert finish["bytes"] == len(data)
-    assert finish["sha256"] == stat["sha256"]
+    assert finish.bytes == len(data)
+    assert finish.sha256 == stat.sha256
     assert (root / "nested" / "dest.bin").read_bytes() == data
 
 
@@ -76,11 +76,11 @@ def test_transfer_rejects_bad_chunk_checksum_and_abort_removes_temp(
 
     with pytest.raises(ValueError, match="chunk sha256 mismatch"):
         transfer_write_chunk(
-            "dest.txt", begin["transfer_id"], 0, chunk["data_b64"], "0" * 64
+            "dest.txt", begin.transfer_id, 0, chunk.data_b64, "0" * 64
         )
 
-    abort = transfer_abort_write("dest.txt", begin["transfer_id"])
-    assert abort["deleted"] is True
+    abort = transfer_abort_write("dest.txt", begin.transfer_id)
+    assert abort.deleted is True
     assert not any(root.glob(".dest.txt.local-shell-mcp-transfer-*.tmp"))
     assert not (root / "dest.txt").exists()
 
@@ -94,16 +94,14 @@ def test_directory_pack_and_unpack_preserves_nested_files(
     (root / "src" / "root.bin").write_bytes(b"\x00\x01")
 
     pack = transfer_pack_dir("src")
-    unpack = transfer_unpack_archive(
-        pack["archive_path"], "dst", overwrite=True
-    )
+    unpack = transfer_unpack_archive(pack.archive_path, "dst", overwrite=True)
 
-    assert unpack["entries"] >= 2
+    assert unpack.entries >= 2
     assert (root / "dst" / "sub" / "file.txt").read_text(
         encoding="utf-8"
     ) == "nested"
     assert (root / "dst" / "root.bin").read_bytes() == b"\x00\x01"
-    assert not (root / pack["archive_path"]).exists()
+    assert not (root / pack.archive_path).exists()
 
 
 def test_unpack_rejects_archive_path_traversal(tmp_path, monkeypatch):

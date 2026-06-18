@@ -73,6 +73,8 @@ async def fake_remote_worker_call(
             )
         else:
             raise ValueError(f"unsupported fake remote tool: {tool}")
+        if hasattr(data, "model_dump"):
+            data = data.model_dump(mode="json")
         return {"ok": True, "message": "", "data": data}
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "message": str(exc)}
