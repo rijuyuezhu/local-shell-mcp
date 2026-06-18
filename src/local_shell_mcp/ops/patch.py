@@ -3,7 +3,6 @@
 import shlex
 
 from ..schemas.result_models.patch import ApplyPatchOutput
-from ..utils.serialization import to_jsonable
 from .shell import run_shell
 from .utils.path import relative_display
 from .utils.temp_file import write_temp_text_file
@@ -21,7 +20,7 @@ async def apply_patch_execute(patch: str, cwd: str = ".") -> ApplyPatchOutput:
     )
     return ApplyPatchOutput.model_validate(
         {
-            **to_jsonable(result),
+            **result.model_dump(),
             "patch_path": relative_display(patch_path),
         }
     )
