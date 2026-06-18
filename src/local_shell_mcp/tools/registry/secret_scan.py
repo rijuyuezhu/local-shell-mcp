@@ -36,6 +36,4 @@ async def secret_scan(
     max_results: SecretScanMaxResultsArg = 200,
 ) -> SecretScanOutput:
     """Scan workspace text files for common secret-like strings."""
-    return SecretScanOutput.model_validate(
-        await secret_scan_execute(cwd, glob, max_results)
-    )
+    return await secret_scan_execute(cwd, glob, max_results)

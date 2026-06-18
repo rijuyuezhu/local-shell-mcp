@@ -13,4 +13,4 @@ async def testsecret_scan(tmp_path, monkeypatch):
         "x.py", "TOKEN = 'ghp_1234567890123456789012345678901234567890'"
     )
     result = await secret_scan_execute(".")
-    assert result["findings"]
+    assert result.findings
