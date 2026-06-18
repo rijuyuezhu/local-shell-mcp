@@ -1,8 +1,8 @@
 """Environment info MCP tool registry."""
 
 from ...ops.environment_ops import environment_info_execute
+from ...schemas.result_models.environment import EnvironmentInfoOutput
 from ..declarative import DeclarativeToolRegistry
-from ..outputs.environment import EnvironmentInfoOutput
 
 
 class EnvironmentToolRegistry(DeclarativeToolRegistry):

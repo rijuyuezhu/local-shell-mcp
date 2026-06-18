@@ -1,14 +1,14 @@
 """Secret scanning tool registry."""
 
 from ...ops.secret_scan_ops import secret_scan_execute
-from ..contracts import McpToolContext
-from ..declarative import DeclarativeToolRegistry
-from ..inputs.secret_scan import (
+from ...schemas.input_models.secret_scan import (
     SecretScanCwdArg,
     SecretScanGlobArg,
     SecretScanMaxResultsArg,
 )
-from ..outputs.secret_scan import SecretScanOutput
+from ...schemas.result_models.secret_scan import SecretScanOutput
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 
 
 class SecretScanToolRegistry(DeclarativeToolRegistry):

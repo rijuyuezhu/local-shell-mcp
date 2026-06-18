@@ -11,9 +11,7 @@ from ...ops.fs_ops import (
     read_many_files_execute,
     write_file_execute,
 )
-from ..contracts import McpToolContext
-from ..declarative import DeclarativeToolRegistry
-from ..inputs.files import (
+from ...schemas.input_models.files import (
     BinaryPreviewArg,
     BinaryPreviewBytesArg,
     EditsArg,
@@ -30,7 +28,7 @@ from ..inputs.files import (
     ReplaceAllArg,
     StartLineArg,
 )
-from ..outputs.files import (
+from ...schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditFileOutput,
     ListFilesOutput,
@@ -39,6 +37,8 @@ from ..outputs.files import (
     ReadManyFilesOutput,
     WriteFileOutput,
 )
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 
 
 class FileToolRegistry(DeclarativeToolRegistry):

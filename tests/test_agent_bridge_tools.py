@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
@@ -10,6 +11,8 @@ from tests.helpers import mcp_text
 
 
 def _payload(response):
+    if isinstance(response, tuple):
+        return response[1]
     return json.loads(mcp_text(response))
 
 
@@ -203,7 +206,7 @@ async def test_agent_config_status_redacts_env_and_header_values(
 
     response = await build_mcp().call_tool("agent_config_status", {})
     payload = mcp_text(response)
-    server = _payload(response)["data"]["mcp_servers"]["off"]
+    server = _payload(response)["mcp_servers"]["off"]
 
     assert env_token not in payload
     assert header_value not in payload
@@ -254,7 +257,7 @@ async def test_agent_config_status_redacts_serialized_configured_values(
 
     response = await build_mcp().call_tool("agent_config_status", {})
     payload = mcp_text(response)
-    message = _payload(response)["data"]["mcp_servers"]["bad"]["error"]
+    message = _payload(response)["mcp_servers"]["bad"]["error"]
 
     _assert_serialized_configured_values_redacted(payload, message)
 
@@ -347,17 +350,13 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
 
     mcp = build_mcp()
 
-    servers = _payload(await mcp.call_tool("list_agent_mcp_servers", {}))[
-        "data"
-    ]
+    servers = _payload(await mcp.call_tool("list_agent_mcp_servers", {}))
     assert set(servers) == {"docs", "bad", "off"}
     assert servers["docs"]["available"] is True
     assert servers["bad"]["available"] is False
     assert servers["off"]["available"] is False
 
-    tools = _payload(await mcp.call_tool("list_agent_mcp_tools", {}))["data"][
-        "tools"
-    ]
+    tools = _payload(await mcp.call_tool("list_agent_mcp_tools", {}))["tools"]
     assert tools == [
         {
             "server": "docs",
@@ -377,7 +376,7 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
             {"server": "docs", "tool": "search", "args": {"query": "mcp"}},
         )
     )
-    assert result["data"] == {
+    assert result == {
         "server": "docs",
         "tool": "search",
         "args": {"query": "mcp"},
@@ -386,34 +385,26 @@ async def test_agent_mcp_fixed_tools_route_and_reject_unavailable_servers(
         ("docs", "https://docs.example/mcp", "search", {"query": "mcp"})
     ]
 
-    disabled = _payload(
+    with pytest.raises(ToolError, match="MCP server off is disabled"):
         await mcp.call_tool(
             "call_agent_mcp_tool",
             {"server": "off", "tool": "search", "args": {}},
         )
-    )
-    assert disabled["data"]["error_type"] == "ValueError"
-    assert disabled["data"]["message"] == "MCP server off is disabled"
 
-    unavailable = _payload(
+    with pytest.raises(
+        ToolError,
+        match="MCP server bad is unavailable: RuntimeError: probe failed",
+    ):
         await mcp.call_tool(
             "call_agent_mcp_tool",
             {"server": "bad", "tool": "search", "args": {}},
         )
-    )
-    assert unavailable["data"]["error_type"] == "ValueError"
-    assert unavailable["data"]["message"] == (
-        "MCP server bad is unavailable: RuntimeError: probe failed"
-    )
 
-    unknown = _payload(
+    with pytest.raises(ToolError, match="Unknown agent MCP server: missing"):
         await mcp.call_tool(
             "call_agent_mcp_tool",
             {"server": "missing", "tool": "search", "args": {}},
         )
-    )
-    assert unknown["data"]["error_type"] == "ValueError"
-    assert unknown["data"]["message"] == "Unknown agent MCP server: missing"
     assert fake_manager.call_calls == [
         ("docs", "https://docs.example/mcp", "search", {"query": "mcp"})
     ]
@@ -469,10 +460,12 @@ async def test_call_agent_mcp_tool_redacts_unavailable_probe_error(
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
-    response = await build_mcp().call_tool(
-        "call_agent_mcp_tool", {"server": "bad", "tool": "search", "args": {}}
-    )
-    payload = mcp_text(response)
+    with pytest.raises(ToolError) as exc_info:
+        await build_mcp().call_tool(
+            "call_agent_mcp_tool",
+            {"server": "bad", "tool": "search", "args": {}},
+        )
+    payload = str(exc_info.value)
 
     assert "super-secret" not in payload
     assert "<redacted>" in payload
@@ -526,10 +519,12 @@ async def test_call_agent_mcp_tool_redacts_call_error(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
-    response = await build_mcp().call_tool(
-        "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
-    )
-    payload = mcp_text(response)
+    with pytest.raises(ToolError) as exc_info:
+        await build_mcp().call_tool(
+            "call_agent_mcp_tool",
+            {"server": "docs", "tool": "search", "args": {}},
+        )
+    payload = str(exc_info.value)
 
     _assert_realistic_secret_values_redacted(payload)
     _assert_configured_values_redacted(payload)
@@ -580,13 +575,14 @@ async def test_call_agent_mcp_tool_redacts_serialized_configured_values(
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
     clear_settings_cache()
 
-    response = await build_mcp().call_tool(
-        "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
-    )
-    payload = mcp_text(response)
-    message = _payload(response)["data"]["message"]
+    with pytest.raises(ToolError) as exc_info:
+        await build_mcp().call_tool(
+            "call_agent_mcp_tool",
+            {"server": "docs", "tool": "search", "args": {}},
+        )
+    payload = str(exc_info.value)
 
-    _assert_serialized_configured_values_redacted(payload, message)
+    _assert_serialized_configured_values_redacted(payload, payload)
 
 
 @pytest.mark.asyncio
@@ -657,7 +653,7 @@ async def test_call_agent_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
         "call_agent_mcp_tool", {"server": "docs", "tool": "search", "args": {}}
     )
     payload = mcp_text(response)
-    data = _payload(response)["data"]
+    data = _payload(response)
 
     assert data["is_error"] is True
     _assert_realistic_secret_values_redacted(payload)
@@ -735,9 +731,7 @@ async def test_agent_mcp_public_metadata_redacts_configured_values(
     clear_settings_cache()
 
     mcp = build_mcp()
-    rows = _payload(await mcp.call_tool("list_agent_mcp_tools", {}))["data"][
-        "tools"
-    ]
+    rows = _payload(await mcp.call_tool("list_agent_mcp_tools", {}))["tools"]
     rows_payload = json.dumps(rows)
 
     for secret in (
@@ -914,10 +908,9 @@ async def test_dynamic_mcp_tool_redacts_configured_values_in_call_error(
     )
     clear_settings_cache()
 
-    response = await build_mcp().call_tool(
-        "agent_mcp__docs__search", {"args": {}}
-    )
-    payload = mcp_text(response)
+    with pytest.raises(ToolError) as exc_info:
+        await build_mcp().call_tool("agent_mcp__docs__search", {"args": {}})
+    payload = str(exc_info.value)
 
     _assert_configured_values_redacted(payload)
 
@@ -990,7 +983,7 @@ async def test_dynamic_mcp_tool_redacts_error_payload(tmp_path, monkeypatch):
         "agent_mcp__docs__search", {"args": {}}
     )
     payload = mcp_text(response)
-    data = _payload(response)["data"]
+    data = _payload(response)
 
     assert data["is_error"] is True
     _assert_realistic_secret_values_redacted(payload)
@@ -1036,7 +1029,7 @@ async def test_build_mcp_respects_manifest_dynamic_tool_disable(
 
     mcp = build_mcp()
     tool_names = {tool.name for tool in await mcp.list_tools()}
-    status = _payload(await mcp.call_tool("agent_config_status", {}))["data"]
+    status = _payload(await mcp.call_tool("agent_config_status", {}))
 
     assert "activate_skill__paper_writer" not in tool_names
     assert "agent_mcp__docs__search" not in tool_names
@@ -1143,7 +1136,7 @@ async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
     response = await mcp.call_tool(
         "agent_mcp__docs__search", {"args": {"query": "abc"}}
     )
-    assert _payload(response)["data"] == {
+    assert _payload(response) == {
         "server": "docs",
         "url": "https://docs.example/mcp",
         "tool": "search",
@@ -1168,4 +1161,4 @@ async def test_agent_bridge_hot_reloads_mcp_server_tools(tmp_path, monkeypatch):
     response = await mcp.call_tool(
         "call_agent_mcp_tool", {"server": "api", "tool": "search"}
     )
-    assert _payload(response)["data"]["url"] == "https://api.example/mcp"
+    assert _payload(response)["url"] == "https://api.example/mcp"

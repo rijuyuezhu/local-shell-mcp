@@ -4,9 +4,7 @@ import asyncio
 
 from ...ops.fs_ops import glob_search_execute
 from ...ops.search_ops import grep_search_execute, tree_view_execute
-from ..contracts import McpToolContext
-from ..declarative import DeclarativeToolRegistry
-from ..inputs.search import (
+from ...schemas.input_models.search import (
     CaseSensitiveArg,
     GlobMaxResultsArg,
     GlobPatternArg,
@@ -19,7 +17,13 @@ from ..inputs.search import (
     TreeDepthArg,
     TreeMaxEntriesArg,
 )
-from ..outputs.search import GlobSearchOutput, GrepSearchOutput, TreeViewOutput
+from ...schemas.result_models.search import (
+    GlobSearchOutput,
+    GrepSearchOutput,
+    TreeViewOutput,
+)
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 
 
 class SearchToolRegistry(DeclarativeToolRegistry):

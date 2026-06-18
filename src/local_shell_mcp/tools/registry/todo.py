@@ -3,9 +3,9 @@
 import asyncio
 
 from ...ops.todo_ops import read_todos_execute, write_todos_execute
+from ...schemas.input_models.todo import TodosArg
+from ...schemas.result_models.todo import ReadTodosOutput, WriteTodosOutput
 from ..declarative import DeclarativeToolRegistry
-from ..inputs.todo import TodosArg
-from ..outputs.todo import ReadTodosOutput, WriteTodosOutput
 
 
 class TodoToolRegistry(DeclarativeToolRegistry):

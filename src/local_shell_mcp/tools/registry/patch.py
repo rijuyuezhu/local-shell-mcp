@@ -1,9 +1,9 @@
 """Patch application tool registry."""
 
 from ...ops.patch_ops import apply_patch_execute
+from ...schemas.input_models.patch import PatchCwdArg, PatchTextArg
+from ...schemas.result_models.patch import ApplyPatchOutput
 from ..declarative import DeclarativeToolRegistry
-from ..inputs.patch import PatchCwdArg, PatchTextArg
-from ..outputs.patch import ApplyPatchOutput
 
 
 class PatchToolRegistry(DeclarativeToolRegistry):

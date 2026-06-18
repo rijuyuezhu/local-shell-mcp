@@ -8,9 +8,7 @@ from ...ops.download_ops import (
     list_file_links_execute,
     revoke_file_link_execute,
 )
-from ..contracts import McpToolContext
-from ..declarative import DeclarativeToolRegistry
-from ..inputs.downloads import (
+from ...schemas.input_models.downloads import (
     DownloadFilenameArg,
     DownloadPathArg,
     DownloadTokenArg,
@@ -18,11 +16,13 @@ from ..inputs.downloads import (
     IncludeExpiredArg,
     MaxDownloadsArg,
 )
-from ..outputs.downloads import (
+from ...schemas.result_models.downloads import (
     CreateFileLinkOutput,
     ListFileLinksOutput,
     RevokeFileLinkOutput,
 )
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 
 
 class DownloadToolRegistry(DeclarativeToolRegistry):

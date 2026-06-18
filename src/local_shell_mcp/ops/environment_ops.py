@@ -1,7 +1,7 @@
 """Environment-info operation helpers."""
 
 from ..config.settings import get_settings, safe_settings_dump
-from ..tools.outputs.environment import EnvironmentInfoOutput
+from ..schemas.result_models.environment import EnvironmentInfoOutput
 from .command_ops import run_shell
 
 

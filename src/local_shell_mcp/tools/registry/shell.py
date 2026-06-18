@@ -9,9 +9,7 @@ from ...ops.tmux_ops import (
     send_persistent_shell_input_execute,
     start_persistent_shell_execute,
 )
-from ..contracts import McpToolContext
-from ..declarative import DeclarativeToolRegistry
-from ..inputs.shell import (
+from ...schemas.input_models.shell import (
     CwdArg,
     EnterArg,
     InitialCommandArg,
@@ -25,7 +23,7 @@ from ..inputs.shell import (
     ShellCommandArg,
     ShellNameArg,
 )
-from ..outputs.shell import (
+from ...schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     ReadPersistentShellOutput,
@@ -34,6 +32,8 @@ from ..outputs.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
+from ..contracts import McpToolContext
+from ..declarative import DeclarativeToolRegistry
 
 
 class ShellToolRegistry(DeclarativeToolRegistry):
