@@ -30,6 +30,22 @@ from ...ops.transfer_ops import (
 from ...ops.transfer_ops import (
     transfer_write_chunk as transfer_write_chunk_sync,
 )
+from ...schemas.input_models.transfer import (
+    TransferArchivePathArg,
+    TransferChunkSizeArg,
+    TransferCleanupArchiveArg,
+    TransferCompressionArg,
+    TransferDataArg,
+    TransferDestinationPathArg,
+    TransferExpectedBytesArg,
+    TransferIdArg,
+    TransferOffsetArg,
+    TransferOverwriteArg,
+    TransferPathArg,
+    TransferSha256Arg,
+    TransferSha256EnabledArg,
+    TransferSuffixArg,
+)
 from ...schemas.result_models.transfer import (
     TransferAbortWriteOutput,
     TransferAllocTempPathOutput,
@@ -63,14 +79,18 @@ local_tool = TransferToolRegistry.get_tool_decorator()
 
 
 @local_tool(http_method="POST", http_path="/tools/transfer_stat")
-async def transfer_stat(path: str, sha256: bool = True) -> TransferStatOutput:
+async def transfer_stat(
+    path: TransferPathArg, sha256: TransferSha256EnabledArg = True
+) -> TransferStatOutput:
     """Return transfer metadata for a file or directory."""
     return await asyncio.to_thread(transfer_stat_sync, path, sha256)
 
 
 @local_tool(http_method="POST", http_path="/tools/transfer_read_chunk")
 async def transfer_read_chunk(
-    path: str, offset: int = 0, chunk_size: int | None = None
+    path: TransferPathArg,
+    offset: TransferOffsetArg = 0,
+    chunk_size: TransferChunkSizeArg = None,
 ) -> TransferReadChunkOutput:
     """Read one base64-encoded binary chunk from a file."""
     return await asyncio.to_thread(
@@ -80,7 +100,9 @@ async def transfer_read_chunk(
 
 @local_tool(http_method="POST", http_path="/tools/transfer_begin_write")
 async def transfer_begin_write(
-    path: str, overwrite: bool = True, expected_bytes: int | None = None
+    path: TransferPathArg,
+    overwrite: TransferOverwriteArg = True,
+    expected_bytes: TransferExpectedBytesArg = None,
 ) -> TransferBeginWriteOutput:
     """Start an atomic chunked file write and return a transfer id."""
     return await asyncio.to_thread(
@@ -90,11 +112,11 @@ async def transfer_begin_write(
 
 @local_tool(http_method="POST", http_path="/tools/transfer_write_chunk")
 async def transfer_write_chunk(
-    path: str,
-    transfer_id: str,
-    offset: int,
-    data_b64: str,
-    expected_sha256: str | None = None,
+    path: TransferPathArg,
+    transfer_id: TransferIdArg,
+    offset: TransferOffsetArg,
+    data_b64: TransferDataArg,
+    expected_sha256: TransferSha256Arg = None,
 ) -> TransferWriteChunkOutput:
     """Write one base64-encoded chunk into an active transfer."""
     return await asyncio.to_thread(
@@ -109,10 +131,10 @@ async def transfer_write_chunk(
 
 @local_tool(http_method="POST", http_path="/tools/transfer_finish_write")
 async def transfer_finish_write(
-    path: str,
-    transfer_id: str,
-    expected_bytes: int | None = None,
-    expected_sha256: str | None = None,
+    path: TransferPathArg,
+    transfer_id: TransferIdArg,
+    expected_bytes: TransferExpectedBytesArg = None,
+    expected_sha256: TransferSha256Arg = None,
 ) -> TransferFinishWriteOutput:
     """Validate and atomically finish an active transfer."""
     return await asyncio.to_thread(
@@ -126,7 +148,7 @@ async def transfer_finish_write(
 
 @local_tool(http_method="POST", http_path="/tools/transfer_abort_write")
 async def transfer_abort_write(
-    path: str, transfer_id: str
+    path: TransferPathArg, transfer_id: TransferIdArg
 ) -> TransferAbortWriteOutput:
     """Abort an active transfer and remove its temporary file."""
     return await asyncio.to_thread(transfer_abort_write_sync, path, transfer_id)
@@ -134,7 +156,7 @@ async def transfer_abort_write(
 
 @local_tool(http_method="POST", http_path="/tools/transfer_alloc_temp_path")
 async def transfer_alloc_temp_path(
-    suffix: str = ".bin",
+    suffix: TransferSuffixArg = ".bin",
 ) -> TransferAllocTempPathOutput:
     """Allocate a safe temporary path for transfer archives."""
     return await asyncio.to_thread(transfer_alloc_temp_path_sync, suffix)
@@ -142,7 +164,7 @@ async def transfer_alloc_temp_path(
 
 @local_tool(http_method="POST", http_path="/tools/transfer_pack_dir")
 async def transfer_pack_dir(
-    path: str, compression: str = "gz"
+    path: TransferPathArg, compression: TransferCompressionArg = "gz"
 ) -> TransferPackDirOutput:
     """Pack a directory into a temporary tar archive."""
     return await asyncio.to_thread(transfer_pack_dir_sync, path, compression)
@@ -150,10 +172,10 @@ async def transfer_pack_dir(
 
 @local_tool(http_method="POST", http_path="/tools/transfer_unpack_archive")
 async def transfer_unpack_archive(
-    archive_path: str,
-    dst_path: str,
-    overwrite: bool = True,
-    cleanup_archive: bool = True,
+    archive_path: TransferArchivePathArg,
+    dst_path: TransferDestinationPathArg,
+    overwrite: TransferOverwriteArg = True,
+    cleanup_archive: TransferCleanupArchiveArg = True,
 ) -> TransferUnpackArchiveOutput:
     """Safely unpack a transfer archive into a destination directory."""
     return await asyncio.to_thread(
