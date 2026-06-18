@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, cast
 
+from ..tools.serialization import tool_output_jsonable
 from .constants import REMOTE_API_PREFIX
 from .tool_specs import REMOTE_WORKER_TOOL_NAMES
 
@@ -157,7 +158,11 @@ async def run_worker(
             result = await execute_worker_tool(
                 job["tool"], dict(job.get("args") or {})
             )
-            out = {"job_id": job["id"], "ok": True, "data": result}
+            out = {
+                "job_id": job["id"],
+                "ok": True,
+                "data": tool_output_jsonable(result),
+            }
         except Exception as exc:
             out = {
                 "job_id": job.get("id"),

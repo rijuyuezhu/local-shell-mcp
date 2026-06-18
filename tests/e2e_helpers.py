@@ -231,11 +231,19 @@ class McpSessionToolClient:
         result = await self._session.list_tools()
         return {tool.name for tool in result.tools}
 
+    async def call_tool_result(
+        self, name: str, args: dict[str, Any] | None = None
+    ) -> Any:
+        return await self._session.call_tool(name, args or {})
+
     async def call_tool(
         self, name: str, args: dict[str, Any] | None = None
     ) -> Any:
-        result = await self._session.call_tool(name, args or {})
-        assert not result.isError
+        result = await self.call_tool_result(name, args)
+        error_text = (
+            getattr(result.content[0], "text", "") if result.content else ""
+        )
+        assert not result.isError, error_text
         assert result.content
         text = getattr(result.content[0], "text", "")
         return unwrap_tool_payload(text)

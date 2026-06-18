@@ -17,6 +17,7 @@ from ..ops.transfer_ops import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
+from ..tools.serialization import tool_output_jsonable
 from .service import call_remote_worker_tool
 
 
@@ -51,6 +52,13 @@ async def _remote_transfer_data(
     return _unwrap_remote_transfer_result(result, machine=machine, tool=tool)
 
 
+async def _local_transfer_data(fn: Any, *args: Any) -> dict[str, Any]:
+    """Run a local transfer primitive and return JSON-compatible data."""
+    data = await asyncio.to_thread(fn, *args)
+    jsonable = tool_output_jsonable(data)
+    return jsonable if isinstance(jsonable, dict) else {"result": jsonable}
+
+
 async def copy_local_file_to_remote(
     source_path: str,
     dst_machine: str,
@@ -60,7 +68,7 @@ async def copy_local_file_to_remote(
 ) -> dict[str, Any]:
     """Copy a local controller file to a remote worker using chunked transfer."""
     chunk_bytes = normalize_chunk_size(chunk_size)
-    stat = await asyncio.to_thread(transfer_stat, source_path, True)
+    stat = await _local_transfer_data(transfer_stat, source_path, True)
     if stat.get("type") != "file":
         raise ValueError(f"source is not a file: {source_path}")
     begin = await _remote_transfer_data(
@@ -77,7 +85,7 @@ async def copy_local_file_to_remote(
     offset = 0
     try:
         while offset < stat["size"]:
-            chunk = await asyncio.to_thread(
+            chunk = await _local_transfer_data(
                 transfer_read_chunk, source_path, offset, chunk_bytes
             )
             if chunk["bytes"] == 0:
@@ -137,7 +145,7 @@ async def copy_remote_file_to_local(
     )
     if stat.get("type") != "file":
         raise ValueError(f"source is not a file: {src_path}")
-    begin = await asyncio.to_thread(
+    begin = await _local_transfer_data(
         transfer_begin_write, destination_path, overwrite, stat["size"]
     )
     transfer_id = begin["transfer_id"]
@@ -162,7 +170,7 @@ async def copy_remote_file_to_local(
             )
             offset += chunk["bytes"]
             chunks += 1
-        finish = await asyncio.to_thread(
+        finish = await _local_transfer_data(
             transfer_finish_write,
             destination_path,
             transfer_id,
@@ -335,12 +343,12 @@ async def copy_remote_dir_to_local(
         "transfer_pack_dir",
         {"path": src_path, "compression": "gz"},
     )
-    archive = await asyncio.to_thread(transfer_alloc_temp_path, ".tar.gz")
+    archive = await _local_transfer_data(transfer_alloc_temp_path, ".tar.gz")
     try:
         copy_result = await copy_remote_file_to_local(
             src_machine, pack["archive_path"], archive["path"], True, chunk_size
         )
-        unpack = await asyncio.to_thread(
+        unpack = await _local_transfer_data(
             transfer_unpack_archive,
             archive["path"],
             destination_path,
@@ -367,7 +375,7 @@ async def copy_local_dir_to_remote(
     chunk_size: int | None = None,
 ) -> dict[str, Any]:
     """Copy a controller directory tree to a remote worker."""
-    pack = await asyncio.to_thread(transfer_pack_dir, source_path, "gz")
+    pack = await _local_transfer_data(transfer_pack_dir, source_path, "gz")
     dst_archive = await _remote_transfer_data(
         dst_machine, "transfer_alloc_temp_path", {"suffix": ".tar.gz"}
     )
