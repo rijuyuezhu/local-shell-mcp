@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from ..audit import audit
-from .fs_ops import read_file_execute
+from .files_ops import read_file_execute
 from .search_ops import grep_search_execute
 
 

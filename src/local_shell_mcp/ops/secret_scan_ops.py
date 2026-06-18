@@ -5,7 +5,7 @@ import re
 
 from ..config.settings import get_settings
 from ..schemas.result_models.secret_scan import SecretFinding, SecretScanOutput
-from .fs_ops import read_file_execute
+from .files_ops import read_file_execute
 from .path_ops import relative_display, resolve_path
 
 SECRET_PATTERNS = {

@@ -4,7 +4,7 @@ import pytest
 
 import local_shell_mcp.remote.transfer as remote_transfer
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.fs_ops import delete_file_or_dir_execute
+from local_shell_mcp.ops.files_ops import delete_file_or_dir_execute
 from local_shell_mcp.ops.transfer_ops import (
     transfer_abort_write,
     transfer_alloc_temp_path,

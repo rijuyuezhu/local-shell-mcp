@@ -2,7 +2,7 @@
 
 import asyncio
 
-from ...ops.fs_ops import (
+from ...ops.files_ops import (
     delete_file_or_dir_execute,
     edit_file_execute,
     list_files_execute,
