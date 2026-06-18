@@ -1,3 +1,5 @@
+"""Binary-safe transfer primitives for remote-worker file and directory moves."""
+
 import base64
 import binascii
 import hashlib
@@ -6,9 +8,19 @@ import shutil
 import tarfile
 import uuid
 from pathlib import Path
-from typing import Any
 
-from .path_ops import relative_display, resolve_path, temp_dir
+from ..schemas.result_models.transfer import (
+    TransferAbortWriteOutput,
+    TransferAllocTempPathOutput,
+    TransferBeginWriteOutput,
+    TransferFinishWriteOutput,
+    TransferPackDirOutput,
+    TransferReadChunkOutput,
+    TransferStatOutput,
+    TransferUnpackArchiveOutput,
+    TransferWriteChunkOutput,
+)
+from .utils.path import relative_display, resolve_path, temp_dir
 
 DEFAULT_TRANSFER_CHUNK_BYTES = 1024 * 1024
 MAX_TRANSFER_CHUNK_BYTES = 4 * 1024 * 1024
@@ -16,6 +28,7 @@ _TRANSFER_TMP_MARKER = "local-shell-mcp-transfer"
 
 
 def normalize_chunk_size(chunk_size: int | None = None) -> int:
+    """Clamp a requested transfer chunk size to the supported byte range."""
     requested = (
         DEFAULT_TRANSFER_CHUNK_BYTES if chunk_size is None else int(chunk_size)
     )
@@ -37,37 +50,37 @@ def _sha256_file(
     return digest.hexdigest()
 
 
-def transfer_stat(path: str, sha256: bool = True) -> dict[str, Any]:
+def transfer_stat(path: str, sha256: bool = True) -> TransferStatOutput:
+    """Return transfer metadata for one workspace path."""
     p = resolve_path(path, must_exist=True)
     stat = p.stat()
     if p.is_file():
-        result: dict[str, Any] = {
-            "path": relative_display(p),
-            "type": "file",
-            "size": stat.st_size,
-            "modified": stat.st_mtime,
-        }
-        if sha256:
-            result["sha256"] = _sha256_file(p)
-        return result
+        return TransferStatOutput(
+            path=relative_display(p),
+            type="file",
+            size=stat.st_size,
+            modified=stat.st_mtime,
+            sha256=_sha256_file(p) if sha256 else None,
+        )
     if p.is_dir():
-        return {
-            "path": relative_display(p),
-            "type": "dir",
-            "size": None,
-            "modified": stat.st_mtime,
-        }
-    return {
-        "path": relative_display(p),
-        "type": "other",
-        "size": stat.st_size,
-        "modified": stat.st_mtime,
-    }
+        return TransferStatOutput(
+            path=relative_display(p),
+            type="dir",
+            size=None,
+            modified=stat.st_mtime,
+        )
+    return TransferStatOutput(
+        path=relative_display(p),
+        type="other",
+        size=stat.st_size,
+        modified=stat.st_mtime,
+    )
 
 
 def transfer_read_chunk(
     path: str, offset: int = 0, chunk_size: int | None = None
-) -> dict[str, Any]:
+) -> TransferReadChunkOutput:
+    """Read one bounded binary chunk and encode it for transport."""
     p = resolve_path(path, must_exist=True)
     if not p.is_file():
         raise IsADirectoryError(str(p))
@@ -80,15 +93,15 @@ def transfer_read_chunk(
         fh.seek(start)
         data = fh.read(limit)
     digest = hashlib.sha256(data).hexdigest()
-    return {
-        "path": relative_display(p),
-        "offset": start,
-        "bytes": len(data),
-        "size": size,
-        "eof": start + len(data) >= size,
-        "sha256": digest,
-        "data_b64": base64.b64encode(data).decode("ascii"),
-    }
+    return TransferReadChunkOutput(
+        path=relative_display(p),
+        offset=start,
+        bytes=len(data),
+        size=size,
+        eof=start + len(data) >= size,
+        sha256=digest,
+        data_b64=base64.b64encode(data).decode("ascii"),
+    )
 
 
 def _transfer_temp_path(dst: Path, transfer_id: str) -> Path:
@@ -100,7 +113,8 @@ def _transfer_temp_path(dst: Path, transfer_id: str) -> Path:
 
 def transfer_begin_write(
     path: str, overwrite: bool = True, expected_bytes: int | None = None
-) -> dict[str, Any]:
+) -> TransferBeginWriteOutput:
+    """Create an atomic temporary destination for a chunked write."""
     dst = resolve_path(path)
     if dst.exists() and dst.is_dir():
         raise IsADirectoryError(str(dst))
@@ -113,13 +127,13 @@ def transfer_begin_write(
     tmp = _transfer_temp_path(dst, transfer_id)
     with tmp.open("wb"):
         pass
-    return {
-        "path": relative_display(dst),
-        "temp_path": relative_display(tmp),
-        "transfer_id": transfer_id,
-        "created": not dst.exists(),
-        "expected_bytes": expected_bytes,
-    }
+    return TransferBeginWriteOutput(
+        path=relative_display(dst),
+        temp_path=relative_display(tmp),
+        transfer_id=transfer_id,
+        created=not dst.exists(),
+        expected_bytes=expected_bytes,
+    )
 
 
 def transfer_write_chunk(
@@ -128,7 +142,8 @@ def transfer_write_chunk(
     offset: int,
     data_b64: str,
     expected_sha256: str | None = None,
-) -> dict[str, Any]:
+) -> TransferWriteChunkOutput:
+    """Write one validated base64 chunk into an active transfer file."""
     dst = resolve_path(path)
     tmp = _transfer_temp_path(dst, transfer_id)
     if not tmp.exists():
@@ -146,13 +161,13 @@ def transfer_write_chunk(
     with tmp.open("r+b") as fh:
         fh.seek(start)
         fh.write(data)
-    return {
-        "path": relative_display(dst),
-        "temp_path": relative_display(tmp),
-        "offset": start,
-        "bytes": len(data),
-        "sha256": digest,
-    }
+    return TransferWriteChunkOutput(
+        path=relative_display(dst),
+        temp_path=relative_display(tmp),
+        offset=start,
+        bytes=len(data),
+        sha256=digest,
+    )
 
 
 def transfer_finish_write(
@@ -160,7 +175,8 @@ def transfer_finish_write(
     transfer_id: str,
     expected_bytes: int | None = None,
     expected_sha256: str | None = None,
-) -> dict[str, Any]:
+) -> TransferFinishWriteOutput:
+    """Validate and atomically publish a completed chunked write."""
     dst = resolve_path(path)
     tmp = _transfer_temp_path(dst, transfer_id)
     if not tmp.exists():
@@ -174,29 +190,35 @@ def transfer_finish_write(
     if expected_sha256 and digest != expected_sha256:
         raise ValueError("file sha256 mismatch")
     os.replace(tmp, dst)
-    return {
-        "path": relative_display(dst),
-        "bytes": size,
-        "sha256": digest,
-        "completed": True,
-    }
+    return TransferFinishWriteOutput(
+        path=relative_display(dst),
+        bytes=size,
+        sha256=digest,
+        completed=True,
+    )
 
 
-def transfer_abort_write(path: str, transfer_id: str) -> dict[str, Any]:
+def transfer_abort_write(
+    path: str, transfer_id: str
+) -> TransferAbortWriteOutput:
+    """Abort an active chunked write and remove its temporary file."""
     dst = resolve_path(path)
     tmp = _transfer_temp_path(dst, transfer_id)
     deleted = False
     if tmp.exists():
         tmp.unlink()
         deleted = True
-    return {
-        "path": relative_display(dst),
-        "temp_path": relative_display(tmp),
-        "deleted": deleted,
-    }
+    return TransferAbortWriteOutput(
+        path=relative_display(dst),
+        temp_path=relative_display(tmp),
+        deleted=deleted,
+    )
 
 
-def transfer_alloc_temp_path(suffix: str = ".bin") -> dict[str, Any]:
+def transfer_alloc_temp_path(
+    suffix: str = ".bin",
+) -> TransferAllocTempPathOutput:
+    """Allocate a safe temporary workspace path for transfer scratch data."""
     safe_suffix = (
         suffix
         if suffix.startswith(".") and "/" not in suffix and "\\" not in suffix
@@ -204,10 +226,13 @@ def transfer_alloc_temp_path(suffix: str = ".bin") -> dict[str, Any]:
     )
     path = temp_dir() / f"remote-transfer-{uuid.uuid4().hex}{safe_suffix}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    return {"path": relative_display(path)}
+    return TransferAllocTempPathOutput(path=relative_display(path))
 
 
-def transfer_pack_dir(path: str, compression: str = "gz") -> dict[str, Any]:
+def transfer_pack_dir(
+    path: str, compression: str = "gz"
+) -> TransferPackDirOutput:
+    """Pack a directory into a temporary tar archive for transfer."""
     src = resolve_path(path, must_exist=True)
     if not src.is_dir():
         raise NotADirectoryError(str(src))
@@ -219,13 +244,13 @@ def transfer_pack_dir(path: str, compression: str = "gz") -> dict[str, Any]:
         for child in src.iterdir():
             tar.add(child, arcname=child.name, recursive=True)
     size = archive.stat().st_size
-    return {
-        "path": relative_display(src),
-        "archive_path": relative_display(archive),
-        "bytes": size,
-        "sha256": _sha256_file(archive),
-        "compression": compression,
-    }
+    return TransferPackDirOutput(
+        path=relative_display(src),
+        archive_path=relative_display(archive),
+        bytes=size,
+        sha256=_sha256_file(archive),
+        compression=compression,
+    )
 
 
 def _safe_members(tar: tarfile.TarFile, dst: Path) -> list[tarfile.TarInfo]:
@@ -253,7 +278,8 @@ def transfer_unpack_archive(
     dst_path: str,
     overwrite: bool = True,
     cleanup_archive: bool = True,
-) -> dict[str, Any]:
+) -> TransferUnpackArchiveOutput:
+    """Safely unpack a transfer archive into a workspace destination."""
     archive = resolve_path(archive_path, must_exist=True)
     if not archive.is_file():
         raise FileNotFoundError(str(archive))
@@ -294,10 +320,10 @@ def transfer_unpack_archive(
             raise ValueError(f"unsupported archive member type: {member.name}")
     if cleanup_archive:
         archive.unlink(missing_ok=True)
-    return {
-        "path": relative_display(dst),
-        "archive_path": relative_display(archive),
-        "entries": len(members),
-        "completed": True,
-        "archive_deleted": cleanup_archive,
-    }
+    return TransferUnpackArchiveOutput(
+        path=relative_display(dst),
+        archive_path=relative_display(archive),
+        entries=len(members),
+        completed=True,
+        archive_deleted=cleanup_archive,
+    )

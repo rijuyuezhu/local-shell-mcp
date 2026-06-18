@@ -2,11 +2,11 @@
 
 import asyncio
 import re
-from typing import Any
 
 from ..config.settings import get_settings
-from .fs_ops import read_file_execute
-from .path_ops import relative_display, resolve_path
+from ..schemas.result_models.secret_scan import SecretFinding, SecretScanOutput
+from .files import read_file_execute
+from .utils.path import relative_display, resolve_path
 
 SECRET_PATTERNS = {
     "github_token": r"gh[pousr]_[A-Za-z0-9_]{36,}",
@@ -18,12 +18,12 @@ SECRET_PATTERNS = {
 
 def secret_scan_sync(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
-) -> dict[str, Any]:
+) -> SecretScanOutput:
     """Scan workspace text files for credential-like strings while respecting limits."""
     settings = get_settings()
     max_results = max(1, min(max_results, settings.max_grep_results))
     base = resolve_path(cwd, must_exist=True)
-    findings = []
+    findings: list[SecretFinding] = []
     truncated_files = 0
     for path in base.rglob("*"):
         if ".git" in path.parts or not path.is_file():
@@ -34,32 +34,34 @@ def secret_scan_sync(
             data = read_file_execute(str(path))
         except Exception:
             continue
-        if data.get("binary"):
+        if data.binary:
             continue
-        if data.get("truncated"):
+        if data.truncated:
             truncated_files += 1
-        text = data.get("content") or ""
+        text = data.content or ""
         for name, pattern in SECRET_PATTERNS.items():
             for match in re.finditer(pattern, text):
                 line = text.count("\n", 0, match.start()) + 1
                 findings.append(
-                    {"type": name, "path": relative_display(path), "line": line}
+                    SecretFinding(
+                        type=name, path=relative_display(path), line=line
+                    )
                 )
                 if len(findings) >= max_results:
-                    return {
-                        "findings": findings,
-                        "truncated": True,
-                        "truncated_files": truncated_files,
-                    }
-    return {
-        "findings": findings,
-        "truncated": False,
-        "truncated_files": truncated_files,
-    }
+                    return SecretScanOutput(
+                        findings=findings,
+                        truncated=True,
+                        truncated_files=truncated_files,
+                    )
+    return SecretScanOutput(
+        findings=findings,
+        truncated=False,
+        truncated_files=truncated_files,
+    )
 
 
 async def secret_scan_execute(
     cwd: str = ".", glob: str | None = None, max_results: int = 200
-) -> dict[str, Any]:
+) -> SecretScanOutput:
     """Expose secret scanning through an async wrapper for tool handlers."""
     return await asyncio.to_thread(secret_scan_sync, cwd, glob, max_results)

@@ -4,8 +4,8 @@ import pytest
 
 import local_shell_mcp.remote.transfer as remote_transfer
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.fs_ops import delete_file_or_dir_execute
-from local_shell_mcp.ops.transfer_ops import (
+from local_shell_mcp.ops.files import delete_file_or_dir_execute
+from local_shell_mcp.ops.transfer import (
     transfer_abort_write,
     transfer_alloc_temp_path,
     transfer_begin_write,
@@ -73,6 +73,8 @@ async def fake_remote_worker_call(
             )
         else:
             raise ValueError(f"unsupported fake remote tool: {tool}")
+        if hasattr(data, "model_dump"):
+            data = data.model_dump(mode="json")
         return {"ok": True, "message": "", "data": data}
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "message": str(exc)}
@@ -107,8 +109,8 @@ async def test_remote_copy_file_streams_between_workers(tmp_path, monkeypatch):
         128,
     )
 
-    assert result["chunks"] > 1
-    assert result["bytes"] == len(data)
+    assert result.chunks > 1
+    assert result.bytes == len(data)
     assert (root / "dst-machine" / "payload.bin").read_bytes() == data
 
 
@@ -132,7 +134,7 @@ async def test_remote_copy_dir_packs_transfers_and_unpacks(
         256,
     )
 
-    assert result["entries"] >= 1
+    assert result.entries >= 1
     assert (
         root / "dst-machine" / "run-copy" / "nested" / "result.txt"
     ).read_text(encoding="utf-8") == "ok"

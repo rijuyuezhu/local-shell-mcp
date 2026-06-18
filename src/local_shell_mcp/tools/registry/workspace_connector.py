@@ -1,12 +1,18 @@
 """ChatGPT connector-compatible read-only workspace search/fetch tools."""
 
-from ...ops.workspace_connector_ops import (
-    FetchOutput,
-    SearchOutput,
+from ...ops.workspace_connector import (
     fetch_error_output,
     fetch_execute,
     search_error_output,
     search_execute,
+)
+from ...schemas.input_models.workspace_connector import (
+    ConnectorFetchIdArg,
+    ConnectorSearchQueryArg,
+)
+from ...schemas.result_models.workspace_connector import (
+    FetchOutput,
+    SearchOutput,
 )
 from ..declarative import DeclarativeToolRegistry
 
@@ -27,8 +33,9 @@ class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):
        metadata only; AuthMiddleware still enforces real HTTP/MCP auth.
     2. annotations="read_only" marks the tools as non-mutating document-source
        operations.
-    3. mcp_envelope=False keeps the connector-facing search/fetch payloads in
-       the exact document-source shape expected by connector clients.
+    3. Their typed return models keep the connector-facing search/fetch
+       payloads in the exact document-source shape expected by connector
+       clients.
     """
 
     name = "workspace_connector"
@@ -42,10 +49,9 @@ local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
     http_path="/tools/search",
     mcp_security_profile="connector_compatible",
     annotations="read_only",
-    mcp_envelope=False,
     mcp_error_handler=search_error_output,
 )
-async def search(query: str) -> SearchOutput:
+async def search(query: ConnectorSearchQueryArg) -> SearchOutput:
     """Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as grep_search, glob_search, tree_view, read_file, or read_many_files. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch."""
     return await search_execute(query)
 
@@ -55,9 +61,8 @@ async def search(query: str) -> SearchOutput:
     http_path="/tools/fetch",
     mcp_security_profile="connector_compatible",
     annotations="read_only",
-    mcp_envelope=False,
     mcp_error_handler=fetch_error_output,
 )
-async def fetch(id: str) -> FetchOutput:
+async def fetch(id: ConnectorFetchIdArg) -> FetchOutput:
     """Fetch one workspace file as a connector-compatible document. Use this after search has returned a result id. For code navigation or precise workspace inspection, read_file provides line ranges, binary previews, and richer diagnostics. Parameter: id is the exact result id from search, normally a workspace-relative file path. The response contains id, title, text, url, and metadata fields. Binary files are represented by an omission message."""
     return await fetch_execute(id)

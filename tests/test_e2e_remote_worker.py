@@ -290,18 +290,17 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             (remote_workspace / "remote" / "other.txt").write_text(
                 "second remote file\n", encoding="utf-8"
             )
-            many_result = await client.call_tool(
+            many_result = await client.call_tool_result(
                 "remote_read_many_files",
                 {
                     "machine": machine,
                     "paths": ["remote/demo.txt", "remote/other.txt"],
                 },
             )
-            assert many_result["status"] == "error"
-            assert many_result["error_type"] == "ValueError"
-            assert (
-                "Refusing to read 2 files; max is 1" in many_result["message"]
-            )
+            assert many_result.isError
+            assert many_result.content
+            many_error = getattr(many_result.content[0], "text", "")
+            assert "Refusing to read 2 files; max is 1" in many_error
 
             shell_result = await client.call_tool(
                 "run_remote_shell_command",

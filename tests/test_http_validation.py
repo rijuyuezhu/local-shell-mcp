@@ -16,7 +16,6 @@ def test_http_missing_required_argument_returns_validation_error(
 
     assert response.status_code == 400
     assert response.json() == {
-        "ok": False,
         "error": "validation_error",
         "message": "Missing required argument: path",
     }
@@ -34,6 +33,5 @@ def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
     )
 
     assert response.status_code == 400
-    assert response.json()["ok"] is False
     assert response.json()["error"] == "validation_error"
     assert "timeout_s must be <= 60 seconds" in response.json()["message"]

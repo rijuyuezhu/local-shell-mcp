@@ -69,10 +69,10 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 | `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries discovered at runtime. |
 | `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and configuration surface metadata. |
 | `src/local_shell_mcp/oauth/` | OAuth middleware, server metadata, authorization flow, token handling, and HTTP route wrapping. |
-| `src/local_shell_mcp/ops/` | Concrete filesystem, shell, patch, search, scan, todo, and shared operation helpers. |
+| `src/local_shell_mcp/ops/` | Concrete tool-family operation modules; shared helpers live under `ops/utils/`. |
 | `src/local_shell_mcp/remote/` | Remote invite management, shared worker tool specs and services, worker routes, bundle assembly, and worker CLI helpers. |
 | `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge, including shared service helpers used by MCP and REST adapters. |
-| `src/local_shell_mcp/tools/responses.py` | Tool response envelope builders and handled-error conversion. |
+| `src/local_shell_mcp/tools/serialization.py` | JSON-compatible serialization helpers for audited tool outputs. |
 | `src/local_shell_mcp/remote/responses.py` | Remote worker endpoint response envelope builders. |
 | `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
 | `tests/` | Unit, compatibility, and e2e tests. |
@@ -81,7 +81,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 
 ## Implementation notes
 
-- Tool registration is registry-based. Keep concrete behavior in `ops/`; registry modules adapt parameters, response envelopes, descriptions, and metadata.
+- Tool registration is registry-based. Keep concrete behavior in same-named `ops/` modules; registry modules adapt typed parameters, descriptions, metadata, and transport exposure.
 - Transport app assembly lives in `mcp.app` and `http.app`.
 - Static tools should use `DeclarativeToolRegistry` so MCP registration and HTTP handlers derive from one typed function. Declare the registry class first, then use `local_tool = RegistryClass.get_tool_decorator()` and `@local_tool(...)` for each tool so the registry has no second explicit tool list. Keep custom `http_routes()`, `http_handlers()`, or `register_mcp()` methods only when generated specs, dynamic tools, or runtime settings affect the surface.
 - Large registry implementations may delegate focused MCP registration code to transport-specific companion modules, as `remote.py` does with `mcp.remote_tools`, so `tools.registry` stays focused on discovered registry definitions.
@@ -90,9 +90,9 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 - Routed tool calls are audited centrally. Avoid per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured.
 - OAuth HTTP mode is split by responsibility: models/state, URL helpers, metadata endpoints, response serialization, dynamic client registration, authorization form/code flow, token/JWT validation, and ASGI route wrapping. Import from the focused `oauth.*` modules rather than a compatibility facade.
-- Tool response envelopes should use `tools.responses`; remote worker HTTP endpoint envelopes should use `remote.responses`.
+- Static MCP tools return their typed structured outputs directly; remote worker HTTP endpoint envelopes should use `remote.responses`.
 - File tools avoid reading full binary files by default and enforce configured read/write limits.
-- Operation modules that need managed temporary text files should use `ops.temp_file_ops` so temp pruning, size checks, and filename generation stay consistent.
+- Operation modules that need managed temporary text files should use `ops.utils.temp_file` so temp pruning, size checks, and filename generation stay consistent.
 - Remote workers run matching operation categories on the worker machine and return results through the control server.
 - Remote registry adapters should call remote manager behavior through `remote.service` helpers rather than reaching into the manager directly.
 - Remote worker proxy routes, HTTP handlers, and worker-side allowlists should derive from `remote.tool_specs` so new remote proxies are not registered in multiple places by hand.

@@ -11,14 +11,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from ..config.settings import Settings
-from .contracts import (
-    HttpMethod,
-    HttpToolRoute,
-    McpToolContext,
-    ToolRegistry,
-    ToolResult,
-)
-from .responses import handled_error, ok_response
+from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]
 ToolAnnotation = Literal["read_only"]
@@ -26,20 +19,7 @@ ToolDescription = str | Callable[[McpToolContext], str]
 ToolEnabled = Callable[[Settings], bool]
 ToolFunc = Callable[..., Awaitable[Any]]
 McpErrorHandler = Callable[[Exception, tuple[Any, ...], dict[str, Any]], Any]
-_MCP_HANDLER_ENVELOPE_ATTR = "__local_shell_mcp_envelope__"
 _MCP_HANDLER_ERROR_HANDLER_ATTR = "__local_shell_mcp_error_handler__"
-
-
-def mark_mcp_handler_envelope(
-    handler: Callable[..., Any], *, mcp_envelope: bool
-) -> None:
-    """Record whether an MCP handler returns the public ok/error envelope."""
-    setattr(handler, _MCP_HANDLER_ENVELOPE_ATTR, mcp_envelope)
-
-
-def mcp_handler_uses_envelope(handler: Callable[..., Any]) -> bool:
-    """Return whether an MCP handler should return the public ok/error envelope."""
-    return bool(getattr(handler, _MCP_HANDLER_ENVELOPE_ATTR, True))
 
 
 def mark_mcp_handler_error_handler(
@@ -71,7 +51,6 @@ class LocalToolDecoratorFactory(Protocol):
         mcp_security_profile: McpSecurityProfile = "oauth",
         annotations: ToolAnnotation | None = None,
         description: ToolDescription | None = None,
-        mcp_envelope: bool = True,
         mcp_error_handler: McpErrorHandler | None = None,
         enabled: ToolEnabled = ...,
     ) -> Callable[[ToolFunc], ToolDefinition]: ...
@@ -126,8 +105,6 @@ class ToolDefinition:
     """MCP tool annotations applied during registration."""
     description: ToolDescription | None = None
     """Static or context-derived MCP description override. If not provided, the tool's docstring is used."""
-    mcp_envelope: bool = True
-    """Whether MCP calls should wrap results in the public ok/error envelope."""
     mcp_error_handler: McpErrorHandler | None = None
     """Optional MCP exception-to-result conversion used for tool errors and timeouts."""
     enabled: ToolEnabled = _always_enabled
@@ -200,32 +177,16 @@ class ToolDefinition:
         @wraps(self.func)
         async def mcp_handler(*args: Any, **kwargs: Any) -> Any:
             try:
-                result = await self.func(*args, **kwargs)
+                return await self.func(*args, **kwargs)
             except Exception as exc:
                 if self.mcp_error_handler is not None:
                     return self.mcp_error_handler(exc, args, kwargs)
-
-                # If no error handler is configured:
-                # 1. Raise the exception as-is if mcp_envelope is False
-                # 2. Return a handled error envelope if mcp_envelope is True
-                if not self.mcp_envelope:
-                    raise
-                return handled_error(exc)
-
-            if not self.mcp_envelope:
-                return result
-            return ok_response(result, "")
+                raise
 
         mcp_handler.__name__ = self.name
         mcp_handler.__qualname__ = self.name
-        mark_mcp_handler_envelope(mcp_handler, mcp_envelope=self.mcp_envelope)
         mark_mcp_handler_error_handler(mcp_handler, self.mcp_error_handler)
-        if self.mcp_envelope:
-            signature = self.signature.replace(return_annotation=ToolResult)
-            mcp_handler.__signature__ = signature  # type: ignore[attr-defined]
-            mcp_handler.__annotations__["return"] = ToolResult
-        else:
-            mcp_handler.__signature__ = self.signature  # type: ignore[attr-defined]
+        mcp_handler.__signature__ = self.signature  # type: ignore[attr-defined]
         mcp.tool(
             description=self._mcp_description(context),
             annotations=self._mcp_annotations(context),
@@ -265,7 +226,6 @@ class DeclarativeToolRegistry(ToolRegistry):
             mcp_security_profile: McpSecurityProfile = "oauth",
             annotations: ToolAnnotation | None = None,
             description: ToolDescription | None = None,
-            mcp_envelope: bool = True,
             mcp_error_handler: McpErrorHandler | None = None,
             enabled: ToolEnabled = _always_enabled,
         ) -> Callable[[ToolFunc], ToolDefinition]:
@@ -279,7 +239,6 @@ class DeclarativeToolRegistry(ToolRegistry):
                         mcp_security_profile=mcp_security_profile,
                         annotations=annotations,
                         description=description,
-                        mcp_envelope=mcp_envelope,
                         mcp_error_handler=mcp_error_handler,
                         enabled=enabled,
                     )

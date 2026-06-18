@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from pathlib import Path
 
-from .path_ops import assert_text_input_size, prune_temp_dir, temp_dir
+from .path import assert_text_input_size, prune_temp_dir, temp_dir
 
 
 async def write_temp_text_file(

@@ -3,29 +3,14 @@
 import asyncio
 from typing import Any
 
-from pydantic import BaseModel
-
 from ..audit import audit
-from .fs_ops import read_file_execute
-from .search_ops import grep_search_execute
-
-
-class SearchResult(BaseModel):
-    id: str
-    title: str
-    url: str
-
-
-class SearchOutput(BaseModel):
-    results: list[SearchResult]
-
-
-class FetchOutput(BaseModel):
-    id: str
-    title: str
-    text: str
-    url: str
-    metadata: dict[str, Any] | None = None
+from ..schemas.result_models.workspace_connector import (
+    FetchOutput,
+    SearchOutput,
+    SearchResult,
+)
+from .files import read_file_execute
+from .search import grep_search_execute
 
 
 def search_error_output(
@@ -72,12 +57,12 @@ async def search_execute(query: str) -> SearchOutput:
         )
         seen: set[str] = set()
         rows: list[SearchResult] = []
-        for match in result.get("matches", []):
-            path = match.get("path")
+        for match in result.matches:
+            path = match.path
             if not path or path in seen:
                 continue
             seen.add(path)
-            line = match.get("line")
+            line = match.line
             suffix = f":{line}" if line else ""
             rows.append(
                 SearchResult(
@@ -95,7 +80,8 @@ async def search_execute(query: str) -> SearchOutput:
 async def fetch_execute(id: str) -> FetchOutput:
     """Return one connector-compatible document for a workspace result id."""
     try:
-        data = await asyncio.to_thread(read_file_execute, id)
+        read_result = await asyncio.to_thread(read_file_execute, id)
+        data = read_result.model_dump(mode="json")
         path = str(data.get("path") or id)
         binary = bool(data.get("binary"))
         text = data.get("content")

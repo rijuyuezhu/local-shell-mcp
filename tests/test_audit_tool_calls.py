@@ -2,6 +2,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.server.http.app import build_http_app
@@ -93,8 +94,8 @@ async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = await build_mcp().call_tool("read_file", {"path": "missing.txt"})
-    payload = json.loads(mcp_text(response))
+    with pytest.raises(ToolError, match="Error executing tool read_file"):
+        await build_mcp().call_tool("read_file", {"path": "missing.txt"})
 
     records = _audit_records(get_settings().audit_log_path)
     starts, ends = _tool_call_pairs(records, "read_file")
@@ -103,7 +104,6 @@ async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     assert len(ends) == 1
     assert starts[0]["input"]["path"] == "missing.txt"
     assert starts[0]["input"]["binary_preview_bytes"] == 256
-    assert ends[0]["ok"] is True
-    assert ends[0]["output"] == payload
-    assert payload["ok"] is True
-    assert payload["data"]["status"] == "not_found"
+    assert ends[0]["ok"] is False
+    assert ends[0]["error"]["type"] == "FileNotFoundError"
+    assert "missing.txt" in ends[0]["error"]["message"]

@@ -4,8 +4,8 @@ import asyncio
 from contextlib import suppress
 from typing import Any
 
-from ..ops.fs_ops import delete_file_or_dir_execute
-from ..ops.transfer_ops import (
+from ..ops.files import delete_file_or_dir_execute
+from ..ops.transfer import (
     normalize_chunk_size,
     transfer_abort_write,
     transfer_alloc_temp_path,
@@ -17,6 +17,11 @@ from ..ops.transfer_ops import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
+from ..schemas.result_models.remote import (
+    RemoteCopyDirOutput,
+    RemoteCopyFileOutput,
+)
+from ..tools.serialization import tool_output_jsonable
 from .service import call_remote_worker_tool
 
 
@@ -51,16 +56,23 @@ async def _remote_transfer_data(
     return _unwrap_remote_transfer_result(result, machine=machine, tool=tool)
 
 
+async def _local_transfer_data(fn: Any, *args: Any) -> dict[str, Any]:
+    """Run a local transfer primitive and return JSON-compatible data."""
+    data = await asyncio.to_thread(fn, *args)
+    jsonable = tool_output_jsonable(data)
+    return jsonable if isinstance(jsonable, dict) else {"result": jsonable}
+
+
 async def copy_local_file_to_remote(
     source_path: str,
     dst_machine: str,
     dst_path: str,
     overwrite: bool = True,
     chunk_size: int | None = None,
-) -> dict[str, Any]:
+) -> RemoteCopyFileOutput:
     """Copy a local controller file to a remote worker using chunked transfer."""
     chunk_bytes = normalize_chunk_size(chunk_size)
-    stat = await asyncio.to_thread(transfer_stat, source_path, True)
+    stat = await _local_transfer_data(transfer_stat, source_path, True)
     if stat.get("type") != "file":
         raise ValueError(f"source is not a file: {source_path}")
     begin = await _remote_transfer_data(
@@ -77,7 +89,7 @@ async def copy_local_file_to_remote(
     offset = 0
     try:
         while offset < stat["size"]:
-            chunk = await asyncio.to_thread(
+            chunk = await _local_transfer_data(
                 transfer_read_chunk, source_path, offset, chunk_bytes
             )
             if chunk["bytes"] == 0:
@@ -113,14 +125,16 @@ async def copy_local_file_to_remote(
                 {"path": dst_path, "transfer_id": transfer_id},
             )
         raise
-    return {
-        "source": {"machine": "controller", "path": stat["path"]},
-        "destination": {"machine": dst_machine, "path": finish["path"]},
-        "bytes": stat["size"],
-        "sha256": stat.get("sha256"),
-        "chunks": chunks,
-        "chunk_size": chunk_bytes,
-    }
+    return RemoteCopyFileOutput.model_validate(
+        {
+            "source": {"machine": "controller", "path": stat["path"]},
+            "destination": {"machine": dst_machine, "path": finish["path"]},
+            "bytes": stat["size"],
+            "sha256": stat.get("sha256"),
+            "chunks": chunks,
+            "chunk_size": chunk_bytes,
+        }
+    )
 
 
 async def copy_remote_file_to_local(
@@ -129,7 +143,7 @@ async def copy_remote_file_to_local(
     destination_path: str,
     overwrite: bool = True,
     chunk_size: int | None = None,
-) -> dict[str, Any]:
+) -> RemoteCopyFileOutput:
     """Copy a remote worker file into the controller workspace."""
     chunk_bytes = normalize_chunk_size(chunk_size)
     stat = await _remote_transfer_data(
@@ -137,7 +151,7 @@ async def copy_remote_file_to_local(
     )
     if stat.get("type") != "file":
         raise ValueError(f"source is not a file: {src_path}")
-    begin = await asyncio.to_thread(
+    begin = await _local_transfer_data(
         transfer_begin_write, destination_path, overwrite, stat["size"]
     )
     transfer_id = begin["transfer_id"]
@@ -162,7 +176,7 @@ async def copy_remote_file_to_local(
             )
             offset += chunk["bytes"]
             chunks += 1
-        finish = await asyncio.to_thread(
+        finish = await _local_transfer_data(
             transfer_finish_write,
             destination_path,
             transfer_id,
@@ -175,14 +189,16 @@ async def copy_remote_file_to_local(
                 transfer_abort_write, destination_path, transfer_id
             )
         raise
-    return {
-        "source": {"machine": src_machine, "path": stat["path"]},
-        "destination": {"machine": "controller", "path": finish["path"]},
-        "bytes": stat["size"],
-        "sha256": stat.get("sha256"),
-        "chunks": chunks,
-        "chunk_size": chunk_bytes,
-    }
+    return RemoteCopyFileOutput.model_validate(
+        {
+            "source": {"machine": src_machine, "path": stat["path"]},
+            "destination": {"machine": "controller", "path": finish["path"]},
+            "bytes": stat["size"],
+            "sha256": stat.get("sha256"),
+            "chunks": chunks,
+            "chunk_size": chunk_bytes,
+        }
+    )
 
 
 async def copy_remote_file_to_remote(
@@ -192,7 +208,7 @@ async def copy_remote_file_to_remote(
     dst_path: str,
     overwrite: bool = True,
     chunk_size: int | None = None,
-) -> dict[str, Any]:
+) -> RemoteCopyFileOutput:
     """Copy a file between two remote workers through the control server."""
     chunk_bytes = normalize_chunk_size(chunk_size)
     stat = await _remote_transfer_data(
@@ -252,14 +268,16 @@ async def copy_remote_file_to_remote(
                 {"path": dst_path, "transfer_id": transfer_id},
             )
         raise
-    return {
-        "source": {"machine": src_machine, "path": stat["path"]},
-        "destination": {"machine": dst_machine, "path": finish["path"]},
-        "bytes": stat["size"],
-        "sha256": stat.get("sha256"),
-        "chunks": chunks,
-        "chunk_size": chunk_bytes,
-    }
+    return RemoteCopyFileOutput.model_validate(
+        {
+            "source": {"machine": src_machine, "path": stat["path"]},
+            "destination": {"machine": dst_machine, "path": finish["path"]},
+            "bytes": stat["size"],
+            "sha256": stat.get("sha256"),
+            "chunks": chunks,
+            "chunk_size": chunk_bytes,
+        }
+    )
 
 
 async def _remote_cleanup_file(machine: str, path: str) -> None:
@@ -278,7 +296,7 @@ async def copy_remote_dir_to_remote(
     dst_path: str,
     overwrite: bool = True,
     chunk_size: int | None = None,
-) -> dict[str, Any]:
+) -> RemoteCopyDirOutput:
     """Copy a directory tree between remote workers using temporary archives."""
     pack = await _remote_transfer_data(
         src_machine,
@@ -312,14 +330,16 @@ async def copy_remote_dir_to_remote(
         raise
     finally:
         await _remote_cleanup_file(src_machine, pack.get("archive_path", ""))
-    return {
-        "source": {"machine": src_machine, "path": pack["path"]},
-        "destination": {"machine": dst_machine, "path": unpack["path"]},
-        "archive_bytes": pack["bytes"],
-        "archive_sha256": pack["sha256"],
-        "chunks": copy_result["chunks"],
-        "entries": unpack["entries"],
-    }
+    return RemoteCopyDirOutput.model_validate(
+        {
+            "source": {"machine": src_machine, "path": pack["path"]},
+            "destination": {"machine": dst_machine, "path": unpack["path"]},
+            "archive_bytes": pack["bytes"],
+            "archive_sha256": pack["sha256"],
+            "chunks": copy_result.chunks,
+            "entries": unpack["entries"],
+        }
+    )
 
 
 async def copy_remote_dir_to_local(
@@ -328,19 +348,19 @@ async def copy_remote_dir_to_local(
     destination_path: str,
     overwrite: bool = True,
     chunk_size: int | None = None,
-) -> dict[str, Any]:
+) -> RemoteCopyDirOutput:
     """Copy a remote worker directory into the controller workspace."""
     pack = await _remote_transfer_data(
         src_machine,
         "transfer_pack_dir",
         {"path": src_path, "compression": "gz"},
     )
-    archive = await asyncio.to_thread(transfer_alloc_temp_path, ".tar.gz")
+    archive = await _local_transfer_data(transfer_alloc_temp_path, ".tar.gz")
     try:
         copy_result = await copy_remote_file_to_local(
             src_machine, pack["archive_path"], archive["path"], True, chunk_size
         )
-        unpack = await asyncio.to_thread(
+        unpack = await _local_transfer_data(
             transfer_unpack_archive,
             archive["path"],
             destination_path,
@@ -349,14 +369,16 @@ async def copy_remote_dir_to_local(
         )
     finally:
         await _remote_cleanup_file(src_machine, pack.get("archive_path", ""))
-    return {
-        "source": {"machine": src_machine, "path": pack["path"]},
-        "destination": {"machine": "controller", "path": unpack["path"]},
-        "archive_bytes": pack["bytes"],
-        "archive_sha256": pack["sha256"],
-        "chunks": copy_result["chunks"],
-        "entries": unpack["entries"],
-    }
+    return RemoteCopyDirOutput.model_validate(
+        {
+            "source": {"machine": src_machine, "path": pack["path"]},
+            "destination": {"machine": "controller", "path": unpack["path"]},
+            "archive_bytes": pack["bytes"],
+            "archive_sha256": pack["sha256"],
+            "chunks": copy_result.chunks,
+            "entries": unpack["entries"],
+        }
+    )
 
 
 async def copy_local_dir_to_remote(
@@ -365,9 +387,9 @@ async def copy_local_dir_to_remote(
     dst_path: str,
     overwrite: bool = True,
     chunk_size: int | None = None,
-) -> dict[str, Any]:
+) -> RemoteCopyDirOutput:
     """Copy a controller directory tree to a remote worker."""
-    pack = await asyncio.to_thread(transfer_pack_dir, source_path, "gz")
+    pack = await _local_transfer_data(transfer_pack_dir, source_path, "gz")
     dst_archive = await _remote_transfer_data(
         dst_machine, "transfer_alloc_temp_path", {"suffix": ".tar.gz"}
     )
@@ -395,11 +417,13 @@ async def copy_local_dir_to_remote(
     finally:
         with suppress(Exception):
             delete_file_or_dir_execute(pack.get("archive_path", ""), False)
-    return {
-        "source": {"machine": "controller", "path": pack["path"]},
-        "destination": {"machine": dst_machine, "path": unpack["path"]},
-        "archive_bytes": pack["bytes"],
-        "archive_sha256": pack["sha256"],
-        "chunks": copy_result["chunks"],
-        "entries": unpack["entries"],
-    }
+    return RemoteCopyDirOutput.model_validate(
+        {
+            "source": {"machine": "controller", "path": pack["path"]},
+            "destination": {"machine": dst_machine, "path": unpack["path"]},
+            "archive_bytes": pack["bytes"],
+            "archive_sha256": pack["sha256"],
+            "chunks": copy_result.chunks,
+            "entries": unpack["entries"],
+        }
+    )

@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import time
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -23,6 +24,12 @@ from local_shell_mcp.server.mcp.app import (
 )
 from local_shell_mcp.tools.registry import agent as tools_module
 from tests.helpers import mcp_structured
+
+
+def _output_schema(tool: Any) -> dict[str, Any]:
+    schema = tool.outputSchema
+    assert schema is not None
+    return schema
 
 
 def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
@@ -70,11 +77,17 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert all(tool.outputSchema is not None for tool in tools.values())
     run_shell_command_schema = tools["run_shell_command"].outputSchema
     assert run_shell_command_schema is not None
-    assert run_shell_command_schema["title"] == "ToolResult"
+    assert run_shell_command_schema["title"] == "RunShellCommandOutput"
     assert set(run_shell_command_schema["properties"]) == {
         "ok",
-        "message",
-        "data",
+        "exit_code",
+        "timed_out",
+        "duration_ms",
+        "cwd",
+        "command",
+        "stdout",
+        "stderr",
+        "truncated",
     }
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
@@ -90,8 +103,154 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     }
 
     structured = mcp_structured(await mcp.call_tool("environment_info", {}))
+    assert "workspace_root" in structured["settings"]
+    assert structured["probe"]["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tool = {tool.name: tool for tool in await build_mcp().list_tools()}[
+        "run_shell_command"
+    ]
+
+    output_schema = _output_schema(tool)
+    command_input = tool.inputSchema["properties"]["command"]
+    timeout_input = tool.inputSchema["properties"]["timeout_s"]
+    stdout_output = output_schema["properties"]["stdout"]
+    exit_code_output = output_schema["properties"]["exit_code"]
+
+    assert command_input["description"] == (
+        "Shell command string executed with the configured shell."
+    )
+    assert "public tool timeout" in timeout_input["description"]
+    assert stdout_output["description"] == (
+        "Captured standard output after byte-limit truncation."
+    )
+    assert "Process exit code" in exit_code_output["description"]
+
+
+@pytest.mark.asyncio
+async def test_shell_tool_returns_per_tool_structured_content(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    structured = mcp_structured(
+        await build_mcp().call_tool("run_shell_command", {"command": "echo ok"})
+    )
+
     assert structured["ok"] is True
-    assert "workspace_root" in structured["data"]["settings"]
+    assert structured["command"] == "echo ok"
+    assert structured["stdout"] == "ok\n"
+    assert "data" not in structured
+
+
+@pytest.mark.asyncio
+async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    read_file_tool = tools["read_file"]
+    list_files_tool = tools["list_files"]
+
+    read_file_output_schema = _output_schema(read_file_tool)
+    list_files_output_schema = _output_schema(list_files_tool)
+    assert read_file_output_schema["title"] == "ReadFileOutput"
+    assert list_files_output_schema["title"] == "ListFilesOutput"
+    assert read_file_tool.inputSchema["properties"]["path"]["description"] == (
+        "Workspace-relative path, or an allowed absolute path, for the file or directory operation."
+    )
+    assert (
+        "binary preview encoding"
+        in read_file_tool.inputSchema["properties"]["binary_preview"][
+            "description"
+        ]
+    )
+    assert (
+        read_file_output_schema["properties"]["content"]["description"]
+        == "Decoded UTF-8 text content, or null for binary files."
+    )
+    assert (
+        list_files_output_schema["properties"]["file_info"]["description"]
+        == "Returned directory entries."
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    grep_tool = tools["grep_search"]
+    tree_tool = tools["tree_view"]
+
+    grep_output_schema = _output_schema(grep_tool)
+    tree_output_schema = _output_schema(tree_tool)
+    assert grep_output_schema["title"] == "GrepSearchOutput"
+    assert tree_output_schema["title"] == "TreeViewOutput"
+    assert grep_tool.inputSchema["properties"]["query"]["description"] == (
+        "Text or regular expression to search for, depending on the regex parameter."
+    )
+    assert (
+        "case-sensitive"
+        in grep_tool.inputSchema["properties"]["case_sensitive"]["description"]
+    )
+    assert (
+        grep_output_schema["properties"]["matches"]["description"]
+        == "Returned ripgrep matches."
+    )
+    assert (
+        tree_output_schema["properties"]["entries"]["description"]
+        == "Indented tree entries relative to root."
+    )
+
+
+@pytest.mark.asyncio
+async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    patch_tool = tools["apply_patch"]
+    todo_tool = tools["write_todos"]
+    secret_tool = tools["secret_scan"]
+
+    patch_output_schema = _output_schema(patch_tool)
+    todo_output_schema = _output_schema(todo_tool)
+    secret_output_schema = _output_schema(secret_tool)
+    assert patch_output_schema["title"] == "ApplyPatchOutput"
+    assert todo_output_schema["title"] == "WriteTodosOutput"
+    assert secret_output_schema["title"] == "SecretScanOutput"
+    assert patch_tool.inputSchema["properties"]["patch"]["description"] == (
+        "Unified diff text to validate and apply with git apply."
+    )
+    assert (
+        "Replacement todo list"
+        in todo_tool.inputSchema["properties"]["todos"]["description"]
+    )
+    assert (
+        secret_output_schema["properties"]["findings"]["description"]
+        == "Returned heuristic secret findings."
+    )
 
 
 @pytest.mark.asyncio
@@ -105,7 +264,10 @@ async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
 
     run_shell_command_description = tools["run_shell_command"].description or ""
     grep_description = tools["grep_search"].description or ""
-    assert "max_output_bytes=12345" in run_shell_command_description
+    assert (
+        "Current combined output cap: 12345 bytes"
+        in run_shell_command_description
+    )
     assert "max_grep_results=678" in grep_description
 
 

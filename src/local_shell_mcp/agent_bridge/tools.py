@@ -15,10 +15,8 @@ from .service import (
 )
 from .state import agent_config_fingerprint
 
-type OkFn = Callable[..., dict[str, Any]]
-type HandledErrorFn = Callable[[Exception], dict[str, Any]]
-type SkillHandler = Callable[[], Awaitable[dict[str, Any]]]
-type McpHandler = Callable[..., Awaitable[dict[str, Any]]]
+type SkillHandler = Callable[[], Awaitable[Any]]
+type McpHandler = Callable[..., Awaitable[Any]]
 
 
 class AgentBridgeToolReloader:
@@ -29,8 +27,6 @@ class AgentBridgeToolReloader:
         mcp: Any,
         registry: AgentCapabilityRegistry,
         meta: dict[str, Any],
-        ok: OkFn,
-        handled_error: HandledErrorFn,
         probe_timeout_s: float,
         dynamic_mcp_tools: bool | None,
         dynamic_skill_tools: bool | None,
@@ -38,8 +34,6 @@ class AgentBridgeToolReloader:
         self.mcp = mcp
         self.registry = registry
         self.meta = meta
-        self.ok = ok
-        self.handled_error = handled_error
         self.probe_timeout_s = probe_timeout_s
         self.dynamic_mcp_tools = dynamic_mcp_tools
         self.dynamic_skill_tools = dynamic_skill_tools
@@ -128,14 +122,9 @@ def make_skill_handler(
     """Create a FastMCP handler that activates one discovered skill from the current registry."""
 
     async def handler():
-        try:
-            return reloader.ok(
-                activate_agent_skill_payload(
-                    reloader.current_registry(), skill_name
-                )
-            )
-        except Exception as exc:
-            return reloader.handled_error(exc)
+        return activate_agent_skill_payload(
+            reloader.current_registry(), skill_name
+        )
 
     return handler
 
@@ -146,14 +135,9 @@ def make_mcp_handler(
     """Create a FastMCP handler that proxies one upstream MCP tool with redacted arguments and errors."""
 
     async def handler(args: dict[str, Any] | None = None):
-        try:
-            return reloader.ok(
-                await call_agent_mcp_tool_payload(
-                    reloader.current_registry(), server_name, tool_name, args
-                )
-            )
-        except Exception as exc:
-            return reloader.handled_error(exc)
+        return await call_agent_mcp_tool_payload(
+            reloader.current_registry(), server_name, tool_name, args
+        )
 
     return handler
 
@@ -183,8 +167,6 @@ def register_agent_bridge_dynamic_tools(
     mcp: Any,
     registry: AgentCapabilityRegistry,
     meta: dict[str, Any],
-    ok: OkFn,
-    handled_error: HandledErrorFn,
     probe_timeout_s: float = 5,
     dynamic_mcp_tools: bool | None = None,
     dynamic_skill_tools: bool | None = None,
@@ -194,8 +176,6 @@ def register_agent_bridge_dynamic_tools(
         mcp,
         registry,
         meta,
-        ok,
-        handled_error,
         probe_timeout_s,
         dynamic_mcp_tools,
         dynamic_skill_tools,

@@ -1,6 +1,12 @@
 """Secret scanning tool registry."""
 
-from ...ops.secret_scan_ops import secret_scan_execute
+from ...ops.secret_scan import secret_scan_execute
+from ...schemas.input_models.secret_scan import (
+    SecretScanCwdArg,
+    SecretScanGlobArg,
+    SecretScanMaxResultsArg,
+)
+from ...schemas.result_models.secret_scan import SecretScanOutput
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
 
@@ -16,7 +22,7 @@ local_tool = SecretScanToolRegistry.get_tool_decorator()
 
 def _secret_scan_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Scan workspace text files for common secrets before commit, push, release, or sharing logs. Use as a precaution after editing configuration, credentials, CI, deployment, or documentation files. Parameters: glob can narrow the scan and max_results bounds findings. Limits: max_results is capped by max_grep_results={settings.max_grep_results}. Results are heuristic and do not prove the workspace is secret-free."""
+    return f"""Scan workspace text files for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: {settings.max_grep_results}."""
 
 
 @local_tool(
@@ -25,7 +31,9 @@ def _secret_scan_description(context: McpToolContext) -> str:
     description=_secret_scan_description,
 )
 async def secret_scan(
-    cwd: str = ".", glob: str | None = None, max_results: int = 200
-) -> dict:
-    """Scan workspace text files for common secrets."""
+    cwd: SecretScanCwdArg = ".",
+    glob: SecretScanGlobArg = None,
+    max_results: SecretScanMaxResultsArg = 200,
+) -> SecretScanOutput:
+    """Scan workspace text files for common secret-like strings."""
     return await secret_scan_execute(cwd, glob, max_results)

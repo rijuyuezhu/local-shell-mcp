@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
-from ...ops.command_ops import tool_timeout_s
+from ...ops.shell import tool_timeout_s
 from ...tools.discovery import discover_tool_registries
 from ...tools.local_invocations import call_local_tool
 
@@ -33,7 +33,6 @@ def install_tools_timeout_middleware(app: FastAPI) -> None:
             return JSONResponse(
                 status_code=504,
                 content={
-                    "ok": False,
                     "error": "tool_timeout",
                     "message": f"{request.url.path} exceeded {tool_timeout_s()} second tool timeout",
                 },

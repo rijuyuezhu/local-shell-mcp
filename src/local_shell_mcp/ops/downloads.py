@@ -10,7 +10,13 @@ from typing import Any
 
 from ..audit import audit
 from ..config.settings import get_settings
-from .path_ops import relative_display, resolve_path
+from ..schemas.result_models.downloads import (
+    CreateFileLinkOutput,
+    FileLinkSummary,
+    ListFileLinksOutput,
+    RevokeFileLinkOutput,
+)
+from .utils.path import relative_display, resolve_path
 
 DOWNLOAD_PREFIX = "/download"
 DOWNLOAD_STORE_VERSION = 1
@@ -93,20 +99,20 @@ def safe_download_filename(filename: str | None, source: Path) -> str:
     return candidate or "download"
 
 
-def download_link_summary(token: str, link: dict[str, Any]) -> dict[str, Any]:
+def download_link_summary(token: str, link: dict[str, Any]) -> FileLinkSummary:
     """Return the public summary for a stored download link."""
-    return {
-        "token": token,
-        "url": f"{get_settings().resolved_base_url}{DOWNLOAD_PREFIX}/{token}",
-        "path": link.get("display_path"),
-        "filename": link.get("filename"),
-        "bytes": link.get("bytes"),
-        "created_at": link.get("created_at"),
-        "expires_at": link.get("expires_at"),
-        "ttl_remaining_s": max(0, int(link.get("expires_at", 0) - now_s())),
-        "downloads": link.get("downloads", 0),
-        "max_downloads": link.get("max_downloads", 0),
-    }
+    return FileLinkSummary(
+        token=token,
+        url=f"{get_settings().resolved_base_url}{DOWNLOAD_PREFIX}/{token}",
+        path=link.get("display_path"),
+        filename=link.get("filename"),
+        bytes=link.get("bytes"),
+        created_at=link.get("created_at"),
+        expires_at=link.get("expires_at"),
+        ttl_remaining_s=max(0, int(link.get("expires_at", 0) - now_s())),
+        downloads=link.get("downloads", 0),
+        max_downloads=link.get("max_downloads", 0),
+    )
 
 
 def prune_download_links_locked(
@@ -133,7 +139,7 @@ def create_file_link_execute(
     ttl_s: int | None = None,
     filename: str | None = None,
     max_downloads: int | None = None,
-) -> dict[str, Any]:
+) -> CreateFileLinkOutput:
     """Create a tokenized public download link for one workspace file."""
     settings = get_settings()
     if not settings.file_download_enabled:
@@ -177,10 +183,14 @@ def create_file_link_execute(
         token=token,
         expires_at=link["expires_at"],
     )
-    return download_link_summary(token, link)
+    return CreateFileLinkOutput.model_validate(
+        download_link_summary(token, link).model_dump(mode="json")
+    )
 
 
-def list_file_links_execute(include_expired: bool = False) -> dict[str, Any]:
+def list_file_links_execute(
+    include_expired: bool = False,
+) -> ListFileLinksOutput:
     """List generated download links."""
     with STORE_LOCK:
         store = read_download_store_locked()
@@ -193,11 +203,11 @@ def list_file_links_execute(include_expired: bool = False) -> dict[str, Any]:
             download_link_summary(token, link)
             for token, link in store.get("links", {}).items()
         ]
-    links.sort(key=lambda item: item.get("created_at", 0), reverse=True)
-    return {"links": links}
+    links.sort(key=lambda item: item.created_at or 0, reverse=True)
+    return ListFileLinksOutput(links=links)
 
 
-def revoke_file_link_execute(token: str) -> dict[str, Any]:
+def revoke_file_link_execute(token: str) -> RevokeFileLinkOutput:
     """Revoke one generated download link."""
     with STORE_LOCK:
         store = read_download_store_locked()
@@ -210,7 +220,7 @@ def revoke_file_link_execute(token: str) -> dict[str, Any]:
             path=removed.get("display_path"),
             token=token,
         )
-    return {"revoked": removed is not None, "token": token}
+    return RevokeFileLinkOutput(revoked=removed is not None, token=token)
 
 
 def claim_download(

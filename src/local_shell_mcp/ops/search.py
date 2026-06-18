@@ -1,14 +1,38 @@
 """Search workspace text files and produce compact directory trees for code-navigation tools."""
 
 import asyncio
+import fnmatch
 import json
 import shlex
 from pathlib import Path
 from typing import Any, cast
 
 from ..config.settings import get_settings
-from .command_ops import run_shell
-from .path_ops import missing_path_context, resolve_path
+from ..schemas.result_models.search import (
+    GlobSearchOutput,
+    GrepMatch,
+    GrepSearchOutput,
+    TreeViewOutput,
+)
+from .shell import run_shell
+from .utils.path import missing_path_context, relative_display, resolve_path
+
+
+def glob_search_execute(
+    pattern: str, cwd: str = ".", max_results: int = 500
+) -> GlobSearchOutput:
+    """Find workspace paths matching a glob pattern without exceeding the configured result limit."""
+    settings = get_settings()
+    base = resolve_path(cwd, must_exist=True)
+    results: list[str] = []
+    limit = max(1, min(max_results, settings.max_glob_results))
+    for item in base.rglob("*"):
+        rel = str(item.relative_to(base))
+        if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(item.name, pattern):
+            results.append(relative_display(item))
+            if len(results) >= limit:
+                break
+    return GlobSearchOutput(paths=results)
 
 
 async def grep_search_execute(
@@ -18,7 +42,7 @@ async def grep_search_execute(
     regex: bool = True,
     case_sensitive: bool = True,
     max_results: int | None = None,
-) -> dict[str, Any]:
+) -> GrepSearchOutput:
     """Run ripgrep with workspace path resolution and return structured match records."""
     settings = get_settings()
     max_results = max_results or settings.max_grep_results
@@ -34,7 +58,7 @@ async def grep_search_execute(
     result = await run_shell(
         cmd, cwd=cwd, timeout_s=60, max_output_bytes=1_000_000
     )
-    matches: list[dict[str, Any]] = []
+    matches: list[GrepMatch] = []
     for line in result.stdout.splitlines():
         try:
             obj = json.loads(line)
@@ -74,56 +98,56 @@ async def grep_search_execute(
         path_text = path_data.get("text")
         line_text = line_data.get("text", "")
         matches.append(
-            {
-                "path": path_text,
-                "line": match_data.get("line_number"),
-                "column": first_start + 1
+            GrepMatch(
+                path=path_text,
+                line=match_data.get("line_number"),
+                column=first_start + 1
                 if isinstance(first_start, int)
                 else None,
-                "text": str(line_text).rstrip("\n"),
-            }
+                text=str(line_text).rstrip("\n"),
+            )
         )
         if len(matches) >= max_results:
             break
-    return {
-        "ok": result.exit_code in {0, 1},
-        "matches": matches,
-        "count": len(matches),
-        "truncated": len(matches) >= max_results or result.truncated,
-        "stderr": result.stderr,
-    }
+    return GrepSearchOutput(
+        ok=result.exit_code in {0, 1},
+        matches=matches,
+        count=len(matches),
+        truncated=len(matches) >= max_results or result.truncated,
+        stderr=result.stderr,
+    )
 
 
 def tree_view_sync(
     cwd: str = ".", depth: int = 3, max_entries: int = 500
-) -> dict[str, Any]:
+) -> TreeViewOutput:
     """Build a compact, depth-limited directory tree while skipping common generated directories."""
     settings = get_settings()
     base = resolve_path(cwd)
     if not base.exists():
         context = missing_path_context(base, max_entries=min(max_entries, 100))
-        return {
-            "root": context["path"],
-            "exists": False,
-            "is_directory": False,
-            "entries": [],
-            "count": 0,
-            "truncated": False,
-            "message": f"Path does not exist: {context['path']}",
-            "nearest_existing_parent": context["nearest_existing_parent"],
-            "nearest_parent_entries": context["nearest_parent_entries"],
-            "nearest_parent_entries_truncated": context["truncated"],
-        }
+        return TreeViewOutput(
+            root=context["path"],
+            exists=False,
+            is_directory=False,
+            entries=[],
+            count=0,
+            truncated=False,
+            message=f"Path does not exist: {context['path']}",
+            nearest_existing_parent=context["nearest_existing_parent"],
+            nearest_parent_entries=context["nearest_parent_entries"],
+            nearest_parent_entries_truncated=context["truncated"],
+        )
     if not base.is_dir():
-        return {
-            "root": str(base),
-            "exists": True,
-            "is_directory": False,
-            "entries": [],
-            "count": 0,
-            "truncated": False,
-            "message": f"Path exists but is not a directory: {base}",
-        }
+        return TreeViewOutput(
+            root=str(base),
+            exists=True,
+            is_directory=False,
+            entries=[],
+            count=0,
+            truncated=False,
+            message=f"Path exists but is not a directory: {base}",
+        )
 
     depth = max(0, min(depth, 10))
     limit = max(1, min(max_entries, settings.max_tree_entries))
@@ -157,18 +181,18 @@ def tree_view_sync(
                 return
 
     walk(base, 0)
-    return {
-        "root": str(base),
-        "exists": True,
-        "is_directory": True,
-        "entries": rows,
-        "count": count,
-        "truncated": truncated,
-    }
+    return TreeViewOutput(
+        root=str(base),
+        exists=True,
+        is_directory=True,
+        entries=rows,
+        count=count,
+        truncated=truncated,
+    )
 
 
 async def tree_view_execute(
     cwd: str = ".", depth: int = 3, max_entries: int = 500
-) -> dict[str, Any]:
+) -> TreeViewOutput:
     """Expose tree generation through an async API used by MCP and HTTP handlers."""
     return await asyncio.to_thread(tree_view_sync, cwd, depth, max_entries)

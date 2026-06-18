@@ -184,7 +184,11 @@ def test_http_openapi_version_matches_package_version(tmp_path, monkeypatch):
 
 
 def _mcp_payload_data(response):
-    return json.loads(mcp_text(response))["data"]
+    return (
+        response[1]
+        if isinstance(response, tuple)
+        else json.loads(mcp_text(response))
+    )
 
 
 @pytest.mark.asyncio
@@ -263,7 +267,6 @@ def test_http_tool_missing_required_arg_returns_validation_error(
 
     assert response.status_code == 400
     assert response.json() == {
-        "ok": False,
         "error": "validation_error",
         "message": "Missing required argument: path",
     }
@@ -280,7 +283,6 @@ def test_http_tool_directory_error_returns_json_error(tmp_path, monkeypatch):
     )
 
     assert response.status_code == 400
-    assert response.json()["ok"] is False
     assert response.json()["error"] == "IsADirectoryError"
     assert response.json()["message"].startswith("IsADirectoryError: ")
     assert "Is a directory" in response.json()["message"]
@@ -298,7 +300,6 @@ def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
 
     assert response.status_code == 400
     assert response.json() == {
-        "ok": False,
         "error": "FileNotFoundError",
         "message": f"FileNotFoundError: {tmp_path / 'missing.txt'}",
     }
@@ -323,7 +324,6 @@ def test_http_tool_unexpected_error_returns_json_error(tmp_path, monkeypatch):
 
     assert response.status_code == 500
     assert response.json() == {
-        "ok": False,
         "error": "internal_error",
         "message": "Unhandled RuntimeError: boom",
     }
@@ -502,7 +502,7 @@ async def test_apply_patch_tool_creates_temp_file(tmp_path, monkeypatch):
 
     payload = await call_local_tool("apply_patch", {"patch": patch, "cwd": "."})
 
-    assert payload["ok"] is True
+    assert payload.ok is True
     assert (tmp_path / "target.txt").read_text(encoding="utf-8") == "new\n"
 
 
@@ -518,5 +518,5 @@ async def test_run_python_code_creates_temp_file(tmp_path, monkeypatch):
         "run_python_code", {"code": "print('py314')", "cwd": "."}
     )
 
-    assert payload["ok"] is True
-    assert payload["stdout"] == "py314\n"
+    assert payload.ok is True
+    assert payload.stdout == "py314\n"
