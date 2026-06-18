@@ -9,7 +9,7 @@ from ..config.settings import get_settings
 from ..schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditFileOutput,
-    FileInfo,
+    EntryInfo,
     ListFilesOutput,
     MultiEditFileOutput,
     ReadFileOutput,
@@ -32,7 +32,7 @@ def list_files_execute(
     base = resolve_path(path, must_exist=True)
     if not base.is_dir():
         raise NotADirectoryError(str(base))
-    filelist: list[FileInfo] = []
+    filelist: list[EntryInfo] = []
     max_directory_entries = settings.max_directory_entries
     if not (0 <= max_entries <= max_directory_entries):
         raise ValueError(
@@ -54,7 +54,7 @@ def list_files_execute(
             "dir" if item.is_dir() else "file" if item.is_file() else "other"
         )
         filelist.append(
-            FileInfo(
+            EntryInfo(
                 path=relative_display(item),
                 type=entry_type,
                 size=stat.st_size if item.is_file() else None,
@@ -65,7 +65,7 @@ def list_files_execute(
         limit_count=limit,
         count=len(filelist),
         is_truncated=truncated,
-        file_info=filelist,
+        entries=filelist,
     )
 
 

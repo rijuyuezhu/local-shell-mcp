@@ -41,7 +41,7 @@ def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
     assert limited.limit_count == 1
     assert limited.count == 1
     assert limited.is_truncated is True
-    assert len(limited.file_info) == 1
+    assert len(limited.entries) == 1
     assert "total_count" not in limited.model_dump()
 
     assert complete.count == 2

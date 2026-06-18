@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field
 
 
-class FileInfo(BaseModel):
+class EntryInfo(BaseModel):
     """One file-system entry in a directory listing."""
 
     path: str = Field(description="Workspace-relative entry path.")
@@ -21,13 +21,13 @@ class ListFilesOutput(BaseModel):
     """Directory listing result."""
 
     limit_count: int = Field(
-        description="Maximum number of entries considered for this listing."
+        description="Maximum number of entries limited by the request or configuration."
     )
-    count: int = Field(description="Number of entries returned in file_info.")
+    count: int = Field(description="Number of entries returned in entries.")
     is_truncated: bool = Field(
         description="Whether more entries existed beyond the configured or requested limit."
     )
-    file_info: list[FileInfo] = Field(description="Returned directory entries.")
+    entries: list[EntryInfo] = Field(description="Returned directory entries.")
 
 
 class ReadFileOutput(BaseModel):

@@ -183,7 +183,7 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
         == "Decoded UTF-8 text content, or null for binary files."
     )
     assert (
-        list_files_output_schema["properties"]["file_info"]["description"]
+        list_files_output_schema["properties"]["entries"]["description"]
         == "Returned directory entries."
     )
 
