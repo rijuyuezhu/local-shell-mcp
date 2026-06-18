@@ -20,6 +20,4 @@ async def apply_patch(
     patch: PatchTextArg, cwd: PatchCwdArg = "."
 ) -> ApplyPatchOutput:
     """Apply a unified diff using git apply."""
-    return ApplyPatchOutput.model_validate(
-        await apply_patch_execute(patch, cwd)
-    )
+    return await apply_patch_execute(patch, cwd)

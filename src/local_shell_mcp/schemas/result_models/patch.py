@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from ...ops.shell_models import CommandResult
+from .shell import CommandResult
 
 
 class ApplyPatchOutput(CommandResult):
