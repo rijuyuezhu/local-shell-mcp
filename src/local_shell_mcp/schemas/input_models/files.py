@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 FilePathArg = Annotated[
     str,
@@ -40,22 +40,25 @@ EndLineArg = Annotated[
         description="Optional 1-based final line to include when reading text files. Omit to read through the end."
     ),
 ]
-BinaryPreviewArg = Annotated[
-    str | None,
+
+
+class ReadFileRequest(BaseModel):
+    """One UTF-8 file read request with an optional per-file line range."""
+
+    path: FilePathArg
+    """Workspace-relative or allowed absolute path to read."""
+
+    start_line: StartLineArg = None
+    """Optional 1-based first line to include for this file."""
+
+    end_line: EndLineArg = None
+    """Optional 1-based final line to include for this file."""
+
+
+ReadFilesArg = Annotated[
+    list[ReadFileRequest],
     Field(
-        description="Optional binary preview encoding for binary files. Supported values are 'hex' and 'base64'."
-    ),
-]
-BinaryPreviewBytesArg = Annotated[
-    int,
-    Field(
-        description="Maximum number of binary bytes to include in the optional preview, bounded by the server configuration."
-    ),
-]
-PathsArg = Annotated[
-    list[str],
-    Field(
-        description="Target file paths to read. Keep the list focused; server limits bound count and total returned bytes."
+        description="Files to read. Each item includes path and optional 1-based start_line and end_line values."
     ),
 ]
 FileContentArg = Annotated[

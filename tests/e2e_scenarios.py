@@ -70,7 +70,7 @@ async def exercise_filesystem_and_search_tools(
 
     listing = await client.call_tool("list_files", {"path": "notes"})
     assert any(
-        row.get("path") == "notes/demo.txt" for row in listing["file_info"]
+        row.get("path") == "notes/demo.txt" for row in listing["entries"]
     )
 
     tree_view_execute = await client.call_tool(
@@ -100,7 +100,7 @@ async def exercise_filesystem_and_search_tools(
     assert read_result["content"] == "alpha beta\nneedle one\n"
 
     many_result = await client.call_tool(
-        "read_many_files", {"paths": ["notes/demo.txt"]}
+        "read_many_files", {"files": [{"path": "notes/demo.txt"}]}
     )
     assert many_result["files"][0]["content"] == "alpha beta\nneedle one\n"
 

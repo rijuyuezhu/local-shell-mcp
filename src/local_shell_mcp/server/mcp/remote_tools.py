@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from ...remote.service import (
     call_remote_worker_tool,
@@ -22,6 +22,7 @@ from ...remote.transfer import (
     copy_remote_file_to_local,
     copy_remote_file_to_remote,
 )
+from ...schemas.input_models.files import ReadFilesArg
 from ...schemas.input_models.remote import (
     LocalPathArg,
     RemoteCaseSensitiveArg,
@@ -418,7 +419,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=oauth_security_meta,
         description=_description(
-            f"""Read a UTF-8 text file on a remote worker, optionally by line range. Use after locating a remote file to inspect exact content before editing. Parameters: start_line and end_line page large files; binary_preview requests bounded binary preview behavior. Limits: per-file reads are capped by max_file_read_bytes={settings.max_file_read_bytes}."""
+            f"""Read a UTF-8 text file, optionally by line range. Limits: per-file reads are capped by max_file_read_bytes={settings.max_file_read_bytes}."""
         ),
     )
     async def remote_read_file(
@@ -426,8 +427,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         path: RemotePathArg,
         start_line: int | None = None,
         end_line: int | None = None,
-        binary_preview: str | None = None,
-        binary_preview_bytes: int = 256,
     ) -> ReadFileOutput:
         """Read a UTF-8 text file on a remote worker."""
         return await _remote_typed(
@@ -438,8 +437,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
                 "path": path,
                 "start_line": start_line,
                 "end_line": end_line,
-                "binary_preview": binary_preview,
-                "binary_preview_bytes": binary_preview_bytes,
             },
         )
 
@@ -447,16 +444,12 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=oauth_security_meta,
         description=_description(
-            f"""Read multiple UTF-8 text files on a remote worker with the same optional line range. Use for targeted remote context gathering across known paths. Limits: max_read_many_files={settings.max_read_many_files}, max_read_many_total_bytes={settings.max_read_many_total_bytes}."""
+            f"""Read multiple UTF-8 text files on a remote worker with optional per-file line ranges. Use for targeted remote context gathering across known paths. Limits: max_read_many_files={settings.max_read_many_files}, max_read_many_total_bytes={settings.max_read_many_total_bytes}."""
         ),
     )
     async def remote_read_many_files(
         machine: RemoteMachineArg,
-        paths: list[str],
-        start_line: int | None = None,
-        end_line: int | None = None,
-        binary_preview: str | None = None,
-        binary_preview_bytes: int = 256,
+        files: ReadFilesArg,
     ) -> ReadManyFilesOutput:
         """Read multiple UTF-8 text files on a remote worker."""
         return await _remote_typed(
@@ -464,11 +457,10 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine,
             "read_many_files",
             {
-                "paths": paths,
-                "start_line": start_line,
-                "end_line": end_line,
-                "binary_preview": binary_preview,
-                "binary_preview_bytes": binary_preview_bytes,
+                "files": [
+                    file.model_dump()
+                    for file in TypeAdapter(ReadFilesArg).validate_python(files)
+                ]
             },
         )
 

@@ -91,7 +91,7 @@ The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` an
 - MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured.
 - OAuth HTTP mode is split by responsibility: models/state, URL helpers, metadata endpoints, response serialization, dynamic client registration, authorization form/code flow, token/JWT validation, and ASGI route wrapping. Import from the focused `oauth.*` modules rather than a compatibility facade.
 - Static MCP tools return their typed structured outputs directly; remote worker HTTP endpoint envelopes should use `remote.responses`.
-- File tools avoid reading full binary files by default and enforce configured read/write limits.
+- File tools read UTF-8 text and enforce configured read/write limits.
 - Operation modules that need managed temporary text files should use `ops.utils.temp_file` so temp pruning, size checks, and filename generation stay consistent.
 - Remote workers run matching operation categories on the worker machine and return results through the control server.
 - Remote registry adapters should call remote manager behavior through `remote.service` helpers rather than reaching into the manager directly.

@@ -1,15 +1,15 @@
-"""Provide workspace-aware filesystem operations with path containment, binary detection, and bounded file output."""
+"""Provide workspace-aware UTF-8 file operations with path containment and bounded output."""
 
-import base64
-import binascii
+import codecs
 import shutil
-from pathlib import Path
+from collections.abc import Sequence
 
 from ..config.settings import get_settings
+from ..schemas.input_models.files import ReadFileRequest
 from ..schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditFileOutput,
-    FileInfo,
+    EntryInfo,
     ListFilesOutput,
     MultiEditFileOutput,
     ReadFileOutput,
@@ -17,11 +17,6 @@ from ..schemas.result_models.files import (
     WriteFileOutput,
 )
 from .utils.path import relative_display, resolve_path
-
-BINARY_CHECK_BYTES = 8192
-BINARY_CONTROL_RATIO = 0.30
-BINARY_PREVIEW_BYTES = 256
-BINARY_MESSAGE = "Refusing to read binary file as text"
 
 
 def list_files_execute(
@@ -32,7 +27,7 @@ def list_files_execute(
     base = resolve_path(path, must_exist=True)
     if not base.is_dir():
         raise NotADirectoryError(str(base))
-    filelist: list[FileInfo] = []
+    filelist: list[EntryInfo] = []
     max_directory_entries = settings.max_directory_entries
     if not (0 <= max_entries <= max_directory_entries):
         raise ValueError(
@@ -54,7 +49,7 @@ def list_files_execute(
             "dir" if item.is_dir() else "file" if item.is_file() else "other"
         )
         filelist.append(
-            FileInfo(
+            EntryInfo(
                 path=relative_display(item),
                 type=entry_type,
                 size=stat.st_size if item.is_file() else None,
@@ -65,87 +60,20 @@ def list_files_execute(
         limit_count=limit,
         count=len(filelist),
         is_truncated=truncated,
-        file_info=filelist,
+        entries=filelist,
     )
-
-
-def _is_probably_binary(sample: bytes) -> bool:
-    """Classify byte samples that should not be decoded as normal UTF-8 text."""
-    if not sample:
-        return False
-    if b"\x00" in sample:
-        return True
-    try:
-        sample.decode("utf-8")
-    except UnicodeDecodeError:
-        return True
-
-    control_bytes = 0
-    for byte in sample:
-        if byte in (9, 10, 12, 13):
-            continue
-        if byte < 32 or byte == 127:
-            control_bytes += 1
-    return (control_bytes / len(sample)) > BINARY_CONTROL_RATIO
-
-
-def _binary_metadata(
-    p: Path,
-    size: int,
-    preview: str | None = None,
-    preview_bytes: int = BINARY_PREVIEW_BYTES,
-) -> ReadFileOutput:
-    """Return structured metadata and optional base64 preview for a binary file read attempt."""
-    result = ReadFileOutput(
-        path=relative_display(p),
-        bytes=size,
-        binary=True,
-        content=None,
-        message=BINARY_MESSAGE,
-    )
-    if preview:
-        limit = max(0, min(preview_bytes, BINARY_PREVIEW_BYTES))
-        with p.open("rb") as fh:
-            data = fh.read(limit)
-        if preview == "hex":
-            result.preview = binascii.hexlify(data).decode("ascii")
-            result.preview_encoding = "hex"
-            result.preview_bytes = len(data)
-        elif preview == "base64":
-            result.preview = base64.b64encode(data).decode("ascii")
-            result.preview_encoding = "base64"
-            result.preview_bytes = len(data)
-        else:
-            raise ValueError("binary_preview must be 'hex' or 'base64'")
-    return result
-
-
-def _assert_text_file(p: Path) -> None:
-    """Reject binary files before text editing operations mutate them."""
-    with p.open("rb") as fh:
-        sample = fh.read(BINARY_CHECK_BYTES)
-    if _is_probably_binary(sample):
-        raise ValueError(BINARY_MESSAGE)
 
 
 def read_file_execute(
     path: str,
     start_line: int | None = None,
     end_line: int | None = None,
-    binary_preview: str | None = None,
-    binary_preview_bytes: int = BINARY_PREVIEW_BYTES,
 ) -> ReadFileOutput:
-    """Read text files by optional line range and return binary metadata instead of unsafe decoding."""
+    """Read a UTF-8 text file by optional line range."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
     size = p.stat().st_size
     with p.open("rb") as fh:
-        sample = fh.read(BINARY_CHECK_BYTES)
-        if _is_probably_binary(sample):
-            return _binary_metadata(
-                p, size, binary_preview, binary_preview_bytes
-            )
-        fh.seek(0)
         data = fh.read(settings.max_file_read_bytes + 1)
 
     truncated = False
@@ -153,7 +81,8 @@ def read_file_execute(
         data = data[: settings.max_file_read_bytes]
         truncated = True
     truncated_bytes = max(0, size - len(data))
-    text = data.decode("utf-8", errors="replace")
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    text = decoder.decode(data, final=not truncated)
     lines = text.splitlines()
     total_lines = len(lines)
     if start_line is not None or end_line is not None:
@@ -166,39 +95,54 @@ def read_file_execute(
         bytes=size,
         bytes_read=len(data),
         truncated_bytes=truncated_bytes,
-        binary=False,
         total_lines=total_lines,
         truncated=truncated,
         content=text,
     )
 
 
+type _ReadManyFileSpec = (
+    ReadFileRequest
+    | tuple[str]
+    | tuple[str, int | None]
+    | tuple[str, int | None, int | None]
+)
+
+
+def _read_many_file_parts(
+    item: _ReadManyFileSpec,
+) -> tuple[str, int | None, int | None]:
+    """Normalize one read_many_files item into path and optional line range."""
+    if isinstance(item, ReadFileRequest):
+        return (
+            item.path,
+            item.start_line,
+            item.end_line,
+        )
+    return (
+        item[0],
+        item[1] if len(item) > 1 else None,
+        item[2] if len(item) > 2 else None,
+    )
+
+
 def read_many_files_execute(
-    paths: list[str],
-    start_line: int | None = None,
-    end_line: int | None = None,
-    binary_preview: str | None = None,
-    binary_preview_bytes: int = BINARY_PREVIEW_BYTES,
+    files_to_read: Sequence[_ReadManyFileSpec],
 ) -> ReadManyFilesOutput:
-    """Read many files while preserving per-path success and error entries."""
+    """Read many files with per-file optional line ranges."""
     settings = get_settings()
-    if len(paths) > settings.max_read_many_files:
+    if len(files_to_read) > settings.max_read_many_files:
         raise ValueError(
-            f"Refusing to read {len(paths)} files; max is {settings.max_read_many_files}"
+            f"Refusing to read {len(files_to_read)} files; max is {settings.max_read_many_files}"
         )
 
     files: list[ReadFileOutput] = []
     total_content_bytes = 0
-    for path in paths:
-        item = read_file_execute(
-            path, start_line, end_line, binary_preview, binary_preview_bytes
-        )
+    for item_to_read in files_to_read:
+        path, start_line, end_line = _read_many_file_parts(item_to_read)
+        item = read_file_execute(path, start_line, end_line)
         content = item.content
-        if isinstance(content, str):
-            total_content_bytes += len(content.encode("utf-8"))
-        preview = item.preview
-        if isinstance(preview, str):
-            total_content_bytes += len(preview.encode("utf-8"))
+        total_content_bytes += len(content.encode("utf-8"))
         if total_content_bytes > settings.max_read_many_total_bytes:
             raise ValueError(
                 f"Refusing to return {total_content_bytes} bytes from read_many_files; "
@@ -241,7 +185,6 @@ def edit_file_execute(
         raise ValueError(
             f"Refusing to edit {p.stat().st_size} bytes; max is {settings.max_file_write_bytes}"
         )
-    _assert_text_file(p)
     text = p.read_text(encoding="utf-8")
     count = text.count(old)
     if count == 0:
@@ -274,7 +217,6 @@ def multi_edit_file_execute(
         raise ValueError(
             f"Refusing to edit {p.stat().st_size} bytes; max is {settings.max_file_write_bytes}"
         )
-    _assert_text_file(p)
     text = p.read_text(encoding="utf-8")
     total = 0
     for edit in edits:
