@@ -33,6 +33,7 @@ class SearchToolRegistry(DeclarativeToolRegistry):
     """Register search and tree-view tools."""
 
     name = "search"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = SearchToolRegistry.get_tool_decorator()

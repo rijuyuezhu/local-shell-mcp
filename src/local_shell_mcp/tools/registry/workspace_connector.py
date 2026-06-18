@@ -39,6 +39,7 @@ class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):
     """
 
     name = "workspace_connector"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()

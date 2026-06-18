@@ -57,18 +57,22 @@ class RemoteToolRegistry(DeclarativeToolRegistry):
     """Register remote-worker proxy tools."""
 
     name = "remote"
+    """Registry group name used for tool-surface organization."""
 
     def http_routes(self) -> Iterable[HttpToolRoute]:
+        """Return remote REST proxy routes when remote tools are enabled."""
         if not _remote_tools_enabled(self._settings()):
             return ()
         return (*super().http_routes(), *REMOTE_WORKER_HTTP_ROUTES)
 
     def http_handlers(self) -> Mapping[str, ToolHandler]:
+        """Return remote HTTP proxy handlers when remote tools are enabled."""
         if not _remote_tools_enabled(self._settings()):
             return {}
         return {**super().http_handlers(), **REMOTE_WORKER_HTTP_HANDLERS}
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
+        """Register remote MCP proxy tools when remote tools are enabled."""
         if not _remote_tools_enabled(context.settings):
             return
         register_remote_mcp(mcp, context)

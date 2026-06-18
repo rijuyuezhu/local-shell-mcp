@@ -44,6 +44,7 @@ class ToolRegistry:
     """Base class that registers MCP and HTTP tool routes for a group of related tools. Derived classes are automatically registered if they are placed in the `local_shell_mcp.tools.registry.*` module"""
 
     name: str = ""
+    """Stable registry name used for grouping and surface checks."""
 
     def http_routes(self) -> Iterable[HttpToolRoute]:
         """Return REST routes provided by this registry."""

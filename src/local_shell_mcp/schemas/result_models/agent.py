@@ -9,6 +9,7 @@ class AgentConfigStatusOutput(BaseModel):
     """Agent bridge configuration, skill, MCP server, and dynamic-tool status."""
 
     model_config = ConfigDict(extra="allow")
+    """Allow passthrough keys for dynamically shaped output payloads."""
 
     config_dir: str = Field(description="Agent bridge configuration directory.")
     config_path: str = Field(description="Agent bridge manifest path.")
@@ -68,3 +69,4 @@ class CallAgentMcpToolOutput(BaseModel):
     """Redacted result from an upstream agent MCP tool call."""
 
     model_config = ConfigDict(extra="allow")
+    """Allow upstream tool result keys after redaction."""

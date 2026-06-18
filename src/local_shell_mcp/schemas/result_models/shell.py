@@ -55,6 +55,7 @@ class StartPersistentShellOutput(BaseModel):
     """Result of starting a tmux-backed persistent shell session."""
 
     model_config = ConfigDict(extra="allow")
+    """Allow passthrough keys for dynamically shaped output payloads."""
 
     session_id: str = Field(
         description="Identifier used by later persistent-shell tools to send input, read output, or kill the session."
@@ -91,6 +92,7 @@ class ReadPersistentShellOutput(BaseModel):
     """Recent output captured from a persistent shell session."""
 
     model_config = ConfigDict(extra="allow")
+    """Allow passthrough keys for dynamically shaped output payloads."""
 
     session_id: str = Field(
         description="Persistent shell session that was read."
@@ -109,6 +111,7 @@ class KillPersistentShellOutput(BaseModel):
     """Result of terminating a persistent shell session."""
 
     model_config = ConfigDict(extra="allow")
+    """Allow passthrough keys for dynamically shaped output payloads."""
 
     session_id: str = Field(
         description="Persistent shell session targeted for termination."
@@ -127,6 +130,7 @@ class PersistentShellInfo(BaseModel):
     """One persistent shell session entry."""
 
     model_config = ConfigDict(extra="allow")
+    """Allow passthrough keys for dynamically shaped output payloads."""
 
     session_id: str = Field(description="Persistent shell session identifier.")
     name: str | None = Field(
@@ -145,6 +149,7 @@ class ListPersistentShellsOutput(BaseModel):
     """Active tmux-backed persistent shell sessions."""
 
     model_config = ConfigDict(extra="allow")
+    """Allow passthrough keys for dynamically shaped output payloads."""
 
     sessions: list[dict[str, Any]] = Field(
         description="Active persistent shell sessions with at least session_id and optional implementation-specific metadata."

@@ -29,6 +29,7 @@ class DownloadToolRegistry(DeclarativeToolRegistry):
     """Register protected tools for creating and managing download links."""
 
     name = "downloads"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = DownloadToolRegistry.get_tool_decorator()

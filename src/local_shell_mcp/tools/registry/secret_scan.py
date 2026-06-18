@@ -15,6 +15,7 @@ class SecretScanToolRegistry(DeclarativeToolRegistry):
     """Register secret scanning tools."""
 
     name = "secret_scan"
+    """Registry group name used for tool-surface organization."""
 
 
 local_tool = SecretScanToolRegistry.get_tool_decorator()

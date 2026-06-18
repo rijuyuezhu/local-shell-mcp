@@ -65,6 +65,7 @@ class TransferToolRegistry(DeclarativeToolRegistry):
     """Register worker-side transfer primitives without public routes."""
 
     name = "transfer"
+    """Registry group name used for tool-surface organization."""
 
     def http_routes(self) -> tuple[HttpToolRoute, ...]:
         """Keep raw transfer primitives off the public REST surface."""

@@ -28,6 +28,7 @@ class AgentMcpServerConfig(BaseModel):
     @field_validator("command")
     @classmethod
     def non_empty_command(cls, value: str | None) -> str | None:
+        """Reject blank stdio command values while allowing omitted commands."""
         if value is not None and not value.strip():
             raise ValueError("command must not be empty")
         return value
@@ -35,6 +36,7 @@ class AgentMcpServerConfig(BaseModel):
     @field_validator("url")
     @classmethod
     def non_empty_url(cls, value: str | None) -> str | None:
+        """Reject blank network endpoint URLs while allowing omitted URLs."""
         if value is not None and not value.strip():
             raise ValueError("url must not be empty")
         return value
@@ -62,6 +64,7 @@ class AgentBridgeManifest(BaseModel):
     """Validated bridge manifest."""
 
     model_config = ConfigDict(populate_by_name=True)
+    """Pydantic model configuration for manifest aliases."""
 
     version: int = 1
     """Manifest schema version supported by this bridge loader."""
@@ -79,6 +82,7 @@ class AgentBridgeManifest(BaseModel):
     @field_validator("version")
     @classmethod
     def supported_version(cls, value: int) -> int:
+        """Accept only manifest schema versions supported by this loader."""
         if value != 1:
             raise ValueError("version must be 1")
         return value

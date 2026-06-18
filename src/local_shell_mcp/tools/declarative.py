@@ -199,6 +199,7 @@ class DeclarativeToolRegistry(ToolRegistry):
     """Registry base for tool registries that are in a declarative fashion."""
 
     tools: ClassVar[tuple[ToolDefinition, ...]] = ()
+    """Tool definitions registered on this concrete registry class."""
     _context: McpToolContext | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -260,6 +261,7 @@ class DeclarativeToolRegistry(ToolRegistry):
         return get_settings()
 
     def http_routes(self) -> Iterable[HttpToolRoute]:
+        """Return enabled declarative REST routes."""
         return tuple(
             route
             for tool in self._enabled_tools()
@@ -269,11 +271,13 @@ class DeclarativeToolRegistry(ToolRegistry):
     def http_handlers(
         self,
     ) -> Mapping[str, Callable[[dict[str, Any]], Awaitable[Any]]]:
+        """Return enabled declarative HTTP handlers keyed by tool name."""
         return {
             tool.name: tool.http_handler() for tool in self._enabled_tools()
         }
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
+        """Register enabled declarative tools on the provided FastMCP app."""
         self._context = context
         try:
             for tool in self._enabled_tools():

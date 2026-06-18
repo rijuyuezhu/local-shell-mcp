@@ -48,8 +48,10 @@ class AgentBridgeToolRegistry(DeclarativeToolRegistry):
     """Register agent bridge tools."""
 
     name = "agent_bridge"
+    """Registry group name used for tool-surface organization."""
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
+        """Register static and dynamic agent bridge tools when enabled."""
         if not context.settings.agent_bridge_enabled:
             return
         super().register_mcp(mcp, context)
