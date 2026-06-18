@@ -502,7 +502,7 @@ async def test_apply_patch_tool_creates_temp_file(tmp_path, monkeypatch):
 
     payload = await call_local_tool("apply_patch", {"patch": patch, "cwd": "."})
 
-    assert payload["ok"] is True
+    assert payload.ok is True
     assert (tmp_path / "target.txt").read_text(encoding="utf-8") == "new\n"
 
 
@@ -518,5 +518,5 @@ async def test_run_python_code_creates_temp_file(tmp_path, monkeypatch):
         "run_python_code", {"code": "print('py314')", "cwd": "."}
     )
 
-    assert payload["ok"] is True
-    assert payload["stdout"] == "py314\n"
+    assert payload.ok is True
+    assert payload.stdout == "py314\n"

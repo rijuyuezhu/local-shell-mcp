@@ -210,6 +210,35 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
 
 
 @pytest.mark.asyncio
+async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    patch_tool = tools["apply_patch"]
+    todo_tool = tools["write_todos"]
+    secret_tool = tools["secret_scan"]
+
+    assert patch_tool.outputSchema["title"] == "ApplyPatchOutput"
+    assert todo_tool.outputSchema["title"] == "WriteTodosOutput"
+    assert secret_tool.outputSchema["title"] == "SecretScanOutput"
+    assert patch_tool.inputSchema["properties"]["patch"]["description"] == (
+        "Unified diff text to validate and apply with git apply."
+    )
+    assert (
+        "Replacement todo list"
+        in todo_tool.inputSchema["properties"]["todos"]["description"]
+    )
+    assert (
+        secret_tool.outputSchema["properties"]["findings"]["description"]
+        == "Returned heuristic secret findings."
+    )
+
+
+@pytest.mark.asyncio
 async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES", "12345")
