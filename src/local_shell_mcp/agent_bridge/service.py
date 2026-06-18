@@ -5,6 +5,14 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from ..config.settings import Settings, get_settings
+from ..schemas.result_models.agent import (
+    ActivateAgentSkillOutput,
+    AgentConfigStatusOutput,
+    CallAgentMcpToolOutput,
+    ListAgentMcpServersOutput,
+    ListAgentMcpToolsOutput,
+    ListAgentSkillsOutput,
+)
 from .mcp import AgentMcpClientManager
 from .models import AgentCapabilityRegistry, AgentMcpServerRecord
 from .redaction import (
@@ -117,36 +125,40 @@ def redact_mcp_error_payload(data: Any, *maps: dict[str, str]) -> Any:
 
 def agent_config_status_payload(
     registry: AgentCapabilityRegistry,
-) -> dict[str, Any]:
+) -> AgentConfigStatusOutput:
     """Return a public, redacted agent bridge configuration status payload."""
-    return registry.config_status()
+    return AgentConfigStatusOutput.model_validate(registry.config_status())
 
 
 def list_agent_skills_payload(
     registry: AgentCapabilityRegistry,
-) -> dict[str, Any]:
+) -> ListAgentSkillsOutput:
     """Return discovered agent skills and non-fatal skill warnings."""
-    return {
-        "skills": [asdict(skill) for skill in registry.skills.values()],
-        "warnings": registry.skill_warnings,
-    }
+    return ListAgentSkillsOutput(
+        skills=[asdict(skill) for skill in registry.skills.values()],
+        warnings=registry.skill_warnings,
+    )
 
 
 def activate_agent_skill_payload(
     registry: AgentCapabilityRegistry, name: str
-) -> dict[str, Any]:
+) -> ActivateAgentSkillOutput:
     """Load one discovered agent skill payload by name."""
     skill = registry.skills.get(name)
     if skill is None:
         raise ValueError(f"Unknown agent skill: {name}")
-    return activate_skill(registry.config_dir, skill)
+    return ActivateAgentSkillOutput.model_validate(
+        activate_skill(registry.config_dir, skill)
+    )
 
 
 def list_agent_mcp_servers_payload(
     registry: AgentCapabilityRegistry,
-) -> dict[str, Any]:
+) -> ListAgentMcpServersOutput:
     """Return configured agent MCP server status rows."""
-    return registry.config_status()["mcp_servers"]
+    return ListAgentMcpServersOutput.model_validate(
+        registry.config_status()["mcp_servers"]
+    )
 
 
 def _agent_mcp_records(
@@ -162,7 +174,7 @@ def _agent_mcp_records(
 
 def list_agent_mcp_tools_payload(
     registry: AgentCapabilityRegistry, server: str | None = None
-) -> dict[str, Any]:
+) -> ListAgentMcpToolsOutput:
     """Return redacted upstream MCP tool rows, optionally filtered by server."""
     records = _agent_mcp_records(registry, server)
     dynamic_names = {
@@ -201,7 +213,7 @@ async def call_agent_mcp_tool_payload(
     server: str,
     tool: str,
     args: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> CallAgentMcpToolOutput:
     """Call one upstream MCP tool and redact configured secrets from errors."""
     record = registry.mcp_servers.get(server)
     if record is None:
@@ -221,6 +233,6 @@ async def call_agent_mcp_tool_payload(
         raise redacted_mcp_call_error(
             exc, record.config.env, record.config.headers
         ) from None
-    return redact_mcp_error_payload(
-        data, record.config.env, record.config.headers
+    return CallAgentMcpToolOutput.model_validate(
+        redact_mcp_error_payload(data, record.config.env, record.config.headers)
     )
