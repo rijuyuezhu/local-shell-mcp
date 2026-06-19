@@ -1,5 +1,5 @@
 site_name: local-shell-mcp
-site_description: ChatGPT-compatible OAuth MCP server for controlled local shell, filesystem, and git access
+site_description: ChatGPT-compatible OAuth MCP server for controlled local shell and filesystem access
 site_url: https://project.rijuyuezhu.top/local-shell-mcp/
 repo_url: https://github.com/rijuyuezhu/local-shell-mcp
 repo_name: rijuyuezhu/local-shell-mcp
@@ -66,7 +66,6 @@ nav:
       - VS Code: getting-started/vscode.md
   - Guides:
       - Common workflows: guides/common-workflows.md
-      - Git access: guides/git-access.md
       - Remote workers: guides/remote-workers.md
       - Agent capability bridge: guides/agent-bridge.md
       - Audit log: guides/audit-log.md
@@ -75,6 +74,7 @@ nav:
       - Configuration: reference/configuration.md
       - CLI: reference/cli.md
       - Tools: reference/tools.md
+      - MCP server instructions: reference/instructions.md
   - Security: security.md
   - Troubleshooting: troubleshooting.md
   - Development: development.md

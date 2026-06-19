@@ -1,6 +1,6 @@
 # local-shell-mcp
 
-`local-shell-mcp` gives ChatGPT and other MCP clients controlled access to a machine you own. It exposes shell, filesystem, search, patch, Git-through-shell, audit, remote-worker, and agent-bridge capabilities through an MCP server with OAuth support.
+`local-shell-mcp` gives ChatGPT and other MCP clients controlled access to a machine you own. It exposes shell, filesystem, search, patch, audit, remote-worker, and agent-bridge capabilities through an MCP server with OAuth support.
 
 ## Start here
 
@@ -19,7 +19,7 @@ Docker Compose is still supported, but the published Docker image is currently `
 
 - A ChatGPT-compatible MCP endpoint at `/mcp`.
 - Built-in OAuth approval for public deployments.
-- Local shell, Python, file, search, patch, Git-through-shell, todo, audit, and download-link tools.
+- Local shell, Python, file, search, patch, todo, audit, and download-link tools.
 - Optional remote workers for running the same tool categories on another machine.
 - Optional agent bridge for exposing external MCP servers and Markdown skills through this server.
 - A VS Code extension for starting the server against the current workspace.

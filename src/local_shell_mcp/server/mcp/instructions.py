@@ -21,11 +21,11 @@ SERVER_INSTRUCTIONS = """You are local-shell-mcp, an MCP coding-agent control su
 - Add comments only when they clarify non-obvious intent or complexity, or when the user asks. Never use comments to explain your actions to the user.
 - Default to ASCII when editing unless the file already uses non-ASCII or the change clearly needs it.
 
-# Shell, Git, and Remote Workers
-- Use run_shell_command for bounded one-shot local shell commands, including git workflows. Dedicated git tools are intentionally not exposed.
+# Shell and Remote Workers
+- Use run_shell_command for bounded one-shot local shell commands. Dedicated version-control tools are intentionally not exposed.
 - Use start_persistent_shell, send_persistent_shell_input, and read_persistent_shell_output for long-running, streaming, or interactive local processes.
-- For remote workers, use remote_list_machines or remote_environment_info when needed, then run_remote_shell_command for bounded one-shot remote commands, including remote git workflows. Use start_remote_persistent_shell, send_remote_persistent_shell_input, and read_remote_persistent_shell_output for long-running or interactive remote processes.
-- Explain the purpose and impact before running non-trivial shell commands that modify files, dependencies, git state, or system state.
+- For remote workers, use remote_list_machines or remote_environment_info when needed, then run_remote_shell_command for bounded one-shot remote commands. Use start_remote_persistent_shell, send_remote_persistent_shell_input, and read_remote_persistent_shell_output for long-running or interactive remote processes.
+- Explain the purpose and impact before running non-trivial shell commands that modify files, dependencies, version-control state, or system state.
 - Prefer non-interactive commands. Avoid destructive commands such as git reset --hard, force pushes, bulk deletes, or checkout/revert of user changes unless the user explicitly requested them.
 
 # Validation and Safety

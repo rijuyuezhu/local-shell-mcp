@@ -15,10 +15,10 @@ repos:
         files: ^(src/local_shell_mcp/config/(settings|surface)\.py|scripts/generate-config-examples\.py|\.env\.example|config\.example\.yaml|docs/reference/generated/configuration\.json)$
       - id: generate-tools-reference
         name: generate tools reference
-        entry: uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json
+        entry: uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json
         language: system
         pass_filenames: false
-        files: ^(src/local_shell_mcp/(agent_bridge|config|ops|remote|schemas|server|tools|utils)/.*\.py|scripts/export-tools-json\.py|docs/reference/generated/tools\.json)$
+        files: ^(src/local_shell_mcp/(agent_bridge|config|ops|remote|schemas|server|tools|utils)/.*\.py|scripts/export-tools-json\.py|docs/reference/generated/(tools|server-instructions)\.json)$
       - id: vscode-extension-format
         name: vscode-extension format
         entry: bash -c 'cd vscode-extension && npm ci && npm run format:check'

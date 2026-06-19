@@ -112,27 +112,27 @@ uv run pytest tests/test_config_surface.py -q
 uv run pytest tests/test_agent_bridge_tools.py -q
 ```
 
-## Regenerate generated docs
+## Regenerate generated reference data
 
-Configuration examples and reference docs are generated from the settings registry:
+Configuration examples and reference JSON are generated from the settings registry:
 
 ```bash
 uv run python scripts/generate-config-examples.py
 uv run python scripts/generate-config-examples.py --check
 ```
 
-Tool reference docs are generated from the live MCP app:
+Tool and instruction reference JSON are generated from the live MCP app:
 
 ```bash
 uv run python scripts/export-tools-json.py \
   --wrapped \
   --output docs/reference/generated/tools.json \
-  --markdown-output docs/reference/tools.md
+  --instructions-output docs/reference/generated/server-instructions.json
 
 uv run python scripts/export-tools-json.py \
   --wrapped \
   --output docs/reference/generated/tools.json \
-  --markdown-output docs/reference/tools.md \
+  --instructions-output docs/reference/generated/server-instructions.json \
   --check
 ```
 
@@ -161,6 +161,3 @@ uv run mkdocs build --strict
 
 Also test the Docker image or binary artifact and at least one real MCP connection path before publishing.
 
-## Maintenance notes
-
-Selective upstream sync notes live under `docs/maintenance/upstream-sync/`. They are maintenance records, not user-facing product documentation, so they are intentionally not in the main site navigation.

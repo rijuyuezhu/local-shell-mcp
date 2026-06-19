@@ -14,6 +14,6 @@ YAML config files use flat setting names such as `auth_mode` and `workspace_root
 
 `audit_log_path` and `agent_config_dir` are derived from `state_dir` as `audit_log/audit.jsonl` and `agent_config`; they are not standalone settings.
 
-<div class="generated-reference" data-reference-kind="configuration" data-reference-json="../generated/configuration.json">
+<div class="generated-reference" data-reference-json="../generated/configuration.json">
 Loading generated configuration reference...
 </div>

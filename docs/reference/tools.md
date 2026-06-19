@@ -6,6 +6,6 @@ Tool descriptions come from the tool definitions/docstrings exposed by the MCP s
 
 Tool availability still depends on client capability and server settings. Regular connector-style clients may only expose `search` and `fetch`; ChatGPT Developer Mode and full MCP clients can expose the complete MCP surface. Remote tools require remote workers to be enabled and connected. Agent bridge tools require agent bridge configuration.
 
-<div class="generated-reference" data-reference-kind="tools" data-reference-json="../generated/tools.json">
+<div class="generated-reference" data-reference-json="../generated/tools.json">
 Loading generated tools reference...
 </div>

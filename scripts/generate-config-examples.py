@@ -228,6 +228,77 @@ def _setting_doc(spec: SettingSpec) -> dict[str, Any]:
     }
 
 
+def _code(value: Any) -> dict[str, str]:
+    """Return a generic renderer code-cell value."""
+    return {"code": str(value)}
+
+
+def _setting_row(spec: SettingSpec) -> list[Any]:
+    """Return one generic renderer row for a setting."""
+    cli_lines: list[Any] = [_code(spec.cli_flag)]
+    if spec.is_nullable:
+        cli_lines.append(_code(f"{spec.unset_cli_flag} clears the value"))
+    return [
+        _code(spec.name),
+        {"lines": cli_lines},
+        _code(spec.env_var),
+        _type_label(spec),
+        _code(_display_default(spec.default)),
+        spec.help,
+    ]
+
+
+def _settings_sections() -> list[dict[str, Any]]:
+    """Return generic renderer sections for configuration settings."""
+    sections: list[dict[str, Any]] = []
+    for section in SECTION_ORDER:
+        rows = [
+            _setting_row(spec)
+            for spec in SETTING_SPECS
+            if spec.section == section
+        ]
+        if rows:
+            sections.append(
+                {
+                    "kind": "table",
+                    "heading": section,
+                    "headers": [
+                        "Setting",
+                        "CLI",
+                        "Environment",
+                        "Type",
+                        "Default",
+                        "Description",
+                    ],
+                    "rows": rows,
+                }
+            )
+    sections.append(
+        {
+            "kind": "table",
+            "heading": "Docker entrypoint settings",
+            "body": "These variables are consumed by the Docker entrypoint before the Python application starts.",
+            "headers": ["Environment", "Default", "Description"],
+            "rows": [
+                [_code(name), _code(default or "unset"), help_text]
+                for name, default, help_text in DOCKER_ENTRYPOINT_SPECS
+            ],
+        }
+    )
+    sections.append(
+        {
+            "kind": "table",
+            "heading": "Optional sidecar settings",
+            "headers": ["Environment", "Default", "Description"],
+            "rows": [
+                [_code(name), _code(default or "unset"), help_text]
+                for name, default, help_text in SIDECAR_SPECS
+            ],
+        }
+    )
+    return sections
+
+
 def generate_config_reference_json() -> str:
     """Generate machine-readable configuration reference JSON."""
     validate_setting_specs()
@@ -248,6 +319,7 @@ def generate_config_reference_json() -> str:
             {"env": name, "default": default, "description": help_text}
             for name, default, help_text in SIDECAR_SPECS
         ],
+        "sections": _settings_sections(),
     }
     return (
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
