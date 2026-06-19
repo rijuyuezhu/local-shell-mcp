@@ -1,15 +1,20 @@
 # ChatGPT connector
 
-`local-shell-mcp` is designed to work as a ChatGPT custom MCP connector. Public deployments should use the built-in OAuth flow.
+`local-shell-mcp` can be added to ChatGPT as a custom MCP connector. Public deployments should use the built-in OAuth flow.
 
-## Server requirements
+## Before adding the connector
 
-Before adding the connector, confirm:
+Confirm:
 
-1. The server is reachable through a public HTTPS origin.
-2. `LOCAL_SHELL_MCP_BASE_URL` exactly matches that public origin.
-3. `LOCAL_SHELL_MCP_AUTH_MODE=oauth` is set for public access.
+1. The public HTTPS origin routes to the server.
+2. `LOCAL_SHELL_MCP_BASE_URL` exactly matches that origin.
+3. `LOCAL_SHELL_MCP_AUTH_MODE=oauth` is set.
 4. `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` is set to a long random value.
+5. The health endpoint works:
+
+    ```bash
+    curl -i https://your-public-host.example.com/healthz
+    ```
 
 The MCP URL is:
 
@@ -19,30 +24,21 @@ https://your-public-host.example.com/mcp
 
 ## Add the connector
 
-1. Start `local-shell-mcp`.
-2. In ChatGPT settings, open Connectors.
-3. Enable Developer Mode under Advanced when you need the full coding-agent tool surface.
-4. Add a custom MCP connector.
-5. Use the MCP URL:
+1. Open ChatGPT settings and find Connectors or custom MCP connectors.
+2. Add a custom MCP connector.
+3. Use the MCP URL ending in `/mcp`.
+4. Complete the OAuth approval flow with `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN`.
+5. Refresh the connector tool list after server or tool-surface changes.
 
-    ```text
-    https://your-public-host.example.com/mcp
-    ```
+Regular connector-style clients may expose only `search` and `fetch`. ChatGPT Developer Mode and full MCP clients can expose the complete shell, filesystem, patch, remote-worker, and agent-bridge tools.
 
-6. Complete the OAuth approval flow by entering `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN`.
-7. Refresh the connector tool list after server changes.
-
-Regular connector clients can use the read-only `search` and `fetch` tools. Full shell, filesystem, patch, and remote-worker tools require Developer Mode or another full MCP client.
-
-## Test the connector
-
-After connecting, use a low-risk prompt:
+## Test prompt
 
 ```text
-Use local-shell-mcp to run environment_info and summarize the workspace root, auth mode, and environment probe.
+Use local-shell-mcp. Run environment_info and summarize the workspace root, auth mode, safety limits, and available tool categories. Do not edit files yet.
 ```
 
-Then try:
+Then:
 
 ```text
 Use local-shell-mcp to run pwd and tell me the output.
@@ -50,14 +46,14 @@ Use local-shell-mcp to run pwd and tell me the output.
 
 ## OAuth behavior
 
-On first connection, ChatGPT opens `/oauth/authorize`. After you approve with the admin PIN, ChatGPT exchanges the authorization code for a bearer token and calls `/mcp` with an `Authorization: Bearer ...` header.
+On first connection, ChatGPT opens `/oauth/authorize`. After approval, the client exchanges the authorization code for a bearer token and calls `/mcp` with `Authorization: Bearer ...`.
 
-Bearer tokens expire after `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S`. The authorization code lifetime is controlled by `LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S`.
+Bearer tokens expire after `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S`. Authorization codes expire after `LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S`.
 
 ## Common connector mistakes
 
-- The public base URL has a trailing path or does not match the tunnel hostname.
 - The connector URL omits `/mcp`.
-- Developer Mode is disabled, so only read-only connector tools appear.
-- The server was restarted with new tool settings, but ChatGPT's connector tool list was not refreshed.
-- `LOCAL_SHELL_MCP_AUTH_MODE=none` is used on a public hostname. Do not do this.
+- `LOCAL_SHELL_MCP_BASE_URL` includes `/mcp`; it should be the origin only.
+- The public hostname in Cloudflare does not match `LOCAL_SHELL_MCP_BASE_URL`.
+- The server was restarted with new tool settings, but the connector tool list was not refreshed.
+- `LOCAL_SHELL_MCP_AUTH_MODE=none` is used on a public hostname.

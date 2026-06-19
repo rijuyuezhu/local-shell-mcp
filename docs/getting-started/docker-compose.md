@@ -1,32 +1,32 @@
 # Docker Compose
 
-Docker Compose is the recommended starting path because it keeps model-controlled tools inside a container.
+Docker Compose runs the model-controlled tools inside a container. Use it when you want a more disposable execution environment and your host can run the published `linux/amd64` image.
 
-## Environment file
+The current Docker release workflow publishes `linux/amd64`. On non-x64 hosts, prefer the local source/binary path or build a local image yourself.
 
-Create `.env` from the example:
+## Create `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Minimum public ChatGPT setup:
+Minimum public setup:
 
 ```env
 LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
 LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
-CLOUDFLARE_TUNNEL_TOKEN=
+CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 ```
 
-Docker Compose passes `.env` into the container with `env_file:`.
+Docker Compose passes `.env` into the container with `env_file:`. The Cloudflare sidecar also reads the tunnel token from the same file.
 
 ## Start
 
 ```bash
-mkdir -p workspaces/default
-docker compose up -d
+mkdir -p workspaces/default/agent/workspace
+docker compose --profile tunnel up -d
 ```
 
 Check status:
@@ -34,12 +34,11 @@ Check status:
 ```bash
 docker compose ps
 docker compose logs --tail=100 local-shell-mcp
+docker compose logs --tail=100 cloudflared
 curl -i http://127.0.0.1:8765/healthz
 ```
 
 ## Mounted paths
-
-The Compose file mounts these important paths:
 
 | Host path or volume | Container path | Purpose |
 |---|---|---|
@@ -70,8 +69,6 @@ LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` disables built-in workspace and command restrictions. Use it only in disposable containers or VMs.
 
 ## Stop and reset
-
-Stop the service:
 
 ```bash
 docker compose down

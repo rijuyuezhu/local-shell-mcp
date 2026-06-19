@@ -54,7 +54,8 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     mcp = build_mcp()
     assert mcp.instructions is not None
     assert (
-        "Dedicated git tools are intentionally not exposed" in mcp.instructions
+        "Dedicated version-control tools are intentionally not exposed"
+        in mcp.instructions
     )
     assert "secret_scan is heuristic" in mcp.instructions
 

@@ -1,6 +1,6 @@
 # Development
 
-This page is for contributors working on `local-shell-mcp` itself.
+This page is for contributors working on `local-shell-mcp` itself. It focuses on how to run, debug, test, and regenerate docs without relying on stale code walkthroughs.
 
 ## Local environment
 
@@ -11,93 +11,142 @@ uv sync --group dev
 uv run pre-commit install
 ```
 
-Run checks:
+## Run the server during development
+
+Run MCP-over-HTTP locally without OAuth:
+
+```bash
+LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode mcp --port 13444
+```
+
+Run the REST debug API locally without OAuth:
+
+```bash
+LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http --port 13444
+```
+
+Use an explicit workspace when needed:
+
+```bash
+LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project \
+LOCAL_SHELL_MCP_AUTH_MODE=none \
+uv run local-shell-mcp --mode http --port 13444
+```
+
+Use full-control mode only for disposable test workspaces:
+
+```bash
+LOCAL_SHELL_MCP_AUTH_MODE=none \
+uv run local-shell-mcp --mode http --port 13444 --allow-full-control true
+```
+
+## Smoke-test with curl
+
+Health check:
+
+```bash
+curl -i http://127.0.0.1:13444/healthz
+```
+
+Inspect environment through the REST debug API:
+
+```bash
+curl -s http://127.0.0.1:13444/tools/environment_info | jq
+```
+
+Read a file through the REST debug API:
+
+```bash
+curl -s -X POST http://127.0.0.1:13444/tools/read_file \
+  -H 'content-type: application/json' \
+  -d '{"path":"README.md","start_line":1,"end_line":40}' | jq
+```
+
+List files:
+
+```bash
+curl -s -X POST http://127.0.0.1:13444/tools/list_files \
+  -H 'content-type: application/json' \
+  -d '{"path":".","max_entries":20}' | jq
+```
+
+Export the MCP tool surface:
+
+```bash
+uv run python scripts/export-tools-json.py --wrapped > /tmp/local-shell-mcp-tools.json
+jq '.count, [.tools[].name]' /tmp/local-shell-mcp-tools.json
+```
+
+## Watch logs and audit output
+
+For a foreground dev process, read the terminal output first.
+
+For a user systemd service:
+
+```bash
+journalctl --user -u local-shell-mcp.service -f -n 200
+```
+
+Audit log:
+
+```bash
+tail -F /workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
+```
+
+The audit log can contain full prompts, tool inputs, tool outputs, and file contents. Treat it as sensitive.
+
+## Run checks before committing
 
 ```bash
 uv run pre-commit run --all-files
-uv run ruff check .
 uv run pyright
 uv run pytest -q
+uv run mkdocs build --strict
 ```
 
-Run a local MCP server without OAuth:
+For focused work, run the relevant subset first:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode mcp
+uv run pytest tests/test_tool_surface.py -q
+uv run pytest tests/test_config_surface.py -q
+uv run pytest tests/test_agent_bridge_tools.py -q
 ```
 
-Run the REST debug API:
+## Regenerate generated reference data
+
+Configuration examples and reference JSON are generated from the settings registry:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
+uv run python scripts/generate-config-examples.py
+uv run python scripts/generate-config-examples.py --check
 ```
+
+Tool and instruction reference JSON are generated from the live MCP app:
+
+```bash
+uv run python scripts/export-tools-json.py \
+  --wrapped \
+  --output docs/reference/generated/tools.json \
+  --instructions-output docs/reference/generated/server-instructions.json
+
+uv run python scripts/export-tools-json.py \
+  --wrapped \
+  --output docs/reference/generated/tools.json \
+  --instructions-output docs/reference/generated/server-instructions.json \
+  --check
+```
+
+The pre-commit hooks run these generators when related source files change.
 
 ## Documentation development
 
 The documentation site uses Material for MkDocs.
 
-Install docs dependencies:
-
 ```bash
 uv sync --group docs
-```
-
-Serve locally:
-
-```bash
 uv run mkdocs serve
-```
-
-Build strictly:
-
-```bash
 uv run mkdocs build --strict
 ```
-
-The deployed site is built by the `Docs` GitHub Actions workflow from `docs/` and `mkdocs.yml`.
-
-## Project layout
-
-| Path | Purpose |
-|---|---|
-| `src/local_shell_mcp/main.py` | CLI parsing and mode dispatch. |
-| `src/local_shell_mcp/server/` | Server app assembly for REST HTTP, MCP HTTP/stdio, shared public ASGI routes, MCP metadata, instructions, remote MCP registration, and tool watchdogs. |
-| `src/local_shell_mcp/tools/contracts.py` | Shared tool registry contracts, context, response schema types, HTTP route metadata, and local handler types. |
-| `src/local_shell_mcp/tools/declarative.py` | Declarative tool registration that derives MCP registration and HTTP handlers from one typed function. |
-| `src/local_shell_mcp/tools/discovery.py` | Runtime discovery of built-in tool registries. |
-| `src/local_shell_mcp/tools/local_invocations.py` | HTTP adapter dispatch helper and routed REST auditing. |
-| `src/local_shell_mcp/tools/registry/` | Category-specific MCP/REST tool registries discovered at runtime. |
-| `src/local_shell_mcp/config/` | Pydantic settings, environment variables, YAML config, and configuration surface metadata. |
-| `src/local_shell_mcp/oauth/` | OAuth middleware, server metadata, authorization flow, token handling, and HTTP route wrapping. |
-| `src/local_shell_mcp/ops/` | Concrete tool-family operation modules; shared helpers live under `ops/utils/`. |
-| `src/local_shell_mcp/remote/` | Remote invite management, shared worker tool specs and services, worker routes, bundle assembly, and worker CLI helpers. |
-| `src/local_shell_mcp/agent_bridge/` | External MCP and skill bridge, including shared service helpers used by MCP and REST adapters. |
-| `src/local_shell_mcp/tools/serialization.py` | JSON-compatible serialization helpers for audited tool outputs. |
-| `src/local_shell_mcp/remote/responses.py` | Remote worker endpoint response envelope builders. |
-| `src/local_shell_mcp/audit.py` | Audit log writer, trimming, and routed tool-call audit helpers. |
-| `tests/` | Unit, compatibility, and e2e tests. |
-| `scripts/` | Generated-config, tool export, entrypoint, tunnel, and release helper scripts. |
-| `vscode-extension/` | VS Code extension source and packaging metadata. |
-
-## Implementation notes
-
-- Tool registration is registry-based. Keep concrete behavior in same-named `ops/` modules; registry modules adapt typed parameters, descriptions, metadata, and transport exposure.
-- Transport app assembly lives in `mcp.app` and `http.app`.
-- Static tools should use `DeclarativeToolRegistry` so MCP registration and HTTP handlers derive from one typed function. Declare the registry class first, then use `local_tool = RegistryClass.get_tool_decorator()` and `@local_tool(...)` for each tool so the registry has no second explicit tool list. Keep custom `http_routes()`, `http_handlers()`, or `register_mcp()` methods only when generated specs, dynamic tools, or runtime settings affect the surface.
-- Large registry implementations may delegate focused MCP registration code to transport-specific companion modules, as `remote.py` does with `mcp.remote_tools`, so `tools.registry` stays focused on discovered registry definitions.
-- Configuration surface metadata lives in `config.surface`.
-- Do not add a second global tool table. MCP and REST surfaces should be derived from category registries.
-- Routed tool calls are audited centrally. Avoid per-tool call logging unless the event is a lower-level subsystem event that is useful in addition to the routed call pair.
-- MCP-over-HTTP requests are protected by OAuth unless `auth_mode=none` is configured.
-- OAuth HTTP mode is split by responsibility: models/state, URL helpers, metadata endpoints, response serialization, dynamic client registration, authorization form/code flow, token/JWT validation, and ASGI route wrapping. Import from the focused `oauth.*` modules rather than a compatibility facade.
-- Static MCP tools return their typed structured outputs directly; remote worker HTTP endpoint envelopes should use `remote.responses`.
-- File tools read UTF-8 text and enforce configured read/write limits.
-- Operation modules that need managed temporary text files should use `ops.utils.temp_file` so temp pruning, size checks, and filename generation stay consistent.
-- Remote workers run matching operation categories on the worker machine and return results through the control server.
-- Remote registry adapters should call remote manager behavior through `remote.service` helpers rather than reaching into the manager directly.
-- Remote worker proxy routes, HTTP handlers, and worker-side allowlists should derive from `remote.tool_specs` so new remote proxies are not registered in multiple places by hand.
-- Agent bridge config is treated as external input and redacts configured secrets from status and error payloads.
-- Agent bridge MCP and REST adapters should share behavior through `agent_bridge.service` instead of duplicating status, skill, and upstream MCP call logic.
 
 ## Release checks
 
@@ -110,14 +159,5 @@ uv run pytest -q
 uv run mkdocs build --strict
 ```
 
-Also test the Docker image and at least one MCP connection path before publishing.
+Also test the Docker image or binary artifact and at least one real MCP connection path before publishing.
 
-## Selective upstream sync notes
-
-Some upstream commits are intentionally recorded without porting their code when the current tree has a different policy or version line. Detailed per-range sync ledgers live under `docs/maintenance/upstream-sync/`.
-
-| Upstream commit | Decision | Rationale |
-|---|---|---|
-| `78fd6d5` Raise public shell timeout cap to 120 seconds | Skipped | The current configuration keeps `run_shell_max_timeout_s=60` and `tool_timeout_s=60`. Raising only the shell cap would be inconsistent with the existing tool watchdog policy, and this sync intentionally keeps the timeout behavior unchanged. |
-| `8e5a988` Bump version to 2.3.0 | Skipped | The origin line is already at `3.5.0`; applying this upstream release-version bump would downgrade package and VS Code extension versions rather than port functionality. |
-| `572d947` Prepare v2.3.1 release | Skipped | This is another upstream release-line update touching version metadata and release packaging. The origin line remains `3.5.0`, so applying it would downgrade release metadata instead of porting a feature. |

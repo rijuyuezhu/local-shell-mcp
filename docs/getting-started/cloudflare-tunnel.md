@@ -1,57 +1,77 @@
 # Cloudflare Tunnel
 
-ChatGPT custom connectors need a public HTTPS origin. The Compose file includes an optional `cloudflared` sidecar profile for Cloudflare Tunnel.
+ChatGPT custom MCP connectors need a public HTTPS endpoint. The recommended path is Cloudflare Tunnel: Cloudflare terminates HTTPS on your public hostname and forwards traffic to the local `local-shell-mcp` process.
 
-## Sidecar profile
+Cloudflare Access is not required. `local-shell-mcp` uses its own OAuth approval flow for the MCP endpoint.
 
-Create a tunnel in Cloudflare Zero Trust, add a public hostname, and point it to:
+## Create the tunnel
 
-```text
-http://local-shell-mcp:8765
-```
+In Cloudflare Zero Trust:
 
-Put the tunnel token in `.env`:
+1. Create a Cloudflare Tunnel.
+2. Add a public hostname such as `mcp.example.com`.
+3. Route the hostname to the local service URL.
 
-```env
-CLOUDFLARE_TUNNEL_TOKEN=...
-LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
-```
-
-Start both services:
-
-```bash
-docker compose --profile tunnel up -d
-```
-
-The public MCP endpoint is:
-
-```text
-https://your-public-host.example.com/mcp
-```
-
-This sidecar uses Cloudflare Tunnel only. It does not configure Cloudflare Access. The built-in OAuth server remains the authentication layer for public ChatGPT connector use.
-
-## Source checkout helper
-
-For a non-Docker source checkout, `scripts/run-with-cloudflare-tunnel.sh` starts `local-shell-mcp` with `uv` and then runs a named Cloudflare Tunnel in the same terminal session.
-
-Set the required values in `.env`:
-
-```env
-LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
-CLOUDFLARE_TUNNEL_TOKEN=...
-```
-
-The Cloudflare public hostname should route to:
+For the local service path, route to:
 
 ```text
 http://127.0.0.1:8765
 ```
 
-Run:
+For Docker Compose with the bundled sidecar, route to:
+
+```text
+http://local-shell-mcp:8765
+```
+
+Copy the tunnel token and put it in `.env`:
+
+```env
+CLOUDFLARE_TUNNEL_TOKEN=...
+LOCAL_SHELL_MCP_BASE_URL=https://mcp.example.com
+```
+
+`LOCAL_SHELL_MCP_BASE_URL` must be the public origin exactly. Do not include `/mcp`.
+
+## Run with the local helper
+
+For a source checkout, run:
 
 ```bash
 scripts/run-with-cloudflare-tunnel.sh
 ```
 
-When `cloudflared` exits, the script also stops the background `local-shell-mcp` process. Use the Compose sidecar for long-running deployments.
+The helper loads `.env`, starts `uv run local-shell-mcp --mode mcp`, then starts `cloudflared tunnel --no-autoupdate run --token "$CLOUDFLARE_TUNNEL_TOKEN"`.
+
+When `cloudflared` exits, the helper stops the background server process. For long-running use, run the helper under systemd as shown in [Quickstart](quickstart.md).
+
+## Run with Docker Compose
+
+The Compose file includes an optional Cloudflare Tunnel sidecar:
+
+```bash
+docker compose --profile tunnel up -d
+```
+
+The sidecar reads `CLOUDFLARE_TUNNEL_TOKEN` from `.env` and sends tunnel traffic to the `local-shell-mcp` container.
+
+## Verify routing
+
+From a network outside the host, verify the public URL:
+
+```bash
+curl -i https://mcp.example.com/healthz
+```
+
+The MCP connector URL is:
+
+```text
+https://mcp.example.com/mcp
+```
+
+Common mistakes:
+
+- `LOCAL_SHELL_MCP_BASE_URL` includes `/mcp`.
+- Cloudflare routes to the wrong internal host: use `127.0.0.1` for local helper, `local-shell-mcp` for Compose sidecar.
+- The tunnel hostname changes but `.env` still has the old origin.
+- `LOCAL_SHELL_MCP_AUTH_MODE=none` is used on a public hostname.

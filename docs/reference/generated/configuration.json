@@ -1,0 +1,2096 @@
+{
+  "docker_entrypoint_settings": [
+    {
+      "default": "false",
+      "description": "Run the Dockerized MCP server itself as root. Prefer explicit sudo inside commands instead.",
+      "env": "DOCKER_RUN_AS_ROOT"
+    },
+    {
+      "default": "true",
+      "description": "Persist GitHub CLI, Git HTTPS credentials, GitCode credentials, SSH keys, .netrc, and GPG state across container rebuilds.",
+      "env": "DOCKER_PERSISTENT_CREDENTIALS"
+    },
+    {
+      "default": "/persist/credentials",
+      "description": "Root directory for persisted credentials. The Docker Compose example stores it in the local-shell-mcp-credentials volume.",
+      "env": "DOCKER_CREDENTIALS_DIR"
+    },
+    {
+      "default": "true",
+      "description": "chown the mounted workspace to the agent user before starting the server.",
+      "env": "DOCKER_CHOWN_WORKSPACE"
+    }
+  ],
+  "precedence": [
+    "defaults",
+    "config file",
+    "LOCAL_SHELL_MCP_* environment variables",
+    "CLI arguments"
+  ],
+  "section_order": [
+    "Server",
+    "Paths and state",
+    "Authentication and OAuth",
+    "Safety and resource limits",
+    "Remote workers",
+    "Agent capability bridge",
+    "Tool executables"
+  ],
+  "sections": [
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Server",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "mode"
+          },
+          {
+            "lines": [
+              {
+                "code": "--mode"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MODE"
+          },
+          "mcp | http | both | stdio",
+          {
+            "code": "mcp"
+          },
+          "Server transport mode."
+        ],
+        [
+          {
+            "code": "host"
+          },
+          {
+            "lines": [
+              {
+                "code": "--host"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_HOST"
+          },
+          "string",
+          {
+            "code": "0.0.0.0"
+          },
+          "Bind host for HTTP/MCP transports."
+        ],
+        [
+          {
+            "code": "port"
+          },
+          {
+            "lines": [
+              {
+                "code": "--port"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_PORT"
+          },
+          "integer",
+          {
+            "code": "8765"
+          },
+          "Bind port for HTTP/MCP transports."
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Paths and state",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "workspace_root"
+          },
+          {
+            "lines": [
+              {
+                "code": "--workspace-root"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_WORKSPACE_ROOT"
+          },
+          "path",
+          {
+            "code": "/workspace"
+          },
+          "Root directory for workspace."
+        ],
+        [
+          {
+            "code": "state_dir"
+          },
+          {
+            "lines": [
+              {
+                "code": "--state-dir"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_STATE_DIR"
+          },
+          "path",
+          {
+            "code": "/workspace/.local-shell-mcp"
+          },
+          "Directory for runtime state. Including audit logs, temporary files, and config"
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Authentication and OAuth",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "auth_mode"
+          },
+          {
+            "lines": [
+              {
+                "code": "--auth-mode"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AUTH_MODE"
+          },
+          "none | oauth",
+          {
+            "code": "oauth"
+          },
+          "Authentication mode. Do not expose public services with none."
+        ],
+        [
+          {
+            "code": "auth_bypass_localhost"
+          },
+          {
+            "lines": [
+              {
+                "code": "--auth-bypass-localhost"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Allow localhost requests without bearer authentication."
+        ],
+        [
+          {
+            "code": "base_url"
+          },
+          {
+            "lines": [
+              {
+                "code": "--base-url"
+              },
+              {
+                "code": "--unset-base-url clears the value"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_BASE_URL"
+          },
+          "string",
+          {
+            "code": "unset"
+          },
+          "Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, request-aware routes derive it from forwarded/Host headers, and non-request generated links fall back to the bind host and port."
+        ],
+        [
+          {
+            "code": "oauth_issuer"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-issuer"
+              },
+              {
+                "code": "--unset-oauth-issuer clears the value"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_ISSUER"
+          },
+          "string",
+          {
+            "code": "unset"
+          },
+          "Override URL for OAuth issuer metadata; usually derived from base_url."
+        ],
+        [
+          {
+            "code": "oauth_resource"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-resource"
+              },
+              {
+                "code": "--unset-oauth-resource clears the value"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_RESOURCE"
+          },
+          "string",
+          {
+            "code": "unset"
+          },
+          "Override URL for OAuth resource metadata; usually derived from base_url plus /mcp."
+        ],
+        [
+          {
+            "code": "oauth_admin_pin"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-admin-pin"
+              },
+              {
+                "code": "--unset-oauth-admin-pin clears the value"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN"
+          },
+          "string",
+          {
+            "code": "unset"
+          },
+          "Admin PIN required to approve OAuth authorization."
+        ],
+        [
+          {
+            "code": "oauth_access_token_ttl_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-access-token-ttl-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S"
+          },
+          "integer",
+          {
+            "code": "3600"
+          },
+          "Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed."
+        ],
+        [
+          {
+            "code": "oauth_code_ttl_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-code-ttl-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S"
+          },
+          "integer",
+          {
+            "code": "300"
+          },
+          "OAuth authorization-code lifetime in seconds. The authorization must be done within this time."
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Safety and resource limits",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "allow_full_control"
+          },
+          {
+            "lines": [
+              {
+                "code": "--allow-full-control"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"
+          },
+          "true | false",
+          {
+            "code": "false"
+          },
+          "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints."
+        ],
+        [
+          {
+            "code": "allow_network"
+          },
+          {
+            "lines": [
+              {
+                "code": "--allow-network"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_ALLOW_NETWORK"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Allow network-capable operations."
+        ],
+        [
+          {
+            "code": "relaxed_client_tool_hints"
+          },
+          {
+            "lines": [
+              {
+                "code": "--relaxed-client-tool-hints"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS"
+          },
+          "true | false",
+          {
+            "code": "false"
+          },
+          "Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations."
+        ],
+        [
+          {
+            "code": "tool_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--tool-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S"
+          },
+          "number",
+          {
+            "code": "60"
+          },
+          "MCP/HTTP tool watchdog timeout in seconds."
+        ],
+        [
+          {
+            "code": "run_shell_default_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--run-shell-default-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "10"
+          },
+          "Default timeout for run_shell_command calls in seconds."
+        ],
+        [
+          {
+            "code": "run_shell_max_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--run-shell-max-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "60"
+          },
+          "Maximum timeout accepted by run_shell_command calls in seconds."
+        ],
+        [
+          {
+            "code": "max_output_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-output-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES"
+          },
+          "integer",
+          {
+            "code": "200000"
+          },
+          "Command output limit in bytes."
+        ],
+        [
+          {
+            "code": "max_file_read_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-file-read-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES"
+          },
+          "integer",
+          {
+            "code": "512000"
+          },
+          "Per-file read limit in bytes."
+        ],
+        [
+          {
+            "code": "max_file_write_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-file-write-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES"
+          },
+          "integer",
+          {
+            "code": "5000000"
+          },
+          "Per-file write/edit limit in bytes."
+        ],
+        [
+          {
+            "code": "max_grep_results"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-grep-results"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_GREP_RESULTS"
+          },
+          "integer",
+          {
+            "code": "200"
+          },
+          "Maximum grep result count."
+        ],
+        [
+          {
+            "code": "max_directory_entries"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-directory-entries"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_DIRECTORY_ENTRIES"
+          },
+          "integer",
+          {
+            "code": "5000"
+          },
+          "Maximum listed directory entries."
+        ],
+        [
+          {
+            "code": "max_glob_results"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-glob-results"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_GLOB_RESULTS"
+          },
+          "integer",
+          {
+            "code": "5000"
+          },
+          "Maximum glob search results."
+        ],
+        [
+          {
+            "code": "max_tree_entries"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-tree-entries"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TREE_ENTRIES"
+          },
+          "integer",
+          {
+            "code": "5000"
+          },
+          "Maximum tree-view entries."
+        ],
+        [
+          {
+            "code": "max_read_many_files"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-read-many-files"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES"
+          },
+          "integer",
+          {
+            "code": "100"
+          },
+          "Maximum files allowed to be read by read_many_files tool."
+        ],
+        [
+          {
+            "code": "max_read_many_total_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-read-many-total-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_READ_MANY_TOTAL_BYTES"
+          },
+          "integer",
+          {
+            "code": "5000000"
+          },
+          "Maximum total byte limit for read_many_files tool."
+        ],
+        [
+          {
+            "code": "max_todos"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-todos"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TODOS"
+          },
+          "integer",
+          {
+            "code": "1000"
+          },
+          "Todo-list item limit."
+        ],
+        [
+          {
+            "code": "max_todo_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-todo-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TODO_BYTES"
+          },
+          "integer",
+          {
+            "code": "1000000"
+          },
+          "Todo-list total byte limit."
+        ],
+        [
+          {
+            "code": "max_audit_log_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-audit-log-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES"
+          },
+          "integer",
+          {
+            "code": "20000000"
+          },
+          "Audit-log threshold in bytes. If exceeded, the log is rotated."
+        ],
+        [
+          {
+            "code": "max_tmp_files"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-tmp-files"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TMP_FILES"
+          },
+          "integer",
+          {
+            "code": "500"
+          },
+          "Temporary-file count limit. When exceeded, old files are deleted."
+        ],
+        [
+          {
+            "code": "max_tmp_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-tmp-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TMP_BYTES"
+          },
+          "integer",
+          {
+            "code": "50000000"
+          },
+          "Temporary-file byte limit. When exceeded, old files are deleted."
+        ],
+        [
+          {
+            "code": "max_concurrent_commands"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-concurrent-commands"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_CONCURRENT_COMMANDS"
+          },
+          "integer",
+          {
+            "code": "4"
+          },
+          "Concurrent command limit."
+        ],
+        [
+          {
+            "code": "max_tmux_sessions"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-tmux-sessions"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS"
+          },
+          "integer",
+          {
+            "code": "16"
+          },
+          "Persistent shell session limit."
+        ],
+        [
+          {
+            "code": "file_download_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--file-download-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Enable download links created by protected tools."
+        ],
+        [
+          {
+            "code": "file_download_default_ttl_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--file-download-default-ttl-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_TTL_S"
+          },
+          "integer",
+          {
+            "code": "3600"
+          },
+          "Default lifetime for file download links in seconds."
+        ],
+        [
+          {
+            "code": "file_download_max_ttl_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--file-download-max-ttl-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_TTL_S"
+          },
+          "integer",
+          {
+            "code": "604800"
+          },
+          "Maximum lifetime accepted for file download links in seconds."
+        ],
+        [
+          {
+            "code": "file_download_default_max_downloads"
+          },
+          {
+            "lines": [
+              {
+                "code": "--file-download-default-max-downloads"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS"
+          },
+          "integer",
+          {
+            "code": "0"
+          },
+          "Default download-count limit for file links; 0 means unlimited until expiry."
+        ],
+        [
+          {
+            "code": "file_download_max_file_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--file-download-max-file-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES"
+          },
+          "integer",
+          {
+            "code": "0"
+          },
+          "Maximum file size allowed for download links; 0 disables this size limit."
+        ],
+        [
+          {
+            "code": "command_denylist"
+          },
+          {
+            "lines": [
+              {
+                "code": "--command-denylist"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_COMMAND_DENYLIST"
+          },
+          "CSV or YAML list",
+          {
+            "code": "docker.sock,/var/run/docker.sock,mkfs,mount,umount,shutdown,reboot,systemctl,iptables,nft"
+          },
+          "Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled."
+        ],
+        [
+          {
+            "code": "path_denylist"
+          },
+          {
+            "lines": [
+              {
+                "code": "--path-denylist"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_PATH_DENYLIST"
+          },
+          "CSV or YAML list",
+          {
+            "code": ".ssh/id_rsa,.ssh/id_ed25519,.env,secrets,credentials,.git/config"
+          },
+          "Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled."
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Remote workers",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "remote_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Enable remote worker routes and MCP tools."
+        ],
+        [
+          {
+            "code": "remote_invite_ttl_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-invite-ttl-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_INVITE_TTL_S"
+          },
+          "integer",
+          {
+            "code": "600"
+          },
+          "One-time remote worker invite lifetime in seconds."
+        ],
+        [
+          {
+            "code": "remote_poll_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-poll-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "25"
+          },
+          "Remote worker long-poll heartbeat timeout in seconds."
+        ],
+        [
+          {
+            "code": "remote_job_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-job-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "3600"
+          },
+          "Control-side remote job result timeout in seconds."
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Agent capability bridge",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "agent_bridge_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--agent-bridge-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Enable agent capability bridge tools."
+        ],
+        [
+          {
+            "code": "agent_mcp_probe_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--agent-mcp-probe-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AGENT_MCP_PROBE_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "5"
+          },
+          "Agent MCP server probe timeout in seconds."
+        ],
+        [
+          {
+            "code": "agent_mcp_call_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--agent-mcp-call-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AGENT_MCP_CALL_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "60"
+          },
+          "Agent MCP tool-call timeout in seconds."
+        ],
+        [
+          {
+            "code": "agent_dynamic_mcp_tools"
+          },
+          {
+            "lines": [
+              {
+                "code": "--agent-dynamic-mcp-tools"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AGENT_DYNAMIC_MCP_TOOLS"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Register dynamic MCP bridge tools."
+        ],
+        [
+          {
+            "code": "agent_dynamic_skill_tools"
+          },
+          {
+            "lines": [
+              {
+                "code": "--agent-dynamic-skill-tools"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AGENT_DYNAMIC_SKILL_TOOLS"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Register dynamic skill bridge tools."
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Tool executables",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "shell_executable"
+          },
+          {
+            "lines": [
+              {
+                "code": "--shell-executable"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_SHELL_EXECUTABLE"
+          },
+          "string",
+          {
+            "code": "/bin/bash"
+          },
+          "Shell executable used for shell commands."
+        ],
+        [
+          {
+            "code": "tmux_bin"
+          },
+          {
+            "lines": [
+              {
+                "code": "--tmux-bin"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_TMUX_BIN"
+          },
+          "string",
+          {
+            "code": "tmux"
+          },
+          "tmux executable."
+        ],
+        [
+          {
+            "code": "rg_bin"
+          },
+          {
+            "lines": [
+              {
+                "code": "--rg-bin"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_RG_BIN"
+          },
+          "string",
+          {
+            "code": "rg"
+          },
+          "ripgrep executable."
+        ],
+        [
+          {
+            "code": "python_bin"
+          },
+          {
+            "lines": [
+              {
+                "code": "--python-bin"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_PYTHON_BIN"
+          },
+          "string",
+          {
+            "code": "python3"
+          },
+          "Python executable."
+        ]
+      ]
+    },
+    {
+      "body": "These variables are consumed by the Docker entrypoint before the Python application starts.",
+      "headers": [
+        "Environment",
+        "Default",
+        "Description"
+      ],
+      "heading": "Docker entrypoint settings",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "DOCKER_RUN_AS_ROOT"
+          },
+          {
+            "code": "false"
+          },
+          "Run the Dockerized MCP server itself as root. Prefer explicit sudo inside commands instead."
+        ],
+        [
+          {
+            "code": "DOCKER_PERSISTENT_CREDENTIALS"
+          },
+          {
+            "code": "true"
+          },
+          "Persist GitHub CLI, Git HTTPS credentials, GitCode credentials, SSH keys, .netrc, and GPG state across container rebuilds."
+        ],
+        [
+          {
+            "code": "DOCKER_CREDENTIALS_DIR"
+          },
+          {
+            "code": "/persist/credentials"
+          },
+          "Root directory for persisted credentials. The Docker Compose example stores it in the local-shell-mcp-credentials volume."
+        ],
+        [
+          {
+            "code": "DOCKER_CHOWN_WORKSPACE"
+          },
+          {
+            "code": "true"
+          },
+          "chown the mounted workspace to the agent user before starting the server."
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Environment",
+        "Default",
+        "Description"
+      ],
+      "heading": "Optional sidecar settings",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "CLOUDFLARE_TUNNEL_TOKEN"
+          },
+          {
+            "code": "unset"
+          },
+          "Optional token for the cloudflared tunnel sidecar profile. This uses Cloudflare Tunnel only, not Cloudflare Access."
+        ]
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "choices": [
+        "mcp",
+        "http",
+        "both",
+        "stdio"
+      ],
+      "cli": "--mode",
+      "default": "mcp",
+      "default_display": "mcp",
+      "description": "Server transport mode.",
+      "env": "LOCAL_SHELL_MCP_MODE",
+      "name": "mode",
+      "nullable": false,
+      "section": "Server",
+      "type": "mcp | http | both | stdio",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--host",
+      "default": "0.0.0.0",
+      "default_display": "0.0.0.0",
+      "description": "Bind host for HTTP/MCP transports.",
+      "env": "LOCAL_SHELL_MCP_HOST",
+      "name": "host",
+      "nullable": false,
+      "section": "Server",
+      "type": "string",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--port",
+      "default": 8765,
+      "default_display": "8765",
+      "description": "Bind port for HTTP/MCP transports.",
+      "env": "LOCAL_SHELL_MCP_PORT",
+      "name": "port",
+      "nullable": false,
+      "section": "Server",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--workspace-root",
+      "default": "/workspace",
+      "default_display": "/workspace",
+      "description": "Root directory for workspace.",
+      "env": "LOCAL_SHELL_MCP_WORKSPACE_ROOT",
+      "name": "workspace_root",
+      "nullable": false,
+      "section": "Paths and state",
+      "type": "path",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--state-dir",
+      "default": "/workspace/.local-shell-mcp",
+      "default_display": "/workspace/.local-shell-mcp",
+      "description": "Directory for runtime state. Including audit logs, temporary files, and config",
+      "env": "LOCAL_SHELL_MCP_STATE_DIR",
+      "name": "state_dir",
+      "nullable": false,
+      "section": "Paths and state",
+      "type": "path",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "none",
+        "oauth"
+      ],
+      "cli": "--auth-mode",
+      "default": "oauth",
+      "default_display": "oauth",
+      "description": "Authentication mode. Do not expose public services with none.",
+      "env": "LOCAL_SHELL_MCP_AUTH_MODE",
+      "name": "auth_mode",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "none | oauth",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--auth-bypass-localhost",
+      "default": true,
+      "default_display": "true",
+      "description": "Allow localhost requests without bearer authentication.",
+      "env": "LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST",
+      "name": "auth_bypass_localhost",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--base-url",
+      "default": null,
+      "default_display": "unset",
+      "description": "Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, request-aware routes derive it from forwarded/Host headers, and non-request generated links fall back to the bind host and port.",
+      "env": "LOCAL_SHELL_MCP_BASE_URL",
+      "name": "base_url",
+      "nullable": true,
+      "section": "Authentication and OAuth",
+      "type": "string",
+      "unset_cli": "--unset-base-url"
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-issuer",
+      "default": null,
+      "default_display": "unset",
+      "description": "Override URL for OAuth issuer metadata; usually derived from base_url.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_ISSUER",
+      "name": "oauth_issuer",
+      "nullable": true,
+      "section": "Authentication and OAuth",
+      "type": "string",
+      "unset_cli": "--unset-oauth-issuer"
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-resource",
+      "default": null,
+      "default_display": "unset",
+      "description": "Override URL for OAuth resource metadata; usually derived from base_url plus /mcp.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_RESOURCE",
+      "name": "oauth_resource",
+      "nullable": true,
+      "section": "Authentication and OAuth",
+      "type": "string",
+      "unset_cli": "--unset-oauth-resource"
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-admin-pin",
+      "default": null,
+      "default_display": "unset",
+      "description": "Admin PIN required to approve OAuth authorization.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN",
+      "name": "oauth_admin_pin",
+      "nullable": true,
+      "section": "Authentication and OAuth",
+      "type": "string",
+      "unset_cli": "--unset-oauth-admin-pin"
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-access-token-ttl-s",
+      "default": 3600,
+      "default_display": "3600",
+      "description": "Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S",
+      "name": "oauth_access_token_ttl_s",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-code-ttl-s",
+      "default": 300,
+      "default_display": "300",
+      "description": "OAuth authorization-code lifetime in seconds. The authorization must be done within this time.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S",
+      "name": "oauth_code_ttl_s",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--allow-full-control",
+      "default": false,
+      "default_display": "false",
+      "description": "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints.",
+      "env": "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL",
+      "name": "allow_full_control",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--allow-network",
+      "default": true,
+      "default_display": "true",
+      "description": "Allow network-capable operations.",
+      "env": "LOCAL_SHELL_MCP_ALLOW_NETWORK",
+      "name": "allow_network",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--relaxed-client-tool-hints",
+      "default": false,
+      "default_display": "false",
+      "description": "Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations.",
+      "env": "LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS",
+      "name": "relaxed_client_tool_hints",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--tool-timeout-s",
+      "default": 60,
+      "default_display": "60",
+      "description": "MCP/HTTP tool watchdog timeout in seconds.",
+      "env": "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S",
+      "name": "tool_timeout_s",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "number",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--run-shell-default-timeout-s",
+      "default": 10,
+      "default_display": "10",
+      "description": "Default timeout for run_shell_command calls in seconds.",
+      "env": "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S",
+      "name": "run_shell_default_timeout_s",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--run-shell-max-timeout-s",
+      "default": 60,
+      "default_display": "60",
+      "description": "Maximum timeout accepted by run_shell_command calls in seconds.",
+      "env": "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S",
+      "name": "run_shell_max_timeout_s",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-output-bytes",
+      "default": 200000,
+      "default_display": "200000",
+      "description": "Command output limit in bytes.",
+      "env": "LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES",
+      "name": "max_output_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-file-read-bytes",
+      "default": 512000,
+      "default_display": "512000",
+      "description": "Per-file read limit in bytes.",
+      "env": "LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES",
+      "name": "max_file_read_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-file-write-bytes",
+      "default": 5000000,
+      "default_display": "5000000",
+      "description": "Per-file write/edit limit in bytes.",
+      "env": "LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES",
+      "name": "max_file_write_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-grep-results",
+      "default": 200,
+      "default_display": "200",
+      "description": "Maximum grep result count.",
+      "env": "LOCAL_SHELL_MCP_MAX_GREP_RESULTS",
+      "name": "max_grep_results",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-directory-entries",
+      "default": 5000,
+      "default_display": "5000",
+      "description": "Maximum listed directory entries.",
+      "env": "LOCAL_SHELL_MCP_MAX_DIRECTORY_ENTRIES",
+      "name": "max_directory_entries",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-glob-results",
+      "default": 5000,
+      "default_display": "5000",
+      "description": "Maximum glob search results.",
+      "env": "LOCAL_SHELL_MCP_MAX_GLOB_RESULTS",
+      "name": "max_glob_results",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-tree-entries",
+      "default": 5000,
+      "default_display": "5000",
+      "description": "Maximum tree-view entries.",
+      "env": "LOCAL_SHELL_MCP_MAX_TREE_ENTRIES",
+      "name": "max_tree_entries",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-read-many-files",
+      "default": 100,
+      "default_display": "100",
+      "description": "Maximum files allowed to be read by read_many_files tool.",
+      "env": "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES",
+      "name": "max_read_many_files",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-read-many-total-bytes",
+      "default": 5000000,
+      "default_display": "5000000",
+      "description": "Maximum total byte limit for read_many_files tool.",
+      "env": "LOCAL_SHELL_MCP_MAX_READ_MANY_TOTAL_BYTES",
+      "name": "max_read_many_total_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-todos",
+      "default": 1000,
+      "default_display": "1000",
+      "description": "Todo-list item limit.",
+      "env": "LOCAL_SHELL_MCP_MAX_TODOS",
+      "name": "max_todos",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-todo-bytes",
+      "default": 1000000,
+      "default_display": "1000000",
+      "description": "Todo-list total byte limit.",
+      "env": "LOCAL_SHELL_MCP_MAX_TODO_BYTES",
+      "name": "max_todo_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-audit-log-bytes",
+      "default": 20000000,
+      "default_display": "20000000",
+      "description": "Audit-log threshold in bytes. If exceeded, the log is rotated.",
+      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES",
+      "name": "max_audit_log_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-tmp-files",
+      "default": 500,
+      "default_display": "500",
+      "description": "Temporary-file count limit. When exceeded, old files are deleted.",
+      "env": "LOCAL_SHELL_MCP_MAX_TMP_FILES",
+      "name": "max_tmp_files",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-tmp-bytes",
+      "default": 50000000,
+      "default_display": "50000000",
+      "description": "Temporary-file byte limit. When exceeded, old files are deleted.",
+      "env": "LOCAL_SHELL_MCP_MAX_TMP_BYTES",
+      "name": "max_tmp_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-concurrent-commands",
+      "default": 4,
+      "default_display": "4",
+      "description": "Concurrent command limit.",
+      "env": "LOCAL_SHELL_MCP_MAX_CONCURRENT_COMMANDS",
+      "name": "max_concurrent_commands",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-tmux-sessions",
+      "default": 16,
+      "default_display": "16",
+      "description": "Persistent shell session limit.",
+      "env": "LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS",
+      "name": "max_tmux_sessions",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--file-download-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Enable download links created by protected tools.",
+      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED",
+      "name": "file_download_enabled",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--file-download-default-ttl-s",
+      "default": 3600,
+      "default_display": "3600",
+      "description": "Default lifetime for file download links in seconds.",
+      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_TTL_S",
+      "name": "file_download_default_ttl_s",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--file-download-max-ttl-s",
+      "default": 604800,
+      "default_display": "604800",
+      "description": "Maximum lifetime accepted for file download links in seconds.",
+      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_TTL_S",
+      "name": "file_download_max_ttl_s",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--file-download-default-max-downloads",
+      "default": 0,
+      "default_display": "0",
+      "description": "Default download-count limit for file links; 0 means unlimited until expiry.",
+      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_DEFAULT_MAX_DOWNLOADS",
+      "name": "file_download_default_max_downloads",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--file-download-max-file-bytes",
+      "default": 0,
+      "default_display": "0",
+      "description": "Maximum file size allowed for download links; 0 disables this size limit.",
+      "env": "LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES",
+      "name": "file_download_max_file_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--command-denylist",
+      "default": [
+        "docker.sock",
+        "/var/run/docker.sock",
+        "mkfs",
+        "mount",
+        "umount",
+        "shutdown",
+        "reboot",
+        "systemctl",
+        "iptables",
+        "nft"
+      ],
+      "default_display": "docker.sock,/var/run/docker.sock,mkfs,mount,umount,shutdown,reboot,systemctl,iptables,nft",
+      "description": "Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled.",
+      "env": "LOCAL_SHELL_MCP_COMMAND_DENYLIST",
+      "name": "command_denylist",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "CSV or YAML list",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--path-denylist",
+      "default": [
+        ".ssh/id_rsa",
+        ".ssh/id_ed25519",
+        ".env",
+        "secrets",
+        "credentials",
+        ".git/config"
+      ],
+      "default_display": ".ssh/id_rsa,.ssh/id_ed25519,.env,secrets,credentials,.git/config",
+      "description": "Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-control mode is enabled.",
+      "env": "LOCAL_SHELL_MCP_PATH_DENYLIST",
+      "name": "path_denylist",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "CSV or YAML list",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--remote-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Enable remote worker routes and MCP tools.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_ENABLED",
+      "name": "remote_enabled",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-invite-ttl-s",
+      "default": 600,
+      "default_display": "600",
+      "description": "One-time remote worker invite lifetime in seconds.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_INVITE_TTL_S",
+      "name": "remote_invite_ttl_s",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-poll-timeout-s",
+      "default": 25,
+      "default_display": "25",
+      "description": "Remote worker long-poll heartbeat timeout in seconds.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S",
+      "name": "remote_poll_timeout_s",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-job-timeout-s",
+      "default": 3600,
+      "default_display": "3600",
+      "description": "Control-side remote job result timeout in seconds.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S",
+      "name": "remote_job_timeout_s",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--agent-bridge-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Enable agent capability bridge tools.",
+      "env": "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED",
+      "name": "agent_bridge_enabled",
+      "nullable": false,
+      "section": "Agent capability bridge",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--agent-mcp-probe-timeout-s",
+      "default": 5,
+      "default_display": "5",
+      "description": "Agent MCP server probe timeout in seconds.",
+      "env": "LOCAL_SHELL_MCP_AGENT_MCP_PROBE_TIMEOUT_S",
+      "name": "agent_mcp_probe_timeout_s",
+      "nullable": false,
+      "section": "Agent capability bridge",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--agent-mcp-call-timeout-s",
+      "default": 60,
+      "default_display": "60",
+      "description": "Agent MCP tool-call timeout in seconds.",
+      "env": "LOCAL_SHELL_MCP_AGENT_MCP_CALL_TIMEOUT_S",
+      "name": "agent_mcp_call_timeout_s",
+      "nullable": false,
+      "section": "Agent capability bridge",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--agent-dynamic-mcp-tools",
+      "default": true,
+      "default_display": "true",
+      "description": "Register dynamic MCP bridge tools.",
+      "env": "LOCAL_SHELL_MCP_AGENT_DYNAMIC_MCP_TOOLS",
+      "name": "agent_dynamic_mcp_tools",
+      "nullable": false,
+      "section": "Agent capability bridge",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--agent-dynamic-skill-tools",
+      "default": true,
+      "default_display": "true",
+      "description": "Register dynamic skill bridge tools.",
+      "env": "LOCAL_SHELL_MCP_AGENT_DYNAMIC_SKILL_TOOLS",
+      "name": "agent_dynamic_skill_tools",
+      "nullable": false,
+      "section": "Agent capability bridge",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--shell-executable",
+      "default": "/bin/bash",
+      "default_display": "/bin/bash",
+      "description": "Shell executable used for shell commands.",
+      "env": "LOCAL_SHELL_MCP_SHELL_EXECUTABLE",
+      "name": "shell_executable",
+      "nullable": false,
+      "section": "Tool executables",
+      "type": "string",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--tmux-bin",
+      "default": "tmux",
+      "default_display": "tmux",
+      "description": "tmux executable.",
+      "env": "LOCAL_SHELL_MCP_TMUX_BIN",
+      "name": "tmux_bin",
+      "nullable": false,
+      "section": "Tool executables",
+      "type": "string",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--rg-bin",
+      "default": "rg",
+      "default_display": "rg",
+      "description": "ripgrep executable.",
+      "env": "LOCAL_SHELL_MCP_RG_BIN",
+      "name": "rg_bin",
+      "nullable": false,
+      "section": "Tool executables",
+      "type": "string",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--python-bin",
+      "default": "python3",
+      "default_display": "python3",
+      "description": "Python executable.",
+      "env": "LOCAL_SHELL_MCP_PYTHON_BIN",
+      "name": "python_bin",
+      "nullable": false,
+      "section": "Tool executables",
+      "type": "string",
+      "unset_cli": null
+    }
+  ],
+  "sidecar_settings": [
+    {
+      "default": "",
+      "description": "Optional token for the cloudflared tunnel sidecar profile. This uses Cloudflare Tunnel only, not Cloudflare Access.",
+      "env": "CLOUDFLARE_TUNNEL_TOKEN"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # local-shell-mcp
 
-`local-shell-mcp` lets ChatGPT and other MCP clients work inside a controlled local workspace. It exposes shell, filesystem, Git-through-shell, search, patch, todo, audit, remote-worker, and agent-bridge tools through a ChatGPT-compatible MCP server with OAuth support.
+`local-shell-mcp` lets ChatGPT and other MCP clients work inside a controlled local workspace. It exposes shell, filesystem, search, patch, todo, audit, remote-worker, and agent-bridge tools through a ChatGPT-compatible MCP server with OAuth support.
 
 Use it when you want an AI coding agent to inspect a project, edit files, run tests, operate Git, or delegate work to another machine without giving it direct access to your host.
 
@@ -26,7 +26,7 @@ Expose the server through HTTPS, then add this MCP endpoint in ChatGPT:
 https://your-public-host.example.com/mcp
 ```
 
-For full shell, filesystem, and Git-through-shell tools, enable ChatGPT Developer Mode before adding the custom MCP connector.
+For full shell and filesystem tools, enable ChatGPT Developer Mode before adding the custom MCP connector.
 
 ## License
 

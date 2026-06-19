@@ -1,68 +1,45 @@
 # local-shell-mcp
 
-`local-shell-mcp` gives ChatGPT and other MCP clients controlled access to a local workspace. It exposes shell, filesystem, search, patch, Git-through-shell, todo, audit, remote-worker, and agent-bridge capabilities through a ChatGPT-compatible MCP server with OAuth support.
-
-Use it when you want an AI coding agent to inspect a repository, edit files, run tests, and help with development without giving the model direct access to your host system.
+`local-shell-mcp` gives ChatGPT and other MCP clients controlled access to a machine you own. It exposes shell, filesystem, search, patch, audit, remote-worker, and agent-bridge capabilities through an MCP server with OAuth support.
 
 ## Start here
 
-<div class="grid cards" markdown>
+Most users should start with the local service path:
 
--   **Run with Docker**
+1. Install or clone `local-shell-mcp` on the machine that should run commands.
+2. Copy `.env.example` to `.env` and set the public URL, OAuth mode, and approval PIN.
+3. Expose the server through Cloudflare Tunnel.
+4. Add the `/mcp` endpoint as a ChatGPT custom connector.
 
-    Start a contained workspace with Docker Compose, then expose `/mcp` through HTTPS for ChatGPT.
+See [Quickstart](getting-started/quickstart.md) for the complete flow.
 
-    [:octicons-arrow-right-24: Quickstart](getting-started/quickstart.md)
-
--   **Connect ChatGPT**
-
-    Add the MCP endpoint as a custom connector and complete the built-in OAuth approval flow.
-
-    [:octicons-arrow-right-24: Connector setup](getting-started/chatgpt-connector.md)
-
--   **Use remote workers**
-
-    Invite a machine behind NAT, a firewall, or an HPC login node to connect back over outbound HTTPS.
-
-    [:octicons-arrow-right-24: Remote workers](guides/remote-workers.md)
-
--   **Review safety**
-
-    Understand what the connected model can do before mounting credentials or exposing the service publicly.
-
-    [:octicons-arrow-right-24: Security](security.md)
-
-</div>
+Docker Compose is still supported, but the published Docker image is currently `linux/amd64`. Use it when you specifically want the model-controlled tools inside a container and your host can run the x64 image.
 
 ## What you get
 
 - A ChatGPT-compatible MCP endpoint at `/mcp`.
-- Built-in OAuth for public deployments.
-- Read-only `search` and `fetch` tools for regular connector clients.
-- Full coding-agent tools for Developer Mode and other full MCP clients.
-- A Docker image with common development, shell, document, and data-processing tooling.
-- Optional remote-worker mode for machines that can only make outbound HTTP(S) connections.
-- Optional agent capability bridge for externally synced MCP servers and skills.
-- Complete short-term JSONL audit logging under the configured state directory.
-- A VS Code extension that can start the server for the current workspace.
+- Built-in OAuth approval for public deployments.
+- Local shell, Python, file, search, patch, todo, audit, and download-link tools.
+- Optional remote workers for running the same tool categories on another machine.
+- Optional agent bridge for exposing external MCP servers and Markdown skills through this server.
+- A VS Code extension for starting the server against the current workspace.
 
-## Common paths
+## Important pages
 
-| Goal | Read this |
+| Need | Page |
 |---|---|
-| First local deployment | [Quickstart](getting-started/quickstart.md) |
-| Docker Compose details | [Docker Compose](getting-started/docker-compose.md) |
-| ChatGPT connector setup | [ChatGPT connector](getting-started/chatgpt-connector.md) |
-| HTTPS tunnel setup | [Cloudflare Tunnel](getting-started/cloudflare-tunnel.md) |
-| Run from VS Code | [VS Code](getting-started/vscode.md) |
-| Work with a remote machine | [Remote workers](guides/remote-workers.md) |
+| Set up the service | [Quickstart](getting-started/quickstart.md) |
+| Expose the endpoint | [Cloudflare Tunnel](getting-started/cloudflare-tunnel.md) |
+| Add ChatGPT | [ChatGPT connector](getting-started/chatgpt-connector.md) |
+| Use Docker instead | [Docker Compose](getting-started/docker-compose.md) |
+| Run work on another machine | [Remote workers](guides/remote-workers.md) |
 | Add external MCP servers or skills | [Agent capability bridge](guides/agent-bridge.md) |
-| Configure the server | [Configuration reference](reference/configuration.md) |
-| Understand all tools | [Tools reference](reference/tools.md) |
-| Debug a broken setup | [Troubleshooting](troubleshooting.md) |
+| Check every setting | [Configuration reference](reference/configuration.md) |
+| Check every tool | [Tools reference](reference/tools.md) |
+| Debug a local checkout | [Development](development.md) |
 
 ## Safety model
 
-This project intentionally exposes powerful tools. Treat any connected model as able to read and modify the configured workspace, execute commands, use mounted credentials, and operate remote workers you invite.
+This project intentionally gives an AI client access to real shell and filesystem tools. Keep public deployments behind OAuth, set a long random approval PIN, review the configured workspace root, and leave full-control mode disabled unless the server runs in a disposable container or VM.
 
-Default safeguards include workspace path restrictions, timeout and output limits, default command/path denylists, audit logs, and OAuth for public connector use. Full-control mode disables built-in path and command restrictions and should only be used in disposable containers or VMs.
+Audit logs include full tool inputs and outputs. Treat the state directory as sensitive session data.
