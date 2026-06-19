@@ -37,6 +37,98 @@
     return renderInline(value);
   }
 
+  function renderMarkdownInline(value) {
+    return String(value ?? "")
+      .split(/(`[^`]*`)/g)
+      .map((part) => {
+        if (part.startsWith("`") && part.endsWith("`")) {
+          return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
+        }
+        return escapeHtml(part);
+      })
+      .join("");
+  }
+
+  function renderMarkdown(markdown) {
+    const lines = String(markdown ?? "").split(/\r?\n/);
+    const html = [];
+    let paragraph = [];
+    let listOpen = false;
+    let codeFence = null;
+    let codeLines = [];
+
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      html.push(`<p>${renderMarkdownInline(paragraph.join(" "))}</p>`);
+      paragraph = [];
+    };
+
+    const closeList = () => {
+      if (!listOpen) return;
+      html.push("</ul>");
+      listOpen = false;
+    };
+
+    const flushCode = () => {
+      if (codeFence === null) return;
+      html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+      codeFence = null;
+      codeLines = [];
+    };
+
+    for (const line of lines) {
+      const fence = line.match(/^```/);
+      if (fence) {
+        if (codeFence === null) {
+          flushParagraph();
+          closeList();
+          codeFence = line;
+        } else {
+          flushCode();
+        }
+        continue;
+      }
+
+      if (codeFence !== null) {
+        codeLines.push(line);
+        continue;
+      }
+
+      if (!line.trim()) {
+        flushParagraph();
+        closeList();
+        continue;
+      }
+
+      const heading = line.match(/^(#{1,6})\s+(.+)$/);
+      if (heading) {
+        flushParagraph();
+        closeList();
+        const level = Math.min(6, heading[1].length + 1);
+        html.push(`<h${level}>${renderMarkdownInline(heading[2])}</h${level}>`);
+        continue;
+      }
+
+      const bullet = line.match(/^[-*]\s+(.+)$/);
+      if (bullet) {
+        flushParagraph();
+        if (!listOpen) {
+          html.push("<ul>");
+          listOpen = true;
+        }
+        html.push(`<li>${renderMarkdownInline(bullet[1])}</li>`);
+        continue;
+      }
+
+      paragraph.push(line.trim());
+    }
+
+    flushCode();
+    flushParagraph();
+    closeList();
+    return html.join("");
+  }
+
   function renderTable(section) {
     const headers = section.headers || [];
     const rows = section.rows || [];
@@ -50,6 +142,8 @@
     if (section.body) html += `<p>${renderInline(section.body)}</p>`;
     if (section.kind === "code") {
       html += `<pre><code>${escapeHtml(section.code || "")}</code></pre>`;
+    } else if (section.kind === "markdown") {
+      html += renderMarkdown(section.markdown || "");
     } else if (section.kind === "table") {
       html += renderTable(section);
     }
