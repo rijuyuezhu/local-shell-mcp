@@ -195,9 +195,8 @@ def _instructions_payload() -> dict[str, Any]:
         "instructions": SERVER_INSTRUCTIONS,
         "sections": [
             {
-                "kind": "code",
-                "heading": "Advertised instruction block",
-                "code": SERVER_INSTRUCTIONS,
+                "kind": "markdown",
+                "markdown": SERVER_INSTRUCTIONS,
             }
         ],
     }
