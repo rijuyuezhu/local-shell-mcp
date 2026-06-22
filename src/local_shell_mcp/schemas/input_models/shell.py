@@ -70,3 +70,18 @@ LinesArg = Annotated[
         description="Number of recent terminal lines to capture from the persistent shell."
     ),
 ]
+
+ToolPurposeArg = Annotated[
+    str | None,
+    Field(
+        default=None,
+        description="Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
+    ),
+]
+ToolExplanationArg = Annotated[
+    str | None,
+    Field(
+        default=None,
+        description="Optional longer explanation for the tool call. Maximum 2000 characters.",
+    ),
+]

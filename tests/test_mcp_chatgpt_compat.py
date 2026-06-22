@@ -17,7 +17,7 @@ from local_shell_mcp.oauth.tokens import (
     issue_access_token,
     validate_bearer_token,
 )
-from local_shell_mcp.oauth.urls import resource_url
+from local_shell_mcp.oauth.urls import _scopes, resource_url
 from local_shell_mcp.server.mcp.app import (
     _transport_security_settings,
     build_mcp,
@@ -30,6 +30,17 @@ def _output_schema(tool: Any) -> dict[str, Any]:
     schema = tool.outputSchema
     assert schema is not None
     return schema
+
+
+def test_oauth_supported_scopes_include_feature_scopes():
+    assert _scopes() == [
+        "shell:read",
+        "shell:write",
+        "shell:execute",
+        "git:write",
+        "file:share",
+        "remote:use",
+    ]
 
 
 def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
@@ -71,7 +82,48 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert search_meta is not None
     assert environment_meta is not None
     assert search_meta["securitySchemes"][0]["type"] == "noauth"
+    assert search_meta["securitySchemes"][1]["scopes"] == ["shell:read"]
     assert environment_meta["securitySchemes"][0]["type"] == "oauth2"
+    assert environment_meta["securitySchemes"][0]["scopes"] == ["shell:read"]
+
+    def tool_oauth_scopes(name: str) -> list[str]:
+        meta = tools[name].meta
+        assert meta is not None
+        return meta["securitySchemes"][0]["scopes"]
+
+    assert tool_oauth_scopes("run_shell_command") == [
+        "shell:read",
+        "shell:execute",
+    ]
+    assert tool_oauth_scopes("write_file") == [
+        "shell:read",
+        "shell:write",
+    ]
+    assert tool_oauth_scopes("apply_patch") == [
+        "shell:read",
+        "shell:write",
+        "git:write",
+    ]
+    assert tool_oauth_scopes("create_file_link") == [
+        "shell:read",
+        "file:share",
+    ]
+    assert tool_oauth_scopes("remote_list_machines") == ["remote:use"]
+    assert tool_oauth_scopes("remote_read_file") == [
+        "remote:use",
+        "shell:read",
+    ]
+    assert tool_oauth_scopes("remote_write_file") == [
+        "remote:use",
+        "shell:read",
+        "shell:write",
+    ]
+    assert tool_oauth_scopes("remote_apply_patch") == [
+        "remote:use",
+        "shell:read",
+        "shell:write",
+        "git:write",
+    ]
 
     assert all(tool.outputSchema is not None for tool in tools.values())
     run_shell_command_schema = tools["run_shell_command"].outputSchema
@@ -251,6 +303,60 @@ async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
 
 
 @pytest.mark.asyncio
+async def test_job_tool_schema_descriptions_explain_persistent_shell_backing(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    job_start_tool = tools["job_start"]
+    job_tail_tool = tools["job_tail"]
+    start_shell_tool = tools["start_persistent_shell"]
+    remote_job_start_tool = tools["remote_job_start"]
+
+    job_start_description = job_start_tool.description or ""
+    start_shell_description = start_shell_tool.description or ""
+    remote_job_start_description = remote_job_start_tool.description or ""
+    assert "job_list, job_tail, job_stop, or job_retry" in job_start_description
+    assert "Use start_persistent_shell instead" in job_start_description
+    assert "Use run_shell_command" in job_start_description
+    assert "Use this low-level session tool" in start_shell_description
+    assert "prefer job_start" in start_shell_description
+    assert "remote worker" in remote_job_start_description
+    assert (
+        "Use start_remote_persistent_shell instead"
+        in remote_job_start_description
+    )
+    assert "Use run_remote_shell_command" in remote_job_start_description
+    assert (
+        "persistent shell sessions"
+        in (job_start_tool.inputSchema["properties"]["command"]["description"])
+    )
+    lines_schema = job_tail_tool.inputSchema["properties"]["lines"]
+    assert lines_schema["minimum"] == 1
+    assert lines_schema["maximum"] == 5000
+    assert (
+        "Output is available only while the backing session still exists"
+        in (lines_schema["description"])
+    )
+
+    start_output = _output_schema(job_start_tool)
+    assert start_output["$defs"]["JobStatus"]["enum"] == [
+        "running",
+        "exited",
+        "stopped",
+        "lost",
+        "unknown",
+    ]
+    assert (
+        "job_retry reuses this command"
+        in (start_output["properties"]["command"]["description"])
+    )
+
+
+@pytest.mark.asyncio
 async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES", "12345")
@@ -393,11 +499,7 @@ async def test_relaxed_client_tool_hints_marks_command_tools_without_full_contai
         "securitySchemes": [
             {
                 "type": "oauth2",
-                "scopes": [
-                    "shell:read",
-                    "shell:write",
-                    "shell:execute",
-                ],
+                "scopes": ["shell:read", "shell:execute"],
             }
         ]
     }

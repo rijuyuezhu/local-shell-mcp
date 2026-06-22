@@ -1,17 +1,20 @@
 """Server-side state and coordination for remote workers."""
 
 import asyncio
+import contextlib
+import json
 import os
 import secrets
 import shlex
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from ..audit import audit
 from ..config.settings import get_settings
-from .constants import REMOTE_JOIN_PATH
+from .constants import REMOTE_JOIN_PATH, REMOTE_WORKER_REGISTRY_FILE_NAME
 from .responses import _ok
 
 
@@ -69,6 +72,80 @@ class RemoteManager:
         self.tokens: dict[str, str] = {}
         self.pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
+        self._registry_loaded_path: Path | None = None
+
+    def _registry_path(self) -> Path:
+        """Return the persisted worker registry path for the active settings."""
+        return get_settings().state_dir / REMOTE_WORKER_REGISTRY_FILE_NAME
+
+    def _load_registry_unlocked(self) -> None:
+        """Load persisted workers once per active state directory."""
+        path = self._registry_path()
+        if self._registry_loaded_path == path:
+            return
+        self._registry_loaded_path = path
+        self.workers = {}
+        self.tokens = {}
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        rows = data.get("workers") if isinstance(data, dict) else None
+        if not isinstance(rows, list):
+            return
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            access = str(item.get("access") or item.get("token") or "").strip()
+            if (
+                not name
+                or not access
+                or name in self.workers
+                or access in self.tokens
+            ):
+                continue
+            self.workers[name] = RemoteWorker(
+                name=name,
+                token=access,
+                workdir=str(item.get("workdir") or ""),
+                created_at=float(item.get("created_at") or _utc()),
+                last_seen=0.0,
+                status="offline",
+                capabilities=list(item.get("capabilities") or []),
+                info=dict(item.get("info") or {}),
+            )
+            self.tokens[access] = name
+
+    def _save_registry_unlocked(self) -> None:
+        """Persist registered workers without serializing volatile queues or pending calls."""
+        path = self._registry_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "version": 1,
+            "workers": [
+                {
+                    "name": worker.name,
+                    "access": worker.token,
+                    "workdir": worker.workdir,
+                    "created_at": worker.created_at,
+                    "capabilities": worker.capabilities,
+                    "info": worker.info,
+                }
+                for worker in sorted(
+                    self.workers.values(), key=lambda item: item.name
+                )
+            ],
+        }
+        tmp_path = path.with_name(path.name + ".tmp")
+        tmp_path.write_text(
+            json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        with contextlib.suppress(OSError):
+            tmp_path.chmod(0o600)
+        tmp_path.replace(path)
 
     def _join_url(self) -> str:
         """Build the copy-paste registration command for a pending invite."""
@@ -89,6 +166,7 @@ class RemoteManager:
             code=code, name=name, workdir=workdir, expires_at=_utc() + ttl
         )
         async with self._lock:
+            self._load_registry_unlocked()
             self.invites[code] = invite
         command = f"curl -fsSL {shlex.quote(self._join_url())} | bash -s -- --invite {shlex.quote(code)}"
         if name:
@@ -110,6 +188,7 @@ class RemoteManager:
         code = str(payload.get("invite") or "")
         requested_name = str(payload.get("name") or "").strip() or None
         async with self._lock:
+            self._load_registry_unlocked()
             invite = self.invites.get(code)
             if not invite:
                 raise ValueError("invalid invite code")
@@ -139,7 +218,34 @@ class RemoteManager:
             self.workers[name] = worker
             self.tokens[token] = name
             invite.used = True
+            self._save_registry_unlocked()
         audit("remote_worker_registered", machine=name)
+        return {"token": token, "name": name, "poll_interval_s": 0}
+
+    async def resume_worker(
+        self, token: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Reconnect a worker using a persisted worker identity instead of consuming a new invite."""
+        async with self._lock:
+            self._load_registry_unlocked()
+            name = self.tokens.get(token)
+            if not name:
+                raise PermissionError("invalid worker identity")
+            worker = self.workers.get(name)
+            if not worker:
+                raise PermissionError("worker identity is no longer valid")
+            requested_name = str(payload.get("name") or "").strip()
+            if requested_name and requested_name != name:
+                raise ValueError(f"worker identity belongs to machine {name!r}")
+            worker.status = "online"
+            worker.last_seen = _utc()
+            worker.workdir = str(payload.get("workdir") or worker.workdir or "")
+            worker.capabilities = list(
+                payload.get("capabilities") or worker.capabilities
+            )
+            worker.info = dict(payload.get("info") or worker.info)
+            self._save_registry_unlocked()
+        audit("remote_worker_resumed", machine=name)
         return {"token": token, "name": name, "poll_interval_s": 0}
 
     def _default_machine_name(self, payload: dict[str, Any]) -> str:
@@ -190,6 +296,7 @@ class RemoteManager:
         timeout_s: int | None = None,
     ) -> dict[str, Any]:
         """Send one tool invocation to a worker and wait for its result with timeout handling."""
+        self._load_registry_unlocked()
         worker = self.workers.get(machine)
         if not worker:
             raise ValueError(f"unknown remote machine: {machine}")
@@ -224,38 +331,54 @@ class RemoteManager:
 
     def list_machines(self) -> dict[str, Any]:
         """Return worker inventory and heartbeat-derived status for remote management tools."""
+        self._load_registry_unlocked()
         now = _utc()
+        offline_after_s = max(2 * get_settings().remote_poll_timeout_s, 60)
         rows = []
+        counts = {"online": 0, "offline": 0}
         for worker in self.workers.values():
+            last_seen_age_s = (
+                None
+                if not worker.last_seen
+                else max(0.0, now - worker.last_seen)
+            )
             status = (
                 "online"
-                if now - worker.last_seen
-                <= max(2 * get_settings().remote_poll_timeout_s, 60)
+                if last_seen_age_s is not None
+                and last_seen_age_s <= offline_after_s
                 else "offline"
             )
             worker.status = status
+            counts[status] += 1
             rows.append(
                 {
                     "name": worker.name,
                     "status": status,
                     "workdir": worker.workdir,
                     "last_seen": worker.last_seen,
+                    "last_seen_age_s": last_seen_age_s,
+                    "offline_after_s": offline_after_s,
+                    "queue_depth": worker.queue.qsize(),
                     "capabilities": worker.capabilities,
                     "info": worker.info,
                 }
             )
-        return {"machines": sorted(rows, key=lambda item: item["name"])}
+        rows.sort(key=lambda item: (item["status"] != "online", item["name"]))
+        return {"machines": rows, "counts": {**counts, "total": len(rows)}}
 
     def revoke(self, machine: str) -> dict[str, Any]:
         """Remove a registered worker and invalidate its polling token."""
+        self._load_registry_unlocked()
         worker = self.workers.pop(machine, None)
         if not worker:
             raise ValueError(f"unknown remote machine: {machine}")
         self.tokens.pop(worker.token, None)
+        self._save_registry_unlocked()
         return {"machine": machine, "revoked": True}
 
     def rename(self, machine: str, new_name: str) -> dict[str, Any]:
         """Rename a registered worker while preserving its token and job state."""
+        self._load_registry_unlocked()
         new_name = new_name.strip()
         if not new_name:
             raise ValueError("new_name is required")
@@ -267,10 +390,12 @@ class RemoteManager:
         worker.name = new_name
         self.workers[new_name] = worker
         self.tokens[worker.token] = new_name
+        self._save_registry_unlocked()
         return {"old_name": machine, "new_name": new_name}
 
     def _worker_by_token(self, token: str) -> RemoteWorker:
         """Resolve a bearer token to the worker currently authorized to poll or submit results."""
+        self._load_registry_unlocked()
         name = self.tokens.get(token)
         if not name:
             raise PermissionError("invalid worker token")

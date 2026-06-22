@@ -88,6 +88,7 @@ def _sample_context():
             "openai/toolInvocation/invoking": "Reading"
         },
         oauth_security_meta={"openai/toolInvocation/invoking": "Working"},
+        scoped_oauth_security_meta=lambda scopes: {"scopes": list(scopes)},
     )
 
 

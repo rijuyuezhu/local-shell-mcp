@@ -42,6 +42,18 @@ class RemoteMachineInfo(BaseModel):
     last_seen: float = Field(
         description="Unix timestamp of the last worker heartbeat."
     )
+    last_seen_age_s: float | None = Field(
+        default=None,
+        description="Seconds elapsed since the last worker heartbeat, when known.",
+    )
+    offline_after_s: float | None = Field(
+        default=None,
+        description="Heartbeat age in seconds after which this worker is treated as offline.",
+    )
+    queue_depth: int | None = Field(
+        default=None,
+        description="Number of queued jobs waiting for this worker.",
+    )
     capabilities: list[str] = Field(
         description="Tool capabilities advertised by the worker."
     )
@@ -55,6 +67,10 @@ class RemoteListMachinesOutput(BaseModel):
 
     machines: list[RemoteMachineInfo] = Field(
         description="Registered remote workers known to the control server."
+    )
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Worker counts by status plus total.",
     )
 
 

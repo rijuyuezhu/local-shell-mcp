@@ -10,6 +10,7 @@ from urllib.parse import urlparse, urlunparse
 from starlette.requests import Request
 
 from ..config.settings import get_settings
+from .scopes import SUPPORTED_OAUTH_SCOPES
 
 
 def base_url(request: Request | None = None) -> str:
@@ -78,4 +79,4 @@ def _default_scope() -> str:
 
 def _scopes() -> list[str]:
     """Return the static scopes supported by local-shell-mcp's OAuth flow."""
-    return ["shell:read", "shell:write", "shell:execute"]
+    return list(SUPPORTED_OAUTH_SCOPES)

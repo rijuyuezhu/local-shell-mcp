@@ -30,6 +30,7 @@ def _secret_scan_description(context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/secret_scan",
     description=_secret_scan_description,
+    mcp_scopes=("shell:read",),
 )
 async def secret_scan(
     cwd: SecretScanCwdArg = ".",

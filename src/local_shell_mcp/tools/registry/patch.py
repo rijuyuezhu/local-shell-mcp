@@ -16,7 +16,11 @@ class PatchToolRegistry(DeclarativeToolRegistry):
 local_tool = PatchToolRegistry.get_tool_decorator()
 
 
-@local_tool(http_method="POST", http_path="/tools/apply_patch")
+@local_tool(
+    http_method="POST",
+    http_path="/tools/apply_patch",
+    mcp_scopes=("shell:read", "shell:write", "git:write"),
+)
 async def apply_patch(
     patch: PatchTextArg, cwd: PatchCwdArg = "."
 ) -> ApplyPatchOutput:

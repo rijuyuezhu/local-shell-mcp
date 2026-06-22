@@ -8,6 +8,7 @@ from .config.surface import cli_overrides_from_args, register_setting_cli_args
 from .remote.worker import add_worker_cli_args, run_worker_from_args
 from .server.http.app import run_http
 from .server.mcp.app import run_mcp
+from .version import format_version_info
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -35,6 +36,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # worker subcommand
     subparsers = parser.add_subparsers(dest="command")
+    version = subparsers.add_parser(
+        "version",
+        help="Print local-shell-mcp version information",
+    )
+    version.set_defaults(handler=_print_version_from_args)
+
     worker = subparsers.add_parser(
         "worker",
         help="Connect this machine to a local-shell-mcp control server",
@@ -42,6 +49,11 @@ def _build_parser() -> argparse.ArgumentParser:
     add_worker_cli_args(worker)
     worker.set_defaults(handler=run_worker_from_args)
     return parser
+
+
+def _print_version_from_args(args: argparse.Namespace) -> None:
+    """Print detailed version information."""
+    print(format_version_info())
 
 
 def _run_server_from_args(args: argparse.Namespace) -> None:

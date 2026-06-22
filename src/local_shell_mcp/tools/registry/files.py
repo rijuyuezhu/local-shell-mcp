@@ -80,6 +80,7 @@ def _edit_file_description(context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/list_files",
     description=_list_files_description,
+    mcp_scopes=("shell:read",),
 )
 async def list_files(
     path: ListPathArg = ".",
@@ -96,6 +97,7 @@ async def list_files(
     http_method="POST",
     http_path="/tools/read_file",
     description=_read_file_description,
+    mcp_scopes=("shell:read",),
 )
 async def read_file(
     path: FilePathArg,
@@ -115,6 +117,7 @@ async def read_file(
     http_method="POST",
     http_path="/tools/read_many_files",
     description=_read_many_files_description,
+    mcp_scopes=("shell:read",),
 )
 async def read_many_files(files: ReadFilesArg) -> ReadManyFilesOutput:
     """Read multiple UTF-8 text files with optional per-file line ranges."""
@@ -128,6 +131,7 @@ async def read_many_files(files: ReadFilesArg) -> ReadManyFilesOutput:
     http_method="POST",
     http_path="/tools/write_file",
     description=_write_file_description,
+    mcp_scopes=("shell:read", "shell:write"),
 )
 async def write_file(
     path: FilePathArg, content: FileContentArg, overwrite: OverwriteArg = True
@@ -140,6 +144,7 @@ async def write_file(
     http_method="POST",
     http_path="/tools/edit_file",
     description=_edit_file_description,
+    mcp_scopes=("shell:read", "shell:write"),
 )
 async def edit_file(
     path: FilePathArg,
@@ -153,7 +158,11 @@ async def edit_file(
     )
 
 
-@local_tool(http_method="POST", http_path="/tools/multi_edit_file")
+@local_tool(
+    http_method="POST",
+    http_path="/tools/multi_edit_file",
+    mcp_scopes=("shell:read", "shell:write"),
+)
 async def multi_edit_file(
     path: FilePathArg, edits: EditsArg
 ) -> MultiEditFileOutput:
@@ -161,7 +170,11 @@ async def multi_edit_file(
     return await asyncio.to_thread(multi_edit_file_execute, path, edits)
 
 
-@local_tool(http_method="POST", http_path="/tools/delete")
+@local_tool(
+    http_method="POST",
+    http_path="/tools/delete",
+    mcp_scopes=("shell:read", "shell:write"),
+)
 async def delete_file_or_dir(
     path: FilePathArg, recursive: RecursiveArg = False
 ) -> DeleteFileOrDirOutput:

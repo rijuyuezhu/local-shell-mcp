@@ -57,6 +57,14 @@ def test_version_option_prints_package_version(capsys):
     assert capsys.readouterr().out == f"local-shell-mcp {__version__}\n"
 
 
+def test_version_subcommand_prints_package_version(capsys):
+    args = cli._build_parser().parse_args(["version"])
+
+    args.handler(args)
+
+    assert capsys.readouterr().out.startswith(f"local-shell-mcp {__version__}")
+
+
 def test_every_setting_has_cli_option():
     help_text = cli._build_parser().format_help()
 

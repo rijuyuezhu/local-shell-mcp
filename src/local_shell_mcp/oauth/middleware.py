@@ -25,6 +25,7 @@ PUBLIC_PATHS = {
     "/join",
     "/remote/worker-bundle.tgz",
     "/remote/register",
+    "/remote/resume",
     "/remote/poll",
     "/remote/result",
 }

@@ -107,3 +107,35 @@ async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     assert ends[0]["ok"] is False
     assert ends[0]["error"]["type"] == "FileNotFoundError"
     assert "missing.txt" in ends[0]["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_shell_tool_purpose_metadata_is_audited(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    await build_mcp().call_tool(
+        "run_shell_command",
+        {
+            "command": "echo ok",
+            "purpose": "verify workspace state",
+            "explanation": "The command is bounded and only prints a constant.",
+        },
+    )
+
+    records = _audit_records(get_settings().audit_log_path)
+    purpose_records = [
+        record
+        for record in records
+        if record.get("event") == "tool_call_purpose"
+    ]
+
+    assert len(purpose_records) == 1
+    assert purpose_records[0]["tool"] == "run_shell_command"
+    assert purpose_records[0]["purpose"] == "verify workspace state"
+    assert (
+        purpose_records[0]["explanation"]
+        == "The command is bounded and only prints a constant."
+    )

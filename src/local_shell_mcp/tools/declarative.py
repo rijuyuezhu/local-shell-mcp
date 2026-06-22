@@ -49,6 +49,7 @@ class LocalToolDecoratorFactory(Protocol):
         http_path: str | None,
         name: str | None = None,
         mcp_security_profile: McpSecurityProfile = "oauth",
+        mcp_scopes: tuple[str, ...] | None = None,
         annotations: ToolAnnotation | None = None,
         description: ToolDescription | None = None,
         mcp_error_handler: McpErrorHandler | None = None,
@@ -101,6 +102,8 @@ class ToolDefinition:
     """HTTP path for the REST adapter route, or None for MCP-only tools."""
     mcp_security_profile: McpSecurityProfile = "oauth"
     """Client-facing MCP securitySchemes profile advertised for this tool."""
+    mcp_scopes: tuple[str, ...] | None = None
+    """Optional narrower OAuth scopes advertised for this tool."""
     annotations: ToolAnnotation | None = None
     """MCP tool annotations applied during registration."""
     description: ToolDescription | None = None
@@ -144,6 +147,8 @@ class ToolDefinition:
             case "connector_compatible":
                 return context.connector_compatible_security_meta
             case "oauth":
+                if self.mcp_scopes is not None:
+                    return context.scoped_oauth_security_meta(self.mcp_scopes)
                 return context.oauth_security_meta
             case _:
                 raise ValueError(
@@ -225,6 +230,7 @@ class DeclarativeToolRegistry(ToolRegistry):
             http_path: str | None,
             name: str | None = None,
             mcp_security_profile: McpSecurityProfile = "oauth",
+            mcp_scopes: tuple[str, ...] | None = None,
             annotations: ToolAnnotation | None = None,
             description: ToolDescription | None = None,
             mcp_error_handler: McpErrorHandler | None = None,
@@ -238,6 +244,7 @@ class DeclarativeToolRegistry(ToolRegistry):
                         http_method=http_method,
                         http_path=http_path,
                         mcp_security_profile=mcp_security_profile,
+                        mcp_scopes=mcp_scopes,
                         annotations=annotations,
                         description=description,
                         mcp_error_handler=mcp_error_handler,

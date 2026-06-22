@@ -18,13 +18,21 @@ class TodoToolRegistry(DeclarativeToolRegistry):
 local_tool = TodoToolRegistry.get_tool_decorator()
 
 
-@local_tool(http_method="GET", http_path="/tools/todo")
+@local_tool(
+    http_method="GET",
+    http_path="/tools/todo",
+    mcp_scopes=("shell:read",),
+)
 async def read_todos() -> ReadTodosOutput:
     """Read the current agent todo list."""
     return await asyncio.to_thread(read_todos_execute)
 
 
-@local_tool(http_method="POST", http_path="/tools/todo")
+@local_tool(
+    http_method="POST",
+    http_path="/tools/todo",
+    mcp_scopes=("shell:read", "shell:write"),
+)
 async def write_todos(todos: TodosArg) -> WriteTodosOutput:
     """Replace the current structured agent todo list."""
     return await asyncio.to_thread(write_todos_execute, todos)
