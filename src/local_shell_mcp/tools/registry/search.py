@@ -58,6 +58,7 @@ def _grep_search_description(context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/tree",
     description=_tree_view_description,
+    mcp_scopes=("shell:read",),
 )
 async def tree_view(
     cwd: TreeCwdArg = ".",
@@ -72,6 +73,7 @@ async def tree_view(
     http_method="POST",
     http_path="/tools/glob",
     description=_glob_search_description,
+    mcp_scopes=("shell:read",),
 )
 async def glob_search(
     pattern: GlobPatternArg,
@@ -88,6 +90,7 @@ async def glob_search(
     http_method="POST",
     http_path="/tools/grep",
     description=_grep_search_description,
+    mcp_scopes=("shell:read",),
 )
 async def grep_search(
     query: GrepQueryArg,

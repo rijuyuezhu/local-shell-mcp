@@ -52,6 +52,20 @@ async def register_endpoint(request: Request) -> JSONResponse:
         return _error(str(exc), type(exc).__name__, 400)
 
 
+async def resume_endpoint(request: Request) -> JSONResponse:
+    """Resume a previously registered worker using its persisted long-poll token."""
+    try:
+        return JSONResponse(
+            _ok(
+                await remote_manager().resume_worker(
+                    _bearer_token(request), await request.json()
+                )
+            )
+        )
+    except Exception as exc:
+        return _error(str(exc), type(exc).__name__, 401)
+
+
 async def poll_endpoint(request: Request) -> JSONResponse:
     """Long-poll for the next job assigned to the authenticated worker."""
     try:
@@ -84,6 +98,7 @@ def remote_routes() -> list[Route]:
         Route(
             f"{REMOTE_API_PREFIX}/register", register_endpoint, methods=["POST"]
         ),
+        Route(f"{REMOTE_API_PREFIX}/resume", resume_endpoint, methods=["POST"]),
         Route(f"{REMOTE_API_PREFIX}/poll", poll_endpoint, methods=["POST"]),
         Route(f"{REMOTE_API_PREFIX}/result", result_endpoint, methods=["POST"]),
     ]

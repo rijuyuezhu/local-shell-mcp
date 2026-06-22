@@ -17,9 +17,10 @@ from ...tools.discovery import discover_tool_registries
 from ..shared.public_routes import public_http_routes
 from .instructions import SERVER_INSTRUCTIONS
 from .metadata import (
-    NOAUTH_SECURITY_SCHEMES,
     OAUTH_SECURITY_SCHEMES,
+    connector_compatible_security_meta,
     install_full_container_auto_approval_hints,
+    oauth_security_meta,
     security_meta,
 )
 from .watchdogs import install_mcp_tool_watchdogs
@@ -122,10 +123,9 @@ def build_mcp() -> FastMCP:
     context = McpToolContext(
         settings=settings,
         read_only_tool=read_only_tool,
-        connector_compatible_security_meta=security_meta(
-            [*NOAUTH_SECURITY_SCHEMES, *OAUTH_SECURITY_SCHEMES]
-        ),
+        connector_compatible_security_meta=connector_compatible_security_meta(),
         oauth_security_meta=security_meta(OAUTH_SECURITY_SCHEMES),
+        scoped_oauth_security_meta=oauth_security_meta,
     )
     for registry in discover_tool_registries():
         registry.register_mcp(mcp, context)

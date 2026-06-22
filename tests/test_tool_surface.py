@@ -33,6 +33,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "search",
     "fetch",
     "environment_info",
+    "version",
     "run_shell_command",
     "run_python_code",
     "start_persistent_shell",
@@ -57,6 +58,11 @@ LOCAL_MCP_TOOL_NAMES = {
     "secret_scan",
     "read_todos",
     "write_todos",
+    "job_retry",
+    "job_stop",
+    "job_tail",
+    "job_list",
+    "job_start",
 }
 
 
@@ -106,6 +112,11 @@ REMOTE_MCP_TOOL_NAMES = {
     "remote_pull_dir",
     "remote_push_dir",
     "remote_apply_patch",
+    "remote_job_retry",
+    "remote_job_stop",
+    "remote_job_tail",
+    "remote_job_list",
+    "remote_job_start",
 }
 
 
@@ -181,6 +192,35 @@ def test_http_openapi_version_matches_package_version(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["info"]["version"] == __version__
+
+
+def test_http_public_version_endpoint_reports_package_version(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).get("/version")
+
+    assert response.status_code == 200
+    assert response.json()["version"] == __version__
+    assert response.json()["python"]
+
+
+@pytest.mark.asyncio
+async def test_http_version_matches_mcp_tool_payload(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    http_payload = TestClient(build_http_app()).get("/tools/version").json()
+    mcp_response = await build_mcp().call_tool("version", {})
+
+    assert http_payload == _mcp_payload_data(mcp_response)
+    assert http_payload["version"] == __version__
 
 
 def _mcp_payload_data(response):

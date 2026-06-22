@@ -5,11 +5,17 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from ...config.settings import Settings
+from ...version import version_info
 
 
 def health_response(request: Request) -> JSONResponse:
     """Return a lightweight process health response."""
     return JSONResponse({"ok": True})
+
+
+def version_response(request: Request) -> JSONResponse:
+    """Return package and runtime version metadata."""
+    return JSONResponse(version_info())
 
 
 def make_ready_response(settings: Settings, *, include_workspace_root: bool):
@@ -38,4 +44,5 @@ def health_routes(
             ),
             methods=["GET"],
         ),
+        Route("/version", version_response, methods=["GET"]),
     ]
