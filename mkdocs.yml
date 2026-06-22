@@ -78,6 +78,8 @@ nav:
   - Security: security.md
   - Troubleshooting: troubleshooting.md
   - Development: development.md
+  - Maintenance:
+      - Upstream commit review: maintenance/upstream-commit-review.md
   - Community:
       - Contributing: community/contributing.md
       - Support: community/support.md
