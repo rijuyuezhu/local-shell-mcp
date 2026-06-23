@@ -54,12 +54,12 @@ def _glob_search_description(context: McpToolContext) -> str:
 
 def _search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search code content using an agent-oriented facade inspired by oh-my-pi. Use pattern for text or regex search and optional paths to scope to files, directories, or globs. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results={settings.max_grep_results}."""
+    return f"""Search code content using an oh-my-pi-style facade. Use built-in search for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results={settings.max_grep_results}."""
 
 
 def _grep_search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search file contents with ripgrep to locate symbols, usages, error messages, or text before reading or editing files. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results={settings.max_grep_results}."""
+    return f"""Lower-level content lookup. Prefer high-level search for normal agent discovery. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Re-read before editing outside displayed ranges. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(

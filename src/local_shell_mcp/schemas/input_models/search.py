@@ -43,7 +43,7 @@ GlobMaxResultsArg = Annotated[
 GrepQueryArg = Annotated[
     str,
     Field(
-        description="Text or regular expression to search for, depending on the regex parameter."
+        description="Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata."
     ),
 ]
 GrepGlobArg = Annotated[
@@ -70,6 +70,6 @@ GrepMaxResultsArg = Annotated[
 SearchPathsArg = Annotated[
     str | list[str] | None,
     Field(
-        description="Optional path, glob, or list of paths/globs that scopes the high-level code search. Omit to search from cwd."
+        description="Optional file, directory, glob, or list of them that scopes the high-level search; omit to search the workspace root."
     ),
 ]

@@ -22,7 +22,7 @@ agent_tool = AgentSurfaceToolRegistry.get_tool_decorator()
 
 def _read_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Read a file or directory using an oh-my-pi-style path selector. Prefer this high-level read tool when gathering code context for edits. File output defaults to numbered_content with original line numbers plus snapshot metadata; append :raw only when exact unnumbered text is needed. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
+    return f"""Read files and directories through one oh-my-pi-style path argument. Prefer this high-level read tool for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
 
 
 @agent_tool(

@@ -22,7 +22,7 @@ Use local-shell-mcp to propose a minimal implementation plan. Do not edit files 
 Use local-shell-mcp to implement this change. Keep the diff focused, run the relevant tests, and summarize the result with git diff highlights.
 ```
 
-The model will usually combine filesystem tools, `grep_search`, `read_file`, `edit_file` or `apply_patch`, and shell commands. Prefer the high-level `read` tool for file and directory context because it supports selectors such as `src/foo.py:50-80`, `src/foo.py:50+20`, and `src/foo.py:raw`. File reads return both raw `content` and `numbered_content`; prefer the numbered form when discussing or planning precise edits because it preserves original line numbers and snapshot metadata. For small line-range changes, use `edit_lines` with the `snapshot_id` from the read result so changed files or unseen ranges are rejected.
+The model should follow the same semantic workflow as oh-my-pi's coding-agent tools: use `read` for file or directory context, `search(pattern, paths=...)` for content discovery, `edit_lines` for snapshot-grounded whole-line edits, and `bash` for terminal work such as tests, builds, package managers, git inspection, and scripts. Prefer `read` selectors such as `src/foo.py:50-80`, `src/foo.py:50+20`, and `src/foo.py:raw`; numbered output and search snippets carry `snapshot_id`, `file_sha256`, and visible ranges. Pass that `snapshot_id` to `edit_lines`, keep ranges tight, and re-read after each successful edit or stale/surprising result. Low-level compatibility tools remain temporary fallbacks, but the intended default surface should stay small and semantic.
 
 ## Run tests and checks
 
@@ -48,7 +48,7 @@ Use local-shell-mcp to show git status, summarize the diff, and run secret_scan 
 
 ## Work with long-running commands
 
-Use `run_shell_command` for bounded one-shot commands. Use persistent shells for dev servers, REPLs, and interactive processes:
+Use `bash` for terminal work. By default it runs bounded one-shot commands; set `async_=true` for tracked long-running non-interactive work, and `pty=true` for dev servers, REPLs, and interactive processes:
 
 ```text
 Use local-shell-mcp to start a persistent shell session for the development server, read the first output, and tell me the local URL.

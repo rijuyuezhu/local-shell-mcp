@@ -8,9 +8,9 @@ AgentReadPathArg = Annotated[
     str,
     Field(
         description=(
-            "Path or path selector to read. Supported selectors include "
-            "file.py:50, file.py:50-80, file.py:50+20, file.py:raw, "
-            "and file.py:50-80:raw."
+            "File or directory path with optional oh-my-pi-style selector. "
+            "Examples: file.py, file.py:50, file.py:50-80, "
+            "file.py:50+20, file.py:raw, file.py:50-80:raw."
         )
     ),
 ]

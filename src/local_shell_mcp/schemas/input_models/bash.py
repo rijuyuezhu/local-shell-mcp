@@ -6,11 +6,15 @@ from pydantic import Field
 
 BashCommandArg = Annotated[
     str,
-    Field(description="Shell command string to execute."),
+    Field(
+        description="Shell command string to execute for terminal work such as tests, builds, package managers, git, or scripts."
+    ),
 ]
 BashCwdArg = Annotated[
     str,
-    Field(description="Working directory for the command."),
+    Field(
+        description="Working directory for the command; prefer this over embedding directory changes in the command."
+    ),
 ]
 BashTimeoutArg = Annotated[
     int | None,
@@ -25,19 +29,19 @@ BashMaxOutputBytesArg = Annotated[
 BashEnvArg = Annotated[
     dict[str, str] | None,
     Field(
-        description="Optional environment variables to prefix onto the shell command."
+        description="Optional environment variables for multiline, quote-heavy, or untrusted values; reference them from the command."
     ),
 ]
 BashAsyncArg = Annotated[
     bool,
     Field(
-        description="Whether to start the command as a tracked background job."
+        description="Whether to start long-running non-interactive work as a tracked background job."
     ),
 ]
 BashPtyArg = Annotated[
     bool,
     Field(
-        description="Whether to start the command in a persistent PTY shell session."
+        description="Whether to start the command in a persistent PTY shell session for interactive programs, REPLs, servers, or commands needing later input."
     ),
 ]
 BashNameArg = Annotated[

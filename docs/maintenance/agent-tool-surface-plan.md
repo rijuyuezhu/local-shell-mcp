@@ -92,10 +92,19 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 
 ### Slice 7: descriptions, docs, and generated references
 
-- [ ] Rewrite tool descriptions around agent workflows, grounding, stale checks, and remote facade usage.
+- [x] Rewrite tool descriptions around agent workflows, grounding, stale checks, and remote facade usage.
 - [ ] Regenerate tool and server-instruction reference JSON.
-- [ ] Update tests that assert schema descriptions.
-- [ ] Update user-facing docs and examples.
+- [x] Update tests that assert schema descriptions.
+- [x] Update user-facing docs and examples.
+
+### Slice 8: remove compatibility-layer surface
+
+Goal: once the oh-my-pi-style semantic tools are documented and generated references are current, keep the default agent-facing tool set small instead of exposing both the facade and every legacy duplicate.
+
+- [ ] Decide which low-level compatibility tools should remain HTTP/local-invocation internals versus MCP-visible tools.
+- [ ] Hide or remove legacy default-surface tools now covered by `read`, `search`, `edit_lines`, `bash`, and `remote`.
+- [ ] Keep explicit control-plane and escape-hatch tools only where they are still necessary.
+- [ ] Update tool-surface tests, docs, generated references, and PR description.
 
 ## Validation checklist per slice
 

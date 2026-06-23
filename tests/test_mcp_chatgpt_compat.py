@@ -257,7 +257,7 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
     assert grep_output_schema["title"] == "GrepSearchOutput"
     assert tree_output_schema["title"] == "TreeViewOutput"
     assert grep_tool.inputSchema["properties"]["query"]["description"] == (
-        "Text or regular expression to search for, depending on the regex parameter."
+        "Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata."
     )
     assert (
         "case-sensitive"

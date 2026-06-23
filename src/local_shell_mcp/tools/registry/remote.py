@@ -91,7 +91,7 @@ async def remote(
     op: RemoteFacadeOpArg,
     args: RemoteFacadeArgsArg,
 ) -> RemoteFacadeOutput:
-    """Run a high-level operation on a selected remote worker. Prefer this facade for normal remote reads, searches, line edits, shell commands, jobs, and workspace operations; use remote_invite, remote_list_machines, transfer, and legacy remote_* tools for control-plane or specialized cases."""
+    """Run a semantic operation on a selected remote worker. Prefer this facade for normal remote read, search, edit_lines, bash/python, jobs, and workspace operations. Use remote_list_machines for discovery, invite/revoke/rename for control-plane work, and transfer tools for data movement. Keep remote edits grounded by remote read/search snapshots just like local edits."""
     return await remote_execute(machine, op, args)
 
 

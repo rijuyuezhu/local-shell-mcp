@@ -65,27 +65,27 @@ def _list_files_description(context: McpToolContext) -> str:
 
 def _read_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Read a UTF-8 text file, optionally by line range. Use after locating a file to inspect exact content before editing. The result includes original line numbers, numbered_content for model-facing references, and a snapshot_id/file_sha256 pair for stale edit detection by line-based editing tools. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
+    return f"""Lower-level UTF-8 file read with optional start/end lines. Prefer high-level `read(path)` for normal agent context because selectors travel with the path. The result includes raw `content`, original line objects, model-facing `numbered_content`, `snapshot_id`, `file_sha256`, and displayed `seen_ranges`. Use the snapshot with `edit_lines` and re-read before editing unshown ranges. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
 
 
 def _read_many_files_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Read multiple UTF-8 text files with optional per-file line ranges. Use for targeted context gathering across known paths. Current limits: {settings.max_read_many_files} files and {settings.max_read_many_total_bytes} returned bytes."""
+    return f"""Lower-level batch read for multiple known UTF-8 files and optional line ranges. Use when independent reads should be batched; otherwise prefer high-level `read(path)` for selector-based single targets. Each file result includes numbered content and snapshot metadata suitable for `edit_lines` grounding. Current limits: {settings.max_read_many_files} files and {settings.max_read_many_total_bytes} returned bytes."""
 
 
 def _write_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Write a full UTF-8 text file. Use to create a new file or intentionally replace a whole file. Current write cap: {settings.max_file_write_bytes} bytes. For precise modifications, prefer edit_file or apply_patch."""
+    return f"""Write a complete UTF-8 file. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use exact-text edit or patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 def _edit_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Replace exact text in a validated UTF-8 text file. Use for small precise edits after reading the target file. Current write cap: {settings.max_file_write_bytes} bytes. For larger or multi-file changes, prefer apply_patch."""
+    return f"""Lower-level exact-text replacement in a UTF-8 file. Prefer `edit_lines` when a recent read/search provided line numbers and snapshot metadata. Use exact-text replacement for small, unique text changes where line grounding is awkward, and include enough surrounding text to make the match unique unless intentionally replacing all matches. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 def _edit_lines_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 text file. Prefer this over exact-text edit_file when a recent read/read_file result gave you line numbers. Pass snapshot_id from read/read_file to reject stale edits and edits outside the displayed line range. The result returns a unified diff and fresh numbered post-edit context. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read`, `search`, `read_file`, or `read_many_files` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 @local_tool(

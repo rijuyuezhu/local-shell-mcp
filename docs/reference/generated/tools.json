@@ -126,7 +126,7 @@
           {
             "items": [
               {
-                "description": "Path or path selector to read. Supported selectors include file.py:50, file.py:50-80, file.py:50+20, file.py:raw, and file.py:50-80:raw.",
+                "description": "File or directory path with optional oh-my-pi-style selector. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
                 "head": {
                   "code": "path"
                 },
@@ -141,7 +141,7 @@
               }
             ]
           },
-          "Read a file or directory using an oh-my-pi-style path selector. Prefer this high-level read tool when gathering code context for edits. File output defaults to numbered_content with original line numbers plus snapshot metadata; append :raw only when exact unnumbered text is needed. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
+          "Read files and directories through one oh-my-pi-style path argument. Prefer this high-level read tool for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
@@ -162,28 +162,28 @@
           {
             "items": [
               {
-                "description": "Whether to start the command as a tracked background job.",
+                "description": "Whether to start long-running non-interactive work as a tracked background job.",
                 "head": {
                   "code": "async_"
                 },
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Shell command string to execute.",
+                "description": "Shell command string to execute for terminal work such as tests, builds, package managers, git, or scripts.",
                 "head": {
                   "code": "command"
                 },
                 "note": "(string, required)"
               },
               {
-                "description": "Working directory for the command.",
+                "description": "Working directory for the command; prefer this over embedding directory changes in the command.",
                 "head": {
                   "code": "cwd"
                 },
                 "note": "(string, optional)"
               },
               {
-                "description": "Optional environment variables to prefix onto the shell command.",
+                "description": "Optional environment variables for multiline, quote-heavy, or untrusted values; reference them from the command.",
                 "head": {
                   "code": "env"
                 },
@@ -211,7 +211,7 @@
                 "note": "(string / null, optional)"
               },
               {
-                "description": "Whether to start the command in a persistent PTY shell session.",
+                "description": "Whether to start the command in a persistent PTY shell session for interactive programs, REPLs, servers, or commands needing later input.",
                 "head": {
                   "code": "pty"
                 },
@@ -233,7 +233,7 @@
               }
             ]
           },
-          "Run shell commands through one agent-oriented facade. By default bash runs a bounded non-interactive command like run_shell_command. Set async_=true for long-running non-interactive work that should be tracked by job_id. Set pty=true for interactive programs, REPLs, servers, or commands that need later input through persistent-shell tools. Current bounded command timeout default/cap: 10/60 seconds."
+          "Run terminal work through one oh-my-pi-style bash facade. Use for builds, tests, package managers, git inspection, scripts, and commands that genuinely need a shell. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline, quote-heavy, or untrusted values. Set `async_=true` for long-running non-interactive work tracked by job id, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds."
         ]
       ]
     },
@@ -410,7 +410,7 @@
               }
             ]
           },
-          "Replace exact text in a validated UTF-8 text file. Use for small precise edits after reading the target file. Current write cap: 5000000 bytes. For larger or multi-file changes, prefer apply_patch."
+          "Lower-level exact-text replacement in a UTF-8 file. Prefer `edit_lines` when a recent read/search provided line numbers and snapshot metadata. Use exact-text replacement for small, unique text changes where line grounding is awkward, and include enough surrounding text to make the match unique unless intentionally replacing all matches. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -462,7 +462,7 @@
               }
             ]
           },
-          "Replace an inclusive 1-based whole-line range in a UTF-8 text file. Prefer this over exact-text edit_file when a recent read/read_file result gave you line numbers. Pass snapshot_id from read/read_file to reject stale edits and edits outside the displayed line range. The result returns a unified diff and fresh numbered post-edit context. Current write cap: 5000000 bytes."
+          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read`, `search`, `read_file`, or `read_many_files` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -555,7 +555,7 @@
               }
             ]
           },
-          "Read a UTF-8 text file, optionally by line range. Use after locating a file to inspect exact content before editing. The result includes original line numbers, numbered_content for model-facing references, and a snapshot_id/file_sha256 pair for stale edit detection by line-based editing tools. Current per-file read cap: 512000 bytes."
+          "Lower-level UTF-8 file read with optional start/end lines. Prefer high-level `read(path)` for normal agent context because selectors travel with the path. The result includes raw `content`, original line objects, model-facing `numbered_content`, `snapshot_id`, `file_sha256`, and displayed `seen_ranges`. Use the snapshot with `edit_lines` and re-read before editing unshown ranges. Current per-file read cap: 512000 bytes."
         ],
         [
           {
@@ -572,7 +572,7 @@
               }
             ]
           },
-          "Read multiple UTF-8 text files with optional per-file line ranges. Use for targeted context gathering across known paths. Current limits: 100 files and 5000000 returned bytes."
+          "Lower-level batch read for multiple known UTF-8 files and optional line ranges. Use when independent reads should be batched; otherwise prefer high-level `read(path)` for selector-based single targets. Each file result includes numbered content and snapshot metadata suitable for `edit_lines` grounding. Current limits: 100 files and 5000000 returned bytes."
         ],
         [
           {
@@ -603,7 +603,7 @@
               }
             ]
           },
-          "Write a full UTF-8 text file. Use to create a new file or intentionally replace a whole file. Current write cap: 5000000 bytes. For precise modifications, prefer edit_file or apply_patch."
+          "Write a complete UTF-8 file. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use exact-text edit or patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
         ]
       ]
     },
@@ -878,7 +878,7 @@
           {
             "items": [
               {
-                "description": "Operation-specific arguments forwarded to the remote worker. Do not include machine.",
+                "description": "Operation-specific arguments forwarded to the remote worker. Do not include machine; keep edit operations grounded by remote read/search snapshots.",
                 "head": {
                   "code": "args"
                 },
@@ -892,7 +892,7 @@
                 "note": "(string, required)"
               },
               {
-                "description": "High-level remote operation to run on the selected worker.",
+                "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or job operations.",
                 "head": {
                   "code": "op"
                 },
@@ -2099,7 +2099,7 @@
                 "note": "(integer / null, optional)"
               },
               {
-                "description": "Text or regular expression to search for, depending on the regex parameter.",
+                "description": "Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata.",
                 "head": {
                   "code": "query"
                 },
@@ -2121,7 +2121,7 @@
               }
             ]
           },
-          "Search file contents with ripgrep to locate symbols, usages, error messages, or text before reading or editing files. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results=200."
+          "Lower-level content lookup. Prefer high-level search for normal agent discovery. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Re-read before editing outside displayed ranges. Current max_grep_results=200."
         ],
         [
           {
@@ -2144,14 +2144,14 @@
                 "note": "(integer / null, optional)"
               },
               {
-                "description": "Optional path, glob, or list of paths/globs that scopes the high-level code search. Omit to search from cwd.",
+                "description": "Optional file, directory, glob, or list of them that scopes the high-level search; omit to search the workspace root.",
                 "head": {
                   "code": "paths"
                 },
                 "note": "(string / array / null, optional)"
               },
               {
-                "description": "Text or regular expression to search for, depending on the regex parameter.",
+                "description": "Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata.",
                 "head": {
                   "code": "pattern"
                 },
@@ -2173,7 +2173,7 @@
               }
             ]
           },
-          "Search code content using an agent-oriented facade inspired by oh-my-pi. Use pattern for text or regex search and optional paths to scope to files, directories, or globs. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results=200."
+          "Search code content using an oh-my-pi-style facade. Use built-in search for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200."
         ],
         [
           {
@@ -2859,23 +2859,23 @@
       }
     },
     {
-      "description": "Run shell commands through one agent-oriented facade. By default bash runs a bounded non-interactive command like run_shell_command. Set async_=true for long-running non-interactive work that should be tracked by job_id. Set pty=true for interactive programs, REPLs, servers, or commands that need later input through persistent-shell tools. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Run terminal work through one oh-my-pi-style bash facade. Use for builds, tests, package managers, git inspection, scripts, and commands that genuinely need a shell. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline, quote-heavy, or untrusted values. Set `async_=true` for long-running non-interactive work tracked by job id, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
             "default": false,
-            "description": "Whether to start the command as a tracked background job.",
+            "description": "Whether to start long-running non-interactive work as a tracked background job.",
             "title": "Async",
             "type": "boolean"
           },
           "command": {
-            "description": "Shell command string to execute.",
+            "description": "Shell command string to execute for terminal work such as tests, builds, package managers, git, or scripts.",
             "title": "Command",
             "type": "string"
           },
           "cwd": {
             "default": ".",
-            "description": "Working directory for the command.",
+            "description": "Working directory for the command; prefer this over embedding directory changes in the command.",
             "title": "Cwd",
             "type": "string"
           },
@@ -2892,7 +2892,7 @@
               }
             ],
             "default": null,
-            "description": "Optional environment variables to prefix onto the shell command.",
+            "description": "Optional environment variables for multiline, quote-heavy, or untrusted values; reference them from the command.",
             "title": "Env"
           },
           "explanation": {
@@ -2936,7 +2936,7 @@
           },
           "pty": {
             "default": false,
-            "description": "Whether to start the command in a persistent PTY shell session.",
+            "description": "Whether to start the command in a persistent PTY shell session for interactive programs, REPLs, servers, or commands needing later input.",
             "title": "Pty",
             "type": "boolean"
           },
@@ -3314,7 +3314,7 @@
       }
     },
     {
-      "description": "Replace exact text in a validated UTF-8 text file. Use for small precise edits after reading the target file. Current write cap: 5000000 bytes. For larger or multi-file changes, prefer apply_patch.",
+      "description": "Lower-level exact-text replacement in a UTF-8 file. Prefer `edit_lines` when a recent read/search provided line numbers and snapshot metadata. Use exact-text replacement for small, unique text changes where line grounding is awkward, and include enough surrounding text to make the match unique unless intentionally replacing all matches. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "new": {
@@ -3382,7 +3382,7 @@
       }
     },
     {
-      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 text file. Prefer this over exact-text edit_file when a recent read/read_file result gave you line numbers. Pass snapshot_id from read/read_file to reject stale edits and edits outside the displayed line range. The result returns a unified diff and fresh numbered post-edit context. Current write cap: 5000000 bytes.",
+      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read`, `search`, `read_file`, or `read_many_files` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "end_line": {
@@ -3962,7 +3962,7 @@
       }
     },
     {
-      "description": "Search file contents with ripgrep to locate symbols, usages, error messages, or text before reading or editing files. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results=200.",
+      "description": "Lower-level content lookup. Prefer high-level search for normal agent discovery. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Re-read before editing outside displayed ranges. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
@@ -4004,7 +4004,7 @@
             "title": "Max Results"
           },
           "query": {
-            "description": "Text or regular expression to search for, depending on the regex parameter.",
+            "description": "Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata.",
             "title": "Query",
             "type": "string"
           },
@@ -5718,11 +5718,11 @@
       }
     },
     {
-      "description": "Read a file or directory using an oh-my-pi-style path selector. Prefer this high-level read tool when gathering code context for edits. File output defaults to numbered_content with original line numbers plus snapshot metadata; append :raw only when exact unnumbered text is needed. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
+      "description": "Read files and directories through one oh-my-pi-style path argument. Prefer this high-level read tool for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
           "path": {
-            "description": "Path or path selector to read. Supported selectors include file.py:50, file.py:50-80, file.py:50+20, file.py:raw, and file.py:50-80:raw.",
+            "description": "File or directory path with optional oh-my-pi-style selector. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
             "title": "Path",
             "type": "string"
           },
@@ -6105,7 +6105,7 @@
       }
     },
     {
-      "description": "Read a UTF-8 text file, optionally by line range. Use after locating a file to inspect exact content before editing. The result includes original line numbers, numbered_content for model-facing references, and a snapshot_id/file_sha256 pair for stale edit detection by line-based editing tools. Current per-file read cap: 512000 bytes.",
+      "description": "Lower-level UTF-8 file read with optional start/end lines. Prefer high-level `read(path)` for normal agent context because selectors travel with the path. The result includes raw `content`, original line objects, model-facing `numbered_content`, `snapshot_id`, `file_sha256`, and displayed `seen_ranges`. Use the snapshot with `edit_lines` and re-read before editing unshown ranges. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
           "end_line": {
@@ -6381,7 +6381,7 @@
       }
     },
     {
-      "description": "Read multiple UTF-8 text files with optional per-file line ranges. Use for targeted context gathering across known paths. Current limits: 100 files and 5000000 returned bytes.",
+      "description": "Lower-level batch read for multiple known UTF-8 files and optional line ranges. Use when independent reads should be batched; otherwise prefer high-level `read(path)` for selector-based single targets. Each file result includes numbered content and snapshot metadata suitable for `edit_lines` grounding. Current limits: 100 files and 5000000 returned bytes.",
       "inputSchema": {
         "$defs": {
           "ReadFileRequest": {
@@ -6923,7 +6923,7 @@
         "properties": {
           "args": {
             "additionalProperties": true,
-            "description": "Operation-specific arguments forwarded to the remote worker. Do not include machine.",
+            "description": "Operation-specific arguments forwarded to the remote worker. Do not include machine; keep edit operations grounded by remote read/search snapshots.",
             "title": "Args",
             "type": "object"
           },
@@ -6933,7 +6933,7 @@
             "type": "string"
           },
           "op": {
-            "description": "High-level remote operation to run on the selected worker.",
+            "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or job operations.",
             "enum": [
               "environment",
               "read",
@@ -11323,7 +11323,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search code content using an agent-oriented facade inspired by oh-my-pi. Use pattern for text or regex search and optional paths to scope to files, directories, or globs. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results=200.",
+      "description": "Search code content using an oh-my-pi-style facade. Use built-in search for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
@@ -11361,11 +11361,11 @@
               }
             ],
             "default": null,
-            "description": "Optional path, glob, or list of paths/globs that scopes the high-level code search. Omit to search from cwd.",
+            "description": "Optional file, directory, glob, or list of them that scopes the high-level search; omit to search the workspace root.",
             "title": "Paths"
           },
           "pattern": {
-            "description": "Text or regular expression to search for, depending on the regex parameter.",
+            "description": "Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata.",
             "title": "Pattern",
             "type": "string"
           },
@@ -12377,7 +12377,7 @@
       }
     },
     {
-      "description": "Write a full UTF-8 text file. Use to create a new file or intentionally replace a whole file. Current write cap: 5000000 bytes. For precise modifications, prefer edit_file or apply_patch.",
+      "description": "Write a complete UTF-8 file. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use exact-text edit or patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "content": {

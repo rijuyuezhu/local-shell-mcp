@@ -217,12 +217,12 @@ RemoteFacadeOpArg = Annotated[
         "job_retry",
     ],
     Field(
-        description="High-level remote operation to run on the selected worker."
+        description="High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or job operations."
     ),
 ]
 RemoteFacadeArgsArg = Annotated[
     dict[str, Any],
     Field(
-        description="Operation-specific arguments forwarded to the remote worker. Do not include machine."
+        description="Operation-specific arguments forwarded to the remote worker. Do not include machine; keep edit operations grounded by remote read/search snapshots."
     ),
 ]
