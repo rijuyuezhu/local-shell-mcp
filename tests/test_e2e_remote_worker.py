@@ -25,22 +25,13 @@ from tests.e2e_helpers import (
 pytestmark = pytest.mark.integration
 
 REMOTE_TOOL_NAMES = {
-    "remote_invite",
-    "remote_list_machines",
-    "remote_revoke_machine",
-    "remote_rename_machine",
-    "remote_environment_info",
-    "run_remote_shell_command",
-    "run_remote_python_code",
-    "remote_list_files",
-    "remote_read_file",
-    "remote_read_many_files",
-    "remote_write_file",
-    "remote_delete_file_or_dir",
-    "remote_pull_file",
-    "remote_push_file",
-    "remote_pull_dir",
-    "remote_push_dir",
+    "remote_admin",
+    "session_start",
+    "read",
+    "search",
+    "edit_lines",
+    "bash",
+    "job",
 }
 
 
@@ -178,7 +169,10 @@ async def wait_for_machine(
                 f"worker exited early with code {process.returncode}\n"
                 f"stdout:\n{stdout}\nstderr:\n{stderr}"
             )
-        inventory = await client.call_tool("remote_list_machines")
+        inventory_result = await client.call_tool(
+            "remote_admin", {"action": "list", "args": {}}
+        )
+        inventory = inventory_result["data"]
         for row in inventory.get("machines", []):
             if row.get("name") == machine and row.get("status") == "online":
                 return row
@@ -203,12 +197,21 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         streamable_http_tool_client(base_url) as client,
     ):
         await assert_required_tools(client, REMOTE_TOOL_NAMES)
+        assert "remote" not in await client.list_tools()
 
         machine = "e2e-remote"
-        invite = await client.call_tool(
-            "remote_invite",
-            {"name": machine, "workdir": str(remote_workspace), "ttl_s": 120},
+        invite_result = await client.call_tool(
+            "remote_admin",
+            {
+                "action": "invite",
+                "args": {
+                    "name": machine,
+                    "workdir": str(remote_workspace),
+                    "ttl_s": 120,
+                },
+            },
         )
+        invite = invite_result["data"]
         assert invite["join_url"] == f"{base_url}/join"
         assert "curl -fsSL" in invite["command"]
 
@@ -248,167 +251,151 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             row = await wait_for_machine(client, worker, machine)
             assert row["workdir"] == str(remote_workspace)
 
-            remote_env = await client.call_tool(
-                "remote_environment_info", {"machine": machine}
+            (remote_workspace / "remote").mkdir()
+            (remote_workspace / "remote" / "demo.txt").write_text(
+                "hello from remote worker\n", encoding="utf-8"
             )
-            assert remote_env["settings"]["workspace_root"] == str(
-                remote_workspace
-            )
-            assert remote_env["settings"]["auth_mode"] == "none"
-            assert "effective_tool_limits" not in remote_env
-            assert remote_env["probe"]["ok"] is True
-            assert str(remote_workspace) in remote_env["probe"]["stdout"]
-
-            write_result = await client.call_tool(
-                "remote_write_file",
-                {
-                    "machine": machine,
-                    "path": "remote/demo.txt",
-                    "content": "hello from remote worker\n",
-                },
-            )
-            assert write_result["path"] == "remote/demo.txt"
-            assert (
-                remote_workspace / "remote" / "demo.txt"
-            ).read_text() == "hello from remote worker\n"
             assert not (control_workspace / "remote" / "demo.txt").exists()
 
-            listing = await client.call_tool(
-                "remote_list_files", {"machine": machine, "path": "remote"}
-            )
-            assert any(
-                item.get("path") == "remote/demo.txt"
-                for item in listing["entries"]
-            )
-
-            read_result = await client.call_tool(
-                "remote_read_file",
-                {"machine": machine, "path": "remote/demo.txt"},
-            )
-            assert read_result["content"] == "hello from remote worker\n"
-
-            (remote_workspace / "remote" / "other.txt").write_text(
-                "second remote file\n", encoding="utf-8"
-            )
-            many_result = await client.call_tool_result(
-                "remote_read_many_files",
+            first_class_session = await client.call_tool(
+                "session_start",
                 {
+                    "target": "remote",
                     "machine": machine,
-                    "files": [
-                        {"path": "remote/demo.txt"},
-                        {"path": "remote/other.txt"},
-                    ],
+                    "workdir": ".",
+                    "label": "remote-e2e",
                 },
             )
-            assert many_result.isError
-            assert many_result.content
-            many_error = getattr(many_result.content[0], "text", "")
-            assert "Refusing to read 2 files; max is 1" in many_error
+            first_class_session_id = first_class_session["session_id"]
+            assert first_class_session["target"] == "remote"
+            assert first_class_session["machine"] == machine
+            assert "worker_session_id" not in first_class_session
 
-            shell_result = await client.call_tool(
-                "run_remote_shell_command",
+            first_class_read = await client.call_tool(
+                "read",
                 {
-                    "machine": machine,
-                    "command": "printf remote-shell-ok",
+                    "session_id": first_class_session_id,
+                    "path": "remote/demo.txt:1",
+                },
+            )
+            assert first_class_read["kind"] == "file"
+            assert "hello from remote worker" in first_class_read["content"]
+            assert (
+                first_class_read["file"]["session_id"] == first_class_session_id
+            )
+            first_class_snapshot_id = first_class_read["file"]["snapshot_id"]
+
+            first_class_search = await client.call_tool(
+                "search",
+                {
+                    "session_id": first_class_session_id,
+                    "pattern": "hello",
+                    "paths": ["remote/demo.txt"],
+                    "regex": False,
+                },
+            )
+            assert "count" in first_class_search
+            assert "matches" in first_class_search
+
+            first_class_edit = await client.call_tool(
+                "edit_lines",
+                {
+                    "session_id": first_class_session_id,
+                    "path": "remote/demo.txt",
+                    "start_line": 1,
+                    "end_line": 1,
+                    "replacement": "edited through first-class remote session",
+                    "snapshot_id": first_class_snapshot_id,
+                },
+            )
+            assert (
+                first_class_edit["context"]["session_id"]
+                == first_class_session_id
+            )
+            assert (
+                remote_workspace / "remote" / "demo.txt"
+            ).read_text() == "edited through first-class remote session\n"
+            assert not (control_workspace / "remote" / "demo.txt").exists()
+
+            first_class_bash = await client.call_tool(
+                "bash",
+                {
+                    "session_id": first_class_session_id,
+                    "command": "printf first-class-remote-shell",
                     "timeout_s": 5,
                 },
             )
-            assert shell_result["ok"] is True
-            assert shell_result["stdout"] == "remote-shell-ok"
+            assert first_class_bash["mode"] == "command"
+            assert (
+                first_class_bash["result"]["stdout"]
+                == "first-class-remote-shell"
+            )
 
-            python_result = await client.call_tool(
-                "run_remote_python_code",
+            tmux_check = await client.call_tool(
+                "bash",
                 {
-                    "machine": machine,
-                    "code": "from pathlib import Path; print(Path.cwd().name)",
+                    "session_id": first_class_session_id,
+                    "command": "command -v tmux",
                     "timeout_s": 5,
                 },
             )
-            assert python_result["ok"] is True
-            assert python_result["stdout"].strip() == remote_workspace.name
+            if tmux_check["result"]["ok"]:
+                first_class_job = await client.call_tool(
+                    "bash",
+                    {
+                        "session_id": first_class_session_id,
+                        "command": (
+                            "python -c 'import time; "
+                            'print("first-class-job", flush=True); '
+                            "time.sleep(3)'"
+                        ),
+                        "async_": True,
+                        "name": "first-class-remote-job",
+                    },
+                )
+                first_class_job_id = first_class_job["result"]["job_id"]
+                assert (
+                    first_class_job["result"]["session_id"]
+                    == first_class_session_id
+                )
+                first_class_jobs = await client.call_tool(
+                    "job",
+                    {
+                        "session_id": first_class_session_id,
+                        "list_jobs": True,
+                    },
+                )
+                assert any(
+                    item["job_id"] == first_class_job_id
+                    and item["session_id"] == first_class_session_id
+                    for item in first_class_jobs["jobs"]
+                )
+                await client.call_tool(
+                    "job",
+                    {
+                        "session_id": first_class_session_id,
+                        "cancel": [first_class_job_id],
+                    },
+                )
 
-            (control_workspace / "local.bin").write_bytes(
-                b"local-to-remote-\x00-payload"
-            )
-            push_file = await client.call_tool(
-                "remote_push_file",
+            delete_result = await client.call_tool(
+                "bash",
                 {
-                    "local_path": "local.bin",
-                    "machine": machine,
-                    "remote_path": "remote/pushed.bin",
-                    "chunk_size": 5,
+                    "session_id": first_class_session_id,
+                    "command": "rm remote/demo.txt",
+                    "timeout_s": 5,
                 },
             )
-            assert push_file["bytes"] == len(b"local-to-remote-\x00-payload")
-            assert push_file["chunks"] > 1
-            assert (
-                remote_workspace / "remote" / "pushed.bin"
-            ).read_bytes() == (b"local-to-remote-\x00-payload")
-
-            pull_file = await client.call_tool(
-                "remote_pull_file",
-                {
-                    "machine": machine,
-                    "remote_path": "remote/pushed.bin",
-                    "local_path": "pulled.bin",
-                    "chunk_size": 4,
-                },
-            )
-            assert pull_file["chunks"] > 1
-            assert (control_workspace / "pulled.bin").read_bytes() == (
-                b"local-to-remote-\x00-payload"
-            )
-
-            (control_workspace / "tree_view_execute" / "nested").mkdir(
-                parents=True
-            )
-            (
-                control_workspace / "tree_view_execute" / "nested" / "file.txt"
-            ).write_text("directory payload", encoding="utf-8")
-            push_dir = await client.call_tool(
-                "remote_push_dir",
-                {
-                    "local_path": "tree_view_execute",
-                    "machine": machine,
-                    "remote_path": "remote/tree_view_execute-copy",
-                    "chunk_size": 128,
-                },
-            )
-            assert push_dir["entries"] >= 1
-            assert (
-                remote_workspace
-                / "remote"
-                / "tree_view_execute-copy"
-                / "nested"
-                / "file.txt"
-            ).read_text(encoding="utf-8") == "directory payload"
-
-            pull_dir = await client.call_tool(
-                "remote_pull_dir",
-                {
-                    "machine": machine,
-                    "remote_path": "remote/tree_view_execute-copy",
-                    "local_path": "tree_view_execute-pulled",
-                    "chunk_size": 128,
-                },
-            )
-            assert pull_dir["entries"] >= 1
-            assert (
-                control_workspace
-                / "tree_view_execute-pulled"
-                / "nested"
-                / "file.txt"
-            ).read_text(encoding="utf-8") == "directory payload"
-
-            await client.call_tool(
-                "remote_delete_file_or_dir",
-                {"machine": machine, "path": "remote/demo.txt"},
-            )
+            assert delete_result["result"]["ok"] is True
             assert not (remote_workspace / "remote" / "demo.txt").exists()
 
             revoked = await client.call_tool(
-                "remote_revoke_machine", {"machine": machine}
+                "remote_admin",
+                {"action": "revoke", "args": {"machine": machine}},
             )
-            assert revoked == {"machine": machine, "revoked": True}
+            assert revoked == {
+                "action": "revoke",
+                "data": {"machine": machine, "revoked": True},
+            }
         finally:
             terminate_process(worker)

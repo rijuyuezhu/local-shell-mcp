@@ -30,8 +30,22 @@ class ListFilesOutput(BaseModel):
     entries: list[EntryInfo] = Field(description="Returned directory entries.")
 
 
+class LineRange(BaseModel):
+    """Inclusive 1-based line range shown to the agent."""
+
+    start: int = Field(description="First visible 1-based line number.")
+    end: int = Field(description="Final visible 1-based line number.")
+
+
+class ReadLine(BaseModel):
+    """One decoded line with its original file line number."""
+
+    line: int = Field(description="Original 1-based line number in the file.")
+    text: str = Field(description="Line text without its trailing newline.")
+
+
 class ReadFileOutput(BaseModel):
-    """UTF-8 text file content."""
+    """UTF-8 text file content plus edit-grounding metadata."""
 
     path: str = Field(description="Workspace-relative file path that was read.")
     bytes: int = Field(description="Total file size in bytes.")
@@ -47,11 +61,49 @@ class ReadFileOutput(BaseModel):
         default=None,
         description="Total decoded text line count before optional line-range selection.",
     )
+    start_line: int | None = Field(
+        default=None,
+        description="First original 1-based line number returned in lines, or null when no lines were returned.",
+    )
+    end_line: int | None = Field(
+        default=None,
+        description="Final original 1-based line number returned in lines, or null when no lines were returned.",
+    )
+    line_count: int = Field(
+        default=0,
+        description="Number of decoded text lines returned in lines and numbered_content.",
+    )
+    lines: list[ReadLine] = Field(
+        default_factory=list,
+        description="Returned lines with original 1-based line numbers for precise follow-up edits.",
+    )
+    numbered_content: str = Field(
+        default="",
+        description="Model-facing content formatted as 'line|text' so later edits can refer to original line numbers.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Explicit agent/workspace session that recorded this read, or null when no grounding snapshot was recorded.",
+    )
+    snapshot_id: str | None = Field(
+        default=None,
+        description="Opaque handle for this displayed file snapshot, used by line-based edit tools to reject stale edits.",
+    )
+    file_sha256: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the complete file at the time it was read.",
+    )
+    seen_ranges: list[LineRange] = Field(
+        default_factory=list,
+        description="Inclusive original line ranges that were actually shown and are eligible for grounded line edits.",
+    )
     truncated: bool = Field(
         default=False,
         description="Whether text content was truncated to fit the read limit.",
     )
-    content: str = Field(description="Decoded UTF-8 text content.")
+    content: str = Field(
+        description="Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing."
+    )
 
 
 class ReadManyFilesOutput(BaseModel):
@@ -90,6 +142,27 @@ class EditFileOutput(BaseModel):
 
 class MultiEditFileOutput(EditFileOutput):
     """Multiple exact-text edit result."""
+
+
+class EditLinesOutput(BaseModel):
+    """Grounded whole-line edit result."""
+
+    path: str = Field(
+        description="Workspace-relative file path that was edited."
+    )
+    start_line: int = Field(
+        description="Original 1-based first line replaced by this edit."
+    )
+    end_line: int = Field(
+        description="Original 1-based final line replaced by this edit."
+    )
+    replacement_line_count: int = Field(
+        description="Number of replacement lines inserted for the selected range."
+    )
+    diff: str = Field(description="Unified diff for the applied line edit.")
+    context: ReadFileOutput = Field(
+        description="Numbered post-edit context around the changed line range, including a fresh snapshot_id."
+    )
 
 
 class DeleteFileOrDirOutput(BaseModel):

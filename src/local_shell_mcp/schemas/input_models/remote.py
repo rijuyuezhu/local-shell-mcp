@@ -1,25 +1,25 @@
 """Shared input annotations for remote-worker tools."""
 
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
 RemoteMachineArg = Annotated[
     str,
     Field(
-        description="Exact remote worker machine name returned by remote_list_machines."
+        description='Exact remote worker machine name returned by remote_admin(action="list").'
     ),
 ]
 RemoteSourceMachineArg = Annotated[
     str,
     Field(
-        description="Exact source remote worker machine name returned by remote_list_machines."
+        description='Exact source remote worker machine name returned by remote_admin(action="list").'
     ),
 ]
 RemoteDestinationMachineArg = Annotated[
     str,
     Field(
-        description="Exact destination remote worker machine name returned by remote_list_machines."
+        description='Exact destination remote worker machine name returned by remote_admin(action="list").'
     ),
 ]
 RemoteNewNameArg = Annotated[
@@ -98,15 +98,15 @@ RemoteCwdArg = Annotated[
     str,
     Field(description="Working directory on the selected remote worker."),
 ]
-RemoteSessionIdArg = Annotated[
+RemoteShellIdArg = Annotated[
     str,
     Field(
-        description="Persistent shell session identifier on the selected remote worker."
+        description="Persistent shell identifier on the selected remote worker."
     ),
 ]
 RemoteInputTextArg = Annotated[
     str,
-    Field(description="Text to send to the remote persistent shell session."),
+    Field(description="Text to send to the remote persistent shell."),
 ]
 RemoteEnterArg = Annotated[
     bool,
@@ -188,9 +188,15 @@ RemoteRecursiveArg = Annotated[
         description="Whether remote deletion may recurse into non-empty directories."
     ),
 ]
-RemotePatchArg = Annotated[
-    str,
+RemoteAdminActionArg = Annotated[
+    Literal["invite", "list", "revoke", "rename"],
     Field(
-        description="Unified diff text to apply on the selected remote worker."
+        description="Remote control-plane action: invite, list, revoke, or rename workers."
+    ),
+]
+RemoteAdminArgsArg = Annotated[
+    dict[str, Any],
+    Field(
+        description="Action-specific control-plane arguments. invite accepts name, workdir, ttl_s; list accepts {}; revoke accepts machine; rename accepts machine and new_name."
     ),
 ]

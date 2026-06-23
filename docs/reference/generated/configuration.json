@@ -461,7 +461,7 @@
           {
             "code": "10"
           },
-          "Default timeout for run_shell_command calls in seconds."
+          "Default timeout for bounded shell command calls in seconds."
         ],
         [
           {
@@ -481,7 +481,7 @@
           {
             "code": "60"
           },
-          "Maximum timeout accepted by run_shell_command calls in seconds."
+          "Maximum timeout accepted by bounded shell command calls in seconds."
         ],
         [
           {
@@ -641,7 +641,7 @@
           {
             "code": "100"
           },
-          "Maximum files allowed to be read by read_many_files tool."
+          "Maximum files allowed in one internal multi-file read operation."
         ],
         [
           {
@@ -661,7 +661,7 @@
           {
             "code": "5000000"
           },
-          "Maximum total byte limit for read_many_files tool."
+          "Maximum total byte limit for one internal multi-file read operation."
         ],
         [
           {
@@ -801,7 +801,7 @@
           {
             "code": "16"
           },
-          "Persistent shell session limit."
+          "Persistent shell limit."
         ],
         [
           {
@@ -1563,7 +1563,7 @@
       "cli": "--run-shell-default-timeout-s",
       "default": 10,
       "default_display": "10",
-      "description": "Default timeout for run_shell_command calls in seconds.",
+      "description": "Default timeout for bounded shell command calls in seconds.",
       "env": "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S",
       "name": "run_shell_default_timeout_s",
       "nullable": false,
@@ -1576,7 +1576,7 @@
       "cli": "--run-shell-max-timeout-s",
       "default": 60,
       "default_display": "60",
-      "description": "Maximum timeout accepted by run_shell_command calls in seconds.",
+      "description": "Maximum timeout accepted by bounded shell command calls in seconds.",
       "env": "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S",
       "name": "run_shell_max_timeout_s",
       "nullable": false,
@@ -1680,7 +1680,7 @@
       "cli": "--max-read-many-files",
       "default": 100,
       "default_display": "100",
-      "description": "Maximum files allowed to be read by read_many_files tool.",
+      "description": "Maximum files allowed in one internal multi-file read operation.",
       "env": "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES",
       "name": "max_read_many_files",
       "nullable": false,
@@ -1693,7 +1693,7 @@
       "cli": "--max-read-many-total-bytes",
       "default": 5000000,
       "default_display": "5000000",
-      "description": "Maximum total byte limit for read_many_files tool.",
+      "description": "Maximum total byte limit for one internal multi-file read operation.",
       "env": "LOCAL_SHELL_MCP_MAX_READ_MANY_TOTAL_BYTES",
       "name": "max_read_many_total_bytes",
       "nullable": false,
@@ -1784,7 +1784,7 @@
       "cli": "--max-tmux-sessions",
       "default": 16,
       "default_display": "16",
-      "description": "Persistent shell session limit.",
+      "description": "Persistent shell limit.",
       "env": "LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS",
       "name": "max_tmux_sessions",
       "nullable": false,

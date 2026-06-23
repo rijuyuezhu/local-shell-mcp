@@ -7,7 +7,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
-from tests.helpers import mcp_text
+from tests.helpers import mcp_structured, mcp_text
 
 
 def _audit_records(path):
@@ -43,19 +43,25 @@ def test_http_tool_calls_audit_full_input_output_and_auth_context(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).post(
-        "/tools/read_file", json={"path": "alpha.txt"}
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    response = client.post(
+        "/tools/read",
+        json={"session_id": session["session_id"], "path": "alpha.txt"},
     )
 
     assert response.status_code == 200
     records = _audit_records(get_settings().audit_log_path)
-    starts, ends = _tool_call_pairs(records, "read_file")
+    starts, ends = _tool_call_pairs(records, "read")
 
     assert len(starts) == 1
     assert len(ends) == 1
     assert starts[0]["call_id"] == ends[0]["call_id"]
     assert starts[0]["transport"] == "http"
-    assert starts[0]["input"] == {"path": "alpha.txt"}
+    assert starts[0]["input"] == {
+        "session_id": session["session_id"],
+        "path": "alpha.txt",
+    }
     assert ends[0]["ok"] is True
     assert ends[0]["output"] == response.json()
     assert ends[0]["duration_ms"] >= 0
@@ -69,17 +75,24 @@ async def test_mcp_tool_calls_audit_full_input_output(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = await build_mcp().call_tool("read_file", {"path": "beta.txt"})
+    session = json.loads(
+        mcp_text(await build_mcp().call_tool("session_start", {"workdir": "."}))
+    )
+    response = await build_mcp().call_tool(
+        "read",
+        {"session_id": session["session_id"], "path": "beta.txt:raw"},
+    )
     payload = json.loads(mcp_text(response))
 
     records = _audit_records(get_settings().audit_log_path)
-    starts, ends = _tool_call_pairs(records, "read_file")
+    starts, ends = _tool_call_pairs(records, "read")
 
     assert len(starts) == 1
     assert len(ends) == 1
     assert starts[0]["call_id"] == ends[0]["call_id"]
     assert starts[0]["transport"] == "mcp"
-    assert starts[0]["input"]["path"] == "beta.txt"
+    assert starts[0]["input"]["session_id"] == session["session_id"]
+    assert starts[0]["input"]["path"] == "beta.txt:raw"
     assert "binary_preview_bytes" not in starts[0]["input"]
     assert ends[0]["ok"] is True
     assert ends[0]["output"] == payload
@@ -94,14 +107,21 @@ async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    with pytest.raises(ToolError, match="Error executing tool read_file"):
-        await build_mcp().call_tool("read_file", {"path": "missing.txt"})
+    session = json.loads(
+        mcp_text(await build_mcp().call_tool("session_start", {"workdir": "."}))
+    )
+    with pytest.raises(ToolError, match="Error executing tool read"):
+        await build_mcp().call_tool(
+            "read",
+            {"session_id": session["session_id"], "path": "missing.txt"},
+        )
 
     records = _audit_records(get_settings().audit_log_path)
-    starts, ends = _tool_call_pairs(records, "read_file")
+    starts, ends = _tool_call_pairs(records, "read")
 
     assert len(starts) == 1
     assert len(ends) == 1
+    assert starts[0]["input"]["session_id"] == session["session_id"]
     assert starts[0]["input"]["path"] == "missing.txt"
     assert "binary_preview_bytes" not in starts[0]["input"]
     assert ends[0]["ok"] is False
@@ -116,12 +136,16 @@ async def test_shell_tool_purpose_metadata_is_audited(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    await build_mcp().call_tool(
-        "run_shell_command",
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+    await mcp.call_tool(
+        "bash",
         {
+            "session_id": session["session_id"],
             "command": "echo ok",
             "purpose": "verify workspace state",
-            "explanation": "The command is bounded and only prints a constant.",
         },
     )
 
@@ -133,9 +157,6 @@ async def test_shell_tool_purpose_metadata_is_audited(tmp_path, monkeypatch):
     ]
 
     assert len(purpose_records) == 1
-    assert purpose_records[0]["tool"] == "run_shell_command"
+    assert purpose_records[0]["tool"] == "bash"
     assert purpose_records[0]["purpose"] == "verify workspace state"
-    assert (
-        purpose_records[0]["explanation"]
-        == "The command is bounded and only prints a constant."
-    )
+    assert "explanation" not in purpose_records[0]

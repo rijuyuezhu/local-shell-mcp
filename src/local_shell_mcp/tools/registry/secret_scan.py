@@ -6,6 +6,7 @@ from ...schemas.input_models.secret_scan import (
     SecretScanGlobArg,
     SecretScanMaxResultsArg,
 )
+from ...schemas.input_models.session import SessionIdArg
 from ...schemas.result_models.secret_scan import SecretScanOutput
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
@@ -23,7 +24,7 @@ local_tool = SecretScanToolRegistry.get_tool_decorator()
 
 def _secret_scan_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Scan workspace text files for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: {settings.max_grep_results}."""
+    return f"""Scan text files under an explicit agent/workspace session for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: {settings.max_grep_results}."""
 
 
 @local_tool(
@@ -33,9 +34,10 @@ def _secret_scan_description(context: McpToolContext) -> str:
     mcp_scopes=("shell:read",),
 )
 async def secret_scan(
+    session_id: SessionIdArg,
     cwd: SecretScanCwdArg = ".",
     glob: SecretScanGlobArg = None,
     max_results: SecretScanMaxResultsArg = 200,
 ) -> SecretScanOutput:
-    """Scan workspace text files for common secret-like strings."""
-    return await secret_scan_execute(cwd, glob, max_results)
+    """Scan session workdir text files for common secret-like strings."""
+    return await secret_scan_execute(cwd, glob, max_results, session_id)

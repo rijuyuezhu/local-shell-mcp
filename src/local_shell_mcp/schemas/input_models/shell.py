@@ -7,62 +7,68 @@ from pydantic import Field
 ShellCommandArg = Annotated[
     str,
     Field(
-        description="Shell command string executed with the configured shell."
+        description="Shell command string to execute for terminal work such as tests, builds, package managers, git, or scripts."
     ),
 ]
-CwdArg = Annotated[
+ShellCwdArg = Annotated[
     str,
     Field(
-        description="Working directory for the operation. Relative paths resolve inside the configured workspace."
+        description="Optional working directory for the command, resolved inside the agent/workspace session workdir. Omit or pass . to use the session workdir."
     ),
 ]
-RunShellTimeoutArg = Annotated[
+ShellTimeoutArg = Annotated[
     int | None,
     Field(
-        description="Optional public tool timeout in seconds. Omit to use the configured default; values above the configured public cap are rejected."
+        description="Optional timeout in seconds for bounded command mode. For long-running work, prefer async_=true and manage the returned job_id with job."
     ),
 ]
-MaxOutputBytesArg = Annotated[
+ShellMaxOutputBytesArg = Annotated[
     int | None,
     Field(
-        description="Optional combined stdout/stderr byte budget. Values above the configured server cap are clamped."
+        description="Optional combined stdout/stderr byte budget for bounded command mode. Values above the configured server cap are clamped."
+    ),
+]
+ShellEnvArg = Annotated[
+    dict[str, str] | None,
+    Field(
+        description="Optional environment variables for multiline, quote-heavy, or caller-provided values; reference them from the command instead of embedding them directly."
+    ),
+]
+ShellAsyncArg = Annotated[
+    bool,
+    Field(
+        description="Whether to start long-running non-interactive work as a tracked background job owned by this session. Returns job_id for the job tool, not shell_id."
+    ),
+]
+ShellPtyArg = Annotated[
+    bool,
+    Field(
+        description="Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools, not job_id."
+    ),
+]
+ShellNameArg = Annotated[
+    str | None,
+    Field(
+        description="Optional name for the tracked async job or persistent PTY shell."
     ),
 ]
 PythonCodeArg = Annotated[
     str,
     Field(
-        description="Complete Python source code to write to a temporary script and execute."
+        description="Complete Python source code to write to a temporary script and execute through the shell execution surface."
     ),
 ]
-PythonTimeoutArg = Annotated[
-    int,
-    Field(
-        description="Python script timeout in seconds, bounded by the public shell timeout cap."
-    ),
-]
-SessionIdArg = Annotated[
+ShellIdArg = Annotated[
     str,
     Field(
-        description="Persistent shell session_id returned by start_persistent_shell or list_persistent_shells."
+        description="Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id."
     ),
 ]
 InputTextArg = Annotated[
-    str, Field(description="Text to send to the persistent shell session.")
+    str, Field(description="Text to send to the persistent shell.")
 ]
 EnterArg = Annotated[
     bool, Field(description="Whether to send Enter after the input text.")
-]
-ShellNameArg = Annotated[
-    str | None,
-    Field(
-        description="Optional human-readable session label used to derive the tmux session name."
-    ),
-]
-InitialCommandArg = Annotated[
-    str | None,
-    Field(
-        description="Optional command to start immediately in the persistent shell. Omit to start the configured shell executable."
-    ),
 ]
 LinesArg = Annotated[
     int,
@@ -70,18 +76,10 @@ LinesArg = Annotated[
         description="Number of recent terminal lines to capture from the persistent shell."
     ),
 ]
-
 ToolPurposeArg = Annotated[
     str | None,
     Field(
         default=None,
         description="Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-    ),
-]
-ToolExplanationArg = Annotated[
-    str | None,
-    Field(
-        default=None,
-        description="Optional longer explanation for the tool call. Maximum 2000 characters.",
     ),
 ]

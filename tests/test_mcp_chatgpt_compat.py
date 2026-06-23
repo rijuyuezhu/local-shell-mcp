@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import re
 import time
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -67,6 +68,13 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert "You are a coding agent aiming to help the user" in mcp.instructions
     assert "Do not commit, push, amend, create PRs, release" in mcp.instructions
     assert "secret_scan is heuristic" in mcp.instructions
+    assert (
+        "`session_id` identifies the agent/workspace session"
+        in mcp.instructions
+    )
+    assert "`bash(async_=true)` returns a `job_id`" in mcp.instructions
+    assert "`bash(pty=true)` is local-session only" in mcp.instructions
+    assert "Do not use `shell_id` with `job`" in mcp.instructions
 
     transport_security = mcp.settings.transport_security
     assert transport_security is not None
@@ -77,21 +85,23 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     )
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
-    search_meta = tools["search"].meta
-    environment_meta = tools["environment_info"].meta
+    search_meta = tools["workspace_search"].meta
+    session_meta = tools["session_start"].meta
+    assert "environment_info" not in tools
+    assert "remote" not in tools
     assert search_meta is not None
-    assert environment_meta is not None
+    assert session_meta is not None
     assert search_meta["securitySchemes"][0]["type"] == "noauth"
     assert search_meta["securitySchemes"][1]["scopes"] == ["shell:read"]
-    assert environment_meta["securitySchemes"][0]["type"] == "oauth2"
-    assert environment_meta["securitySchemes"][0]["scopes"] == ["shell:read"]
+    assert session_meta["securitySchemes"][0]["type"] == "oauth2"
+    assert session_meta["securitySchemes"][0]["scopes"] == ["shell:read"]
 
     def tool_oauth_scopes(name: str) -> list[str]:
         meta = tools[name].meta
         assert meta is not None
         return meta["securitySchemes"][0]["scopes"]
 
-    assert tool_oauth_scopes("run_shell_command") == [
+    assert tool_oauth_scopes("bash") == [
         "shell:read",
         "shell:execute",
     ]
@@ -99,50 +109,30 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "shell:read",
         "shell:write",
     ]
-    assert tool_oauth_scopes("apply_patch") == [
-        "shell:read",
-        "shell:write",
-        "git:write",
-    ]
     assert tool_oauth_scopes("create_file_link") == [
         "shell:read",
         "file:share",
     ]
-    assert tool_oauth_scopes("remote_list_machines") == ["remote:use"]
-    assert tool_oauth_scopes("remote_read_file") == [
-        "remote:use",
-        "shell:read",
-    ]
-    assert tool_oauth_scopes("remote_write_file") == [
-        "remote:use",
-        "shell:read",
-        "shell:write",
-    ]
-    assert tool_oauth_scopes("remote_apply_patch") == [
-        "remote:use",
-        "shell:read",
-        "shell:write",
-        "git:write",
-    ]
-
+    assert tool_oauth_scopes("remote_admin") == ["remote:use"]
     assert all(tool.outputSchema is not None for tool in tools.values())
-    run_shell_command_schema = tools["run_shell_command"].outputSchema
-    assert run_shell_command_schema is not None
-    assert run_shell_command_schema["title"] == "RunShellCommandOutput"
-    assert set(run_shell_command_schema["properties"]) == {
-        "ok",
-        "exit_code",
-        "timed_out",
-        "duration_ms",
-        "cwd",
+    bash_schema = tools["bash"].outputSchema
+    assert bash_schema is not None
+    assert bash_schema["title"] == "ShellExecutionOutput"
+    assert set(bash_schema["properties"]) >= {
+        "mode",
         "command",
-        "stdout",
-        "stderr",
-        "truncated",
+        "cwd",
+        "result",
     }
+    assert "session_id" in tools["bash"].inputSchema["required"]
+    assert "session_id" in tools["run_python_code"].inputSchema["required"]
+    assert "session_id" in tools["tree_view"].inputSchema["required"]
+    assert "session_id" in tools["glob_search"].inputSchema["required"]
+    assert "session_id" in tools["job"].inputSchema["required"]
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
-    assert "results" in search_schema["properties"]
+    assert "matches" in search_schema["properties"]
+    assert "numbered_content" in search_schema["properties"]
     fetch_schema = tools["fetch"].outputSchema
     assert fetch_schema is not None
     assert set(fetch_schema["properties"]) == {
@@ -152,10 +142,25 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "url",
         "metadata",
     }
+    assert "search -> fetch workflow" in (
+        tools["workspace_search"].description or ""
+    )
+    assert "id should normally come from a prior workspace_search" in (
+        tools["fetch"].description or ""
+    )
+    assert "prefer read(session_id, path)" in (tools["fetch"].description or "")
 
-    structured = mcp_structured(await mcp.call_tool("environment_info", {}))
-    assert "workspace_root" in structured["settings"]
-    assert structured["probe"]["ok"] is True
+    structured = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+    assert re.fullmatch(r"[A-Za-z0-9]{8}", structured["session_id"])
+    assert structured["target"] == "local"
+    assert structured["workdir"] == str(tmp_path)
+    assert structured["workspace_root"] == str(tmp_path)
+    assert (
+        structured["message"]
+        == "Use this session_id in subsequent workspace tool calls."
+    )
 
 
 @pytest.mark.asyncio
@@ -166,24 +171,63 @@ async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    tool = {tool.name: tool for tool in await build_mcp().list_tools()}[
-        "run_shell_command"
-    ]
+    tool = {tool.name: tool for tool in await build_mcp().list_tools()}["bash"]
 
     output_schema = _output_schema(tool)
     command_input = tool.inputSchema["properties"]["command"]
+    session_input = tool.inputSchema["properties"]["session_id"]
     timeout_input = tool.inputSchema["properties"]["timeout_s"]
-    stdout_output = output_schema["properties"]["stdout"]
-    exit_code_output = output_schema["properties"]["exit_code"]
+    mode_output = output_schema["properties"]["mode"]
+    result_output = output_schema["properties"]["result"]
 
-    assert command_input["description"] == (
-        "Shell command string executed with the configured shell."
-    )
-    assert "public tool timeout" in timeout_input["description"]
-    assert stdout_output["description"] == (
-        "Captured standard output after byte-limit truncation."
-    )
-    assert "Process exit code" in exit_code_output["description"]
+    assert "terminal work" in command_input["description"]
+    assert "agent/workspace session_id" in session_input["description"]
+    assert "session_id" in tool.inputSchema["required"]
+    assert "bounded command mode" in timeout_input["description"]
+    assert "Execution mode" in mode_output["description"]
+    assert "bounded command" in result_output["description"]
+    description = tool.description or ""
+    assert "session_id returned by session_start" in description
+    assert "job_id owned by the same session_id" in description
+    assert "shell_id for persistent-shell companion tools" in description
+    assert "Do not use shell_id with job" in description
+
+
+@pytest.mark.asyncio
+async def test_persistent_shell_tools_use_shell_id_not_session_id(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    companion_names = [
+        "send_persistent_shell_input",
+        "read_persistent_shell_output",
+        "kill_persistent_shell",
+    ]
+    for name in companion_names:
+        tool = tools[name]
+        input_properties = tool.inputSchema["properties"]
+        input_text = str(tool.inputSchema) + (tool.description or "")
+        output_schema = _output_schema(tool)
+        output_text = str(output_schema)
+
+        assert "shell_id" in tool.inputSchema["required"]
+        assert "shell_id" in input_properties
+        assert "session_id" not in input_properties
+        assert "shell_id is separate" in input_text
+        assert "agent/workspace session_id" in input_text
+        assert "shell_id" in output_schema["properties"]
+        assert "session_id" not in output_schema["properties"]
+        assert "session_id" not in output_text
+
+    list_schema = _output_schema(tools["list_persistent_shells"])
+    assert "shells" in list_schema["properties"]
+    assert "sessions" not in list_schema["properties"]
+    assert "shell_id" in str(list_schema)
+    assert "session_id" not in str(list_schema)
 
 
 @pytest.mark.asyncio
@@ -194,13 +238,20 @@ async def test_shell_tool_returns_per_tool_structured_content(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
     structured = mcp_structured(
-        await build_mcp().call_tool("run_shell_command", {"command": "echo ok"})
+        await mcp.call_tool(
+            "bash",
+            {"session_id": session["session_id"], "command": "echo ok"},
+        )
     )
 
-    assert structured["ok"] is True
+    assert structured["mode"] == "command"
     assert structured["command"] == "echo ok"
-    assert structured["stdout"] == "ok\n"
+    assert structured["result"]["stdout"] == "ok\n"
     assert "data" not in structured
 
 
@@ -213,23 +264,24 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    read_file_tool = tools["read_file"]
+    read_tool = tools["read"]
     list_files_tool = tools["list_files"]
 
-    read_file_output_schema = _output_schema(read_file_tool)
+    read_output_schema = _output_schema(read_tool)
     list_files_output_schema = _output_schema(list_files_tool)
-    assert read_file_output_schema["title"] == "ReadFileOutput"
+    assert read_output_schema["title"] == "ReadOutput"
     assert list_files_output_schema["title"] == "ListFilesOutput"
-    assert read_file_tool.inputSchema["properties"]["path"]["description"] == (
-        "Workspace-relative path, or an allowed absolute path, for the file or directory operation."
-    )
-    assert "binary_preview" not in read_file_tool.inputSchema["properties"]
     assert (
-        "binary_preview_bytes" not in read_file_tool.inputSchema["properties"]
+        "selector suffix"
+        in read_tool.inputSchema["properties"]["path"]["description"]
     )
+    assert "binary_preview" not in read_tool.inputSchema["properties"]
+    assert "binary_preview_bytes" not in read_tool.inputSchema["properties"]
+    assert "file" in read_output_schema["properties"]
+    assert "directory" in read_output_schema["properties"]
     assert (
-        read_file_output_schema["properties"]["content"]["description"]
-        == "Decoded UTF-8 text content."
+        read_output_schema["properties"]["content"]["description"]
+        == "Model-facing content. File reads use numbered_content unless raw is true; directories use a compact listing."
     )
     assert (
         list_files_output_schema["properties"]["entries"]["description"]
@@ -246,23 +298,42 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    grep_tool = tools["grep_search"]
+    search_tool = tools["search"]
     tree_tool = tools["tree_view"]
+    glob_tool = tools["glob_search"]
 
-    grep_output_schema = _output_schema(grep_tool)
+    search_output_schema = _output_schema(search_tool)
     tree_output_schema = _output_schema(tree_tool)
-    assert grep_output_schema["title"] == "GrepSearchOutput"
+    assert search_output_schema["title"] == "GrepSearchOutput"
     assert tree_output_schema["title"] == "TreeViewOutput"
-    assert grep_tool.inputSchema["properties"]["query"]["description"] == (
-        "Text or regular expression to search for, depending on the regex parameter."
+    assert search_tool.inputSchema["properties"]["pattern"]["description"] == (
+        "Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata."
     )
     assert (
         "case-sensitive"
-        in grep_tool.inputSchema["properties"]["case_sensitive"]["description"]
+        in search_tool.inputSchema["properties"]["case_sensitive"][
+            "description"
+        ]
     )
     assert (
-        grep_output_schema["properties"]["matches"]["description"]
+        search_output_schema["properties"]["matches"]["description"]
         == "Returned ripgrep matches."
+    )
+    assert "session_id" in tree_tool.inputSchema["required"]
+    assert "session_id" in glob_tool.inputSchema["required"]
+    assert (
+        "session workdir"
+        in tree_tool.inputSchema["properties"]["cwd"]["description"]
+    )
+    assert (
+        "session workdir"
+        in glob_tool.inputSchema["properties"]["cwd"]["description"]
+    )
+    assert "session_id returned by session_start" in (
+        tree_tool.description or ""
+    )
+    assert "session_id returned by session_start" in (
+        glob_tool.description or ""
     )
     assert (
         tree_output_schema["properties"]["entries"]["description"]
@@ -279,19 +350,13 @@ async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    patch_tool = tools["apply_patch"]
     todo_tool = tools["write_todos"]
     secret_tool = tools["secret_scan"]
 
-    patch_output_schema = _output_schema(patch_tool)
     todo_output_schema = _output_schema(todo_tool)
     secret_output_schema = _output_schema(secret_tool)
-    assert patch_output_schema["title"] == "ApplyPatchOutput"
     assert todo_output_schema["title"] == "WriteTodosOutput"
     assert secret_output_schema["title"] == "SecretScanOutput"
-    assert patch_tool.inputSchema["properties"]["patch"]["description"] == (
-        "Unified diff text to validate and apply with git apply."
-    )
     assert (
         "Replacement todo list"
         in todo_tool.inputSchema["properties"]["todos"]["description"]
@@ -303,7 +368,7 @@ async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
 
 
 @pytest.mark.asyncio
-async def test_job_tool_schema_descriptions_explain_persistent_shell_backing(
+async def test_job_tool_schema_descriptions_explain_bash_companion(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -311,48 +376,42 @@ async def test_job_tool_schema_descriptions_explain_persistent_shell_backing(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    job_start_tool = tools["job_start"]
-    job_tail_tool = tools["job_tail"]
-    start_shell_tool = tools["start_persistent_shell"]
-    remote_job_start_tool = tools["remote_job_start"]
+    companion = tools["job"]
+    description = companion.description or ""
+    assert "bash" in description
+    assert "Starting work belongs" in description
 
-    job_start_description = job_start_tool.description or ""
-    start_shell_description = start_shell_tool.description or ""
-    remote_job_start_description = remote_job_start_tool.description or ""
-    assert "job_list, job_tail, job_stop, or job_retry" in job_start_description
-    assert "Use start_persistent_shell instead" in job_start_description
-    assert "Use run_shell_command" in job_start_description
-    assert "Use this low-level session tool" in start_shell_description
-    assert "prefer job_start" in start_shell_description
-    assert "remote worker" in remote_job_start_description
-    assert (
-        "Use start_remote_persistent_shell instead"
-        in remote_job_start_description
-    )
-    assert "Use run_remote_shell_command" in remote_job_start_description
-    assert (
-        "persistent shell sessions"
-        in (job_start_tool.inputSchema["properties"]["command"]["description"])
-    )
-    lines_schema = job_tail_tool.inputSchema["properties"]["lines"]
+    lines_schema = companion.inputSchema["properties"]["lines"]
     assert lines_schema["minimum"] == 1
     assert lines_schema["maximum"] == 5000
     assert (
-        "Output is available only while the backing session still exists"
-        in (lines_schema["description"])
+        "Output is available only while the background job can still be inspected"
+        in lines_schema["description"]
+    )
+    assert "session_id" in companion.inputSchema["required"]
+    assert (
+        "Tracked bash"
+        in companion.inputSchema["properties"]["cancel"]["description"]
     )
 
-    start_output = _output_schema(job_start_tool)
-    assert start_output["$defs"]["JobStatus"]["enum"] == [
+    output_schema = _output_schema(companion)
+    assert output_schema["title"] == "JobOutput"
+    assert output_schema["$defs"]["JobStatus"]["enum"] == [
         "running",
         "exited",
         "stopped",
         "lost",
         "unknown",
     ]
+    job_info_schema = output_schema["$defs"]["JobInfo"]
+    assert "backend" not in job_info_schema["properties"]
     assert (
-        "job_retry reuses this command"
-        in (start_output["properties"]["command"]["description"])
+        job_info_schema["properties"]["session_id"]["description"]
+        == "Agent/workspace session_id that owns this tracked job."
+    )
+    assert (
+        output_schema["properties"]["operation"]["description"]
+        == "Job operation performed by the unified job companion tool."
     )
 
 
@@ -365,13 +424,10 @@ async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    run_shell_command_description = tools["run_shell_command"].description or ""
-    grep_description = tools["grep_search"].description or ""
-    assert (
-        "Current combined output cap: 12345 bytes"
-        in run_shell_command_description
-    )
-    assert "max_grep_results=678" in grep_description
+    bash_description = tools["bash"].description or ""
+    search_description = tools["search"].description or ""
+    assert "timeout default/cap" in bash_description
+    assert "max_grep_results=678" in search_description
 
 
 def test_transport_security_uses_exact_base_url_host(tmp_path, monkeypatch):
@@ -414,8 +470,8 @@ async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    annotations = tools["run_shell_command"].annotations
-    search_annotations = tools["search"].annotations
+    annotations = tools["bash"].annotations
+    search_annotations = tools["workspace_search"].annotations
     assert annotations is not None
     assert search_annotations is not None
     assert annotations.readOnlyHint is False
@@ -471,7 +527,7 @@ async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    run_shell_command_annotations = tools["run_shell_command"].annotations
+    run_shell_command_annotations = tools["bash"].annotations
     assert run_shell_command_annotations is not None
     assert run_shell_command_annotations.openWorldHint is False
     assert tools["call_agent_mcp_tool"].annotations is None
@@ -489,13 +545,13 @@ async def test_relaxed_client_tool_hints_marks_command_tools_without_full_contai
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    annotations = tools["run_shell_command"].annotations
+    annotations = tools["bash"].annotations
     assert annotations is not None
     assert annotations.readOnlyHint is False
     assert annotations.destructiveHint is False
     assert annotations.idempotentHint is False
     assert annotations.openWorldHint is False
-    assert tools["run_shell_command"].meta == {
+    assert tools["bash"].meta == {
         "securitySchemes": [
             {
                 "type": "oauth2",
@@ -515,7 +571,7 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    assert tools["run_shell_command"].annotations is None
+    assert tools["bash"].annotations is None
 
 
 def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):

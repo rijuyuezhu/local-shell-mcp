@@ -18,6 +18,7 @@ from ..remote.transfer import (
     copy_remote_file_to_remote,
 )
 from ..schemas.result_models.remote import (
+    RemoteAdminOutput,
     RemoteCopyDirOutput,
     RemoteCopyFileOutput,
     RemoteInviteOutput,
@@ -26,6 +27,7 @@ from ..schemas.result_models.remote import (
     RemoteRevokeMachineOutput,
     RemoteWorkerToolOutput,
 )
+from ..utils.serialization import to_jsonable
 
 
 async def remote_invite_execute(
@@ -56,7 +58,73 @@ def remote_rename_machine_execute(
 
 def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
     """Strip control-server-only arguments before proxying to a worker."""
-    return {key: value for key, value in args.items() if key != "machine"}
+    return {
+        key: value
+        for key, value in args.items()
+        if key not in {"machine", "action"}
+    }
+
+
+def _json_dict(value: Any) -> dict[str, Any]:
+    """Return a JSON-compatible dict payload for remote outputs."""
+    data = to_jsonable(value)
+    return (
+        cast(dict[str, Any], data)
+        if isinstance(data, dict)
+        else {"result": data}
+    )
+
+
+def _required_str(args: dict[str, Any], name: str) -> str:
+    """Extract a required string argument from a remote args dict."""
+    value = args.get(name)
+    if not isinstance(value, str) or value == "":
+        raise ValueError(
+            f"Missing required argument for remote operation: {name}"
+        )
+    return value
+
+
+def _optional_int(args: dict[str, Any], name: str) -> int | None:
+    """Extract an optional integer remote argument."""
+    value = args.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, int):
+        raise ValueError(f"Remote argument {name!r} must be an integer")
+    return value
+
+
+def _optional_bool(args: dict[str, Any], name: str, *, default: bool) -> bool:
+    """Extract an optional boolean remote argument."""
+    value = args.get(name, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"Remote argument {name!r} must be a boolean")
+    return value
+
+
+async def remote_admin_execute(
+    action: str, args: dict[str, Any]
+) -> RemoteAdminOutput:
+    """Run one remote control-plane action."""
+    if action == "invite":
+        result = await create_remote_invite(
+            args.get("name"), args.get("workdir"), args.get("ttl_s")
+        )
+    elif action == "list":
+        result = list_remote_machines()
+    elif action == "revoke":
+        result = revoke_remote_machine(_required_str(args, "machine"))
+    elif action == "rename":
+        result = rename_remote_machine(
+            _required_str(args, "machine"), _required_str(args, "new_name")
+        )
+    else:
+        raise ValueError(
+            "Unsupported remote admin action "
+            f"{action!r}; supported: invite, list, revoke, rename"
+        )
+    return RemoteAdminOutput(action=action, data=_json_dict(result))
 
 
 async def remote_worker_tool_execute(

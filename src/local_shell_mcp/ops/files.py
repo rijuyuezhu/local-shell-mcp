@@ -1,6 +1,7 @@
 """Provide workspace-aware UTF-8 file operations with path containment and bounded output."""
 
 import codecs
+import difflib
 import shutil
 from collections.abc import Sequence
 
@@ -9,22 +10,43 @@ from ..schemas.input_models.files import ReadFileRequest
 from ..schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditFileOutput,
+    EditLinesOutput,
     EntryInfo,
+    LineRange,
     ListFilesOutput,
     MultiEditFileOutput,
     ReadFileOutput,
+    ReadLine,
     ReadManyFilesOutput,
     WriteFileOutput,
 )
+from ..tool_session.store import (
+    file_sha256,
+    get_tool_session_store,
+    resolve_session_path,
+)
 from .utils.path import relative_display, resolve_path
+from .utils.remote_session import call_remote_session_tool
 
 
 def list_files_execute(
-    path: str = ".", recursive: bool = False, max_entries: int = 500
+    path: str = ".",
+    recursive: bool = False,
+    max_entries: int = 500,
+    session_id: str | None = None,
 ) -> ListFilesOutput:
     """List directory entries up to a limit and report whether results were truncated."""
     settings = get_settings()
-    base = resolve_path(path, must_exist=True)
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
+    )
+    base = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
     if not base.is_dir():
         raise NotADirectoryError(str(base))
     filelist: list[EntryInfo] = []
@@ -64,14 +86,71 @@ def list_files_execute(
     )
 
 
+async def list_files_dispatch_execute(
+    path: str = ".",
+    recursive: bool = False,
+    max_entries: int = 500,
+    session_id: str | None = None,
+) -> ListFilesOutput:
+    """Dispatch list_files to a local or remote session."""
+    if session_id is None:
+        return list_files_execute(path, recursive, max_entries, session_id)
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "list_files",
+            {
+                "path": path,
+                "recursive": recursive,
+                "max_entries": max_entries,
+            },
+        )
+        return ListFilesOutput.model_validate(data)
+    return list_files_execute(path, recursive, max_entries, session_id)
+
+
+def _selected_read_lines(
+    lines: list[str],
+    start_line: int | None,
+    end_line: int | None,
+) -> list[ReadLine]:
+    """Return decoded lines with original line numbers for a requested range."""
+    total_lines = len(lines)
+    if total_lines == 0:
+        return []
+    start = max(1, start_line or 1)
+    end = min(total_lines, end_line or total_lines)
+    if end < start:
+        return []
+    return [
+        ReadLine(line=line_number, text=lines[line_number - 1])
+        for line_number in range(start, end + 1)
+    ]
+
+
+def _numbered_content(lines: list[ReadLine]) -> str:
+    """Format lines in a stable model-facing line-numbered form."""
+    return "\n".join(f"{line.line}|{line.text}" for line in lines)
+
+
 def read_file_execute(
     path: str,
     start_line: int | None = None,
     end_line: int | None = None,
+    session_id: str | None = None,
 ) -> ReadFileOutput:
-    """Read a UTF-8 text file by optional line range."""
+    """Read a UTF-8 text file by optional line range and record grounding when session-bound."""
     settings = get_settings()
-    p = resolve_path(path, must_exist=True)
+    store = get_tool_session_store()
+    session = (
+        store.touch_session(session_id) if session_id is not None else None
+    )
+    p = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
     size = p.stat().st_size
     with p.open("rb") as fh:
         data = fh.read(settings.max_file_read_bytes + 1)
@@ -83,19 +162,47 @@ def read_file_execute(
     truncated_bytes = max(0, size - len(data))
     decoder = codecs.getincrementaldecoder("utf-8")()
     text = decoder.decode(data, final=not truncated)
-    lines = text.splitlines()
-    total_lines = len(lines)
+    all_lines = text.splitlines()
+    total_lines = len(all_lines)
+    selected_lines = _selected_read_lines(all_lines, start_line, end_line)
     if start_line is not None or end_line is not None:
-        start = max(1, start_line or 1)
-        end = min(total_lines, end_line or total_lines)
-        selected = lines[start - 1 : end]
-        text = "\n".join(selected)
+        text = "\n".join(line.text for line in selected_lines)
+
+    start = selected_lines[0].line if selected_lines else None
+    end = selected_lines[-1].line if selected_lines else None
+    if start is not None and end is not None:
+        seen_ranges = ((start, end),)
+        seen_range_models = [LineRange(start=start, end=end)]
+    else:
+        seen_ranges = ()
+        seen_range_models = []
+    relative_path = relative_display(p)
+    record = (
+        store.record_file_snapshot(
+            session_id=session.session_id,
+            path=relative_path,
+            file_sha256=file_sha256(p),
+            total_lines=total_lines,
+            seen_ranges=seen_ranges,
+        )
+        if session is not None
+        else None
+    )
     return ReadFileOutput(
-        path=relative_display(p),
+        path=relative_path,
         bytes=size,
         bytes_read=len(data),
         truncated_bytes=truncated_bytes,
         total_lines=total_lines,
+        start_line=start,
+        end_line=end,
+        line_count=len(selected_lines),
+        lines=selected_lines,
+        numbered_content=_numbered_content(selected_lines),
+        session_id=record.session_id if record is not None else None,
+        snapshot_id=record.snapshot_id if record is not None else None,
+        file_sha256=record.file_sha256 if record is not None else None,
+        seen_ranges=seen_range_models if record is not None else [],
         truncated=truncated,
         content=text,
     )
@@ -128,6 +235,7 @@ def _read_many_file_parts(
 
 def read_many_files_execute(
     files_to_read: Sequence[_ReadManyFileSpec],
+    session_id: str | None = None,
 ) -> ReadManyFilesOutput:
     """Read many files with per-file optional line ranges."""
     settings = get_settings()
@@ -140,7 +248,7 @@ def read_many_files_execute(
     total_content_bytes = 0
     for item_to_read in files_to_read:
         path, start_line, end_line = _read_many_file_parts(item_to_read)
-        item = read_file_execute(path, start_line, end_line)
+        item = read_file_execute(path, start_line, end_line, session_id)
         content = item.content
         total_content_bytes += len(content.encode("utf-8"))
         if total_content_bytes > settings.max_read_many_total_bytes:
@@ -155,7 +263,10 @@ def read_many_files_execute(
 
 
 def write_file_execute(
-    path: str, content: str, overwrite: bool = True
+    path: str,
+    content: str,
+    overwrite: bool = True,
+    session_id: str | None = None,
 ) -> WriteFileOutput:
     """Write a text file after path validation, parent creation, and overwrite checks."""
     settings = get_settings()
@@ -164,7 +275,16 @@ def write_file_execute(
         raise ValueError(
             f"Refusing to write {len(data)} bytes; max is {settings.max_file_write_bytes}"
         )
-    p = resolve_path(path)
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
+    )
+    p = (
+        resolve_session_path(session, path)
+        if session is not None
+        else resolve_path(path)
+    )
     if p.exists() and not overwrite:
         raise FileExistsError(str(p))
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -173,6 +293,96 @@ def write_file_execute(
     return WriteFileOutput(
         path=relative_display(p), bytes=len(data), created=created
     )
+
+
+async def write_file_dispatch_execute(
+    path: str,
+    content: str,
+    overwrite: bool = True,
+    session_id: str | None = None,
+) -> WriteFileOutput:
+    """Dispatch write_file to a local or remote session."""
+    if session_id is None:
+        return write_file_execute(path, content, overwrite, session_id)
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "write_file",
+            {
+                "path": path,
+                "content": content,
+                "overwrite": overwrite,
+            },
+        )
+        return WriteFileOutput.model_validate(data)
+    return write_file_execute(path, content, overwrite, session_id)
+
+
+def _newline_for_text(text: str) -> str:
+    """Return the dominant newline sequence for whole-line edits."""
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def _replacement_lines(
+    replacement: str,
+    *,
+    newline: str,
+    selected_had_trailing_newline: bool,
+    has_following_lines: bool,
+) -> list[str]:
+    """Return replacement text as whole-line chunks with stable newlines."""
+    if replacement == "":
+        return []
+    text = replacement
+    if not text.endswith(("\n", "\r")) and (
+        selected_had_trailing_newline or has_following_lines
+    ):
+        text = f"{text}{newline}"
+    return text.splitlines(keepends=True)
+
+
+def _range_is_visible(
+    start_line: int, end_line: int, ranges: tuple[tuple[int, int], ...]
+) -> bool:
+    """Return whether an edit range is contained in displayed ranges."""
+    return any(
+        start_line >= visible_start and end_line <= visible_end
+        for visible_start, visible_end in ranges
+    )
+
+
+def _validate_snapshot_for_edit(
+    *,
+    path: str,
+    current_sha256: str,
+    start_line: int,
+    end_line: int,
+    snapshot_id: str | None,
+    session_id: str | None,
+) -> None:
+    """Validate optional snapshot freshness and visible-range grounding."""
+    if snapshot_id is None:
+        return
+    if session_id is None:
+        raise ValueError("session_id is required when snapshot_id is provided")
+    record = get_tool_session_store().get_snapshot(session_id, snapshot_id)
+    if record is None:
+        raise ValueError(
+            "snapshot_id not found for this session; re-read the file"
+        )
+    if record.path != path:
+        raise ValueError(
+            "snapshot_id belongs to a different file; re-read the target file"
+        )
+    if record.file_sha256 != current_sha256:
+        raise ValueError("file changed since snapshot; re-read before editing")
+    if record.seen_ranges and not _range_is_visible(
+        start_line, end_line, record.seen_ranges
+    ):
+        raise ValueError(
+            "edit range was not shown by the referenced snapshot; re-read the target lines"
+        )
 
 
 def edit_file_execute(
@@ -204,6 +414,136 @@ def edit_file_execute(
     p.write_text(updated, encoding="utf-8")
     return EditFileOutput(
         path=relative_display(p), replacements=count if replace_all else 1
+    )
+
+
+def edit_lines_execute(
+    path: str,
+    start_line: int,
+    end_line: int,
+    replacement: str,
+    snapshot_id: str | None = None,
+    session_id: str | None = None,
+) -> EditLinesOutput:
+    """Replace an inclusive whole-line range with optional snapshot checks."""
+    if start_line < 1:
+        raise ValueError("start_line must be >= 1")
+    if end_line < start_line:
+        raise ValueError("end_line must be >= start_line")
+
+    settings = get_settings()
+    store = get_tool_session_store()
+    session = (
+        store.touch_session(session_id) if session_id is not None else None
+    )
+    p = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
+    size = p.stat().st_size
+    if size > settings.max_file_write_bytes:
+        raise ValueError(
+            f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+        )
+
+    relative_path = relative_display(p)
+    current_sha256 = file_sha256(p)
+    _validate_snapshot_for_edit(
+        path=relative_path,
+        current_sha256=current_sha256,
+        start_line=start_line,
+        end_line=end_line,
+        snapshot_id=snapshot_id,
+        session_id=session_id,
+    )
+
+    original = p.read_text(encoding="utf-8")
+    original_lines = original.splitlines(keepends=True)
+    total_lines = len(original_lines)
+    if end_line > total_lines:
+        raise ValueError(
+            f"end_line {end_line} is beyond file line count {total_lines}"
+        )
+
+    selected = original_lines[start_line - 1 : end_line]
+    replacement_lines = _replacement_lines(
+        replacement,
+        newline=_newline_for_text(original),
+        selected_had_trailing_newline=bool(
+            selected and selected[-1].endswith(("\n", "\r"))
+        ),
+        has_following_lines=end_line < total_lines,
+    )
+    updated_lines = (
+        original_lines[: start_line - 1]
+        + replacement_lines
+        + original_lines[end_line:]
+    )
+    updated = "".join(updated_lines)
+    updated_bytes = len(updated.encode("utf-8"))
+    if updated_bytes > settings.max_file_write_bytes:
+        raise ValueError(
+            f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+        )
+
+    diff = "".join(
+        difflib.unified_diff(
+            original.splitlines(keepends=True),
+            updated.splitlines(keepends=True),
+            fromfile=relative_path,
+            tofile=relative_path,
+        )
+    )
+    with p.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(updated)
+
+    replacement_line_count = len(replacement_lines)
+    context_start = max(1, start_line - 3)
+    context_end = min(
+        len(updated_lines),
+        max(start_line, start_line + max(replacement_line_count, 1) + 3),
+    )
+    context = read_file_execute(str(p), context_start, context_end, session_id)
+    return EditLinesOutput(
+        path=relative_path,
+        start_line=start_line,
+        end_line=end_line,
+        replacement_line_count=replacement_line_count,
+        diff=diff,
+        context=context,
+    )
+
+
+async def edit_lines_dispatch_execute(
+    path: str,
+    start_line: int,
+    end_line: int,
+    replacement: str,
+    snapshot_id: str | None = None,
+    session_id: str | None = None,
+) -> EditLinesOutput:
+    """Dispatch edit_lines to a local or remote session."""
+    if session_id is None:
+        return edit_lines_execute(
+            path, start_line, end_line, replacement, snapshot_id, session_id
+        )
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "edit_lines",
+            {
+                "path": path,
+                "start_line": start_line,
+                "end_line": end_line,
+                "replacement": replacement,
+                "snapshot_id": snapshot_id,
+            },
+        )
+        return EditLinesOutput.model_validate(data)
+    return edit_lines_execute(
+        path, start_line, end_line, replacement, snapshot_id, session_id
     )
 
 
@@ -242,10 +582,19 @@ def multi_edit_file_execute(
 
 
 def delete_file_or_dir_execute(
-    path: str, recursive: bool = False
+    path: str, recursive: bool = False, session_id: str | None = None
 ) -> DeleteFileOrDirOutput:
     """Delete a file or directory after enforcing recursive-directory semantics."""
-    p = resolve_path(path, must_exist=True)
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
+    )
+    p = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
     if p.is_dir():
         if not recursive:
             raise IsADirectoryError("Set recursive=true to delete a directory")
@@ -255,3 +604,23 @@ def delete_file_or_dir_execute(
         )
     p.unlink()
     return DeleteFileOrDirOutput(path=relative_display(p), deleted="file")
+
+
+async def delete_file_or_dir_dispatch_execute(
+    path: str, recursive: bool = False, session_id: str | None = None
+) -> DeleteFileOrDirOutput:
+    """Dispatch delete_file_or_dir to a local or remote session."""
+    if session_id is None:
+        return delete_file_or_dir_execute(path, recursive, session_id)
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "delete_file_or_dir",
+            {
+                "path": path,
+                "recursive": recursive,
+            },
+        )
+        return DeleteFileOrDirOutput.model_validate(data)
+    return delete_file_or_dir_execute(path, recursive, session_id)

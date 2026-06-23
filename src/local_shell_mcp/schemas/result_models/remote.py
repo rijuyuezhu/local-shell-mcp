@@ -140,6 +140,17 @@ class RemoteCopyDirOutput(BaseModel):
     )
 
 
+class RemoteAdminOutput(BaseModel):
+    """Remote control-plane result."""
+
+    action: str = Field(
+        description="Remote control-plane action requested by the caller."
+    )
+    data: dict[str, Any] = Field(
+        description="Structured output returned by the control-plane action."
+    )
+
+
 class RemoteWorkerToolOutput(BaseModel):
     """Generic proxied remote-worker tool result."""
 

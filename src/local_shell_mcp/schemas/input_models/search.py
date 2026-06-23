@@ -7,13 +7,13 @@ from pydantic import Field
 TreeCwdArg = Annotated[
     str,
     Field(
-        description="Directory path to render as a compact tree. Relative paths resolve inside the configured workspace."
+        description="Directory path to render as a compact tree. Relative paths resolve inside the agent/workspace session workdir."
     ),
 ]
 SearchCwdArg = Annotated[
     str,
     Field(
-        description="Directory path that narrows the search root. Relative paths resolve inside the configured workspace."
+        description="Directory path that narrows the search root. Relative paths resolve inside the agent/workspace session workdir."
     ),
 ]
 TreeDepthArg = Annotated[
@@ -43,13 +43,7 @@ GlobMaxResultsArg = Annotated[
 GrepQueryArg = Annotated[
     str,
     Field(
-        description="Text or regular expression to search for, depending on the regex parameter."
-    ),
-]
-GrepGlobArg = Annotated[
-    str | None,
-    Field(
-        description="Optional ripgrep glob filter that restricts which files are searched."
+        description="Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata."
     ),
 ]
 RegexArg = Annotated[
@@ -64,5 +58,12 @@ GrepMaxResultsArg = Annotated[
     int | None,
     Field(
         description="Optional maximum number of matches to return. Omit to use the configured server limit."
+    ),
+]
+
+SearchPathsArg = Annotated[
+    str | list[str] | None,
+    Field(
+        description="Optional file, directory, glob, or list of them that scopes the high-level search; omit to search the workspace root."
     ),
 ]

@@ -76,7 +76,7 @@ Check:
 Then ask the MCP client to run:
 
 ```text
-Use local-shell-mcp remote_list_machines.
+Use local-shell-mcp `remote_admin(action="list", args={})`.
 ```
 
 ## Audit log is missing expected calls

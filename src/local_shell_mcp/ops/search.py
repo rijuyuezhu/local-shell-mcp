@@ -14,11 +14,14 @@ from ..schemas.result_models.search import (
     GrepSearchOutput,
     TreeViewOutput,
 )
+from ..tool_session.store import get_tool_session_store, resolve_session_path
+from .files import read_file_execute
 from .shell import run_shell
 from .utils.path import missing_path_context, relative_display, resolve_path
+from .utils.remote_session import call_remote_session_tool
 
 
-def glob_search_execute(
+def _glob_search_local(
     pattern: str, cwd: str = ".", max_results: int = 500
 ) -> GlobSearchOutput:
     """Find workspace paths matching a glob pattern without exceeding the configured result limit."""
@@ -35,6 +38,118 @@ def glob_search_execute(
     return GlobSearchOutput(paths=results)
 
 
+async def glob_search_execute(
+    session_id: str, pattern: str, cwd: str = ".", max_results: int = 500
+) -> GlobSearchOutput:
+    """Find paths matching a glob pattern inside an explicit agent/workspace session."""
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "glob_search",
+            {
+                "pattern": pattern,
+                "cwd": cwd,
+                "max_results": max_results,
+            },
+        )
+        return GlobSearchOutput.model_validate(data)
+    resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
+    return await asyncio.to_thread(
+        _glob_search_local, pattern, str(resolved_cwd), max_results
+    )
+
+
+def _search_match_path(cwd: str, path_text: str | None) -> str | None:
+    """Return a workspace-readable path for a ripgrep match path."""
+    if path_text is None:
+        return None
+    path = Path(path_text)
+    if path.is_absolute():
+        return str(path)
+    return str(Path(cwd) / path)
+
+
+def _ground_match_line(
+    match: GrepMatch, cwd: str, session_id: str | None
+) -> GrepMatch:
+    """Attach read-style grounding metadata to one grep match line."""
+    read_path = _search_match_path(cwd, match.path)
+    if read_path is None or match.line is None:
+        return match
+    try:
+        read_result = read_file_execute(
+            read_path, match.line, match.line, session_id
+        )
+    except OSError, UnicodeDecodeError, ValueError:
+        return match
+    seen_range = read_result.seen_ranges[0] if read_result.seen_ranges else None
+    return match.model_copy(
+        update={
+            "path": read_result.path,
+            "numbered_line": read_result.numbered_content,
+            "session_id": read_result.session_id,
+            "snapshot_id": read_result.snapshot_id,
+            "file_sha256": read_result.file_sha256,
+            "seen_range": seen_range,
+        }
+    )
+
+
+def _grep_numbered_content(matches: list[GrepMatch]) -> str:
+    """Return grouped line-numbered snippets for grep matches."""
+    lines: list[str] = []
+    current_path: str | None = None
+    for match in matches:
+        if match.path != current_path:
+            if lines:
+                lines.append("")
+            current_path = match.path
+            lines.append(str(match.path or "<unknown>"))
+        lines.append(match.numbered_line or f"{match.line}|{match.text}")
+    return "\n".join(lines)
+
+
+type _SearchPaths = str | list[str] | None
+
+
+def _search_path_items(paths: _SearchPaths) -> list[str]:
+    """Normalize optional high-level search path scopes."""
+    if paths is None:
+        return []
+    if isinstance(paths, str):
+        return [paths] if paths else []
+    return [path for path in paths if path]
+
+
+def _looks_like_glob(path: str) -> bool:
+    """Return whether a search path should be treated as a glob scope."""
+    return any(char in path for char in "*?[")
+
+
+def _split_search_scopes(
+    cwd: str, paths: _SearchPaths
+) -> tuple[list[str], list[str]]:
+    """Return ripgrep path args and glob args for high-level search scopes."""
+    base = resolve_path(cwd, must_exist=True)
+    path_args: list[str] = []
+    glob_args: list[str] = []
+    for item in _search_path_items(paths):
+        if _looks_like_glob(item):
+            glob_args.append(item)
+            continue
+        raw_path = Path(item)
+        candidate = raw_path if raw_path.is_absolute() else base / raw_path
+        resolved = resolve_path(str(candidate), must_exist=True)
+        if resolved == base:
+            path_args.append(".")
+        elif resolved.is_relative_to(base):
+            path_args.append(str(resolved.relative_to(base)))
+        else:
+            path_args.append(str(resolved))
+    return path_args, glob_args
+
+
 async def grep_search_execute(
     query: str,
     cwd: str = ".",
@@ -42,6 +157,8 @@ async def grep_search_execute(
     regex: bool = True,
     case_sensitive: bool = True,
     max_results: int | None = None,
+    session_id: str | None = None,
+    paths: _SearchPaths = None,
 ) -> GrepSearchOutput:
     """Run ripgrep with workspace path resolution and return structured match records."""
     settings = get_settings()
@@ -51,9 +168,12 @@ async def grep_search_execute(
         args.append("--fixed-strings")
     if not case_sensitive:
         args.append("--ignore-case")
+    path_args, glob_args = _split_search_scopes(cwd, paths)
+    for glob_arg in glob_args:
+        args.extend(["--glob", glob_arg])
     if glob:
         args.extend(["--glob", glob])
-    args.extend(["--", query])
+    args.extend(["--", query, *path_args])
     cmd = " ".join(shlex.quote(x) for x in args)
     result = await run_shell(
         cmd, cwd=cwd, timeout_s=60, max_output_bytes=1_000_000
@@ -97,16 +217,13 @@ async def grep_search_execute(
         )
         path_text = path_data.get("text")
         line_text = line_data.get("text", "")
-        matches.append(
-            GrepMatch(
-                path=path_text,
-                line=match_data.get("line_number"),
-                column=first_start + 1
-                if isinstance(first_start, int)
-                else None,
-                text=str(line_text).rstrip("\n"),
-            )
+        match = GrepMatch(
+            path=path_text,
+            line=match_data.get("line_number"),
+            column=first_start + 1 if isinstance(first_start, int) else None,
+            text=str(line_text).rstrip("\n"),
         )
+        matches.append(_ground_match_line(match, cwd, session_id))
         if len(matches) >= max_results:
             break
     return GrepSearchOutput(
@@ -115,6 +232,45 @@ async def grep_search_execute(
         count=len(matches),
         truncated=len(matches) >= max_results or result.truncated,
         stderr=result.stderr,
+        numbered_content=_grep_numbered_content(matches),
+    )
+
+
+async def search_execute(
+    pattern: str,
+    paths: _SearchPaths = None,
+    cwd: str = ".",
+    regex: bool = True,
+    case_sensitive: bool = True,
+    max_results: int | None = None,
+    session_id: str | None = None,
+) -> GrepSearchOutput:
+    """Search code content with optional path scopes and edit grounding."""
+    if session_id is not None:
+        session = get_tool_session_store().touch_session(session_id)
+        if session.target == "remote":
+            data = await call_remote_session_tool(
+                session,
+                "search",
+                {
+                    "pattern": pattern,
+                    "paths": paths,
+                    "regex": regex,
+                    "case_sensitive": case_sensitive,
+                    "max_results": max_results,
+                },
+            )
+            return GrepSearchOutput.model_validate(data)
+        if cwd == ".":
+            cwd = session.workdir
+    return await grep_search_execute(
+        pattern,
+        cwd=cwd,
+        regex=regex,
+        case_sensitive=case_sensitive,
+        max_results=max_results,
+        session_id=session_id,
+        paths=paths,
     )
 
 
@@ -192,7 +348,22 @@ def tree_view_sync(
 
 
 async def tree_view_execute(
-    cwd: str = ".", depth: int = 3, max_entries: int = 500
+    session_id: str, cwd: str = ".", depth: int = 3, max_entries: int = 500
 ) -> TreeViewOutput:
-    """Expose tree generation through an async API used by MCP and HTTP handlers."""
-    return await asyncio.to_thread(tree_view_sync, cwd, depth, max_entries)
+    """Expose session-bound tree generation through an async API used by MCP and HTTP handlers."""
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "tree_view",
+            {
+                "cwd": cwd,
+                "depth": depth,
+                "max_entries": max_entries,
+            },
+        )
+        return TreeViewOutput.model_validate(data)
+    resolved_cwd = resolve_session_path(session, cwd)
+    return await asyncio.to_thread(
+        tree_view_sync, str(resolved_cwd), depth, max_entries
+    )

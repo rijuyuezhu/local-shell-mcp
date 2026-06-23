@@ -1,5 +1,4 @@
 import asyncio
-import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,23 +15,30 @@ from local_shell_mcp.ops.shell import (
 from local_shell_mcp.schemas.result_models.shell import CommandResult
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
+from tests.helpers import mcp_structured
 
 
 @pytest.mark.asyncio
-async def test_run_shell_command_rejects_timeout_above_public_cap(
-    tmp_path, monkeypatch
-):
+async def test_bash_rejects_timeout_above_public_cap(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
-    with pytest.raises(
-        ToolError, match="timeout_s must be <= 60 seconds for run_shell_command"
-    ):
-        await build_mcp().call_tool(
-            "run_shell_command",
-            {"command": "echo ok", "timeout_s": 3600},
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+
+    with pytest.raises(ToolError, match="timeout_s must be <= 60 seconds"):
+        await mcp.call_tool(
+            "bash",
+            {
+                "session_id": session["session_id"],
+                "command": "echo ok",
+                "timeout_s": 3600,
+            },
         )
 
 
@@ -42,25 +48,26 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    async def hanging_run_shell_command_execute(
-        command: str,
-        cwd: str = ".",
-        timeout_s: int | None = None,
-        max_output_bytes: int | None = None,
-    ):
+    async def hanging_bash_execute(*args, **kwargs):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
         shell_tools_module,
-        "run_shell_command_execute",
-        hanging_run_shell_command_execute,
+        "bash_execute",
+        hanging_bash_execute,
     )
+
+    session_id = get_tool_session_store().create_session(workdir=".").session_id
+    mcp = build_mcp()
 
     with pytest.raises(
         ToolError,
-        match="run_shell_command exceeded 0.01 second tool timeout",
+        match="bash exceeded 0.01 second tool timeout",
     ):
-        await build_mcp().call_tool("run_shell_command", {"command": "echo ok"})
+        await mcp.call_tool(
+            "bash",
+            {"session_id": session_id, "command": "echo ok"},
+        )
 
 
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
@@ -77,7 +84,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     )
 
     response = TestClient(build_http_app()).post(
-        "/tools/run_shell_command", json={"command": "echo ok"}
+        "/tools/bash", json={"command": "echo ok"}
     )
 
     assert response.status_code == 504
@@ -87,19 +94,24 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
 def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    def blocking_list_dir(*args, **kwargs):
-        time.sleep(0.2)
+    async def blocking_list_dir(*args, **kwargs):
+        await asyncio.sleep(0.2)
         return []
 
     monkeypatch.setattr(
-        fs_tools_module, "list_files_execute", blocking_list_dir
+        fs_tools_module, "list_files_dispatch_execute", blocking_list_dir
     )
-
-    response = TestClient(build_http_app()).post(
-        "/tools/list_files", json={"path": "."}
+    response = client.post(
+        "/tools/list_files",
+        json={"session_id": session["session_id"], "path": "."},
     )
 
     assert response.status_code == 504
@@ -109,21 +121,29 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    def blocking_list_dir(*args, **kwargs):
-        time.sleep(0.2)
+    async def blocking_list_dir(*args, **kwargs):
+        await asyncio.sleep(0.2)
         return []
 
     monkeypatch.setattr(
-        fs_tools_module, "list_files_execute", blocking_list_dir
+        fs_tools_module, "list_files_dispatch_execute", blocking_list_dir
     )
-
     with pytest.raises(
         ToolError, match="list_files exceeded 0.01 second tool timeout"
     ):
-        await build_mcp().call_tool("list_files", {"path": "."})
+        await mcp.call_tool(
+            "list_files", {"session_id": session["session_id"], "path": "."}
+        )
 
 
 def test_run_shell_command_timeout_uses_ten_second_default(
@@ -248,16 +268,16 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
     monkeypatch.setattr("local_shell_mcp.ops.shell.tmux", fake_tmux)
 
     result = await asyncio.wait_for(
-        send_persistent_shell_input_execute("session-1", "echo ok", enter=True),
+        send_persistent_shell_input_execute("shell-1", "echo ok", enter=True),
         timeout=1,
     )
 
     assert result.model_dump() == {
-        "session_id": "session-1",
+        "shell_id": "shell-1",
         "sent_bytes": 7,
         "enter": True,
     }
-    assert calls == [(["send-keys", "-t", "session-1", "echo ok", "Enter"], 10)]
+    assert calls == [(["send-keys", "-t", "shell-1", "echo ok", "Enter"], 10)]
 
 
 @pytest.mark.asyncio

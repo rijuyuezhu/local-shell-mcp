@@ -1,40 +1,28 @@
 """File operation tool registry."""
 
-import asyncio
-
-from pydantic import TypeAdapter
-
 from ...ops.files import (
-    delete_file_or_dir_execute,
-    edit_file_execute,
-    list_files_execute,
-    multi_edit_file_execute,
-    read_file_execute,
-    read_many_files_execute,
-    write_file_execute,
+    delete_file_or_dir_dispatch_execute,
+    edit_lines_dispatch_execute,
+    list_files_dispatch_execute,
+    write_file_dispatch_execute,
 )
 from ...schemas.input_models.files import (
-    EditsArg,
-    EndLineArg,
+    EditEndLineArg,
+    EditStartLineArg,
     FileContentArg,
     FilePathArg,
+    LineReplacementArg,
     ListPathArg,
     MaxEntriesArg,
-    NewTextArg,
-    OldTextArg,
     OverwriteArg,
-    ReadFilesArg,
     RecursiveArg,
-    ReplaceAllArg,
-    StartLineArg,
+    SnapshotIdArg,
 )
+from ...schemas.input_models.session import SessionIdArg
 from ...schemas.result_models.files import (
     DeleteFileOrDirOutput,
-    EditFileOutput,
+    EditLinesOutput,
     ListFilesOutput,
-    MultiEditFileOutput,
-    ReadFileOutput,
-    ReadManyFilesOutput,
     WriteFileOutput,
 )
 from ..contracts import McpToolContext
@@ -53,27 +41,17 @@ local_tool = FileToolRegistry.get_tool_decorator()
 
 def _list_files_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""List files and directories under a path for quick inspection. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: {settings.max_directory_entries}."""
-
-
-def _read_file_description(context: McpToolContext) -> str:
-    settings = context.settings
-    return f"""Read a UTF-8 text file, optionally by line range. Use after locating a file to inspect exact content before editing. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
-
-
-def _read_many_files_description(context: McpToolContext) -> str:
-    settings = context.settings
-    return f"""Read multiple UTF-8 text files with optional per-file line ranges. Use for targeted context gathering across known paths. Current limits: {settings.max_read_many_files} files and {settings.max_read_many_total_bytes} returned bytes."""
+    return f"""List files and directories under a session workdir path for quick inspection. Relative paths resolve inside the explicit agent/workspace session. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: {settings.max_directory_entries}."""
 
 
 def _write_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Write a full UTF-8 text file. Use to create a new file or intentionally replace a whole file. Current write cap: {settings.max_file_write_bytes} bytes. For precise modifications, prefer edit_file or apply_patch."""
+    return f"""Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
-def _edit_file_description(context: McpToolContext) -> str:
+def _edit_lines_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Replace exact text in a validated UTF-8 text file. Use for small precise edits after reading the target file. Current write cap: {settings.max_file_write_bytes} bytes. For larger or multi-file changes, prefer apply_patch."""
+    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read` or `search` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 @local_tool(
@@ -83,47 +61,14 @@ def _edit_file_description(context: McpToolContext) -> str:
     mcp_scopes=("shell:read",),
 )
 async def list_files(
+    session_id: SessionIdArg,
     path: ListPathArg = ".",
     recursive: RecursiveArg = False,
     max_entries: MaxEntriesArg = 500,
 ) -> ListFilesOutput:
-    """List files and directories under a path."""
-    return await asyncio.to_thread(
-        list_files_execute, path, recursive, max_entries
-    )
-
-
-@local_tool(
-    http_method="POST",
-    http_path="/tools/read_file",
-    description=_read_file_description,
-    mcp_scopes=("shell:read",),
-)
-async def read_file(
-    path: FilePathArg,
-    start_line: StartLineArg = None,
-    end_line: EndLineArg = None,
-) -> ReadFileOutput:
-    """Read a UTF-8 text file, optionally by line range."""
-    return await asyncio.to_thread(
-        read_file_execute,
-        path,
-        start_line,
-        end_line,
-    )
-
-
-@local_tool(
-    http_method="POST",
-    http_path="/tools/read_many_files",
-    description=_read_many_files_description,
-    mcp_scopes=("shell:read",),
-)
-async def read_many_files(files: ReadFilesArg) -> ReadManyFilesOutput:
-    """Read multiple UTF-8 text files with optional per-file line ranges."""
-    return await asyncio.to_thread(
-        read_many_files_execute,
-        TypeAdapter(ReadFilesArg).validate_python(files),
+    """List files and directories under a session workdir path."""
+    return await list_files_dispatch_execute(
+        path, recursive, max_entries, session_id
     )
 
 
@@ -134,40 +79,40 @@ async def read_many_files(files: ReadFilesArg) -> ReadManyFilesOutput:
     mcp_scopes=("shell:read", "shell:write"),
 )
 async def write_file(
-    path: FilePathArg, content: FileContentArg, overwrite: OverwriteArg = True
-) -> WriteFileOutput:
-    """Write a UTF-8 text file."""
-    return await asyncio.to_thread(write_file_execute, path, content, overwrite)
-
-
-@local_tool(
-    http_method="POST",
-    http_path="/tools/edit_file",
-    description=_edit_file_description,
-    mcp_scopes=("shell:read", "shell:write"),
-)
-async def edit_file(
+    session_id: SessionIdArg,
     path: FilePathArg,
-    old: OldTextArg,
-    new: NewTextArg,
-    replace_all: ReplaceAllArg = False,
-) -> EditFileOutput:
-    """Replace exact text in a file."""
-    return await asyncio.to_thread(
-        edit_file_execute, path, old, new, replace_all
+    content: FileContentArg,
+    overwrite: OverwriteArg = True,
+) -> WriteFileOutput:
+    """Write a UTF-8 text file inside a session workdir."""
+    return await write_file_dispatch_execute(
+        path, content, overwrite, session_id
     )
 
 
 @local_tool(
     http_method="POST",
-    http_path="/tools/multi_edit_file",
+    http_path="/tools/edit_lines",
+    description=_edit_lines_description,
     mcp_scopes=("shell:read", "shell:write"),
 )
-async def multi_edit_file(
-    path: FilePathArg, edits: EditsArg
-) -> MultiEditFileOutput:
-    """Apply multiple exact-text edits to one file."""
-    return await asyncio.to_thread(multi_edit_file_execute, path, edits)
+async def edit_lines(
+    path: FilePathArg,
+    start_line: EditStartLineArg,
+    end_line: EditEndLineArg,
+    replacement: LineReplacementArg,
+    session_id: SessionIdArg,
+    snapshot_id: SnapshotIdArg = None,
+) -> EditLinesOutput:
+    """Replace an inclusive whole-line range in a file."""
+    return await edit_lines_dispatch_execute(
+        path,
+        start_line,
+        end_line,
+        replacement,
+        snapshot_id,
+        session_id,
+    )
 
 
 @local_tool(
@@ -176,7 +121,9 @@ async def multi_edit_file(
     mcp_scopes=("shell:read", "shell:write"),
 )
 async def delete_file_or_dir(
-    path: FilePathArg, recursive: RecursiveArg = False
+    session_id: SessionIdArg, path: FilePathArg, recursive: RecursiveArg = False
 ) -> DeleteFileOrDirOutput:
-    """Delete a file or directory inside the controlled workspace/container."""
-    return await asyncio.to_thread(delete_file_or_dir_execute, path, recursive)
+    """Delete a file or directory inside a session workdir."""
+    return await delete_file_or_dir_dispatch_execute(
+        path, recursive, session_id
+    )

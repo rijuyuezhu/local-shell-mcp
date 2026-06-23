@@ -5,8 +5,10 @@ from tests.e2e_helpers import RestToolClient, run_http_process
 from tests.e2e_scenarios import (
     assert_core_tool_surface,
     exercise_environment_tool,
+    exercise_explicit_session_workflow,
     exercise_filesystem_and_search_tools,
     exercise_interactive_shell_tools,
+    exercise_session_bound_job_tools,
     exercise_shell_tools,
     exercise_todo_tools,
     exercise_workspace_connector_tools,
@@ -22,9 +24,11 @@ async def test_http_rest_process_exercises_core_tool_categories(tmp_path):
 
         await assert_core_tool_surface(client)
         await exercise_environment_tool(client, workspace)
+        await exercise_explicit_session_workflow(client, workspace)
         await exercise_filesystem_and_search_tools(client, workspace)
         await exercise_workspace_connector_tools(client)
-        await exercise_shell_tools(client)
+        await exercise_shell_tools(client, workspace)
+        await exercise_session_bound_job_tools(client, workspace)
         await exercise_interactive_shell_tools(client)
         await exercise_todo_tools(client)
 
@@ -35,10 +39,13 @@ async def test_http_rest_process_exercises_file_download_links(tmp_path):
         client = RestToolClient(base_url)
         payload = b"download-payload-\x00-binary"
         (workspace / "artifact.bin").write_bytes(payload)
+        session = await client.call_tool("session_start", {"workdir": "."})
+        session_id = session["session_id"]
 
         link = await client.call_tool(
             "create_file_link",
             {
+                "session_id": session_id,
                 "path": "artifact.bin",
                 "ttl_s": 60,
                 "filename": "result.bin",
@@ -56,14 +63,18 @@ async def test_http_rest_process_exercises_file_download_links(tmp_path):
             exhausted = await http_client.get(link["url"])
             assert exhausted.status_code == 410
 
-        listed = await client.call_tool("list_file_links")
+        listed = await client.call_tool(
+            "list_file_links", {"session_id": session_id}
+        )
         assert listed == {"links": []}
 
         second = await client.call_tool(
-            "create_file_link", {"path": "artifact.bin", "ttl_s": 60}
+            "create_file_link",
+            {"session_id": session_id, "path": "artifact.bin", "ttl_s": 60},
         )
         revoked = await client.call_tool(
-            "revoke_file_link", {"token": second["token"]}
+            "revoke_file_link",
+            {"session_id": session_id, "token": second["token"]},
         )
         assert revoked == {"revoked": True, "token": second["token"]}
 

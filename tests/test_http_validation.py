@@ -12,12 +12,12 @@ def test_http_missing_required_argument_returns_validation_error(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).post("/tools/read_file", json={})
+    response = TestClient(build_http_app()).post("/tools/read", json={})
 
     assert response.status_code == 400
     assert response.json() == {
         "error": "validation_error",
-        "message": "Missing required argument: path",
+        "message": "Missing required argument: session_id",
     }
 
 
@@ -27,9 +27,15 @@ def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).post(
-        "/tools/run_shell_command",
-        json={"command": "echo ok", "timeout_s": 3600},
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    response = client.post(
+        "/tools/bash",
+        json={
+            "session_id": session["session_id"],
+            "command": "echo ok",
+            "timeout_s": 3600,
+        },
     )
 
     assert response.status_code == 400

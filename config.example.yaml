@@ -48,9 +48,9 @@ allow_network: true
 relaxed_client_tool_hints: false
 # MCP/HTTP tool watchdog timeout in seconds.
 tool_timeout_s: 60
-# Default timeout for run_shell_command calls in seconds.
+# Default timeout for bounded shell command calls in seconds.
 run_shell_default_timeout_s: 10
-# Maximum timeout accepted by run_shell_command calls in seconds.
+# Maximum timeout accepted by bounded shell command calls in seconds.
 run_shell_max_timeout_s: 60
 # Command output limit in bytes.
 max_output_bytes: 200000
@@ -66,9 +66,9 @@ max_directory_entries: 5000
 max_glob_results: 5000
 # Maximum tree-view entries.
 max_tree_entries: 5000
-# Maximum files allowed to be read by read_many_files tool.
+# Maximum files allowed in one internal multi-file read operation.
 max_read_many_files: 100
-# Maximum total byte limit for read_many_files tool.
+# Maximum total byte limit for one internal multi-file read operation.
 max_read_many_total_bytes: 5000000
 # Todo-list item limit.
 max_todos: 1000
@@ -82,7 +82,7 @@ max_tmp_files: 500
 max_tmp_bytes: 50000000
 # Concurrent command limit.
 max_concurrent_commands: 4
-# Persistent shell session limit.
+# Persistent shell limit.
 max_tmux_sessions: 16
 # Enable download links created by protected tools.
 file_download_enabled: true

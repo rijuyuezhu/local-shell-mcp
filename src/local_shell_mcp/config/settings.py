@@ -85,9 +85,9 @@ class Settings(BaseSettings):
     tool_timeout_s: float = 60
     """MCP/HTTP tool watchdog timeout in seconds."""
     run_shell_default_timeout_s: int = 10
-    """Default timeout for run_shell_command calls in seconds."""
+    """Default timeout for bounded shell command calls in seconds."""
     run_shell_max_timeout_s: int = 60
-    """Maximum timeout accepted by run_shell_command calls in seconds."""
+    """Maximum timeout accepted by bounded shell command calls in seconds."""
     max_output_bytes: int = 200_000
     """Command output limit in bytes."""
     max_file_read_bytes: int = 512_000
@@ -103,9 +103,9 @@ class Settings(BaseSettings):
     max_tree_entries: int = 5_000
     """Maximum tree-view entries."""
     max_read_many_files: int = 100
-    """Maximum files allowed to be read by read_many_files tool."""
+    """Maximum files allowed in one internal multi-file read operation."""
     max_read_many_total_bytes: int = 5_000_000
-    """Maximum total byte limit for read_many_files tool."""
+    """Maximum total byte limit for one internal multi-file read operation."""
     max_todos: int = 1_000
     """Todo-list item limit."""
     max_todo_bytes: int = 1_000_000
@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     max_concurrent_commands: int = 4
     """Concurrent command limit."""
     max_tmux_sessions: int = 16
-    """Persistent shell session limit."""
+    """Persistent shell limit."""
     file_download_enabled: bool = True
     """Enable download links created by protected tools."""
     file_download_default_ttl_s: int = 3600

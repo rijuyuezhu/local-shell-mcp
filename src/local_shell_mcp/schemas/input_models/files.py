@@ -1,6 +1,6 @@
 """Typed input annotations for file operation tools."""
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 
@@ -13,7 +13,7 @@ FilePathArg = Annotated[
 ListPathArg = Annotated[
     str,
     Field(
-        description="Directory path to list. Relative paths resolve inside the configured workspace."
+        description="Directory path to list. Relative paths resolve inside the agent/workspace session workdir."
     ),
 ]
 RecursiveArg = Annotated[
@@ -40,6 +40,36 @@ EndLineArg = Annotated[
         description="Optional 1-based final line to include when reading text files. Omit to read through the end."
     ),
 ]
+ToolSessionIdArg = Annotated[
+    str | None,
+    Field(
+        description="Optional explicit agent/workspace session id returned by session_start. Internal helpers may omit it when no grounding snapshot is needed."
+    ),
+]
+EditStartLineArg = Annotated[
+    int,
+    Field(
+        description="1-based first original line to replace. The range is inclusive."
+    ),
+]
+EditEndLineArg = Annotated[
+    int,
+    Field(
+        description="1-based final original line to replace. The range is inclusive."
+    ),
+]
+LineReplacementArg = Annotated[
+    str,
+    Field(
+        description="Replacement text for the selected whole-line range. Use an empty string to delete the range."
+    ),
+]
+SnapshotIdArg = Annotated[
+    str | None,
+    Field(
+        description="Optional snapshot_id returned by read or search. When provided, the edit is rejected if the file changed or the line range was not shown."
+    ),
+]
 
 
 class ReadFileRequest(BaseModel):
@@ -55,12 +85,6 @@ class ReadFileRequest(BaseModel):
     """Optional 1-based final line to include for this file."""
 
 
-ReadFilesArg = Annotated[
-    list[ReadFileRequest],
-    Field(
-        description="Files to read. Each item includes path and optional 1-based start_line and end_line values."
-    ),
-]
 FileContentArg = Annotated[
     str,
     Field(
@@ -71,29 +95,5 @@ OverwriteArg = Annotated[
     bool,
     Field(
         description="Whether to replace an existing file. Set false to fail when the target already exists."
-    ),
-]
-OldTextArg = Annotated[
-    str,
-    Field(
-        description="Exact existing text to replace. Include enough surrounding context to make the match unique unless replace_all is true."
-    ),
-]
-NewTextArg = Annotated[
-    str,
-    Field(
-        description="Replacement text written in place of the matched old text."
-    ),
-]
-ReplaceAllArg = Annotated[
-    bool,
-    Field(
-        description="Whether to replace every exact occurrence. Leave false when only one precise occurrence should change."
-    ),
-]
-EditsArg = Annotated[
-    list[dict[str, Any]],
-    Field(
-        description="Ordered exact-text edits. Each edit must include old and new strings, with optional replace_all."
     ),
 ]

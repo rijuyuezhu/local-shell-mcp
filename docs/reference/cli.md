@@ -69,4 +69,4 @@ local-shell-mcp worker \
   --workdir /home/cyh/FrameDiff
 ```
 
-In most cases, create the invite with `remote_invite` and paste the generated command instead.
+In most cases, create the invite with `remote_admin(action="invite", args={...})` and paste the generated command instead.

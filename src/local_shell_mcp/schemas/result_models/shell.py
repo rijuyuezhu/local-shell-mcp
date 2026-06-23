@@ -1,6 +1,6 @@
 """Typed structured outputs for shell-facing tools."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,26 +43,53 @@ class RunShellCommandOutput(CommandResult):
     """Result of running one bounded non-interactive shell command."""
 
 
-class RunPythonCodeOutput(CommandResult):
-    """Result of writing Python code to a temporary file and executing it."""
+class ShellExecutionOutput(BaseModel):
+    """Result returned by the bash shell execution tool."""
 
+    mode: Literal["command", "job", "pty"] = Field(
+        description="Execution mode selected by the bash tool."
+    )
+    command: str = Field(description="Shell command submitted by the caller.")
+    cwd: str = Field(
+        description="Resolved working directory used for this shell execution."
+    )
+    result: dict[str, Any] = Field(
+        description="Structured result from the selected shell mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools."
+    )
+
+
+class RunPythonCodeOutput(BaseModel):
+    """Result of writing Python code to a temporary file and executing it through shell modes."""
+
+    mode: Literal["command", "job", "pty"] = Field(
+        description="Execution mode selected for the generated Python script."
+    )
+    command: str = Field(
+        description="Generated shell command used to run the temporary Python script."
+    )
+    cwd: str = Field(
+        description="Resolved working directory used for this Python execution."
+    )
+    result: dict[str, Any] = Field(
+        description="Structured result from the selected shell mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools."
+    )
     script_path: str = Field(
-        description="Workspace-relative path to the temporary Python script that was executed."
+        description="Path to the temporary Python script that was executed."
     )
 
 
 class StartPersistentShellOutput(BaseModel):
-    """Result of starting a tmux-backed persistent shell session."""
+    """Result of starting a tmux-backed persistent shell."""
 
     model_config = ConfigDict(extra="allow")
     """Allow passthrough keys for dynamically shaped output payloads."""
 
-    session_id: str = Field(
-        description="Identifier used by later persistent-shell tools to send input, read output, or kill the session."
+    shell_id: str = Field(
+        description="Identifier used by later persistent-shell tools to send input, read output, or kill the shell."
     )
     name: str | None = Field(
         default=None,
-        description="Optional human-readable session label, when available.",
+        description="Optional human-readable shell label, when available.",
     )
     cwd: str | None = Field(
         default=None,
@@ -75,11 +102,9 @@ class StartPersistentShellOutput(BaseModel):
 
 
 class SendPersistentShellInputOutput(BaseModel):
-    """Result of sending input to a persistent shell session."""
+    """Result of sending input to a persistent shell."""
 
-    session_id: str = Field(
-        description="Persistent shell session that received input."
-    )
+    shell_id: str = Field(description="Persistent shell that received input.")
     sent_bytes: int = Field(
         description="Number of UTF-8 bytes sent to the persistent shell."
     )
@@ -89,17 +114,15 @@ class SendPersistentShellInputOutput(BaseModel):
 
 
 class ReadPersistentShellOutput(BaseModel):
-    """Recent output captured from a persistent shell session."""
+    """Recent output captured from a persistent shell."""
 
     model_config = ConfigDict(extra="allow")
     """Allow passthrough keys for dynamically shaped output payloads."""
 
-    session_id: str = Field(
-        description="Persistent shell session that was read."
-    )
+    shell_id: str = Field(description="Persistent shell that was read.")
     output: str = Field(
         default="",
-        description="Captured recent terminal output from the session.",
+        description="Captured recent terminal output from the shell.",
     )
     lines: int | None = Field(
         default=None,
@@ -108,17 +131,17 @@ class ReadPersistentShellOutput(BaseModel):
 
 
 class KillPersistentShellOutput(BaseModel):
-    """Result of terminating a persistent shell session."""
+    """Result of terminating a persistent shell."""
 
     model_config = ConfigDict(extra="allow")
     """Allow passthrough keys for dynamically shaped output payloads."""
 
-    session_id: str = Field(
-        description="Persistent shell session targeted for termination."
+    shell_id: str = Field(
+        description="Persistent shell targeted for termination."
     )
     killed: bool | None = Field(
         default=None,
-        description="Whether tmux reported that the session was killed successfully.",
+        description="Whether tmux reported that the shell was killed successfully.",
     )
     stderr: str | None = Field(
         default=None,
@@ -127,14 +150,14 @@ class KillPersistentShellOutput(BaseModel):
 
 
 class PersistentShellInfo(BaseModel):
-    """One persistent shell session entry."""
+    """One persistent shell entry."""
 
     model_config = ConfigDict(extra="allow")
     """Allow passthrough keys for dynamically shaped output payloads."""
 
-    session_id: str = Field(description="Persistent shell session identifier.")
+    shell_id: str = Field(description="Persistent shell identifier.")
     name: str | None = Field(
-        default=None, description="Optional human-readable session label."
+        default=None, description="Optional human-readable shell label."
     )
     cwd: str | None = Field(
         default=None,
@@ -146,11 +169,11 @@ class PersistentShellInfo(BaseModel):
 
 
 class ListPersistentShellsOutput(BaseModel):
-    """Active tmux-backed persistent shell sessions."""
+    """Active tmux-backed persistent shells."""
 
     model_config = ConfigDict(extra="allow")
     """Allow passthrough keys for dynamically shaped output payloads."""
 
-    sessions: list[dict[str, Any]] = Field(
-        description="Active persistent shell sessions with at least session_id and optional implementation-specific metadata."
+    shells: list[PersistentShellInfo] = Field(
+        description="Active persistent shells with at least shell_id and optional implementation-specific metadata."
     )

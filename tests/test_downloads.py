@@ -7,10 +7,12 @@ from starlette.testclient import TestClient
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.downloads import (
     create_file_link_execute,
+    list_file_links_execute,
     revoke_file_link_execute,
 )
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.server.shared.downloads import download_routes
+from local_shell_mcp.tool_session.store import get_tool_session_store
 
 
 def _reset(tmp_path, monkeypatch):
@@ -72,6 +74,44 @@ def test_share_link_can_be_disabled(tmp_path, monkeypatch):
 
     with pytest.raises(PermissionError):
         create_file_link_execute("hello.txt", ttl_s=60)
+
+
+def test_file_links_are_session_owned(tmp_path, monkeypatch):
+    _reset(tmp_path, monkeypatch)
+    (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
+    store = get_tool_session_store()
+    store.clear()
+    first = store.create_session(workdir=".").session_id
+    second = store.create_session(workdir=".").session_id
+
+    link = create_file_link_execute("hello.txt", ttl_s=60, session_id=first)
+
+    assert [
+        item.token for item in list_file_links_execute(session_id=first).links
+    ] == [link.token]
+    assert list_file_links_execute(session_id=second).links == []
+    assert (
+        revoke_file_link_execute(link.token, session_id=second).revoked is False
+    )
+    assert (
+        revoke_file_link_execute(link.token, session_id=first).revoked is True
+    )
+
+
+def test_file_links_reject_remote_sessions(tmp_path, monkeypatch):
+    _reset(tmp_path, monkeypatch)
+    (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
+    store = get_tool_session_store()
+    store.clear()
+    remote = store.create_session(
+        target="remote",
+        workdir="/remote/project",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+    ).session_id
+
+    with pytest.raises(ValueError, match="local sessions"):
+        create_file_link_execute("hello.txt", ttl_s=60, session_id=remote)
 
 
 @pytest.mark.asyncio

@@ -1,14 +1,14 @@
 # Remote workers
 
-Remote workers let the control server run the same shell, Python, file, search, patch, and transfer operations on another machine. Use them when the connected ChatGPT session should coordinate work on a GPU box, lab machine, build host, or remote checkout while keeping one public MCP connector.
+Remote workers let the control server run normal session-bound code work on another machine. Use them when the connected ChatGPT session should coordinate work on a GPU box, lab machine, build host, or remote checkout while keeping one public MCP connector.
 
 ## How it works
 
-1. The MCP client calls `remote_invite` on the control server.
+1. The MCP client calls `remote_admin(action="invite", args={...})` on the control server.
 2. The server returns a one-time shell command containing an invite code.
 3. You paste that command on the remote machine.
 4. The remote machine downloads a worker bundle from the control server, starts the worker, registers once, then long-polls for jobs.
-5. The MCP client uses `remote_*` tools with the registered machine name.
+5. The MCP client uses `remote_admin(action="list", args={})` to discover the registered machine name, then `session_start(target="remote", machine=..., workdir=...)` to start remote work.
 
 Remote worker enrollment routes are public so the worker can join. Treat invite commands as sensitive and short-lived.
 
@@ -38,9 +38,12 @@ Equivalent tool call shape:
 
 ```json
 {
-  "name": "gpu1",
-  "workdir": "/home/me/project",
-  "ttl_s": 600
+  "action": "invite",
+  "args": {
+    "name": "gpu1",
+    "workdir": "/home/me/project",
+    "ttl_s": 600
+  }
 }
 ```
 
@@ -71,16 +74,16 @@ The `--server` value is the public origin, not `/mcp`.
 Ask the MCP client:
 
 ```text
-Use local-shell-mcp to list remote machines, then run remote_environment_info on gpu1.
+Use local-shell-mcp to list remote machines, start a remote session on gpu1 in /home/me/project, then inspect the project.
 ```
 
 The normal flow before remote edits is:
 
-1. `remote_list_machines`
-2. `remote_environment_info`
-3. `remote_tree_view` or `remote_list_files`
-4. `remote_grep_search` or `remote_read_file`
-5. `run_remote_shell_command` or remote file edit tools
+1. `remote_admin(action="list", args={})`
+2. `session_start(target="remote", machine="gpu1", workdir="/home/me/project")`
+3. `read(session_id=..., path=".")` or `search(session_id=..., pattern=..., paths=[...])`
+4. `edit_lines(session_id=..., ...)` for snapshot-grounded edits
+5. `bash(session_id=..., command=...)` for commands and validation
 
 ## Run remote commands
 
@@ -90,32 +93,14 @@ Example prompt:
 Use local-shell-mcp on remote machine gpu1. Inspect /home/me/project, run git status, then run the test command you find in the project docs. Report results before editing files.
 ```
 
-Use persistent remote shells for long-running servers, training runs, watchers, and REPL-like sessions:
-
-```text
-Start a persistent shell on remote machine gpu1 in /home/me/project to run the dev server. Then read the first 200 lines of output.
-```
-
-## Transfer files and directories
-
-Use remote transfer tools for binary files, build artifacts, datasets, and larger trees:
-
-- `remote_push_file` / `remote_push_dir`: local workspace to remote worker.
-- `remote_pull_file` / `remote_pull_dir`: remote worker to local workspace.
-- `remote_copy_file` / `remote_copy_dir`: one remote worker to another through the control server.
-
-Example prompt:
-
-```text
-Use local-shell-mcp to pull /home/me/project/results/report.html from gpu1 into ./artifacts/report.html.
-```
+Use `bash(session_id=..., async_=true)` for long-running non-interactive remote jobs. Manage the returned `job_id` with `job(session_id=..., ...)`. Prefer bounded non-interactive commands for remote work.
 
 ## Revoke a worker
 
 When a worker should no longer receive jobs:
 
 ```text
-Use local-shell-mcp to revoke remote machine gpu1.
+Use local-shell-mcp to revoke remote machine gpu1 with `remote_admin(action="revoke", args={"machine": "gpu1"})`.
 ```
 
 This removes the worker from the control server. Reconnect it with a new invite if needed.

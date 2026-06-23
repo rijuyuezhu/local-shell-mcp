@@ -165,28 +165,26 @@ def unwrap_tool_payload(value: Any) -> Any:
 
 
 REST_ROUTES: dict[str, tuple[str, str]] = {
-    "environment_info": ("GET", "/tools/environment_info"),
+    "bash": ("POST", "/tools/bash"),
+    "job": ("POST", "/tools/job"),
+    "session_start": ("POST", "/tools/session_start"),
+    "session_change_cwd": ("POST", "/tools/session_change_cwd"),
+    "read": ("POST", "/tools/read"),
     "search": ("POST", "/tools/search"),
+    "workspace_search": ("POST", "/tools/workspace_search"),
     "fetch": ("POST", "/tools/fetch"),
     "list_files": ("POST", "/tools/list_files"),
     "tree_view": ("POST", "/tools/tree"),
     "glob_search": ("POST", "/tools/glob"),
-    "grep_search": ("POST", "/tools/grep"),
-    "read_file": ("POST", "/tools/read_file"),
-    "read_many_files": ("POST", "/tools/read_many_files"),
     "write_file": ("POST", "/tools/write_file"),
-    "edit_file": ("POST", "/tools/edit_file"),
-    "multi_edit_file": ("POST", "/tools/multi_edit_file"),
+    "edit_lines": ("POST", "/tools/edit_lines"),
     "delete_file_or_dir": ("POST", "/tools/delete"),
-    "apply_patch": ("POST", "/tools/apply_patch"),
     "create_file_link": ("POST", "/tools/file_link/create"),
     "list_file_links": ("GET", "/tools/file_link/list"),
     "revoke_file_link": ("POST", "/tools/file_link/revoke"),
     "secret_scan": ("POST", "/tools/secret_scan"),
-    "run_shell_command": ("POST", "/tools/run_shell_command"),
     "run_python_code": ("POST", "/tools/run_python_code"),
     "list_persistent_shells": ("GET", "/tools/list_persistent_shells"),
-    "start_persistent_shell": ("POST", "/tools/start_persistent_shell"),
     "send_persistent_shell_input": (
         "POST",
         "/tools/send_persistent_shell_input",
@@ -216,7 +214,7 @@ class RestToolClient:
             base_url=self.base_url, timeout=20
         ) as client:
             if method == "GET":
-                response = await client.get(path)
+                response = await client.get(path, params=args or {})
             else:
                 response = await client.post(path, json=args or {})
         response.raise_for_status()

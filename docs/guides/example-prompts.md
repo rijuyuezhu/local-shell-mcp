@@ -11,23 +11,23 @@ Use local-shell-mcp. Clone https://github.com/fwerkor/FrameDiff.git into /worksp
 ## Make a change safely
 
 ```text
-Use local-shell-mcp. In /workspace/FrameDiff, create a new branch ai/example-change, make the requested code edit with edit_file or apply_patch, run relevant tests, show git diff --stat, run secret_scan, commit, and push the branch.
+Use local-shell-mcp. Start a session in /workspace/FrameDiff, create a new branch ai/example-change with `bash(session_id=...)`, inspect the target files with `read` or `search`, make the requested code edit with grounded `edit_lines`, run relevant tests with `bash(session_id=...)`, run `secret_scan(session_id=...)`, show git diff --stat, commit, and push the branch.
 ```
 
 ## One-command remote worker onboarding
 
 ```text
-Use local-shell-mcp. Create a remote worker invite named npu-4card with workdir /home/cyh/FrameDiff. Show me only the pasteable join command and then, after I say it has run, call remote_list_machines to confirm it is online.
+Use local-shell-mcp. Create a remote worker invite with `remote_admin(action="invite", args={"name": "npu-4card", "workdir": "/home/cyh/FrameDiff"})`. Show me only the pasteable join command and then, after I say it has run, call `remote_admin(action="list", args={})` to confirm it is online.
 ```
 
 ## Remote machine diagnostics
 
 ```text
-Use local-shell-mcp. On remote machine npu-4card, run pwd, hostname, python3 --version, git log -1 --oneline, and npu-smi info from /home/cyh/FrameDiff. Use run_remote_shell_command.
+Use local-shell-mcp. Start a local session for the project, inspect the workspace, and run the relevant verification commands with `bash` using the returned session_id.
 ```
 
 ## Remote code edit and test
 
 ```text
-Use local-shell-mcp. On remote machine hpc-a, inspect /home/cyh/project, search for the requested symbol with remote_grep_search, edit the file with remote_edit_file or remote_apply_patch, run the relevant test with run_remote_shell_command, then show git diff --stat with run_remote_shell_command.
+Use local-shell-mcp. Start a session for the target project, search for the requested symbol with `search`, edit with `edit_lines`, run the relevant test with `bash`, then show git diff --stat with `bash`, always passing the returned session_id.
 ```
