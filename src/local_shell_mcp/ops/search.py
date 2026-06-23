@@ -106,7 +106,7 @@ def _grep_numbered_content(matches: list[GrepMatch]) -> str:
                 lines.append("")
             current_path = match.path
             lines.append(str(match.path or "<unknown>"))
-        lines.append(match.numbered_line or f"{match.line}|{match.text}")
+        lines.append(match.numbered_line or f"{match.line}:{match.text}")
     return "\n".join(lines)
 
 

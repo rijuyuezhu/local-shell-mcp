@@ -1936,7 +1936,7 @@
               },
               "line_count": {
                 "default": 0,
-                "description": "Number of decoded text lines returned in lines and numbered_content.",
+                "description": "Number of decoded text lines returned in lines and grounded numbered_content.",
                 "title": "Line Count",
                 "type": "integer"
               },
@@ -1950,7 +1950,7 @@
               },
               "numbered_content": {
                 "default": "",
-                "description": "Model-facing content formatted as 'line|text' so later edits can refer to original line numbers.",
+                "description": "Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows.",
                 "title": "Numbered Content",
                 "type": "string"
               },
@@ -3374,8 +3374,8 @@
             "title": "ListFilesOutput",
             "type": "object"
           },
-          "ReadFileOutput": {
-            "description": "UTF-8 text file content plus edit-grounding metadata.",
+          "ReadFileMetadata": {
+            "description": "File read metadata without duplicate file text.",
             "properties": {
               "bytes": {
                 "description": "Total file size in bytes.",
@@ -3395,11 +3395,6 @@
                 "description": "Number of bytes read into the text response, when applicable.",
                 "title": "Bytes Read"
               },
-              "content": {
-                "description": "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing.",
-                "title": "Content",
-                "type": "string"
-              },
               "end_line": {
                 "anyOf": [
                   {
@@ -3410,7 +3405,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Final original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "Final original 1-based line number shown, or null when no lines were shown.",
                 "title": "End Line"
               },
               "file_sha256": {
@@ -3428,23 +3423,9 @@
               },
               "line_count": {
                 "default": 0,
-                "description": "Number of decoded text lines returned in lines and numbered_content.",
+                "description": "Number of decoded text lines shown in content.",
                 "title": "Line Count",
                 "type": "integer"
-              },
-              "lines": {
-                "description": "Returned lines with original 1-based line numbers for precise follow-up edits.",
-                "items": {
-                  "$ref": "#/$defs/ReadLine"
-                },
-                "title": "Lines",
-                "type": "array"
-              },
-              "numbered_content": {
-                "default": "",
-                "description": "Model-facing content formatted as 'line|text' so later edits can refer to original line numbers.",
-                "title": "Numbered Content",
-                "type": "string"
               },
               "path": {
                 "description": "Workspace-relative file path that was read.",
@@ -3452,7 +3433,7 @@
                 "type": "string"
               },
               "seen_ranges": {
-                "description": "Inclusive original line ranges that were actually shown and are eligible for grounded line edits.",
+                "description": "Inclusive original line ranges that were actually shown and are eligible for grounded edits.",
                 "items": {
                   "$ref": "#/$defs/LineRange"
                 },
@@ -3482,7 +3463,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Opaque handle for this displayed file snapshot, used by line-based edit tools to reject stale edits.",
+                "description": "Opaque handle for this displayed file snapshot, used by edit tools to reject stale edits.",
                 "title": "Snapshot Id"
               },
               "start_line": {
@@ -3495,7 +3476,7 @@
                   }
                 ],
                 "default": null,
-                "description": "First original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "First original 1-based line number shown, or null when no lines were shown.",
                 "title": "Start Line"
               },
               "total_lines": {
@@ -3533,38 +3514,16 @@
             },
             "required": [
               "path",
-              "bytes",
-              "content"
+              "bytes"
             ],
-            "title": "ReadFileOutput",
-            "type": "object"
-          },
-          "ReadLine": {
-            "description": "One decoded line with its original file line number.",
-            "properties": {
-              "line": {
-                "description": "Original 1-based line number in the file.",
-                "title": "Line",
-                "type": "integer"
-              },
-              "text": {
-                "description": "Line text without its trailing newline.",
-                "title": "Text",
-                "type": "string"
-              }
-            },
-            "required": [
-              "line",
-              "text"
-            ],
-            "title": "ReadLine",
+            "title": "ReadFileMetadata",
             "type": "object"
           }
         },
         "description": "Read result for files and directories.",
         "properties": {
           "content": {
-            "description": "Model-facing content. File reads use numbered_content unless raw is true; directories use a compact listing.",
+            "description": "Model-facing content. File reads use hashline-style text unless raw is true; directories use a compact listing.",
             "title": "Content",
             "type": "string"
           },
@@ -3583,14 +3542,14 @@
           "file": {
             "anyOf": [
               {
-                "$ref": "#/$defs/ReadFileOutput"
+                "$ref": "#/$defs/ReadFileMetadata"
               },
               {
                 "type": "null"
               }
             ],
             "default": null,
-            "description": "Structured file read data when kind is file."
+            "description": "File metadata without duplicate file text when kind is file."
           },
           "kind": {
             "description": "Type of target that was read.",
@@ -4217,7 +4176,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Model-facing match line formatted as 'line|text' for grounded follow-up edits.",
+                "description": "Grounded match text with optional hashline header plus 'line:text' row.",
                 "title": "Numbered Line"
               },
               "path": {
@@ -4324,7 +4283,7 @@
           },
           "numbered_content": {
             "default": "",
-            "description": "Grouped model-facing match snippets with file paths and line-numbered match lines.",
+            "description": "Grouped grounded match snippets with line-numbered rows.",
             "title": "Numbered Content",
             "type": "string"
           },

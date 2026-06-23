@@ -97,7 +97,8 @@ def test_read_text_returns_line_numbers_and_snapshot_metadata(
     assert result.line_count == 2
     assert result.lines[0].line == 2
     assert result.lines[0].text == "beta"
-    assert result.numbered_content == "2|beta\n3|gamma"
+    assert result.numbered_content.startswith("[lines.txt#")
+    assert result.numbered_content.endswith("]\n2:beta\n3:gamma")
     assert result.session_id == session_id
     assert result.snapshot_id
     assert result.file_sha256
@@ -119,7 +120,7 @@ def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
     assert result.truncated_bytes == 6
     assert result.truncated is True
     assert result.content == "hello"
-    assert result.numbered_content == "1|hello"
+    assert result.numbered_content == "1:hello"
 
 
 def test_write_text_does_not_read_existing_file_before_overwrite(
@@ -287,8 +288,9 @@ def test_edit_lines_uses_snapshot_and_returns_diff_context(
     assert result.replacement_line_count == 2
     assert "-beta" in result.diff
     assert "+BETA" in result.diff
-    assert result.context.numbered_content == (
-        "1|alpha\n2|BETA\n3|GAMMA\n4|delta"
+    assert result.context.numbered_content.startswith("[edit.py#")
+    assert result.context.numbered_content.endswith(
+        "]\n1:alpha\n2:BETA\n3:GAMMA\n4:delta"
     )
     assert result.context.snapshot_id != read_result.snapshot_id
 

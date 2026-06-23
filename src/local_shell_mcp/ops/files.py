@@ -129,9 +129,17 @@ def _selected_read_lines(
     ]
 
 
-def _numbered_content(lines: list[ReadLine]) -> str:
-    """Format lines in a stable model-facing line-numbered form."""
-    return "\n".join(f"{line.line}|{line.text}" for line in lines)
+def _numbered_content(
+    lines: list[ReadLine],
+    path: str | None = None,
+    snapshot_id: str | None = None,
+) -> str:
+    """Format lines in hashline-style grounded model-facing form."""
+    body = "\n".join(f"{line.line}:{line.text}" for line in lines)
+    if path is not None and snapshot_id is not None:
+        header = "[" + path + "#" + snapshot_id + "]"
+        return header + "\n" + body if body else header
+    return body
 
 
 def read_file_execute(
@@ -198,7 +206,11 @@ def read_file_execute(
         end_line=end,
         line_count=len(selected_lines),
         lines=selected_lines,
-        numbered_content=_numbered_content(selected_lines),
+        numbered_content=_numbered_content(
+            selected_lines,
+            relative_path,
+            record.snapshot_id if record is not None else None,
+        ),
         session_id=record.session_id if record is not None else None,
         snapshot_id=record.snapshot_id if record is not None else None,
         file_sha256=record.file_sha256 if record is not None else None,

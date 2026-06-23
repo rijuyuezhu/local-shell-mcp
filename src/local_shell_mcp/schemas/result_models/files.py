@@ -71,7 +71,7 @@ class ReadFileOutput(BaseModel):
     )
     line_count: int = Field(
         default=0,
-        description="Number of decoded text lines returned in lines and numbered_content.",
+        description="Number of decoded text lines returned in lines and grounded numbered_content.",
     )
     lines: list[ReadLine] = Field(
         default_factory=list,
@@ -79,7 +79,7 @@ class ReadFileOutput(BaseModel):
     )
     numbered_content: str = Field(
         default="",
-        description="Model-facing content formatted as 'line|text' so later edits can refer to original line numbers.",
+        description="Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows.",
     )
     session_id: str | None = Field(
         default=None,
@@ -104,6 +104,76 @@ class ReadFileOutput(BaseModel):
     content: str = Field(
         description="Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing."
     )
+
+
+class ReadFileMetadata(BaseModel):
+    """File read metadata without duplicate file text."""
+
+    path: str = Field(description="Workspace-relative file path that was read.")
+    bytes: int = Field(description="Total file size in bytes.")
+    bytes_read: int | None = Field(
+        default=None,
+        description="Number of bytes read into the text response, when applicable.",
+    )
+    truncated_bytes: int | None = Field(
+        default=None,
+        description="Number of file bytes omitted due to the read limit, when applicable.",
+    )
+    total_lines: int | None = Field(
+        default=None,
+        description="Total decoded text line count before optional line-range selection.",
+    )
+    start_line: int | None = Field(
+        default=None,
+        description="First original 1-based line number shown, or null when no lines were shown.",
+    )
+    end_line: int | None = Field(
+        default=None,
+        description="Final original 1-based line number shown, or null when no lines were shown.",
+    )
+    line_count: int = Field(
+        default=0,
+        description="Number of decoded text lines shown in content.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Explicit agent/workspace session that recorded this read, or null when no grounding snapshot was recorded.",
+    )
+    snapshot_id: str | None = Field(
+        default=None,
+        description="Opaque handle for this displayed file snapshot, used by edit tools to reject stale edits.",
+    )
+    file_sha256: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the complete file at the time it was read.",
+    )
+    seen_ranges: list[LineRange] = Field(
+        default_factory=list,
+        description="Inclusive original line ranges that were actually shown and are eligible for grounded edits.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description="Whether text content was truncated to fit the read limit.",
+    )
+
+    @classmethod
+    def from_read_result(cls, result: ReadFileOutput) -> ReadFileMetadata:
+        """Build compact model-facing metadata from an internal file read result."""
+        return cls(
+            path=result.path,
+            bytes=result.bytes,
+            bytes_read=result.bytes_read,
+            truncated_bytes=result.truncated_bytes,
+            total_lines=result.total_lines,
+            start_line=result.start_line,
+            end_line=result.end_line,
+            line_count=result.line_count,
+            session_id=result.session_id,
+            snapshot_id=result.snapshot_id,
+            file_sha256=result.file_sha256,
+            seen_ranges=result.seen_ranges,
+            truncated=result.truncated,
+        )
 
 
 class ReadManyFilesOutput(BaseModel):

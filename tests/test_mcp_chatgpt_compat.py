@@ -281,7 +281,7 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
     assert "directory" in read_output_schema["properties"]
     assert (
         read_output_schema["properties"]["content"]["description"]
-        == "Model-facing content. File reads use numbered_content unless raw is true; directories use a compact listing."
+        == "Model-facing content. File reads use hashline-style text unless raw is true; directories use a compact listing."
     )
     assert (
         list_files_output_schema["properties"]["entries"]["description"]

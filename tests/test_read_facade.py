@@ -23,8 +23,11 @@ async def test_read_facade_reads_line_selector_with_numbered_content(
     result = mcp_structured(response)
 
     assert result["kind"] == "file"
-    assert result["content"] == "2|beta\n3|gamma"
-    assert result["file"]["content"] == "beta\ngamma"
+    snapshot_id = result["file"]["snapshot_id"]
+    assert result["content"] == f"[demo.py#{snapshot_id}]\n2:beta\n3:gamma"
+    assert "content" not in result["file"]
+    assert "numbered_content" not in result["file"]
+    assert "lines" not in result["file"]
     assert result["file"]["start_line"] == 2
     assert result["file"]["seen_ranges"] == [{"start": 2, "end": 3}]
 
@@ -49,7 +52,10 @@ async def test_read_facade_raw_selector_returns_unnumbered_content(
     assert result["kind"] == "file"
     assert result["raw"] is True
     assert result["content"] == "alpha\nbeta\n"
-    assert result["file"]["numbered_content"] == "1|alpha\n2|beta"
+    assert "content" not in result["file"]
+    assert "numbered_content" not in result["file"]
+    assert "lines" not in result["file"]
+    assert result["file"]["seen_ranges"] == [{"start": 1, "end": 2}]
 
 
 @pytest.mark.asyncio

@@ -155,12 +155,15 @@ async def test_grep_search_returns_grounded_numbered_matches(
     assert result.count == 1
     match = result.matches[0]
     assert match.path == "src/app.py"
-    assert match.numbered_line == "2|needle here"
+    assert match.numbered_line is not None
+    assert match.numbered_line.startswith("[src/app.py#")
+    assert match.numbered_line.endswith("]\n2:needle here")
     assert match.snapshot_id
     assert match.file_sha256
     assert match.seen_range is not None
     assert match.seen_range.model_dump() == {"start": 2, "end": 2}
-    assert result.numbered_content == "src/app.py\n2|needle here"
+    assert result.numbered_content.startswith("src/app.py\n[src/app.py#")
+    assert result.numbered_content.endswith("]\n2:needle here")
 
 
 @pytest.mark.asyncio
@@ -184,8 +187,10 @@ async def test_high_level_search_scopes_to_paths(tmp_path, monkeypatch):
 
     assert result.ok is True
     assert result.count == 1
+    assert result.matches[0].numbered_line is not None
+    assert result.matches[0].numbered_line.startswith("[src/app.py#")
+    assert result.matches[0].numbered_line.endswith("]\n1:needle")
     assert result.matches[0].path == "src/app.py"
-    assert result.matches[0].numbered_line == "1|needle"
 
 
 @pytest.mark.asyncio
@@ -220,4 +225,5 @@ async def test_mcp_search_facade_returns_grounded_results(
 
     assert payload["matches"][0]["path"] == "src/app.py"
     assert payload["matches"][0]["snapshot_id"]
-    assert payload["numbered_content"] == "src/app.py\n1|needle"
+    assert payload["numbered_content"].startswith("src/app.py\n[src/app.py#")
+    assert payload["numbered_content"].endswith("]\n1:needle")

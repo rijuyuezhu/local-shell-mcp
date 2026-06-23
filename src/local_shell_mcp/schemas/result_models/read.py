@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .files import ListFilesOutput, ReadFileOutput
+from .files import ListFilesOutput, ReadFileMetadata
 
 
 class ReadOutput(BaseModel):
@@ -19,11 +19,11 @@ class ReadOutput(BaseModel):
         description="Whether content omits model-facing line-number prefixes.",
     )
     content: str = Field(
-        description="Model-facing content. File reads use numbered_content unless raw is true; directories use a compact listing."
+        description="Model-facing content. File reads use hashline-style text unless raw is true; directories use a compact listing."
     )
-    file: ReadFileOutput | None = Field(
+    file: ReadFileMetadata | None = Field(
         default=None,
-        description="Structured file read data when kind is file.",
+        description="File metadata without duplicate file text when kind is file.",
     )
     directory: ListFilesOutput | None = Field(
         default=None,

@@ -63,7 +63,7 @@ class GrepMatch(BaseModel):
     )
     numbered_line: str | None = Field(
         default=None,
-        description="Model-facing match line formatted as 'line|text' for grounded follow-up edits.",
+        description="Grounded match text with optional hashline header plus 'line:text' row.",
     )
     session_id: str | None = Field(
         default=None,
@@ -99,5 +99,5 @@ class GrepSearchOutput(BaseModel):
     )
     numbered_content: str = Field(
         default="",
-        description="Grouped model-facing match snippets with file paths and line-numbered match lines.",
+        description="Grouped grounded match snippets with line-numbered rows.",
     )
