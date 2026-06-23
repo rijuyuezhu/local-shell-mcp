@@ -16,5 +16,5 @@ class BashOutput(BaseModel):
         description="Resolved working directory used for this bash call."
     )
     result: dict[str, Any] = Field(
-        description="Structured result from bounded command, async job, or PTY mode selected by bash. Async job results include the owning agent session_id and job_id."
+        description="Structured result from the selected bash mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools."
     )

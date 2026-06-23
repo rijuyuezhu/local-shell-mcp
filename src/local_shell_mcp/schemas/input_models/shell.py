@@ -43,7 +43,7 @@ PythonTimeoutArg = Annotated[
 ShellIdArg = Annotated[
     str,
     Field(
-        description="Persistent shell_id returned by bash(pty=true) or list_persistent_shells."
+        description="Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id."
     ),
 ]
 InputTextArg = Annotated[

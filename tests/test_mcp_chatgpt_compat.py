@@ -68,6 +68,13 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert "You are a coding agent aiming to help the user" in mcp.instructions
     assert "Do not commit, push, amend, create PRs, release" in mcp.instructions
     assert "secret_scan is heuristic" in mcp.instructions
+    assert (
+        "`session_id` identifies the agent/workspace session"
+        in mcp.instructions
+    )
+    assert "`bash(async_=true)` returns a `job_id`" in mcp.instructions
+    assert "`bash(pty=true)` returns a `shell_id`" in mcp.instructions
+    assert "Do not use `shell_id` with `job`" in mcp.instructions
 
     transport_security = mcp.settings.transport_security
     assert transport_security is not None
@@ -181,6 +188,11 @@ async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
     assert "bounded command mode" in timeout_input["description"]
     assert "Execution mode" in mode_output["description"]
     assert "bounded command" in result_output["description"]
+    description = tool.description or ""
+    assert "session_id returned by session_start" in description
+    assert "job_id owned by the same session_id" in description
+    assert "shell_id for persistent-shell companion tools" in description
+    assert "Do not use shell_id with `job`" in description
 
 
 @pytest.mark.asyncio
@@ -207,7 +219,8 @@ async def test_persistent_shell_tools_use_shell_id_not_session_id(
         assert "shell_id" in tool.inputSchema["required"]
         assert "shell_id" in input_properties
         assert "session_id" not in input_properties
-        assert "session_id" not in input_text
+        assert "shell_id is separate" in input_text
+        assert "agent/workspace session_id" in input_text
         assert "shell_id" in output_schema["properties"]
         assert "session_id" not in output_schema["properties"]
         assert "session_id" not in output_text

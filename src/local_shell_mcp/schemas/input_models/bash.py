@@ -41,7 +41,7 @@ BashAsyncArg = Annotated[
 BashPtyArg = Annotated[
     bool,
     Field(
-        description="Whether to start the command in a persistent PTY shell session for interactive programs, REPLs, servers, or commands needing later input."
+        description="Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools."
     ),
 ]
 BashNameArg = Annotated[

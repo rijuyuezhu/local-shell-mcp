@@ -175,7 +175,7 @@
                 "note": "(string / null, optional)"
               },
               {
-                "description": "Whether to start the command in a persistent PTY shell session for interactive programs, REPLs, servers, or commands needing later input.",
+                "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools.",
                 "head": {
                   "code": "pty"
                 },
@@ -204,7 +204,7 @@
               }
             ]
           },
-          "Run terminal commands inside an explicit agent session for builds, tests, package managers, git inspection, scripts, and other shell work. Pass session_id from session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Set `async_=true` for long-running non-interactive work tracked by job id in the same session, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds."
+          "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, scripts, and other shell work. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Default mode is bounded and returns captured stdout/stderr. Set `async_=true` for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the `job` companion. Set `pty=true` only for interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools. Do not use shell_id with `job`, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds."
         ]
       ]
     },
@@ -624,7 +624,7 @@
               }
             ]
           },
-          "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op=\"session\" with args.action of send/read/kill/list and shell_id for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
+          "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side agent/workspace session for remote bash/read/search/edit/job calls that require session_id. Use op=\"session\" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the worker-side session_id. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
         ],
         [
           {
@@ -896,7 +896,7 @@
       ]
     },
     {
-      "body": "Register shell execution and session tools.",
+      "body": "Register shell execution and persistent-shell companion tools.",
       "headers": [
         "Tool",
         "Parameters",
@@ -912,7 +912,7 @@
           {
             "items": [
               {
-                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id.",
                 "head": {
                   "code": "shell_id"
                 },
@@ -920,14 +920,14 @@
               }
             ]
           },
-          "Terminate a persistent shell by shell_id. Use for manually managed shells started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that shell but does not delete files."
+          "Terminate a persistent shell by shell_id. Use for manually managed shells started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. shell_id is separate from the agent/workspace session_id. For tracked non-interactive jobs from bash(async_=true), use job(cancel=[...]) so the job record is updated. This is destructive for that shell process but does not delete files."
         ],
         [
           {
             "code": "list_persistent_shells"
           },
           "none",
-          "List active persistent shells. Use before reading, sending to, or killing shells when you do not know the shell_id or need to check what long-running processes are active."
+          "List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values; async bash jobs are listed with job(session_id, list_jobs=true) instead."
         ],
         [
           {
@@ -943,7 +943,7 @@
                 "note": "(integer, optional)"
               },
               {
-                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id.",
                 "head": {
                   "code": "shell_id"
                 },
@@ -951,7 +951,7 @@
               }
             ]
           },
-          "Read recent output from a persistent shell. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: shell_id must be an id returned by bash(pty=true) or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."
+          "Read recent output from a persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use after send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs from bash(async_=true), use job(poll=[...]) because it works from job_id and refreshes job status. lines defaults to 200 and controls how many recent terminal lines are returned; increase it only when needed for context."
         ],
         [
           {
@@ -1019,7 +1019,7 @@
                 "note": "(string, required)"
               },
               {
-                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id.",
                 "head": {
                   "code": "shell_id"
                 },
@@ -1027,7 +1027,7 @@
               }
             ]
           },
-          "Send input to an existing persistent shell. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing shell. Set enter=false only when intentionally sending partial input without a newline."
+          "Send input to an existing persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use this for interactive programs, REPLs, prompts, and manually managed server shells that need later input. Jobs started with bash(async_=true) are non-interactive background jobs; use the job companion for those instead. Set enter=false only when intentionally sending partial input without a newline."
         ]
       ]
     },
@@ -1406,7 +1406,7 @@
       }
     },
     {
-      "description": "Run terminal commands inside an explicit agent session for builds, tests, package managers, git inspection, scripts, and other shell work. Pass session_id from session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Set `async_=true` for long-running non-interactive work tracked by job id in the same session, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, scripts, and other shell work. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Default mode is bounded and returns captured stdout/stderr. Set `async_=true` for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the `job` companion. Set `pty=true` only for interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools. Do not use shell_id with `job`, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
@@ -1483,7 +1483,7 @@
           },
           "pty": {
             "default": false,
-            "description": "Whether to start the command in a persistent PTY shell session for interactive programs, REPLs, servers, or commands needing later input.",
+            "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools.",
             "title": "Pty",
             "type": "boolean"
           },
@@ -1566,7 +1566,7 @@
           },
           "result": {
             "additionalProperties": true,
-            "description": "Structured result from bounded command, async job, or PTY mode selected by bash. Async job results include the owning agent session_id and job_id.",
+            "description": "Structured result from the selected bash mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools.",
             "title": "Result",
             "type": "object"
           }
@@ -2715,11 +2715,11 @@
       }
     },
     {
-      "description": "Terminate a persistent shell by shell_id. Use for manually managed shells started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that shell but does not delete files.",
+      "description": "Terminate a persistent shell by shell_id. Use for manually managed shells started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. shell_id is separate from the agent/workspace session_id. For tracked non-interactive jobs from bash(async_=true), use job(cancel=[...]) so the job record is updated. This is destructive for that shell process but does not delete files.",
       "inputSchema": {
         "properties": {
           "shell_id": {
-            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id.",
             "title": "Shell Id",
             "type": "string"
           }
@@ -3192,7 +3192,7 @@
       }
     },
     {
-      "description": "List active persistent shells. Use before reading, sending to, or killing shells when you do not know the shell_id or need to check what long-running processes are active.",
+      "description": "List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values; async bash jobs are listed with job(session_id, list_jobs=true) instead.",
       "inputSchema": {
         "properties": {},
         "title": "list_persistent_shellsArguments",
@@ -3670,7 +3670,7 @@
       }
     },
     {
-      "description": "Read recent output from a persistent shell. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: shell_id must be an id returned by bash(pty=true) or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context.",
+      "description": "Read recent output from a persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use after send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs from bash(async_=true), use job(poll=[...]) because it works from job_id and refreshes job status. lines defaults to 200 and controls how many recent terminal lines are returned; increase it only when needed for context.",
       "inputSchema": {
         "properties": {
           "lines": {
@@ -3680,7 +3680,7 @@
             "type": "integer"
           },
           "shell_id": {
-            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id.",
             "title": "Shell Id",
             "type": "string"
           }
@@ -3824,7 +3824,7 @@
       }
     },
     {
-      "description": "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op=\"session\" with args.action of send/read/kill/list and shell_id for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
+      "description": "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side agent/workspace session for remote bash/read/search/edit/job calls that require session_id. Use op=\"session\" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the worker-side session_id. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
       "inputSchema": {
         "properties": {
           "args": {
@@ -4556,7 +4556,7 @@
       }
     },
     {
-      "description": "Send input to an existing persistent shell. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing shell. Set enter=false only when intentionally sending partial input without a newline.",
+      "description": "Send input to an existing persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use this for interactive programs, REPLs, prompts, and manually managed server shells that need later input. Jobs started with bash(async_=true) are non-interactive background jobs; use the job companion for those instead. Set enter=false only when intentionally sending partial input without a newline.",
       "inputSchema": {
         "properties": {
           "enter": {
@@ -4571,7 +4571,7 @@
             "type": "string"
           },
           "shell_id": {
-            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id.",
             "title": "Shell Id",
             "type": "string"
           }
