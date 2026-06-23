@@ -103,9 +103,9 @@ class Settings(BaseSettings):
     max_tree_entries: int = 5_000
     """Maximum tree-view entries."""
     max_read_many_files: int = 100
-    """Maximum files allowed to be read by read_many_files tool."""
+    """Maximum files allowed in one internal multi-file read operation."""
     max_read_many_total_bytes: int = 5_000_000
-    """Maximum total byte limit for read_many_files tool."""
+    """Maximum total byte limit for one internal multi-file read operation."""
     max_todos: int = 1_000
     """Todo-list item limit."""
     max_todo_bytes: int = 1_000_000

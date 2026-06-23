@@ -641,7 +641,7 @@
           {
             "code": "100"
           },
-          "Maximum files allowed to be read by read_many_files tool."
+          "Maximum files allowed in one internal multi-file read operation."
         ],
         [
           {
@@ -661,7 +661,7 @@
           {
             "code": "5000000"
           },
-          "Maximum total byte limit for read_many_files tool."
+          "Maximum total byte limit for one internal multi-file read operation."
         ],
         [
           {
@@ -1680,7 +1680,7 @@
       "cli": "--max-read-many-files",
       "default": 100,
       "default_display": "100",
-      "description": "Maximum files allowed to be read by read_many_files tool.",
+      "description": "Maximum files allowed in one internal multi-file read operation.",
       "env": "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES",
       "name": "max_read_many_files",
       "nullable": false,
@@ -1693,7 +1693,7 @@
       "cli": "--max-read-many-total-bytes",
       "default": 5000000,
       "default_display": "5000000",
-      "description": "Maximum total byte limit for read_many_files tool.",
+      "description": "Maximum total byte limit for one internal multi-file read operation.",
       "env": "LOCAL_SHELL_MCP_MAX_READ_MANY_TOTAL_BYTES",
       "name": "max_read_many_total_bytes",
       "nullable": false,

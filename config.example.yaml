@@ -66,9 +66,9 @@ max_directory_entries: 5000
 max_glob_results: 5000
 # Maximum tree-view entries.
 max_tree_entries: 5000
-# Maximum files allowed to be read by read_many_files tool.
+# Maximum files allowed in one internal multi-file read operation.
 max_read_many_files: 100
-# Maximum total byte limit for read_many_files tool.
+# Maximum total byte limit for one internal multi-file read operation.
 max_read_many_total_bytes: 5000000
 # Todo-list item limit.
 max_todos: 1000
