@@ -14,7 +14,7 @@ from ...schemas.input_models.shell import (
     LinesArg,
     PythonCodeArg,
     PythonTimeoutArg,
-    SessionIdArg,
+    ShellIdArg,
     ToolExplanationArg,
     ToolPurposeArg,
 )
@@ -69,11 +69,11 @@ async def run_python_code(
     mcp_scopes=("shell:read", "shell:execute"),
 )
 async def send_persistent_shell_input(
-    session_id: SessionIdArg, input_text: InputTextArg, enter: EnterArg = True
+    shell_id: ShellIdArg, input_text: InputTextArg, enter: EnterArg = True
 ) -> SendPersistentShellInputOutput:
-    """Send input to an existing persistent shell session. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing session. Set enter=false only when intentionally sending partial input without a newline."""
+    """Send input to an existing persistent shell. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing shell. Set enter=false only when intentionally sending partial input without a newline."""
     return await send_persistent_shell_input_execute(
-        session_id, input_text, enter
+        shell_id, input_text, enter
     )
 
 
@@ -83,10 +83,10 @@ async def send_persistent_shell_input(
     mcp_scopes=("shell:read",),
 )
 async def read_persistent_shell_output(
-    session_id: SessionIdArg, lines: LinesArg = 200
+    shell_id: ShellIdArg, lines: LinesArg = 200
 ) -> ReadPersistentShellOutput:
-    """Read recent output from a persistent shell session. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed session without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: session_id must be an id returned by start_persistent_shell or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."""
-    return await read_persistent_shell_output_execute(session_id, lines)
+    """Read recent output from a persistent shell. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: shell_id must be an id returned by bash(pty=true) or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."""
+    return await read_persistent_shell_output_execute(shell_id, lines)
 
 
 @local_tool(
@@ -95,10 +95,10 @@ async def read_persistent_shell_output(
     mcp_scopes=("shell:read", "shell:execute"),
 )
 async def kill_persistent_shell(
-    session_id: SessionIdArg,
+    shell_id: ShellIdArg,
 ) -> KillPersistentShellOutput:
-    """Terminate a persistent shell session by session_id. Use for manually managed sessions started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that session but does not delete files."""
-    return await kill_persistent_shell_execute(session_id)
+    """Terminate a persistent shell by shell_id. Use for manually managed shells started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that shell but does not delete files."""
+    return await kill_persistent_shell_execute(shell_id)
 
 
 @local_tool(
@@ -107,5 +107,5 @@ async def kill_persistent_shell(
     mcp_scopes=("shell:read",),
 )
 async def list_persistent_shells() -> ListPersistentShellsOutput:
-    """List active persistent shell sessions. Use before reading, sending to, or killing sessions when you do not know the session_id or need to check what long-running processes are active."""
+    """List active persistent shells. Use before reading, sending to, or killing shells when you do not know the shell_id or need to check what long-running processes are active."""
     return await list_persistent_shells_execute()

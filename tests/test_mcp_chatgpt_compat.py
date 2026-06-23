@@ -184,6 +184,42 @@ async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
 
 
 @pytest.mark.asyncio
+async def test_persistent_shell_tools_use_shell_id_not_session_id(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    companion_names = [
+        "send_persistent_shell_input",
+        "read_persistent_shell_output",
+        "kill_persistent_shell",
+    ]
+    for name in companion_names:
+        tool = tools[name]
+        input_properties = tool.inputSchema["properties"]
+        input_text = str(tool.inputSchema) + (tool.description or "")
+        output_schema = _output_schema(tool)
+        output_text = str(output_schema)
+
+        assert "shell_id" in tool.inputSchema["required"]
+        assert "shell_id" in input_properties
+        assert "session_id" not in input_properties
+        assert "session_id" not in input_text
+        assert "shell_id" in output_schema["properties"]
+        assert "session_id" not in output_schema["properties"]
+        assert "session_id" not in output_text
+
+    list_schema = _output_schema(tools["list_persistent_shells"])
+    assert "shells" in list_schema["properties"]
+    assert "sessions" not in list_schema["properties"]
+    assert "shell_id" in str(list_schema)
+    assert "session_id" not in str(list_schema)
+
+
+@pytest.mark.asyncio
 async def test_shell_tool_returns_per_tool_structured_content(
     tmp_path, monkeypatch
 ):

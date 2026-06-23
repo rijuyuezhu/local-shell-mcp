@@ -46,7 +46,5 @@ BashPtyArg = Annotated[
 ]
 BashNameArg = Annotated[
     str | None,
-    Field(
-        description="Optional name for the tracked job or persistent shell session."
-    ),
+    Field(description="Optional name for the tracked job or persistent shell."),
 ]

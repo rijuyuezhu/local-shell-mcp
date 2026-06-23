@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     max_concurrent_commands: int = 4
     """Concurrent command limit."""
     max_tmux_sessions: int = 16
-    """Persistent shell session limit."""
+    """Persistent shell limit."""
     file_download_enabled: bool = True
     """Enable download links created by protected tools."""
     file_download_default_ttl_s: int = 3600

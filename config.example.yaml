@@ -82,7 +82,7 @@ max_tmp_files: 500
 max_tmp_bytes: 50000000
 # Concurrent command limit.
 max_concurrent_commands: 4
-# Persistent shell session limit.
+# Persistent shell limit.
 max_tmux_sessions: 16
 # Enable download links created by protected tools.
 file_download_enabled: true

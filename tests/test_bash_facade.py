@@ -120,7 +120,7 @@ async def test_bash_facade_routes_pty_to_persistent_shell(
         calls.append((cwd, name, command))
         return StartPersistentShellOutput.model_validate(
             {
-                "session_id": "session-1",
+                "shell_id": "shell-1",
                 "name": "server",
                 "cwd": cwd,
                 "backend": "tmux",
@@ -137,7 +137,7 @@ async def test_bash_facade_routes_pty_to_persistent_shell(
     )
 
     assert result.mode == "pty"
-    assert result.result["session_id"] == "session-1"
+    assert result.result["shell_id"] == "shell-1"
     assert calls == [(str(tmp_path), "server", "python -i")]
 
 

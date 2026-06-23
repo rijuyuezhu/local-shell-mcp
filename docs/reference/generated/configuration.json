@@ -801,7 +801,7 @@
           {
             "code": "16"
           },
-          "Persistent shell session limit."
+          "Persistent shell limit."
         ],
         [
           {
@@ -1784,7 +1784,7 @@
       "cli": "--max-tmux-sessions",
       "default": 16,
       "default_display": "16",
-      "description": "Persistent shell session limit.",
+      "description": "Persistent shell limit.",
       "env": "LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS",
       "name": "max_tmux_sessions",
       "nullable": false,

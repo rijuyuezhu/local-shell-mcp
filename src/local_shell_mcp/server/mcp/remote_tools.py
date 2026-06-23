@@ -62,7 +62,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=remote_meta,
         description=_description(
-            """Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op="session_start" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op="session" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op="transfer" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."""
+            """Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op="session_start" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op="session" with args.action of send/read/kill/list and shell_id for persistent shells created by remote bash PTY work. Use op="transfer" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."""
         ),
     )
     async def remote(

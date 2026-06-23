@@ -40,14 +40,14 @@ PythonTimeoutArg = Annotated[
         description="Python script timeout in seconds, bounded by the public shell timeout cap."
     ),
 ]
-SessionIdArg = Annotated[
+ShellIdArg = Annotated[
     str,
     Field(
-        description="Persistent shell session_id returned by bash(pty=true) or list_persistent_shells."
+        description="Persistent shell_id returned by bash(pty=true) or list_persistent_shells."
     ),
 ]
 InputTextArg = Annotated[
-    str, Field(description="Text to send to the persistent shell session.")
+    str, Field(description="Text to send to the persistent shell.")
 ]
 EnterArg = Annotated[
     bool, Field(description="Whether to send Enter after the input text.")
@@ -55,7 +55,7 @@ EnterArg = Annotated[
 ShellNameArg = Annotated[
     str | None,
     Field(
-        description="Optional human-readable session label used to derive the tmux session name."
+        description="Optional human-readable shell label used to derive the tmux shell name."
     ),
 ]
 InitialCommandArg = Annotated[

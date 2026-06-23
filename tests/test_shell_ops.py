@@ -256,16 +256,16 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
     monkeypatch.setattr("local_shell_mcp.ops.shell.tmux", fake_tmux)
 
     result = await asyncio.wait_for(
-        send_persistent_shell_input_execute("session-1", "echo ok", enter=True),
+        send_persistent_shell_input_execute("shell-1", "echo ok", enter=True),
         timeout=1,
     )
 
     assert result.model_dump() == {
-        "session_id": "session-1",
+        "shell_id": "shell-1",
         "sent_bytes": 7,
         "enter": True,
     }
-    assert calls == [(["send-keys", "-t", "session-1", "echo ok", "Enter"], 10)]
+    assert calls == [(["send-keys", "-t", "shell-1", "echo ok", "Enter"], 10)]
 
 
 @pytest.mark.asyncio

@@ -51,13 +51,13 @@ Use local-shell-mcp to show git status, summarize the diff, and run secret_scan 
 Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive work owned by that session, and manage it with `job(session_id=...)`. Set `pty=true` for dev servers, REPLs, and interactive processes:
 
 ```text
-Use local-shell-mcp. Start a session for this project, start a persistent shell session for the development server with bash using that session_id, read the first output, and tell me the local URL.
+Use local-shell-mcp. Start a session for this project. Then run bash with pty=true using that agent session_id. Use the returned shell_id to read output and tell me the local URL.
 ```
 
 When done:
 
 ```text
-Use local-shell-mcp to list persistent shell sessions and kill the development server session. For async bash jobs, use job with the same session_id to poll or cancel them.
+Use local-shell-mcp to list persistent shells and kill the development server shell by shell_id. For async bash jobs, use job with the same agent session to poll or cancel them.
 ```
 
 ## Debug tool behavior

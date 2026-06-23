@@ -360,7 +360,7 @@ async def exercise_shell_tools(client: ToolClient, workspace: Path) -> None:
     assert json.loads(python_result["stdout"])["e2e"] == 314
 
     list_persistent_shells = await client.call_tool("list_persistent_shells")
-    assert "sessions" in list_persistent_shells
+    assert "shells" in list_persistent_shells
 
 
 async def exercise_session_bound_job_tools(
@@ -391,7 +391,7 @@ async def exercise_session_bound_job_tools(
     assert started["mode"] == "job"
     assert started["result"]["session_id"] == first_session
     assert "backend" not in started["result"]
-    assert "shell_session_id" not in started["result"]
+    assert "shell_id" not in started["result"]
 
     try:
         first_list = await client.call_tool(
@@ -440,12 +440,12 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
             "name": "e2e",
         },
     )
-    session_id = started["result"]["session_id"]
+    shell_id = started["result"]["shell_id"]
     try:
         await client.call_tool(
             "send_persistent_shell_input",
             {
-                "session_id": session_id,
+                "shell_id": shell_id,
                 "input_text": "printf ready",
                 "enter": True,
             },
@@ -454,7 +454,7 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
         output = ""
         while time.monotonic() < deadline:
             read = await client.call_tool(
-                "read_persistent_shell_output", {"session_id": session_id}
+                "read_persistent_shell_output", {"shell_id": shell_id}
             )
             output = read.get("output", "")
             if "ready" in output:
@@ -462,9 +462,7 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
             time.sleep(0.1)
         assert "ready" in output
     finally:
-        await client.call_tool(
-            "kill_persistent_shell", {"session_id": session_id}
-        )
+        await client.call_tool("kill_persistent_shell", {"shell_id": shell_id})
 
 
 async def exercise_todo_tools(client: ToolClient) -> None:

@@ -171,11 +171,11 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ### Slice 6: Rename persistent shell handle to `shell_id`
 
-- [ ] Rename model-facing persistent shell parameters from `session_id` to `shell_id` for local shell companion tools.
-- [ ] Rename model-facing persistent remote shell parameters from `session_id` to `shell_id` for remote/worker internals that remain exposed.
-- [ ] Update result models to return `shell_id`; optionally include legacy `session_id` internally only where needed for compatibility tests.
-- [ ] Update descriptions, docs, generated references, and tests.
-- [ ] Add surface tests preventing persistent shell descriptions from calling shell handles agent `session_id`.
+- [x] Rename model-facing persistent shell parameters from `session_id` to `shell_id` for local shell companion tools.
+- [x] Rename model-facing persistent remote shell parameters from `session_id` to `shell_id` for remote/worker internals that remain exposed.
+- [x] Update result models to return `shell_id`; optionally include legacy `session_id` internally only where needed for compatibility tests.
+- [x] Update descriptions, docs, generated references, and tests.
+- [x] Add surface tests preventing persistent shell descriptions from calling shell handles agent `session_id`.
 
 ### Slice 7: Remote session start and dispatch
 
@@ -202,37 +202,39 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ## Current TODO
 
-Latest completed session/cwd slice status:
+Latest completed session/tool-surface slice status:
 
-- Pushed commits on `feat/agent-tool-surface` through the docs handoff commit `81b1357` before this Slice 5 implementation.
-- Slice 5 is implemented in this update: `bash` and `job` now require explicit `session_id` at the model-facing layer.
-- `bash(session_id, command, cwd=".")` resolves cwd against the session workdir, defaults to that workdir, rejects cwd escapes, and binds `async_=true` jobs to the same agent session.
-- Tracked job metadata records the agent/workspace `session_id`; the internal persistent-shell handle is stored separately and is not exposed in `JobInfo`.
-- `job(session_id, ...)` lists only that session's jobs and rejects cross-session poll/cancel/retry by treating the job as not found in that session.
-- REST, streamable MCP HTTP, and stdio e2e coverage exercises session-bound `bash`/`job`, including cross-session job isolation.
-- The generic `remote(...)` facade currently supports `op="session_start"` for creating a worker-side session needed by session-bound remote operations. First-class `session_start(target="remote")` remains part of Slice 7.
+- Pushed commits on `feat/agent-tool-surface` through Slice 5 before this Slice 6 implementation.
+- Slice 6 is implemented in this update: persistent shell handles are now called `shell_id` in model-facing inputs, outputs, descriptions, docs, generated references, and tests.
+- `bash(pty=true)` returns a persistent-shell `shell_id`; this is distinct from the agent/workspace `session_id` used by session-bound workspace tools.
+- Persistent shell companion tools now accept `shell_id`: `send_persistent_shell_input(shell_id, ...)`, `read_persistent_shell_output(shell_id, ...)`, and `kill_persistent_shell(shell_id)`.
+- `list_persistent_shells()` now returns `shells` entries keyed by `shell_id`, not `sessions` keyed by `session_id`.
+- Job internals now store the backing persistent-shell handle as `shell_id`; job model-facing metadata continues to expose only the owning agent/workspace `session_id`.
+- The generic `remote(...)` facade's persistent-shell companion action still uses `op="session"` for the current public operation name, but action args/results use `shell_id` for persistent shell handles.
+- Added surface tests proving persistent shell tool schemas/descriptions use `shell_id` and do not expose `session_id` for shell handles.
 - Model-facing descriptions, generated references, and MCP server instructions must describe only currently available behavior. Do not mention future slices, later planned support, or roadmap language there.
 
-Validation run for Slice 5:
+Validation run for Slice 6:
 
 ```bash
 uv run ruff check .
-uv run ruff format --diff .
+uv run ruff format --check .
 uv run --with pyright pyright
-uv run pytest tests/test_bash_facade.py tests/test_jobs.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_export_tools_json.py -q
-uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories -q
-uv run pytest tests/test_e2e_stdio.py -q
+uv run pytest tests/test_shell_ops.py tests/test_bash_facade.py tests/test_jobs.py tests/test_remote_facade.py tests/test_mcp_chatgpt_compat.py tests/test_tool_surface.py tests/test_export_tools_json.py -q
+uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories tests/test_e2e_stdio.py::test_stdio_process_exercises_core_tool_categories -q
+uv run python scripts/generate-config-examples.py --check
 uv run pytest -q
 ```
 
 Next implementation task:
 
-1. Implement Slice 6: rename persistent shell model-facing handles from `session_id` to `shell_id`.
-2. Update local persistent-shell companion tools (`send_persistent_shell_input`, `read_persistent_shell_output`, `kill_persistent_shell`, `list_persistent_shells`) so the model-facing handle is `shell_id`.
-3. Update remote persistent-shell companion behavior and descriptions to avoid calling shell handles agent sessions.
-4. Update result models, docs, generated references, and tests.
-5. Add surface tests preventing persistent shell descriptions from using agent-session terminology for shell handles.
-6. Run validation, commit, push to PR #79, update PR body, and watch CI.
+1. Implement Slice 7: first-class remote session start and dispatch.
+2. Extend `session_start` with `target="remote"`, required `machine`, and remote `workdir`.
+3. On remote start, create a worker-side local session and store `worker_session_id` in the control-server session record.
+4. Dispatch `read/search/edit_lines/bash/job` through the session record when `target="remote"`.
+5. Propagate the worker session id to worker-side tools.
+6. Add tests for remote session creation, remote read/search/edit/bash/job dispatch, and missing/offline worker errors.
+7. Run validation, commit, push to PR #79, update PR body, and watch CI.
 
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
@@ -243,10 +245,11 @@ Cross-context continuation prompt is maintained at the end of this file. It shou
 
 唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`
 
-请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 都已经完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`，不暴露内部 persistent-shell handle。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
+请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 都已经完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`，`bash(pty=true)` 返回 `shell_id`，persistent shell companion tools 输入/输出也用 `shell_id`。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
 
-下一步做 Slice 6：把 persistent shell model-facing handle 从 `session_id` 改名为 `shell_id`。要求：本地 persistent shell companion tools 和远程 persistent shell companion 行为/描述都不要把 shell handle 叫 agent session；输出模型返回 `shell_id`；必要时只在内部保留兼容字段；更新 docs/generated refs/MCP instructions/tests，添加 surface tests 防止描述混淆。完成后更新唯一信源、generated refs、PR body；运行 ruff、pyright、focused tests、e2e、full pytest、pre-commit、git diff --check；commit、push 到 PR #79 并查看 CI。
+下一步做 Slice 7：first-class remote session start and dispatch。要求：扩展 `session_start` 支持 `target="remote"`、required `machine` 和 remote `workdir`；remote start 时在 worker 上创建 local session，并在 control-server session record 中保存 `worker_session_id`；当 session target 是 remote 时，`read/search/edit_lines/bash/job` 通过 session record dispatch 到对应 worker，并把 worker session id 传给 worker-side tools；添加 remote session creation、remote read/search/edit/bash/job dispatch、missing/offline worker errors 的测试。完成后更新唯一信源、generated refs、PR body；运行 ruff、pyright、focused tests、e2e、full pytest、pre-commit、git diff --check；commit、push 到 PR #79 并查看 CI。
 ```
+
 
 
 ## Validation checklist

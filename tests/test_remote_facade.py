@@ -95,22 +95,22 @@ async def test_remote_facade_is_exposed_in_mcp(tmp_path, monkeypatch):
         (
             {
                 "action": "send",
-                "session_id": "s1",
+                "shell_id": "sh1",
                 "input_text": "go",
                 "enter": False,
             },
             "send_persistent_shell_input",
-            {"session_id": "s1", "input_text": "go", "enter": False},
+            {"shell_id": "sh1", "input_text": "go", "enter": False},
         ),
         (
-            {"action": "read", "session_id": "s1", "lines": 20},
+            {"action": "read", "shell_id": "sh1", "lines": 20},
             "read_persistent_shell_output",
-            {"session_id": "s1", "lines": 20},
+            {"shell_id": "sh1", "lines": 20},
         ),
         (
-            {"action": "kill", "session_id": "s1"},
+            {"action": "kill", "shell_id": "sh1"},
             "kill_persistent_shell",
-            {"session_id": "s1"},
+            {"shell_id": "sh1"},
         ),
         ({"action": "list"}, "list_persistent_shells", {}),
     ],

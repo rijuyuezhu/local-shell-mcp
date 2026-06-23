@@ -168,7 +168,7 @@
                 "note": "(integer / null, optional)"
               },
               {
-                "description": "Optional name for the tracked job or persistent shell session.",
+                "description": "Optional name for the tracked job or persistent shell.",
                 "head": {
                   "code": "name"
                 },
@@ -624,7 +624,7 @@
               }
             ]
           },
-          "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
+          "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op=\"session\" with args.action of send/read/kill/list and shell_id for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
         ],
         [
           {
@@ -912,22 +912,22 @@
           {
             "items": [
               {
-                "description": "Persistent shell session_id returned by bash(pty=true) or list_persistent_shells.",
+                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
                 "head": {
-                  "code": "session_id"
+                  "code": "shell_id"
                 },
                 "note": "(string, required)"
               }
             ]
           },
-          "Terminate a persistent shell session by session_id. Use for manually managed sessions started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that session but does not delete files."
+          "Terminate a persistent shell by shell_id. Use for manually managed shells started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that shell but does not delete files."
         ],
         [
           {
             "code": "list_persistent_shells"
           },
           "none",
-          "List active persistent shell sessions. Use before reading, sending to, or killing sessions when you do not know the session_id or need to check what long-running processes are active."
+          "List active persistent shells. Use before reading, sending to, or killing shells when you do not know the shell_id or need to check what long-running processes are active."
         ],
         [
           {
@@ -943,15 +943,15 @@
                 "note": "(integer, optional)"
               },
               {
-                "description": "Persistent shell session_id returned by bash(pty=true) or list_persistent_shells.",
+                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
                 "head": {
-                  "code": "session_id"
+                  "code": "shell_id"
                 },
                 "note": "(string, required)"
               }
             ]
           },
-          "Read recent output from a persistent shell session. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed session without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: session_id must be an id returned by start_persistent_shell or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."
+          "Read recent output from a persistent shell. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: shell_id must be an id returned by bash(pty=true) or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."
         ],
         [
           {
@@ -1012,22 +1012,22 @@
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Text to send to the persistent shell session.",
+                "description": "Text to send to the persistent shell.",
                 "head": {
                   "code": "input_text"
                 },
                 "note": "(string, required)"
               },
               {
-                "description": "Persistent shell session_id returned by bash(pty=true) or list_persistent_shells.",
+                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
                 "head": {
-                  "code": "session_id"
+                  "code": "shell_id"
                 },
                 "note": "(string, required)"
               }
             ]
           },
-          "Send input to an existing persistent shell session. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing session. Set enter=false only when intentionally sending partial input without a newline."
+          "Send input to an existing persistent shell. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing shell. Set enter=false only when intentionally sending partial input without a newline."
         ]
       ]
     },
@@ -1478,7 +1478,7 @@
               }
             ],
             "default": null,
-            "description": "Optional name for the tracked job or persistent shell session.",
+            "description": "Optional name for the tracked job or persistent shell.",
             "title": "Name"
           },
           "pty": {
@@ -2715,17 +2715,17 @@
       }
     },
     {
-      "description": "Terminate a persistent shell session by session_id. Use for manually managed sessions started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that session but does not delete files.",
+      "description": "Terminate a persistent shell by shell_id. Use for manually managed shells started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that shell but does not delete files.",
       "inputSchema": {
         "properties": {
-          "session_id": {
-            "description": "Persistent shell session_id returned by bash(pty=true) or list_persistent_shells.",
-            "title": "Session Id",
+          "shell_id": {
+            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+            "title": "Shell Id",
             "type": "string"
           }
         },
         "required": [
-          "session_id"
+          "shell_id"
         ],
         "title": "kill_persistent_shellArguments",
         "type": "object"
@@ -2744,7 +2744,7 @@
       "name": "kill_persistent_shell",
       "outputSchema": {
         "additionalProperties": true,
-        "description": "Result of terminating a persistent shell session.",
+        "description": "Result of terminating a persistent shell.",
         "properties": {
           "killed": {
             "anyOf": [
@@ -2756,12 +2756,12 @@
               }
             ],
             "default": null,
-            "description": "Whether tmux reported that the session was killed successfully.",
+            "description": "Whether tmux reported that the shell was killed successfully.",
             "title": "Killed"
           },
-          "session_id": {
-            "description": "Persistent shell session targeted for termination.",
-            "title": "Session Id",
+          "shell_id": {
+            "description": "Persistent shell targeted for termination.",
+            "title": "Shell Id",
             "type": "string"
           },
           "stderr": {
@@ -2779,7 +2779,7 @@
           }
         },
         "required": [
-          "session_id"
+          "shell_id"
         ],
         "title": "KillPersistentShellOutput",
         "type": "object"
@@ -3192,7 +3192,7 @@
       }
     },
     {
-      "description": "List active persistent shell sessions. Use before reading, sending to, or killing sessions when you do not know the session_id or need to check what long-running processes are active.",
+      "description": "List active persistent shells. Use before reading, sending to, or killing shells when you do not know the shell_id or need to check what long-running processes are active.",
       "inputSchema": {
         "properties": {},
         "title": "list_persistent_shellsArguments",
@@ -3210,21 +3210,77 @@
       },
       "name": "list_persistent_shells",
       "outputSchema": {
-        "additionalProperties": true,
-        "description": "Active tmux-backed persistent shell sessions.",
-        "properties": {
-          "sessions": {
-            "description": "Active persistent shell sessions with at least session_id and optional implementation-specific metadata.",
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
+        "$defs": {
+          "PersistentShellInfo": {
+            "additionalProperties": true,
+            "description": "One persistent shell entry.",
+            "properties": {
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Initial or current command, when known.",
+                "title": "Command"
+              },
+              "cwd": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Current or initial working directory, when known.",
+                "title": "Cwd"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Optional human-readable shell label.",
+                "title": "Name"
+              },
+              "shell_id": {
+                "description": "Persistent shell identifier.",
+                "title": "Shell Id",
+                "type": "string"
+              }
             },
-            "title": "Sessions",
+            "required": [
+              "shell_id"
+            ],
+            "title": "PersistentShellInfo",
+            "type": "object"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Active tmux-backed persistent shells.",
+        "properties": {
+          "shells": {
+            "description": "Active persistent shells with at least shell_id and optional implementation-specific metadata.",
+            "items": {
+              "$ref": "#/$defs/PersistentShellInfo"
+            },
+            "title": "Shells",
             "type": "array"
           }
         },
         "required": [
-          "sessions"
+          "shells"
         ],
         "title": "ListPersistentShellsOutput",
         "type": "object"
@@ -3614,7 +3670,7 @@
       }
     },
     {
-      "description": "Read recent output from a persistent shell session. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed session without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: session_id must be an id returned by start_persistent_shell or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context.",
+      "description": "Read recent output from a persistent shell. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: shell_id must be an id returned by bash(pty=true) or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context.",
       "inputSchema": {
         "properties": {
           "lines": {
@@ -3623,14 +3679,14 @@
             "title": "Lines",
             "type": "integer"
           },
-          "session_id": {
-            "description": "Persistent shell session_id returned by bash(pty=true) or list_persistent_shells.",
-            "title": "Session Id",
+          "shell_id": {
+            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+            "title": "Shell Id",
             "type": "string"
           }
         },
         "required": [
-          "session_id"
+          "shell_id"
         ],
         "title": "read_persistent_shell_outputArguments",
         "type": "object"
@@ -3648,7 +3704,7 @@
       "name": "read_persistent_shell_output",
       "outputSchema": {
         "additionalProperties": true,
-        "description": "Recent output captured from a persistent shell session.",
+        "description": "Recent output captured from a persistent shell.",
         "properties": {
           "lines": {
             "anyOf": [
@@ -3665,18 +3721,18 @@
           },
           "output": {
             "default": "",
-            "description": "Captured recent terminal output from the session.",
+            "description": "Captured recent terminal output from the shell.",
             "title": "Output",
             "type": "string"
           },
-          "session_id": {
-            "description": "Persistent shell session that was read.",
-            "title": "Session Id",
+          "shell_id": {
+            "description": "Persistent shell that was read.",
+            "title": "Shell Id",
             "type": "string"
           }
         },
         "required": [
-          "session_id"
+          "shell_id"
         ],
         "title": "ReadPersistentShellOutput",
         "type": "object"
@@ -3768,7 +3824,7 @@
       }
     },
     {
-      "description": "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
+      "description": "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op=\"session\" with args.action of send/read/kill/list and shell_id for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
       "inputSchema": {
         "properties": {
           "args": {
@@ -4500,7 +4556,7 @@
       }
     },
     {
-      "description": "Send input to an existing persistent shell session. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing session. Set enter=false only when intentionally sending partial input without a newline.",
+      "description": "Send input to an existing persistent shell. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing shell. Set enter=false only when intentionally sending partial input without a newline.",
       "inputSchema": {
         "properties": {
           "enter": {
@@ -4510,18 +4566,18 @@
             "type": "boolean"
           },
           "input_text": {
-            "description": "Text to send to the persistent shell session.",
+            "description": "Text to send to the persistent shell.",
             "title": "Input Text",
             "type": "string"
           },
-          "session_id": {
-            "description": "Persistent shell session_id returned by bash(pty=true) or list_persistent_shells.",
-            "title": "Session Id",
+          "shell_id": {
+            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells.",
+            "title": "Shell Id",
             "type": "string"
           }
         },
         "required": [
-          "session_id",
+          "shell_id",
           "input_text"
         ],
         "title": "send_persistent_shell_inputArguments",
@@ -4540,7 +4596,7 @@
       },
       "name": "send_persistent_shell_input",
       "outputSchema": {
-        "description": "Result of sending input to a persistent shell session.",
+        "description": "Result of sending input to a persistent shell.",
         "properties": {
           "enter": {
             "description": "Whether an Enter key was sent after the input text.",
@@ -4552,14 +4608,14 @@
             "title": "Sent Bytes",
             "type": "integer"
           },
-          "session_id": {
-            "description": "Persistent shell session that received input.",
-            "title": "Session Id",
+          "shell_id": {
+            "description": "Persistent shell that received input.",
+            "title": "Shell Id",
             "type": "string"
           }
         },
         "required": [
-          "session_id",
+          "shell_id",
           "sent_bytes",
           "enter"
         ],

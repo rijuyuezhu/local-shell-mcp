@@ -123,11 +123,11 @@ async def test_tracked_job_lifecycle_with_backing_shells(tmp_path, monkeypatch):
     async def fake_start_shell(cwd: str, name: str | None, command: str | None):
         nonlocal session_counter
         session_counter += 1
-        shell_session_id = f"shell_{session_counter}"
-        active_sessions.add(shell_session_id)
+        shell_id = f"shell_{session_counter}"
+        active_sessions.add(shell_id)
         return StartPersistentShellOutput.model_validate(
             {
-                "session_id": shell_session_id,
+                "shell_id": shell_id,
                 "name": name,
                 "cwd": cwd,
                 "command": command,
@@ -136,22 +136,19 @@ async def test_tracked_job_lifecycle_with_backing_shells(tmp_path, monkeypatch):
         )
 
     async def fake_list_shells():
-        return ListPersistentShellsOutput(
-            sessions=[
-                {"session_id": shell_session_id}
-                for shell_session_id in active_sessions
-            ]
+        return ListPersistentShellsOutput.model_validate(
+            {"shells": [{"shell_id": shell_id} for shell_id in active_sessions]}
         )
 
-    async def fake_read_shell(session_id: str, lines: int):
+    async def fake_read_shell(shell_id: str, lines: int):
         return ReadPersistentShellOutput(
-            session_id=session_id, output=f"tail {session_id}\n", lines=lines
+            shell_id=shell_id, output=f"tail {shell_id}\n", lines=lines
         )
 
-    async def fake_kill_shell(session_id: str):
-        active_sessions.discard(session_id)
+    async def fake_kill_shell(shell_id: str):
+        active_sessions.discard(shell_id)
         return KillPersistentShellOutput(
-            session_id=session_id, killed=True, stderr=""
+            shell_id=shell_id, killed=True, stderr=""
         )
 
     monkeypatch.setattr(
@@ -220,12 +217,12 @@ async def test_tracked_jobs_are_isolated_by_agent_session(
 
     async def fake_start_shell(cwd: str, name: str | None, command: str | None):
         return StartPersistentShellOutput.model_validate(
-            {"session_id": f"shell-{name}", "name": name, "cwd": cwd}
+            {"shell_id": f"shell-{name}", "name": name, "cwd": cwd}
         )
 
     async def fake_list_shells():
-        return ListPersistentShellsOutput(
-            sessions=[{"session_id": "shell-first-job"}]
+        return ListPersistentShellsOutput.model_validate(
+            {"shells": [{"shell_id": "shell-first-job"}]}
         )
 
     monkeypatch.setattr(
@@ -267,11 +264,11 @@ async def test_tracked_job_running_status_exits_when_shell_disappears(
 
     async def fake_start_shell(cwd: str, name: str | None, command: str | None):
         return StartPersistentShellOutput(
-            session_id="missing-shell", name=name, cwd=cwd, command=command
+            shell_id="missing-shell", name=name, cwd=cwd, command=command
         )
 
     async def fake_list_shells():
-        return ListPersistentShellsOutput(sessions=[])
+        return ListPersistentShellsOutput(shells=[])
 
     monkeypatch.setattr(
         jobs_ops, "start_persistent_shell_execute", fake_start_shell

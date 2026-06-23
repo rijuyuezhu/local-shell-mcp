@@ -98,15 +98,15 @@ RemoteCwdArg = Annotated[
     str,
     Field(description="Working directory on the selected remote worker."),
 ]
-RemoteSessionIdArg = Annotated[
+RemoteShellIdArg = Annotated[
     str,
     Field(
-        description="Persistent shell session identifier on the selected remote worker."
+        description="Persistent shell identifier on the selected remote worker."
     ),
 ]
 RemoteInputTextArg = Annotated[
     str,
-    Field(description="Text to send to the remote persistent shell session."),
+    Field(description="Text to send to the remote persistent shell."),
 ]
 RemoteEnterArg = Annotated[
     bool,
