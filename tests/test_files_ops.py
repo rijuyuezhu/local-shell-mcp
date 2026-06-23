@@ -69,6 +69,32 @@ def test_read_text_allows_valid_utf8_control_bytes(tmp_path, monkeypatch):
     assert result.content == "abc\x00def"
 
 
+def test_read_text_returns_line_numbers_and_snapshot_metadata(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "lines.txt").write_text(
+        "alpha\nbeta\ngamma\n", encoding="utf-8"
+    )
+
+    result = read_file_execute("lines.txt", start_line=2, end_line=3)
+
+    assert result.content == "beta\ngamma"
+    assert result.start_line == 2
+    assert result.end_line == 3
+    assert result.line_count == 2
+    assert result.lines[0].line == 2
+    assert result.lines[0].text == "beta"
+    assert result.numbered_content == "2|beta\n3|gamma"
+    assert result.session_id == "default"
+    assert result.snapshot_id
+    assert result.file_sha256
+    assert [item.model_dump() for item in result.seen_ranges] == [
+        {"start": 2, "end": 3}
+    ]
+
+
 def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES", "5")
@@ -82,6 +108,7 @@ def test_read_text_reports_original_size_and_truncation(tmp_path, monkeypatch):
     assert result.truncated_bytes == 6
     assert result.truncated is True
     assert result.content == "hello"
+    assert result.numbered_content == "1|hello"
 
 
 def test_write_text_does_not_read_existing_file_before_overwrite(

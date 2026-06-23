@@ -31,7 +31,7 @@ Every normal routed MCP or REST debug tool call produces a start/end pair linked
 
 ```json
 {"ts": 1710000000.0, "event": "tool_call_start", "call_id": "...", "transport": "mcp", "tool": "read_file", "input": {"path": "README.md"}, "principal": null, "context": {}}
-{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read_file", "ok": true, "duration_ms": 12, "output": {"ok": true, "message": "", "data": {"path": "README.md", "content": "..."}}}
+{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read_file", "ok": true, "duration_ms": 12, "output": {"ok": true, "message": "", "data": {"path": "README.md", "content": "...", "numbered_content": "1|...", "snapshot_id": "..."}}}
 ```
 
 Failures and timeouts are also linked by `call_id`.

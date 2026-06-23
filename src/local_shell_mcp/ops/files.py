@@ -10,12 +10,15 @@ from ..schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditFileOutput,
     EntryInfo,
+    LineRange,
     ListFilesOutput,
     MultiEditFileOutput,
     ReadFileOutput,
+    ReadLine,
     ReadManyFilesOutput,
     WriteFileOutput,
 )
+from ..tool_session.store import file_sha256, get_tool_session_store
 from .utils.path import relative_display, resolve_path
 
 
@@ -64,12 +67,37 @@ def list_files_execute(
     )
 
 
+def _selected_read_lines(
+    lines: list[str],
+    start_line: int | None,
+    end_line: int | None,
+) -> list[ReadLine]:
+    """Return decoded lines with original line numbers for a requested range."""
+    total_lines = len(lines)
+    if total_lines == 0:
+        return []
+    start = max(1, start_line or 1)
+    end = min(total_lines, end_line or total_lines)
+    if end < start:
+        return []
+    return [
+        ReadLine(line=line_number, text=lines[line_number - 1])
+        for line_number in range(start, end + 1)
+    ]
+
+
+def _numbered_content(lines: list[ReadLine]) -> str:
+    """Format lines in a stable model-facing line-numbered form."""
+    return "\n".join(f"{line.line}|{line.text}" for line in lines)
+
+
 def read_file_execute(
     path: str,
     start_line: int | None = None,
     end_line: int | None = None,
+    session_id: str | None = None,
 ) -> ReadFileOutput:
-    """Read a UTF-8 text file by optional line range."""
+    """Read a UTF-8 text file by optional line range and record grounding."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
     size = p.stat().st_size
@@ -83,19 +111,43 @@ def read_file_execute(
     truncated_bytes = max(0, size - len(data))
     decoder = codecs.getincrementaldecoder("utf-8")()
     text = decoder.decode(data, final=not truncated)
-    lines = text.splitlines()
-    total_lines = len(lines)
+    all_lines = text.splitlines()
+    total_lines = len(all_lines)
+    selected_lines = _selected_read_lines(all_lines, start_line, end_line)
     if start_line is not None or end_line is not None:
-        start = max(1, start_line or 1)
-        end = min(total_lines, end_line or total_lines)
-        selected = lines[start - 1 : end]
-        text = "\n".join(selected)
+        text = "\n".join(line.text for line in selected_lines)
+
+    start = selected_lines[0].line if selected_lines else None
+    end = selected_lines[-1].line if selected_lines else None
+    if start is not None and end is not None:
+        seen_ranges = ((start, end),)
+        seen_range_models = [LineRange(start=start, end=end)]
+    else:
+        seen_ranges = ()
+        seen_range_models = []
+    relative_path = relative_display(p)
+    record = get_tool_session_store().record_file_snapshot(
+        session_id=session_id,
+        path=relative_path,
+        file_sha256=file_sha256(p),
+        total_lines=total_lines,
+        seen_ranges=seen_ranges,
+    )
     return ReadFileOutput(
-        path=relative_display(p),
+        path=relative_path,
         bytes=size,
         bytes_read=len(data),
         truncated_bytes=truncated_bytes,
         total_lines=total_lines,
+        start_line=start,
+        end_line=end,
+        line_count=len(selected_lines),
+        lines=selected_lines,
+        numbered_content=_numbered_content(selected_lines),
+        session_id=record.session_id,
+        snapshot_id=record.snapshot_id,
+        file_sha256=record.file_sha256,
+        seen_ranges=seen_range_models,
         truncated=truncated,
         content=text,
     )

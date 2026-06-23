@@ -227,9 +227,11 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
     assert (
         "binary_preview_bytes" not in read_file_tool.inputSchema["properties"]
     )
+    assert "numbered_content" in read_file_output_schema["properties"]
+    assert "snapshot_id" in read_file_output_schema["properties"]
     assert (
         read_file_output_schema["properties"]["content"]["description"]
-        == "Decoded UTF-8 text content."
+        == "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing."
     )
     assert (
         list_files_output_schema["properties"]["entries"]["description"]

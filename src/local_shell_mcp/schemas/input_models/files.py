@@ -40,6 +40,12 @@ EndLineArg = Annotated[
         description="Optional 1-based final line to include when reading text files. Omit to read through the end."
     ),
 ]
+ToolSessionIdArg = Annotated[
+    str | None,
+    Field(
+        description="Optional agent grounding session id. Omit to use the process-local default session."
+    ),
+]
 
 
 class ReadFileRequest(BaseModel):

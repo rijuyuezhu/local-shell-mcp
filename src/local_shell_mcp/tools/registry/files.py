@@ -27,6 +27,7 @@ from ...schemas.input_models.files import (
     RecursiveArg,
     ReplaceAllArg,
     StartLineArg,
+    ToolSessionIdArg,
 )
 from ...schemas.result_models.files import (
     DeleteFileOrDirOutput,
@@ -58,7 +59,7 @@ def _list_files_description(context: McpToolContext) -> str:
 
 def _read_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Read a UTF-8 text file, optionally by line range. Use after locating a file to inspect exact content before editing. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
+    return f"""Read a UTF-8 text file, optionally by line range. Use after locating a file to inspect exact content before editing. The result includes original line numbers, numbered_content for model-facing references, and a snapshot_id/file_sha256 pair for stale edit detection by line-based editing tools. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
 
 
 def _read_many_files_description(context: McpToolContext) -> str:
@@ -103,6 +104,7 @@ async def read_file(
     path: FilePathArg,
     start_line: StartLineArg = None,
     end_line: EndLineArg = None,
+    session_id: ToolSessionIdArg = None,
 ) -> ReadFileOutput:
     """Read a UTF-8 text file, optionally by line range."""
     return await asyncio.to_thread(
@@ -110,6 +112,7 @@ async def read_file(
         path,
         start_line,
         end_line,
+        session_id,
     )
 
 
