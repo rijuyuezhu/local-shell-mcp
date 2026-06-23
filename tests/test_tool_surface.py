@@ -118,7 +118,7 @@ async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_remaining_stateful_tools_require_session_id(
+async def test_model_facing_tools_require_session_id_by_default(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -126,24 +126,32 @@ async def test_remaining_stateful_tools_require_session_id(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    stateful_tool_names = {
-        "list_files",
-        "write_file",
-        "delete_file_or_dir",
-        "apply_patch",
-        "create_file_link",
-        "list_file_links",
-        "revoke_file_link",
-        "secret_scan",
-        "read_todos",
-        "write_todos",
+    sessionless_allowlist = {
+        "session_start",
+        "version",
+        "workspace_search",
+        "fetch",
+        "send_persistent_shell_input",
+        "read_persistent_shell_output",
+        "kill_persistent_shell",
+        "list_persistent_shells",
+        "remote_admin",
     }
 
-    for name in stateful_tool_names:
-        assert "session_id" in tools[name].inputSchema["required"]
+    assert sessionless_allowlist <= set(tools)
 
-    assert "session_id" not in tools["workspace_search"].inputSchema["required"]
-    assert "session_id" not in tools["fetch"].inputSchema["required"]
+    unexpected_sessionless = {
+        name
+        for name, tool in tools.items()
+        if "session_id" not in set(tool.inputSchema.get("required", []))
+        and name not in sessionless_allowlist
+    }
+
+    assert unexpected_sessionless == set()
+    for name in sessionless_allowlist:
+        assert "session_id" not in set(
+            tools[name].inputSchema.get("required", [])
+        )
 
 
 def test_remote_registry_declares_only_remote_admin(monkeypatch):
