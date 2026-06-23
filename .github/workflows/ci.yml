@@ -114,7 +114,6 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           set -euxo pipefail
-          brew update
           brew install ripgrep tmux
 
       - name: Install Windows runtime tools
@@ -204,7 +203,6 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           set -euxo pipefail
-          brew update
           brew install ripgrep tmux
 
       - name: Install Windows runtime tools

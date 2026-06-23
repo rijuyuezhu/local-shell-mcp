@@ -69,7 +69,8 @@ async def run_http_smoke(base_url: str) -> None:
 
         read = await client.post(f"{base_url}/tools/read_file", json={"path": "ci-smoke.txt"})
         read.raise_for_status()
-        if read.json().get("content") != "hello from ci\n":
+        content = read.json().get("content", "").replace("\r\n", "\n")
+        if content != "hello from ci\n":
             fail("read_file did not return the content written by write_file")
 
         shell = await client.post(

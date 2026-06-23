@@ -44,7 +44,8 @@ link_dir() {
       rm -rf "$target"
       shopt -u dotglob nullglob
     else
-      local backup="${source}.bak.$(date +%s)"
+      local backup
+      backup="${source}.bak.$(date +%s)"
       mv "$target" "$backup"
     fi
   fi
@@ -81,7 +82,8 @@ link_file() {
         rm -f "$target"
       fi
     else
-      local backup="${source}.bak.$(date +%s)"
+      local backup
+      backup="${source}.bak.$(date +%s)"
       mv "$target" "$backup"
     fi
   fi
