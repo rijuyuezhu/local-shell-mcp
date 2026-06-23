@@ -1,6 +1,6 @@
 # Remote workers
 
-Remote workers let the control server run the same shell, Python, file, search, patch, and transfer operations on another machine. Use them when the connected ChatGPT session should coordinate work on a GPU box, lab machine, build host, or remote checkout while keeping one public MCP connector.
+Remote workers let the control server run normal session-bound code work on another machine. Use them when the connected ChatGPT session should coordinate work on a GPU box, lab machine, build host, or remote checkout while keeping one public MCP connector.
 
 ## How it works
 
@@ -8,7 +8,7 @@ Remote workers let the control server run the same shell, Python, file, search, 
 2. The server returns a one-time shell command containing an invite code.
 3. You paste that command on the remote machine.
 4. The remote machine downloads a worker bundle from the control server, starts the worker, registers once, then long-polls for jobs.
-5. The MCP client uses `remote_admin(action="list", args={})` to discover the registered machine name, then `remote(machine, op, args)` for remote work.
+5. The MCP client uses `remote_admin(action="list", args={})` to discover the registered machine name, then `session_start(target="remote", machine=..., workdir=...)` to start remote work.
 
 Remote worker enrollment routes are public so the worker can join. Treat invite commands as sensitive and short-lived.
 
@@ -74,16 +74,16 @@ The `--server` value is the public origin, not `/mcp`.
 Ask the MCP client:
 
 ```text
-Use local-shell-mcp to list remote machines, then run `remote(op="environment")` on gpu1.
+Use local-shell-mcp to list remote machines, start a remote session on gpu1 in /home/me/project, then inspect the project.
 ```
 
 The normal flow before remote edits is:
 
 1. `remote_admin(action="list", args={})`
-2. `remote(machine="gpu1", op="environment", args={})`
-3. `remote(op="tree")` or `remote(op="list_files")`
-4. `remote(op="search")` or `remote(op="read")`
-5. `remote(op="bash")` or `remote(op="edit_lines")`/`remote(op="apply_patch")`
+2. `session_start(target="remote", machine="gpu1", workdir="/home/me/project")`
+3. `read(session_id=..., path=".")` or `search(session_id=..., pattern=..., paths=[...])`
+4. `edit_lines(session_id=..., ...)` for snapshot-grounded edits
+5. `bash(session_id=..., command=...)` for commands and validation
 
 ## Run remote commands
 
@@ -93,25 +93,7 @@ Example prompt:
 Use local-shell-mcp on remote machine gpu1. Inspect /home/me/project, run git status, then run the test command you find in the project docs. Report results before editing files.
 ```
 
-Use `remote(op="session")` to inspect or control persistent remote shells for long-running servers, training runs, watchers, and REPL-like sessions:
-
-```text
-Start a persistent shell on remote machine gpu1 in /home/me/project to run the dev server. Then read the first 200 lines of output.
-```
-
-## Transfer files and directories
-
-Use `remote(op="transfer")` for binary files, build artifacts, datasets, and larger trees:
-
-- `args={"action": "push_file"}` / `args={"action": "push_dir"}`: local workspace to remote worker.
-- `args={"action": "pull_file"}` / `args={"action": "pull_dir"}`: remote worker to local workspace.
-- `args={"action": "copy_file"}` / `args={"action": "copy_dir"}`: one remote worker to another through the control server.
-
-Example prompt:
-
-```text
-Use local-shell-mcp to pull /home/me/project/results/report.html from gpu1 into ./artifacts/report.html with `remote(machine="gpu1", op="transfer", args={"action": "pull_file", ...})`.
-```
+Use `bash(session_id=..., async_=true)` for long-running non-interactive remote jobs. Manage the returned `job_id` with `job(session_id=..., ...)`. Prefer bounded non-interactive commands for remote work.
 
 ## Revoke a worker
 

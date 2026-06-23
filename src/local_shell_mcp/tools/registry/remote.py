@@ -8,20 +8,15 @@ from mcp.server.fastmcp import FastMCP
 from ...config.settings import Settings
 from ...ops.remote import (
     remote_admin_execute,
-    remote_execute,
     remote_worker_tool_execute,
 )
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
 from ...schemas.input_models.remote import (
     RemoteAdminActionArg,
     RemoteAdminArgsArg,
-    RemoteFacadeArgsArg,
-    RemoteFacadeOpArg,
-    RemoteMachineArg,
 )
 from ...schemas.result_models.remote import (
     RemoteAdminOutput,
-    RemoteFacadeOutput,
     RemoteWorkerToolOutput,
 )
 from ...server.mcp.remote_tools import register_remote_mcp
@@ -34,7 +29,7 @@ def _remote_tools_enabled(settings: Settings) -> bool:
 
 
 class RemoteToolRegistry(DeclarativeToolRegistry):
-    """Register compact remote-worker tools."""
+    """Register remote-worker control-plane tools."""
 
     name = "remote"
     """Registry group name used for tool-surface organization."""
@@ -59,16 +54,6 @@ class RemoteToolRegistry(DeclarativeToolRegistry):
 
 
 local_tool = RemoteToolRegistry.get_tool_decorator()
-
-
-@local_tool(http_method="POST", http_path="/tools/remote")
-async def remote(
-    machine: RemoteMachineArg,
-    op: RemoteFacadeOpArg,
-    args: RemoteFacadeArgsArg,
-) -> RemoteFacadeOutput:
-    """Run work on a selected remote worker. Prefer session_start(target="remote", machine=..., workdir=...) plus ordinary read/search/edit_lines/bash/job for normal remote code work. Use op for transfer, Python, listing/tree/glob, whole-file write/delete/patch, direct worker operations, or persistent-shell companion actions. Do not include machine inside args. Use op="session" with args.action send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work. Use remote_admin for invite/list/revoke/rename control-plane work. Keep remote edits grounded by remote read/search snapshots just like local edits."""
-    return await remote_execute(machine, op, args)
 
 
 @local_tool(http_method="POST", http_path="/tools/remote_admin")

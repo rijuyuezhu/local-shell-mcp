@@ -63,36 +63,17 @@ async def test_remote_facade_maps_bash_timeout(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_remote_facade_is_exposed_in_mcp(tmp_path, monkeypatch):
+async def test_remote_facade_is_not_exposed_in_mcp(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    calls = []
+    tools = {tool.name for tool in await build_mcp().list_tools()}
 
-    async def fake_call(machine, tool, args, timeout_s=None):
-        calls.append((machine, tool, args, timeout_s))
-        return {"ok": True, "data": {"path": "demo.py", "content": "1|x"}}
-
-    monkeypatch.setattr(remote_ops, "call_remote_worker_tool", fake_call)
-
-    result = mcp_structured(
-        await build_mcp().call_tool(
-            "remote",
-            {
-                "machine": "worker-a",
-                "op": "read",
-                "args": {"path": "demo.py:1"},
-            },
-        )
-    )
-
-    assert result["machine"] == "worker-a"
-    assert result["op"] == "read"
-    assert result["tool"] == "read"
-    assert calls == [("worker-a", "read", {"path": "demo.py:1"}, None)]
+    assert "remote" not in tools
+    assert "remote_admin" in tools
 
 
 @pytest.mark.asyncio

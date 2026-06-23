@@ -88,6 +88,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     search_meta = tools["workspace_search"].meta
     session_meta = tools["session_start"].meta
     assert "environment_info" not in tools
+    assert "remote" not in tools
     assert search_meta is not None
     assert session_meta is not None
     assert search_meta["securitySchemes"][0]["type"] == "noauth"
@@ -118,14 +119,6 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "file:share",
     ]
     assert tool_oauth_scopes("remote_admin") == ["remote:use"]
-    assert tool_oauth_scopes("remote") == [
-        "remote:use",
-        "shell:read",
-        "shell:write",
-        "shell:execute",
-        "git:write",
-    ]
-
     assert all(tool.outputSchema is not None for tool in tools.values())
     bash_schema = tools["bash"].outputSchema
     assert bash_schema is not None

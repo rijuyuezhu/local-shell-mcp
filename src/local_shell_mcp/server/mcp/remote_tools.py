@@ -5,17 +5,13 @@ import re
 
 from mcp.server.fastmcp import FastMCP
 
-from ...ops.remote import remote_admin_execute, remote_execute
+from ...ops.remote import remote_admin_execute
 from ...schemas.input_models.remote import (
     RemoteAdminActionArg,
     RemoteAdminArgsArg,
-    RemoteFacadeArgsArg,
-    RemoteFacadeOpArg,
-    RemoteMachineArg,
 )
 from ...schemas.result_models.remote import (
     RemoteAdminOutput,
-    RemoteFacadeOutput,
 )
 from ...tools.contracts import McpToolContext
 
@@ -34,15 +30,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
     settings = context.settings
     remote_admin_meta = context.scoped_oauth_security_meta(("remote:use",))
-    remote_meta = context.scoped_oauth_security_meta(
-        (
-            "remote:use",
-            "shell:read",
-            "shell:write",
-            "shell:execute",
-            "git:write",
-        )
-    )
 
     @mcp.tool(
         structured_output=True,
@@ -57,18 +44,3 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> RemoteAdminOutput:
         """Run a remote control-plane action."""
         return await remote_admin_execute(action, args)
-
-    @mcp.tool(
-        structured_output=True,
-        meta=remote_meta,
-        description=_description(
-            """Run work on a selected remote worker. Prefer session_start(target="remote", machine=..., workdir=...) plus ordinary read/search/edit_lines/bash/job for normal remote code work. Use this remote facade for transfer, Python, listing/tree/glob, whole-file write/delete/patch, direct worker operations, and persistent-shell companion actions. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op="session" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the agent session_id. Use op="transfer" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."""
-        ),
-    )
-    async def remote(
-        machine: RemoteMachineArg,
-        op: RemoteFacadeOpArg,
-        args: RemoteFacadeArgsArg,
-    ) -> RemoteFacadeOutput:
-        """Run a high-level operation on a remote worker."""
-        return await remote_execute(machine, op, args)

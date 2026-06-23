@@ -80,7 +80,6 @@ def test_normalize_description_cleans_docstring_text():
 
 
 REMOTE_MCP_TOOL_NAMES = {
-    "remote",
     "remote_admin",
 }
 
@@ -118,7 +117,7 @@ async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
     assert names.isdisjoint(REMOTE_MCP_TOOL_NAMES)
 
 
-def test_remote_registry_declares_only_remote_and_remote_admin(monkeypatch):
+def test_remote_registry_declares_only_remote_admin(monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
     clear_settings_cache()
@@ -148,9 +147,11 @@ def test_remote_registry_declares_only_remote_and_remote_admin(monkeypatch):
         "remote_push_dir",
     }
 
-    assert names == {"remote", "remote_admin"}
-    assert {"remote", "remote_admin"} <= route_names
-    assert {"remote", "remote_admin"} <= handler_names
+    assert names == {"remote_admin"}
+    assert "remote_admin" in route_names
+    assert "remote_admin" in handler_names
+    assert "remote" not in route_names
+    assert "remote" not in handler_names
     assert names.isdisjoint(legacy_names)
     assert route_names.isdisjoint(legacy_names)
     assert handler_names.isdisjoint(legacy_names)
@@ -394,19 +395,22 @@ async def test_mcp_tool_missing_required_arg_uses_fastmcp_tool_error(
 
 
 @pytest.mark.asyncio
-async def test_mcp_remote_worker_missing_machine_uses_fastmcp_tool_error(
-    tmp_path, monkeypatch
-):
+async def test_mcp_remote_facade_is_absent(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    with pytest.raises(
-        ToolError,
-        match="validation error for remoteArguments",
-    ):
+    tools = {tool.name for tool in await build_mcp().list_tools()}
+    assert "remote" not in tools
+
+    with pytest.raises(ToolError, match="Unknown tool: remote"):
         await build_mcp().call_tool(
-            "remote", {"op": "bash", "args": {"command": "echo ok"}}
+            "remote",
+            {
+                "machine": "worker-a",
+                "op": "bash",
+                "args": {"command": "echo ok"},
+            },
         )
 
 

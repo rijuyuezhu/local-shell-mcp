@@ -1,11 +1,11 @@
 {
-  "count": 35,
+  "count": 34,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "35"
+          "code": "34"
         },
         "."
       ],
@@ -586,7 +586,7 @@
       ]
     },
     {
-      "body": "Register compact remote-worker tools.",
+      "body": "Register remote-worker control-plane tools.",
       "headers": [
         "Tool",
         "Parameters",
@@ -595,37 +595,6 @@
       "heading": "Remote",
       "kind": "table",
       "rows": [
-        [
-          {
-            "code": "remote"
-          },
-          {
-            "items": [
-              {
-                "description": "Operation-specific arguments forwarded to the remote worker or remote tool. Do not include machine; keep edit operations grounded by remote read/search snapshots.",
-                "head": {
-                  "code": "args"
-                },
-                "note": "(object, required)"
-              },
-              {
-                "description": "Exact remote worker machine name returned by remote_admin(action=\"list\").",
-                "head": {
-                  "code": "machine"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, job, session_start, session, or transfer.",
-                "head": {
-                  "code": "op"
-                },
-                "note": "(read / search / edit_lines / bash / python / session_start / list_files / tree / glob / write_file / apply_patch / delete / job / session / transfer, required)"
-              }
-            ]
-          },
-          "Run work on a selected remote worker. Prefer session_start(target=\"remote\", machine=..., workdir=...) plus ordinary read/search/edit_lines/bash/job for normal remote code work. Use this remote facade for transfer, Python, listing/tree/glob, whole-file write/delete/patch, direct worker operations, and persistent-shell companion actions. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the agent session_id. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
-        ],
         [
           {
             "code": "remote_admin"
@@ -3820,102 +3789,6 @@
           "todos"
         ],
         "title": "ReadTodosOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Run work on a selected remote worker. Prefer session_start(target=\"remote\", machine=..., workdir=...) plus ordinary read/search/edit_lines/bash/job for normal remote code work. Use this remote facade for transfer, Python, listing/tree/glob, whole-file write/delete/patch, direct worker operations, and persistent-shell companion actions. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the agent session_id. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
-      "inputSchema": {
-        "properties": {
-          "args": {
-            "additionalProperties": true,
-            "description": "Operation-specific arguments forwarded to the remote worker or remote tool. Do not include machine; keep edit operations grounded by remote read/search snapshots.",
-            "title": "Args",
-            "type": "object"
-          },
-          "machine": {
-            "description": "Exact remote worker machine name returned by remote_admin(action=\"list\").",
-            "title": "Machine",
-            "type": "string"
-          },
-          "op": {
-            "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, job, session_start, session, or transfer.",
-            "enum": [
-              "read",
-              "search",
-              "edit_lines",
-              "bash",
-              "python",
-              "session_start",
-              "list_files",
-              "tree",
-              "glob",
-              "write_file",
-              "apply_patch",
-              "delete",
-              "job",
-              "session",
-              "transfer"
-            ],
-            "title": "Op",
-            "type": "string"
-          }
-        },
-        "required": [
-          "machine",
-          "op",
-          "args"
-        ],
-        "title": "remoteArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "remote:use",
-              "shell:read",
-              "shell:write",
-              "shell:execute",
-              "git:write"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "remote",
-      "outputSchema": {
-        "description": "Remote operation result.",
-        "properties": {
-          "data": {
-            "additionalProperties": true,
-            "description": "Structured output returned by the underlying worker tool.",
-            "title": "Data",
-            "type": "object"
-          },
-          "machine": {
-            "description": "Remote worker machine targeted by the operation.",
-            "title": "Machine",
-            "type": "string"
-          },
-          "op": {
-            "description": "High-level remote operation requested by the caller.",
-            "title": "Op",
-            "type": "string"
-          },
-          "tool": {
-            "description": "Underlying worker tool or tool implementation executed for this operation.",
-            "title": "Tool",
-            "type": "string"
-          }
-        },
-        "required": [
-          "machine",
-          "op",
-          "tool",
-          "data"
-        ],
-        "title": "RemoteFacadeOutput",
         "type": "object"
       }
     },
