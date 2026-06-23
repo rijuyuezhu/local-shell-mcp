@@ -59,7 +59,7 @@ Read a file through the REST debug API:
 ```bash
 curl -s -X POST http://127.0.0.1:13444/tools/read \
   -H 'content-type: application/json' \
-  -d '{"path":"README.md","start_line":1,"end_line":40}' | jq
+  -d '{"path":"README.md:1-40"}' | jq
 ```
 
 List files:
