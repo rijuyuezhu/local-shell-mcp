@@ -64,11 +64,11 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 
 ### Slice 3: grounded line editing
 
-- [ ] Add `edit_lines(path, start_line, end_line, replacement, snapshot_id=None, session_id=None)`.
-- [ ] Reject stale snapshots when file hashes changed.
-- [ ] Reject edits outside visible ranges when session grounding is available.
-- [ ] Return unified diff and post-edit numbered context.
-- [ ] Mint a fresh snapshot after successful edits.
+- [x] Add `edit_lines(path, start_line, end_line, replacement, snapshot_id=None, session_id=None)`.
+- [x] Reject stale snapshots when file hashes changed.
+- [x] Reject edits outside visible ranges when session grounding is available.
+- [x] Return unified diff and post-edit numbered context.
+- [x] Mint a fresh snapshot after successful edits.
 
 ### Slice 4: search grounding
 

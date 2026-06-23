@@ -46,6 +46,30 @@ ToolSessionIdArg = Annotated[
         description="Optional agent grounding session id. Omit to use the process-local default session."
     ),
 ]
+EditStartLineArg = Annotated[
+    int,
+    Field(
+        description="1-based first original line to replace. The range is inclusive."
+    ),
+]
+EditEndLineArg = Annotated[
+    int,
+    Field(
+        description="1-based final original line to replace. The range is inclusive."
+    ),
+]
+LineReplacementArg = Annotated[
+    str,
+    Field(
+        description="Replacement text for the selected whole-line range. Use an empty string to delete the range."
+    ),
+]
+SnapshotIdArg = Annotated[
+    str | None,
+    Field(
+        description="Optional snapshot_id returned by read or read_file. When provided, the edit is rejected if the file changed or the line range was not shown."
+    ),
+]
 
 
 class ReadFileRequest(BaseModel):

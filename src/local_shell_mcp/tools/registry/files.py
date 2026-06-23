@@ -7,6 +7,7 @@ from pydantic import TypeAdapter
 from ...ops.files import (
     delete_file_or_dir_execute,
     edit_file_execute,
+    edit_lines_execute,
     list_files_execute,
     multi_edit_file_execute,
     read_file_execute,
@@ -14,10 +15,13 @@ from ...ops.files import (
     write_file_execute,
 )
 from ...schemas.input_models.files import (
+    EditEndLineArg,
     EditsArg,
+    EditStartLineArg,
     EndLineArg,
     FileContentArg,
     FilePathArg,
+    LineReplacementArg,
     ListPathArg,
     MaxEntriesArg,
     NewTextArg,
@@ -26,12 +30,14 @@ from ...schemas.input_models.files import (
     ReadFilesArg,
     RecursiveArg,
     ReplaceAllArg,
+    SnapshotIdArg,
     StartLineArg,
     ToolSessionIdArg,
 )
 from ...schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditFileOutput,
+    EditLinesOutput,
     ListFilesOutput,
     MultiEditFileOutput,
     ReadFileOutput,
@@ -75,6 +81,11 @@ def _write_file_description(context: McpToolContext) -> str:
 def _edit_file_description(context: McpToolContext) -> str:
     settings = context.settings
     return f"""Replace exact text in a validated UTF-8 text file. Use for small precise edits after reading the target file. Current write cap: {settings.max_file_write_bytes} bytes. For larger or multi-file changes, prefer apply_patch."""
+
+
+def _edit_lines_description(context: McpToolContext) -> str:
+    settings = context.settings
+    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 text file. Prefer this over exact-text edit_file when a recent read/read_file result gave you line numbers. Pass snapshot_id from read/read_file to reject stale edits and edits outside the displayed line range. The result returns a unified diff and fresh numbered post-edit context. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 @local_tool(
@@ -158,6 +169,32 @@ async def edit_file(
     """Replace exact text in a file."""
     return await asyncio.to_thread(
         edit_file_execute, path, old, new, replace_all
+    )
+
+
+@local_tool(
+    http_method="POST",
+    http_path="/tools/edit_lines",
+    description=_edit_lines_description,
+    mcp_scopes=("shell:read", "shell:write"),
+)
+async def edit_lines(
+    path: FilePathArg,
+    start_line: EditStartLineArg,
+    end_line: EditEndLineArg,
+    replacement: LineReplacementArg,
+    snapshot_id: SnapshotIdArg = None,
+    session_id: ToolSessionIdArg = None,
+) -> EditLinesOutput:
+    """Replace an inclusive whole-line range in a file."""
+    return await asyncio.to_thread(
+        edit_lines_execute,
+        path,
+        start_line,
+        end_line,
+        replacement,
+        snapshot_id,
+        session_id,
     )
 
 

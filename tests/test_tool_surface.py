@@ -50,6 +50,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "read_many_files",
     "write_file",
     "edit_file",
+    "edit_lines",
     "multi_edit_file",
     "delete_file_or_dir",
     "apply_patch",

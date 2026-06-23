@@ -1,6 +1,7 @@
 """Provide workspace-aware UTF-8 file operations with path containment and bounded output."""
 
 import codecs
+import difflib
 import shutil
 from collections.abc import Sequence
 
@@ -9,6 +10,7 @@ from ..schemas.input_models.files import ReadFileRequest
 from ..schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditFileOutput,
+    EditLinesOutput,
     EntryInfo,
     LineRange,
     ListFilesOutput,
@@ -227,6 +229,70 @@ def write_file_execute(
     )
 
 
+def _newline_for_text(text: str) -> str:
+    """Return the dominant newline sequence for whole-line edits."""
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def _replacement_lines(
+    replacement: str,
+    *,
+    newline: str,
+    selected_had_trailing_newline: bool,
+    has_following_lines: bool,
+) -> list[str]:
+    """Return replacement text as whole-line chunks with stable newlines."""
+    if replacement == "":
+        return []
+    text = replacement
+    if not text.endswith(("\n", "\r")) and (
+        selected_had_trailing_newline or has_following_lines
+    ):
+        text = f"{text}{newline}"
+    return text.splitlines(keepends=True)
+
+
+def _range_is_visible(
+    start_line: int, end_line: int, ranges: tuple[tuple[int, int], ...]
+) -> bool:
+    """Return whether an edit range is contained in displayed ranges."""
+    return any(
+        start_line >= visible_start and end_line <= visible_end
+        for visible_start, visible_end in ranges
+    )
+
+
+def _validate_snapshot_for_edit(
+    *,
+    path: str,
+    current_sha256: str,
+    start_line: int,
+    end_line: int,
+    snapshot_id: str | None,
+    session_id: str | None,
+) -> None:
+    """Validate optional snapshot freshness and visible-range grounding."""
+    if snapshot_id is None:
+        return
+    record = get_tool_session_store().get_snapshot(session_id, snapshot_id)
+    if record is None:
+        raise ValueError(
+            "snapshot_id not found for this session; re-read the file"
+        )
+    if record.path != path:
+        raise ValueError(
+            "snapshot_id belongs to a different file; re-read the target file"
+        )
+    if record.file_sha256 != current_sha256:
+        raise ValueError("file changed since snapshot; re-read before editing")
+    if record.seen_ranges and not _range_is_visible(
+        start_line, end_line, record.seen_ranges
+    ):
+        raise ValueError(
+            "edit range was not shown by the referenced snapshot; re-read the target lines"
+        )
+
+
 def edit_file_execute(
     path: str, old: str, new: str, replace_all: bool = False
 ) -> EditFileOutput:
@@ -256,6 +322,98 @@ def edit_file_execute(
     p.write_text(updated, encoding="utf-8")
     return EditFileOutput(
         path=relative_display(p), replacements=count if replace_all else 1
+    )
+
+
+def edit_lines_execute(
+    path: str,
+    start_line: int,
+    end_line: int,
+    replacement: str,
+    snapshot_id: str | None = None,
+    session_id: str | None = None,
+) -> EditLinesOutput:
+    """Replace an inclusive whole-line range with optional snapshot checks."""
+    if start_line < 1:
+        raise ValueError("start_line must be >= 1")
+    if end_line < start_line:
+        raise ValueError("end_line must be >= start_line")
+
+    settings = get_settings()
+    p = resolve_path(path, must_exist=True)
+    size = p.stat().st_size
+    if size > settings.max_file_write_bytes:
+        raise ValueError(
+            f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+        )
+
+    relative_path = relative_display(p)
+    current_sha256 = file_sha256(p)
+    _validate_snapshot_for_edit(
+        path=relative_path,
+        current_sha256=current_sha256,
+        start_line=start_line,
+        end_line=end_line,
+        snapshot_id=snapshot_id,
+        session_id=session_id,
+    )
+
+    original = p.read_text(encoding="utf-8")
+    original_lines = original.splitlines(keepends=True)
+    total_lines = len(original_lines)
+    if end_line > total_lines:
+        raise ValueError(
+            f"end_line {end_line} is beyond file line count {total_lines}"
+        )
+
+    selected = original_lines[start_line - 1 : end_line]
+    replacement_lines = _replacement_lines(
+        replacement,
+        newline=_newline_for_text(original),
+        selected_had_trailing_newline=bool(
+            selected and selected[-1].endswith(("\n", "\r"))
+        ),
+        has_following_lines=end_line < total_lines,
+    )
+    updated_lines = (
+        original_lines[: start_line - 1]
+        + replacement_lines
+        + original_lines[end_line:]
+    )
+    updated = "".join(updated_lines)
+    updated_bytes = len(updated.encode("utf-8"))
+    if updated_bytes > settings.max_file_write_bytes:
+        raise ValueError(
+            f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+        )
+
+    diff = "".join(
+        difflib.unified_diff(
+            original.splitlines(keepends=True),
+            updated.splitlines(keepends=True),
+            fromfile=relative_path,
+            tofile=relative_path,
+        )
+    )
+    with p.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(updated)
+
+    replacement_line_count = len(replacement_lines)
+    context_start = max(1, start_line - 3)
+    context_end = min(
+        len(updated_lines),
+        max(start_line, start_line + max(replacement_line_count, 1) + 3),
+    )
+    context = read_file_execute(
+        relative_path, context_start, context_end, session_id
+    )
+    return EditLinesOutput(
+        path=relative_path,
+        start_line=start_line,
+        end_line=end_line,
+        replacement_line_count=replacement_line_count,
+        diff=diff,
+        context=context,
     )
 
 

@@ -144,6 +144,27 @@ class MultiEditFileOutput(EditFileOutput):
     """Multiple exact-text edit result."""
 
 
+class EditLinesOutput(BaseModel):
+    """Grounded whole-line edit result."""
+
+    path: str = Field(
+        description="Workspace-relative file path that was edited."
+    )
+    start_line: int = Field(
+        description="Original 1-based first line replaced by this edit."
+    )
+    end_line: int = Field(
+        description="Original 1-based final line replaced by this edit."
+    )
+    replacement_line_count: int = Field(
+        description="Number of replacement lines inserted for the selected range."
+    )
+    diff: str = Field(description="Unified diff for the applied line edit.")
+    context: ReadFileOutput = Field(
+        description="Numbered post-edit context around the changed line range, including a fresh snapshot_id."
+    )
+
+
 class DeleteFileOrDirOutput(BaseModel):
     """File or directory deletion result."""
 
