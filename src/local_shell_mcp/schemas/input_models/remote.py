@@ -195,38 +195,6 @@ RemotePatchArg = Annotated[
     ),
 ]
 
-RemoteFacadeOpArg = Annotated[
-    Literal[
-        "read",
-        "search",
-        "edit_lines",
-        "bash",
-        "python",
-        "session_start",
-        "list_files",
-        "tree",
-        "glob",
-        "write_file",
-        "apply_patch",
-        "delete",
-        "job",
-        "session",
-        "transfer",
-    ],
-    Field(
-        description=(
-            "High-level semantic remote operation to run on the selected "
-            "worker, such as read, search, edit_lines, bash, job, "
-            "session_start, session, or transfer."
-        )
-    ),
-]
-RemoteFacadeArgsArg = Annotated[
-    dict[str, Any],
-    Field(
-        description="Operation-specific arguments forwarded to the remote worker or remote tool. Do not include machine; keep edit operations grounded by remote read/search snapshots."
-    ),
-]
 RemoteAdminActionArg = Annotated[
     Literal["invite", "list", "revoke", "rename"],
     Field(

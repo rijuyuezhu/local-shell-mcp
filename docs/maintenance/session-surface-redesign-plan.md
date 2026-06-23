@@ -213,13 +213,13 @@ Latest completed session/tool-surface status:
 - Download links are owned by local agent sessions, todos are persisted per agent session, and HTTP GET tool routes pass query parameters while ignoring query `tool_name` overrides.
 - Cleanup already completed: removed the unused `explanation` argument from `bash` and `run_python_code` purpose auditing, updated generated tool refs, and kept only short `purpose` audit metadata.
 - HTTP GET route argument coercion has been implemented and locally validated so query strings such as `include_expired=false` are interpreted through the tool signature instead of as truthy strings.
+- Unexposed legacy remote facade code has been removed: `remote_execute`, `RemoteFacade*` schemas, and remote facade-only tests are gone; `remote_admin` and first-class remote sessions remain.
 
 Current cleanup/hardening task:
 
 1. For each remaining fix, keep the change small, update this file as the unique source of truth, commit, push, and confirm CI on that head before starting the next fix.
-2. Remove unexposed legacy remote facade helpers/tests/schemas if they are not needed by the current first-class remote-session surface.
-3. Sync user docs and generated references: audit-log examples, example prompts, and configuration descriptions should describe current tools only.
-4. Re-run focused tests for each change plus `git diff --check -- .`; run broader checks before the final push if code paths change substantially.
+2. Sync user docs and generated references: audit-log examples, example prompts, and configuration descriptions should describe current tools only.
+3. Re-run focused tests for each change plus `git diff --check -- .`; run broader checks before the final push if code paths change substantially.
 
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
@@ -230,7 +230,7 @@ Cross-context continuation prompt is maintained at the end of this file. It shou
 
 唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`
 
-请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：Slice 1-9 已实现，且 `5dbfa8d fix: drop explanation audit metadata` 已移除无用的 `explanation` audit 参数并通过 PR CI；HTTP GET typed coercion 已在本地实现并准备提交。explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 已完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`；`session_start(target="remote", machine=..., workdir=...)` 已实现并让 session-bound tools dispatch 到 worker-side session。generic `remote(machine, op, args)` 已从 model-facing MCP/HTTP surface、generated refs 和 MCP instructions 删除；`remote_admin(action,args)` 保留为 invite/list/revoke/rename control-plane 工具。Slice 9 把 `list_files/write_file/delete_file_or_dir/apply_patch/secret_scan/create_file_link/list_file_links/revoke_file_link/read_todos/write_todos` 改为 required `session_id`；`workspace_search`/`fetch` 保持 sessionless read-only connector-compatible exceptions；download links local-session owned；todos per-session persisted；HTTP GET tool routes pass query params and ignore query `tool_name`. model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
+请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：Slice 1-9 已实现，且 `5dbfa8d fix: drop explanation audit metadata` 已移除无用的 `explanation` audit 参数并通过 PR CI；HTTP GET typed coercion 已提交并通过本地验证；legacy remote facade 已删除并通过本地验证。explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 已完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`；`session_start(target="remote", machine=..., workdir=...)` 已实现并让 session-bound tools dispatch 到 worker-side session。generic `remote(machine, op, args)` 已从 model-facing MCP/HTTP surface、generated refs 和 MCP instructions 删除；`remote_admin(action,args)` 保留为 invite/list/revoke/rename control-plane 工具。Slice 9 把 `list_files/write_file/delete_file_or_dir/apply_patch/secret_scan/create_file_link/list_file_links/revoke_file_link/read_todos/write_todos` 改为 required `session_id`；`workspace_search`/`fetch` 保持 sessionless read-only connector-compatible exceptions；download links local-session owned；todos per-session persisted；HTTP GET tool routes pass query params and ignore query `tool_name`. model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
 
 继续执行 Current TODO：每个剩余 fix 都要小步提交、push、确认对应 head 的 CI，并同步本唯一信源。
 ```
