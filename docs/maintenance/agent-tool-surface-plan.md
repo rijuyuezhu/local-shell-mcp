@@ -109,6 +109,15 @@ Goal: once the oh-my-pi-style semantic tools are documented and generated refere
 - [x] Keep explicit control-plane and escape-hatch tools only where they are still necessary.
 - [x] Update tool-surface tests, docs, generated references, and PR description.
 
+### Slice 9: consolidate remaining remote surface
+
+Goal: reduce remote-specific MCP tools further so models use `remote(machine, op, args)` by default instead of hallucinating among many `remote_*` variants.
+
+- [ ] Move remaining remote persistent-session companion actions behind `remote(op="...")` or a smaller remote companion facade where feasible.
+- [ ] Consolidate remote transfer helpers into a smaller transfer surface or remote sub-ops instead of exposing many `remote_copy_*` / `remote_pull_*` / `remote_push_*` tools.
+- [ ] Keep only minimal remote control-plane affordances needed to discover/connect/revoke workers, or collapse them into a small admin facade if the ergonomics are better.
+- [ ] Update tests, docs, generated references, PR description, and CI.
+
 ## Validation checklist per slice
 
 Run the smallest useful checks after each slice, then commit and push:
