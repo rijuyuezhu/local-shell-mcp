@@ -91,7 +91,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         assert meta is not None
         return meta["securitySchemes"][0]["scopes"]
 
-    assert tool_oauth_scopes("run_shell_command") == [
+    assert tool_oauth_scopes("bash") == [
         "shell:read",
         "shell:execute",
     ]
@@ -109,36 +109,23 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "file:share",
     ]
     assert tool_oauth_scopes("remote_list_machines") == ["remote:use"]
-    assert tool_oauth_scopes("remote_read_file") == [
-        "remote:use",
-        "shell:read",
-    ]
-    assert tool_oauth_scopes("remote_write_file") == [
+    assert tool_oauth_scopes("remote") == [
         "remote:use",
         "shell:read",
         "shell:write",
-    ]
-    assert tool_oauth_scopes("remote_apply_patch") == [
-        "remote:use",
-        "shell:read",
-        "shell:write",
+        "shell:execute",
         "git:write",
     ]
 
     assert all(tool.outputSchema is not None for tool in tools.values())
-    run_shell_command_schema = tools["run_shell_command"].outputSchema
-    assert run_shell_command_schema is not None
-    assert run_shell_command_schema["title"] == "RunShellCommandOutput"
-    assert set(run_shell_command_schema["properties"]) == {
-        "ok",
-        "exit_code",
-        "timed_out",
-        "duration_ms",
-        "cwd",
+    bash_schema = tools["bash"].outputSchema
+    assert bash_schema is not None
+    assert bash_schema["title"] == "BashOutput"
+    assert set(bash_schema["properties"]) >= {
+        "mode",
         "command",
-        "stdout",
-        "stderr",
-        "truncated",
+        "cwd",
+        "result",
     }
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
@@ -167,24 +154,18 @@ async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    tool = {tool.name: tool for tool in await build_mcp().list_tools()}[
-        "run_shell_command"
-    ]
+    tool = {tool.name: tool for tool in await build_mcp().list_tools()}["bash"]
 
     output_schema = _output_schema(tool)
     command_input = tool.inputSchema["properties"]["command"]
     timeout_input = tool.inputSchema["properties"]["timeout_s"]
-    stdout_output = output_schema["properties"]["stdout"]
-    exit_code_output = output_schema["properties"]["exit_code"]
+    mode_output = output_schema["properties"]["mode"]
+    result_output = output_schema["properties"]["result"]
 
-    assert command_input["description"] == (
-        "Shell command string executed with the configured shell."
-    )
-    assert "public tool timeout" in timeout_input["description"]
-    assert stdout_output["description"] == (
-        "Captured standard output after byte-limit truncation."
-    )
-    assert "Process exit code" in exit_code_output["description"]
+    assert "terminal work" in command_input["description"]
+    assert "bounded command mode" in timeout_input["description"]
+    assert "Execution mode" in mode_output["description"]
+    assert "bounded command" in result_output["description"]
 
 
 @pytest.mark.asyncio
@@ -196,12 +177,12 @@ async def test_shell_tool_returns_per_tool_structured_content(
     clear_settings_cache()
 
     structured = mcp_structured(
-        await build_mcp().call_tool("run_shell_command", {"command": "echo ok"})
+        await build_mcp().call_tool("bash", {"command": "echo ok"})
     )
 
-    assert structured["ok"] is True
+    assert structured["mode"] == "command"
     assert structured["command"] == "echo ok"
-    assert structured["stdout"] == "ok\n"
+    assert structured["result"]["stdout"] == "ok\n"
     assert "data" not in structured
 
 
@@ -214,25 +195,24 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    read_file_tool = tools["read_file"]
+    read_tool = tools["read"]
     list_files_tool = tools["list_files"]
 
-    read_file_output_schema = _output_schema(read_file_tool)
+    read_output_schema = _output_schema(read_tool)
     list_files_output_schema = _output_schema(list_files_tool)
-    assert read_file_output_schema["title"] == "ReadFileOutput"
+    assert read_output_schema["title"] == "ReadOutput"
     assert list_files_output_schema["title"] == "ListFilesOutput"
-    assert read_file_tool.inputSchema["properties"]["path"]["description"] == (
-        "Workspace-relative path, or an allowed absolute path, for the file or directory operation."
-    )
-    assert "binary_preview" not in read_file_tool.inputSchema["properties"]
     assert (
-        "binary_preview_bytes" not in read_file_tool.inputSchema["properties"]
+        "oh-my-pi-style selector"
+        in read_tool.inputSchema["properties"]["path"]["description"]
     )
-    assert "numbered_content" in read_file_output_schema["properties"]
-    assert "snapshot_id" in read_file_output_schema["properties"]
+    assert "binary_preview" not in read_tool.inputSchema["properties"]
+    assert "binary_preview_bytes" not in read_tool.inputSchema["properties"]
+    assert "file" in read_output_schema["properties"]
+    assert "directory" in read_output_schema["properties"]
     assert (
-        read_file_output_schema["properties"]["content"]["description"]
-        == "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing."
+        read_output_schema["properties"]["content"]["description"]
+        == "Model-facing content. File reads use numbered_content unless raw is true; directories use a compact listing."
     )
     assert (
         list_files_output_schema["properties"]["entries"]["description"]
@@ -249,22 +229,24 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    grep_tool = tools["grep_search"]
+    search_tool = tools["search"]
     tree_tool = tools["tree_view"]
 
-    grep_output_schema = _output_schema(grep_tool)
+    search_output_schema = _output_schema(search_tool)
     tree_output_schema = _output_schema(tree_tool)
-    assert grep_output_schema["title"] == "GrepSearchOutput"
+    assert search_output_schema["title"] == "GrepSearchOutput"
     assert tree_output_schema["title"] == "TreeViewOutput"
-    assert grep_tool.inputSchema["properties"]["query"]["description"] == (
+    assert search_tool.inputSchema["properties"]["pattern"]["description"] == (
         "Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata."
     )
     assert (
         "case-sensitive"
-        in grep_tool.inputSchema["properties"]["case_sensitive"]["description"]
+        in search_tool.inputSchema["properties"]["case_sensitive"][
+            "description"
+        ]
     )
     assert (
-        grep_output_schema["properties"]["matches"]["description"]
+        search_output_schema["properties"]["matches"]["description"]
         == "Returned ripgrep matches."
     )
     assert (
@@ -355,13 +337,10 @@ async def test_tool_descriptions_include_runtime_limits(tmp_path, monkeypatch):
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    run_shell_command_description = tools["run_shell_command"].description or ""
-    grep_description = tools["grep_search"].description or ""
-    assert (
-        "Current combined output cap: 12345 bytes"
-        in run_shell_command_description
-    )
-    assert "max_grep_results=678" in grep_description
+    bash_description = tools["bash"].description or ""
+    search_description = tools["search"].description or ""
+    assert "timeout default/cap" in bash_description
+    assert "max_grep_results=678" in search_description
 
 
 def test_transport_security_uses_exact_base_url_host(tmp_path, monkeypatch):
@@ -404,7 +383,7 @@ async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    annotations = tools["run_shell_command"].annotations
+    annotations = tools["bash"].annotations
     search_annotations = tools["workspace_search"].annotations
     assert annotations is not None
     assert search_annotations is not None
@@ -461,7 +440,7 @@ async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    run_shell_command_annotations = tools["run_shell_command"].annotations
+    run_shell_command_annotations = tools["bash"].annotations
     assert run_shell_command_annotations is not None
     assert run_shell_command_annotations.openWorldHint is False
     assert tools["call_agent_mcp_tool"].annotations is None
@@ -479,13 +458,13 @@ async def test_relaxed_client_tool_hints_marks_command_tools_without_full_contai
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    annotations = tools["run_shell_command"].annotations
+    annotations = tools["bash"].annotations
     assert annotations is not None
     assert annotations.readOnlyHint is False
     assert annotations.destructiveHint is False
     assert annotations.idempotentHint is False
     assert annotations.openWorldHint is False
-    assert tools["run_shell_command"].meta == {
+    assert tools["bash"].meta == {
         "securitySchemes": [
             {
                 "type": "oauth2",
@@ -505,7 +484,7 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    assert tools["run_shell_command"].annotations is None
+    assert tools["bash"].annotations is None
 
 
 def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):

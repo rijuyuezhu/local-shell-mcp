@@ -30,13 +30,13 @@ docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit_lo
 Every normal routed MCP or REST debug tool call produces a start/end pair linked by `call_id`:
 
 ```json
-{"ts": 1710000000.0, "event": "tool_call_start", "call_id": "...", "transport": "mcp", "tool": "read_file", "input": {"path": "README.md"}, "principal": null, "context": {}}
-{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read_file", "ok": true, "duration_ms": 12, "output": {"ok": true, "message": "", "data": {"path": "README.md", "content": "...", "numbered_content": "1|...", "snapshot_id": "..."}}}
+{"ts": 1710000000.0, "event": "tool_call_start", "call_id": "...", "transport": "mcp", "tool": "read", "input": {"path": "README.md"}, "principal": null, "context": {}}
+{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read", "ok": true, "duration_ms": 12, "output": {"ok": true, "message": "", "data": {"kind": "file", "path": "README.md", "content": "1|...", "file": {"snapshot_id": "..."}}}}
 ```
 
 Failures and timeouts are also linked by `call_id`.
 
-Other event families may appear alongside routed tool calls, including `run_start_persistent_shell`, `run_shell_command_end`, `start_persistent_shell`, `send_persistent_shell_input`, `read_persistent_shell_output`, `kill_persistent_shell`, `auth_ok`, `oauth_*`, `tool_error`, `tool_timeout`, and `remote_worker_registered`.
+Other event families may appear alongside routed tool calls, including `bash`, `job`, `send_persistent_shell_input`, `read_persistent_shell_output`, `kill_persistent_shell`, `auth_ok`, `oauth_*`, `tool_error`, `tool_timeout`, and `remote_worker_registered`.
 
 ## Sensitive data warning
 

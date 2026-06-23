@@ -26,29 +26,6 @@ class RemoteWorkerToolSpec:
 
 REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec(
-        "remote_environment_info",
-        "environment_info",
-        "/tools/remote_environment_info",
-    ),
-    RemoteWorkerToolSpec(
-        "run_remote_shell_command",
-        "run_shell_command",
-        "/tools/run_remote_shell_command",
-        timeout_arg="timeout_s",
-    ),
-    RemoteWorkerToolSpec(
-        "run_remote_python_code",
-        "run_python_code",
-        "/tools/run_remote_python_code",
-        timeout_arg="timeout_s",
-        default_timeout=60,
-    ),
-    RemoteWorkerToolSpec(
-        "start_remote_persistent_shell",
-        "start_persistent_shell",
-        "/tools/start_remote_persistent_shell",
-    ),
-    RemoteWorkerToolSpec(
         "send_remote_persistent_shell_input",
         "send_persistent_shell_input",
         "/tools/send_remote_persistent_shell_input",
@@ -68,43 +45,16 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
         "list_persistent_shells",
         "/tools/list_remote_persistent_shells",
     ),
+    RemoteWorkerToolSpec("", "environment_info", None),
     RemoteWorkerToolSpec(
-        "remote_list_files", "list_files", "/tools/remote_list_files"
+        "", "run_python_code", None, timeout_arg="timeout_s", default_timeout=60
     ),
-    RemoteWorkerToolSpec("remote_tree_view", "tree_view", "/tools/remote_tree"),
-    RemoteWorkerToolSpec(
-        "remote_glob_search", "glob_search", "/tools/remote_glob"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_grep_search", "grep_search", "/tools/remote_grep"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_read_file", "read_file", "/tools/remote_read_file"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_read_many_files",
-        "read_many_files",
-        "/tools/remote_read_many_files",
-    ),
-    RemoteWorkerToolSpec(
-        "remote_write_file", "write_file", "/tools/remote_write_file"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_edit_file", "edit_file", "/tools/remote_edit_file"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_multi_edit_file",
-        "multi_edit_file",
-        "/tools/remote_multi_edit_file",
-    ),
-    RemoteWorkerToolSpec(
-        "remote_delete_file_or_dir",
-        "delete_file_or_dir",
-        "/tools/remote_delete",
-    ),
-    RemoteWorkerToolSpec(
-        "remote_apply_patch", "apply_patch", "/tools/remote_apply_patch"
-    ),
+    RemoteWorkerToolSpec("", "list_files", None),
+    RemoteWorkerToolSpec("", "tree_view", None),
+    RemoteWorkerToolSpec("", "glob_search", None),
+    RemoteWorkerToolSpec("", "write_file", None),
+    RemoteWorkerToolSpec("", "delete_file_or_dir", None),
+    RemoteWorkerToolSpec("", "apply_patch", None),
     RemoteWorkerToolSpec("", "read", None),
     RemoteWorkerToolSpec("", "search", None),
     RemoteWorkerToolSpec("", "edit_lines", None),

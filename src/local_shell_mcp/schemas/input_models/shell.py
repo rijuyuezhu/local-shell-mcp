@@ -43,7 +43,7 @@ PythonTimeoutArg = Annotated[
 SessionIdArg = Annotated[
     str,
     Field(
-        description="Persistent shell session_id returned by start_persistent_shell or list_persistent_shells."
+        description="Persistent shell session_id returned by bash(pty=true) or list_persistent_shells."
     ),
 ]
 InputTextArg = Annotated[

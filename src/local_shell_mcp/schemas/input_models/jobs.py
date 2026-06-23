@@ -8,7 +8,7 @@ JobCommandArg = Annotated[
     str,
     StringConstraints(min_length=1),
     Field(
-        description="Non-empty shell command to start as a tracked job. Jobs are backed by persistent shell sessions; use start_persistent_shell directly when you need an interactive session that receives later input."
+        description="Non-empty shell command to start as a tracked job. Jobs are backed by persistent shell sessions; use bash(pty=true) when you need an interactive session that receives later input."
     ),
 ]
 JobCwdArg = Annotated[

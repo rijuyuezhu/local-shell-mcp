@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.files import (
@@ -188,18 +187,15 @@ def test_read_many_files_supports_per_file_line_ranges(tmp_path, monkeypatch):
     assert result.total_content_bytes == len(b"a2b1\nb2")
 
 
-@pytest.mark.asyncio
-async def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
+def test_read_many_files_rejects_too_many_files(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_READ_MANY_FILES", "1")
     clear_settings_cache()
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "b.txt").write_text("b", encoding="utf-8")
 
-    with pytest.raises(ToolError, match="Refusing to read 2 files; max is 1"):
-        await build_mcp().call_tool(
-            "read_many_files", {"files": [{"path": "a.txt"}, {"path": "b.txt"}]}
-        )
+    with pytest.raises(ValueError, match="Refusing to read 2 files; max is 1"):
+        read_many_files_execute([("a.txt", None, None), ("b.txt", None, None)])
 
 
 def test_reject_path_escape(tmp_path, monkeypatch):

@@ -1,6 +1,6 @@
 """Typed input annotations for file operation tools."""
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 
@@ -67,7 +67,7 @@ LineReplacementArg = Annotated[
 SnapshotIdArg = Annotated[
     str | None,
     Field(
-        description="Optional snapshot_id returned by read or read_file. When provided, the edit is rejected if the file changed or the line range was not shown."
+        description="Optional snapshot_id returned by read or search. When provided, the edit is rejected if the file changed or the line range was not shown."
     ),
 ]
 
@@ -85,12 +85,6 @@ class ReadFileRequest(BaseModel):
     """Optional 1-based final line to include for this file."""
 
 
-ReadFilesArg = Annotated[
-    list[ReadFileRequest],
-    Field(
-        description="Files to read. Each item includes path and optional 1-based start_line and end_line values."
-    ),
-]
 FileContentArg = Annotated[
     str,
     Field(
@@ -101,29 +95,5 @@ OverwriteArg = Annotated[
     bool,
     Field(
         description="Whether to replace an existing file. Set false to fail when the target already exists."
-    ),
-]
-OldTextArg = Annotated[
-    str,
-    Field(
-        description="Exact existing text to replace. Include enough surrounding context to make the match unique unless replace_all is true."
-    ),
-]
-NewTextArg = Annotated[
-    str,
-    Field(
-        description="Replacement text written in place of the matched old text."
-    ),
-]
-ReplaceAllArg = Annotated[
-    bool,
-    Field(
-        description="Whether to replace every exact occurrence. Leave false when only one precise occurrence should change."
-    ),
-]
-EditsArg = Annotated[
-    list[dict[str, Any]],
-    Field(
-        description="Ordered exact-text edits. Each edit must include old and new strings, with optional replace_all."
     ),
 ]

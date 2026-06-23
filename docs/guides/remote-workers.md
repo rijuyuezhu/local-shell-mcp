@@ -78,9 +78,9 @@ The normal flow before remote edits is:
 
 1. `remote_list_machines`
 2. `remote_environment_info`
-3. `remote_tree_view` or `remote_list_files`
-4. `remote_grep_search` or `remote_read_file`
-5. `run_remote_shell_command` or remote file edit tools
+3. `remote(op="tree")` or `remote(op="list_files")`
+4. `remote(op="search")` or `remote(op="read")`
+5. `remote(op="bash")` or `remote(op="edit_lines")`/`remote(op="apply_patch")`
 
 ## Run remote commands
 

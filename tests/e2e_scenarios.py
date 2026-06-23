@@ -14,19 +14,14 @@ CORE_TOOL_NAMES = {
     "search",
     "workspace_search",
     "fetch",
+    "read",
     "list_files",
     "tree_view",
     "glob_search",
-    "grep_search",
-    "read_file",
-    "read_many_files",
     "write_file",
-    "edit_file",
-    "multi_edit_file",
     "delete_file_or_dir",
     "apply_patch",
     "secret_scan",
-    "run_shell_command",
     "run_python_code",
     "list_persistent_shells",
     "read_todos",
@@ -34,7 +29,6 @@ CORE_TOOL_NAMES = {
 }
 
 INTERACTIVE_SHELL_TOOL_NAMES = {
-    "start_persistent_shell",
     "send_persistent_shell_input",
     "read_persistent_shell_output",
     "kill_persistent_shell",
@@ -86,38 +80,36 @@ async def exercise_filesystem_and_search_tools(
     )
     assert "notes/demo.txt" in glob_result["paths"]
 
-    grep_result = await client.call_tool(
-        "grep_search",
-        {"query": "needle", "cwd": ".", "glob": "**/*.txt", "regex": False},
+    search_result = await client.call_tool(
+        "search",
+        {"pattern": "needle", "paths": "notes", "regex": False},
     )
-    assert "matches" in grep_result
-    assert "count" in grep_result
-    if grep_result.get("ok") is True:
-        assert grep_result["matches"]
-        assert grep_result["matches"][0]["path"] == "notes/demo.txt"
+    assert search_result["matches"]
+    assert search_result["matches"][0]["path"] == "notes/demo.txt"
 
-    read_result = await client.call_tool(
-        "read_file", {"path": "notes/demo.txt"}
-    )
-    assert read_result["content"] == "alpha beta\nneedle one\n"
-
-    many_result = await client.call_tool(
-        "read_many_files", {"files": [{"path": "notes/demo.txt"}]}
-    )
-    assert many_result["files"][0]["content"] == "alpha beta\nneedle one\n"
+    read_result = await client.call_tool("read", {"path": "notes/demo.txt"})
+    assert "alpha beta" in read_result["content"]
+    assert "needle one" in read_result["content"]
 
     await client.call_tool(
-        "edit_file",
-        {"path": "notes/demo.txt", "old": "needle one", "new": "needle two"},
-    )
-    await client.call_tool(
-        "multi_edit_file",
+        "edit_lines",
         {
             "path": "notes/demo.txt",
-            "edits": [
-                {"old": "alpha", "new": "ALPHA"},
-                {"old": "beta", "new": "BETA"},
-            ],
+            "start_line": 2,
+            "end_line": 2,
+            "replacement": "needle two\n",
+            "snapshot_id": read_result["file"]["snapshot_id"],
+        },
+    )
+    read_result = await client.call_tool("read", {"path": "notes/demo.txt"})
+    await client.call_tool(
+        "edit_lines",
+        {
+            "path": "notes/demo.txt",
+            "start_line": 1,
+            "end_line": 1,
+            "replacement": "ALPHA BETA\n",
+            "snapshot_id": read_result["file"]["snapshot_id"],
         },
     )
     assert (workspace / "notes" / "demo.txt").read_text(encoding="utf-8") == (
@@ -216,10 +208,10 @@ async def exercise_file_download_links(
 
 async def exercise_shell_tools(client: ToolClient) -> None:
     shell_result = await client.call_tool(
-        "run_shell_command", {"command": "printf e2e-shell", "timeout_s": 5}
+        "bash", {"command": "printf e2e-shell", "timeout_s": 5}
     )
-    assert shell_result["ok"] is True
-    assert shell_result["stdout"] == "e2e-shell"
+    assert shell_result["mode"] == "command"
+    assert shell_result["result"]["stdout"] == "e2e-shell"
 
     python_result = await client.call_tool(
         "run_python_code",
@@ -240,8 +232,10 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
         pytest.skip("tmux is required for interactive shell e2e coverage")
 
     await assert_required_tools(client, INTERACTIVE_SHELL_TOOL_NAMES)
-    started = await client.call_tool("start_persistent_shell", {"name": "e2e"})
-    session_id = started["session_id"]
+    started = await client.call_tool(
+        "bash", {"command": "bash", "pty": True, "name": "e2e"}
+    )
+    session_id = started["result"]["session_id"]
     try:
         await client.call_tool(
             "send_persistent_shell_input",

@@ -16,22 +16,18 @@ from local_shell_mcp.ops.shell import (
 from local_shell_mcp.schemas.result_models.shell import CommandResult
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.tools.registry import bash as bash_tools_module
 from local_shell_mcp.tools.registry import files as fs_tools_module
-from local_shell_mcp.tools.registry import shell as shell_tools_module
 
 
 @pytest.mark.asyncio
-async def test_run_shell_command_rejects_timeout_above_public_cap(
-    tmp_path, monkeypatch
-):
+async def test_bash_rejects_timeout_above_public_cap(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
-    with pytest.raises(
-        ToolError, match="timeout_s must be <= 60 seconds for run_shell_command"
-    ):
+    with pytest.raises(ToolError, match="timeout_s must be <= 60 seconds"):
         await build_mcp().call_tool(
-            "run_shell_command",
+            "bash",
             {"command": "echo ok", "timeout_s": 3600},
         )
 
@@ -42,25 +38,20 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    async def hanging_run_shell_command_execute(
-        command: str,
-        cwd: str = ".",
-        timeout_s: int | None = None,
-        max_output_bytes: int | None = None,
-    ):
+    async def hanging_bash_execute(*args, **kwargs):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        shell_tools_module,
-        "run_shell_command_execute",
-        hanging_run_shell_command_execute,
+        bash_tools_module,
+        "bash_execute",
+        hanging_bash_execute,
     )
 
     with pytest.raises(
         ToolError,
-        match="run_shell_command exceeded 0.01 second tool timeout",
+        match="bash exceeded 0.01 second tool timeout",
     ):
-        await build_mcp().call_tool("run_shell_command", {"command": "echo ok"})
+        await build_mcp().call_tool("bash", {"command": "echo ok"})
 
 
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
@@ -77,7 +68,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     )
 
     response = TestClient(build_http_app()).post(
-        "/tools/run_shell_command", json={"command": "echo ok"}
+        "/tools/bash", json={"command": "echo ok"}
     )
 
     assert response.status_code == 504

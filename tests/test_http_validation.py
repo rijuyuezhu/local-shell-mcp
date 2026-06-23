@@ -12,7 +12,7 @@ def test_http_missing_required_argument_returns_validation_error(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).post("/tools/read_file", json={})
+    response = TestClient(build_http_app()).post("/tools/read", json={})
 
     assert response.status_code == 400
     assert response.json() == {
@@ -28,7 +28,7 @@ def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
     clear_settings_cache()
 
     response = TestClient(build_http_app()).post(
-        "/tools/run_shell_command",
+        "/tools/bash",
         json={"command": "echo ok", "timeout_s": 3600},
     )
 

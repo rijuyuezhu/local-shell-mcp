@@ -35,8 +35,8 @@ def test_export_tools_json_writes_wrapped_payload(tmp_path):
     assert payload["count"] == len(payload["tools"])
     assert {tool["name"] for tool in payload["tools"]} >= {
         "environment_info",
-        "read_file",
-        "run_shell_command",
+        "read",
+        "bash",
     }
 
 

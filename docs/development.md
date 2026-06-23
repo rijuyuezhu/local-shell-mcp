@@ -57,7 +57,7 @@ curl -s http://127.0.0.1:13444/tools/environment_info | jq
 Read a file through the REST debug API:
 
 ```bash
-curl -s -X POST http://127.0.0.1:13444/tools/read_file \
+curl -s -X POST http://127.0.0.1:13444/tools/read \
   -H 'content-type: application/json' \
   -d '{"path":"README.md","start_line":1,"end_line":40}' | jq
 ```

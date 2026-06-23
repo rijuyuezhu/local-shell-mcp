@@ -4,7 +4,6 @@ import asyncio
 
 from ...ops.search import (
     glob_search_execute,
-    grep_search_execute,
     search_execute,
     tree_view_execute,
 )
@@ -13,7 +12,6 @@ from ...schemas.input_models.search import (
     CaseSensitiveArg,
     GlobMaxResultsArg,
     GlobPatternArg,
-    GrepGlobArg,
     GrepMaxResultsArg,
     GrepQueryArg,
     RegexArg,
@@ -55,11 +53,6 @@ def _glob_search_description(context: McpToolContext) -> str:
 def _search_description(context: McpToolContext) -> str:
     settings = context.settings
     return f"""Search code content using an oh-my-pi-style facade. Use built-in search for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results={settings.max_grep_results}."""
-
-
-def _grep_search_description(context: McpToolContext) -> str:
-    settings = context.settings
-    return f"""Lower-level content lookup. Prefer high-level search for normal agent discovery. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Re-read before editing outside displayed ranges. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(
@@ -112,25 +105,4 @@ async def search(
     """Search code content with optional path scopes."""
     return await search_execute(
         pattern, paths, ".", regex, case_sensitive, max_results, session_id
-    )
-
-
-@local_tool(
-    http_method="POST",
-    http_path="/tools/grep",
-    description=_grep_search_description,
-    mcp_scopes=("shell:read",),
-)
-async def grep_search(
-    query: GrepQueryArg,
-    cwd: SearchCwdArg = ".",
-    glob: GrepGlobArg = None,
-    regex: RegexArg = True,
-    case_sensitive: CaseSensitiveArg = True,
-    max_results: GrepMaxResultsArg = None,
-    session_id: ToolSessionIdArg = None,
-) -> GrepSearchOutput:
-    """Search file contents with ripgrep."""
-    return await grep_search_execute(
-        query, cwd, glob, regex, case_sensitive, max_results, session_id
     )

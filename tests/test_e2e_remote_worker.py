@@ -25,18 +25,11 @@ from tests.e2e_helpers import (
 pytestmark = pytest.mark.integration
 
 REMOTE_TOOL_NAMES = {
+    "remote",
     "remote_invite",
     "remote_list_machines",
     "remote_revoke_machine",
     "remote_rename_machine",
-    "remote_environment_info",
-    "run_remote_shell_command",
-    "run_remote_python_code",
-    "remote_list_files",
-    "remote_read_file",
-    "remote_read_many_files",
-    "remote_write_file",
-    "remote_delete_file_or_dir",
     "remote_pull_file",
     "remote_push_file",
     "remote_pull_dir",
@@ -249,8 +242,9 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert row["workdir"] == str(remote_workspace)
 
             remote_env = await client.call_tool(
-                "remote_environment_info", {"machine": machine}
+                "remote", {"machine": machine, "op": "environment", "args": {}}
             )
+            remote_env = remote_env["data"]
             assert remote_env["settings"]["workspace_root"] == str(
                 remote_workspace
             )
@@ -260,13 +254,17 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert str(remote_workspace) in remote_env["probe"]["stdout"]
 
             write_result = await client.call_tool(
-                "remote_write_file",
+                "remote",
                 {
                     "machine": machine,
-                    "path": "remote/demo.txt",
-                    "content": "hello from remote worker\n",
+                    "op": "write_file",
+                    "args": {
+                        "path": "remote/demo.txt",
+                        "content": "hello from remote worker\n",
+                    },
                 },
             )
+            write_result = write_result["data"]
             assert write_result["path"] == "remote/demo.txt"
             assert (
                 remote_workspace / "remote" / "demo.txt"
@@ -274,58 +272,60 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert not (control_workspace / "remote" / "demo.txt").exists()
 
             listing = await client.call_tool(
-                "remote_list_files", {"machine": machine, "path": "remote"}
+                "remote",
+                {
+                    "machine": machine,
+                    "op": "list_files",
+                    "args": {"path": "remote"},
+                },
             )
+            listing = listing["data"]
             assert any(
                 item.get("path") == "remote/demo.txt"
                 for item in listing["entries"]
             )
 
             read_result = await client.call_tool(
-                "remote_read_file",
-                {"machine": machine, "path": "remote/demo.txt"},
-            )
-            assert read_result["content"] == "hello from remote worker\n"
-
-            (remote_workspace / "remote" / "other.txt").write_text(
-                "second remote file\n", encoding="utf-8"
-            )
-            many_result = await client.call_tool_result(
-                "remote_read_many_files",
+                "remote",
                 {
                     "machine": machine,
-                    "files": [
-                        {"path": "remote/demo.txt"},
-                        {"path": "remote/other.txt"},
-                    ],
+                    "op": "read",
+                    "args": {"path": "remote/demo.txt:raw"},
                 },
             )
-            assert many_result.isError
-            assert many_result.content
-            many_error = getattr(many_result.content[0], "text", "")
-            assert "Refusing to read 2 files; max is 1" in many_error
+            assert (
+                read_result["data"]["content"] == "hello from remote worker\n"
+            )
 
             shell_result = await client.call_tool(
-                "run_remote_shell_command",
+                "remote",
                 {
                     "machine": machine,
-                    "command": "printf remote-shell-ok",
-                    "timeout_s": 5,
+                    "op": "bash",
+                    "args": {
+                        "command": "printf remote-shell-ok",
+                        "timeout_s": 5,
+                    },
                 },
             )
-            assert shell_result["ok"] is True
-            assert shell_result["stdout"] == "remote-shell-ok"
+            assert shell_result["data"]["mode"] == "command"
+            assert shell_result["data"]["result"]["stdout"] == "remote-shell-ok"
 
             python_result = await client.call_tool(
-                "run_remote_python_code",
+                "remote",
                 {
                     "machine": machine,
-                    "code": "from pathlib import Path; print(Path.cwd().name)",
-                    "timeout_s": 5,
+                    "op": "python",
+                    "args": {
+                        "code": "from pathlib import Path; print(Path.cwd().name)",
+                        "timeout_s": 5,
+                    },
                 },
             )
-            assert python_result["ok"] is True
-            assert python_result["stdout"].strip() == remote_workspace.name
+            assert python_result["data"]["ok"] is True
+            assert (
+                python_result["data"]["stdout"].strip() == remote_workspace.name
+            )
 
             (control_workspace / "local.bin").write_bytes(
                 b"local-to-remote-\x00-payload"
@@ -401,8 +401,12 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             ).read_text(encoding="utf-8") == "directory payload"
 
             await client.call_tool(
-                "remote_delete_file_or_dir",
-                {"machine": machine, "path": "remote/demo.txt"},
+                "remote",
+                {
+                    "machine": machine,
+                    "op": "delete",
+                    "args": {"path": "remote/demo.txt"},
+                },
             )
             assert not (remote_workspace / "remote" / "demo.txt").exists()
 

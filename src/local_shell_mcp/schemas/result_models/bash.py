@@ -14,5 +14,5 @@ class BashOutput(BaseModel):
     command: str = Field(description="Shell command submitted by the caller.")
     cwd: str = Field(description="Working directory requested by the caller.")
     result: dict[str, Any] = Field(
-        description="Structured result from run_shell_command, job_start, or start_persistent_shell."
+        description="Structured result from bounded command, async job, or PTY mode selected by bash."
     )

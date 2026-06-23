@@ -53,7 +53,7 @@ local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
     mcp_error_handler=search_error_output,
 )
 async def workspace_search(query: ConnectorSearchQueryArg) -> SearchOutput:
-    """Connector-style workspace document search. Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as grep_search, glob_search, tree_view, read_file, or read_many_files. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch."""
+    """Connector-style workspace document search. Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as search, glob_search, tree_view, or read. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch."""
     return await search_execute(query)
 
 

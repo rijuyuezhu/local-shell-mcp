@@ -60,7 +60,7 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 - [x] Add a parser for `path:selector` forms such as `src/foo.py:50-100`, `src/foo.py:50+20`, and `src/foo.py:raw`.
 - [x] Add a high-level `read(path, session_id=None)` facade.
 - [x] Support directory listing through `read`.
-- [x] Keep `read_file` as the lower-level compatibility path.
+- [x] Remove `read_file`/`read_many_files` from the default public tool surface; keep their ops as internal implementation details for `read`, `search`, and tests.
 
 ### Slice 3: grounded line editing
 
@@ -101,12 +101,13 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 
 Goal: once the oh-my-pi-style semantic tools are documented and generated references are current, keep the default agent-facing tool set small instead of exposing both the facade and every legacy duplicate.
 
-- [ ] Decide which low-level compatibility tools should remain HTTP/local-invocation internals versus MCP-visible tools.
+- [x] Decide which low-level compatibility tools should remain HTTP/local-invocation internals versus MCP-visible tools.
   - [x] Rename vague `agent_surface` modules/registry to the clearer `read` facade naming.
-- [ ] Hide or remove legacy default-surface tools now covered by `read`, `search`, `edit_lines`, `bash`, and `remote`.
+- [x] Hide or remove legacy default-surface tools now covered by `read`, `search`, `edit_lines`, `bash`, and `remote`.
   - [x] Collapse split local `job_start`/`job_list`/`job_tail`/`job_stop`/`job_retry` and explicit `remote_job_*` tools into one oh-my-pi-style `job` companion used with `bash(async_=true)` and `remote(op="job")`.
-- [ ] Keep explicit control-plane and escape-hatch tools only where they are still necessary.
-- [ ] Update tool-surface tests, docs, generated references, and PR description.
+  - [x] Remove public wrappers covered by `read`, `search`, `bash`, and `remote`; keep reusable ops/models only where facades still depend on them.
+- [x] Keep explicit control-plane and escape-hatch tools only where they are still necessary.
+- [x] Update tool-surface tests, docs, generated references, and PR description.
 
 ## Validation checklist per slice
 

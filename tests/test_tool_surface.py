@@ -37,9 +37,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "fetch",
     "environment_info",
     "version",
-    "run_shell_command",
     "run_python_code",
-    "start_persistent_shell",
     "send_persistent_shell_input",
     "read_persistent_shell_output",
     "kill_persistent_shell",
@@ -47,13 +45,8 @@ LOCAL_MCP_TOOL_NAMES = {
     "list_files",
     "tree_view",
     "glob_search",
-    "grep_search",
-    "read_file",
-    "read_many_files",
     "write_file",
-    "edit_file",
     "edit_lines",
-    "multi_edit_file",
     "delete_file_or_dir",
     "apply_patch",
     "create_file_link",
@@ -88,31 +81,16 @@ REMOTE_MCP_TOOL_NAMES = {
     "remote_list_machines",
     "remote_revoke_machine",
     "remote_rename_machine",
-    "remote_environment_info",
-    "run_remote_shell_command",
-    "run_remote_python_code",
-    "start_remote_persistent_shell",
     "send_remote_persistent_shell_input",
     "read_remote_persistent_shell_output",
     "kill_remote_persistent_shell",
     "list_remote_persistent_shells",
-    "remote_list_files",
-    "remote_tree_view",
-    "remote_glob_search",
-    "remote_grep_search",
-    "remote_read_file",
-    "remote_read_many_files",
-    "remote_write_file",
-    "remote_edit_file",
-    "remote_multi_edit_file",
-    "remote_delete_file_or_dir",
     "remote_copy_file",
     "remote_copy_dir",
     "remote_pull_file",
     "remote_push_file",
     "remote_pull_dir",
     "remote_push_dir",
-    "remote_apply_patch",
 }
 
 
@@ -299,29 +277,13 @@ def test_http_tool_missing_required_arg_returns_validation_error(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).post("/tools/read_file", json={})
+    response = TestClient(build_http_app()).post("/tools/read", json={})
 
     assert response.status_code == 400
     assert response.json() == {
         "error": "validation_error",
         "message": "Missing required argument: path",
     }
-
-
-def test_http_tool_directory_error_returns_json_error(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    clear_settings_cache()
-
-    response = TestClient(build_http_app()).post(
-        "/tools/read_file", json={"path": "."}
-    )
-
-    assert response.status_code == 400
-    assert response.json()["error"] == "IsADirectoryError"
-    assert response.json()["message"].startswith("IsADirectoryError: ")
-    assert "Is a directory" in response.json()["message"]
 
 
 def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
@@ -331,7 +293,7 @@ def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
     clear_settings_cache()
 
     response = TestClient(build_http_app()).post(
-        "/tools/read_file", json={"path": "missing.txt"}
+        "/tools/read", json={"path": "missing.txt"}
     )
 
     assert response.status_code == 400
@@ -355,7 +317,7 @@ def test_http_tool_unexpected_error_returns_json_error(tmp_path, monkeypatch):
     )
 
     response = TestClient(build_http_app(), raise_server_exceptions=False).post(
-        "/tools/read_file", json={"path": "a.txt"}
+        "/tools/read", json={"path": "a.txt"}
     )
 
     assert response.status_code == 500
@@ -389,10 +351,8 @@ async def test_mcp_tool_missing_required_arg_uses_fastmcp_tool_error(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    with pytest.raises(
-        ToolError, match="validation error for read_fileArguments"
-    ):
-        await build_mcp().call_tool("read_file", {})
+    with pytest.raises(ToolError, match="validation error for readArguments"):
+        await build_mcp().call_tool("read", {})
 
 
 @pytest.mark.asyncio
@@ -405,10 +365,10 @@ async def test_mcp_remote_worker_missing_machine_uses_fastmcp_tool_error(
 
     with pytest.raises(
         ToolError,
-        match="validation error for run_remote_shell_commandArguments",
+        match="validation error for remoteArguments",
     ):
         await build_mcp().call_tool(
-            "run_remote_shell_command", {"command": "echo ok"}
+            "remote", {"op": "bash", "args": {"command": "echo ok"}}
         )
 
 

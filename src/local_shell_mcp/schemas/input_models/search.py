@@ -46,12 +46,6 @@ GrepQueryArg = Annotated[
         description="Text or regular expression pattern to search for; prefer built-in search tools so matches carry grounding metadata."
     ),
 ]
-GrepGlobArg = Annotated[
-    str | None,
-    Field(
-        description="Optional ripgrep glob filter that restricts which files are searched."
-    ),
-]
 RegexArg = Annotated[
     bool,
     Field(description="Whether query is interpreted as a regular expression."),
