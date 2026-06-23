@@ -202,36 +202,65 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ## Current TODO
 
-Completed in the latest local-session slice:
+Latest completed session/cwd slice status:
 
-- Added first-class process-local agent sessions with 8-character alphanumeric ids, workdir binding, timestamps, labels, and snapshot ownership.
-- Added model-facing `session_start` for local sessions, made its `workdir` explicit, and removed `environment_info` from public MCP/HTTP/generated tool surfaces.
-- Added `session_change_cwd` to update a session workdir, clear stale snapshots for that session, and return refreshed orientation/instruction-file metadata.
-- Made `read`, `search`, and `edit_lines` require explicit `session_id` at the model-facing layer.
-- Added explicit-session e2e workflow coverage across REST, streamable MCP HTTP, and stdio: `session_start -> read/search -> edit_lines`, plus cross-session and unknown-session failure checks.
-- Updated MCP server instructions and generated tool references for session-first usage.
+- Pushed commits on `feat/agent-tool-surface`:
+  - `958c12a feat: add explicit local sessions`
+  - `19912be feat: support session cwd changes`
+  - `18a6b1f test: stabilize session e2e search`
+  - `22b30d1 test: handle absent ripgrep in session e2e`
+- PR #79 CI is green for the latest push:
+  - build: passed
+  - pre-commit: passed
+  - pyright: passed
+  - vscode-extension: passed
+  - Test (ubuntu-latest): passed
+  - Test (macos-latest): passed
+  - deploy: skipped
+- `session_start(workdir=...)` is model-facing and requires an explicit workdir.
+- `session_change_cwd(session_id, workdir)` is model-facing and updates a local session workdir, clears stale snapshots for that session, and returns refreshed orientation/instruction-file metadata.
+- Public/model-facing `environment_info` is removed; initialization now uses `session_start`.
+- `read`, `search`, and `edit_lines` require explicit `session_id` at the model-facing layer.
+- REST, streamable MCP HTTP, and stdio e2e coverage exercises `session_start -> read/search -> edit_lines -> session_change_cwd`, including cross-session and unknown-session failures. Search assertions tolerate CI runners without `rg` while still checking structured search behavior.
+- Model-facing descriptions, generated references, and MCP server instructions must describe only currently available behavior. Do not mention future slices, later planned support, or roadmap language there.
 
 Next implementation task:
 
-1. Commit and push the completed session cwd slice, then watch CI for PR #79.
-2. Implement Slice 5: make `bash` and `job` session-bound, default `bash` cwd to the session workdir, and isolate job list/poll/cancel/retry by session.
-3. Keep this document updated after each slice, including completed checkboxes, changed design decisions, validation commands, and known risks.
+1. Implement Slice 5: make `bash` and `job` session-bound.
+2. `bash` should require `session_id` in the model-facing surface and default cwd to the session workdir. If a cwd override is kept, it should resolve safely inside or relative to the session workdir.
+3. `job` should require `session_id`; list/poll/cancel/retry must only operate on jobs owned by that session.
+4. Job metadata should record `session_id`; cross-session job visibility/control must be rejected or hidden.
+5. Add focused tests and e2e coverage for session-bound bash/job behavior, including cross-session isolation.
+6. Update MCP descriptions, generated references, docs, and this file after the slice.
+7. Run validation, commit, push to PR #79, update PR body, and watch CI.
 
-Latest validation run for this slice:
+Suggested validation for Slice 5:
 
 ```bash
-uv run pytest tests/test_session_store.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_read_facade.py -q
-uv run pytest tests/test_files_ops.py -q
-uv run pytest tests/test_search_ops.py -q
-uv run pytest tests/test_audit_tool_calls.py tests/test_export_tools_json.py -q
+uv run ruff check src tests
+uv run pyright
+uv run pytest tests/test_bash_facade.py tests/test_jobs.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_export_tools_json.py -q
 uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories -q
 uv run pytest tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories -q
 uv run pytest tests/test_e2e_stdio.py::test_stdio_process_exercises_core_tool_categories -q
-uv run pytest tests/test_e2e_remote_worker.py -q
-uv run ruff check src tests && uv run pyright && uv run pytest -q
+uv run pytest -q
+pre-commit run --all-files
+git diff --check
 ```
 
-Result: all passed; full suite reported 258 passed, 1 warning.
+Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
+
+## Cross-context continuation prompt
+
+```text
+继续 local-shell-mcp 的 stateful session tool surface 重构。项目根目录是 `/workspace/local-shell-mcp-tool-compare`，分支是 `feat/agent-tool-surface`，PR 是 https://github.com/rijuyuezhu/local-shell-mcp/pull/79 。不要碰 `/workspace/local-shell-mcp`，那里有用户自己的未提交改动。
+
+唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`
+
+请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines` require `session_id` 都已经完成并推送，最新 CI 绿。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
+
+下一步做 Slice 5：让 `bash` 和 `job` session-bound。要求：`bash` model-facing 必须传 `session_id`，默认 cwd 使用 session workdir；`job` 必须传 `session_id`，只能 list/poll/cancel/retry 该 session 拥有的 job；job metadata 记录 `session_id`；添加 focused tests 和 REST/MCP HTTP/stdio e2e，覆盖 session-bound bash/job 和跨 session 隔离。完成后更新唯一信源、generated refs、PR body；运行 ruff、pyright、focused tests、e2e、full pytest、pre-commit、git diff --check；commit、push 到 PR #79 并查看 CI。
+```
 
 ## Validation checklist
 
