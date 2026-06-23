@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from .files import LineRange
+
 
 class TreeViewOutput(BaseModel):
     """Compact directory tree result."""
@@ -59,6 +61,26 @@ class GrepMatch(BaseModel):
     text: str = Field(
         description="Matching line text without the trailing newline."
     )
+    numbered_line: str | None = Field(
+        default=None,
+        description="Model-facing match line formatted as 'line|text' for grounded follow-up edits.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Agent grounding session that recorded this match line.",
+    )
+    snapshot_id: str | None = Field(
+        default=None,
+        description="Snapshot handle for the displayed match line, usable with edit_lines.",
+    )
+    file_sha256: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the complete matched file when displayed.",
+    )
+    seen_range: LineRange | None = Field(
+        default=None,
+        description="Inclusive original line range shown for this match.",
+    )
 
 
 class GrepSearchOutput(BaseModel):
@@ -74,4 +96,8 @@ class GrepSearchOutput(BaseModel):
     )
     stderr: str = Field(
         description="Captured ripgrep stderr, after output limiting."
+    )
+    numbered_content: str = Field(
+        default="",
+        description="Grouped model-facing match snippets with file paths and line-numbered match lines.",
     )

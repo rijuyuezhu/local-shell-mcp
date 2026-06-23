@@ -88,3 +88,30 @@ def test_glob_finds_matching_paths(tmp_path, monkeypatch):
     result = glob_search_execute("*.py", cwd=".")
 
     assert result.paths == ["src/app.py"]
+
+
+@pytest.mark.asyncio
+async def test_grep_search_returns_grounded_numbered_matches(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text(
+        "alpha\nneedle here\ngamma\n", encoding="utf-8"
+    )
+
+    result = await grep_search_execute("needle", cwd=".", regex=False)
+
+    assert result.ok is True
+    assert result.count == 1
+    match = result.matches[0]
+    assert match.path == "src/app.py"
+    assert match.numbered_line == "2|needle here"
+    assert match.snapshot_id
+    assert match.file_sha256
+    assert match.seen_range is not None
+    assert match.seen_range.model_dump() == {"start": 2, "end": 2}
+    assert result.numbered_content == "src/app.py\n2|needle here"

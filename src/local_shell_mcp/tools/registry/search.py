@@ -7,6 +7,7 @@ from ...ops.search import (
     grep_search_execute,
     tree_view_execute,
 )
+from ...schemas.input_models.files import ToolSessionIdArg
 from ...schemas.input_models.search import (
     CaseSensitiveArg,
     GlobMaxResultsArg,
@@ -51,7 +52,7 @@ def _glob_search_description(context: McpToolContext) -> str:
 
 def _grep_search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search file contents with ripgrep to locate symbols, usages, error messages, or text before reading or editing files. Current max_grep_results={settings.max_grep_results}."""
+    return f"""Search file contents with ripgrep to locate symbols, usages, error messages, or text before reading or editing files. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(
@@ -99,8 +100,9 @@ async def grep_search(
     regex: RegexArg = True,
     case_sensitive: CaseSensitiveArg = True,
     max_results: GrepMaxResultsArg = None,
+    session_id: ToolSessionIdArg = None,
 ) -> GrepSearchOutput:
     """Search file contents with ripgrep."""
     return await grep_search_execute(
-        query, cwd, glob, regex, case_sensitive, max_results
+        query, cwd, glob, regex, case_sensitive, max_results, session_id
     )

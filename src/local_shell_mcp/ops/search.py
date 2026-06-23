@@ -14,6 +14,7 @@ from ..schemas.result_models.search import (
     GrepSearchOutput,
     TreeViewOutput,
 )
+from .files import read_file_execute
 from .shell import run_shell
 from .utils.path import missing_path_context, relative_display, resolve_path
 
@@ -35,6 +36,56 @@ def glob_search_execute(
     return GlobSearchOutput(paths=results)
 
 
+def _search_match_path(cwd: str, path_text: str | None) -> str | None:
+    """Return a workspace-readable path for a ripgrep match path."""
+    if path_text is None:
+        return None
+    path = Path(path_text)
+    if path.is_absolute():
+        return str(path)
+    return str(Path(cwd) / path)
+
+
+def _ground_match_line(
+    match: GrepMatch, cwd: str, session_id: str | None
+) -> GrepMatch:
+    """Attach read-style grounding metadata to one grep match line."""
+    read_path = _search_match_path(cwd, match.path)
+    if read_path is None or match.line is None:
+        return match
+    try:
+        read_result = read_file_execute(
+            read_path, match.line, match.line, session_id
+        )
+    except OSError, UnicodeDecodeError, ValueError:
+        return match
+    seen_range = read_result.seen_ranges[0] if read_result.seen_ranges else None
+    return match.model_copy(
+        update={
+            "path": read_result.path,
+            "numbered_line": read_result.numbered_content,
+            "session_id": read_result.session_id,
+            "snapshot_id": read_result.snapshot_id,
+            "file_sha256": read_result.file_sha256,
+            "seen_range": seen_range,
+        }
+    )
+
+
+def _grep_numbered_content(matches: list[GrepMatch]) -> str:
+    """Return grouped line-numbered snippets for grep matches."""
+    lines: list[str] = []
+    current_path: str | None = None
+    for match in matches:
+        if match.path != current_path:
+            if lines:
+                lines.append("")
+            current_path = match.path
+            lines.append(str(match.path or "<unknown>"))
+        lines.append(match.numbered_line or f"{match.line}|{match.text}")
+    return "\n".join(lines)
+
+
 async def grep_search_execute(
     query: str,
     cwd: str = ".",
@@ -42,6 +93,7 @@ async def grep_search_execute(
     regex: bool = True,
     case_sensitive: bool = True,
     max_results: int | None = None,
+    session_id: str | None = None,
 ) -> GrepSearchOutput:
     """Run ripgrep with workspace path resolution and return structured match records."""
     settings = get_settings()
@@ -97,16 +149,13 @@ async def grep_search_execute(
         )
         path_text = path_data.get("text")
         line_text = line_data.get("text", "")
-        matches.append(
-            GrepMatch(
-                path=path_text,
-                line=match_data.get("line_number"),
-                column=first_start + 1
-                if isinstance(first_start, int)
-                else None,
-                text=str(line_text).rstrip("\n"),
-            )
+        match = GrepMatch(
+            path=path_text,
+            line=match_data.get("line_number"),
+            column=first_start + 1 if isinstance(first_start, int) else None,
+            text=str(line_text).rstrip("\n"),
         )
+        matches.append(_ground_match_line(match, cwd, session_id))
         if len(matches) >= max_results:
             break
     return GrepSearchOutput(
@@ -115,6 +164,7 @@ async def grep_search_execute(
         count=len(matches),
         truncated=len(matches) >= max_results or result.truncated,
         stderr=result.stderr,
+        numbered_content=_grep_numbered_content(matches),
     )
 
 
