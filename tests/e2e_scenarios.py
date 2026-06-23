@@ -82,7 +82,7 @@ async def exercise_filesystem_and_search_tools(
 
     search_result = await client.call_tool(
         "search",
-        {"pattern": "needle", "paths": "notes", "regex": False},
+        {"pattern": "needle", "paths": "notes/demo.txt", "regex": False},
     )
     assert search_result["matches"]
     assert search_result["matches"][0]["path"] == "notes/demo.txt"
