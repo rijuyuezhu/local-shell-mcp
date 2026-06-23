@@ -210,7 +210,7 @@ Latest completed session/tool-surface slice status:
 - MCP server instructions no longer mention `remote(op="transfer")`, `remote(op="session")`, or the generic `remote` facade.
 - `docs/guides/remote-workers.md` now documents remote-session workflow instead of `remote(machine, op, args)`.
 - Generated references were rebuilt after removing `remote`; surface tests assert `remote` is absent while `remote_admin` remains.
-- Remote worker e2e now proves the connected worker flow using `remote_admin` plus first-class remote sessions and ordinary session-bound tools, and asserts `remote` is not exposed.
+- Remote worker e2e now proves the connected worker flow using `remote_admin` plus first-class remote sessions and ordinary session-bound tools, asserts `remote` is not exposed, and avoids requiring optional worker-side tools such as ripgrep to be installed on every CI runner.
 
 Validation run for Slice 8:
 
