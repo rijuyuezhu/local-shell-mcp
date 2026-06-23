@@ -1,4 +1,4 @@
-"""Typed structured outputs for high-level agent workflow tools."""
+"""Typed structured outputs for the high-level read facade."""
 
 from typing import Literal
 

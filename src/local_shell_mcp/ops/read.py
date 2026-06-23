@@ -1,7 +1,7 @@
-"""High-level agent workflow operations built on lower-level tool ops."""
+"""High-level read facade operations built on lower-level file ops."""
 
-from ..schemas.result_models.agent_surface import ReadOutput
 from ..schemas.result_models.files import ListFilesOutput
+from ..schemas.result_models.read import ReadOutput
 from ..tool_session.selectors import parse_read_target
 from .files import list_files_execute, read_file_execute
 

@@ -1,10 +1,10 @@
-"""Typed input annotations for high-level agent workflow tools."""
+"""Typed input annotations for the high-level read facade."""
 
 from typing import Annotated
 
 from pydantic import Field
 
-AgentReadPathArg = Annotated[
+ReadPathArg = Annotated[
     str,
     Field(
         description=(

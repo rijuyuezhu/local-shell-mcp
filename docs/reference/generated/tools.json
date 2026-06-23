@@ -110,42 +110,6 @@
       ]
     },
     {
-      "body": "Register high-level semantic tools designed for coding agents.",
-      "headers": [
-        "Tool",
-        "Parameters",
-        "Description"
-      ],
-      "heading": "Agent Surface",
-      "kind": "table",
-      "rows": [
-        [
-          {
-            "code": "read"
-          },
-          {
-            "items": [
-              {
-                "description": "File or directory path with optional oh-my-pi-style selector. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
-                "head": {
-                  "code": "path"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Optional agent grounding session id. Omit to use the process-local default session.",
-                "head": {
-                  "code": "session_id"
-                },
-                "note": "(string / null, optional)"
-              }
-            ]
-          },
-          "Read files and directories through one oh-my-pi-style path argument. Prefer this high-level read tool for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
-        ]
-      ]
-    },
-    {
       "body": "Register high-level bash facade tools.",
       "headers": [
         "Tool",
@@ -704,6 +668,42 @@
             ]
           },
           "Apply a unified diff using git apply."
+        ]
+      ]
+    },
+    {
+      "body": "Register the high-level read selector facade.",
+      "headers": [
+        "Tool",
+        "Parameters",
+        "Description"
+      ],
+      "heading": "Read",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "read"
+          },
+          {
+            "items": [
+              {
+                "description": "File or directory path with optional oh-my-pi-style selector. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
+                "head": {
+                  "code": "path"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Optional agent grounding session id. Omit to use the process-local default session.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string / null, optional)"
+              }
+            ]
+          },
+          "Read files and directories through one oh-my-pi-style path argument. Prefer this high-level read tool for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
