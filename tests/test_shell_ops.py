@@ -94,6 +94,11 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
 def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
@@ -104,9 +109,6 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setattr(
         fs_tools_module, "list_files_dispatch_execute", blocking_list_dir
     )
-
-    client = TestClient(build_http_app())
-    session = client.post("/tools/session_start", json={"workdir": "."}).json()
     response = client.post(
         "/tools/list_files",
         json={"session_id": session["session_id"], "path": "."},
