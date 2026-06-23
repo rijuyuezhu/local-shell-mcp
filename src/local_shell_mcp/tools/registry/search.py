@@ -1,7 +1,5 @@
 """Search and tree-view tool registry."""
 
-import asyncio
-
 from ...ops.search import (
     glob_search_execute,
     search_execute,
@@ -42,12 +40,12 @@ local_tool = SearchToolRegistry.get_tool_decorator()
 
 def _tree_view_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Return a compact directory tree for high-level project orientation before targeted file reads. Current max tree entries: {settings.max_tree_entries}."""
+    return f"""Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: {settings.max_tree_entries}."""
 
 
 def _glob_search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Find files by glob pattern when you know filename patterns and need matching paths, not file contents. Current max glob results: {settings.max_glob_results}."""
+    return f"""Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: {settings.max_glob_results}."""
 
 
 def _search_description(context: McpToolContext) -> str:
@@ -62,12 +60,13 @@ def _search_description(context: McpToolContext) -> str:
     mcp_scopes=("shell:read",),
 )
 async def tree_view(
+    session_id: SessionIdArg,
     cwd: TreeCwdArg = ".",
     depth: TreeDepthArg = 3,
     max_entries: TreeMaxEntriesArg = 500,
 ) -> TreeViewOutput:
-    """Return a compact directory tree rooted at cwd."""
-    return await tree_view_execute(cwd, depth, max_entries)
+    """Return a compact directory tree rooted at cwd inside a session."""
+    return await tree_view_execute(session_id, cwd, depth, max_entries)
 
 
 @local_tool(
@@ -77,14 +76,13 @@ async def tree_view(
     mcp_scopes=("shell:read",),
 )
 async def glob_search(
+    session_id: SessionIdArg,
     pattern: GlobPatternArg,
     cwd: SearchCwdArg = ".",
     max_results: GlobMaxResultsArg = 500,
 ) -> GlobSearchOutput:
-    """Find files by glob pattern."""
-    return await asyncio.to_thread(
-        glob_search_execute, pattern, cwd, max_results
-    )
+    """Find files by glob pattern inside a session."""
+    return await glob_search_execute(session_id, pattern, cwd, max_results)
 
 
 @local_tool(

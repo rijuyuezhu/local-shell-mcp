@@ -14,14 +14,14 @@ from ..schemas.result_models.search import (
     GrepSearchOutput,
     TreeViewOutput,
 )
-from ..tool_session.store import get_tool_session_store
+from ..tool_session.store import get_tool_session_store, resolve_session_path
 from .files import read_file_execute
 from .shell import run_shell
 from .utils.path import missing_path_context, relative_display, resolve_path
 from .utils.remote_session import call_remote_session_tool
 
 
-def glob_search_execute(
+def _glob_search_local(
     pattern: str, cwd: str = ".", max_results: int = 500
 ) -> GlobSearchOutput:
     """Find workspace paths matching a glob pattern without exceeding the configured result limit."""
@@ -36,6 +36,28 @@ def glob_search_execute(
             if len(results) >= limit:
                 break
     return GlobSearchOutput(paths=results)
+
+
+async def glob_search_execute(
+    session_id: str, pattern: str, cwd: str = ".", max_results: int = 500
+) -> GlobSearchOutput:
+    """Find paths matching a glob pattern inside an explicit agent/workspace session."""
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "glob_search",
+            {
+                "pattern": pattern,
+                "cwd": cwd,
+                "max_results": max_results,
+            },
+        )
+        return GlobSearchOutput.model_validate(data)
+    resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
+    return await asyncio.to_thread(
+        _glob_search_local, pattern, str(resolved_cwd), max_results
+    )
 
 
 def _search_match_path(cwd: str, path_text: str | None) -> str | None:
@@ -326,7 +348,22 @@ def tree_view_sync(
 
 
 async def tree_view_execute(
-    cwd: str = ".", depth: int = 3, max_entries: int = 500
+    session_id: str, cwd: str = ".", depth: int = 3, max_entries: int = 500
 ) -> TreeViewOutput:
-    """Expose tree generation through an async API used by MCP and HTTP handlers."""
-    return await asyncio.to_thread(tree_view_sync, cwd, depth, max_entries)
+    """Expose session-bound tree generation through an async API used by MCP and HTTP handlers."""
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "tree_view",
+            {
+                "cwd": cwd,
+                "depth": depth,
+                "max_entries": max_entries,
+            },
+        )
+        return TreeViewOutput.model_validate(data)
+    resolved_cwd = resolve_session_path(session, cwd)
+    return await asyncio.to_thread(
+        tree_view_sync, str(resolved_cwd), depth, max_entries
+    )

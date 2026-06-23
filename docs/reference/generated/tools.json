@@ -680,7 +680,7 @@
           {
             "items": [
               {
-                "description": "Directory path that narrows the search root. Relative paths resolve inside the configured workspace.",
+                "description": "Directory path that narrows the search root. Relative paths resolve inside the agent/workspace session workdir.",
                 "head": {
                   "code": "cwd"
                 },
@@ -699,10 +699,17 @@
                   "code": "pattern"
                 },
                 "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "Find files by glob pattern when you know filename patterns and need matching paths, not file contents. Current max glob results: 5000."
+          "Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: 5000."
         ],
         [
           {
@@ -763,7 +770,7 @@
           {
             "items": [
               {
-                "description": "Directory path to render as a compact tree. Relative paths resolve inside the configured workspace.",
+                "description": "Directory path to render as a compact tree. Relative paths resolve inside the agent/workspace session workdir.",
                 "head": {
                   "code": "cwd"
                 },
@@ -782,10 +789,17 @@
                   "code": "max_entries"
                 },
                 "note": "(integer, optional)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "Return a compact directory tree for high-level project orientation before targeted file reads. Current max tree entries: 5000."
+          "Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: 5000."
         ]
       ]
     },
@@ -2360,12 +2374,12 @@
       }
     },
     {
-      "description": "Find files by glob pattern when you know filename patterns and need matching paths, not file contents. Current max glob results: 5000.",
+      "description": "Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: 5000.",
       "inputSchema": {
         "properties": {
           "cwd": {
             "default": ".",
-            "description": "Directory path that narrows the search root. Relative paths resolve inside the configured workspace.",
+            "description": "Directory path that narrows the search root. Relative paths resolve inside the agent/workspace session workdir.",
             "title": "Cwd",
             "type": "string"
           },
@@ -2379,9 +2393,18 @@
             "description": "Glob expression matched against workspace-relative paths and file names.",
             "title": "Pattern",
             "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
         "required": [
+          "session_id",
           "pattern"
         ],
         "title": "glob_searchArguments",
@@ -5123,12 +5146,12 @@
       }
     },
     {
-      "description": "Return a compact directory tree for high-level project orientation before targeted file reads. Current max tree entries: 5000.",
+      "description": "Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: 5000.",
       "inputSchema": {
         "properties": {
           "cwd": {
             "default": ".",
-            "description": "Directory path to render as a compact tree. Relative paths resolve inside the configured workspace.",
+            "description": "Directory path to render as a compact tree. Relative paths resolve inside the agent/workspace session workdir.",
             "title": "Cwd",
             "type": "string"
           },
@@ -5143,8 +5166,19 @@
             "description": "Maximum number of tree entries to return before reporting truncation. Bounded by server configuration.",
             "title": "Max Entries",
             "type": "integer"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
+        "required": [
+          "session_id"
+        ],
         "title": "tree_viewArguments",
         "type": "object"
       },

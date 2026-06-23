@@ -7,13 +7,13 @@ from pydantic import Field
 TreeCwdArg = Annotated[
     str,
     Field(
-        description="Directory path to render as a compact tree. Relative paths resolve inside the configured workspace."
+        description="Directory path to render as a compact tree. Relative paths resolve inside the agent/workspace session workdir."
     ),
 ]
 SearchCwdArg = Annotated[
     str,
     Field(
-        description="Directory path that narrows the search root. Relative paths resolve inside the configured workspace."
+        description="Directory path that narrows the search root. Relative paths resolve inside the agent/workspace session workdir."
     ),
 ]
 TreeDepthArg = Annotated[

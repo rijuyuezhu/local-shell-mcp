@@ -25,7 +25,9 @@ async def test_tree_reports_existing_directory(tmp_path, monkeypatch):
     (tmp_path / "project" / "src").mkdir(parents=True)
     (tmp_path / "project" / "README.md").write_text("hello", encoding="utf-8")
 
-    result = await tree_view_execute("project")
+    session_id = _create_session()
+
+    result = await tree_view_execute(session_id, "project")
 
     assert result.exists is True
     assert result.is_directory is True
@@ -43,7 +45,9 @@ async def test_tree_clamps_entries_without_sorting_entire_tree(
     for idx in range(10):
         (tmp_path / f"file-{idx}.txt").write_text("x", encoding="utf-8")
 
-    result = await tree_view_execute(".", max_entries=100)
+    session_id = _create_session()
+
+    result = await tree_view_execute(session_id, ".", max_entries=100)
 
     assert result.count == 3
     assert len(result.entries) == 3
@@ -58,7 +62,9 @@ async def test_tree_returns_context_for_missing_directory(
     clear_settings_cache()
     (tmp_path / "actual").mkdir()
 
-    result = await tree_view_execute("missing/project")
+    session_id = _create_session()
+
+    result = await tree_view_execute(session_id, "missing/project")
 
     assert result.exists is False
     assert result.is_directory is False
@@ -86,16 +92,44 @@ async def test_grep_accepts_query_starting_with_dash(tmp_path, monkeypatch):
     assert result.matches[0].path.endswith("dash.txt")
 
 
-def test_glob_finds_matching_paths(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_glob_finds_matching_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("print('x')", encoding="utf-8")
     (tmp_path / "README.md").write_text("hello", encoding="utf-8")
 
-    result = glob_search_execute("*.py", cwd=".")
+    session_id = _create_session()
+
+    result = await glob_search_execute(session_id, "*.py", cwd=".")
 
     assert result.paths == ["src/app.py"]
+
+
+@pytest.mark.asyncio
+async def test_tree_and_glob_resolve_relative_to_session_workdir(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "outer.txt").write_text("outer", encoding="utf-8")
+    (tmp_path / "project" / "src").mkdir(parents=True)
+    (tmp_path / "project" / "src" / "app.py").write_text(
+        "print('x')", encoding="utf-8"
+    )
+
+    store = get_tool_session_store()
+    store.clear()
+    session_id = store.create_session(workdir="project").session_id
+
+    tree = await tree_view_execute(session_id, ".", depth=2)
+    glob = await glob_search_execute(session_id, "*.py", cwd=".")
+
+    assert tree.root == str(tmp_path / "project")
+    assert "src/" in tree.entries
+    assert "outer.txt" not in tree.entries
+    assert glob.paths == ["project/src/app.py"]
 
 
 @pytest.mark.asyncio

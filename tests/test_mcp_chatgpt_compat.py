@@ -131,6 +131,8 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     }
     assert "session_id" in tools["bash"].inputSchema["required"]
     assert "session_id" in tools["run_python_code"].inputSchema["required"]
+    assert "session_id" in tools["tree_view"].inputSchema["required"]
+    assert "session_id" in tools["glob_search"].inputSchema["required"]
     assert "session_id" in tools["job"].inputSchema["required"]
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
@@ -296,6 +298,7 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
     search_tool = tools["search"]
     tree_tool = tools["tree_view"]
+    glob_tool = tools["glob_search"]
 
     search_output_schema = _output_schema(search_tool)
     tree_output_schema = _output_schema(tree_tool)
@@ -313,6 +316,22 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
     assert (
         search_output_schema["properties"]["matches"]["description"]
         == "Returned ripgrep matches."
+    )
+    assert "session_id" in tree_tool.inputSchema["required"]
+    assert "session_id" in glob_tool.inputSchema["required"]
+    assert (
+        "session workdir"
+        in tree_tool.inputSchema["properties"]["cwd"]["description"]
+    )
+    assert (
+        "session workdir"
+        in glob_tool.inputSchema["properties"]["cwd"]["description"]
+    )
+    assert "session_id returned by session_start" in (
+        tree_tool.description or ""
+    )
+    assert "session_id returned by session_start" in (
+        glob_tool.description or ""
     )
     assert (
         tree_output_schema["properties"]["entries"]["description"]

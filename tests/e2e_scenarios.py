@@ -170,13 +170,14 @@ async def exercise_filesystem_and_search_tools(
     )
 
     tree_view_execute = await client.call_tool(
-        "tree_view", {"cwd": ".", "depth": 2}
+        "tree_view", {"session_id": session_id, "cwd": ".", "depth": 2}
     )
     assert tree_view_execute["exists"] is True
     assert any("notes/" in entry for entry in tree_view_execute["entries"])
 
     glob_result = await client.call_tool(
-        "glob_search", {"pattern": "**/*.txt", "cwd": "."}
+        "glob_search",
+        {"session_id": session_id, "pattern": "**/*.txt", "cwd": "."},
     )
     assert "notes/demo.txt" in glob_result["paths"]
 
