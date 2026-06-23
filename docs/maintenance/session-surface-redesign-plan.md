@@ -204,7 +204,7 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 Latest completed session/tool-surface status:
 
 - Slices 1-9 are complete and pushed on PR #79.
-- Latest confirmed code/docs cleanup head before this final source-of-truth update is `bb78677 docs: sync session tool references`; PR checks were green and `mergeStateStatus` was `CLEAN`.
+- Latest confirmed PR head is `33b3bbb review-update`; PR checks are green and `mergeStateStatus` is `CLEAN`.
 - The model-facing surface uses explicit agent/workspace sessions: `session_start(workdir=...)`, `session_change_cwd(session_id, workdir)`, and session-bound normal tools.
 - `environment_info` and generic `remote(machine, op, args)` are absent from the model-facing MCP/HTTP/generated surface.
 - Persistent shell handles are model-facing `shell_id`; agent/workspace sessions remain `session_id`.
@@ -217,7 +217,7 @@ Current cleanup/hardening task:
 
 Review follow-up hardening has been completed in small pushed commits, each with this source-of-truth document updated before commit and PR CI checked after push.
 
-Current review iteration requested by the user has been implemented locally:
+Current review iteration requested by the user has been implemented, pushed, and verified by PR CI:
 
 1. Shell execution implementation naming was merged: the public `bash` tool remains, but its operation, registry, input annotations, and result model now live in shell-named modules. The former parallel bash modules were deleted.
 2. Model-facing descriptions/docstrings were expanded for shell tools, read/search/path-discovery tools, connector search/fetch, and todo tools.
@@ -230,22 +230,31 @@ Current review iteration requested by the user has been implemented locally:
 3. P3 surface guard: replace the partial stateful-tool test with a deny-by-default check so every model-facing tool must require `session_id` unless it is in the explicit sessionless allowlist (`session_start`, `version`, connector-compatible `workspace_search`/`fetch`, persistent-shell companion tools, and `remote_admin`). Local focused validation passed: `test_model_facing_tools_require_session_id_by_default` and `test_mcp_local_and_remote_tool_surface_is_stable`.
 4. P4 stale public/config text: remove obsolete `read_many_files tool` references from settings descriptions and generated public config docs/examples, replacing them with internal multi-file read operation wording. Local focused validation passed: regenerated config examples/docs, confirmed no `read_many_files tool` matches remain in `.env.example`, `config.example.yaml`, generated configuration docs, or settings docstrings, ran ruff on settings, and `git diff --check`.
 5. Final review cleanup: after P1-P4, deeper validation found remaining model-facing path descriptions that incorrectly said session-bound relative paths resolve inside the configured workspace. These descriptions now say relative paths resolve inside the agent/workspace session workdir, generated tool references were refreshed, and validation passed: ruff on touched files, focused ChatGPT metadata/schema tests, generated tools/instructions cmp checks, config generation check, `git diff --check`, full `ruff check src tests`, and full `pyright`.
+6. Current review pass found a remote/local behavior mismatch: remote-session `bash(pty=true)` returned a worker-side `shell_id`, but the public persistent-shell companion tools are control-server-local and cannot manage that remote shell. Remote sessions now reject PTY mode and model-facing descriptions/MCP instructions say remote shell work is bounded or async only. Local focused validation passed: ruff on touched shell/instruction/test files, `tests/test_remote_facade.py`, and `tests/test_mcp_chatgpt_compat.py`.
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
 ## Cross-context continuation prompt
 
+Use this prompt when starting a fresh AI context for a new review pass:
+
 ```text
-继续 local-shell-mcp 的 stateful session tool surface 重构。项目根目录是 `/workspace/local-shell-mcp-tool-compare`，分支是 `feat/agent-tool-surface`，PR 是 https://github.com/rijuyuezhu/local-shell-mcp/pull/79 。不要碰 `/workspace/local-shell-mcp`，那里有用户自己的未提交改动。
+继续 review local-shell-mcp 的 stateful session tool surface PR。项目根目录是 `/workspace/local-shell-mcp-tool-compare`，分支是 `feat/agent-tool-surface`，PR 是 https://github.com/rijuyuezhu/local-shell-mcp/pull/79 。不要碰 `/workspace/local-shell-mcp`，那里有用户自己的未提交改动。
 
-唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`
+唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`。不要依赖旧聊天记录；先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态。
 
-请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：Slice 1-9 已实现；review follow-up hardening commits through `50dca61 p4-config-text` 已完成并通过 PR CI。P1 `run_python_code` 已改为 required `session_id` 的 bash-like Python wrapper，支持 cwd/timeout/max_output/env/async_/pty/name 并通过 remote session dispatch。P2 `tree_view` 和 `glob_search` 已改为 required `session_id`，相对路径按 session workdir 解析，并通过 remote session dispatch。P3 surface guard 已改为 deny-by-default：除 `session_start`、`version`、connector-compatible `workspace_search`/`fetch`、persistent-shell companion tools、`remote_admin` 外，model-facing tools 必须 required `session_id`。P4 stale public/config `read_many_files tool` 文案已清理。Final cleanup 还修正了 session-bound 参数描述中 “configured workspace” 的残留，改为 session workdir 语义，并刷新 generated refs。
+当前已知状态：Slice 1-9 已完成；explicit local/remote agent sessions、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、session-bound normal tools、remote session dispatch、persistent shell `shell_id`、删除 model-facing `environment_info` 和 generic `remote(...)` 都已实现。最近一轮 review follow-up 已推送在 `33b3bbb review-update`，PR CI 绿，`mergeStateStatus` 为 `CLEAN`。这轮包含：bash 实现/schema/registry 合并到 shell 命名模块；删除 public diff-application tool；`RemoteToolRegistry.register_mcp` 改回 declarative superclass path；增强 workspace_search/fetch、todo、shell/search/read 等工具 descriptions，并加入相近工具选择说明。
 
-下一步：提交并推送 final cleanup commit，确认该 head 的 PR CI，通过后做最终 review/handoff。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
+你的任务是做 review，而不是默认继续大改。请优先找真实问题：bug、回归、model-facing surface 不一致、schema/description 误导、remote/local 行为不一致、测试缺口、维护性问题、生成文档不同步、CI/packaging 风险。没有足够证据时不要硬找问题；可以明确说没有发现 actionable finding，并列出残余风险。
+
+Review 规则和项目风格：
+- 用中文沟通，客观、直接。
+- 保护用户工作区：不要触碰 `/workspace/local-shell-mcp`；在当前 worktree 编辑前先看状态和 diff；不要覆盖非自己改动。
+- model-facing tool descriptions、generated refs、MCP instructions 只能描述当前可用能力；不要写 future slice / planned / once enabled / roadmap 措辞，也不要提 oh-my-pi 或内部参考来源。
+- public tool surface 要清晰、少重复；功能相近工具的描述应说明何时选择哪个，但不要过度冗长。
+- 优先小而准的修复，跟随现有架构、命名和测试风格；避免引入兼容层或大抽象，除非有明确问题支撑。
+- 如果发现需要修的问题：先说明 finding 和依据，再做最小修改；同步更新这个唯一信源；运行相关 focused tests、generated refs check、ruff/pyright；commit、push，并检查 PR CI。
+- 如果只是 review 不改代码：给出 findings ordered by severity；若无 findings，说明检查范围和未覆盖风险。
 ```
-
-
-
 
 ## Validation checklist
 

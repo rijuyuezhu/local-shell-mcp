@@ -386,6 +386,11 @@ async def bash_execute(
     """Run a shell command via bounded, tracked-job, or PTY mode inside a session."""
     session = get_tool_session_store().touch_session(session_id)
     if session.target == "remote":
+        if pty:
+            raise ValueError(
+                "PTY shell mode is not available for remote sessions; "
+                "use bounded commands or async jobs instead"
+            )
         data = await call_remote_session_tool(
             session,
             "bash",

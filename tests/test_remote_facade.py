@@ -329,6 +329,21 @@ async def test_remote_session_dispatches_read_search_edit_bash_job(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_remote_session_rejects_pty_bash(monkeypatch):
+    store = get_tool_session_store()
+    store.clear()
+    control = store.create_session(
+        target="remote",
+        workdir="/remote/project",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+    )
+
+    with pytest.raises(ValueError, match="PTY shell mode"):
+        await shell_ops.bash_execute(control.session_id, "python -i", pty=True)
+
+
+@pytest.mark.asyncio
 async def test_remote_session_dispatch_surfaces_worker_error(monkeypatch):
     store = get_tool_session_store()
     store.clear()

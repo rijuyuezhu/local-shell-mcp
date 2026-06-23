@@ -73,7 +73,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         in mcp.instructions
     )
     assert "`bash(async_=true)` returns a `job_id`" in mcp.instructions
-    assert "`bash(pty=true)` returns a `shell_id`" in mcp.instructions
+    assert "`bash(pty=true)` is local-session only" in mcp.instructions
     assert "Do not use `shell_id` with `job`" in mcp.instructions
 
     transport_security = mcp.settings.transport_security
