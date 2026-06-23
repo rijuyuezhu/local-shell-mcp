@@ -22,12 +22,25 @@ class SnapshotRecord:
     """One displayed file snapshot recorded for stale-edit checks."""
 
     session_id: str
+    """Agent grounding session that owns this snapshot."""
+
     snapshot_id: str
+    """Opaque snapshot handle returned to the agent."""
+
     path: str
+    """Workspace-relative file path displayed to the agent."""
+
     file_sha256: str
+    """SHA-256 digest of the complete file when displayed."""
+
     total_lines: int
+    """Decoded line count at the time this snapshot was displayed."""
+
     seen_ranges: tuple[tuple[int, int], ...]
+    """Inclusive 1-based line ranges that were actually displayed."""
+
     created_at: float
+    """Unix timestamp when this snapshot was recorded."""
 
 
 class ToolSessionStore:
