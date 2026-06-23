@@ -121,6 +121,13 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
@@ -130,11 +137,6 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
 
     monkeypatch.setattr(
         fs_tools_module, "list_files_dispatch_execute", blocking_list_dir
-    )
-
-    mcp = build_mcp()
-    session = mcp_structured(
-        await mcp.call_tool("session_start", {"workdir": "."})
     )
     with pytest.raises(
         ToolError, match="list_files exceeded 0.01 second tool timeout"
