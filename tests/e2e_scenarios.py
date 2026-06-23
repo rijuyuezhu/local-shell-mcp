@@ -9,6 +9,7 @@ import pytest
 from tests.e2e_helpers import ToolClient, assert_required_tools
 
 CORE_TOOL_NAMES = {
+    "bash",
     "environment_info",
     "search",
     "workspace_search",

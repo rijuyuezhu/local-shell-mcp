@@ -1,11 +1,11 @@
 {
-  "count": 77,
+  "count": 78,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "77"
+          "code": "78"
         },
         "."
       ],
@@ -142,6 +142,98 @@
             ]
           },
           "Read a file or directory using an oh-my-pi-style path selector. Prefer this high-level read tool when gathering code context for edits. File output defaults to numbered_content with original line numbers plus snapshot metadata; append :raw only when exact unnumbered text is needed. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
+        ]
+      ]
+    },
+    {
+      "body": "Register high-level bash facade tools.",
+      "headers": [
+        "Tool",
+        "Parameters",
+        "Description"
+      ],
+      "heading": "Bash",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "bash"
+          },
+          {
+            "items": [
+              {
+                "description": "Whether to start the command as a tracked background job.",
+                "head": {
+                  "code": "async_"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Shell command string to execute.",
+                "head": {
+                  "code": "command"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Working directory for the command.",
+                "head": {
+                  "code": "cwd"
+                },
+                "note": "(string, optional)"
+              },
+              {
+                "description": "Optional environment variables to prefix onto the shell command.",
+                "head": {
+                  "code": "env"
+                },
+                "note": "(object / null, optional)"
+              },
+              {
+                "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
+                "head": {
+                  "code": "explanation"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
+                "head": {
+                  "code": "max_output_bytes"
+                },
+                "note": "(integer / null, optional)"
+              },
+              {
+                "description": "Optional name for the tracked job or persistent shell session.",
+                "head": {
+                  "code": "name"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Whether to start the command in a persistent PTY shell session.",
+                "head": {
+                  "code": "pty"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
+                "head": {
+                  "code": "purpose"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Optional timeout in seconds for bounded command mode.",
+                "head": {
+                  "code": "timeout_s"
+                },
+                "note": "(integer / null, optional)"
+              }
+            ]
+          },
+          "Run shell commands through one agent-oriented facade. By default bash runs a bounded non-interactive command like run_shell_command. Set async_=true for long-running non-interactive work that should be tracked by job_id. Set pty=true for interactive programs, REPLs, servers, or commands that need later input through persistent-shell tools. Current bounded command timeout default/cap: 10/60 seconds."
         ]
       ]
     },
@@ -2763,6 +2855,173 @@
           "patch_path"
         ],
         "title": "ApplyPatchOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Run shell commands through one agent-oriented facade. By default bash runs a bounded non-interactive command like run_shell_command. Set async_=true for long-running non-interactive work that should be tracked by job_id. Set pty=true for interactive programs, REPLs, servers, or commands that need later input through persistent-shell tools. Current bounded command timeout default/cap: 10/60 seconds.",
+      "inputSchema": {
+        "properties": {
+          "async_": {
+            "default": false,
+            "description": "Whether to start the command as a tracked background job.",
+            "title": "Async",
+            "type": "boolean"
+          },
+          "command": {
+            "description": "Shell command string to execute.",
+            "title": "Command",
+            "type": "string"
+          },
+          "cwd": {
+            "default": ".",
+            "description": "Working directory for the command.",
+            "title": "Cwd",
+            "type": "string"
+          },
+          "env": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional environment variables to prefix onto the shell command.",
+            "title": "Env"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
+            "title": "Explanation"
+          },
+          "max_output_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
+            "title": "Max Output Bytes"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional name for the tracked job or persistent shell session.",
+            "title": "Name"
+          },
+          "pty": {
+            "default": false,
+            "description": "Whether to start the command in a persistent PTY shell session.",
+            "title": "Pty",
+            "type": "boolean"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
+            "title": "Purpose"
+          },
+          "timeout_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional timeout in seconds for bounded command mode.",
+            "title": "Timeout S"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "title": "bashArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read",
+              "shell:execute"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "bash",
+      "outputSchema": {
+        "description": "Result returned by the high-level bash facade.",
+        "properties": {
+          "command": {
+            "description": "Shell command submitted by the caller.",
+            "title": "Command",
+            "type": "string"
+          },
+          "cwd": {
+            "description": "Working directory requested by the caller.",
+            "title": "Cwd",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Execution mode selected by the facade.",
+            "enum": [
+              "command",
+              "job",
+              "pty"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "description": "Structured result from run_shell_command, job_start, or start_persistent_shell.",
+            "title": "Result",
+            "type": "object"
+          }
+        },
+        "required": [
+          "mode",
+          "command",
+          "cwd",
+          "result"
+        ],
+        "title": "BashOutput",
         "type": "object"
       }
     },

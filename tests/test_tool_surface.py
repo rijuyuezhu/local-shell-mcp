@@ -30,6 +30,7 @@ from local_shell_mcp.tools.local_invocations import (
 from tests.helpers import mcp_text
 
 LOCAL_MCP_TOOL_NAMES = {
+    "bash",
     "read",
     "search",
     "workspace_search",

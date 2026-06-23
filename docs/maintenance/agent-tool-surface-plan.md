@@ -85,10 +85,10 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 
 ### Slice 6: bash facade
 
-- [ ] Add `bash(command, cwd='.', timeout_s=None, env=None, async_=False, pty=False, name=None)`.
-- [ ] Route bounded commands to `run_shell_command`.
-- [ ] Route async jobs to `job_start`.
-- [ ] Route PTY/interactive cases to persistent shell tools.
+- [x] Add `bash(command, cwd='.', timeout_s=None, env=None, async_=False, pty=False, name=None)`.
+- [x] Route bounded commands to `run_shell_command`.
+- [x] Route async jobs to `job_start`.
+- [x] Route PTY/interactive cases to persistent shell tools.
 
 ### Slice 7: descriptions, docs, and generated references
 
