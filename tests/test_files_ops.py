@@ -234,3 +234,18 @@ def test_read_text_handles_truncated_utf8_sequence(tmp_path, monkeypatch):
     assert result.truncated is True
     assert result.bytes_read == 4
     assert result.content == "你"
+
+
+def test_parse_read_target_supports_line_and_raw_selectors():
+    from local_shell_mcp.tool_session.selectors import parse_read_target
+
+    assert parse_read_target("src/foo.py:50-80").path == "src/foo.py"
+    ranged = parse_read_target("src/foo.py:50+20:raw")
+    assert ranged.path == "src/foo.py"
+    assert ranged.start_line == 50
+    assert ranged.end_line == 69
+    assert ranged.raw is True
+    raw_first = parse_read_target("src/foo.py:raw:10-12")
+    assert raw_first.start_line == 10
+    assert raw_first.end_line == 12
+    assert raw_first.raw is True

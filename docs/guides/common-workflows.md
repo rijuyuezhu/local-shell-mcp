@@ -22,7 +22,7 @@ Use local-shell-mcp to propose a minimal implementation plan. Do not edit files 
 Use local-shell-mcp to implement this change. Keep the diff focused, run the relevant tests, and summarize the result with git diff highlights.
 ```
 
-The model will usually combine filesystem tools, `grep_search`, `read_file`, `edit_file` or `apply_patch`, and shell commands. `read_file` returns both raw `content` and `numbered_content`; prefer the numbered form when discussing or planning precise edits because it preserves original line numbers and snapshot metadata.
+The model will usually combine filesystem tools, `grep_search`, `read_file`, `edit_file` or `apply_patch`, and shell commands. Prefer the high-level `read` tool for file and directory context because it supports selectors such as `src/foo.py:50-80`, `src/foo.py:50+20`, and `src/foo.py:raw`. File reads return both raw `content` and `numbered_content`; prefer the numbered form when discussing or planning precise edits because it preserves original line numbers and snapshot metadata.
 
 ## Run tests and checks
 

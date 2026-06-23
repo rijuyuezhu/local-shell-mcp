@@ -1,11 +1,11 @@
 {
-  "count": 73,
+  "count": 74,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "73"
+          "code": "74"
         },
         "."
       ],
@@ -106,6 +106,42 @@
           },
           "none",
           "List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them."
+        ]
+      ]
+    },
+    {
+      "body": "Register high-level semantic tools designed for coding agents.",
+      "headers": [
+        "Tool",
+        "Parameters",
+        "Description"
+      ],
+      "heading": "Agent Surface",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "read"
+          },
+          {
+            "items": [
+              {
+                "description": "Path or path selector to read. Supported selectors include file.py:50, file.py:50-80, file.py:50+20, file.py:raw, and file.py:50-80:raw.",
+                "head": {
+                  "code": "path"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Optional agent grounding session id. Omit to use the process-local default session.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string / null, optional)"
+              }
+            ]
+          },
+          "Read a file or directory using an oh-my-pi-style path selector. Prefer this high-level read tool when gathering code context for edits. File output defaults to numbered_content with original line numbers plus snapshot metadata; append :raw only when exact unnumbered text is needed. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
@@ -4847,6 +4883,393 @@
           "replacements"
         ],
         "title": "MultiEditFileOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Read a file or directory using an oh-my-pi-style path selector. Prefer this high-level read tool when gathering code context for edits. File output defaults to numbered_content with original line numbers plus snapshot metadata; append :raw only when exact unnumbered text is needed. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
+      "inputSchema": {
+        "properties": {
+          "path": {
+            "description": "Path or path selector to read. Supported selectors include file.py:50, file.py:50-80, file.py:50+20, file.py:raw, and file.py:50-80:raw.",
+            "title": "Path",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional agent grounding session id. Omit to use the process-local default session.",
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "readArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "read",
+      "outputSchema": {
+        "$defs": {
+          "EntryInfo": {
+            "description": "One file-system entry in a directory listing.",
+            "properties": {
+              "modified": {
+                "description": "Last modification time as a Unix timestamp.",
+                "title": "Modified",
+                "type": "number"
+              },
+              "path": {
+                "description": "Workspace-relative entry path.",
+                "title": "Path",
+                "type": "string"
+              },
+              "size": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "File size in bytes, or null for directories and other entries.",
+                "title": "Size"
+              },
+              "type": {
+                "description": "Entry type: file, dir, or other.",
+                "title": "Type",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "type",
+              "modified"
+            ],
+            "title": "EntryInfo",
+            "type": "object"
+          },
+          "LineRange": {
+            "description": "Inclusive 1-based line range shown to the agent.",
+            "properties": {
+              "end": {
+                "description": "Final visible 1-based line number.",
+                "title": "End",
+                "type": "integer"
+              },
+              "start": {
+                "description": "First visible 1-based line number.",
+                "title": "Start",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "title": "LineRange",
+            "type": "object"
+          },
+          "ListFilesOutput": {
+            "description": "Directory listing result.",
+            "properties": {
+              "count": {
+                "description": "Number of entries returned in entries.",
+                "title": "Count",
+                "type": "integer"
+              },
+              "entries": {
+                "description": "Returned directory entries.",
+                "items": {
+                  "$ref": "#/$defs/EntryInfo"
+                },
+                "title": "Entries",
+                "type": "array"
+              },
+              "is_truncated": {
+                "description": "Whether more entries existed beyond the configured or requested limit.",
+                "title": "Is Truncated",
+                "type": "boolean"
+              },
+              "limit_count": {
+                "description": "Maximum number of entries limited by the request or configuration.",
+                "title": "Limit Count",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "limit_count",
+              "count",
+              "is_truncated",
+              "entries"
+            ],
+            "title": "ListFilesOutput",
+            "type": "object"
+          },
+          "ReadFileOutput": {
+            "description": "UTF-8 text file content plus edit-grounding metadata.",
+            "properties": {
+              "bytes": {
+                "description": "Total file size in bytes.",
+                "title": "Bytes",
+                "type": "integer"
+              },
+              "bytes_read": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Number of bytes read into the text response, when applicable.",
+                "title": "Bytes Read"
+              },
+              "content": {
+                "description": "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing.",
+                "title": "Content",
+                "type": "string"
+              },
+              "end_line": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Final original 1-based line number returned in lines, or null when no lines were returned.",
+                "title": "End Line"
+              },
+              "file_sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "SHA-256 digest of the complete file at the time it was read.",
+                "title": "File Sha256"
+              },
+              "line_count": {
+                "default": 0,
+                "description": "Number of decoded text lines returned in lines and numbered_content.",
+                "title": "Line Count",
+                "type": "integer"
+              },
+              "lines": {
+                "description": "Returned lines with original 1-based line numbers for precise follow-up edits.",
+                "items": {
+                  "$ref": "#/$defs/ReadLine"
+                },
+                "title": "Lines",
+                "type": "array"
+              },
+              "numbered_content": {
+                "default": "",
+                "description": "Model-facing content formatted as 'line|text' so later edits can refer to original line numbers.",
+                "title": "Numbered Content",
+                "type": "string"
+              },
+              "path": {
+                "description": "Workspace-relative file path that was read.",
+                "title": "Path",
+                "type": "string"
+              },
+              "seen_ranges": {
+                "description": "Inclusive original line ranges that were actually shown and are eligible for grounded line edits.",
+                "items": {
+                  "$ref": "#/$defs/LineRange"
+                },
+                "title": "Seen Ranges",
+                "type": "array"
+              },
+              "session_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Agent grounding session that recorded this read; defaults to the process-local session when omitted.",
+                "title": "Session Id"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Opaque handle for this displayed file snapshot, used by line-based edit tools to reject stale edits.",
+                "title": "Snapshot Id"
+              },
+              "start_line": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "First original 1-based line number returned in lines, or null when no lines were returned.",
+                "title": "Start Line"
+              },
+              "total_lines": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Total decoded text line count before optional line-range selection.",
+                "title": "Total Lines"
+              },
+              "truncated": {
+                "default": false,
+                "description": "Whether text content was truncated to fit the read limit.",
+                "title": "Truncated",
+                "type": "boolean"
+              },
+              "truncated_bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Number of file bytes omitted due to the read limit, when applicable.",
+                "title": "Truncated Bytes"
+              }
+            },
+            "required": [
+              "path",
+              "bytes",
+              "content"
+            ],
+            "title": "ReadFileOutput",
+            "type": "object"
+          },
+          "ReadLine": {
+            "description": "One decoded line with its original file line number.",
+            "properties": {
+              "line": {
+                "description": "Original 1-based line number in the file.",
+                "title": "Line",
+                "type": "integer"
+              },
+              "text": {
+                "description": "Line text without its trailing newline.",
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "line",
+              "text"
+            ],
+            "title": "ReadLine",
+            "type": "object"
+          }
+        },
+        "description": "High-level read facade result for files and directories.",
+        "properties": {
+          "content": {
+            "description": "Model-facing content. File reads use numbered_content unless raw is true; directories use a compact listing.",
+            "title": "Content",
+            "type": "string"
+          },
+          "directory": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ListFilesOutput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured directory listing data when kind is directory."
+          },
+          "file": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ReadFileOutput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured file read data when kind is file."
+          },
+          "kind": {
+            "description": "Type of target that was read.",
+            "enum": [
+              "file",
+              "directory"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "description": "Workspace-relative target path.",
+            "title": "Path",
+            "type": "string"
+          },
+          "raw": {
+            "default": false,
+            "description": "Whether content omits model-facing line-number prefixes.",
+            "title": "Raw",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "path",
+          "content"
+        ],
+        "title": "ReadOutput",
         "type": "object"
       }
     },

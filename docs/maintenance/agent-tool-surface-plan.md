@@ -57,10 +57,10 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 
 ### Slice 2: path selectors and unified `read`
 
-- [ ] Add a parser for `path:selector` forms such as `src/foo.py:50-100`, `src/foo.py:50+20`, and `src/foo.py:raw`.
-- [ ] Add a high-level `read(path, session_id=None)` facade.
-- [ ] Support directory listing through `read`.
-- [ ] Keep `read_file` as the lower-level compatibility path.
+- [x] Add a parser for `path:selector` forms such as `src/foo.py:50-100`, `src/foo.py:50+20`, and `src/foo.py:raw`.
+- [x] Add a high-level `read(path, session_id=None)` facade.
+- [x] Support directory listing through `read`.
+- [x] Keep `read_file` as the lower-level compatibility path.
 
 ### Slice 3: grounded line editing
 
