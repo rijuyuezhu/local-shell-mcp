@@ -331,43 +331,52 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 == "first-class-remote-shell"
             )
 
-            first_class_job = await client.call_tool(
+            tmux_check = await client.call_tool(
                 "bash",
                 {
                     "session_id": first_class_session_id,
-                    "command": (
-                        "python -c 'import time; "
-                        'print("first-class-job", flush=True); '
-                        "time.sleep(3)'"
-                    ),
-                    "async_": True,
-                    "name": "first-class-remote-job",
+                    "command": "command -v tmux",
+                    "timeout_s": 5,
                 },
             )
-            first_class_job_id = first_class_job["result"]["job_id"]
-            assert (
-                first_class_job["result"]["session_id"]
-                == first_class_session_id
-            )
-            first_class_jobs = await client.call_tool(
-                "job",
-                {
-                    "session_id": first_class_session_id,
-                    "list_jobs": True,
-                },
-            )
-            assert any(
-                item["job_id"] == first_class_job_id
-                and item["session_id"] == first_class_session_id
-                for item in first_class_jobs["jobs"]
-            )
-            await client.call_tool(
-                "job",
-                {
-                    "session_id": first_class_session_id,
-                    "cancel": [first_class_job_id],
-                },
-            )
+            if tmux_check["result"]["ok"]:
+                first_class_job = await client.call_tool(
+                    "bash",
+                    {
+                        "session_id": first_class_session_id,
+                        "command": (
+                            "python -c 'import time; "
+                            'print("first-class-job", flush=True); '
+                            "time.sleep(3)'"
+                        ),
+                        "async_": True,
+                        "name": "first-class-remote-job",
+                    },
+                )
+                first_class_job_id = first_class_job["result"]["job_id"]
+                assert (
+                    first_class_job["result"]["session_id"]
+                    == first_class_session_id
+                )
+                first_class_jobs = await client.call_tool(
+                    "job",
+                    {
+                        "session_id": first_class_session_id,
+                        "list_jobs": True,
+                    },
+                )
+                assert any(
+                    item["job_id"] == first_class_job_id
+                    and item["session_id"] == first_class_session_id
+                    for item in first_class_jobs["jobs"]
+                )
+                await client.call_tool(
+                    "job",
+                    {
+                        "session_id": first_class_session_id,
+                        "cancel": [first_class_job_id],
+                    },
+                )
 
             delete_result = await client.call_tool(
                 "bash",
