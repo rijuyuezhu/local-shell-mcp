@@ -26,14 +26,7 @@ pytestmark = pytest.mark.integration
 
 REMOTE_TOOL_NAMES = {
     "remote",
-    "remote_invite",
-    "remote_list_machines",
-    "remote_revoke_machine",
-    "remote_rename_machine",
-    "remote_pull_file",
-    "remote_push_file",
-    "remote_pull_dir",
-    "remote_push_dir",
+    "remote_admin",
 }
 
 
@@ -171,7 +164,10 @@ async def wait_for_machine(
                 f"worker exited early with code {process.returncode}\n"
                 f"stdout:\n{stdout}\nstderr:\n{stderr}"
             )
-        inventory = await client.call_tool("remote_list_machines")
+        inventory_result = await client.call_tool(
+            "remote_admin", {"action": "list", "args": {}}
+        )
+        inventory = inventory_result["data"]
         for row in inventory.get("machines", []):
             if row.get("name") == machine and row.get("status") == "online":
                 return row
@@ -198,10 +194,18 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         await assert_required_tools(client, REMOTE_TOOL_NAMES)
 
         machine = "e2e-remote"
-        invite = await client.call_tool(
-            "remote_invite",
-            {"name": machine, "workdir": str(remote_workspace), "ttl_s": 120},
+        invite_result = await client.call_tool(
+            "remote_admin",
+            {
+                "action": "invite",
+                "args": {
+                    "name": machine,
+                    "workdir": str(remote_workspace),
+                    "ttl_s": 120,
+                },
+            },
         )
+        invite = invite_result["data"]
         assert invite["join_url"] == f"{base_url}/join"
         assert "curl -fsSL" in invite["command"]
 
@@ -330,30 +334,40 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             (control_workspace / "local.bin").write_bytes(
                 b"local-to-remote-\x00-payload"
             )
-            push_file = await client.call_tool(
-                "remote_push_file",
+            push_file_result = await client.call_tool(
+                "remote",
                 {
-                    "local_path": "local.bin",
                     "machine": machine,
-                    "remote_path": "remote/pushed.bin",
-                    "chunk_size": 5,
+                    "op": "transfer",
+                    "args": {
+                        "action": "push_file",
+                        "local_path": "local.bin",
+                        "remote_path": "remote/pushed.bin",
+                        "chunk_size": 5,
+                    },
                 },
             )
+            push_file = push_file_result["data"]
             assert push_file["bytes"] == len(b"local-to-remote-\x00-payload")
             assert push_file["chunks"] > 1
             assert (
                 remote_workspace / "remote" / "pushed.bin"
             ).read_bytes() == (b"local-to-remote-\x00-payload")
 
-            pull_file = await client.call_tool(
-                "remote_pull_file",
+            pull_file_result = await client.call_tool(
+                "remote",
                 {
                     "machine": machine,
-                    "remote_path": "remote/pushed.bin",
-                    "local_path": "pulled.bin",
-                    "chunk_size": 4,
+                    "op": "transfer",
+                    "args": {
+                        "action": "pull_file",
+                        "remote_path": "remote/pushed.bin",
+                        "local_path": "pulled.bin",
+                        "chunk_size": 4,
+                    },
                 },
             )
+            pull_file = pull_file_result["data"]
             assert pull_file["chunks"] > 1
             assert (control_workspace / "pulled.bin").read_bytes() == (
                 b"local-to-remote-\x00-payload"
@@ -365,15 +379,20 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             (
                 control_workspace / "tree_view_execute" / "nested" / "file.txt"
             ).write_text("directory payload", encoding="utf-8")
-            push_dir = await client.call_tool(
-                "remote_push_dir",
+            push_dir_result = await client.call_tool(
+                "remote",
                 {
-                    "local_path": "tree_view_execute",
                     "machine": machine,
-                    "remote_path": "remote/tree_view_execute-copy",
-                    "chunk_size": 128,
+                    "op": "transfer",
+                    "args": {
+                        "action": "push_dir",
+                        "local_path": "tree_view_execute",
+                        "remote_path": "remote/tree_view_execute-copy",
+                        "chunk_size": 128,
+                    },
                 },
             )
+            push_dir = push_dir_result["data"]
             assert push_dir["entries"] >= 1
             assert (
                 remote_workspace
@@ -383,15 +402,20 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 / "file.txt"
             ).read_text(encoding="utf-8") == "directory payload"
 
-            pull_dir = await client.call_tool(
-                "remote_pull_dir",
+            pull_dir_result = await client.call_tool(
+                "remote",
                 {
                     "machine": machine,
-                    "remote_path": "remote/tree_view_execute-copy",
-                    "local_path": "tree_view_execute-pulled",
-                    "chunk_size": 128,
+                    "op": "transfer",
+                    "args": {
+                        "action": "pull_dir",
+                        "remote_path": "remote/tree_view_execute-copy",
+                        "local_path": "tree_view_execute-pulled",
+                        "chunk_size": 128,
+                    },
                 },
             )
+            pull_dir = pull_dir_result["data"]
             assert pull_dir["entries"] >= 1
             assert (
                 control_workspace
@@ -411,8 +435,12 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert not (remote_workspace / "remote" / "demo.txt").exists()
 
             revoked = await client.call_tool(
-                "remote_revoke_machine", {"machine": machine}
+                "remote_admin",
+                {"action": "revoke", "args": {"machine": machine}},
             )
-            assert revoked == {"machine": machine, "revoked": True}
+            assert revoked == {
+                "action": "revoke",
+                "data": {"machine": machine, "revoked": True},
+            }
         finally:
             terminate_process(worker)

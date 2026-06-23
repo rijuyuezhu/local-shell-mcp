@@ -17,7 +17,7 @@ Use local-shell-mcp. In /workspace/FrameDiff, create a new branch ai/example-cha
 ## One-command remote worker onboarding
 
 ```text
-Use local-shell-mcp. Create a remote worker invite named npu-4card with workdir /home/cyh/FrameDiff. Show me only the pasteable join command and then, after I say it has run, call remote_list_machines to confirm it is online.
+Use local-shell-mcp. Create a remote worker invite named npu-4card with workdir /home/cyh/FrameDiff using `remote_admin(action="invite")`. Show me only the pasteable join command and then, after I say it has run, call `remote_admin(action="list", args={})` to confirm it is online.
 ```
 
 ## Remote machine diagnostics

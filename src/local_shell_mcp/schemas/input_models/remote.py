@@ -7,19 +7,19 @@ from pydantic import Field
 RemoteMachineArg = Annotated[
     str,
     Field(
-        description="Exact remote worker machine name returned by remote_list_machines."
+        description='Exact remote worker machine name returned by remote_admin(action="list").'
     ),
 ]
 RemoteSourceMachineArg = Annotated[
     str,
     Field(
-        description="Exact source remote worker machine name returned by remote_list_machines."
+        description='Exact source remote worker machine name returned by remote_admin(action="list").'
     ),
 ]
 RemoteDestinationMachineArg = Annotated[
     str,
     Field(
-        description="Exact destination remote worker machine name returned by remote_list_machines."
+        description='Exact destination remote worker machine name returned by remote_admin(action="list").'
     ),
 ]
 RemoteNewNameArg = Annotated[
@@ -210,14 +210,32 @@ RemoteFacadeOpArg = Annotated[
         "apply_patch",
         "delete",
         "job",
+        "session",
+        "transfer",
     ],
     Field(
-        description="High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or the job companion operation."
+        description=(
+            "High-level semantic remote operation to run on the selected "
+            "worker, such as read, search, edit_lines, bash, job, session, "
+            "or transfer."
+        )
     ),
 ]
 RemoteFacadeArgsArg = Annotated[
     dict[str, Any],
     Field(
-        description="Operation-specific arguments forwarded to the remote worker. Do not include machine; keep edit operations grounded by remote read/search snapshots."
+        description="Operation-specific arguments forwarded to the remote worker or remote facade. Do not include machine; keep edit operations grounded by remote read/search snapshots."
+    ),
+]
+RemoteAdminActionArg = Annotated[
+    Literal["invite", "list", "revoke", "rename"],
+    Field(
+        description="Remote control-plane action: invite, list, revoke, or rename workers."
+    ),
+]
+RemoteAdminArgsArg = Annotated[
+    dict[str, Any],
+    Field(
+        description="Action-specific control-plane arguments. invite accepts name, workdir, ttl_s; list accepts {}; revoke accepts machine; rename accepts machine and new_name."
     ),
 ]

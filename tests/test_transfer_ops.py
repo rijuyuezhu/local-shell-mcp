@@ -123,9 +123,11 @@ def test_unpack_rejects_archive_path_traversal(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_mcp_exposes_remote_transfer_tools(tmp_path, monkeypatch):
+async def test_mcp_keeps_remote_transfer_behind_facade(tmp_path, monkeypatch):
     _workspace(tmp_path, monkeypatch)
-    names = {tool.name for tool in await build_mcp().list_tools()}
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+
+    assert "remote" in tools
     assert {
         "remote_copy_file",
         "remote_copy_dir",
@@ -133,4 +135,5 @@ async def test_mcp_exposes_remote_transfer_tools(tmp_path, monkeypatch):
         "remote_push_file",
         "remote_pull_dir",
         "remote_push_dir",
-    } <= names
+    }.isdisjoint(tools)
+    assert "transfer" in tools["remote"].inputSchema["properties"]["op"]["enum"]

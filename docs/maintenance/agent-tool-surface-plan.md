@@ -39,7 +39,7 @@ Important files:
 - `search`: content search whose snippets can ground later edits.
 - `edit_lines` / later `edit`: line-range editing with snapshot and visible-range checks.
 - `bash`: one facade over bounded commands, tracked jobs, and PTY/persistent shells.
-- `remote`: one facade over normal remote workspace operations, keeping invite/list/revoke/transfer as separate control-plane tools.
+- `remote`: one facade over normal remote workspace operations, including session and transfer sub-ops; `remote_admin` handles invite/list/revoke/rename control-plane actions.
 
 Existing low-level tools can remain during migration, but MCP instructions should guide agents toward the semantic tools.
 
@@ -80,7 +80,7 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 
 - [x] Add a high-level `remote(machine, op, args, session_id=None)` facade.
 - [x] Route normal remote workspace operations through the facade.
-- [x] Keep remote invite/list/revoke/rename and transfer tools as explicit control-plane operations.
+- [x] Keep remote invite/list/revoke/rename and transfer tools as explicit control-plane operations. Superseded by Slice 9, which collapses these into `remote_admin` and `remote(op="transfer")` for the MCP-facing surface.
 - [x] Update MCP instructions so agents prefer `remote(op=...)` over choosing among many `remote_*` duplicates.
 
 ### Slice 6: bash facade
@@ -113,10 +113,10 @@ Goal: once the oh-my-pi-style semantic tools are documented and generated refere
 
 Goal: reduce remote-specific MCP tools further so models use `remote(machine, op, args)` by default instead of hallucinating among many `remote_*` variants.
 
-- [ ] Move remaining remote persistent-session companion actions behind `remote(op="...")` or a smaller remote companion facade where feasible.
-- [ ] Consolidate remote transfer helpers into a smaller transfer surface or remote sub-ops instead of exposing many `remote_copy_*` / `remote_pull_*` / `remote_push_*` tools.
-- [ ] Keep only minimal remote control-plane affordances needed to discover/connect/revoke workers, or collapse them into a small admin facade if the ergonomics are better.
-- [ ] Update tests, docs, generated references, PR description, and CI.
+- [x] Move remaining remote persistent-session companion actions behind `remote(op="session")`.
+- [x] Consolidate remote transfer helpers behind `remote(op="transfer")` instead of exposing many `remote_copy_*` / `remote_pull_*` / `remote_push_*` MCP tools.
+- [x] Collapse remote control-plane affordances into `remote_admin(action, args)` for invite/list/revoke/rename.
+- [x] Update tests, docs, generated references, PR description, and CI.
 
 ## Validation checklist per slice
 

@@ -77,20 +77,7 @@ def test_normalize_description_cleans_docstring_text():
 
 REMOTE_MCP_TOOL_NAMES = {
     "remote",
-    "remote_invite",
-    "remote_list_machines",
-    "remote_revoke_machine",
-    "remote_rename_machine",
-    "send_remote_persistent_shell_input",
-    "read_remote_persistent_shell_output",
-    "kill_remote_persistent_shell",
-    "list_remote_persistent_shells",
-    "remote_copy_file",
-    "remote_copy_dir",
-    "remote_pull_file",
-    "remote_push_file",
-    "remote_pull_dir",
-    "remote_push_dir",
+    "remote_admin",
 }
 
 

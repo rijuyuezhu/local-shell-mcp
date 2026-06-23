@@ -25,26 +25,10 @@ class RemoteWorkerToolSpec:
 
 
 REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
-    RemoteWorkerToolSpec(
-        "send_remote_persistent_shell_input",
-        "send_persistent_shell_input",
-        "/tools/send_remote_persistent_shell_input",
-    ),
-    RemoteWorkerToolSpec(
-        "read_remote_persistent_shell_output",
-        "read_persistent_shell_output",
-        "/tools/read_remote_persistent_shell_output",
-    ),
-    RemoteWorkerToolSpec(
-        "kill_remote_persistent_shell",
-        "kill_persistent_shell",
-        "/tools/kill_remote_persistent_shell",
-    ),
-    RemoteWorkerToolSpec(
-        "list_remote_persistent_shells",
-        "list_persistent_shells",
-        "/tools/list_remote_persistent_shells",
-    ),
+    RemoteWorkerToolSpec("", "send_persistent_shell_input", None),
+    RemoteWorkerToolSpec("", "read_persistent_shell_output", None),
+    RemoteWorkerToolSpec("", "kill_persistent_shell", None),
+    RemoteWorkerToolSpec("", "list_persistent_shells", None),
     RemoteWorkerToolSpec("", "environment_info", None),
     RemoteWorkerToolSpec(
         "", "run_python_code", None, timeout_arg="timeout_s", default_timeout=60

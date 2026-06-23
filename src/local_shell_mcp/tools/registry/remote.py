@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ...config.settings import Settings
 from ...ops.remote import (
+    remote_admin_execute,
     remote_copy_dir_execute,
     remote_copy_file_execute,
     remote_execute,
@@ -23,6 +24,8 @@ from ...ops.remote import (
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
 from ...schemas.input_models.remote import (
     LocalPathArg,
+    RemoteAdminActionArg,
+    RemoteAdminArgsArg,
     RemoteChunkSizeArg,
     RemoteDestinationMachineArg,
     RemoteDestinationPathArg,
@@ -39,6 +42,7 @@ from ...schemas.input_models.remote import (
     RemoteWorkdirArg,
 )
 from ...schemas.result_models.remote import (
+    RemoteAdminOutput,
     RemoteCopyDirOutput,
     RemoteCopyFileOutput,
     RemoteFacadeOutput,
@@ -64,16 +68,26 @@ class RemoteToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
     def http_routes(self) -> Iterable[HttpToolRoute]:
-        """Return remote REST proxy routes when remote tools are enabled."""
+        """Return the compact public remote REST surface when enabled."""
         if not _remote_tools_enabled(self._settings()):
             return ()
-        return (*super().http_routes(), *REMOTE_WORKER_HTTP_ROUTES)
+        public_routes = tuple(
+            route
+            for route in super().http_routes()
+            if route.tool_name in {"remote", "remote_admin"}
+        )
+        return (*public_routes, *REMOTE_WORKER_HTTP_ROUTES)
 
     def http_handlers(self) -> Mapping[str, ToolHandler]:
-        """Return remote HTTP proxy handlers when remote tools are enabled."""
+        """Return compact public remote HTTP handlers when enabled."""
         if not _remote_tools_enabled(self._settings()):
             return {}
-        return {**super().http_handlers(), **REMOTE_WORKER_HTTP_HANDLERS}
+        public_handlers = {
+            name: handler
+            for name, handler in super().http_handlers().items()
+            if name in {"remote", "remote_admin"}
+        }
+        return {**public_handlers, **REMOTE_WORKER_HTTP_HANDLERS}
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         """Register remote MCP proxy tools when remote tools are enabled."""
@@ -91,8 +105,17 @@ async def remote(
     op: RemoteFacadeOpArg,
     args: RemoteFacadeArgsArg,
 ) -> RemoteFacadeOutput:
-    """Run a semantic operation on a selected remote worker. Prefer this facade for normal remote read, search, edit_lines, bash/python, jobs, and workspace operations. Use remote_list_machines for discovery, invite/revoke/rename for control-plane work, and transfer tools for data movement. Keep remote edits grounded by remote read/search snapshots just like local edits."""
+    """Run a semantic operation on a selected remote worker. Prefer this facade for remote read, search, edit_lines, bash/python, jobs, persistent sessions, transfers, and workspace operations. Use remote_admin for invite/list/revoke/rename control-plane work. Keep remote edits grounded by remote read/search snapshots just like local edits."""
     return await remote_execute(machine, op, args)
+
+
+@local_tool(http_method="POST", http_path="/tools/remote_admin")
+async def remote_admin(
+    action: RemoteAdminActionArg,
+    args: RemoteAdminArgsArg,
+) -> RemoteAdminOutput:
+    """Run a compact remote control-plane action. Use action="list" to discover connected workers, action="invite" to create a join command, action="revoke" to remove a worker, and action="rename" to give a worker a stable name."""
+    return await remote_admin_execute(action, args)
 
 
 @local_tool(http_method="POST", http_path="/tools/remote_invite")

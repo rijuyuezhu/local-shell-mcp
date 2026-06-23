@@ -108,7 +108,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "shell:read",
         "file:share",
     ]
-    assert tool_oauth_scopes("remote_list_machines") == ["remote:use"]
+    assert tool_oauth_scopes("remote_admin") == ["remote:use"]
     assert tool_oauth_scopes("remote") == [
         "remote:use",
         "shell:read",
