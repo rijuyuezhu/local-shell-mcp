@@ -33,7 +33,7 @@ async def test_connector_tools_use_custom_mcp_error_handler(
     mcp = build_mcp()
 
     search_payload = mcp_structured(
-        await mcp.call_tool("search", {"query": "needle"})
+        await mcp.call_tool("workspace_search", {"query": "needle"})
     )
     fetch_payload = mcp_structured(
         await mcp.call_tool("fetch", {"id": "notes/demo.txt"})
@@ -70,7 +70,7 @@ async def test_connector_tool_timeout_uses_custom_mcp_error_handler(
     mcp = build_mcp()
 
     search_payload = mcp_structured(
-        await mcp.call_tool("search", {"query": "needle"})
+        await mcp.call_tool("workspace_search", {"query": "needle"})
     )
     fetch_payload = mcp_structured(
         await mcp.call_tool("fetch", {"id": "notes/demo.txt"})

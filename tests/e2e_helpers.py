@@ -167,6 +167,7 @@ def unwrap_tool_payload(value: Any) -> Any:
 REST_ROUTES: dict[str, tuple[str, str]] = {
     "environment_info": ("GET", "/tools/environment_info"),
     "search": ("POST", "/tools/search"),
+    "workspace_search": ("POST", "/tools/workspace_search"),
     "fetch": ("POST", "/tools/fetch"),
     "list_files": ("POST", "/tools/list_files"),
     "tree_view": ("POST", "/tools/tree"),

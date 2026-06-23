@@ -1,11 +1,11 @@
 {
-  "count": 75,
+  "count": 76,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "75"
+          "code": "76"
         },
         "."
       ],
@@ -2002,6 +2002,58 @@
         ],
         [
           {
+            "code": "search"
+          },
+          {
+            "items": [
+              {
+                "description": "Whether matching should be case-sensitive.",
+                "head": {
+                  "code": "case_sensitive"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Optional maximum number of matches to return. Omit to use the configured server limit.",
+                "head": {
+                  "code": "max_results"
+                },
+                "note": "(integer / null, optional)"
+              },
+              {
+                "description": "Optional path, glob, or list of paths/globs that scopes the high-level code search. Omit to search from cwd.",
+                "head": {
+                  "code": "paths"
+                },
+                "note": "(string / array / null, optional)"
+              },
+              {
+                "description": "Text or regular expression to search for, depending on the regex parameter.",
+                "head": {
+                  "code": "pattern"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Whether query is interpreted as a regular expression.",
+                "head": {
+                  "code": "regex"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Optional agent grounding session id. Omit to use the process-local default session.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string / null, optional)"
+              }
+            ]
+          },
+          "Search code content using an agent-oriented facade inspired by oh-my-pi. Use pattern for text or regex search and optional paths to scope to files, directories, or globs. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results=200."
+        ],
+        [
+          {
             "code": "tree_view"
           },
           {
@@ -2393,7 +2445,7 @@
         ],
         [
           {
-            "code": "search"
+            "code": "workspace_search"
           },
           {
             "items": [
@@ -2406,7 +2458,7 @@
               }
             ]
           },
-          "Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as grep_search, glob_search, tree_view, read_file, or read_many_files. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch."
+          "Connector-style workspace document search. Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as grep_search, glob_search, tree_view, read_file, or read_many_files. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch."
         ]
       ]
     }
@@ -10882,26 +10934,80 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as grep_search, glob_search, tree_view, read_file, or read_many_files. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch.",
+      "description": "Search code content using an agent-oriented facade inspired by oh-my-pi. Use pattern for text or regex search and optional paths to scope to files, directories, or globs. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
-          "query": {
-            "description": "Case-insensitive literal text query used by connector-style workspace search.",
-            "title": "Query",
+          "case_sensitive": {
+            "default": true,
+            "description": "Whether matching should be case-sensitive.",
+            "title": "Case Sensitive",
+            "type": "boolean"
+          },
+          "max_results": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional maximum number of matches to return. Omit to use the configured server limit.",
+            "title": "Max Results"
+          },
+          "paths": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional path, glob, or list of paths/globs that scopes the high-level code search. Omit to search from cwd.",
+            "title": "Paths"
+          },
+          "pattern": {
+            "description": "Text or regular expression to search for, depending on the regex parameter.",
+            "title": "Pattern",
             "type": "string"
+          },
+          "regex": {
+            "default": true,
+            "description": "Whether query is interpreted as a regular expression.",
+            "title": "Regex",
+            "type": "boolean"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional agent grounding session id. Omit to use the process-local default session.",
+            "title": "Session Id"
           }
         },
         "required": [
-          "query"
+          "pattern"
         ],
         "title": "searchArguments",
         "type": "object"
       },
       "meta": {
         "securitySchemes": [
-          {
-            "type": "noauth"
-          },
           {
             "scopes": [
               "shell:read"
@@ -10913,49 +11019,191 @@
       "name": "search",
       "outputSchema": {
         "$defs": {
-          "SearchResult": {
-            "description": "One connector-compatible search result card.",
+          "GrepMatch": {
+            "description": "One ripgrep match.",
             "properties": {
-              "id": {
-                "description": "Workspace result identifier passed to fetch.",
-                "title": "Id",
-                "type": "string"
+              "column": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "1-based column number for the first match on the line.",
+                "title": "Column"
               },
-              "title": {
-                "description": "Human-readable result title.",
-                "title": "Title",
-                "type": "string"
+              "file_sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "SHA-256 digest of the complete matched file when displayed.",
+                "title": "File Sha256"
               },
-              "url": {
-                "description": "Connector URL for the result card.",
-                "title": "Url",
+              "line": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "1-based line number containing the match.",
+                "title": "Line"
+              },
+              "numbered_line": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Model-facing match line formatted as 'line|text' for grounded follow-up edits.",
+                "title": "Numbered Line"
+              },
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Path containing the match, when reported by ripgrep.",
+                "title": "Path"
+              },
+              "seen_range": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/LineRange"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Inclusive original line range shown for this match."
+              },
+              "session_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Agent grounding session that recorded this match line.",
+                "title": "Session Id"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Snapshot handle for the displayed match line, usable with edit_lines.",
+                "title": "Snapshot Id"
+              },
+              "text": {
+                "description": "Matching line text without the trailing newline.",
+                "title": "Text",
                 "type": "string"
               }
             },
             "required": [
-              "id",
-              "title",
-              "url"
+              "path",
+              "line",
+              "column",
+              "text"
             ],
-            "title": "SearchResult",
+            "title": "GrepMatch",
+            "type": "object"
+          },
+          "LineRange": {
+            "description": "Inclusive 1-based line range shown to the agent.",
+            "properties": {
+              "end": {
+                "description": "Final visible 1-based line number.",
+                "title": "End",
+                "type": "integer"
+              },
+              "start": {
+                "description": "First visible 1-based line number.",
+                "title": "Start",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "title": "LineRange",
             "type": "object"
           }
         },
-        "description": "Connector-compatible search response payload.",
+        "description": "Ripgrep content search result.",
         "properties": {
-          "results": {
-            "description": "Connector-compatible result cards.",
+          "count": {
+            "description": "Number of matches returned.",
+            "title": "Count",
+            "type": "integer"
+          },
+          "matches": {
+            "description": "Returned ripgrep matches.",
             "items": {
-              "$ref": "#/$defs/SearchResult"
+              "$ref": "#/$defs/GrepMatch"
             },
-            "title": "Results",
+            "title": "Matches",
             "type": "array"
+          },
+          "numbered_content": {
+            "default": "",
+            "description": "Grouped model-facing match snippets with file paths and line-numbered match lines.",
+            "title": "Numbered Content",
+            "type": "string"
+          },
+          "ok": {
+            "description": "Whether ripgrep completed successfully or with no matches.",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "stderr": {
+            "description": "Captured ripgrep stderr, after output limiting.",
+            "title": "Stderr",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "Whether results were truncated by match or output limits.",
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
-          "results"
+          "ok",
+          "matches",
+          "count",
+          "truncated",
+          "stderr"
         ],
-        "title": "SearchOutput",
+        "title": "GrepSearchOutput",
         "type": "object"
       }
     },
@@ -11652,6 +11900,90 @@
           "executable"
         ],
         "title": "VersionInfoOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Connector-style workspace document search. Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as grep_search, glob_search, tree_view, read_file, or read_many_files. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch.",
+      "inputSchema": {
+        "properties": {
+          "query": {
+            "description": "Case-insensitive literal text query used by connector-style workspace search.",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "workspace_searchArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "type": "noauth"
+          },
+          {
+            "scopes": [
+              "shell:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "workspace_search",
+      "outputSchema": {
+        "$defs": {
+          "SearchResult": {
+            "description": "One connector-compatible search result card.",
+            "properties": {
+              "id": {
+                "description": "Workspace result identifier passed to fetch.",
+                "title": "Id",
+                "type": "string"
+              },
+              "title": {
+                "description": "Human-readable result title.",
+                "title": "Title",
+                "type": "string"
+              },
+              "url": {
+                "description": "Connector URL for the result card.",
+                "title": "Url",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "url"
+            ],
+            "title": "SearchResult",
+            "type": "object"
+          }
+        },
+        "description": "Connector-compatible search response payload.",
+        "properties": {
+          "results": {
+            "description": "Connector-compatible result cards.",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "SearchOutput",
         "type": "object"
       }
     },

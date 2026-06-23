@@ -77,7 +77,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     )
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
-    search_meta = tools["search"].meta
+    search_meta = tools["workspace_search"].meta
     environment_meta = tools["environment_info"].meta
     assert search_meta is not None
     assert environment_meta is not None
@@ -142,7 +142,8 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     }
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
-    assert "results" in search_schema["properties"]
+    assert "matches" in search_schema["properties"]
+    assert "numbered_content" in search_schema["properties"]
     fetch_schema = tools["fetch"].outputSchema
     assert fetch_schema is not None
     assert set(fetch_schema["properties"]) == {
@@ -417,7 +418,7 @@ async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
     annotations = tools["run_shell_command"].annotations
-    search_annotations = tools["search"].annotations
+    search_annotations = tools["workspace_search"].annotations
     assert annotations is not None
     assert search_annotations is not None
     assert annotations.readOnlyHint is False

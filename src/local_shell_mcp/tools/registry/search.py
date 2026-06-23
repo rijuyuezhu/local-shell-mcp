@@ -5,6 +5,7 @@ import asyncio
 from ...ops.search import (
     glob_search_execute,
     grep_search_execute,
+    search_execute,
     tree_view_execute,
 )
 from ...schemas.input_models.files import ToolSessionIdArg
@@ -17,6 +18,7 @@ from ...schemas.input_models.search import (
     GrepQueryArg,
     RegexArg,
     SearchCwdArg,
+    SearchPathsArg,
     TreeCwdArg,
     TreeDepthArg,
     TreeMaxEntriesArg,
@@ -48,6 +50,11 @@ def _tree_view_description(context: McpToolContext) -> str:
 def _glob_search_description(context: McpToolContext) -> str:
     settings = context.settings
     return f"""Find files by glob pattern when you know filename patterns and need matching paths, not file contents. Current max glob results: {settings.max_glob_results}."""
+
+
+def _search_description(context: McpToolContext) -> str:
+    settings = context.settings
+    return f"""Search code content using an agent-oriented facade inspired by oh-my-pi. Use pattern for text or regex search and optional paths to scope to files, directories, or globs. Results include numbered match lines and snapshot metadata that can ground edit_lines calls. Current max_grep_results={settings.max_grep_results}."""
 
 
 def _grep_search_description(context: McpToolContext) -> str:
@@ -84,6 +91,27 @@ async def glob_search(
     """Find files by glob pattern."""
     return await asyncio.to_thread(
         glob_search_execute, pattern, cwd, max_results
+    )
+
+
+@local_tool(
+    http_method="POST",
+    http_path="/tools/search",
+    description=_search_description,
+    annotations="read_only",
+    mcp_scopes=("shell:read",),
+)
+async def search(
+    pattern: GrepQueryArg,
+    paths: SearchPathsArg = None,
+    regex: RegexArg = True,
+    case_sensitive: CaseSensitiveArg = True,
+    max_results: GrepMaxResultsArg = None,
+    session_id: ToolSessionIdArg = None,
+) -> GrepSearchOutput:
+    """Search code content with optional path scopes."""
+    return await search_execute(
+        pattern, paths, ".", regex, case_sensitive, max_results, session_id
     )
 
 

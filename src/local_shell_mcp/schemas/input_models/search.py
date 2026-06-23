@@ -66,3 +66,10 @@ GrepMaxResultsArg = Annotated[
         description="Optional maximum number of matches to return. Omit to use the configured server limit."
     ),
 ]
+
+SearchPathsArg = Annotated[
+    str | list[str] | None,
+    Field(
+        description="Optional path, glob, or list of paths/globs that scopes the high-level code search. Omit to search from cwd."
+    ),
+]

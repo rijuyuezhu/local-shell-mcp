@@ -11,6 +11,7 @@ from tests.e2e_helpers import ToolClient, assert_required_tools
 CORE_TOOL_NAMES = {
     "environment_info",
     "search",
+    "workspace_search",
     "fetch",
     "list_files",
     "tree_view",
@@ -154,7 +155,9 @@ async def exercise_filesystem_and_search_tools(
 
 
 async def exercise_workspace_connector_tools(client: ToolClient) -> None:
-    search = await client.call_tool("search", {"query": "patched line"})
+    search = await client.call_tool(
+        "workspace_search", {"query": "patched line"}
+    )
     assert "results" in search
     if search["results"]:
         assert search["results"][0]["id"] == "notes/demo.txt"

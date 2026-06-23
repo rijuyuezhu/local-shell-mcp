@@ -32,6 +32,7 @@ from tests.helpers import mcp_text
 LOCAL_MCP_TOOL_NAMES = {
     "read",
     "search",
+    "workspace_search",
     "fetch",
     "environment_info",
     "version",

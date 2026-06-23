@@ -86,6 +86,46 @@ def _grep_numbered_content(matches: list[GrepMatch]) -> str:
     return "\n".join(lines)
 
 
+type _SearchPaths = str | list[str] | None
+
+
+def _search_path_items(paths: _SearchPaths) -> list[str]:
+    """Normalize optional high-level search path scopes."""
+    if paths is None:
+        return []
+    if isinstance(paths, str):
+        return [paths] if paths else []
+    return [path for path in paths if path]
+
+
+def _looks_like_glob(path: str) -> bool:
+    """Return whether a search path should be treated as a glob scope."""
+    return any(char in path for char in "*?[")
+
+
+def _split_search_scopes(
+    cwd: str, paths: _SearchPaths
+) -> tuple[list[str], list[str]]:
+    """Return ripgrep path args and glob args for high-level search scopes."""
+    base = resolve_path(cwd, must_exist=True)
+    path_args: list[str] = []
+    glob_args: list[str] = []
+    for item in _search_path_items(paths):
+        if _looks_like_glob(item):
+            glob_args.append(item)
+            continue
+        raw_path = Path(item)
+        candidate = raw_path if raw_path.is_absolute() else base / raw_path
+        resolved = resolve_path(str(candidate), must_exist=True)
+        if resolved == base:
+            path_args.append(".")
+        elif resolved.is_relative_to(base):
+            path_args.append(str(resolved.relative_to(base)))
+        else:
+            path_args.append(str(resolved))
+    return path_args, glob_args
+
+
 async def grep_search_execute(
     query: str,
     cwd: str = ".",
@@ -94,6 +134,7 @@ async def grep_search_execute(
     case_sensitive: bool = True,
     max_results: int | None = None,
     session_id: str | None = None,
+    paths: _SearchPaths = None,
 ) -> GrepSearchOutput:
     """Run ripgrep with workspace path resolution and return structured match records."""
     settings = get_settings()
@@ -103,9 +144,12 @@ async def grep_search_execute(
         args.append("--fixed-strings")
     if not case_sensitive:
         args.append("--ignore-case")
+    path_args, glob_args = _split_search_scopes(cwd, paths)
+    for glob_arg in glob_args:
+        args.extend(["--glob", glob_arg])
     if glob:
         args.extend(["--glob", glob])
-    args.extend(["--", query])
+    args.extend(["--", query, *path_args])
     cmd = " ".join(shlex.quote(x) for x in args)
     result = await run_shell(
         cmd, cwd=cwd, timeout_s=60, max_output_bytes=1_000_000
@@ -165,6 +209,27 @@ async def grep_search_execute(
         truncated=len(matches) >= max_results or result.truncated,
         stderr=result.stderr,
         numbered_content=_grep_numbered_content(matches),
+    )
+
+
+async def search_execute(
+    pattern: str,
+    paths: _SearchPaths = None,
+    cwd: str = ".",
+    regex: bool = True,
+    case_sensitive: bool = True,
+    max_results: int | None = None,
+    session_id: str | None = None,
+) -> GrepSearchOutput:
+    """Search code content with optional path scopes and edit grounding."""
+    return await grep_search_execute(
+        pattern,
+        cwd=cwd,
+        regex=regex,
+        case_sensitive=case_sensitive,
+        max_results=max_results,
+        session_id=session_id,
+        paths=paths,
     )
 
 

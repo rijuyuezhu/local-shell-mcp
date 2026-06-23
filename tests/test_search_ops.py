@@ -6,6 +6,7 @@ from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.search import (
     glob_search_execute,
     grep_search_execute,
+    search_execute,
     tree_view_execute,
 )
 
@@ -115,3 +116,50 @@ async def test_grep_search_returns_grounded_numbered_matches(
     assert match.seen_range is not None
     assert match.seen_range.model_dump() == {"start": 2, "end": 2}
     assert result.numbered_content == "src/app.py\n2|needle here"
+
+
+@pytest.mark.asyncio
+async def test_high_level_search_scopes_to_paths(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "app.py").write_text("needle\n", encoding="utf-8")
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "needle\n", encoding="utf-8"
+    )
+
+    result = await search_execute("needle", paths="src", regex=False)
+
+    assert result.ok is True
+    assert result.count == 1
+    assert result.matches[0].path == "src/app.py"
+    assert result.matches[0].numbered_line == "1|needle"
+
+
+@pytest.mark.asyncio
+async def test_mcp_search_facade_returns_grounded_results(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.server.mcp.app import build_mcp
+    from tests.helpers import mcp_structured
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("needle\n", encoding="utf-8")
+
+    payload = mcp_structured(
+        await build_mcp().call_tool(
+            "search", {"pattern": "needle", "paths": "src", "regex": False}
+        )
+    )
+
+    assert payload["matches"][0]["path"] == "src/app.py"
+    assert payload["matches"][0]["snapshot_id"]
+    assert payload["numbered_content"] == "src/app.py\n1|needle"
