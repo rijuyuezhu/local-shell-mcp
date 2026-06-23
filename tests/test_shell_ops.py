@@ -16,6 +16,7 @@ from local_shell_mcp.ops.shell import (
 from local_shell_mcp.schemas.result_models.shell import CommandResult
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import bash as bash_tools_module
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from tests.helpers import mcp_structured
@@ -57,10 +58,8 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
         hanging_bash_execute,
     )
 
+    session_id = get_tool_session_store().create_session(workdir=".").session_id
     mcp = build_mcp()
-    session = mcp_structured(
-        await mcp.call_tool("session_start", {"workdir": "."})
-    )
 
     with pytest.raises(
         ToolError,
@@ -68,7 +67,7 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
     ):
         await mcp.call_tool(
             "bash",
-            {"session_id": session["session_id"], "command": "echo ok"},
+            {"session_id": session_id, "command": "echo ok"},
         )
 
 
