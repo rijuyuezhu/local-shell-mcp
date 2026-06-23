@@ -24,14 +24,6 @@ from ...remote.transfer import (
     copy_remote_file_to_remote,
 )
 from ...schemas.input_models.files import ReadFilesArg
-from ...schemas.input_models.jobs import (
-    IncludeFinishedArg,
-    JobCommandArg,
-    JobCwdArg,
-    JobIdArg,
-    JobNameArg,
-    JobTailLinesArg,
-)
 from ...schemas.input_models.remote import (
     LocalPathArg,
     RemoteCaseSensitiveArg,
@@ -72,7 +64,6 @@ from ...schemas.input_models.remote import (
     RemoteTimeoutArg,
     RemoteWorkdirArg,
 )
-from ...schemas.input_models.shell import ToolExplanationArg, ToolPurposeArg
 from ...schemas.result_models.environment import EnvironmentInfoOutput
 from ...schemas.result_models.files import (
     DeleteFileOrDirOutput,
@@ -82,13 +73,6 @@ from ...schemas.result_models.files import (
     ReadFileOutput,
     ReadManyFilesOutput,
     WriteFileOutput,
-)
-from ...schemas.result_models.jobs import (
-    JobListOutput,
-    JobRetryOutput,
-    JobStartOutput,
-    JobStopOutput,
-    JobTailOutput,
 )
 from ...schemas.result_models.patch import ApplyPatchOutput
 from ...schemas.result_models.remote import (
@@ -587,83 +571,6 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
             machine,
             "delete_file_or_dir",
             {"path": path, "recursive": recursive},
-        )
-
-    @mcp.tool(structured_output=True, meta=remote_execute_meta)
-    async def remote_job_start(
-        machine: RemoteMachineArg,
-        command: JobCommandArg,
-        cwd: JobCwdArg = ".",
-        name: JobNameArg = None,
-        purpose: ToolPurposeArg = None,
-        explanation: ToolExplanationArg = None,
-    ) -> JobStartOutput:
-        """Start a non-interactive command as a tracked job on a remote worker. Use remote_job_start for long-running remote builds, tests, servers, watches, experiments, and other commands you want to manage by job_id with remote_job_list, remote_job_tail, remote_job_stop, or remote_job_retry. Use start_remote_persistent_shell instead when the remote process is interactive, needs later send_remote_persistent_shell_input calls, or should be managed directly by session_id. Use run_remote_shell_command for short bounded remote commands."""
-        return await _remote_typed(
-            JobStartOutput,
-            machine,
-            "job_start",
-            {
-                "command": command,
-                "cwd": cwd,
-                "name": name,
-                "purpose": purpose,
-                "explanation": explanation,
-            },
-        )
-
-    @mcp.tool(structured_output=True, meta=remote_read_meta)
-    async def remote_job_list(
-        machine: RemoteMachineArg, include_finished: IncludeFinishedArg = True
-    ) -> JobListOutput:
-        """List tracked non-interactive jobs and status counts on a remote worker. Use this for commands started with remote_job_start/remote_job_retry; use list_remote_persistent_shells for manually managed interactive remote sessions. Each job is a recorded persistent-shell command on that worker, not a central scheduler queue."""
-        return await _remote_typed(
-            JobListOutput,
-            machine,
-            "job_list",
-            {"include_finished": include_finished},
-        )
-
-    @mcp.tool(structured_output=True, meta=remote_read_meta)
-    async def remote_job_tail(
-        machine: RemoteMachineArg,
-        job_id: JobIdArg,
-        lines: JobTailLinesArg = 200,
-    ) -> JobTailOutput:
-        """Read recent terminal output for a tracked remote non-interactive job by job_id. Use this instead of read_remote_persistent_shell_output for jobs started with remote_job_start because it refreshes job status and hides the backing session_id. Full logs are not persisted separately, so output may be unavailable after the remote backing session exits or is lost."""
-        return await _remote_typed(
-            JobTailOutput,
-            machine,
-            "job_tail",
-            {"job_id": job_id, "lines": lines},
-        )
-
-    @mcp.tool(structured_output=True, meta=remote_execute_meta)
-    async def remote_job_stop(
-        machine: RemoteMachineArg, job_id: JobIdArg
-    ) -> JobStopOutput:
-        """Stop a tracked remote non-interactive job by killing its backing persistent shell session on the selected worker and updating the job record. Use kill_remote_persistent_shell only for manually managed remote sessions started with start_remote_persistent_shell. The job record remains available for list and retry."""
-        return await _remote_typed(
-            JobStopOutput, machine, "job_stop", {"job_id": job_id}
-        )
-
-    @mcp.tool(structured_output=True, meta=remote_execute_meta)
-    async def remote_job_retry(
-        machine: RemoteMachineArg,
-        job_id: JobIdArg,
-        purpose: ToolPurposeArg = None,
-        explanation: ToolExplanationArg = None,
-    ) -> JobRetryOutput:
-        """Restart a terminal tracked job on a remote worker with its original command and working directory. Use this for failed or completed non-interactive jobs started with remote_job_start; for interactive remote sessions, start a new persistent shell manually instead. This creates a new backing persistent shell session on that worker and keeps the same job_id."""
-        return await _remote_typed(
-            JobRetryOutput,
-            machine,
-            "job_retry",
-            {
-                "job_id": job_id,
-                "purpose": purpose,
-                "explanation": explanation,
-            },
         )
 
     @mcp.tool(structured_output=True, meta=remote_write_meta)

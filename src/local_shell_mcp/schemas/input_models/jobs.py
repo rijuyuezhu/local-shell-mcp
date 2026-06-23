@@ -46,3 +46,32 @@ JobTailLinesArg = Annotated[
         description="Number of recent terminal lines to capture from the backing persistent shell. Output is available only while the backing session still exists.",
     ),
 ]
+
+
+JobListSnapshotArg = Annotated[
+    bool,
+    Field(
+        description="Whether to return a snapshot of tracked bash jobs. Omit all other job actions to list by default."
+    ),
+]
+JobPollIdsArg = Annotated[
+    list[str] | None,
+    Field(
+        default=None,
+        description="Tracked bash job ids whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
+    ),
+]
+JobCancelIdsArg = Annotated[
+    list[str] | None,
+    Field(
+        default=None,
+        description="Tracked bash job ids to stop because they are stalled, hung, or no longer needed.",
+    ),
+]
+JobRetryIdsArg = Annotated[
+    list[str] | None,
+    Field(
+        default=None,
+        description="Tracked bash job ids to restart with their original command and working directory.",
+    ),
+]

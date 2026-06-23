@@ -92,3 +92,35 @@ class JobStopOutput(BaseModel):
         default="",
         description="Backend stderr from the stop attempt, when reported by the shell layer.",
     )
+
+
+class JobOutput(BaseModel):
+    """Unified companion result for tracked bash jobs."""
+
+    operation: Literal["list", "poll", "cancel", "retry"] = Field(
+        description="Job operation performed by the unified job companion tool."
+    )
+    jobs: list[JobInfo] = Field(
+        default_factory=list,
+        description="Tracked job rows returned for list-style snapshots.",
+    )
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Tracked job counts by status when a list snapshot was read.",
+    )
+    outputs: list[JobTailOutput] = Field(
+        default_factory=list,
+        description="Recent output/status entries returned for inspected jobs.",
+    )
+    cancelled: list[JobStopOutput] = Field(
+        default_factory=list,
+        description="Stop results returned for cancelled jobs.",
+    )
+    retried: list[JobRetryOutput] = Field(
+        default_factory=list,
+        description="Restarted job rows returned for retried jobs.",
+    )
+    message: str | None = Field(
+        default=None,
+        description="Optional diagnostic or usage note.",
+    )

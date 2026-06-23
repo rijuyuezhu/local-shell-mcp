@@ -43,12 +43,12 @@ async def test_remote_facade_maps_bash_timeout(monkeypatch):
         {"command": "echo done", "timeout_s": 7},
     )
 
-    assert result.tool == "run_shell_command"
+    assert result.tool == "bash"
     assert result.data["stdout"] == "done"
     assert calls == [
         (
             "worker-a",
-            "run_shell_command",
+            "bash",
             {"command": "echo done", "timeout_s": 7},
             7,
         )

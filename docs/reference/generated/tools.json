@@ -1,11 +1,11 @@
 {
-  "count": 78,
+  "count": 69,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "78"
+          "code": "69"
         },
         "."
       ],
@@ -608,7 +608,7 @@
       ]
     },
     {
-      "body": "Register tracked command tools backed by persistent shell sessions.",
+      "body": "Register bash async job companion tools.",
       "headers": [
         "Tool",
         "Parameters",
@@ -619,126 +619,23 @@
       "rows": [
         [
           {
-            "code": "job_list"
+            "code": "job"
           },
           {
             "items": [
+              {
+                "description": "Tracked bash job ids to stop because they are stalled, hung, or no longer needed.",
+                "head": {
+                  "code": "cancel"
+                },
+                "note": "(array / null, optional)"
+              },
               {
                 "description": "Whether to include terminal jobs with exited, stopped, or lost status. Set false to show only active jobs.",
                 "head": {
                   "code": "include_finished"
                 },
                 "note": "(boolean, optional)"
-              }
-            ]
-          },
-          "List tracked non-interactive jobs and status counts. Use this for commands started with job_start/job_retry; use list_persistent_shells for manually managed interactive sessions. Each job is a recorded persistent-shell command, not a separate scheduler queue; status is refreshed from the backing shell session when possible."
-        ],
-        [
-          {
-            "code": "job_retry"
-          },
-          {
-            "items": [
-              {
-                "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-                "head": {
-                  "code": "explanation"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
-                "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-                "head": {
-                  "code": "job_id"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-                "head": {
-                  "code": "purpose"
-                },
-                "note": "(string / null, optional)"
-              }
-            ]
-          },
-          "Restart a terminal tracked job with its original command and working directory. Use this for failed or completed non-interactive jobs started with job_start; for interactive sessions, start a new persistent shell manually instead. This creates a new backing persistent shell session, increments attempts, and keeps the same job_id."
-        ],
-        [
-          {
-            "code": "job_start"
-          },
-          {
-            "items": [
-              {
-                "description": "Non-empty shell command to start as a tracked job. Jobs are backed by persistent shell sessions; use start_persistent_shell directly when you need an interactive session that receives later input.",
-                "head": {
-                  "code": "command"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Working directory for the tracked job. Relative paths resolve inside the configured workspace or remote worker workspace.",
-                "head": {
-                  "code": "cwd"
-                },
-                "note": "(string, optional)"
-              },
-              {
-                "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-                "head": {
-                  "code": "explanation"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
-                "description": "Optional human-readable job name used for list output and the derived persistent-shell session label. Omit to use the generated job_id.",
-                "head": {
-                  "code": "name"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
-                "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-                "head": {
-                  "code": "purpose"
-                },
-                "note": "(string / null, optional)"
-              }
-            ]
-          },
-          "Start a non-interactive command as a tracked job backed by a persistent shell session. Use job_start for long-running builds, tests, servers, watches, experiments, and other commands you want to manage by job_id with job_list, job_tail, job_stop, or job_retry. Use start_persistent_shell instead when the process is interactive, needs later send_persistent_shell_input calls, or should be managed directly by session_id. Use run_shell_command for short bounded commands that should finish promptly."
-        ],
-        [
-          {
-            "code": "job_stop"
-          },
-          {
-            "items": [
-              {
-                "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-                "head": {
-                  "code": "job_id"
-                },
-                "note": "(string, required)"
-              }
-            ]
-          },
-          "Stop a tracked non-interactive job by killing its backing persistent shell session and updating the job record. Use kill_persistent_shell only for manually managed sessions started with start_persistent_shell. The job record remains available for list and retry."
-        ],
-        [
-          {
-            "code": "job_tail"
-          },
-          {
-            "items": [
-              {
-                "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-                "head": {
-                  "code": "job_id"
-                },
-                "note": "(string, required)"
               },
               {
                 "description": "Number of recent terminal lines to capture from the backing persistent shell. Output is available only while the backing session still exists.",
@@ -746,10 +643,31 @@
                   "code": "lines"
                 },
                 "note": "(integer, optional)"
+              },
+              {
+                "description": "Whether to return a snapshot of tracked bash jobs. Omit all other job actions to list by default.",
+                "head": {
+                  "code": "list_jobs"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Tracked bash job ids whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
+                "head": {
+                  "code": "poll"
+                },
+                "note": "(array / null, optional)"
+              },
+              {
+                "description": "Tracked bash job ids to restart with their original command and working directory.",
+                "head": {
+                  "code": "retry"
+                },
+                "note": "(array / null, optional)"
               }
             ]
           },
-          "Read recent terminal output for a tracked non-interactive job by job_id. Use this instead of read_persistent_shell_output for jobs started with job_start because it refreshes job status and hides the backing session_id. Full logs are not persisted separately, so output may be unavailable after the backing session exits or is lost."
+          "Inspect, read output from, stop, or retry async bash jobs.\n\nResults for `bash(async_=true)` are tracked by job id. Reach for this companion tool only when you need to intervene: list running work, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nCall with no action, or with `list_jobs=true`, to list jobs. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call."
         ]
       ]
     },
@@ -892,11 +810,11 @@
                 "note": "(string, required)"
               },
               {
-                "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or job operations.",
+                "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or the job companion operation.",
                 "head": {
                   "code": "op"
                 },
-                "note": "(environment / read / search / edit_lines / bash / python / list_files / tree / glob / grep / write_file / apply_patch / delete / job_start / job_list / job_tail / job_stop / job_retry, required)"
+                "note": "(environment / read / search / edit_lines / bash / python / list_files / tree / glob / write_file / apply_patch / delete / job, required)"
               }
             ]
           },
@@ -1257,175 +1175,6 @@
             ]
           },
           "Create a one-time command for a remote machine to join this control server. Use when you need to run workspace tools on another worker. Defaults: ttl_s defaults to the configured remote_invite_ttl_s=600 seconds when omitted. Security: treat the invite as sensitive because it grants enrollment capability."
-        ],
-        [
-          {
-            "code": "remote_job_list"
-          },
-          {
-            "items": [
-              {
-                "description": "Whether to include terminal jobs with exited, stopped, or lost status. Set false to show only active jobs.",
-                "head": {
-                  "code": "include_finished"
-                },
-                "note": "(boolean, optional)"
-              },
-              {
-                "description": "Exact remote worker machine name returned by remote_list_machines.",
-                "head": {
-                  "code": "machine"
-                },
-                "note": "(string, required)"
-              }
-            ]
-          },
-          "List tracked non-interactive jobs and status counts on a remote worker. Use this for commands started with remote_job_start/remote_job_retry; use list_remote_persistent_shells for manually managed interactive remote sessions. Each job is a recorded persistent-shell command on that worker, not a central scheduler queue."
-        ],
-        [
-          {
-            "code": "remote_job_retry"
-          },
-          {
-            "items": [
-              {
-                "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-                "head": {
-                  "code": "explanation"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
-                "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-                "head": {
-                  "code": "job_id"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Exact remote worker machine name returned by remote_list_machines.",
-                "head": {
-                  "code": "machine"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-                "head": {
-                  "code": "purpose"
-                },
-                "note": "(string / null, optional)"
-              }
-            ]
-          },
-          "Restart a terminal tracked job on a remote worker with its original command and working directory. Use this for failed or completed non-interactive jobs started with remote_job_start; for interactive remote sessions, start a new persistent shell manually instead. This creates a new backing persistent shell session on that worker and keeps the same job_id."
-        ],
-        [
-          {
-            "code": "remote_job_start"
-          },
-          {
-            "items": [
-              {
-                "description": "Non-empty shell command to start as a tracked job. Jobs are backed by persistent shell sessions; use start_persistent_shell directly when you need an interactive session that receives later input.",
-                "head": {
-                  "code": "command"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Working directory for the tracked job. Relative paths resolve inside the configured workspace or remote worker workspace.",
-                "head": {
-                  "code": "cwd"
-                },
-                "note": "(string, optional)"
-              },
-              {
-                "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-                "head": {
-                  "code": "explanation"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
-                "description": "Exact remote worker machine name returned by remote_list_machines.",
-                "head": {
-                  "code": "machine"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Optional human-readable job name used for list output and the derived persistent-shell session label. Omit to use the generated job_id.",
-                "head": {
-                  "code": "name"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
-                "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-                "head": {
-                  "code": "purpose"
-                },
-                "note": "(string / null, optional)"
-              }
-            ]
-          },
-          "Start a non-interactive command as a tracked job on a remote worker. Use remote_job_start for long-running remote builds, tests, servers, watches, experiments, and other commands you want to manage by job_id with remote_job_list, remote_job_tail, remote_job_stop, or remote_job_retry. Use start_remote_persistent_shell instead when the remote process is interactive, needs later send_remote_persistent_shell_input calls, or should be managed directly by session_id. Use run_remote_shell_command for short bounded remote commands."
-        ],
-        [
-          {
-            "code": "remote_job_stop"
-          },
-          {
-            "items": [
-              {
-                "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-                "head": {
-                  "code": "job_id"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Exact remote worker machine name returned by remote_list_machines.",
-                "head": {
-                  "code": "machine"
-                },
-                "note": "(string, required)"
-              }
-            ]
-          },
-          "Stop a tracked remote non-interactive job by killing its backing persistent shell session on the selected worker and updating the job record. Use kill_remote_persistent_shell only for manually managed remote sessions started with start_remote_persistent_shell. The job record remains available for list and retry."
-        ],
-        [
-          {
-            "code": "remote_job_tail"
-          },
-          {
-            "items": [
-              {
-                "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-                "head": {
-                  "code": "job_id"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Number of recent terminal lines to capture from the backing persistent shell. Output is available only while the backing session still exists.",
-                "head": {
-                  "code": "lines"
-                },
-                "note": "(integer, optional)"
-              },
-              {
-                "description": "Exact remote worker machine name returned by remote_list_machines.",
-                "head": {
-                  "code": "machine"
-                },
-                "note": "(string, required)"
-              }
-            ]
-          },
-          "Read recent terminal output for a tracked remote non-interactive job by job_id. Use this instead of read_remote_persistent_shell_output for jobs started with remote_job_start because it refreshes job status and hides the backing session_id. Full logs are not persisted separately, so output may be unavailable after the remote backing session exits or is lost."
         ],
         [
           {
@@ -4236,629 +3985,30 @@
       }
     },
     {
-      "description": "List tracked non-interactive jobs and status counts. Use this for commands started with job_start/job_retry; use list_persistent_shells for manually managed interactive sessions. Each job is a recorded persistent-shell command, not a separate scheduler queue; status is refreshed from the backing shell session when possible.",
+      "description": "Inspect, read output from, stop, or retry async bash jobs.\n\nResults for `bash(async_=true)` are tracked by job id. Reach for this companion tool only when you need to intervene: list running work, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nCall with no action, or with `list_jobs=true`, to list jobs. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call.",
       "inputSchema": {
         "properties": {
+          "cancel": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Tracked bash job ids to stop because they are stalled, hung, or no longer needed.",
+            "title": "Cancel"
+          },
           "include_finished": {
             "default": true,
             "description": "Whether to include terminal jobs with exited, stopped, or lost status. Set false to show only active jobs.",
             "title": "Include Finished",
             "type": "boolean"
-          }
-        },
-        "title": "job_listArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "shell:read",
-              "shell:execute"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "job_list",
-      "outputSchema": {
-        "$defs": {
-          "JobInfo": {
-            "description": "One tracked command backed by a persistent shell session.",
-            "properties": {
-              "attempts": {
-                "description": "Number of times this tracked job has been started, including retries.",
-                "title": "Attempts",
-                "type": "integer"
-              },
-              "backend": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-                "title": "Backend"
-              },
-              "command": {
-                "description": "Original shell command used to start the job. job_retry reuses this command.",
-                "title": "Command",
-                "type": "string"
-              },
-              "created_at": {
-                "description": "Unix timestamp when the tracked job record was created.",
-                "title": "Created At",
-                "type": "number"
-              },
-              "cwd": {
-                "description": "Working directory used to start the job. job_retry reuses this directory.",
-                "title": "Cwd",
-                "type": "string"
-              },
-              "job_id": {
-                "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-                "title": "Job Id",
-                "type": "string"
-              },
-              "last_started_at": {
-                "description": "Unix timestamp when the current or most recent attempt was started.",
-                "title": "Last Started At",
-                "type": "number"
-              },
-              "name": {
-                "description": "Human-readable job name, or the generated job_id when no name was provided.",
-                "title": "Name",
-                "type": "string"
-              },
-              "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-                "title": "Session Id",
-                "type": "string"
-              },
-              "status": {
-                "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-              },
-              "updated_at": {
-                "description": "Unix timestamp when the tracked job record was last updated.",
-                "title": "Updated At",
-                "type": "number"
-              }
-            },
-            "required": [
-              "job_id",
-              "name",
-              "status",
-              "command",
-              "cwd",
-              "session_id",
-              "created_at",
-              "updated_at",
-              "last_started_at",
-              "attempts"
-            ],
-            "title": "JobInfo",
-            "type": "object"
-          },
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Tracked job inventory.",
-        "properties": {
-          "counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "description": "Counts for all tracked jobs by status, before include_finished filtering.",
-            "title": "Counts",
-            "type": "object"
-          },
-          "jobs": {
-            "description": "Tracked jobs sorted newest first, optionally excluding terminal jobs.",
-            "items": {
-              "$ref": "#/$defs/JobInfo"
-            },
-            "title": "Jobs",
-            "type": "array"
-          }
-        },
-        "required": [
-          "jobs",
-          "counts"
-        ],
-        "title": "JobListOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Restart a terminal tracked job with its original command and working directory. Use this for failed or completed non-interactive jobs started with job_start; for interactive sessions, start a new persistent shell manually instead. This creates a new backing persistent shell session, increments attempts, and keeps the same job_id.",
-      "inputSchema": {
-        "properties": {
-          "explanation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-            "title": "Explanation"
-          },
-          "job_id": {
-            "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-            "minLength": 1,
-            "title": "Job Id",
-            "type": "string"
-          },
-          "purpose": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-            "title": "Purpose"
-          }
-        },
-        "required": [
-          "job_id"
-        ],
-        "title": "job_retryArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "shell:read",
-              "shell:execute"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "job_retry",
-      "outputSchema": {
-        "$defs": {
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Tracked job record after restarting its original command and cwd.",
-        "properties": {
-          "attempts": {
-            "description": "Number of times this tracked job has been started, including retries.",
-            "title": "Attempts",
-            "type": "integer"
-          },
-          "backend": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-            "title": "Backend"
-          },
-          "command": {
-            "description": "Original shell command used to start the job. job_retry reuses this command.",
-            "title": "Command",
-            "type": "string"
-          },
-          "created_at": {
-            "description": "Unix timestamp when the tracked job record was created.",
-            "title": "Created At",
-            "type": "number"
-          },
-          "cwd": {
-            "description": "Working directory used to start the job. job_retry reuses this directory.",
-            "title": "Cwd",
-            "type": "string"
-          },
-          "job_id": {
-            "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-            "title": "Job Id",
-            "type": "string"
-          },
-          "last_started_at": {
-            "description": "Unix timestamp when the current or most recent attempt was started.",
-            "title": "Last Started At",
-            "type": "number"
-          },
-          "name": {
-            "description": "Human-readable job name, or the generated job_id when no name was provided.",
-            "title": "Name",
-            "type": "string"
-          },
-          "session_id": {
-            "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-            "title": "Session Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/$defs/JobStatus",
-            "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-          },
-          "updated_at": {
-            "description": "Unix timestamp when the tracked job record was last updated.",
-            "title": "Updated At",
-            "type": "number"
-          }
-        },
-        "required": [
-          "job_id",
-          "name",
-          "status",
-          "command",
-          "cwd",
-          "session_id",
-          "created_at",
-          "updated_at",
-          "last_started_at",
-          "attempts"
-        ],
-        "title": "JobRetryOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Start a non-interactive command as a tracked job backed by a persistent shell session. Use job_start for long-running builds, tests, servers, watches, experiments, and other commands you want to manage by job_id with job_list, job_tail, job_stop, or job_retry. Use start_persistent_shell instead when the process is interactive, needs later send_persistent_shell_input calls, or should be managed directly by session_id. Use run_shell_command for short bounded commands that should finish promptly.",
-      "inputSchema": {
-        "properties": {
-          "command": {
-            "description": "Non-empty shell command to start as a tracked job. Jobs are backed by persistent shell sessions; use start_persistent_shell directly when you need an interactive session that receives later input.",
-            "minLength": 1,
-            "title": "Command",
-            "type": "string"
-          },
-          "cwd": {
-            "default": ".",
-            "description": "Working directory for the tracked job. Relative paths resolve inside the configured workspace or remote worker workspace.",
-            "title": "Cwd",
-            "type": "string"
-          },
-          "explanation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-            "title": "Explanation"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "maxLength": 80,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional human-readable job name used for list output and the derived persistent-shell session label. Omit to use the generated job_id.",
-            "title": "Name"
-          },
-          "purpose": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-            "title": "Purpose"
-          }
-        },
-        "required": [
-          "command"
-        ],
-        "title": "job_startArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "shell:read",
-              "shell:execute"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "job_start",
-      "outputSchema": {
-        "$defs": {
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Tracked job record created after starting a command.",
-        "properties": {
-          "attempts": {
-            "description": "Number of times this tracked job has been started, including retries.",
-            "title": "Attempts",
-            "type": "integer"
-          },
-          "backend": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-            "title": "Backend"
-          },
-          "command": {
-            "description": "Original shell command used to start the job. job_retry reuses this command.",
-            "title": "Command",
-            "type": "string"
-          },
-          "created_at": {
-            "description": "Unix timestamp when the tracked job record was created.",
-            "title": "Created At",
-            "type": "number"
-          },
-          "cwd": {
-            "description": "Working directory used to start the job. job_retry reuses this directory.",
-            "title": "Cwd",
-            "type": "string"
-          },
-          "job_id": {
-            "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-            "title": "Job Id",
-            "type": "string"
-          },
-          "last_started_at": {
-            "description": "Unix timestamp when the current or most recent attempt was started.",
-            "title": "Last Started At",
-            "type": "number"
-          },
-          "name": {
-            "description": "Human-readable job name, or the generated job_id when no name was provided.",
-            "title": "Name",
-            "type": "string"
-          },
-          "session_id": {
-            "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-            "title": "Session Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/$defs/JobStatus",
-            "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-          },
-          "updated_at": {
-            "description": "Unix timestamp when the tracked job record was last updated.",
-            "title": "Updated At",
-            "type": "number"
-          }
-        },
-        "required": [
-          "job_id",
-          "name",
-          "status",
-          "command",
-          "cwd",
-          "session_id",
-          "created_at",
-          "updated_at",
-          "last_started_at",
-          "attempts"
-        ],
-        "title": "JobStartOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Stop a tracked non-interactive job by killing its backing persistent shell session and updating the job record. Use kill_persistent_shell only for manually managed sessions started with start_persistent_shell. The job record remains available for list and retry.",
-      "inputSchema": {
-        "properties": {
-          "job_id": {
-            "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-            "minLength": 1,
-            "title": "Job Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "job_id"
-        ],
-        "title": "job_stopArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "shell:read",
-              "shell:execute"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "job_stop",
-      "outputSchema": {
-        "$defs": {
-          "JobInfo": {
-            "description": "One tracked command backed by a persistent shell session.",
-            "properties": {
-              "attempts": {
-                "description": "Number of times this tracked job has been started, including retries.",
-                "title": "Attempts",
-                "type": "integer"
-              },
-              "backend": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-                "title": "Backend"
-              },
-              "command": {
-                "description": "Original shell command used to start the job. job_retry reuses this command.",
-                "title": "Command",
-                "type": "string"
-              },
-              "created_at": {
-                "description": "Unix timestamp when the tracked job record was created.",
-                "title": "Created At",
-                "type": "number"
-              },
-              "cwd": {
-                "description": "Working directory used to start the job. job_retry reuses this directory.",
-                "title": "Cwd",
-                "type": "string"
-              },
-              "job_id": {
-                "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-                "title": "Job Id",
-                "type": "string"
-              },
-              "last_started_at": {
-                "description": "Unix timestamp when the current or most recent attempt was started.",
-                "title": "Last Started At",
-                "type": "number"
-              },
-              "name": {
-                "description": "Human-readable job name, or the generated job_id when no name was provided.",
-                "title": "Name",
-                "type": "string"
-              },
-              "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-                "title": "Session Id",
-                "type": "string"
-              },
-              "status": {
-                "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-              },
-              "updated_at": {
-                "description": "Unix timestamp when the tracked job record was last updated.",
-                "title": "Updated At",
-                "type": "number"
-              }
-            },
-            "required": [
-              "job_id",
-              "name",
-              "status",
-              "command",
-              "cwd",
-              "session_id",
-              "created_at",
-              "updated_at",
-              "last_started_at",
-              "attempts"
-            ],
-            "title": "JobInfo",
-            "type": "object"
-          },
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Result of stopping one tracked job.",
-        "properties": {
-          "job": {
-            "$ref": "#/$defs/JobInfo",
-            "description": "Tracked job metadata after stop attempt."
-          },
-          "killed": {
-            "description": "Whether the backing persistent shell session was killed.",
-            "title": "Killed",
-            "type": "boolean"
-          },
-          "stderr": {
-            "default": "",
-            "description": "Backend stderr from the stop attempt, when reported by the shell layer.",
-            "title": "Stderr",
-            "type": "string"
-          }
-        },
-        "required": [
-          "job",
-          "killed"
-        ],
-        "title": "JobStopOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Read recent terminal output for a tracked non-interactive job by job_id. Use this instead of read_persistent_shell_output for jobs started with job_start because it refreshes job status and hides the backing session_id. Full logs are not persisted separately, so output may be unavailable after the backing session exits or is lost.",
-      "inputSchema": {
-        "properties": {
-          "job_id": {
-            "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-            "minLength": 1,
-            "title": "Job Id",
-            "type": "string"
           },
           "lines": {
             "default": 200,
@@ -4867,12 +4017,47 @@
             "minimum": 1,
             "title": "Lines",
             "type": "integer"
+          },
+          "list_jobs": {
+            "default": false,
+            "description": "Whether to return a snapshot of tracked bash jobs. Omit all other job actions to list by default.",
+            "title": "List Jobs",
+            "type": "boolean"
+          },
+          "poll": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Tracked bash job ids whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
+            "title": "Poll"
+          },
+          "retry": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Tracked bash job ids to restart with their original command and working directory.",
+            "title": "Retry"
           }
         },
-        "required": [
-          "job_id"
-        ],
-        "title": "job_tailArguments",
+        "title": "jobArguments",
         "type": "object"
       },
       "meta": {
@@ -4886,7 +4071,7 @@
           }
         ]
       },
-      "name": "job_tail",
+      "name": "job",
       "outputSchema": {
         "$defs": {
           "JobInfo": {
@@ -4970,6 +4155,87 @@
             "title": "JobInfo",
             "type": "object"
           },
+          "JobRetryOutput": {
+            "description": "Tracked job record after restarting its original command and cwd.",
+            "properties": {
+              "attempts": {
+                "description": "Number of times this tracked job has been started, including retries.",
+                "title": "Attempts",
+                "type": "integer"
+              },
+              "backend": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
+                "title": "Backend"
+              },
+              "command": {
+                "description": "Original shell command used to start the job. job_retry reuses this command.",
+                "title": "Command",
+                "type": "string"
+              },
+              "created_at": {
+                "description": "Unix timestamp when the tracked job record was created.",
+                "title": "Created At",
+                "type": "number"
+              },
+              "cwd": {
+                "description": "Working directory used to start the job. job_retry reuses this directory.",
+                "title": "Cwd",
+                "type": "string"
+              },
+              "job_id": {
+                "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
+                "title": "Job Id",
+                "type": "string"
+              },
+              "last_started_at": {
+                "description": "Unix timestamp when the current or most recent attempt was started.",
+                "title": "Last Started At",
+                "type": "number"
+              },
+              "name": {
+                "description": "Human-readable job name, or the generated job_id when no name was provided.",
+                "title": "Name",
+                "type": "string"
+              },
+              "session_id": {
+                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
+                "title": "Session Id",
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/$defs/JobStatus",
+                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
+              },
+              "updated_at": {
+                "description": "Unix timestamp when the tracked job record was last updated.",
+                "title": "Updated At",
+                "type": "number"
+              }
+            },
+            "required": [
+              "job_id",
+              "name",
+              "status",
+              "command",
+              "cwd",
+              "session_id",
+              "created_at",
+              "updated_at",
+              "last_started_at",
+              "attempts"
+            ],
+            "title": "JobRetryOutput",
+            "type": "object"
+          },
           "JobStatus": {
             "enum": [
               "running",
@@ -4979,13 +4245,92 @@
               "unknown"
             ],
             "type": "string"
+          },
+          "JobStopOutput": {
+            "description": "Result of stopping one tracked job.",
+            "properties": {
+              "job": {
+                "$ref": "#/$defs/JobInfo",
+                "description": "Tracked job metadata after stop attempt."
+              },
+              "killed": {
+                "description": "Whether the backing persistent shell session was killed.",
+                "title": "Killed",
+                "type": "boolean"
+              },
+              "stderr": {
+                "default": "",
+                "description": "Backend stderr from the stop attempt, when reported by the shell layer.",
+                "title": "Stderr",
+                "type": "string"
+              }
+            },
+            "required": [
+              "job",
+              "killed"
+            ],
+            "title": "JobStopOutput",
+            "type": "object"
+          },
+          "JobTailOutput": {
+            "description": "Recent terminal output for one tracked job.",
+            "properties": {
+              "job": {
+                "$ref": "#/$defs/JobInfo",
+                "description": "Tracked job metadata after status refresh."
+              },
+              "message": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Diagnostic message when output is unavailable, for example after the backing session exits or is lost.",
+                "title": "Message"
+              },
+              "output": {
+                "default": "",
+                "description": "Recent output captured from the backing persistent shell. Full job logs are not persisted separately.",
+                "title": "Output",
+                "type": "string"
+              }
+            },
+            "required": [
+              "job"
+            ],
+            "title": "JobTailOutput",
+            "type": "object"
           }
         },
-        "description": "Recent terminal output for one tracked job.",
+        "description": "Unified companion result for tracked bash jobs.",
         "properties": {
-          "job": {
-            "$ref": "#/$defs/JobInfo",
-            "description": "Tracked job metadata after status refresh."
+          "cancelled": {
+            "description": "Stop results returned for cancelled jobs.",
+            "items": {
+              "$ref": "#/$defs/JobStopOutput"
+            },
+            "title": "Cancelled",
+            "type": "array"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Tracked job counts by status when a list snapshot was read.",
+            "title": "Counts",
+            "type": "object"
+          },
+          "jobs": {
+            "description": "Tracked job rows returned for list-style snapshots.",
+            "items": {
+              "$ref": "#/$defs/JobInfo"
+            },
+            "title": "Jobs",
+            "type": "array"
           },
           "message": {
             "anyOf": [
@@ -4997,20 +4342,41 @@
               }
             ],
             "default": null,
-            "description": "Diagnostic message when output is unavailable, for example after the backing session exits or is lost.",
+            "description": "Optional diagnostic or usage note.",
             "title": "Message"
           },
-          "output": {
-            "default": "",
-            "description": "Recent output captured from the backing persistent shell. Full job logs are not persisted separately.",
-            "title": "Output",
+          "operation": {
+            "description": "Job operation performed by the unified job companion tool.",
+            "enum": [
+              "list",
+              "poll",
+              "cancel",
+              "retry"
+            ],
+            "title": "Operation",
             "type": "string"
+          },
+          "outputs": {
+            "description": "Recent output/status entries returned for inspected jobs.",
+            "items": {
+              "$ref": "#/$defs/JobTailOutput"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "retried": {
+            "description": "Restarted job rows returned for retried jobs.",
+            "items": {
+              "$ref": "#/$defs/JobRetryOutput"
+            },
+            "title": "Retried",
+            "type": "array"
           }
         },
         "required": [
-          "job"
+          "operation"
         ],
-        "title": "JobTailOutput",
+        "title": "JobOutput",
         "type": "object"
       }
     },
@@ -6933,7 +6299,7 @@
             "type": "string"
           },
           "op": {
-            "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or job operations.",
+            "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or the job companion operation.",
             "enum": [
               "environment",
               "read",
@@ -6944,15 +6310,10 @@
               "list_files",
               "tree",
               "glob",
-              "grep",
               "write_file",
               "apply_patch",
               "delete",
-              "job_start",
-              "job_list",
-              "job_tail",
-              "job_stop",
-              "job_retry"
+              "job"
             ],
             "title": "Op",
             "type": "string"
@@ -8122,820 +7483,6 @@
           "command"
         ],
         "title": "RemoteInviteOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "List tracked non-interactive jobs and status counts on a remote worker. Use this for commands started with remote_job_start/remote_job_retry; use list_remote_persistent_shells for manually managed interactive remote sessions. Each job is a recorded persistent-shell command on that worker, not a central scheduler queue.",
-      "inputSchema": {
-        "properties": {
-          "include_finished": {
-            "default": true,
-            "description": "Whether to include terminal jobs with exited, stopped, or lost status. Set false to show only active jobs.",
-            "title": "Include Finished",
-            "type": "boolean"
-          },
-          "machine": {
-            "description": "Exact remote worker machine name returned by remote_list_machines.",
-            "title": "Machine",
-            "type": "string"
-          }
-        },
-        "required": [
-          "machine"
-        ],
-        "title": "remote_job_listArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "remote:use",
-              "shell:read"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "remote_job_list",
-      "outputSchema": {
-        "$defs": {
-          "JobInfo": {
-            "description": "One tracked command backed by a persistent shell session.",
-            "properties": {
-              "attempts": {
-                "description": "Number of times this tracked job has been started, including retries.",
-                "title": "Attempts",
-                "type": "integer"
-              },
-              "backend": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-                "title": "Backend"
-              },
-              "command": {
-                "description": "Original shell command used to start the job. job_retry reuses this command.",
-                "title": "Command",
-                "type": "string"
-              },
-              "created_at": {
-                "description": "Unix timestamp when the tracked job record was created.",
-                "title": "Created At",
-                "type": "number"
-              },
-              "cwd": {
-                "description": "Working directory used to start the job. job_retry reuses this directory.",
-                "title": "Cwd",
-                "type": "string"
-              },
-              "job_id": {
-                "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-                "title": "Job Id",
-                "type": "string"
-              },
-              "last_started_at": {
-                "description": "Unix timestamp when the current or most recent attempt was started.",
-                "title": "Last Started At",
-                "type": "number"
-              },
-              "name": {
-                "description": "Human-readable job name, or the generated job_id when no name was provided.",
-                "title": "Name",
-                "type": "string"
-              },
-              "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-                "title": "Session Id",
-                "type": "string"
-              },
-              "status": {
-                "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-              },
-              "updated_at": {
-                "description": "Unix timestamp when the tracked job record was last updated.",
-                "title": "Updated At",
-                "type": "number"
-              }
-            },
-            "required": [
-              "job_id",
-              "name",
-              "status",
-              "command",
-              "cwd",
-              "session_id",
-              "created_at",
-              "updated_at",
-              "last_started_at",
-              "attempts"
-            ],
-            "title": "JobInfo",
-            "type": "object"
-          },
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Tracked job inventory.",
-        "properties": {
-          "counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "description": "Counts for all tracked jobs by status, before include_finished filtering.",
-            "title": "Counts",
-            "type": "object"
-          },
-          "jobs": {
-            "description": "Tracked jobs sorted newest first, optionally excluding terminal jobs.",
-            "items": {
-              "$ref": "#/$defs/JobInfo"
-            },
-            "title": "Jobs",
-            "type": "array"
-          }
-        },
-        "required": [
-          "jobs",
-          "counts"
-        ],
-        "title": "JobListOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Restart a terminal tracked job on a remote worker with its original command and working directory. Use this for failed or completed non-interactive jobs started with remote_job_start; for interactive remote sessions, start a new persistent shell manually instead. This creates a new backing persistent shell session on that worker and keeps the same job_id.",
-      "inputSchema": {
-        "properties": {
-          "explanation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-            "title": "Explanation"
-          },
-          "job_id": {
-            "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-            "minLength": 1,
-            "title": "Job Id",
-            "type": "string"
-          },
-          "machine": {
-            "description": "Exact remote worker machine name returned by remote_list_machines.",
-            "title": "Machine",
-            "type": "string"
-          },
-          "purpose": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-            "title": "Purpose"
-          }
-        },
-        "required": [
-          "machine",
-          "job_id"
-        ],
-        "title": "remote_job_retryArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "remote:use",
-              "shell:read",
-              "shell:execute"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "remote_job_retry",
-      "outputSchema": {
-        "$defs": {
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Tracked job record after restarting its original command and cwd.",
-        "properties": {
-          "attempts": {
-            "description": "Number of times this tracked job has been started, including retries.",
-            "title": "Attempts",
-            "type": "integer"
-          },
-          "backend": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-            "title": "Backend"
-          },
-          "command": {
-            "description": "Original shell command used to start the job. job_retry reuses this command.",
-            "title": "Command",
-            "type": "string"
-          },
-          "created_at": {
-            "description": "Unix timestamp when the tracked job record was created.",
-            "title": "Created At",
-            "type": "number"
-          },
-          "cwd": {
-            "description": "Working directory used to start the job. job_retry reuses this directory.",
-            "title": "Cwd",
-            "type": "string"
-          },
-          "job_id": {
-            "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-            "title": "Job Id",
-            "type": "string"
-          },
-          "last_started_at": {
-            "description": "Unix timestamp when the current or most recent attempt was started.",
-            "title": "Last Started At",
-            "type": "number"
-          },
-          "name": {
-            "description": "Human-readable job name, or the generated job_id when no name was provided.",
-            "title": "Name",
-            "type": "string"
-          },
-          "session_id": {
-            "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-            "title": "Session Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/$defs/JobStatus",
-            "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-          },
-          "updated_at": {
-            "description": "Unix timestamp when the tracked job record was last updated.",
-            "title": "Updated At",
-            "type": "number"
-          }
-        },
-        "required": [
-          "job_id",
-          "name",
-          "status",
-          "command",
-          "cwd",
-          "session_id",
-          "created_at",
-          "updated_at",
-          "last_started_at",
-          "attempts"
-        ],
-        "title": "JobRetryOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Start a non-interactive command as a tracked job on a remote worker. Use remote_job_start for long-running remote builds, tests, servers, watches, experiments, and other commands you want to manage by job_id with remote_job_list, remote_job_tail, remote_job_stop, or remote_job_retry. Use start_remote_persistent_shell instead when the remote process is interactive, needs later send_remote_persistent_shell_input calls, or should be managed directly by session_id. Use run_remote_shell_command for short bounded remote commands.",
-      "inputSchema": {
-        "properties": {
-          "command": {
-            "description": "Non-empty shell command to start as a tracked job. Jobs are backed by persistent shell sessions; use start_persistent_shell directly when you need an interactive session that receives later input.",
-            "minLength": 1,
-            "title": "Command",
-            "type": "string"
-          },
-          "cwd": {
-            "default": ".",
-            "description": "Working directory for the tracked job. Relative paths resolve inside the configured workspace or remote worker workspace.",
-            "title": "Cwd",
-            "type": "string"
-          },
-          "explanation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-            "title": "Explanation"
-          },
-          "machine": {
-            "description": "Exact remote worker machine name returned by remote_list_machines.",
-            "title": "Machine",
-            "type": "string"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "maxLength": 80,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional human-readable job name used for list output and the derived persistent-shell session label. Omit to use the generated job_id.",
-            "title": "Name"
-          },
-          "purpose": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-            "title": "Purpose"
-          }
-        },
-        "required": [
-          "machine",
-          "command"
-        ],
-        "title": "remote_job_startArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "remote:use",
-              "shell:read",
-              "shell:execute"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "remote_job_start",
-      "outputSchema": {
-        "$defs": {
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Tracked job record created after starting a command.",
-        "properties": {
-          "attempts": {
-            "description": "Number of times this tracked job has been started, including retries.",
-            "title": "Attempts",
-            "type": "integer"
-          },
-          "backend": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-            "title": "Backend"
-          },
-          "command": {
-            "description": "Original shell command used to start the job. job_retry reuses this command.",
-            "title": "Command",
-            "type": "string"
-          },
-          "created_at": {
-            "description": "Unix timestamp when the tracked job record was created.",
-            "title": "Created At",
-            "type": "number"
-          },
-          "cwd": {
-            "description": "Working directory used to start the job. job_retry reuses this directory.",
-            "title": "Cwd",
-            "type": "string"
-          },
-          "job_id": {
-            "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-            "title": "Job Id",
-            "type": "string"
-          },
-          "last_started_at": {
-            "description": "Unix timestamp when the current or most recent attempt was started.",
-            "title": "Last Started At",
-            "type": "number"
-          },
-          "name": {
-            "description": "Human-readable job name, or the generated job_id when no name was provided.",
-            "title": "Name",
-            "type": "string"
-          },
-          "session_id": {
-            "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-            "title": "Session Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/$defs/JobStatus",
-            "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-          },
-          "updated_at": {
-            "description": "Unix timestamp when the tracked job record was last updated.",
-            "title": "Updated At",
-            "type": "number"
-          }
-        },
-        "required": [
-          "job_id",
-          "name",
-          "status",
-          "command",
-          "cwd",
-          "session_id",
-          "created_at",
-          "updated_at",
-          "last_started_at",
-          "attempts"
-        ],
-        "title": "JobStartOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Stop a tracked remote non-interactive job by killing its backing persistent shell session on the selected worker and updating the job record. Use kill_remote_persistent_shell only for manually managed remote sessions started with start_remote_persistent_shell. The job record remains available for list and retry.",
-      "inputSchema": {
-        "properties": {
-          "job_id": {
-            "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-            "minLength": 1,
-            "title": "Job Id",
-            "type": "string"
-          },
-          "machine": {
-            "description": "Exact remote worker machine name returned by remote_list_machines.",
-            "title": "Machine",
-            "type": "string"
-          }
-        },
-        "required": [
-          "machine",
-          "job_id"
-        ],
-        "title": "remote_job_stopArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "remote:use",
-              "shell:read",
-              "shell:execute"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "remote_job_stop",
-      "outputSchema": {
-        "$defs": {
-          "JobInfo": {
-            "description": "One tracked command backed by a persistent shell session.",
-            "properties": {
-              "attempts": {
-                "description": "Number of times this tracked job has been started, including retries.",
-                "title": "Attempts",
-                "type": "integer"
-              },
-              "backend": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-                "title": "Backend"
-              },
-              "command": {
-                "description": "Original shell command used to start the job. job_retry reuses this command.",
-                "title": "Command",
-                "type": "string"
-              },
-              "created_at": {
-                "description": "Unix timestamp when the tracked job record was created.",
-                "title": "Created At",
-                "type": "number"
-              },
-              "cwd": {
-                "description": "Working directory used to start the job. job_retry reuses this directory.",
-                "title": "Cwd",
-                "type": "string"
-              },
-              "job_id": {
-                "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-                "title": "Job Id",
-                "type": "string"
-              },
-              "last_started_at": {
-                "description": "Unix timestamp when the current or most recent attempt was started.",
-                "title": "Last Started At",
-                "type": "number"
-              },
-              "name": {
-                "description": "Human-readable job name, or the generated job_id when no name was provided.",
-                "title": "Name",
-                "type": "string"
-              },
-              "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-                "title": "Session Id",
-                "type": "string"
-              },
-              "status": {
-                "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-              },
-              "updated_at": {
-                "description": "Unix timestamp when the tracked job record was last updated.",
-                "title": "Updated At",
-                "type": "number"
-              }
-            },
-            "required": [
-              "job_id",
-              "name",
-              "status",
-              "command",
-              "cwd",
-              "session_id",
-              "created_at",
-              "updated_at",
-              "last_started_at",
-              "attempts"
-            ],
-            "title": "JobInfo",
-            "type": "object"
-          },
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Result of stopping one tracked job.",
-        "properties": {
-          "job": {
-            "$ref": "#/$defs/JobInfo",
-            "description": "Tracked job metadata after stop attempt."
-          },
-          "killed": {
-            "description": "Whether the backing persistent shell session was killed.",
-            "title": "Killed",
-            "type": "boolean"
-          },
-          "stderr": {
-            "default": "",
-            "description": "Backend stderr from the stop attempt, when reported by the shell layer.",
-            "title": "Stderr",
-            "type": "string"
-          }
-        },
-        "required": [
-          "job",
-          "killed"
-        ],
-        "title": "JobStopOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Read recent terminal output for a tracked remote non-interactive job by job_id. Use this instead of read_remote_persistent_shell_output for jobs started with remote_job_start because it refreshes job status and hides the backing session_id. Full logs are not persisted separately, so output may be unavailable after the remote backing session exits or is lost.",
-      "inputSchema": {
-        "properties": {
-          "job_id": {
-            "description": "Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list.",
-            "minLength": 1,
-            "title": "Job Id",
-            "type": "string"
-          },
-          "lines": {
-            "default": 200,
-            "description": "Number of recent terminal lines to capture from the backing persistent shell. Output is available only while the backing session still exists.",
-            "maximum": 5000,
-            "minimum": 1,
-            "title": "Lines",
-            "type": "integer"
-          },
-          "machine": {
-            "description": "Exact remote worker machine name returned by remote_list_machines.",
-            "title": "Machine",
-            "type": "string"
-          }
-        },
-        "required": [
-          "machine",
-          "job_id"
-        ],
-        "title": "remote_job_tailArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "remote:use",
-              "shell:read"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "remote_job_tail",
-      "outputSchema": {
-        "$defs": {
-          "JobInfo": {
-            "description": "One tracked command backed by a persistent shell session.",
-            "properties": {
-              "attempts": {
-                "description": "Number of times this tracked job has been started, including retries.",
-                "title": "Attempts",
-                "type": "integer"
-              },
-              "backend": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-                "title": "Backend"
-              },
-              "command": {
-                "description": "Original shell command used to start the job. job_retry reuses this command.",
-                "title": "Command",
-                "type": "string"
-              },
-              "created_at": {
-                "description": "Unix timestamp when the tracked job record was created.",
-                "title": "Created At",
-                "type": "number"
-              },
-              "cwd": {
-                "description": "Working directory used to start the job. job_retry reuses this directory.",
-                "title": "Cwd",
-                "type": "string"
-              },
-              "job_id": {
-                "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
-                "title": "Job Id",
-                "type": "string"
-              },
-              "last_started_at": {
-                "description": "Unix timestamp when the current or most recent attempt was started.",
-                "title": "Last Started At",
-                "type": "number"
-              },
-              "name": {
-                "description": "Human-readable job name, or the generated job_id when no name was provided.",
-                "title": "Name",
-                "type": "string"
-              },
-              "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
-                "title": "Session Id",
-                "type": "string"
-              },
-              "status": {
-                "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
-              },
-              "updated_at": {
-                "description": "Unix timestamp when the tracked job record was last updated.",
-                "title": "Updated At",
-                "type": "number"
-              }
-            },
-            "required": [
-              "job_id",
-              "name",
-              "status",
-              "command",
-              "cwd",
-              "session_id",
-              "created_at",
-              "updated_at",
-              "last_started_at",
-              "attempts"
-            ],
-            "title": "JobInfo",
-            "type": "object"
-          },
-          "JobStatus": {
-            "enum": [
-              "running",
-              "exited",
-              "stopped",
-              "lost",
-              "unknown"
-            ],
-            "type": "string"
-          }
-        },
-        "description": "Recent terminal output for one tracked job.",
-        "properties": {
-          "job": {
-            "$ref": "#/$defs/JobInfo",
-            "description": "Tracked job metadata after status refresh."
-          },
-          "message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Diagnostic message when output is unavailable, for example after the backing session exits or is lost.",
-            "title": "Message"
-          },
-          "output": {
-            "default": "",
-            "description": "Recent output captured from the backing persistent shell. Full job logs are not persisted separately.",
-            "title": "Output",
-            "type": "string"
-          }
-        },
-        "required": [
-          "job"
-        ],
-        "title": "JobTailOutput",
         "type": "object"
       }
     },

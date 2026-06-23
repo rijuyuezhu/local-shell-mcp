@@ -66,20 +66,15 @@ REMOTE_FACADE_TOOL_MAP: dict[str, str] = {
     "read": "read",
     "search": "search",
     "edit_lines": "edit_lines",
-    "bash": "run_shell_command",
+    "bash": "bash",
     "python": "run_python_code",
     "list_files": "list_files",
     "tree": "tree_view",
     "glob": "glob_search",
-    "grep": "grep_search",
     "write_file": "write_file",
     "apply_patch": "apply_patch",
     "delete": "delete_file_or_dir",
-    "job_start": "job_start",
-    "job_list": "job_list",
-    "job_tail": "job_tail",
-    "job_stop": "job_stop",
-    "job_retry": "job_retry",
+    "job": "job",
 }
 """Map high-level remote facade operations to worker tool names."""
 

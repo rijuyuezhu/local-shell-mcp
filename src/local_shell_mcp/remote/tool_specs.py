@@ -108,21 +108,8 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "read", None),
     RemoteWorkerToolSpec("", "search", None),
     RemoteWorkerToolSpec("", "edit_lines", None),
-    RemoteWorkerToolSpec(
-        "remote_job_start", "job_start", "/tools/remote_job_start"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_job_list", "job_list", "/tools/remote_job_list"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_job_tail", "job_tail", "/tools/remote_job_tail"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_job_stop", "job_stop", "/tools/remote_job_stop"
-    ),
-    RemoteWorkerToolSpec(
-        "remote_job_retry", "job_retry", "/tools/remote_job_retry"
-    ),
+    RemoteWorkerToolSpec("", "bash", None),
+    RemoteWorkerToolSpec("", "job", None),
     RemoteWorkerToolSpec("", "transfer_stat", None),
     RemoteWorkerToolSpec("", "transfer_read_chunk", None),
     RemoteWorkerToolSpec("", "transfer_begin_write", None),

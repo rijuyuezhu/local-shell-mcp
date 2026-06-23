@@ -206,18 +206,13 @@ RemoteFacadeOpArg = Annotated[
         "list_files",
         "tree",
         "glob",
-        "grep",
         "write_file",
         "apply_patch",
         "delete",
-        "job_start",
-        "job_list",
-        "job_tail",
-        "job_stop",
-        "job_retry",
+        "job",
     ],
     Field(
-        description="High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or job operations."
+        description="High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, python, or the job companion operation."
     ),
 ]
 RemoteFacadeArgsArg = Annotated[

@@ -103,6 +103,7 @@ Goal: once the oh-my-pi-style semantic tools are documented and generated refere
 
 - [ ] Decide which low-level compatibility tools should remain HTTP/local-invocation internals versus MCP-visible tools.
 - [ ] Hide or remove legacy default-surface tools now covered by `read`, `search`, `edit_lines`, `bash`, and `remote`.
+  - [x] Collapse split local `job_start`/`job_list`/`job_tail`/`job_stop`/`job_retry` and explicit `remote_job_*` tools into one oh-my-pi-style `job` companion used with `bash(async_=true)` and `remote(op="job")`.
 - [ ] Keep explicit control-plane and escape-hatch tools only where they are still necessary.
 - [ ] Update tool-surface tests, docs, generated references, and PR description.
 

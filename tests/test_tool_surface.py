@@ -62,11 +62,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "secret_scan",
     "read_todos",
     "write_todos",
-    "job_retry",
-    "job_stop",
-    "job_tail",
-    "job_list",
-    "job_start",
+    "job",
 }
 
 
@@ -117,11 +113,6 @@ REMOTE_MCP_TOOL_NAMES = {
     "remote_pull_dir",
     "remote_push_dir",
     "remote_apply_patch",
-    "remote_job_retry",
-    "remote_job_stop",
-    "remote_job_tail",
-    "remote_job_list",
-    "remote_job_start",
 }
 
 

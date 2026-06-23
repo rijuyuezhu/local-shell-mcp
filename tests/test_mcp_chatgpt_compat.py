@@ -306,7 +306,7 @@ async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
 
 
 @pytest.mark.asyncio
-async def test_job_tool_schema_descriptions_explain_persistent_shell_backing(
+async def test_job_tool_schema_descriptions_explain_bash_companion(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -314,39 +314,26 @@ async def test_job_tool_schema_descriptions_explain_persistent_shell_backing(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    job_start_tool = tools["job_start"]
-    job_tail_tool = tools["job_tail"]
-    start_shell_tool = tools["start_persistent_shell"]
-    remote_job_start_tool = tools["remote_job_start"]
+    companion = tools["job"]
+    description = companion.description or ""
+    assert "bash" in description
+    assert "Starting work belongs" in description
 
-    job_start_description = job_start_tool.description or ""
-    start_shell_description = start_shell_tool.description or ""
-    remote_job_start_description = remote_job_start_tool.description or ""
-    assert "job_list, job_tail, job_stop, or job_retry" in job_start_description
-    assert "Use start_persistent_shell instead" in job_start_description
-    assert "Use run_shell_command" in job_start_description
-    assert "Use this low-level session tool" in start_shell_description
-    assert "prefer job_start" in start_shell_description
-    assert "remote worker" in remote_job_start_description
-    assert (
-        "Use start_remote_persistent_shell instead"
-        in remote_job_start_description
-    )
-    assert "Use run_remote_shell_command" in remote_job_start_description
-    assert (
-        "persistent shell sessions"
-        in (job_start_tool.inputSchema["properties"]["command"]["description"])
-    )
-    lines_schema = job_tail_tool.inputSchema["properties"]["lines"]
+    lines_schema = companion.inputSchema["properties"]["lines"]
     assert lines_schema["minimum"] == 1
     assert lines_schema["maximum"] == 5000
     assert (
         "Output is available only while the backing session still exists"
-        in (lines_schema["description"])
+        in lines_schema["description"]
+    )
+    assert (
+        "Tracked bash"
+        in companion.inputSchema["properties"]["cancel"]["description"]
     )
 
-    start_output = _output_schema(job_start_tool)
-    assert start_output["$defs"]["JobStatus"]["enum"] == [
+    output_schema = _output_schema(companion)
+    assert output_schema["title"] == "JobOutput"
+    assert output_schema["$defs"]["JobStatus"]["enum"] == [
         "running",
         "exited",
         "stopped",
@@ -354,8 +341,8 @@ async def test_job_tool_schema_descriptions_explain_persistent_shell_backing(
         "unknown",
     ]
     assert (
-        "job_retry reuses this command"
-        in (start_output["properties"]["command"]["description"])
+        output_schema["properties"]["operation"]["description"]
+        == "Job operation performed by the unified job companion tool."
     )
 
 
