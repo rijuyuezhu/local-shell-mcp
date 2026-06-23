@@ -18,6 +18,7 @@ from ..tool_session.store import get_tool_session_store
 from .files import read_file_execute
 from .shell import run_shell
 from .utils.path import missing_path_context, relative_display, resolve_path
+from .utils.remote_session import call_remote_session_tool
 
 
 def glob_search_execute(
@@ -225,8 +226,19 @@ async def search_execute(
     """Search code content with optional path scopes and edit grounding."""
     if session_id is not None:
         session = get_tool_session_store().touch_session(session_id)
-        if session.target != "local":
-            raise ValueError("remote sessions are not dispatchable locally yet")
+        if session.target == "remote":
+            data = await call_remote_session_tool(
+                session,
+                "search",
+                {
+                    "pattern": pattern,
+                    "paths": paths,
+                    "regex": regex,
+                    "case_sensitive": case_sensitive,
+                    "max_results": max_results,
+                },
+            )
+            return GrepSearchOutput.model_validate(data)
         if cwd == ".":
             cwd = session.workdir
     return await grep_search_execute(

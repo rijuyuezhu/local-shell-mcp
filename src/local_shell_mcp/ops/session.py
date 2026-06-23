@@ -6,6 +6,7 @@ from pathlib import Path
 from ..ops.utils.path import relative_display, workspace_root
 from ..schemas.result_models.session import GitSessionInfo, SessionStartOutput
 from ..tool_session.store import AgentSession, get_tool_session_store
+from .utils.remote_session import start_worker_session
 
 _INSTRUCTION_FILE_NAMES = (
     "AGENTS.md",
@@ -69,14 +70,13 @@ def _instruction_files(workdir: Path) -> list[str]:
 
 
 def _session_output(session: AgentSession) -> SessionStartOutput:
-    """Return a structured session_start payload for a local session."""
+    """Return a structured session_start payload for an agent session."""
     workdir = Path(session.workdir)
     return SessionStartOutput(
         session_id=session.session_id,
         target=session.target,
         workdir=session.workdir,
         machine=session.machine,
-        worker_session_id=session.worker_session_id,
         created_at=session.created_at,
         updated_at=session.updated_at,
         expires_at=session.expires_at,
@@ -92,23 +92,40 @@ def _session_output(session: AgentSession) -> SessionStartOutput:
     )
 
 
-def session_start_execute(
+async def session_start_execute(
     workdir: str,
     target: str = "local",
     machine: str | None = None,
     label: str | None = None,
 ) -> SessionStartOutput:
     """Create an explicit agent/workspace session."""
-    if target == "remote":
-        raise NotImplementedError(
-            "remote session_start is not available; use target='local'"
+    if target == "local":
+        session = get_tool_session_store().create_session(
+            target="local",
+            workdir=workdir,
+            machine=machine,
+            label=label,
         )
-    if target != "local":
+        return _session_output(session)
+    if target != "remote":
         raise ValueError("target must be 'local' or 'remote'")
+    if not machine:
+        raise ValueError("machine is required when target='remote'")
+
+    worker_session = await start_worker_session(
+        machine=machine, workdir=workdir, label=label
+    )
+    worker_session_id = worker_session.get("session_id")
+    if not isinstance(worker_session_id, str) or not worker_session_id:
+        raise RuntimeError(
+            "remote session_start did not return worker session_id"
+        )
+    remote_workdir = worker_session.get("workdir")
     session = get_tool_session_store().create_session(
-        target="local",
-        workdir=workdir,
+        target="remote",
+        workdir=str(remote_workdir or workdir),
         machine=machine,
+        worker_session_id=worker_session_id,
         label=label,
     )
     return _session_output(session)

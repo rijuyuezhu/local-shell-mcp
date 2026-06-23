@@ -5,6 +5,7 @@ from ..schemas.result_models.read import ReadOutput
 from ..tool_session.selectors import parse_read_target
 from ..tool_session.store import get_tool_session_store, resolve_session_path
 from .files import list_files_execute, read_file_execute
+from .utils.remote_session import call_remote_session_tool
 
 
 def _directory_content(result: ListFilesOutput) -> str:
@@ -15,10 +16,13 @@ def _directory_content(result: ListFilesOutput) -> str:
     return "\n".join(lines)
 
 
-def read_execute(path: str, session_id: str) -> ReadOutput:
+async def read_execute(path: str, session_id: str) -> ReadOutput:
     """Read a file or directory using optional path selector suffixes."""
     store = get_tool_session_store()
     session = store.touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(session, "read", {"path": path})
+        return ReadOutput.model_validate(data)
     target = parse_read_target(path)
     target_path = str(
         resolve_session_path(session, target.path, must_exist=True)

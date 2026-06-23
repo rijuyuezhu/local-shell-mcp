@@ -26,6 +26,7 @@ from ..tool_session.store import (
     resolve_session_path,
 )
 from .utils.path import relative_display, resolve_path
+from .utils.remote_session import call_remote_session_tool
 
 
 def list_files_execute(
@@ -439,6 +440,38 @@ def edit_lines_execute(
         replacement_line_count=replacement_line_count,
         diff=diff,
         context=context,
+    )
+
+
+async def edit_lines_dispatch_execute(
+    path: str,
+    start_line: int,
+    end_line: int,
+    replacement: str,
+    snapshot_id: str | None = None,
+    session_id: str | None = None,
+) -> EditLinesOutput:
+    """Dispatch edit_lines to a local or remote session."""
+    if session_id is None:
+        return edit_lines_execute(
+            path, start_line, end_line, replacement, snapshot_id, session_id
+        )
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "edit_lines",
+            {
+                "path": path,
+                "start_line": start_line,
+                "end_line": end_line,
+                "replacement": replacement,
+                "snapshot_id": snapshot_id,
+            },
+        )
+        return EditLinesOutput.model_validate(data)
+    return edit_lines_execute(
+        path, start_line, end_line, replacement, snapshot_id, session_id
     )
 
 

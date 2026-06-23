@@ -15,18 +15,20 @@ SessionIdArg = Annotated[
 ]
 SessionTargetArg = Annotated[
     Literal["local", "remote"],
-    Field(description="Session target. Use local for this workspace."),
+    Field(
+        description="Session target. Use local for this workspace or remote for an online worker."
+    ),
 ]
 SessionWorkdirArg = Annotated[
     str,
     Field(
-        description="Working directory to bind to the session. Local paths resolve inside the configured workspace."
+        description="Working directory to bind to the session. Local paths resolve inside the configured workspace; remote paths resolve on the selected worker."
     ),
 ]
 SessionMachineArg = Annotated[
     str | None,
     Field(
-        description="Remote worker machine name for remote sessions. Omit for local sessions."
+        description="Required remote worker machine name when target is remote. Omit for local sessions."
     ),
 ]
 SessionLabelArg = Annotated[

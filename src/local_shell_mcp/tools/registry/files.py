@@ -4,7 +4,7 @@ import asyncio
 
 from ...ops.files import (
     delete_file_or_dir_execute,
-    edit_lines_execute,
+    edit_lines_dispatch_execute,
     list_files_execute,
     write_file_execute,
 )
@@ -101,8 +101,7 @@ async def edit_lines(
     snapshot_id: SnapshotIdArg = None,
 ) -> EditLinesOutput:
     """Replace an inclusive whole-line range in a file."""
-    return await asyncio.to_thread(
-        edit_lines_execute,
+    return await edit_lines_dispatch_execute(
         path,
         start_line,
         end_line,

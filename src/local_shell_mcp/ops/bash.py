@@ -12,6 +12,7 @@ from ..tool_session.store import (
 from ..utils.serialization import to_jsonable
 from .jobs import job_start_execute
 from .shell import run_shell_command_execute, start_persistent_shell_execute
+from .utils.remote_session import call_remote_session_tool
 
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -47,6 +48,23 @@ async def bash_execute(
 ) -> BashOutput:
     """Run a shell command via bounded, tracked-job, or PTY mode."""
     session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "bash",
+            {
+                "command": command,
+                "cwd": cwd,
+                "timeout_s": timeout_s,
+                "max_output_bytes": max_output_bytes,
+                "env": env,
+                "async_": async_,
+                "pty": pty,
+                "name": name,
+            },
+            timeout_s if isinstance(timeout_s, int) else None,
+        )
+        return BashOutput.model_validate(data)
     resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
     cwd_text = str(resolved_cwd)
     command_with_env = _command_with_env(command, env)

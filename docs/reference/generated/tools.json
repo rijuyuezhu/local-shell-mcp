@@ -624,7 +624,7 @@
               }
             ]
           },
-          "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side agent/workspace session for remote bash/read/search/edit/job calls that require session_id. Use op=\"session\" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the worker-side session_id. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
+          "Run work on a selected remote worker. Prefer session_start(target=\"remote\", machine=..., workdir=...) plus ordinary read/search/edit_lines/bash/job for normal remote code work. Use this remote facade for transfer, Python, listing/tree/glob, whole-file write/delete/patch, direct worker operations, and persistent-shell companion actions. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the agent session_id. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
         ],
         [
           {
@@ -845,7 +845,7 @@
                 "note": "(string, required)"
               },
               {
-                "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
+                "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace; remote paths resolve on the selected worker.",
                 "head": {
                   "code": "workdir"
                 },
@@ -869,21 +869,21 @@
                 "note": "(string / null, optional)"
               },
               {
-                "description": "Remote worker machine name for remote sessions. Omit for local sessions.",
+                "description": "Required remote worker machine name when target is remote. Omit for local sessions.",
                 "head": {
                   "code": "machine"
                 },
                 "note": "(string / null, optional)"
               },
               {
-                "description": "Session target. Use local for this workspace.",
+                "description": "Session target. Use local for this workspace or remote for an online worker.",
                 "head": {
                   "code": "target"
                 },
                 "note": "(local / remote, optional)"
               },
               {
-                "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
+                "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace; remote paths resolve on the selected worker.",
                 "head": {
                   "code": "workdir"
                 },
@@ -891,7 +891,7 @@
               }
             ]
           },
-          "Start an explicit agent/workspace session and bind it to a required workdir. Before calling, ask the user which project directory to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. The response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools."
+          "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."
         ]
       ]
     },
@@ -3824,7 +3824,7 @@
       }
     },
     {
-      "description": "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-shell companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side agent/workspace session for remote bash/read/search/edit/job calls that require session_id. Use op=\"session\" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the worker-side session_id. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
+      "description": "Run work on a selected remote worker. Prefer session_start(target=\"remote\", machine=..., workdir=...) plus ordinary read/search/edit_lines/bash/job for normal remote code work. Use this remote facade for transfer, Python, listing/tree/glob, whole-file write/delete/patch, direct worker operations, and persistent-shell companion actions. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list and shell_id to manage persistent shells created by remote bash PTY work; shell_id is separate from the agent session_id. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
       "inputSchema": {
         "properties": {
           "args": {
@@ -4636,7 +4636,7 @@
             "type": "string"
           },
           "workdir": {
-            "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
+            "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace; remote paths resolve on the selected worker.",
             "title": "Workdir",
             "type": "string"
           }
@@ -4803,19 +4803,6 @@
             "title": "Workdir",
             "type": "string"
           },
-          "worker_session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Worker-side paired session id for remote sessions.",
-            "title": "Worker Session Id"
-          },
           "workspace_root": {
             "description": "Configured local workspace root for this server.",
             "title": "Workspace Root",
@@ -4838,7 +4825,7 @@
       }
     },
     {
-      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Before calling, ask the user which project directory to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. The response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools.",
+      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session.",
       "inputSchema": {
         "properties": {
           "label": {
@@ -4866,12 +4853,12 @@
               }
             ],
             "default": null,
-            "description": "Remote worker machine name for remote sessions. Omit for local sessions.",
+            "description": "Required remote worker machine name when target is remote. Omit for local sessions.",
             "title": "Machine"
           },
           "target": {
             "default": "local",
-            "description": "Session target. Use local for this workspace.",
+            "description": "Session target. Use local for this workspace or remote for an online worker.",
             "enum": [
               "local",
               "remote"
@@ -4880,7 +4867,7 @@
             "type": "string"
           },
           "workdir": {
-            "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
+            "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace; remote paths resolve on the selected worker.",
             "title": "Workdir",
             "type": "string"
           }
@@ -5045,19 +5032,6 @@
             "description": "Canonical workdir bound to this session.",
             "title": "Workdir",
             "type": "string"
-          },
-          "worker_session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Worker-side paired session id for remote sessions.",
-            "title": "Worker Session Id"
           },
           "workspace_root": {
             "description": "Configured local workspace root for this server.",

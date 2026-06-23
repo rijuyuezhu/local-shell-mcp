@@ -27,6 +27,12 @@ pytestmark = pytest.mark.integration
 REMOTE_TOOL_NAMES = {
     "remote",
     "remote_admin",
+    "session_start",
+    "read",
+    "search",
+    "edit_lines",
+    "bash",
+    "job",
 }
 
 
@@ -275,6 +281,121 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert any(
                 item.get("path") == "remote/demo.txt"
                 for item in listing["entries"]
+            )
+
+            first_class_session = await client.call_tool(
+                "session_start",
+                {
+                    "target": "remote",
+                    "machine": machine,
+                    "workdir": ".",
+                    "label": "remote-e2e",
+                },
+            )
+            first_class_session_id = first_class_session["session_id"]
+            assert first_class_session["target"] == "remote"
+            assert first_class_session["machine"] == machine
+            assert "worker_session_id" not in first_class_session
+
+            first_class_read = await client.call_tool(
+                "read",
+                {
+                    "session_id": first_class_session_id,
+                    "path": "remote/demo.txt:1",
+                },
+            )
+            assert first_class_read["kind"] == "file"
+            assert "hello from remote worker" in first_class_read["content"]
+            assert (
+                first_class_read["file"]["session_id"] == first_class_session_id
+            )
+            first_class_snapshot_id = first_class_read["file"]["snapshot_id"]
+
+            first_class_search = await client.call_tool(
+                "search",
+                {
+                    "session_id": first_class_session_id,
+                    "pattern": "hello",
+                    "paths": ["remote/demo.txt"],
+                    "regex": False,
+                },
+            )
+            assert first_class_search["count"] == 1
+            assert (
+                first_class_search["matches"][0]["session_id"]
+                == first_class_session_id
+            )
+
+            first_class_edit = await client.call_tool(
+                "edit_lines",
+                {
+                    "session_id": first_class_session_id,
+                    "path": "remote/demo.txt",
+                    "start_line": 1,
+                    "end_line": 1,
+                    "replacement": "edited through first-class remote session",
+                    "snapshot_id": first_class_snapshot_id,
+                },
+            )
+            assert (
+                first_class_edit["context"]["session_id"]
+                == first_class_session_id
+            )
+            assert (
+                remote_workspace / "remote" / "demo.txt"
+            ).read_text() == "edited through first-class remote session\n"
+            assert not (control_workspace / "remote" / "demo.txt").exists()
+
+            first_class_bash = await client.call_tool(
+                "bash",
+                {
+                    "session_id": first_class_session_id,
+                    "command": "printf first-class-remote-shell",
+                    "timeout_s": 5,
+                },
+            )
+            assert first_class_bash["mode"] == "command"
+            assert (
+                first_class_bash["result"]["stdout"]
+                == "first-class-remote-shell"
+            )
+
+            first_class_job = await client.call_tool(
+                "bash",
+                {
+                    "session_id": first_class_session_id,
+                    "command": (
+                        "python -c 'import time; "
+                        'print("first-class-job", flush=True); '
+                        "time.sleep(3)'"
+                    ),
+                    "async_": True,
+                    "name": "first-class-remote-job",
+                },
+            )
+            first_class_job_id = first_class_job["result"]["job_id"]
+            assert (
+                first_class_job["result"]["session_id"]
+                == first_class_session_id
+            )
+            first_class_jobs = await client.call_tool(
+                "job",
+                {
+                    "session_id": first_class_session_id,
+                    "list_jobs": True,
+                },
+            )
+            assert any(
+                item["job_id"] == first_class_job_id
+                and item["session_id"] == first_class_session_id
+                for item in first_class_jobs["jobs"]
+            )
+            await client.call_tool(
+                "job",
+                {
+                    "session_id": first_class_session_id,
+                    "cancel": [first_class_job_id],
+                },
             )
 
             remote_session = await client.call_tool(

@@ -179,11 +179,11 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ### Slice 7: Remote session start and dispatch
 
-- [ ] Extend `session_start` with `target="remote"`, required `machine`, and remote `workdir`.
-- [ ] On remote start, create a worker-side local session and store `worker_session_id` in the control-server session record.
-- [ ] Dispatch `read/search/edit_lines/bash/job` through the session record when `target="remote"`.
-- [ ] Propagate the worker session id to worker-side tools.
-- [ ] Add tests for remote session creation, remote read/search/edit/bash/job dispatch, and missing/offline worker errors.
+- [x] Extend `session_start` with `target="remote"`, required `machine`, and remote `workdir`.
+- [x] On remote start, create a worker-side local session and store `worker_session_id` in the control-server session record.
+- [x] Dispatch `read/search/edit_lines/bash/job` through the session record when `target="remote"`.
+- [x] Propagate the worker session id to worker-side tools.
+- [x] Add tests for remote session creation, remote read/search/edit/bash/job dispatch, and missing/offline worker errors.
 
 ### Slice 8: Delete generic `remote(...)`
 
@@ -204,6 +204,13 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 Latest completed session/tool-surface slice status:
 
+- Slice 7 is implemented in this update: `session_start(target="remote", machine=..., workdir=...)` creates a worker-side local session and stores the paired `worker_session_id` only in the control-server session record.
+- The `session_start` model-facing result does not expose `worker_session_id`; normal remote work uses the returned control-server `session_id`.
+- Remote agent sessions now dispatch `read`, `search`, `edit_lines`, `bash`, and `job` through the control-server session record to the paired worker session.
+- Remote dispatch passes the worker-side `session_id` to worker tools and rewrites worker-side `session_id` fields in read/search/edit/job results back to the control-server `session_id` before returning to the model.
+- Added unit and e2e tests for remote session creation, missing/offline worker errors, and remote read/search/edit_lines/bash/job dispatch.
+- Generated references and MCP server instructions now describe the first-class remote session workflow for normal remote code work.
+
 - Pushed commits on `feat/agent-tool-surface` through Slice 5 before this Slice 6 implementation.
 - Slice 6 is implemented in this update: persistent shell handles are now called `shell_id` in model-facing inputs, outputs, descriptions, docs, generated references, and tests.
 - `bash(pty=true)` returns a persistent-shell `shell_id`; this is distinct from the agent/workspace `session_id` used by session-bound workspace tools.
@@ -214,7 +221,7 @@ Latest completed session/tool-surface slice status:
 - Added surface tests proving persistent shell tool schemas/descriptions use `shell_id` and do not expose `session_id` for shell handles.
 - Model-facing descriptions, generated references, and MCP server instructions must describe only currently available behavior. Do not mention future slices, later planned support, or roadmap language there.
 
-Validation run for Slice 6:
+Validation run for Slice 7 (completed so far):
 
 ```bash
 uv run ruff check .
@@ -222,19 +229,18 @@ uv run ruff format --check .
 uv run --with pyright pyright
 uv run pytest tests/test_shell_ops.py tests/test_bash_facade.py tests/test_jobs.py tests/test_remote_facade.py tests/test_mcp_chatgpt_compat.py tests/test_tool_surface.py tests/test_export_tools_json.py -q
 uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories tests/test_e2e_stdio.py::test_stdio_process_exercises_core_tool_categories -q
-uv run python scripts/generate-config-examples.py --check
+uv run pytest tests/test_e2e_remote_worker.py tests/test_remote_facade.py -q
 uv run pytest -q
 ```
 
 Next implementation task:
 
-1. Implement Slice 7: first-class remote session start and dispatch.
-2. Extend `session_start` with `target="remote"`, required `machine`, and remote `workdir`.
-3. On remote start, create a worker-side local session and store `worker_session_id` in the control-server session record.
-4. Dispatch `read/search/edit_lines/bash/job` through the session record when `target="remote"`.
-5. Propagate the worker session id to worker-side tools.
-6. Add tests for remote session creation, remote read/search/edit/bash/job dispatch, and missing/offline worker errors.
-7. Run validation, commit, push to PR #79, update PR body, and watch CI.
+1. Finish final pre-commit/diff validation, commit, push to PR #79, update the PR body, and check CI for this Slice 7 commit.
+2. Then implement Slice 8: delete the generic `remote(machine, op, args)` model-facing tool.
+3. Remove `remote` from generated references and server instructions.
+4. Keep or adjust `remote_admin(...)` for invite/list/revoke/rename control-plane actions.
+5. Ensure model-facing docs no longer recommend `remote(...)` and remote work uses `session_start(target="remote")` plus normal tools.
+6. Add surface tests proving `remote` is absent from the model-facing surface.
 
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
@@ -245,9 +251,9 @@ Cross-context continuation prompt is maintained at the end of this file. It shou
 
 唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`
 
-请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 都已经完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`，`bash(pty=true)` 返回 `shell_id`，persistent shell companion tools 输入/输出也用 `shell_id`。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
+请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：Slice 1-7 已实现。explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 已完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`，`bash(pty=true)` 返回 `shell_id`，persistent shell companion tools 输入/输出也用 `shell_id`；`session_start(target="remote", machine=..., workdir=...)` 已实现，会在 worker 上创建 local session，在 control-server session record 中保存内部 `worker_session_id`，并让 `read/search/edit_lines/bash/job` 通过 control-server session dispatch 到 worker-side session。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
 
-下一步做 Slice 7：first-class remote session start and dispatch。要求：扩展 `session_start` 支持 `target="remote"`、required `machine` 和 remote `workdir`；remote start 时在 worker 上创建 local session，并在 control-server session record 中保存 `worker_session_id`；当 session target 是 remote 时，`read/search/edit_lines/bash/job` 通过 session record dispatch 到对应 worker，并把 worker session id 传给 worker-side tools；添加 remote session creation、remote read/search/edit/bash/job dispatch、missing/offline worker errors 的测试。完成后更新唯一信源、generated refs、PR body；运行 ruff、pyright、focused tests、e2e、full pytest、pre-commit、git diff --check；commit、push 到 PR #79 并查看 CI。
+如果 Slice 7 commit 尚未推送，请先完成最终 validation、commit、push、PR body 更新和 CI 检查。下一步做 Slice 8：删除 generic `remote(machine, op, args)` model-facing tool；从 generated references 和 server instructions 删除 `remote`；保留或调整 `remote_admin(...)` 作为 invite/list/revoke/rename control-plane 工具；确保 model-facing docs 不再推荐 `remote(...)`；添加 surface tests 证明 `remote` 不存在，远程工作使用 `session_start(target="remote")` 加普通工具。
 ```
 
 

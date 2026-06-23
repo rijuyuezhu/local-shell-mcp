@@ -1,7 +1,5 @@
 """High-level read tool registry."""
 
-import asyncio
-
 from ...ops.read import read_execute
 from ...schemas.input_models.read import ReadPathArg
 from ...schemas.input_models.session import SessionIdArg
@@ -36,4 +34,4 @@ async def read(
     path: ReadPathArg,
 ) -> ReadOutput:
     """Read a file or directory with optional path selector suffixes."""
-    return await asyncio.to_thread(read_execute, path, session_id)
+    return await read_execute(path, session_id)

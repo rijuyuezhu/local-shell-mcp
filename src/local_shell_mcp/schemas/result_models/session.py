@@ -37,10 +37,6 @@ class SessionStartOutput(BaseModel):
     machine: str | None = Field(
         default=None, description="Remote worker name for remote sessions."
     )
-    worker_session_id: str | None = Field(
-        default=None,
-        description="Worker-side paired session id for remote sessions.",
-    )
     created_at: float = Field(
         description="Unix timestamp when the session was created."
     )

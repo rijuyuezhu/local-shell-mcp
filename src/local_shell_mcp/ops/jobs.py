@@ -20,6 +20,7 @@ from ..schemas.result_models.jobs import (
     JobTailOutput,
 )
 from ..tool_session.store import (
+    UnknownAgentSessionError,
     get_tool_session_store,
     resolve_session_path,
 )
@@ -29,6 +30,7 @@ from .shell import (
     read_persistent_shell_output_execute,
     start_persistent_shell_execute,
 )
+from .utils.remote_session import call_remote_session_tool
 
 JOB_STORE_FILE_NAME = "jobs.json"
 JOB_STORE_VERSION = 1
@@ -358,6 +360,25 @@ async def job_execute(
     lines: int = 200,
 ) -> JobOutput:
     """Run one high-level tracked-job companion operation."""
+    try:
+        session = get_tool_session_store().touch_session(session_id)
+    except UnknownAgentSessionError:
+        session = None
+    if session is not None and session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "job",
+            {
+                "list_jobs": list_jobs,
+                "poll": poll,
+                "cancel": cancel,
+                "retry": retry,
+                "include_finished": include_finished,
+                "lines": lines,
+            },
+        )
+        return JobOutput.model_validate(data)
+
     selected = [poll is not None, cancel is not None, retry is not None]
     if list_jobs and any(selected):
         raise ValueError(
