@@ -20,12 +20,14 @@ from ..remote.transfer import (
 from ..schemas.result_models.remote import (
     RemoteCopyDirOutput,
     RemoteCopyFileOutput,
+    RemoteFacadeOutput,
     RemoteInviteOutput,
     RemoteListMachinesOutput,
     RemoteRenameMachineOutput,
     RemoteRevokeMachineOutput,
     RemoteWorkerToolOutput,
 )
+from ..utils.serialization import to_jsonable
 
 
 async def remote_invite_execute(
@@ -57,6 +59,65 @@ def remote_rename_machine_execute(
 def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
     """Strip control-server-only arguments before proxying to a worker."""
     return {key: value for key, value in args.items() if key != "machine"}
+
+
+REMOTE_FACADE_TOOL_MAP: dict[str, str] = {
+    "environment": "environment_info",
+    "read": "read",
+    "search": "search",
+    "edit_lines": "edit_lines",
+    "bash": "run_shell_command",
+    "python": "run_python_code",
+    "list_files": "list_files",
+    "tree": "tree_view",
+    "glob": "glob_search",
+    "grep": "grep_search",
+    "write_file": "write_file",
+    "apply_patch": "apply_patch",
+    "delete": "delete_file_or_dir",
+    "job_start": "job_start",
+    "job_list": "job_list",
+    "job_tail": "job_tail",
+    "job_stop": "job_stop",
+    "job_retry": "job_retry",
+}
+"""Map high-level remote facade operations to worker tool names."""
+
+
+def _remote_facade_timeout(op: str, args: dict[str, Any]) -> int | None:
+    """Return the worker-call timeout to use for a facade operation."""
+    timeout = args.get("timeout_s")
+    if isinstance(timeout, int):
+        return timeout
+    if op == "python":
+        return 60
+    return None
+
+
+async def remote_execute(
+    machine: str, op: str, args: dict[str, Any]
+) -> RemoteFacadeOutput:
+    """Run one high-level operation on a remote worker."""
+    try:
+        tool = REMOTE_FACADE_TOOL_MAP[op]
+    except KeyError as exc:
+        supported = ", ".join(sorted(REMOTE_FACADE_TOOL_MAP))
+        raise ValueError(
+            f"Unsupported remote op {op!r}; supported: {supported}"
+        ) from exc
+    payload = {**args, "machine": machine}
+    result = await remote_worker_tool_execute(
+        payload, tool, _remote_facade_timeout(op, args)
+    )
+    data = to_jsonable(result)
+    return RemoteFacadeOutput(
+        machine=machine,
+        op=op,
+        tool=tool,
+        data=cast(dict[str, Any], data)
+        if isinstance(data, dict)
+        else {"result": data},
+    )
 
 
 async def remote_worker_tool_execute(

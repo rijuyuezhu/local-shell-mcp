@@ -9,6 +9,7 @@ from ...config.settings import Settings
 from ...ops.remote import (
     remote_copy_dir_execute,
     remote_copy_file_execute,
+    remote_execute,
     remote_invite_execute,
     remote_list_machines_execute,
     remote_pull_dir_execute,
@@ -25,6 +26,8 @@ from ...schemas.input_models.remote import (
     RemoteChunkSizeArg,
     RemoteDestinationMachineArg,
     RemoteDestinationPathArg,
+    RemoteFacadeArgsArg,
+    RemoteFacadeOpArg,
     RemoteInviteNameArg,
     RemoteInviteTtlArg,
     RemoteMachineArg,
@@ -38,6 +41,7 @@ from ...schemas.input_models.remote import (
 from ...schemas.result_models.remote import (
     RemoteCopyDirOutput,
     RemoteCopyFileOutput,
+    RemoteFacadeOutput,
     RemoteInviteOutput,
     RemoteListMachinesOutput,
     RemoteRenameMachineOutput,
@@ -79,6 +83,16 @@ class RemoteToolRegistry(DeclarativeToolRegistry):
 
 
 local_tool = RemoteToolRegistry.get_tool_decorator()
+
+
+@local_tool(http_method="POST", http_path="/tools/remote")
+async def remote(
+    machine: RemoteMachineArg,
+    op: RemoteFacadeOpArg,
+    args: RemoteFacadeArgsArg,
+) -> RemoteFacadeOutput:
+    """Run a high-level operation on a selected remote worker. Prefer this facade for normal remote reads, searches, line edits, shell commands, jobs, and workspace operations; use remote_invite, remote_list_machines, transfer, and legacy remote_* tools for control-plane or specialized cases."""
+    return await remote_execute(machine, op, args)
 
 
 @local_tool(http_method="POST", http_path="/tools/remote_invite")

@@ -149,3 +149,20 @@ class RemoteWorkerToolOutput(BaseModel):
     result: Any | None = Field(
         default=None, description="Proxied worker result payload, when present."
     )
+
+
+class RemoteFacadeOutput(BaseModel):
+    """High-level remote facade result."""
+
+    machine: str = Field(
+        description="Remote worker machine targeted by the facade."
+    )
+    op: str = Field(
+        description="High-level remote operation requested by the caller."
+    )
+    tool: str = Field(
+        description="Underlying worker tool executed for this operation."
+    )
+    data: dict[str, Any] = Field(
+        description="Structured output returned by the underlying worker tool."
+    )

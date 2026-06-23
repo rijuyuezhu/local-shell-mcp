@@ -86,6 +86,7 @@ def test_normalize_description_cleans_docstring_text():
 
 
 REMOTE_MCP_TOOL_NAMES = {
+    "remote",
     "remote_invite",
     "remote_list_machines",
     "remote_revoke_machine",

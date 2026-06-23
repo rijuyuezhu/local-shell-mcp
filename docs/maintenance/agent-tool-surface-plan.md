@@ -78,10 +78,10 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 
 ### Slice 5: remote organization
 
-- [ ] Add a high-level `remote(machine, op, args, session_id=None)` facade.
-- [ ] Route normal remote workspace operations through the facade.
-- [ ] Keep remote invite/list/revoke/rename and transfer tools as explicit control-plane operations.
-- [ ] Update MCP instructions so agents prefer `remote(op=...)` over choosing among many `remote_*` duplicates.
+- [x] Add a high-level `remote(machine, op, args, session_id=None)` facade.
+- [x] Route normal remote workspace operations through the facade.
+- [x] Keep remote invite/list/revoke/rename and transfer tools as explicit control-plane operations.
+- [x] Update MCP instructions so agents prefer `remote(op=...)` over choosing among many `remote_*` duplicates.
 
 ### Slice 6: bash facade
 

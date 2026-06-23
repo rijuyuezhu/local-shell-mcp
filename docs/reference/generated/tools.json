@@ -1,11 +1,11 @@
 {
-  "count": 76,
+  "count": 77,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "76"
+          "code": "77"
         },
         "."
       ],
@@ -778,6 +778,37 @@
             ]
           },
           "Read recent output from a persistent remote shell session. Use to inspect output from remote long-running or interactive commands. lines bounds the returned recent output."
+        ],
+        [
+          {
+            "code": "remote"
+          },
+          {
+            "items": [
+              {
+                "description": "Operation-specific arguments forwarded to the remote worker. Do not include machine.",
+                "head": {
+                  "code": "args"
+                },
+                "note": "(object, required)"
+              },
+              {
+                "description": "Exact remote worker machine name returned by remote_list_machines.",
+                "head": {
+                  "code": "machine"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "High-level remote operation to run on the selected worker.",
+                "head": {
+                  "code": "op"
+                },
+                "note": "(environment / read / search / edit_lines / bash / python / list_files / tree / glob / grep / write_file / apply_patch / delete / job_start / job_list / job_tail / job_stop / job_retry, required)"
+              }
+            ]
+          },
+          "Run a high-level operation on a selected remote worker. Prefer this facade for normal remote reads, searches, line edits, shell commands, jobs, and workspace operations. Keep remote_invite, remote_list_machines, transfer, and legacy remote_* tools for control-plane or specialized cases. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args."
         ],
         [
           {
@@ -6624,6 +6655,105 @@
           "todos"
         ],
         "title": "ReadTodosOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Run a high-level operation on a selected remote worker. Prefer this facade for normal remote reads, searches, line edits, shell commands, jobs, and workspace operations. Keep remote_invite, remote_list_machines, transfer, and legacy remote_* tools for control-plane or specialized cases. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args.",
+      "inputSchema": {
+        "properties": {
+          "args": {
+            "additionalProperties": true,
+            "description": "Operation-specific arguments forwarded to the remote worker. Do not include machine.",
+            "title": "Args",
+            "type": "object"
+          },
+          "machine": {
+            "description": "Exact remote worker machine name returned by remote_list_machines.",
+            "title": "Machine",
+            "type": "string"
+          },
+          "op": {
+            "description": "High-level remote operation to run on the selected worker.",
+            "enum": [
+              "environment",
+              "read",
+              "search",
+              "edit_lines",
+              "bash",
+              "python",
+              "list_files",
+              "tree",
+              "glob",
+              "grep",
+              "write_file",
+              "apply_patch",
+              "delete",
+              "job_start",
+              "job_list",
+              "job_tail",
+              "job_stop",
+              "job_retry"
+            ],
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine",
+          "op",
+          "args"
+        ],
+        "title": "remoteArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "remote:use",
+              "shell:read",
+              "shell:write",
+              "shell:execute",
+              "git:write"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "remote",
+      "outputSchema": {
+        "description": "High-level remote facade result.",
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "description": "Structured output returned by the underlying worker tool.",
+            "title": "Data",
+            "type": "object"
+          },
+          "machine": {
+            "description": "Remote worker machine targeted by the facade.",
+            "title": "Machine",
+            "type": "string"
+          },
+          "op": {
+            "description": "High-level remote operation requested by the caller.",
+            "title": "Op",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Underlying worker tool executed for this operation.",
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine",
+          "op",
+          "tool",
+          "data"
+        ],
+        "title": "RemoteFacadeOutput",
         "type": "object"
       }
     },

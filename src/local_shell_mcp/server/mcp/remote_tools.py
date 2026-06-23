@@ -7,6 +7,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, TypeAdapter
 
+from ...ops.remote import remote_execute
 from ...remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
@@ -43,6 +44,8 @@ from ...schemas.input_models.remote import (
     RemoteDestinationPathArg,
     RemoteEditsArg,
     RemoteEnterArg,
+    RemoteFacadeArgsArg,
+    RemoteFacadeOpArg,
     RemoteGlobArg,
     RemoteInputTextArg,
     RemoteInviteNameArg,
@@ -91,6 +94,7 @@ from ...schemas.result_models.patch import ApplyPatchOutput
 from ...schemas.result_models.remote import (
     RemoteCopyDirOutput,
     RemoteCopyFileOutput,
+    RemoteFacadeOutput,
     RemoteInviteOutput,
     RemoteListMachinesOutput,
     RemoteRenameMachineOutput,
@@ -186,6 +190,15 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     remote_patch_meta = context.scoped_oauth_security_meta(
         ("remote:use", "shell:read", "shell:write", "git:write")
     )
+    remote_facade_meta = context.scoped_oauth_security_meta(
+        (
+            "remote:use",
+            "shell:read",
+            "shell:write",
+            "shell:execute",
+            "git:write",
+        )
+    )
 
     @mcp.tool(
         structured_output=True,
@@ -220,6 +233,21 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     ) -> RemoteRenameMachineOutput:
         """Rename a remote worker machine. Use to give a connected worker a clearer stable name before issuing remote jobs. This changes the control-server name used by later remote_* calls."""
         return rename_remote_machine(machine, new_name)
+
+    @mcp.tool(
+        structured_output=True,
+        meta=remote_facade_meta,
+        description=_description(
+            """Run a high-level operation on a selected remote worker. Prefer this facade for normal remote reads, searches, line edits, shell commands, jobs, and workspace operations. Keep remote_invite, remote_list_machines, transfer, and legacy remote_* tools for control-plane or specialized cases. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args."""
+        ),
+    )
+    async def remote(
+        machine: RemoteMachineArg,
+        op: RemoteFacadeOpArg,
+        args: RemoteFacadeArgsArg,
+    ) -> RemoteFacadeOutput:
+        """Run a high-level operation on a remote worker."""
+        return await remote_execute(machine, op, args)
 
     @mcp.tool(structured_output=True, meta=remote_read_meta)
     async def remote_environment_info(

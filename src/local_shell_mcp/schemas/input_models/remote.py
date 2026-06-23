@@ -1,6 +1,6 @@
 """Shared input annotations for remote-worker tools."""
 
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
@@ -192,5 +192,37 @@ RemotePatchArg = Annotated[
     str,
     Field(
         description="Unified diff text to apply on the selected remote worker."
+    ),
+]
+
+RemoteFacadeOpArg = Annotated[
+    Literal[
+        "environment",
+        "read",
+        "search",
+        "edit_lines",
+        "bash",
+        "python",
+        "list_files",
+        "tree",
+        "glob",
+        "grep",
+        "write_file",
+        "apply_patch",
+        "delete",
+        "job_start",
+        "job_list",
+        "job_tail",
+        "job_stop",
+        "job_retry",
+    ],
+    Field(
+        description="High-level remote operation to run on the selected worker."
+    ),
+]
+RemoteFacadeArgsArg = Annotated[
+    dict[str, Any],
+    Field(
+        description="Operation-specific arguments forwarded to the remote worker. Do not include machine."
     ),
 ]

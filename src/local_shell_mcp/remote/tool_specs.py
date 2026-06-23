@@ -105,6 +105,9 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec(
         "remote_apply_patch", "apply_patch", "/tools/remote_apply_patch"
     ),
+    RemoteWorkerToolSpec("", "read", None),
+    RemoteWorkerToolSpec("", "search", None),
+    RemoteWorkerToolSpec("", "edit_lines", None),
     RemoteWorkerToolSpec(
         "remote_job_start", "job_start", "/tools/remote_job_start"
     ),
