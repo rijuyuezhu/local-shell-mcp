@@ -246,6 +246,13 @@
                 "note": "(string, required)"
               },
               {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              },
+              {
                 "description": "Optional link lifetime in seconds. Omit to use the configured default; values above the configured cap are clamped.",
                 "head": {
                   "code": "ttl_s"
@@ -254,7 +261,7 @@
               }
             ]
           },
-          "Create a temporary tokenized HTTP download URL for one existing regular file in the controlled workspace/container. Use this when a user needs to download or open an artifact through a browser. The response includes a sensitive token and URL. Current TTL default/cap: 3600/604800 seconds. Current file-size cap: 0 bytes, with 0 meaning no configured cap."
+          "Create a temporary tokenized HTTP download URL for one existing regular file in a local agent/workspace session. Use this when a user needs to download or open an artifact through a browser. The response includes a sensitive token and URL. Current TTL default/cap: 3600/604800 seconds. Current file-size cap: 0 bytes, with 0 meaning no configured cap."
         ],
         [
           {
@@ -268,10 +275,17 @@
                   "code": "include_expired"
                 },
                 "note": "(boolean, optional)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "List tokenized file download links created by create_file_link."
+          "List tokenized file download links created by this session."
         ],
         [
           {
@@ -279,6 +293,13 @@
           },
           {
             "items": [
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              },
               {
                 "description": "Sensitive download token returned by create_file_link or list_file_links.",
                 "head": {
@@ -288,7 +309,7 @@
               }
             ]
           },
-          "Revoke a tokenized file download link created by create_file_link."
+          "Revoke a tokenized file download link created by this session."
         ]
       ]
     },
@@ -321,10 +342,17 @@
                   "code": "recursive"
                 },
                 "note": "(boolean, optional)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "Delete a file or directory inside the controlled workspace/container."
+          "Delete a file or directory inside a session workdir."
         ],
         [
           {
@@ -404,10 +432,17 @@
                   "code": "recursive"
                 },
                 "note": "(boolean, optional)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "List files and directories under a path for quick inspection. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: 5000."
+          "List files and directories under a session workdir path for quick inspection. Relative paths resolve inside the explicit agent/workspace session. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: 5000."
         ],
         [
           {
@@ -435,10 +470,17 @@
                   "code": "path"
                 },
                 "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "Write a complete UTF-8 file. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use exact-text edit or patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
+          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
         ]
       ]
     },
@@ -542,10 +584,17 @@
                   "code": "patch"
                 },
                 "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "Apply a unified diff using git apply."
+          "Apply a unified diff inside an explicit agent/workspace session."
         ]
       ]
     },
@@ -783,10 +832,17 @@
                   "code": "max_results"
                 },
                 "note": "(integer, optional)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "Scan workspace text files for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: 200."
+          "Scan text files under an explicit agent/workspace session for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: 200."
         ]
       ]
     },
@@ -1014,8 +1070,18 @@
           {
             "code": "read_todos"
           },
-          "none",
-          "Read the current agent todo list."
+          {
+            "items": [
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "Read the current agent todo list for one session."
         ],
         [
           {
@@ -1023,6 +1089,13 @@
           },
           {
             "items": [
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              },
               {
                 "description": "Replacement todo list. Each item may include id, content, status, and priority.",
                 "head": {
@@ -1032,7 +1105,7 @@
               }
             ]
           },
-          "Replace the current structured agent todo list."
+          "Replace the current structured agent todo list for one session."
         ]
       ]
     },
@@ -1263,7 +1336,7 @@
       }
     },
     {
-      "description": "Apply a unified diff using git apply.",
+      "description": "Apply a unified diff inside an explicit agent/workspace session.",
       "inputSchema": {
         "properties": {
           "cwd": {
@@ -1276,9 +1349,18 @@
             "description": "Unified diff text to validate and apply with git apply.",
             "title": "Patch",
             "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
         "required": [
+          "session_id",
           "patch"
         ],
         "title": "apply_patchArguments",
@@ -1611,7 +1693,7 @@
       }
     },
     {
-      "description": "Create a temporary tokenized HTTP download URL for one existing regular file in the controlled workspace/container. Use this when a user needs to download or open an artifact through a browser. The response includes a sensitive token and URL. Current TTL default/cap: 3600/604800 seconds. Current file-size cap: 0 bytes, with 0 meaning no configured cap.",
+      "description": "Create a temporary tokenized HTTP download URL for one existing regular file in a local agent/workspace session. Use this when a user needs to download or open an artifact through a browser. The response includes a sensitive token and URL. Current TTL default/cap: 3600/604800 seconds. Current file-size cap: 0 bytes, with 0 meaning no configured cap.",
       "inputSchema": {
         "properties": {
           "filename": {
@@ -1645,6 +1727,14 @@
             "title": "Path",
             "type": "string"
           },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          },
           "ttl_s": {
             "anyOf": [
               {
@@ -1660,6 +1750,7 @@
           }
         },
         "required": [
+          "session_id",
           "path"
         ],
         "title": "create_file_linkArguments",
@@ -1783,7 +1874,7 @@
       }
     },
     {
-      "description": "Delete a file or directory inside the controlled workspace/container.",
+      "description": "Delete a file or directory inside a session workdir.",
       "inputSchema": {
         "properties": {
           "path": {
@@ -1796,9 +1887,18 @@
             "description": "Whether to recurse into descendant directories. Required for deleting non-empty directories.",
             "title": "Recursive",
             "type": "boolean"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
         "required": [
+          "session_id",
           "path"
         ],
         "title": "delete_file_or_dirArguments",
@@ -2894,7 +2994,7 @@
       }
     },
     {
-      "description": "List tokenized file download links created by create_file_link.",
+      "description": "List tokenized file download links created by this session.",
       "inputSchema": {
         "properties": {
           "include_expired": {
@@ -2902,8 +3002,19 @@
             "description": "Whether to include expired or exhausted links in the listing.",
             "title": "Include Expired",
             "type": "boolean"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
+        "required": [
+          "session_id"
+        ],
         "title": "list_file_linksArguments",
         "type": "object"
       },
@@ -3045,7 +3156,7 @@
       }
     },
     {
-      "description": "List files and directories under a path for quick inspection. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: 5000.",
+      "description": "List files and directories under a session workdir path for quick inspection. Relative paths resolve inside the explicit agent/workspace session. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: 5000.",
       "inputSchema": {
         "properties": {
           "max_entries": {
@@ -3065,8 +3176,19 @@
             "description": "Whether to recurse into descendant directories. Required for deleting non-empty directories.",
             "title": "Recursive",
             "type": "boolean"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
+        "required": [
+          "session_id"
+        ],
         "title": "list_filesArguments",
         "type": "object"
       },
@@ -3708,9 +3830,21 @@
       }
     },
     {
-      "description": "Read the current agent todo list.",
+      "description": "Read the current agent todo list for one session.",
       "inputSchema": {
-        "properties": {},
+        "properties": {
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
         "title": "read_todosArguments",
         "type": "object"
       },
@@ -3856,9 +3990,17 @@
       }
     },
     {
-      "description": "Revoke a tokenized file download link created by create_file_link.",
+      "description": "Revoke a tokenized file download link created by this session.",
       "inputSchema": {
         "properties": {
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          },
           "token": {
             "description": "Sensitive download token returned by create_file_link or list_file_links.",
             "title": "Token",
@@ -3866,6 +4008,7 @@
           }
         },
         "required": [
+          "session_id",
           "token"
         ],
         "title": "revoke_file_linkArguments",
@@ -4325,7 +4468,7 @@
       }
     },
     {
-      "description": "Scan workspace text files for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: 200.",
+      "description": "Scan text files under an explicit agent/workspace session for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: 200.",
       "inputSchema": {
         "properties": {
           "cwd": {
@@ -4352,8 +4495,19 @@
             "description": "Maximum number of findings to return before reporting truncation. Bounded by server configuration.",
             "title": "Max Results",
             "type": "integer"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
+        "required": [
+          "session_id"
+        ],
         "title": "secret_scanArguments",
         "type": "object"
       },
@@ -5211,7 +5365,7 @@
       }
     },
     {
-      "description": "Write a complete UTF-8 file. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use exact-text edit or patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
+      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "content": {
@@ -5229,9 +5383,18 @@
             "description": "Workspace-relative path, or an allowed absolute path, for the file or directory operation.",
             "title": "Path",
             "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
         "required": [
+          "session_id",
           "path",
           "content"
         ],
@@ -5279,9 +5442,17 @@
       }
     },
     {
-      "description": "Replace the current structured agent todo list.",
+      "description": "Replace the current structured agent todo list for one session.",
       "inputSchema": {
         "properties": {
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          },
           "todos": {
             "description": "Replacement todo list. Each item may include id, content, status, and priority.",
             "items": {
@@ -5293,6 +5464,7 @@
           }
         },
         "required": [
+          "session_id",
           "todos"
         ],
         "title": "write_todosArguments",

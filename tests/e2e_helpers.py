@@ -215,7 +215,7 @@ class RestToolClient:
             base_url=self.base_url, timeout=20
         ) as client:
             if method == "GET":
-                response = await client.get(path)
+                response = await client.get(path, params=args or {})
             else:
                 response = await client.post(path, json=args or {})
         response.raise_for_status()

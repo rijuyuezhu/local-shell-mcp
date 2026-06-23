@@ -30,11 +30,23 @@ from .utils.remote_session import call_remote_session_tool
 
 
 def list_files_execute(
-    path: str = ".", recursive: bool = False, max_entries: int = 500
+    path: str = ".",
+    recursive: bool = False,
+    max_entries: int = 500,
+    session_id: str | None = None,
 ) -> ListFilesOutput:
     """List directory entries up to a limit and report whether results were truncated."""
     settings = get_settings()
-    base = resolve_path(path, must_exist=True)
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
+    )
+    base = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
     if not base.is_dir():
         raise NotADirectoryError(str(base))
     filelist: list[EntryInfo] = []
@@ -72,6 +84,30 @@ def list_files_execute(
         is_truncated=truncated,
         entries=filelist,
     )
+
+
+async def list_files_dispatch_execute(
+    path: str = ".",
+    recursive: bool = False,
+    max_entries: int = 500,
+    session_id: str | None = None,
+) -> ListFilesOutput:
+    """Dispatch list_files to a local or remote session."""
+    if session_id is None:
+        return list_files_execute(path, recursive, max_entries, session_id)
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "list_files",
+            {
+                "path": path,
+                "recursive": recursive,
+                "max_entries": max_entries,
+            },
+        )
+        return ListFilesOutput.model_validate(data)
+    return list_files_execute(path, recursive, max_entries, session_id)
 
 
 def _selected_read_lines(
@@ -227,7 +263,10 @@ def read_many_files_execute(
 
 
 def write_file_execute(
-    path: str, content: str, overwrite: bool = True
+    path: str,
+    content: str,
+    overwrite: bool = True,
+    session_id: str | None = None,
 ) -> WriteFileOutput:
     """Write a text file after path validation, parent creation, and overwrite checks."""
     settings = get_settings()
@@ -236,7 +275,16 @@ def write_file_execute(
         raise ValueError(
             f"Refusing to write {len(data)} bytes; max is {settings.max_file_write_bytes}"
         )
-    p = resolve_path(path)
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
+    )
+    p = (
+        resolve_session_path(session, path)
+        if session is not None
+        else resolve_path(path)
+    )
     if p.exists() and not overwrite:
         raise FileExistsError(str(p))
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -245,6 +293,30 @@ def write_file_execute(
     return WriteFileOutput(
         path=relative_display(p), bytes=len(data), created=created
     )
+
+
+async def write_file_dispatch_execute(
+    path: str,
+    content: str,
+    overwrite: bool = True,
+    session_id: str | None = None,
+) -> WriteFileOutput:
+    """Dispatch write_file to a local or remote session."""
+    if session_id is None:
+        return write_file_execute(path, content, overwrite, session_id)
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "write_file",
+            {
+                "path": path,
+                "content": content,
+                "overwrite": overwrite,
+            },
+        )
+        return WriteFileOutput.model_validate(data)
+    return write_file_execute(path, content, overwrite, session_id)
 
 
 def _newline_for_text(text: str) -> str:
@@ -510,10 +582,19 @@ def multi_edit_file_execute(
 
 
 def delete_file_or_dir_execute(
-    path: str, recursive: bool = False
+    path: str, recursive: bool = False, session_id: str | None = None
 ) -> DeleteFileOrDirOutput:
     """Delete a file or directory after enforcing recursive-directory semantics."""
-    p = resolve_path(path, must_exist=True)
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
+    )
+    p = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
     if p.is_dir():
         if not recursive:
             raise IsADirectoryError("Set recursive=true to delete a directory")
@@ -523,3 +604,23 @@ def delete_file_or_dir_execute(
         )
     p.unlink()
     return DeleteFileOrDirOutput(path=relative_display(p), deleted="file")
+
+
+async def delete_file_or_dir_dispatch_execute(
+    path: str, recursive: bool = False, session_id: str | None = None
+) -> DeleteFileOrDirOutput:
+    """Dispatch delete_file_or_dir to a local or remote session."""
+    if session_id is None:
+        return delete_file_or_dir_execute(path, recursive, session_id)
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "delete_file_or_dir",
+            {
+                "path": path,
+                "recursive": recursive,
+            },
+        )
+        return DeleteFileOrDirOutput.model_validate(data)
+    return delete_file_or_dir_execute(path, recursive, session_id)

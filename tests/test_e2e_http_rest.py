@@ -39,10 +39,13 @@ async def test_http_rest_process_exercises_file_download_links(tmp_path):
         client = RestToolClient(base_url)
         payload = b"download-payload-\x00-binary"
         (workspace / "artifact.bin").write_bytes(payload)
+        session = await client.call_tool("session_start", {"workdir": "."})
+        session_id = session["session_id"]
 
         link = await client.call_tool(
             "create_file_link",
             {
+                "session_id": session_id,
                 "path": "artifact.bin",
                 "ttl_s": 60,
                 "filename": "result.bin",
@@ -60,14 +63,18 @@ async def test_http_rest_process_exercises_file_download_links(tmp_path):
             exhausted = await http_client.get(link["url"])
             assert exhausted.status_code == 410
 
-        listed = await client.call_tool("list_file_links")
+        listed = await client.call_tool(
+            "list_file_links", {"session_id": session_id}
+        )
         assert listed == {"links": []}
 
         second = await client.call_tool(
-            "create_file_link", {"path": "artifact.bin", "ttl_s": 60}
+            "create_file_link",
+            {"session_id": session_id, "path": "artifact.bin", "ttl_s": 60},
         )
         revoked = await client.call_tool(
-            "revoke_file_link", {"token": second["token"]}
+            "revoke_file_link",
+            {"session_id": session_id, "token": second["token"]},
         )
         assert revoked == {"revoked": True, "token": second["token"]}
 

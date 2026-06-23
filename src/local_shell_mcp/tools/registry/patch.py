@@ -2,6 +2,7 @@
 
 from ...ops.patch import apply_patch_execute
 from ...schemas.input_models.patch import PatchCwdArg, PatchTextArg
+from ...schemas.input_models.session import SessionIdArg
 from ...schemas.result_models.patch import ApplyPatchOutput
 from ..declarative import DeclarativeToolRegistry
 
@@ -22,7 +23,7 @@ local_tool = PatchToolRegistry.get_tool_decorator()
     mcp_scopes=("shell:read", "shell:write", "git:write"),
 )
 async def apply_patch(
-    patch: PatchTextArg, cwd: PatchCwdArg = "."
+    session_id: SessionIdArg, patch: PatchTextArg, cwd: PatchCwdArg = "."
 ) -> ApplyPatchOutput:
-    """Apply a unified diff using git apply."""
-    return await apply_patch_execute(patch, cwd)
+    """Apply a unified diff inside an explicit agent/workspace session."""
+    return await apply_patch_execute(patch, cwd, session_id)

@@ -117,6 +117,35 @@ async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
     assert names.isdisjoint(REMOTE_MCP_TOOL_NAMES)
 
 
+@pytest.mark.asyncio
+async def test_remaining_stateful_tools_require_session_id(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+    stateful_tool_names = {
+        "list_files",
+        "write_file",
+        "delete_file_or_dir",
+        "apply_patch",
+        "create_file_link",
+        "list_file_links",
+        "revoke_file_link",
+        "secret_scan",
+        "read_todos",
+        "write_todos",
+    }
+
+    for name in stateful_tool_names:
+        assert "session_id" in tools[name].inputSchema["required"]
+
+    assert "session_id" not in tools["workspace_search"].inputSchema["required"]
+    assert "session_id" not in tools["fetch"].inputSchema["required"]
+
+
 def test_remote_registry_declares_only_remote_admin(monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
@@ -243,12 +272,11 @@ async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    http_payload = (
-        TestClient(build_http_app())
-        .post("/tools/list_files", json={"path": "."})
-        .json()
-    )
-    mcp_response = await build_mcp().call_tool("list_files", {"path": "."})
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    args = {"session_id": session["session_id"], "path": "."}
+    http_payload = client.post("/tools/list_files", json=args).json()
+    mcp_response = await build_mcp().call_tool("list_files", args)
     assert http_payload == _mcp_payload_data(mcp_response)
 
 
@@ -260,8 +288,11 @@ async def test_http_read_todos_matches_mcp_tool_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    http_payload = TestClient(build_http_app()).get("/tools/todo").json()
-    mcp_response = await build_mcp().call_tool("read_todos", {})
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    args = {"session_id": session["session_id"]}
+    http_payload = client.get("/tools/todo", params=args).json()
+    mcp_response = await build_mcp().call_tool("read_todos", args)
 
     assert http_payload == _mcp_payload_data(mcp_response)
 
@@ -274,12 +305,10 @@ async def test_http_secret_scan_matches_mcp_tool_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    args = {"cwd": ".", "max_results": 10}
-    http_payload = (
-        TestClient(build_http_app())
-        .post("/tools/secret_scan", json=args)
-        .json()
-    )
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    args = {"session_id": session["session_id"], "cwd": ".", "max_results": 10}
+    http_payload = client.post("/tools/secret_scan", json=args).json()
     mcp_response = await build_mcp().call_tool("secret_scan", args)
 
     assert http_payload == _mcp_payload_data(mcp_response)
@@ -291,8 +320,14 @@ def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).get(
-        "/tools/todo", params={"tool_name": "list_persistent_shells"}
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    response = client.get(
+        "/tools/todo",
+        params={
+            "session_id": session["session_id"],
+            "tool_name": "list_persistent_shells",
+        },
     )
 
     assert response.status_code == 200
@@ -320,6 +355,30 @@ def test_http_tool_missing_required_arg_returns_validation_error(
             "error": "validation_error",
             "message": "Missing required argument: session_id",
         }
+
+
+def test_todos_are_session_scoped(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    from local_shell_mcp.ops.todo import read_todos_execute, write_todos_execute
+    from local_shell_mcp.tool_session.store import get_tool_session_store
+
+    store = get_tool_session_store()
+    store.clear()
+    first = store.create_session(workdir=".").session_id
+    second = store.create_session(workdir=".").session_id
+    first_items = [{"id": "first", "content": "one"}]
+    second_items = [{"id": "second", "content": "two"}]
+
+    write_todos_execute(first_items, first)
+    write_todos_execute(second_items, second)
+
+    assert read_todos_execute(first).todos[0].id == "first"
+    assert read_todos_execute(first).todos[0].content == "one"
+    assert read_todos_execute(second).todos[0].id == "second"
+    assert read_todos_execute(second).todos[0].content == "two"
 
 
 def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
@@ -538,7 +597,11 @@ async def test_apply_patch_tool_creates_temp_file(tmp_path, monkeypatch):
 +new
 """
 
-    payload = await call_local_tool("apply_patch", {"patch": patch, "cwd": "."})
+    session = await call_local_tool("session_start", {"workdir": "."})
+    payload = await call_local_tool(
+        "apply_patch",
+        {"session_id": session.session_id, "patch": patch, "cwd": "."},
+    )
 
     assert payload.ok is True
     assert (tmp_path / "target.txt").read_text(encoding="utf-8") == "new\n"

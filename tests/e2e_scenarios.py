@@ -153,6 +153,7 @@ async def exercise_filesystem_and_search_tools(
     await client.call_tool(
         "write_file",
         {
+            "session_id": session_id,
             "path": "notes/demo.txt",
             "content": "alpha beta\nneedle one\n",
         },
@@ -161,7 +162,9 @@ async def exercise_filesystem_and_search_tools(
         "alpha beta\nneedle one\n"
     )
 
-    listing = await client.call_tool("list_files", {"path": "notes"})
+    listing = await client.call_tool(
+        "list_files", {"session_id": session_id, "path": "notes"}
+    )
     assert any(
         row.get("path") == "notes/demo.txt" for row in listing["entries"]
     )
@@ -233,7 +236,7 @@ async def exercise_filesystem_and_search_tools(
 +patched line
 """
     patch_result = await client.call_tool(
-        "apply_patch", {"patch": patch, "cwd": "."}
+        "apply_patch", {"session_id": session_id, "patch": patch, "cwd": "."}
     )
     assert patch_result["ok"] is True
     assert "patched line" in (workspace / "notes" / "demo.txt").read_text(
@@ -246,12 +249,16 @@ async def exercise_filesystem_and_search_tools(
         encoding="utf-8",
     )
     scan_result = await client.call_tool(
-        "secret_scan", {"cwd": "notes", "glob": "*.txt"}
+        "secret_scan",
+        {"session_id": session_id, "cwd": "notes", "glob": "*.txt"},
     )
     assert scan_result["findings"]
     assert scan_result["findings"][0]["path"] == "notes/token.txt"
 
-    await client.call_tool("delete_file_or_dir", {"path": "notes/token.txt"})
+    await client.call_tool(
+        "delete_file_or_dir",
+        {"session_id": session_id, "path": "notes/token.txt"},
+    )
     assert not scan_file.exists()
 
 
@@ -273,6 +280,8 @@ async def exercise_file_download_links(
 ) -> None:
     payload = b"download-payload-\x00-binary"
     (workspace / "artifact.bin").write_bytes(payload)
+    session = await client.call_tool("session_start", {"workdir": "."})
+    session_id = session["session_id"]
 
     await assert_required_tools(
         client,
@@ -281,6 +290,7 @@ async def exercise_file_download_links(
     link = await client.call_tool(
         "create_file_link",
         {
+            "session_id": session_id,
             "path": "artifact.bin",
             "ttl_s": 60,
             "filename": "result.bin",
@@ -298,14 +308,18 @@ async def exercise_file_download_links(
         exhausted = await http_client.get(link["url"])
         assert exhausted.status_code == 410
 
-    listed = await client.call_tool("list_file_links")
+    listed = await client.call_tool(
+        "list_file_links", {"session_id": session_id}
+    )
     assert listed == {"links": []}
 
     second = await client.call_tool(
-        "create_file_link", {"path": "artifact.bin", "ttl_s": 60}
+        "create_file_link",
+        {"session_id": session_id, "path": "artifact.bin", "ttl_s": 60},
     )
     revoked = await client.call_tool(
-        "revoke_file_link", {"token": second["token"]}
+        "revoke_file_link",
+        {"session_id": session_id, "token": second["token"]},
     )
     assert revoked == {"revoked": True, "token": second["token"]}
 
@@ -466,6 +480,8 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
 
 
 async def exercise_todo_tools(client: ToolClient) -> None:
+    session = await client.call_tool("session_start", {"workdir": "."})
+    session_id = session["session_id"]
     todos = [
         {
             "id": "e2e-1",
@@ -474,8 +490,12 @@ async def exercise_todo_tools(client: ToolClient) -> None:
             "priority": "high",
         }
     ]
-    write_result = await client.call_tool("write_todos", {"todos": todos})
+    write_result = await client.call_tool(
+        "write_todos", {"session_id": session_id, "todos": todos}
+    )
     assert write_result["todos"] == todos
 
-    read_result = await client.call_tool("read_todos")
+    read_result = await client.call_tool(
+        "read_todos", {"session_id": session_id}
+    )
     assert read_result["todos"] == todos

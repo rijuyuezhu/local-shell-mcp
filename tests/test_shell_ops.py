@@ -1,5 +1,4 @@
 import asyncio
-import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -98,16 +97,19 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    def blocking_list_dir(*args, **kwargs):
-        time.sleep(0.2)
+    async def blocking_list_dir(*args, **kwargs):
+        await asyncio.sleep(0.2)
         return []
 
     monkeypatch.setattr(
-        fs_tools_module, "list_files_execute", blocking_list_dir
+        fs_tools_module, "list_files_dispatch_execute", blocking_list_dir
     )
 
-    response = TestClient(build_http_app()).post(
-        "/tools/list_files", json={"path": "."}
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    response = client.post(
+        "/tools/list_files",
+        json={"session_id": session["session_id"], "path": "."},
     )
 
     assert response.status_code == 504
@@ -120,18 +122,24 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    def blocking_list_dir(*args, **kwargs):
-        time.sleep(0.2)
+    async def blocking_list_dir(*args, **kwargs):
+        await asyncio.sleep(0.2)
         return []
 
     monkeypatch.setattr(
-        fs_tools_module, "list_files_execute", blocking_list_dir
+        fs_tools_module, "list_files_dispatch_execute", blocking_list_dir
     )
 
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
     with pytest.raises(
         ToolError, match="list_files exceeded 0.01 second tool timeout"
     ):
-        await build_mcp().call_tool("list_files", {"path": "."})
+        await mcp.call_tool(
+            "list_files", {"session_id": session["session_id"], "path": "."}
+        )
 
 
 def test_run_shell_command_timeout_uses_ten_second_default(

@@ -195,35 +195,34 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ### Slice 9: Remaining stateful tools and docs
 
-- [ ] Decide session policy for `write_file`, `delete_file_or_dir`, `apply_patch`, todos, file links, secret scan, and connector-style search/fetch.
-- [ ] Make workspace-affecting tools session-bound where appropriate.
-- [ ] Update user docs, examples, troubleshooting, generated references, and PR body.
-- [ ] Run full validation and update this document with final status.
+- [x] Decide session policy for `write_file`, `delete_file_or_dir`, `apply_patch`, todos, file links, secret scan, and connector-style search/fetch.
+- [x] Make workspace-affecting tools session-bound where appropriate.
+- [x] Update user docs, examples, troubleshooting, generated references, and PR body.
+- [x] Run full validation and update this document with final status.
 
 ## Current TODO
 
 Latest completed session/tool-surface slice status:
 
-- Slice 8 is implemented in this update: the generic `remote(machine, op, args)` tool is removed from the model-facing MCP/HTTP surface.
-- `remote_admin(action, args)` remains as the remote control-plane tool for invite/list/revoke/rename.
-- Normal remote code work is now model-facing only through `session_start(target="remote", machine=..., workdir=...)` followed by ordinary `read`, `search`, `edit_lines`, `bash`, and `job` calls using the returned control-server `session_id`.
-- MCP server instructions no longer mention `remote(op="transfer")`, `remote(op="session")`, or the generic `remote` facade.
-- `docs/guides/remote-workers.md` now documents remote-session workflow instead of `remote(machine, op, args)`.
-- Generated references were rebuilt after removing `remote`; surface tests assert `remote` is absent while `remote_admin` remains.
-- Remote worker e2e now proves the connected worker flow using `remote_admin` plus first-class remote sessions and ordinary session-bound tools, asserts `remote` is not exposed, and avoids requiring optional worker-side tools such as ripgrep or tmux to be installed on every CI runner.
+- Slice 9 is implemented in this update: remaining workspace-affecting/stateful model-facing tools now use explicit agent sessions where appropriate.
+- `list_files`, `write_file`, `delete_file_or_dir`, `apply_patch`, `secret_scan`, file-link tools, and todo tools require `session_id` in the generated/model-facing surface.
+- `list_files`, `write_file`, `delete_file_or_dir`, `apply_patch`, and `secret_scan` resolve local paths through the explicit session and dispatch through remote worker sessions when the control-server session target is `remote`.
+- File download links are session-owned, list/revoke only links for the calling local session, and reject remote sessions because download URLs are served by the control server.
+- Todo state is now stored per session instead of one global todo file.
+- Connector-compatible `workspace_search` and `fetch` intentionally remain read-only, sessionless connector entry points.
+- HTTP GET tool routes now pass query parameters through to tool handlers while still ignoring any request-supplied `tool_name` override, so session-bound GET tools work over REST.
+- MCP server instructions and generated references were rebuilt to describe the current session-bound surface.
 
-Validation run for Slice 8:
+Validation run for Slice 9:
 
 ```bash
-uv run ruff format src/local_shell_mcp/tools/registry/remote.py src/local_shell_mcp/server/mcp/remote_tools.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_remote_facade.py tests/test_transfer_ops.py tests/test_e2e_remote_worker.py
-uv run ruff check src/local_shell_mcp/tools/registry/remote.py src/local_shell_mcp/server/mcp/remote_tools.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_remote_facade.py tests/test_transfer_ops.py tests/test_e2e_remote_worker.py
+uv run ruff format <Slice 9 touched files>
+uv run ruff check <Slice 9 touched files>
+uv run --with pyright python -m pyright
 uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json
-uv run pytest tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_export_tools_json.py tests/test_remote_facade.py tests/test_transfer_ops.py -q
+uv run pytest tests/test_shell_ops.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_export_tools_json.py tests/test_downloads.py tests/test_secret_scan.py tests/test_remote_facade.py -q
+uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories tests/test_e2e_http_rest.py::test_http_rest_process_exercises_file_download_links tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories tests/test_e2e_stdio.py::test_stdio_process_exercises_core_tool_categories -q
 uv run pytest tests/test_e2e_remote_worker.py -q
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv run --with pyright pyright
-uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories tests/test_e2e_stdio.py::test_stdio_process_exercises_core_tool_categories -q
 uv run pytest -q
 uv run python scripts/generate-config-examples.py --check
 uv run python -m pre_commit run --all-files
@@ -232,26 +231,22 @@ git diff --check -- .
 
 Results:
 
-- touched-file `ruff format`: completed; 3 files reformatted
-- touched-file `ruff check`: passed
-- generated MCP references: rebuilt
-- live MCP surface check: `remote` absent, `remote_admin` and `session_start` present
-- focused surface/remote/generated/transfer tests: `74 passed, 1 warning`
-- remote worker e2e: `1 passed`
-- repository `ruff check src tests`: passed
-- repository `ruff format --check src tests`: passed (`177 files already formatted`)
+- touched-file formatting/lint: passed
 - pyright: passed (`0 errors, 0 warnings`)
-- core e2e REST + MCP HTTP + stdio workflows: `3 passed`
-- full pytest: `267 passed, 1 warning`
+- generated MCP references: rebuilt; affected stateful tools require `session_id`, while `workspace_search` and `fetch` remain sessionless
+- focused shell/surface/generated/download/scan/remote tests: `95 passed, 1 warning`
+- core e2e REST + download-link REST + MCP HTTP + stdio workflows: `4 passed`
+- remote worker e2e: `1 passed`
+- full pytest: `271 passed, 1 warning`
 - generated config examples check: passed
 - pre-commit: passed
 - `git diff --check -- .`: passed
-- whole-worktree `secret_scan`: reported pre-existing fixture/dependency-style findings; changed-file secret-like scan over the 12 changed files found 0 findings
 
-Next implementation task:
+Next task:
 
-1. Commit Slice 8, push to PR #79, update the PR body, and check CI.
-2. Then implement Slice 9: decide and apply session policy for remaining stateful/workspace-affecting tools such as `write_file`, `delete_file_or_dir`, `apply_patch`, todos, file links, secret scan, and connector-style search/fetch.
+1. Re-run pre-commit/diff check after this plan update.
+2. Inspect changed-file diff for accidental sensitive strings or unwanted text.
+3. Commit Slice 9, push to PR #79, update the PR body, and check CI.
 
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
@@ -262,9 +257,9 @@ Cross-context continuation prompt is maintained at the end of this file. It shou
 
 唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`
 
-请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：Slice 1-8 已实现。explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 已完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`，`bash(pty=true)` 返回 `shell_id`，persistent shell companion tools 输入/输出也用 `shell_id`；`session_start(target="remote", machine=..., workdir=...)` 已实现，会在 worker 上创建 local session，在 control-server session record 中保存内部 `worker_session_id`，并让 `read/search/edit_lines/bash/job` 通过 control-server session dispatch 到 worker-side session。generic `remote(machine, op, args)` 已从 model-facing MCP/HTTP surface、generated refs 和 MCP instructions 删除；`remote_admin(action,args)` 保留为 invite/list/revoke/rename control-plane 工具。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
+请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：Slice 1-9 已实现。explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 已完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`，`bash(pty=true)` 返回 `shell_id`，persistent shell companion tools 输入/输出也用 `shell_id`；`session_start(target="remote", machine=..., workdir=...)` 已实现，会在 worker 上创建 local session，在 control-server session record 中保存内部 `worker_session_id`，并让 session-bound tools 通过 control-server session dispatch 到 worker-side session。generic `remote(machine, op, args)` 已从 model-facing MCP/HTTP surface、generated refs 和 MCP instructions 删除；`remote_admin(action,args)` 保留为 invite/list/revoke/rename control-plane 工具。`list_files/write_file/delete_file_or_dir/apply_patch/secret_scan/create_file_link/list_file_links/revoke_file_link/read_todos/write_todos` 已要求 `session_id`；file links 按 local session 隔离，todos 按 session 存储；connector-compatible `workspace_search/fetch` 保持 sessionless read-only 例外。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
 
-如果 Slice 8 commit 尚未推送，请先完成 broader validation、commit、push、PR body 更新和 CI 检查。下一步做 Slice 9：决定 `write_file`、`delete_file_or_dir`、`apply_patch`、todos、file links、secret scan、connector-style search/fetch 等剩余 workspace-affecting/metadata 工具的 session policy，并把合适的工具改为 session-bound。
+如果 Slice 9 commit 尚未推送，请先完成 pre-commit/diff/changed-file sensitive-string review、commit、push、PR body 更新和 CI 检查。
 ```
 
 

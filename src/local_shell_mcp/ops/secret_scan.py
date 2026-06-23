@@ -5,8 +5,10 @@ import re
 
 from ..config.settings import get_settings
 from ..schemas.result_models.secret_scan import SecretFinding, SecretScanOutput
+from ..tool_session.store import get_tool_session_store, resolve_session_path
 from .files import read_file_execute
 from .utils.path import relative_display, resolve_path
+from .utils.remote_session import call_remote_session_tool
 
 SECRET_PATTERNS = {
     "github_token": r"gh[pousr]_[A-Za-z0-9_]{36,}",
@@ -17,12 +19,24 @@ SECRET_PATTERNS = {
 
 
 def secret_scan_sync(
-    cwd: str = ".", glob: str | None = None, max_results: int = 200
+    cwd: str = ".",
+    glob: str | None = None,
+    max_results: int = 200,
+    session_id: str | None = None,
 ) -> SecretScanOutput:
     """Scan workspace text files for credential-like strings while respecting limits."""
     settings = get_settings()
     max_results = max(1, min(max_results, settings.max_grep_results))
-    base = resolve_path(cwd, must_exist=True)
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
+    )
+    base = (
+        resolve_session_path(session, cwd, must_exist=True)
+        if session is not None
+        else resolve_path(cwd, must_exist=True)
+    )
     findings: list[SecretFinding] = []
     truncated_files = 0
     for path in base.rglob("*"):
@@ -59,7 +73,25 @@ def secret_scan_sync(
 
 
 async def secret_scan_execute(
-    cwd: str = ".", glob: str | None = None, max_results: int = 200
+    cwd: str = ".",
+    glob: str | None = None,
+    max_results: int = 200,
+    session_id: str | None = None,
 ) -> SecretScanOutput:
     """Expose secret scanning through an async wrapper for tool handlers."""
-    return await asyncio.to_thread(secret_scan_sync, cwd, glob, max_results)
+    if session_id is not None:
+        session = get_tool_session_store().touch_session(session_id)
+        if session.target == "remote":
+            data = await call_remote_session_tool(
+                session,
+                "secret_scan",
+                {
+                    "cwd": cwd,
+                    "glob": glob,
+                    "max_results": max_results,
+                },
+            )
+            return SecretScanOutput.model_validate(data)
+    return await asyncio.to_thread(
+        secret_scan_sync, cwd, glob, max_results, session_id
+    )

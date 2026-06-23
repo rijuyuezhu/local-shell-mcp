@@ -16,6 +16,7 @@ from ..schemas.result_models.downloads import (
     ListFileLinksOutput,
     RevokeFileLinkOutput,
 )
+from ..tool_session.store import get_tool_session_store, resolve_session_path
 from ..utils.serialization import to_jsonable
 from .utils.path import relative_display, resolve_path
 
@@ -140,13 +141,27 @@ def create_file_link_execute(
     ttl_s: int | None = None,
     filename: str | None = None,
     max_downloads: int | None = None,
+    session_id: str | None = None,
 ) -> CreateFileLinkOutput:
     """Create a tokenized public download link for one workspace file."""
     settings = get_settings()
     if not settings.file_download_enabled:
         raise PermissionError("file downloads are disabled")
 
-    resolved = resolve_path(path, must_exist=True)
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
+    )
+    if session is not None and session.target != "local":
+        raise ValueError(
+            "file download links can only be created for local sessions"
+        )
+    resolved = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
     if not resolved.is_file():
         raise ValueError(f"Not a regular file: {path}")
 
@@ -170,6 +185,7 @@ def create_file_link_execute(
         "expires_at": created_at + ttl,
         "downloads": 0,
         "max_downloads": limit,
+        "session_id": session.session_id if session is not None else None,
     }
 
     with STORE_LOCK:
@@ -190,9 +206,11 @@ def create_file_link_execute(
 
 
 def list_file_links_execute(
-    include_expired: bool = False,
+    include_expired: bool = False, session_id: str | None = None
 ) -> ListFileLinksOutput:
     """List generated download links."""
+    if session_id is not None:
+        get_tool_session_store().touch_session(session_id)
     with STORE_LOCK:
         store = read_download_store_locked()
         changed = (
@@ -203,16 +221,26 @@ def list_file_links_execute(
         links = [
             download_link_summary(token, link)
             for token, link in store.get("links", {}).items()
+            if session_id is None or link.get("session_id") == session_id
         ]
     links.sort(key=lambda item: item.created_at or 0, reverse=True)
     return ListFileLinksOutput(links=links)
 
 
-def revoke_file_link_execute(token: str) -> RevokeFileLinkOutput:
+def revoke_file_link_execute(
+    token: str, session_id: str | None = None
+) -> RevokeFileLinkOutput:
     """Revoke one generated download link."""
+    if session_id is not None:
+        get_tool_session_store().touch_session(session_id)
     with STORE_LOCK:
         store = read_download_store_locked()
-        removed = store.get("links", {}).pop(token, None)
+        link = store.get("links", {}).get(token)
+        removed = None
+        if link is not None and (
+            session_id is None or link.get("session_id") == session_id
+        ):
+            removed = store.get("links", {}).pop(token, None)
         if removed is not None:
             write_download_store_locked(store)
     if removed is not None:

@@ -3,6 +3,7 @@
 import asyncio
 
 from ...ops.todo import read_todos_execute, write_todos_execute
+from ...schemas.input_models.session import SessionIdArg
 from ...schemas.input_models.todo import TodosArg
 from ...schemas.result_models.todo import ReadTodosOutput, WriteTodosOutput
 from ..declarative import DeclarativeToolRegistry
@@ -23,9 +24,9 @@ local_tool = TodoToolRegistry.get_tool_decorator()
     http_path="/tools/todo",
     mcp_scopes=("shell:read",),
 )
-async def read_todos() -> ReadTodosOutput:
-    """Read the current agent todo list."""
-    return await asyncio.to_thread(read_todos_execute)
+async def read_todos(session_id: SessionIdArg) -> ReadTodosOutput:
+    """Read the current agent todo list for one session."""
+    return await asyncio.to_thread(read_todos_execute, session_id)
 
 
 @local_tool(
@@ -33,6 +34,8 @@ async def read_todos() -> ReadTodosOutput:
     http_path="/tools/todo",
     mcp_scopes=("shell:read", "shell:write"),
 )
-async def write_todos(todos: TodosArg) -> WriteTodosOutput:
-    """Replace the current structured agent todo list."""
-    return await asyncio.to_thread(write_todos_execute, todos)
+async def write_todos(
+    session_id: SessionIdArg, todos: TodosArg
+) -> WriteTodosOutput:
+    """Replace the current structured agent todo list for one session."""
+    return await asyncio.to_thread(write_todos_execute, todos, session_id)

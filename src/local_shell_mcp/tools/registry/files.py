@@ -1,12 +1,10 @@
 """File operation tool registry."""
 
-import asyncio
-
 from ...ops.files import (
-    delete_file_or_dir_execute,
+    delete_file_or_dir_dispatch_execute,
     edit_lines_dispatch_execute,
-    list_files_execute,
-    write_file_execute,
+    list_files_dispatch_execute,
+    write_file_dispatch_execute,
 )
 from ...schemas.input_models.files import (
     EditEndLineArg,
@@ -43,12 +41,12 @@ local_tool = FileToolRegistry.get_tool_decorator()
 
 def _list_files_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""List files and directories under a path for quick inspection. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: {settings.max_directory_entries}."""
+    return f"""List files and directories under a session workdir path for quick inspection. Relative paths resolve inside the explicit agent/workspace session. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: {settings.max_directory_entries}."""
 
 
 def _write_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Write a complete UTF-8 file. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use exact-text edit or patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 def _edit_lines_description(context: McpToolContext) -> str:
@@ -63,13 +61,14 @@ def _edit_lines_description(context: McpToolContext) -> str:
     mcp_scopes=("shell:read",),
 )
 async def list_files(
+    session_id: SessionIdArg,
     path: ListPathArg = ".",
     recursive: RecursiveArg = False,
     max_entries: MaxEntriesArg = 500,
 ) -> ListFilesOutput:
-    """List files and directories under a path."""
-    return await asyncio.to_thread(
-        list_files_execute, path, recursive, max_entries
+    """List files and directories under a session workdir path."""
+    return await list_files_dispatch_execute(
+        path, recursive, max_entries, session_id
     )
 
 
@@ -80,10 +79,15 @@ async def list_files(
     mcp_scopes=("shell:read", "shell:write"),
 )
 async def write_file(
-    path: FilePathArg, content: FileContentArg, overwrite: OverwriteArg = True
+    session_id: SessionIdArg,
+    path: FilePathArg,
+    content: FileContentArg,
+    overwrite: OverwriteArg = True,
 ) -> WriteFileOutput:
-    """Write a UTF-8 text file."""
-    return await asyncio.to_thread(write_file_execute, path, content, overwrite)
+    """Write a UTF-8 text file inside a session workdir."""
+    return await write_file_dispatch_execute(
+        path, content, overwrite, session_id
+    )
 
 
 @local_tool(
@@ -117,7 +121,9 @@ async def edit_lines(
     mcp_scopes=("shell:read", "shell:write"),
 )
 async def delete_file_or_dir(
-    path: FilePathArg, recursive: RecursiveArg = False
+    session_id: SessionIdArg, path: FilePathArg, recursive: RecursiveArg = False
 ) -> DeleteFileOrDirOutput:
-    """Delete a file or directory inside the controlled workspace/container."""
-    return await asyncio.to_thread(delete_file_or_dir_execute, path, recursive)
+    """Delete a file or directory inside a session workdir."""
+    return await delete_file_or_dir_dispatch_execute(
+        path, recursive, session_id
+    )
