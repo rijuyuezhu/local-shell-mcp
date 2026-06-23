@@ -205,21 +205,21 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 Latest completed session/tool-surface status:
 
 - Slices 1-9 are complete and pushed on PR #79.
-- Current confirmed PR head before this final cleanup pass is `e3f2d0c test: keep mcp watchdog setup outside timeout`.
-- Last confirmed PR state: branch synced, clean worktree, `mergeStateStatus` `CLEAN`, and all required PR CI checks green.
+- Latest confirmed cleanup commit is `5dbfa8d fix: drop explanation audit metadata`; its PR CI/Docs checks completed successfully and `mergeStateStatus` was `CLEAN`.
 - The model-facing surface uses explicit agent/workspace sessions: `session_start(workdir=...)`, `session_change_cwd(session_id, workdir)`, and session-bound normal tools.
 - `environment_info` and generic `remote(machine, op, args)` are absent from the model-facing MCP/HTTP/generated surface.
 - Persistent shell handles are model-facing `shell_id`; agent/workspace sessions remain `session_id`.
 - Slice 9 completed the remaining session policy: `list_files`, `write_file`, `delete_file_or_dir`, `apply_patch`, `secret_scan`, file-link tools, and todo tools require `session_id`; `workspace_search` and `fetch` remain sessionless read-only connector-compatible exceptions.
 - Download links are owned by local agent sessions, todos are persisted per agent session, and HTTP GET tool routes pass query parameters while ignoring query `tool_name` overrides.
+- Cleanup already completed: removed the unused `explanation` argument from `bash` and `run_python_code` purpose auditing, updated generated tool refs, and kept only short `purpose` audit metadata.
 
-Current final cleanup/hardening task:
+Current cleanup/hardening task:
 
-1. Review model-facing descriptions, generated references, and MCP instructions for stale roadmap language or capabilities that are no longer exposed.
-2. Confirm there is no old model-facing `remote(...)` or `environment_info` usage, and that `shell_id`/`session_id` wording is consistent.
-3. Inspect the PR diff for unnecessary noise or obvious omissions.
-4. If only maintenance-plan or PR-body cleanup is needed, make a minimal docs-only commit, push it, update the PR body, and confirm PR CI.
-5. If code/generated/model-facing issues are found, make the smallest patch, rerun the relevant generated-reference and test validation, commit, push, and confirm PR CI.
+1. For each remaining fix, keep the change small, update this file as the unique source of truth, commit, push, and confirm CI on that head before starting the next fix.
+2. Fix HTTP GET query parameter coercion so REST GET routes such as `list_file_links(include_expired=false)` preserve typed bool/int semantics instead of treating non-empty strings as truthy.
+3. Remove unexposed legacy remote facade helpers/tests/schemas if they are not needed by the current first-class remote-session surface.
+4. Sync user docs and generated references: audit-log examples, example prompts, and configuration descriptions should describe current tools only.
+5. Re-run focused tests for each change plus `git diff --check -- .`; run broader checks before the final push if code paths change substantially.
 
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
@@ -230,9 +230,9 @@ Cross-context continuation prompt is maintained at the end of this file. It shou
 
 唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`
 
-请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：Slice 1-9 已实现。explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 已完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`；`session_start(target="remote", machine=..., workdir=...)` 已实现并让 session-bound tools dispatch 到 worker-side session。generic `remote(machine, op, args)` 已从 model-facing MCP/HTTP surface、generated refs 和 MCP instructions 删除；`remote_admin(action,args)` 保留为 invite/list/revoke/rename control-plane 工具。Slice 9 把 `list_files/write_file/delete_file_or_dir/apply_patch/secret_scan/create_file_link/list_file_links/revoke_file_link/read_todos/write_todos` 改为 required `session_id`；`workspace_search`/`fetch` 保持 sessionless read-only connector-compatible exceptions；download links local-session owned；todos per-session persisted；HTTP GET tool routes pass query params and ignore query `tool_name`. model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
+请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：Slice 1-9 已实现，且 `5dbfa8d fix: drop explanation audit metadata` 已移除无用的 `explanation` audit 参数并通过 PR CI。explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 已完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`；persistent shell handle 已从 `session_id` 改名为 `shell_id`；`session_start(target="remote", machine=..., workdir=...)` 已实现并让 session-bound tools dispatch 到 worker-side session。generic `remote(machine, op, args)` 已从 model-facing MCP/HTTP surface、generated refs 和 MCP instructions 删除；`remote_admin(action,args)` 保留为 invite/list/revoke/rename control-plane 工具。Slice 9 把 `list_files/write_file/delete_file_or_dir/apply_patch/secret_scan/create_file_link/list_file_links/revoke_file_link/read_todos/write_todos` 改为 required `session_id`；`workspace_search`/`fetch` 保持 sessionless read-only connector-compatible exceptions；download links local-session owned；todos per-session persisted；HTTP GET tool routes pass query params and ignore query `tool_name`. model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
 
-如果 Slice 9 commit 尚未推送，请先完成 final diff review、commit、push、PR body 更新和 CI 检查。然后检查本计划是否还有最终 cleanup/hardening TODO。
+继续执行 Current TODO：每个剩余 fix 都要小步提交、push、确认对应 head 的 CI，并同步本唯一信源。
 ```
 
 
