@@ -13,6 +13,6 @@ PatchTextArg = Annotated[
 PatchCwdArg = Annotated[
     str,
     Field(
-        description="Working directory where patch paths are resolved. Relative paths resolve inside the configured workspace."
+        description="Working directory where patch paths are resolved. Relative paths resolve inside the agent/workspace session workdir."
     ),
 ]

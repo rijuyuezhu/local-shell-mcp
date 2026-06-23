@@ -13,7 +13,7 @@ FilePathArg = Annotated[
 ListPathArg = Annotated[
     str,
     Field(
-        description="Directory path to list. Relative paths resolve inside the configured workspace."
+        description="Directory path to list. Relative paths resolve inside the agent/workspace session workdir."
     ),
 ]
 RecursiveArg = Annotated[

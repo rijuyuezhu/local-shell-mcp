@@ -413,7 +413,7 @@
                 "note": "(integer, optional)"
               },
               {
-                "description": "Directory path to list. Relative paths resolve inside the configured workspace.",
+                "description": "Directory path to list. Relative paths resolve inside the agent/workspace session workdir.",
                 "head": {
                   "code": "path"
                 },
@@ -565,7 +565,7 @@
           {
             "items": [
               {
-                "description": "Working directory where patch paths are resolved. Relative paths resolve inside the configured workspace.",
+                "description": "Working directory where patch paths are resolved. Relative paths resolve inside the agent/workspace session workdir.",
                 "head": {
                   "code": "cwd"
                 },
@@ -820,7 +820,7 @@
           {
             "items": [
               {
-                "description": "Directory to scan. Relative paths resolve inside the configured workspace.",
+                "description": "Directory to scan. Relative paths resolve inside the agent/workspace session workdir.",
                 "head": {
                   "code": "cwd"
                 },
@@ -1383,7 +1383,7 @@
         "properties": {
           "cwd": {
             "default": ".",
-            "description": "Working directory where patch paths are resolved. Relative paths resolve inside the configured workspace.",
+            "description": "Working directory where patch paths are resolved. Relative paths resolve inside the agent/workspace session workdir.",
             "title": "Cwd",
             "type": "string"
           },
@@ -3205,7 +3205,7 @@
           },
           "path": {
             "default": ".",
-            "description": "Directory path to list. Relative paths resolve inside the configured workspace.",
+            "description": "Directory path to list. Relative paths resolve inside the agent/workspace session workdir.",
             "title": "Path",
             "type": "string"
           },
@@ -4537,7 +4537,7 @@
         "properties": {
           "cwd": {
             "default": ".",
-            "description": "Directory to scan. Relative paths resolve inside the configured workspace.",
+            "description": "Directory to scan. Relative paths resolve inside the agent/workspace session workdir.",
             "title": "Cwd",
             "type": "string"
           },

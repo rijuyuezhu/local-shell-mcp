@@ -13,7 +13,7 @@ ShellCommandArg = Annotated[
 CwdArg = Annotated[
     str,
     Field(
-        description="Working directory for the operation. Relative paths resolve inside the configured workspace."
+        description="Working directory for the operation. Relative paths resolve inside the agent/workspace session workdir when used by session-bound tools."
     ),
 ]
 RunShellTimeoutArg = Annotated[
