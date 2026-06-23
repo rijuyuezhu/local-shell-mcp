@@ -29,7 +29,7 @@ JobIdArg = Annotated[
     str,
     StringConstraints(min_length=1),
     Field(
-        description="Tracked job identifier returned by job_start, job_list, remote_job_start, or remote_job_list."
+        description='Tracked job identifier returned by `bash(async_=true)`, `job`, or `remote(op="job")`.'
     ),
 ]
 IncludeFinishedArg = Annotated[

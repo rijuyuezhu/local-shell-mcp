@@ -11,22 +11,22 @@ class JobInfo(BaseModel):
     """One tracked command backed by a persistent shell session."""
 
     job_id: str = Field(
-        description="Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry."
+        description="Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions."
     )
     name: str = Field(
         description="Human-readable job name, or the generated job_id when no name was provided."
     )
     status: JobStatus = Field(
-        description="Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
+        description="Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when cancelled; lost when the backing session cannot be inspected."
     )
     command: str = Field(
-        description="Original shell command used to start the job. job_retry reuses this command."
+        description="Original shell command used to start the job. The retry action reuses this command."
     )
     cwd: str = Field(
-        description="Working directory used to start the job. job_retry reuses this directory."
+        description="Working directory used to start the job. The retry action reuses this directory."
     )
     session_id: str = Field(
-        description="Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations."
+        description="Backing persistent shell session id. This is exposed for diagnostics; prefer the `job` companion for tracked-job operations."
     )
     backend: str | None = Field(
         default=None,

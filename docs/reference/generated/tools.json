@@ -110,7 +110,7 @@
       ]
     },
     {
-      "body": "Register high-level bash facade tools.",
+      "body": "Register the bash tool.",
       "headers": [
         "Tool",
         "Parameters",
@@ -147,7 +147,7 @@
                 "note": "(string, optional)"
               },
               {
-                "description": "Optional environment variables for multiline, quote-heavy, or untrusted values; reference them from the command.",
+                "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
                 "head": {
                   "code": "env"
                 },
@@ -197,7 +197,7 @@
               }
             ]
           },
-          "Run terminal work through one oh-my-pi-style bash facade. Use for builds, tests, package managers, git inspection, scripts, and commands that genuinely need a shell. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline, quote-heavy, or untrusted values. Set `async_=true` for long-running non-interactive work tracked by job id, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds."
+          "Run terminal commands for builds, tests, package managers, git inspection, scripts, and other shell work. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Set `async_=true` for long-running non-interactive work tracked by job id, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds."
         ]
       ]
     },
@@ -388,7 +388,7 @@
               }
             ]
           },
-          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read`, `search`, `read_file`, or `read_many_files` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
+          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read` or `search` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -555,7 +555,7 @@
       ]
     },
     {
-      "body": "Register the high-level read selector facade.",
+      "body": "Register the read tool with selector support.",
       "headers": [
         "Tool",
         "Parameters",
@@ -571,7 +571,7 @@
           {
             "items": [
               {
-                "description": "File or directory path with optional oh-my-pi-style selector. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
+                "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
                 "head": {
                   "code": "path"
                 },
@@ -586,12 +586,12 @@
               }
             ]
           },
-          "Read files and directories through one oh-my-pi-style path argument. Prefer this high-level read tool for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
+          "Read files or list directories with optional selector suffixes in the path. Use this for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
     {
-      "body": "Register remote-worker proxy tools.",
+      "body": "Register compact remote-worker tools.",
       "headers": [
         "Tool",
         "Parameters",
@@ -607,7 +607,7 @@
           {
             "items": [
               {
-                "description": "Operation-specific arguments forwarded to the remote worker or remote facade. Do not include machine; keep edit operations grounded by remote read/search snapshots.",
+                "description": "Operation-specific arguments forwarded to the remote worker or remote tool. Do not include machine; keep edit operations grounded by remote read/search snapshots.",
                 "head": {
                   "code": "args"
                 },
@@ -629,7 +629,7 @@
               }
             ]
           },
-          "Run a high-level operation on a selected remote worker. Prefer this facade for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
+          "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
         ],
         [
           {
@@ -748,7 +748,7 @@
               }
             ]
           },
-          "Search code content using an oh-my-pi-style facade. Use built-in search for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200."
+          "Search code content for matching lines. Use this tool for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200."
         ],
         [
           {
@@ -851,7 +851,7 @@
               }
             ]
           },
-          "Terminate a persistent shell session by session_id. Use for manually managed sessions started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer job_stop so the job record is updated. This is destructive for that session but does not delete files."
+          "Terminate a persistent shell session by session_id. Use for manually managed sessions started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that session but does not delete files."
         ],
         [
           {
@@ -882,7 +882,7 @@
               }
             ]
           },
-          "Read recent output from a persistent shell session. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed session without blocking. For tracked non-interactive jobs, prefer job_tail because it works from job_id and refreshes job status. Parameters: session_id must be an id returned by start_persistent_shell or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."
+          "Read recent output from a persistent shell session. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed session without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: session_id must be an id returned by start_persistent_shell or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context."
         ],
         [
           {
@@ -958,7 +958,7 @@
               }
             ]
           },
-          "Send input to an existing persistent shell session. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. job_start jobs are intended to be non-interactive; use job_tail/job_stop/job_retry for those instead of sending input to their backing session. Set enter=false only when intentionally sending partial input without a newline."
+          "Send input to an existing persistent shell session. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing session. Set enter=false only when intentionally sending partial input without a newline."
         ]
       ]
     },
@@ -1018,7 +1018,7 @@
       ]
     },
     {
-      "body": "Register the special read-only search/fetch surface for connector clients. These tools are intentionally separate from the richer coding-agent file and search tools. Regular ChatGPT custom connectors and Deep Research-style clients often expose only a document-source pattern: search for result cards, then fetch one result by id. They may not surface general-purpose tools such as grep_search, read_file, shell, patch, or remote-worker operations unless the client is in Developer Mode or otherwise supports the full MCP tool set. search/fetch therefore need three special MCP-facing choices: 1. mcp_security_profile=\"connector_compatible\" advertises a client-facing noauth-or-oauth securitySchemes profile for connector discovery. This is metadata only; AuthMiddleware still enforces real HTTP/MCP auth. 2. annotations=\"read_only\" marks the tools as non-mutating document-source operations. 3. Their typed return models keep the connector-facing search/fetch payloads in the exact document-source shape expected by connector clients.",
+      "body": "Register the special read-only search/fetch surface for connector clients. These tools are intentionally separate from the richer coding-agent file and search tools. Regular ChatGPT custom connectors and Deep Research-style clients often expose only a document-source pattern: search for result cards, then fetch one result by id. They may not surface general-purpose tools such as code search, file reads, shell commands, patches, or remote-worker operations unless the client is in Developer Mode or otherwise supports the full MCP tool set. search/fetch therefore need three special MCP-facing choices: 1. mcp_security_profile=\"connector_compatible\" advertises a client-facing noauth-or-oauth securitySchemes profile for connector discovery. This is metadata only; AuthMiddleware still enforces real HTTP/MCP auth. 2. annotations=\"read_only\" marks the tools as non-mutating document-source operations. 3. Their typed return models keep the connector-facing search/fetch payloads in the exact document-source shape expected by connector clients.",
       "headers": [
         "Tool",
         "Parameters",
@@ -1337,7 +1337,7 @@
       }
     },
     {
-      "description": "Run terminal work through one oh-my-pi-style bash facade. Use for builds, tests, package managers, git inspection, scripts, and commands that genuinely need a shell. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline, quote-heavy, or untrusted values. Set `async_=true` for long-running non-interactive work tracked by job id, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Run terminal commands for builds, tests, package managers, git inspection, scripts, and other shell work. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Set `async_=true` for long-running non-interactive work tracked by job id, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
@@ -1370,7 +1370,7 @@
               }
             ],
             "default": null,
-            "description": "Optional environment variables for multiline, quote-heavy, or untrusted values; reference them from the command.",
+            "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
             "title": "Env"
           },
           "explanation": {
@@ -1464,7 +1464,7 @@
       },
       "name": "bash",
       "outputSchema": {
-        "description": "Result returned by the high-level bash facade.",
+        "description": "Result returned by the bash tool.",
         "properties": {
           "command": {
             "description": "Shell command submitted by the caller.",
@@ -1477,7 +1477,7 @@
             "type": "string"
           },
           "mode": {
-            "description": "Execution mode selected by the facade.",
+            "description": "Execution mode selected by the bash tool.",
             "enum": [
               "command",
               "job",
@@ -1792,7 +1792,7 @@
       }
     },
     {
-      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read`, `search`, `read_file`, or `read_many_files` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
+      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read` or `search` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "end_line": {
@@ -2483,7 +2483,7 @@
                 "title": "Backend"
               },
               "command": {
-                "description": "Original shell command used to start the job. job_retry reuses this command.",
+                "description": "Original shell command used to start the job. The retry action reuses this command.",
                 "title": "Command",
                 "type": "string"
               },
@@ -2493,12 +2493,12 @@
                 "type": "number"
               },
               "cwd": {
-                "description": "Working directory used to start the job. job_retry reuses this directory.",
+                "description": "Working directory used to start the job. The retry action reuses this directory.",
                 "title": "Cwd",
                 "type": "string"
               },
               "job_id": {
-                "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
+                "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions.",
                 "title": "Job Id",
                 "type": "string"
               },
@@ -2513,13 +2513,13 @@
                 "type": "string"
               },
               "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
+                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer the `job` companion for tracked-job operations.",
                 "title": "Session Id",
                 "type": "string"
               },
               "status": {
                 "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
+                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when cancelled; lost when the backing session cannot be inspected."
               },
               "updated_at": {
                 "description": "Unix timestamp when the tracked job record was last updated.",
@@ -2564,7 +2564,7 @@
                 "title": "Backend"
               },
               "command": {
-                "description": "Original shell command used to start the job. job_retry reuses this command.",
+                "description": "Original shell command used to start the job. The retry action reuses this command.",
                 "title": "Command",
                 "type": "string"
               },
@@ -2574,12 +2574,12 @@
                 "type": "number"
               },
               "cwd": {
-                "description": "Working directory used to start the job. job_retry reuses this directory.",
+                "description": "Working directory used to start the job. The retry action reuses this directory.",
                 "title": "Cwd",
                 "type": "string"
               },
               "job_id": {
-                "description": "Stable tracked job identifier. Use this with job_tail, job_stop, or job_retry.",
+                "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions.",
                 "title": "Job Id",
                 "type": "string"
               },
@@ -2594,13 +2594,13 @@
                 "type": "string"
               },
               "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer job_* tools for tracked-job operations.",
+                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer the `job` companion for tracked-job operations.",
                 "title": "Session Id",
                 "type": "string"
               },
               "status": {
                 "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when killed by job_stop; lost when the backing session cannot be inspected."
+                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when cancelled; lost when the backing session cannot be inspected."
               },
               "updated_at": {
                 "description": "Unix timestamp when the tracked job record was last updated.",
@@ -2768,7 +2768,7 @@
       }
     },
     {
-      "description": "Terminate a persistent shell session by session_id. Use for manually managed sessions started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer job_stop so the job record is updated. This is destructive for that session but does not delete files.",
+      "description": "Terminate a persistent shell session by session_id. Use for manually managed sessions started with bash(pty=true), such as servers, watches, REPLs, or stuck interactive commands. For tracked non-interactive jobs, prefer `job(cancel=[...])` so the job record is updated. This is destructive for that session but does not delete files.",
       "inputSchema": {
         "properties": {
           "session_id": {
@@ -3284,11 +3284,11 @@
       }
     },
     {
-      "description": "Read files and directories through one oh-my-pi-style path argument. Prefer this high-level read tool for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
+      "description": "Read files or list directories with optional selector suffixes in the path. Use this for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
           "path": {
-            "description": "File or directory path with optional oh-my-pi-style selector. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
+            "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
             "title": "Path",
             "type": "string"
           },
@@ -3609,7 +3609,7 @@
             "type": "object"
           }
         },
-        "description": "High-level read facade result for files and directories.",
+        "description": "Read result for files and directories.",
         "properties": {
           "content": {
             "description": "Model-facing content. File reads use numbered_content unless raw is true; directories use a compact listing.",
@@ -3671,7 +3671,7 @@
       }
     },
     {
-      "description": "Read recent output from a persistent shell session. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed session without blocking. For tracked non-interactive jobs, prefer job_tail because it works from job_id and refreshes job status. Parameters: session_id must be an id returned by start_persistent_shell or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context.",
+      "description": "Read recent output from a persistent shell session. Use after bash(pty=true) or send_persistent_shell_input to inspect an interactive or manually managed session without blocking. For tracked non-interactive jobs, prefer `job(poll=[...])` because it works from job_id and refreshes job status. Parameters: session_id must be an id returned by start_persistent_shell or list_persistent_shells; lines defaults to 200 and controls how many recent lines are returned. Increase lines only when needed for context.",
       "inputSchema": {
         "properties": {
           "lines": {
@@ -3825,12 +3825,12 @@
       }
     },
     {
-      "description": "Run a high-level operation on a selected remote worker. Prefer this facade for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
+      "description": "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
       "inputSchema": {
         "properties": {
           "args": {
             "additionalProperties": true,
-            "description": "Operation-specific arguments forwarded to the remote worker or remote facade. Do not include machine; keep edit operations grounded by remote read/search snapshots.",
+            "description": "Operation-specific arguments forwarded to the remote worker or remote tool. Do not include machine; keep edit operations grounded by remote read/search snapshots.",
             "title": "Args",
             "type": "object"
           },
@@ -3886,7 +3886,7 @@
       },
       "name": "remote",
       "outputSchema": {
-        "description": "High-level remote facade result.",
+        "description": "Remote operation result.",
         "properties": {
           "data": {
             "additionalProperties": true,
@@ -3895,7 +3895,7 @@
             "type": "object"
           },
           "machine": {
-            "description": "Remote worker machine targeted by the facade.",
+            "description": "Remote worker machine targeted by the operation.",
             "title": "Machine",
             "type": "string"
           },
@@ -3905,7 +3905,7 @@
             "type": "string"
           },
           "tool": {
-            "description": "Underlying worker tool or facade implementation executed for this operation.",
+            "description": "Underlying worker tool or tool implementation executed for this operation.",
             "title": "Tool",
             "type": "string"
           }
@@ -3961,7 +3961,7 @@
       },
       "name": "remote_admin",
       "outputSchema": {
-        "description": "Remote control-plane facade result.",
+        "description": "Remote control-plane result.",
         "properties": {
           "action": {
             "description": "Remote control-plane action requested by the caller.",
@@ -4183,7 +4183,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search code content using an oh-my-pi-style facade. Use built-in search for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200.",
+      "description": "Search code content for matching lines. Use this tool for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
@@ -4561,7 +4561,7 @@
       }
     },
     {
-      "description": "Send input to an existing persistent shell session. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. job_start jobs are intended to be non-interactive; use job_tail/job_stop/job_retry for those instead of sending input to their backing session. Set enter=false only when intentionally sending partial input without a newline.",
+      "description": "Send input to an existing persistent shell session. Use after bash(pty=true) for interactive programs, REPLs, prompts, or manually managed shells. jobs started with `bash(async_=true)` are intended to be non-interactive; use the `job` companion for those instead of sending input to their backing session. Set enter=false only when intentionally sending partial input without a newline.",
       "inputSchema": {
         "properties": {
           "enter": {

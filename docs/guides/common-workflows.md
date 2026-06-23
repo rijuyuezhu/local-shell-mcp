@@ -22,7 +22,7 @@ Use local-shell-mcp to propose a minimal implementation plan. Do not edit files 
 Use local-shell-mcp to implement this change. Keep the diff focused, run the relevant tests, and summarize the result with git diff highlights.
 ```
 
-The model should follow the same semantic workflow as oh-my-pi's coding-agent tools: use `read` for file or directory context, `search(pattern, paths=...)` for content discovery, `edit_lines` for snapshot-grounded whole-line edits, and `bash` for terminal work such as tests, builds, package managers, git inspection, and scripts. Prefer `read` selectors such as `src/foo.py:50-80`, `src/foo.py:50+20`, and `src/foo.py:raw`; numbered output and search snippets carry `snapshot_id`, `file_sha256`, and visible ranges. Pass that `snapshot_id` to `edit_lines`, keep ranges tight, and re-read after each successful edit or stale/surprising result. Low-level compatibility tools remain temporary fallbacks, but the intended default surface should stay small and semantic.
+For code changes, use `read` for file or directory context, `search(pattern, paths=...)` for content discovery, `edit_lines` for snapshot-grounded whole-line edits, and `bash` for terminal work such as tests, builds, package managers, git inspection, and scripts. Prefer `read` selectors such as `src/foo.py:50-80`, `src/foo.py:50+20`, and `src/foo.py:raw`; numbered output and search snippets carry `snapshot_id`, `file_sha256`, and visible ranges. Pass that `snapshot_id` to `edit_lines`, keep ranges tight, and re-read after each successful edit or stale/surprising result. The intended default surface should stay small and semantic.
 
 ## Run tests and checks
 

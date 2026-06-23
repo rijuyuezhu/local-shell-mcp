@@ -1,11 +1,6 @@
 """Tracked bash job companion tool registry."""
 
-from ...ops.jobs import (
-    job_list_execute,
-    job_retry_execute,
-    job_stop_execute,
-    job_tail_execute,
-)
+from ...ops.jobs import job_execute
 from ...schemas.input_models.jobs import (
     IncludeFinishedArg,
     JobCancelIdsArg,
@@ -50,38 +45,7 @@ async def job(
     include_finished: IncludeFinishedArg = True,
     lines: JobTailLinesArg = 200,
 ) -> JobOutput:
-    """Manage tracked async bash jobs through one oh-my-pi-style companion tool."""
-    selected = [poll is not None, cancel is not None, retry is not None]
-    if list_jobs and any(selected):
-        raise ValueError(
-            "list_jobs cannot be combined with poll, cancel, or retry"
-        )
-    if sum(selected) > 1:
-        raise ValueError("poll, cancel, and retry are mutually exclusive")
-
-    if list_jobs or not any(selected):
-        result = await job_list_execute(include_finished)
-        return JobOutput(
-            operation="list",
-            jobs=result.jobs,
-            counts=result.counts,
-            message=(
-                "No tracked bash jobs."
-                if not result.jobs
-                else "Tracked bash job snapshot."
-            ),
-        )
-
-    if poll is not None:
-        outputs = [await job_tail_execute(job_id, lines) for job_id in poll]
-        return JobOutput(operation="poll", outputs=outputs)
-
-    if cancel is not None:
-        cancelled = [await job_stop_execute(job_id) for job_id in cancel]
-        return JobOutput(operation="cancel", cancelled=cancelled)
-
-    if retry is not None:
-        retried = [await job_retry_execute(job_id) for job_id in retry]
-        return JobOutput(operation="retry", retried=retried)
-
-    raise AssertionError("unreachable job action state")
+    """Manage tracked async bash jobs through one companion tool."""
+    return await job_execute(
+        list_jobs, poll, cancel, retry, include_finished, lines
+    )

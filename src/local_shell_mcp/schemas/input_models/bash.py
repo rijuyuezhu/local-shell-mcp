@@ -1,4 +1,4 @@
-"""Typed input annotations for the high-level bash facade."""
+"""Typed input annotations for the bash tool."""
 
 from typing import Annotated
 
@@ -29,7 +29,7 @@ BashMaxOutputBytesArg = Annotated[
 BashEnvArg = Annotated[
     dict[str, str] | None,
     Field(
-        description="Optional environment variables for multiline, quote-heavy, or untrusted values; reference them from the command."
+        description="Optional environment variables for multiline or quote-heavy values; reference them from the command."
     ),
 ]
 BashAsyncArg = Annotated[

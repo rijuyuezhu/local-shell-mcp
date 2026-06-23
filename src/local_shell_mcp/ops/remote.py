@@ -67,7 +67,7 @@ def _remote_worker_args(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _json_dict(value: Any) -> dict[str, Any]:
-    """Return a JSON-compatible dict payload for facade outputs."""
+    """Return a JSON-compatible dict payload for remote outputs."""
     data = to_jsonable(value)
     return (
         cast(dict[str, Any], data)
@@ -77,35 +77,37 @@ def _json_dict(value: Any) -> dict[str, Any]:
 
 
 def _required_str(args: dict[str, Any], name: str) -> str:
-    """Extract a required string argument from a facade args dict."""
+    """Extract a required string argument from a remote args dict."""
     value = args.get(name)
     if not isinstance(value, str) or value == "":
-        raise ValueError(f"Missing required argument for remote facade: {name}")
+        raise ValueError(
+            f"Missing required argument for remote operation: {name}"
+        )
     return value
 
 
 def _optional_int(args: dict[str, Any], name: str) -> int | None:
-    """Extract an optional integer facade argument."""
+    """Extract an optional integer remote argument."""
     value = args.get(name)
     if value is None:
         return None
     if not isinstance(value, int):
-        raise ValueError(f"Remote facade argument {name!r} must be an integer")
+        raise ValueError(f"Remote argument {name!r} must be an integer")
     return value
 
 
 def _optional_bool(args: dict[str, Any], name: str, *, default: bool) -> bool:
-    """Extract an optional boolean facade argument."""
+    """Extract an optional boolean remote argument."""
     value = args.get(name, default)
     if not isinstance(value, bool):
-        raise ValueError(f"Remote facade argument {name!r} must be a boolean")
+        raise ValueError(f"Remote argument {name!r} must be a boolean")
     return value
 
 
 async def remote_admin_execute(
     action: str, args: dict[str, Any]
 ) -> RemoteAdminOutput:
-    """Run one remote control-plane action through a compact facade."""
+    """Run one remote control-plane action."""
     if action == "invite":
         result = await create_remote_invite(
             args.get("name"), args.get("workdir"), args.get("ttl_s")
@@ -150,11 +152,11 @@ REMOTE_FACADE_TOOL_MAP: dict[str, str] = {
     "delete": "delete_file_or_dir",
     "job": "job",
 }
-"""Map high-level remote facade operations to worker tool names."""
+"""Map remote operations to worker tool names."""
 
 
-def _remote_facade_timeout(op: str, args: dict[str, Any]) -> int | None:
-    """Return the worker-call timeout to use for a facade operation."""
+def _remote_operation_timeout(op: str, args: dict[str, Any]) -> int | None:
+    """Return the worker-call timeout to use for a remote operation."""
     timeout = args.get("timeout_s")
     if isinstance(timeout, int):
         return timeout
@@ -186,7 +188,7 @@ async def _remote_session_execute(
 async def _remote_transfer_execute(
     machine: str, args: dict[str, Any]
 ) -> RemoteFacadeOutput:
-    """Run a high-level transfer action through remote()."""
+    """Run a transfer action through remote()."""
     action = _required_str(args, "action")
     chunk_size = _optional_int(args, "chunk_size")
     if action == "pull_file":
@@ -256,7 +258,7 @@ async def _remote_transfer_execute(
 async def remote_execute(
     machine: str, op: str, args: dict[str, Any]
 ) -> RemoteFacadeOutput:
-    """Run one high-level operation on a remote worker."""
+    """Run one operation on a remote worker."""
     if op == "session":
         return await _remote_session_execute(machine, args)
     if op == "transfer":
@@ -272,7 +274,7 @@ async def remote_execute(
         ) from exc
     payload = {**args, "machine": machine}
     result = await remote_worker_tool_execute(
-        payload, tool, _remote_facade_timeout(op, args)
+        payload, tool, _remote_operation_timeout(op, args)
     )
     return RemoteFacadeOutput(
         machine=machine, op=op, tool=tool, data=_json_dict(result)

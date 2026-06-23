@@ -20,7 +20,10 @@ from local_shell_mcp.tools.contracts import (
     HttpToolRoute,
     ToolRegistry,
 )
-from local_shell_mcp.tools.declarative import _normalize_description
+from local_shell_mcp.tools.declarative import (
+    DeclarativeToolRegistry,
+    _normalize_description,
+)
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_invocations import (
     UnknownLocalToolError,
@@ -112,6 +115,44 @@ async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
         "revoke_file_link",
     }
     assert names.isdisjoint(REMOTE_MCP_TOOL_NAMES)
+
+
+def test_remote_registry_declares_only_remote_and_remote_admin(monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    registry = cast(
+        DeclarativeToolRegistry,
+        next(
+            registry
+            for registry in discover_tool_registries()
+            if registry.name == "remote"
+        ),
+    )
+    names = {tool.name for tool in registry.tools}
+    route_names = {route.tool_name for route in registry.http_routes()}
+    handler_names = set(registry.http_handlers())
+    legacy_names = {
+        "remote_invite",
+        "remote_list_machines",
+        "remote_revoke_machine",
+        "remote_rename_machine",
+        "remote_copy_file",
+        "remote_copy_dir",
+        "remote_pull_file",
+        "remote_push_file",
+        "remote_pull_dir",
+        "remote_push_dir",
+    }
+
+    assert names == {"remote", "remote_admin"}
+    assert {"remote", "remote_admin"} <= route_names
+    assert {"remote", "remote_admin"} <= handler_names
+    assert names.isdisjoint(legacy_names)
+    assert route_names.isdisjoint(legacy_names)
+    assert handler_names.isdisjoint(legacy_names)
 
 
 def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):

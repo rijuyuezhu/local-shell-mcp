@@ -1,4 +1,4 @@
-"""Parse oh-my-pi inspired path selectors for agent read tools."""
+"""Parse path selectors for agent read tools."""
 
 import re
 from dataclasses import dataclass
@@ -53,7 +53,6 @@ def _parse_line_selector(selector: str) -> tuple[int, int | None] | None:
 def parse_read_target(target: str) -> ReadTarget:
     """Parse a read target with optional ':raw' and line-range suffixes.
 
-    Supported suffixes intentionally mirror the most useful oh-my-pi forms:
     ':50' and ':50-' read from line 50 through the end, ':50-80' reads an
     inclusive range, ':50+20' reads 20 lines starting at line 50, and ':raw'
     keeps the model-facing output unnumbered.  Suffixes may be combined as

@@ -52,7 +52,7 @@ def _glob_search_description(context: McpToolContext) -> str:
 
 def _search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search code content using an oh-my-pi-style facade. Use built-in search for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results={settings.max_grep_results}."""
+    return f"""Search code content for matching lines. Use this tool for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(

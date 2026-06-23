@@ -224,7 +224,7 @@ RemoteFacadeOpArg = Annotated[
 RemoteFacadeArgsArg = Annotated[
     dict[str, Any],
     Field(
-        description="Operation-specific arguments forwarded to the remote worker or remote facade. Do not include machine; keep edit operations grounded by remote read/search snapshots."
+        description="Operation-specific arguments forwarded to the remote worker or remote tool. Do not include machine; keep edit operations grounded by remote read/search snapshots."
     ),
 ]
 RemoteAdminActionArg = Annotated[

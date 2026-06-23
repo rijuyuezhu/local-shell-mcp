@@ -11,7 +11,7 @@ from ..declarative import DeclarativeToolRegistry
 
 
 class ReadToolRegistry(DeclarativeToolRegistry):
-    """Register the high-level read selector facade."""
+    """Register the read tool with selector support."""
 
     name = "read"
     """Registry group name used for tool-surface organization."""
@@ -22,7 +22,7 @@ read_tool = ReadToolRegistry.get_tool_decorator()
 
 def _read_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Read files and directories through one oh-my-pi-style path argument. Prefer this high-level read tool for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
+    return f"""Read files or list directories with optional selector suffixes in the path. Use this for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: {settings.max_file_read_bytes} bytes."""
 
 
 @read_tool(

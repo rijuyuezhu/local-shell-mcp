@@ -1,7 +1,7 @@
 """In-process grounding state shared by agent-friendly tools.
 
 MCP transports do not currently provide this project with a stable coding-agent
-session identifier, but oh-my-pi style read/search/edit workflows need a small
+session identifier, but read/search/edit workflows need a small
 amount of state: which file snapshot was shown, what hash it had, and which line
 ranges were visible to the model.  This store is intentionally tiny and uses a
 single default session unless a future tool passes an explicit session id.

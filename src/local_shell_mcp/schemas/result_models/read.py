@@ -1,4 +1,4 @@
-"""Typed structured outputs for the high-level read facade."""
+"""Typed structured outputs for the read tool."""
 
 from typing import Literal
 
@@ -8,7 +8,7 @@ from .files import ListFilesOutput, ReadFileOutput
 
 
 class ReadOutput(BaseModel):
-    """High-level read facade result for files and directories."""
+    """Read result for files and directories."""
 
     kind: Literal["file", "directory"] = Field(
         description="Type of target that was read."

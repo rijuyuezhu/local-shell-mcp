@@ -1,4 +1,4 @@
-"""High-level read facade operations built on lower-level file ops."""
+"""Read tool operations built on lower-level file ops."""
 
 from ..schemas.result_models.files import ListFilesOutput
 from ..schemas.result_models.read import ReadOutput

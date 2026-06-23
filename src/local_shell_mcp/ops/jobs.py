@@ -13,6 +13,7 @@ from ..config.settings import get_settings
 from ..schemas.result_models.jobs import (
     JobInfo,
     JobListOutput,
+    JobOutput,
     JobRetryOutput,
     JobStartOutput,
     JobStopOutput,
@@ -276,3 +277,48 @@ async def job_retry_execute(job_id: str) -> JobRetryOutput:
         attempts=attempts,
     )
     return JobRetryOutput.model_validate(_public_job(job).model_dump())
+
+
+async def job_execute(
+    list_jobs: bool = False,
+    poll: list[str] | None = None,
+    cancel: list[str] | None = None,
+    retry: list[str] | None = None,
+    include_finished: bool = True,
+    lines: int = 200,
+) -> JobOutput:
+    """Run one high-level tracked-job companion operation."""
+    selected = [poll is not None, cancel is not None, retry is not None]
+    if list_jobs and any(selected):
+        raise ValueError(
+            "list_jobs cannot be combined with poll, cancel, or retry"
+        )
+    if sum(selected) > 1:
+        raise ValueError("poll, cancel, and retry are mutually exclusive")
+
+    if list_jobs or not any(selected):
+        result = await job_list_execute(include_finished)
+        return JobOutput(
+            operation="list",
+            jobs=result.jobs,
+            counts=result.counts,
+            message=(
+                "No tracked bash jobs."
+                if not result.jobs
+                else "Tracked bash job snapshot."
+            ),
+        )
+
+    if poll is not None:
+        outputs = [await job_tail_execute(job_id, lines) for job_id in poll]
+        return JobOutput(operation="poll", outputs=outputs)
+
+    if cancel is not None:
+        cancelled = [await job_stop_execute(job_id) for job_id in cancel]
+        return JobOutput(operation="cancel", cancelled=cancelled)
+
+    if retry is not None:
+        retried = [await job_retry_execute(job_id) for job_id in retry]
+        return JobOutput(operation="retry", retried=retried)
+
+    raise AssertionError("unreachable job action state")

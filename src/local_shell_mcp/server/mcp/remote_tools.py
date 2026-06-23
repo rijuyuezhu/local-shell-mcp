@@ -33,8 +33,8 @@ def _description(text: str) -> str:
 def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
     """Register MCP tools for this tool group."""
     settings = context.settings
-    remote_meta = context.scoped_oauth_security_meta(("remote:use",))
-    remote_facade_meta = context.scoped_oauth_security_meta(
+    remote_admin_meta = context.scoped_oauth_security_meta(("remote:use",))
+    remote_meta = context.scoped_oauth_security_meta(
         (
             "remote:use",
             "shell:read",
@@ -46,7 +46,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=remote_meta,
+        meta=remote_admin_meta,
         description=_description(
             f"""Run compact remote control-plane actions. Use action="list" to discover worker names before calling remote(machine, op, args); action="invite" to create a one-time join command; action="revoke" to remove a stale or untrusted worker; and action="rename" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability."""
         ),
@@ -60,9 +60,9 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
 
     @mcp.tool(
         structured_output=True,
-        meta=remote_facade_meta,
+        meta=remote_meta,
         description=_description(
-            """Run a high-level operation on a selected remote worker. Prefer this facade for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op="session" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op="transfer" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."""
+            """Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op="session" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op="transfer" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."""
         ),
     )
     async def remote(

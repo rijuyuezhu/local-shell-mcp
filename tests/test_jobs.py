@@ -2,12 +2,100 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops import jobs as jobs_ops
+from local_shell_mcp.schemas.result_models.jobs import (
+    JobInfo,
+    JobListOutput,
+    JobRetryOutput,
+    JobStopOutput,
+    JobTailOutput,
+)
 from local_shell_mcp.schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     ReadPersistentShellOutput,
     StartPersistentShellOutput,
 )
+
+
+def _job_info(job_id: str = "job_1") -> JobInfo:
+    return JobInfo(
+        job_id=job_id,
+        name=job_id,
+        status="running",
+        command="echo ok",
+        cwd=".",
+        session_id=f"session_{job_id}",
+        backend="fake",
+        created_at=1.0,
+        updated_at=1.0,
+        last_started_at=1.0,
+        attempts=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_job_execute_dispatches_companion_actions(monkeypatch):
+    calls = []
+    job = _job_info()
+
+    async def fake_list(include_finished=True):
+        calls.append(("list", include_finished))
+        return JobListOutput(jobs=[job], counts={"running": 1})
+
+    async def fake_tail(job_id: str, lines: int):
+        calls.append(("poll", job_id, lines))
+        return JobTailOutput(job=job, output=f"{job_id}:{lines}")
+
+    async def fake_stop(job_id: str):
+        calls.append(("cancel", job_id))
+        return JobStopOutput(job=job, killed=True, stderr="")
+
+    async def fake_retry(job_id: str):
+        calls.append(("retry", job_id))
+        data = job.model_dump()
+        data.update(job_id=job_id, attempts=2)
+        return JobRetryOutput.model_validate(data)
+
+    monkeypatch.setattr(jobs_ops, "job_list_execute", fake_list)
+    monkeypatch.setattr(jobs_ops, "job_tail_execute", fake_tail)
+    monkeypatch.setattr(jobs_ops, "job_stop_execute", fake_stop)
+    monkeypatch.setattr(jobs_ops, "job_retry_execute", fake_retry)
+
+    list_result = await jobs_ops.job_execute(include_finished=False)
+    assert list_result.operation == "list"
+    assert list_result.jobs == [job]
+    assert list_result.counts == {"running": 1}
+    assert calls == [("list", False)]
+
+    calls.clear()
+    poll_result = await jobs_ops.job_execute(poll=["job_1", "job_2"], lines=5)
+    assert poll_result.operation == "poll"
+    assert [entry.output for entry in poll_result.outputs] == [
+        "job_1:5",
+        "job_2:5",
+    ]
+    assert calls == [("poll", "job_1", 5), ("poll", "job_2", 5)]
+
+    calls.clear()
+    cancel_result = await jobs_ops.job_execute(cancel=["job_1"])
+    assert cancel_result.operation == "cancel"
+    assert cancel_result.cancelled[0].killed is True
+    assert calls == [("cancel", "job_1")]
+
+    calls.clear()
+    retry_result = await jobs_ops.job_execute(retry=["job_1"])
+    assert retry_result.operation == "retry"
+    assert retry_result.retried[0].attempts == 2
+    assert calls == [("retry", "job_1")]
+
+
+@pytest.mark.asyncio
+async def test_job_execute_rejects_combined_actions():
+    with pytest.raises(ValueError, match="list_jobs cannot be combined"):
+        await jobs_ops.job_execute(list_jobs=True, poll=["job_1"])
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        await jobs_ops.job_execute(poll=["job_1"], cancel=["job_2"])
 
 
 @pytest.mark.asyncio

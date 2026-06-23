@@ -141,7 +141,7 @@ class RemoteCopyDirOutput(BaseModel):
 
 
 class RemoteAdminOutput(BaseModel):
-    """Remote control-plane facade result."""
+    """Remote control-plane result."""
 
     action: str = Field(
         description="Remote control-plane action requested by the caller."
@@ -163,16 +163,16 @@ class RemoteWorkerToolOutput(BaseModel):
 
 
 class RemoteFacadeOutput(BaseModel):
-    """High-level remote facade result."""
+    """Remote operation result."""
 
     machine: str = Field(
-        description="Remote worker machine targeted by the facade."
+        description="Remote worker machine targeted by the operation."
     )
     op: str = Field(
         description="High-level remote operation requested by the caller."
     )
     tool: str = Field(
-        description="Underlying worker tool or facade implementation executed for this operation."
+        description="Underlying worker tool or tool implementation executed for this operation."
     )
     data: dict[str, Any] = Field(
         description="Structured output returned by the underlying worker tool."

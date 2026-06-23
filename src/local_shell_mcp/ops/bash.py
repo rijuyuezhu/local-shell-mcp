@@ -1,4 +1,4 @@
-"""High-level bash facade operations."""
+"""Bash tool operations."""
 
 import re
 import shlex

@@ -89,70 +89,145 @@ async def test_remote_facade_is_exposed_in_mcp(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_remote_facade_maps_session_action(monkeypatch):
+@pytest.mark.parametrize(
+    ("args", "expected_tool", "expected_args"),
+    [
+        (
+            {
+                "action": "send",
+                "session_id": "s1",
+                "input_text": "go",
+                "enter": False,
+            },
+            "send_persistent_shell_input",
+            {"session_id": "s1", "input_text": "go", "enter": False},
+        ),
+        (
+            {"action": "read", "session_id": "s1", "lines": 20},
+            "read_persistent_shell_output",
+            {"session_id": "s1", "lines": 20},
+        ),
+        (
+            {"action": "kill", "session_id": "s1"},
+            "kill_persistent_shell",
+            {"session_id": "s1"},
+        ),
+        ({"action": "list"}, "list_persistent_shells", {}),
+    ],
+)
+async def test_remote_maps_session_actions(
+    monkeypatch, args, expected_tool, expected_args
+):
     calls = []
 
-    async def fake_call(machine, tool, args, timeout_s=None):
-        calls.append((machine, tool, args, timeout_s))
-        return {"ok": True, "data": {"session_id": "s1", "output": "ready"}}
+    async def fake_call(machine, tool, worker_args, timeout_s=None):
+        calls.append((machine, tool, worker_args, timeout_s))
+        return {"ok": True, "data": {"tool": tool, "ok": True}}
 
     monkeypatch.setattr(remote_ops, "call_remote_worker_tool", fake_call)
 
-    result = await remote_ops.remote_execute(
-        "worker-a",
-        "session",
-        {"action": "read", "session_id": "s1", "lines": 20},
-    )
+    result = await remote_ops.remote_execute("worker-a", "session", args)
 
     assert result.op == "session"
-    assert result.tool == "read_persistent_shell_output"
-    assert result.data["session_id"] == "s1"
-    assert calls == [
-        (
-            "worker-a",
-            "read_persistent_shell_output",
-            {"session_id": "s1", "lines": 20},
-            None,
-        )
-    ]
+    assert result.tool == expected_tool
+    assert result.data["tool"] == expected_tool
+    assert calls == [("worker-a", expected_tool, expected_args, None)]
 
 
 @pytest.mark.asyncio
-async def test_remote_facade_maps_transfer_action(monkeypatch):
+@pytest.mark.parametrize(
+    ("action", "args", "impl_name", "expected_call"),
+    [
+        (
+            "pull_file",
+            {
+                "remote_path": "remote/in.bin",
+                "local_path": "local/in.bin",
+                "overwrite": False,
+                "chunk_size": 8,
+            },
+            "remote_pull_file_execute",
+            ("worker-a", "remote/in.bin", "local/in.bin", False, 8),
+        ),
+        (
+            "push_file",
+            {
+                "local_path": "local/out.bin",
+                "remote_path": "remote/out.bin",
+                "overwrite": False,
+                "chunk_size": 8,
+            },
+            "remote_push_file_execute",
+            ("local/out.bin", "worker-a", "remote/out.bin", False, 8),
+        ),
+        (
+            "pull_dir",
+            {
+                "remote_path": "remote/dir",
+                "local_path": "local/dir",
+                "overwrite": True,
+                "chunk_size": 8,
+            },
+            "remote_pull_dir_execute",
+            ("worker-a", "remote/dir", "local/dir", True, 8),
+        ),
+        (
+            "push_dir",
+            {
+                "local_path": "local/dir",
+                "remote_path": "remote/dir",
+                "overwrite": True,
+                "chunk_size": 8,
+            },
+            "remote_push_dir_execute",
+            ("local/dir", "worker-a", "remote/dir", True, 8),
+        ),
+        (
+            "copy_file",
+            {
+                "src_machine": "worker-src",
+                "src_path": "src.bin",
+                "dst_machine": "worker-dst",
+                "dst_path": "dst.bin",
+                "overwrite": False,
+                "chunk_size": 8,
+            },
+            "remote_copy_file_execute",
+            ("worker-src", "src.bin", "worker-dst", "dst.bin", False, 8),
+        ),
+        (
+            "copy_dir",
+            {
+                "src_path": "src-dir",
+                "dst_machine": "worker-dst",
+                "dst_path": "dst-dir",
+                "overwrite": True,
+                "chunk_size": 8,
+            },
+            "remote_copy_dir_execute",
+            ("worker-a", "src-dir", "worker-dst", "dst-dir", True, 8),
+        ),
+    ],
+)
+async def test_remote_maps_transfer_actions(
+    monkeypatch, action, args, impl_name, expected_call
+):
     calls = []
 
-    async def fake_push(
-        local_path, machine, remote_path, overwrite=True, chunk_size=None
-    ):
-        calls.append((local_path, machine, remote_path, overwrite, chunk_size))
-        return {
-            "source": {"machine": "local", "path": local_path},
-            "destination": {"machine": machine, "path": remote_path},
-            "bytes": 4,
-            "sha256": None,
-            "chunks": 2,
-            "chunk_size": chunk_size,
-        }
+    async def fake_transfer(*call_args):
+        calls.append(call_args)
+        return {"action": action, "bytes": 4, "chunks": 2}
 
-    monkeypatch.setattr(remote_ops, "remote_push_file_execute", fake_push)
+    monkeypatch.setattr(remote_ops, impl_name, fake_transfer)
 
     result = await remote_ops.remote_execute(
-        "worker-a",
-        "transfer",
-        {
-            "action": "push_file",
-            "local_path": "artifact.bin",
-            "remote_path": "remote/artifact.bin",
-            "chunk_size": 2,
-        },
+        "worker-a", "transfer", {"action": action, **args}
     )
 
     assert result.op == "transfer"
-    assert result.tool == "remote_transfer:push_file"
-    assert result.data["bytes"] == 4
-    assert calls == [
-        ("artifact.bin", "worker-a", "remote/artifact.bin", True, 2)
-    ]
+    assert result.tool == f"remote_transfer:{action}"
+    assert result.data == {"action": action, "bytes": 4, "chunks": 2}
+    assert calls == [expected_call]
 
 
 @pytest.mark.asyncio

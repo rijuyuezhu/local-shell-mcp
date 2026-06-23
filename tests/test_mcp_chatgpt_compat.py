@@ -203,7 +203,7 @@ async def test_file_tool_input_and_output_schema_descriptions_are_exposed(
     assert read_output_schema["title"] == "ReadOutput"
     assert list_files_output_schema["title"] == "ListFilesOutput"
     assert (
-        "oh-my-pi-style selector"
+        "selector suffix"
         in read_tool.inputSchema["properties"]["path"]["description"]
     )
     assert "binary_preview" not in read_tool.inputSchema["properties"]
