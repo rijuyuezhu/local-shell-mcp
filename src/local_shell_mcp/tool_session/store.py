@@ -168,6 +168,34 @@ class ToolSessionStore:
             self._sessions[session_id] = updated
             return updated
 
+    def change_session_workdir(
+        self, session_id: str, workdir: str | Path
+    ) -> AgentSession:
+        """Update a local session workdir and clear stale snapshots it owned."""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise UnknownAgentSessionError(
+                    f"unknown session_id {session_id!r}; call session_start first"
+                )
+            if session.target != "local":
+                raise ValueError("remote session cwd changes are not available")
+            resolved_workdir = resolve_path(workdir, must_exist=True)
+            if not resolved_workdir.is_dir():
+                raise NotADirectoryError(str(resolved_workdir))
+            updated = replace(
+                session,
+                workdir=str(resolved_workdir),
+                updated_at=time.time(),
+            )
+            self._sessions[session_id] = updated
+            self._snapshots = {
+                key: value
+                for key, value in self._snapshots.items()
+                if key[0] != session_id
+            }
+            return updated
+
     def end_session(self, session_id: str) -> AgentSession:
         """Remove one session and all snapshots owned by it."""
         with self._lock:

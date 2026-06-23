@@ -39,6 +39,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "workspace_search",
     "fetch",
     "session_start",
+    "session_change_cwd",
     "version",
     "run_python_code",
     "send_persistent_shell_input",

@@ -15,9 +15,7 @@ SessionIdArg = Annotated[
 ]
 SessionTargetArg = Annotated[
     Literal["local", "remote"],
-    Field(
-        description="Session target. Use local for this workspace; remote support is added in a later slice."
-    ),
+    Field(description="Session target. Use local for this workspace."),
 ]
 SessionWorkdirArg = Annotated[
     str,

@@ -1,11 +1,11 @@
 {
-  "count": 34,
+  "count": 35,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "34"
+          "code": "35"
         },
         "."
       ],
@@ -819,6 +819,30 @@
       "rows": [
         [
           {
+            "code": "session_change_cwd"
+          },
+          {
+            "items": [
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
+                "head": {
+                  "code": "workdir"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "Change an existing local agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed orientation metadata including instruction file paths. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits."
+        ],
+        [
+          {
             "code": "session_start"
           },
           {
@@ -838,7 +862,7 @@
                 "note": "(string / null, optional)"
               },
               {
-                "description": "Session target. Use local for this workspace; remote support is added in a later slice.",
+                "description": "Session target. Use local for this workspace.",
                 "head": {
                   "code": "target"
                 },
@@ -849,11 +873,11 @@
                 "head": {
                   "code": "workdir"
                 },
-                "note": "(string, optional)"
+                "note": "(string, required)"
               }
             ]
           },
-          "Start an explicit agent/workspace session and bind it to a workdir. Call this before substantial workspace work, then pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools. Local sessions are supported now; remote sessions will create a paired worker session in a later slice."
+          "Start an explicit agent/workspace session and bind it to a required workdir. Before calling, ask the user which project directory to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. The response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools."
         ]
       ]
     },
@@ -4535,7 +4559,221 @@
       }
     },
     {
-      "description": "Start an explicit agent/workspace session and bind it to a workdir. Call this before substantial workspace work, then pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools. Local sessions are supported now; remote sessions will create a paired worker session in a later slice.",
+      "description": "Change an existing local agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed orientation metadata including instruction file paths. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits.",
+      "inputSchema": {
+        "properties": {
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "workdir": {
+            "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
+            "title": "Workdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "workdir"
+        ],
+        "title": "session_change_cwdArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "session_change_cwd",
+      "outputSchema": {
+        "$defs": {
+          "GitSessionInfo": {
+            "description": "Lightweight git orientation for a session workdir.",
+            "properties": {
+              "branch": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Current branch or short commit name, if available.",
+                "title": "Branch"
+              },
+              "dirty": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Whether git reports uncommitted changes, if available.",
+                "title": "Dirty"
+              },
+              "is_repo": {
+                "description": "Whether the session workdir is inside a git repository.",
+                "title": "Is Repo",
+                "type": "boolean"
+              },
+              "root": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Git repository root, if available.",
+                "title": "Root"
+              }
+            },
+            "required": [
+              "is_repo"
+            ],
+            "title": "GitSessionInfo",
+            "type": "object"
+          }
+        },
+        "description": "Explicit agent/workspace session orientation.",
+        "properties": {
+          "created_at": {
+            "description": "Unix timestamp when the session was created.",
+            "title": "Created At",
+            "type": "number"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional Unix timestamp when the session expires.",
+            "title": "Expires At"
+          },
+          "git": {
+            "$ref": "#/$defs/GitSessionInfo",
+            "description": "Lightweight git orientation for the session workdir."
+          },
+          "instruction_files": {
+            "description": "Workspace-relative project instruction files discovered near the session workdir.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Instruction Files",
+            "type": "array"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional human-readable session label.",
+            "title": "Label"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Remote worker name for remote sessions.",
+            "title": "Machine"
+          },
+          "message": {
+            "description": "Short model-facing instruction for using this session.",
+            "title": "Message",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session id.",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "target": {
+            "description": "Execution target bound to this session.",
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "Unix timestamp when the session was last touched.",
+            "title": "Updated At",
+            "type": "number"
+          },
+          "workdir": {
+            "description": "Canonical workdir bound to this session.",
+            "title": "Workdir",
+            "type": "string"
+          },
+          "worker_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Worker-side paired session id for remote sessions.",
+            "title": "Worker Session Id"
+          },
+          "workspace_root": {
+            "description": "Configured local workspace root for this server.",
+            "title": "Workspace Root",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "target",
+          "workdir",
+          "created_at",
+          "updated_at",
+          "workspace_root",
+          "git",
+          "instruction_files",
+          "message"
+        ],
+        "title": "SessionStartOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Before calling, ask the user which project directory to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. The response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools.",
       "inputSchema": {
         "properties": {
           "label": {
@@ -4568,7 +4806,7 @@
           },
           "target": {
             "default": "local",
-            "description": "Session target. Use local for this workspace; remote support is added in a later slice.",
+            "description": "Session target. Use local for this workspace.",
             "enum": [
               "local",
               "remote"
@@ -4577,12 +4815,14 @@
             "type": "string"
           },
           "workdir": {
-            "default": ".",
             "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
             "title": "Workdir",
             "type": "string"
           }
         },
+        "required": [
+          "workdir"
+        ],
         "title": "session_startArguments",
         "type": "object"
       },
@@ -4654,7 +4894,7 @@
             "type": "object"
           }
         },
-        "description": "New explicit agent/workspace session.",
+        "description": "Explicit agent/workspace session orientation.",
         "properties": {
           "created_at": {
             "description": "Unix timestamp when the session was created.",

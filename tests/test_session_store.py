@@ -66,3 +66,31 @@ def test_snapshots_are_isolated_by_explicit_session(tmp_path, monkeypatch):
 
     assert store.get_snapshot(first.session_id, record.snapshot_id) == record
     assert store.get_snapshot(second.session_id, record.snapshot_id) is None
+
+
+def test_change_session_workdir_updates_session_and_clears_snapshots(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir="first")
+    record = store.record_file_snapshot(
+        session_id=session.session_id,
+        path="a.txt",
+        file_sha256="abc",
+        total_lines=1,
+        seen_ranges=((1, 1),),
+    )
+
+    updated = store.change_session_workdir(session.session_id, "second")
+
+    assert updated.session_id == session.session_id
+    assert updated.workdir == str(second_dir)
+    assert updated.updated_at >= session.updated_at
+    assert store.get_snapshot(session.session_id, record.snapshot_id) is None

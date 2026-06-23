@@ -89,6 +89,10 @@ After this, normal tools dispatch by session:
 
 The generic `remote(...)` tool should be deleted from the model-facing surface. Do not keep it as a recommended escape hatch. Keep `remote_admin(...)` or equivalent control-plane actions for invite/list/revoke/rename unless/until a separate admin-session design replaces it.
 
+### Model-facing description policy
+
+- Model-facing tool descriptions, generated references, and MCP server instructions must describe only currently available behavior. Do not mention future slices, later planned support, or implementation roadmap language there. Keep roadmap notes in this file only.
+
 ### Tool parameter policy
 
 Stateful/workspace-affecting tools should require `session_id`.
@@ -142,6 +146,7 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 - [x] Add input/result models for `session_start`.
 - [x] Add model-facing `session_start(target="local", workdir=".", machine=None, label=None)`.
+- [x] Make `session_start` require an explicit `workdir` and add `session_change_cwd(session_id, workdir)` for correcting/changing session cwd.
 - [x] Return `session_id`, target, workdir, and lightweight orientation/discovery metadata.
 - [x] Remove `environment_info` from the default/model-facing surface.
 - [x] Update MCP server instructions to start substantial workspace work with `session_start`.
@@ -200,14 +205,15 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 Completed in the latest local-session slice:
 
 - Added first-class process-local agent sessions with 8-character alphanumeric ids, workdir binding, timestamps, labels, and snapshot ownership.
-- Added model-facing `session_start` for local sessions and removed `environment_info` from public MCP/HTTP/generated tool surfaces.
+- Added model-facing `session_start` for local sessions, made its `workdir` explicit, and removed `environment_info` from public MCP/HTTP/generated tool surfaces.
+- Added `session_change_cwd` to update a session workdir, clear stale snapshots for that session, and return refreshed orientation/instruction-file metadata.
 - Made `read`, `search`, and `edit_lines` require explicit `session_id` at the model-facing layer.
 - Added explicit-session e2e workflow coverage across REST, streamable MCP HTTP, and stdio: `session_start -> read/search -> edit_lines`, plus cross-session and unknown-session failure checks.
 - Updated MCP server instructions and generated tool references for session-first usage.
 
 Next implementation task:
 
-1. Commit and push the completed local-session slice, then watch CI for PR #79.
+1. Commit and push the completed session cwd slice, then watch CI for PR #79.
 2. Implement Slice 5: make `bash` and `job` session-bound, default `bash` cwd to the session workdir, and isolate job list/poll/cancel/retry by session.
 3. Keep this document updated after each slice, including completed checkboxes, changed design decisions, validation commands, and known risks.
 
@@ -225,7 +231,7 @@ uv run pytest tests/test_e2e_remote_worker.py -q
 uv run ruff check src tests && uv run pyright && uv run pytest -q
 ```
 
-Result: all passed; full suite reported 257 passed, 1 warning.
+Result: all passed; full suite reported 258 passed, 1 warning.
 
 ## Validation checklist
 

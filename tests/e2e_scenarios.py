@@ -11,6 +11,7 @@ from tests.e2e_helpers import ToolClient, assert_required_tools
 CORE_TOOL_NAMES = {
     "bash",
     "session_start",
+    "session_change_cwd",
     "search",
     "workspace_search",
     "fetch",
@@ -103,6 +104,19 @@ async def exercise_explicit_session_workflow(
     assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
         "alpha\nneedle two\ngamma\n"
     )
+
+    other_dir = workspace / "other-work"
+    other_dir.mkdir()
+    changed = await client.call_tool(
+        "session_change_cwd",
+        {"session_id": session_id, "workdir": "other-work"},
+    )
+    assert changed["session_id"] == session_id
+    assert changed["workdir"] == str(other_dir)
+    with pytest.raises((AssertionError, httpx.HTTPStatusError)):
+        await client.call_tool(
+            "read", {"session_id": session_id, "path": "notes.txt"}
+        )
 
     second = await client.call_tool(
         "session_start", {"workdir": "session-work"}

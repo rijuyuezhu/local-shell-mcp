@@ -93,15 +93,15 @@ def _session_output(session: AgentSession) -> SessionStartOutput:
 
 
 def session_start_execute(
+    workdir: str,
     target: str = "local",
-    workdir: str = ".",
     machine: str | None = None,
     label: str | None = None,
 ) -> SessionStartOutput:
     """Create an explicit agent/workspace session."""
     if target == "remote":
         raise NotImplementedError(
-            "remote session_start is planned next; use target='local' for now"
+            "remote session_start is not available; use target='local'"
         )
     if target != "local":
         raise ValueError("target must be 'local' or 'remote'")
@@ -110,5 +110,15 @@ def session_start_execute(
         workdir=workdir,
         machine=machine,
         label=label,
+    )
+    return _session_output(session)
+
+
+def session_change_cwd_execute(
+    session_id: str, workdir: str
+) -> SessionStartOutput:
+    """Change a local session workdir and return refreshed orientation metadata."""
+    session = get_tool_session_store().change_session_workdir(
+        session_id, workdir
     )
     return _session_output(session)

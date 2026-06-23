@@ -2,8 +2,9 @@
 
 import asyncio
 
-from ...ops.session import session_start_execute
+from ...ops.session import session_change_cwd_execute, session_start_execute
 from ...schemas.input_models.session import (
+    SessionIdArg,
     SessionLabelArg,
     SessionMachineArg,
     SessionTargetArg,
@@ -25,7 +26,11 @@ session_tool = SessionToolRegistry.get_tool_decorator()
 
 
 def _session_start_description(_context: McpToolContext) -> str:
-    return """Start an explicit agent/workspace session and bind it to a workdir. Call this before substantial workspace work, then pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools. Local sessions are supported now; remote sessions will create a paired worker session in a later slice."""
+    return """Start an explicit agent/workspace session and bind it to a required workdir. Before calling, ask the user which project directory to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. The response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools."""
+
+
+def _session_change_cwd_description(_context: McpToolContext) -> str:
+    return """Change an existing local agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed orientation metadata including instruction file paths. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits."""
 
 
 @session_tool(
@@ -35,12 +40,28 @@ def _session_start_description(_context: McpToolContext) -> str:
     mcp_scopes=("shell:read",),
 )
 async def session_start(
+    workdir: SessionWorkdirArg,
     target: SessionTargetArg = "local",
-    workdir: SessionWorkdirArg = ".",
     machine: SessionMachineArg = None,
     label: SessionLabelArg = None,
 ) -> SessionStartOutput:
     """Start an explicit agent/workspace session."""
     return await asyncio.to_thread(
-        session_start_execute, target, workdir, machine, label
+        session_start_execute, workdir, target, machine, label
+    )
+
+
+@session_tool(
+    http_method="POST",
+    http_path="/tools/session_change_cwd",
+    description=_session_change_cwd_description,
+    mcp_scopes=("shell:read",),
+)
+async def session_change_cwd(
+    session_id: SessionIdArg,
+    workdir: SessionWorkdirArg,
+) -> SessionStartOutput:
+    """Change an explicit agent/workspace session workdir."""
+    return await asyncio.to_thread(
+        session_change_cwd_execute, session_id, workdir
     )

@@ -25,7 +25,7 @@ class GitSessionInfo(BaseModel):
 
 
 class SessionStartOutput(BaseModel):
-    """New explicit agent/workspace session."""
+    """Explicit agent/workspace session orientation."""
 
     session_id: str = Field(
         description="8-character alphanumeric agent/workspace session id."
