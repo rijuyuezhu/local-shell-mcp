@@ -1,11 +1,11 @@
 {
-  "count": 34,
+  "count": 33,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "34"
+          "code": "33"
         },
         "."
       ],
@@ -106,98 +106,6 @@
           },
           "none",
           "List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them."
-        ]
-      ]
-    },
-    {
-      "body": "Register the bash tool.",
-      "headers": [
-        "Tool",
-        "Parameters",
-        "Description"
-      ],
-      "heading": "Bash",
-      "kind": "table",
-      "rows": [
-        [
-          {
-            "code": "bash"
-          },
-          {
-            "items": [
-              {
-                "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session.",
-                "head": {
-                  "code": "async_"
-                },
-                "note": "(boolean, optional)"
-              },
-              {
-                "description": "Shell command string to execute for terminal work such as tests, builds, package managers, git, or scripts.",
-                "head": {
-                  "code": "command"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir.",
-                "head": {
-                  "code": "cwd"
-                },
-                "note": "(string, optional)"
-              },
-              {
-                "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
-                "head": {
-                  "code": "env"
-                },
-                "note": "(object / null, optional)"
-              },
-              {
-                "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
-                "head": {
-                  "code": "max_output_bytes"
-                },
-                "note": "(integer / null, optional)"
-              },
-              {
-                "description": "Optional name for the tracked job or persistent shell.",
-                "head": {
-                  "code": "name"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
-                "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools.",
-                "head": {
-                  "code": "pty"
-                },
-                "note": "(boolean, optional)"
-              },
-              {
-                "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
-                "head": {
-                  "code": "purpose"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
-                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
-                "head": {
-                  "code": "session_id"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "Optional timeout in seconds for bounded command mode.",
-                "head": {
-                  "code": "timeout_s"
-                },
-                "note": "(integer / null, optional)"
-              }
-            ]
-          },
-          "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, scripts, and other shell work. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Default mode is bounded and returns captured stdout/stderr. Set `async_=true` for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the `job` companion. Set `pty=true` only for interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools. Do not use shell_id with `job`, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds."
         ]
       ]
     },
@@ -473,7 +381,7 @@
               }
             ]
           },
-          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
+          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
         ]
       ]
     },
@@ -549,49 +457,6 @@
       ]
     },
     {
-      "body": "Register patch application tools.",
-      "headers": [
-        "Tool",
-        "Parameters",
-        "Description"
-      ],
-      "heading": "Patch",
-      "kind": "table",
-      "rows": [
-        [
-          {
-            "code": "apply_patch"
-          },
-          {
-            "items": [
-              {
-                "description": "Working directory where patch paths are resolved. Relative paths resolve inside the agent/workspace session workdir.",
-                "head": {
-                  "code": "cwd"
-                },
-                "note": "(string, optional)"
-              },
-              {
-                "description": "Unified diff text to validate and apply with git apply.",
-                "head": {
-                  "code": "patch"
-                },
-                "note": "(string, required)"
-              },
-              {
-                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
-                "head": {
-                  "code": "session_id"
-                },
-                "note": "(string, required)"
-              }
-            ]
-          },
-          "Apply a unified diff inside an explicit agent/workspace session."
-        ]
-      ]
-    },
-    {
       "body": "Register the read tool with selector support.",
       "headers": [
         "Tool",
@@ -623,7 +488,7 @@
               }
             ]
           },
-          "Read files or list directories with optional selector suffixes in the path. Use this for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
+          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
@@ -659,7 +524,7 @@
               }
             ]
           },
-          "Run compact remote control-plane actions. Use action=\"list\" to discover worker names; action=\"invite\" to create a one-time join command; action=\"revoke\" to remove a stale or untrusted worker; and action=\"rename\" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s=600 seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability."
+          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
         ]
       ]
     },
@@ -709,7 +574,7 @@
               }
             ]
           },
-          "Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: 5000."
+          "Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Use glob_search for path discovery by pattern; use tree_view for directory shape; use search for content matches with edit-grounding metadata. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: 5000."
         ],
         [
           {
@@ -761,7 +626,7 @@
               }
             ]
           },
-          "Search code content for matching lines. Use this tool for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200."
+          "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry grounding metadata for edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200."
         ],
         [
           {
@@ -799,7 +664,7 @@
               }
             ]
           },
-          "Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: 5000."
+          "Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Use tree_view when you need structure, directories, and broad layout; use glob_search when you already know filename patterns; use search when you need content matches. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: 5000."
         ]
       ]
     },
@@ -939,6 +804,86 @@
       "rows": [
         [
           {
+            "code": "bash"
+          },
+          {
+            "items": [
+              {
+                "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session. Returns job_id for the job tool, not shell_id.",
+                "head": {
+                  "code": "async_"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Shell command string to execute for terminal work such as tests, builds, package managers, git, or scripts.",
+                "head": {
+                  "code": "command"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Optional working directory for the command, resolved inside the agent/workspace session workdir. Omit or pass . to use the session workdir.",
+                "head": {
+                  "code": "cwd"
+                },
+                "note": "(string, optional)"
+              },
+              {
+                "description": "Optional environment variables for multiline, quote-heavy, or caller-provided values; reference them from the command instead of embedding them directly.",
+                "head": {
+                  "code": "env"
+                },
+                "note": "(object / null, optional)"
+              },
+              {
+                "description": "Optional combined stdout/stderr byte budget for bounded command mode. Values above the configured server cap are clamped.",
+                "head": {
+                  "code": "max_output_bytes"
+                },
+                "note": "(integer / null, optional)"
+              },
+              {
+                "description": "Optional name for the tracked async job or persistent PTY shell.",
+                "head": {
+                  "code": "name"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools, not job_id.",
+                "head": {
+                  "code": "pty"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
+                "head": {
+                  "code": "purpose"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Optional timeout in seconds for bounded command mode. For long-running work, prefer async_=true and manage the returned job_id with job.",
+                "head": {
+                  "code": "timeout_s"
+                },
+                "note": "(integer / null, optional)"
+              }
+            ]
+          },
+          "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, edit_lines for snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds."
+        ],
+        [
+          {
             "code": "kill_persistent_shell"
           },
           {
@@ -959,7 +904,7 @@
             "code": "list_persistent_shells"
           },
           "none",
-          "List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values; async bash jobs are listed with job(session_id, list_jobs=true) instead."
+          "List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values. Async bash jobs are not listed here; use job(session_id, list_jobs=true) to inspect bash(async_=true) background jobs."
         ],
         [
           {
@@ -992,49 +937,49 @@
           {
             "items": [
               {
-                "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session.",
+                "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session. Returns job_id for the job tool, not shell_id.",
                 "head": {
                   "code": "async_"
                 },
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Complete Python source code to write to a temporary script and execute.",
+                "description": "Complete Python source code to write to a temporary script and execute through the shell execution surface.",
                 "head": {
                   "code": "code"
                 },
                 "note": "(string, required)"
               },
               {
-                "description": "Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir.",
+                "description": "Optional working directory for the command, resolved inside the agent/workspace session workdir. Omit or pass . to use the session workdir.",
                 "head": {
                   "code": "cwd"
                 },
                 "note": "(string, optional)"
               },
               {
-                "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
+                "description": "Optional environment variables for multiline, quote-heavy, or caller-provided values; reference them from the command instead of embedding them directly.",
                 "head": {
                   "code": "env"
                 },
                 "note": "(object / null, optional)"
               },
               {
-                "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
+                "description": "Optional combined stdout/stderr byte budget for bounded command mode. Values above the configured server cap are clamped.",
                 "head": {
                   "code": "max_output_bytes"
                 },
                 "note": "(integer / null, optional)"
               },
               {
-                "description": "Optional name for the tracked job or persistent shell.",
+                "description": "Optional name for the tracked async job or persistent PTY shell.",
                 "head": {
                   "code": "name"
                 },
                 "note": "(string / null, optional)"
               },
               {
-                "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools.",
+                "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools, not job_id.",
                 "head": {
                   "code": "pty"
                 },
@@ -1055,7 +1000,7 @@
                 "note": "(string, required)"
               },
               {
-                "description": "Optional timeout in seconds for bounded command mode.",
+                "description": "Optional timeout in seconds for bounded command mode. For long-running work, prefer async_=true and manage the returned job_id with job.",
                 "head": {
                   "code": "timeout_s"
                 },
@@ -1063,7 +1008,7 @@
               }
             ]
           },
-          "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: 10/60 seconds."
+          "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: 10/60 seconds."
         ],
         [
           {
@@ -1094,7 +1039,7 @@
               }
             ]
           },
-          "Send input to an existing persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use this for interactive programs, REPLs, prompts, and manually managed server shells that need later input. Jobs started with bash(async_=true) are non-interactive background jobs; use the job companion for those instead. Set enter=false only when intentionally sending partial input without a newline."
+          "Send input to an existing persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use this only for interactive or manually managed shells that need later input, such as REPLs, prompts, or development servers. Jobs started with bash(async_=true) are non-interactive background jobs; use the job companion for those instead. Set enter=false only when intentionally sending partial input without a newline."
         ]
       ]
     },
@@ -1123,7 +1068,7 @@
               }
             ]
           },
-          "Read the current agent todo list for one session."
+          "Read the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start. Use this when resuming or checking multi-step work in the current session before deciding what to do next. Todos are session-scoped: items from one session are not shared with another local or remote session, and shell_id/job_id values are not valid here. For changing the list, use write_todos with the complete replacement list."
         ],
         [
           {
@@ -1147,7 +1092,7 @@
               }
             ]
           },
-          "Replace the current structured agent todo list for one session."
+          "Replace the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start and provide the full desired todo list, not a partial patch; omitted existing items are removed. Use this for multi-step coding work where tracking in_progress/completed/pending items helps coordinate the current session. Keep todo content concise and actionable, and use read_todos first when preserving existing items matters."
         ]
       ]
     },
@@ -1171,7 +1116,7 @@
       ]
     },
     {
-      "body": "Register the special read-only search/fetch surface for connector clients. These tools are intentionally separate from the richer coding-agent file and search tools. Regular ChatGPT custom connectors and Deep Research-style clients often expose only a document-source pattern: search for result cards, then fetch one result by id. They may not surface general-purpose tools such as code search, file reads, shell commands, patches, or remote-worker operations unless the client is in Developer Mode or otherwise supports the full MCP tool set. search/fetch therefore need three special MCP-facing choices: 1. mcp_security_profile=\"connector_compatible\" advertises a client-facing noauth-or-oauth securitySchemes profile for connector discovery. This is metadata only; AuthMiddleware still enforces real HTTP/MCP auth. 2. annotations=\"read_only\" marks the tools as non-mutating document-source operations. 3. Their typed return models keep the connector-facing search/fetch payloads in the exact document-source shape expected by connector clients.",
+      "body": "Register the special read-only search/fetch surface for connector clients. These tools are intentionally separate from the richer coding-agent file and search tools. Regular ChatGPT custom connectors and Deep Research-style clients often expose only a document-source pattern: search for result cards, then fetch one result by id. They may not surface general-purpose tools such as code search, file reads, shell commands, edits, or remote-worker operations unless the client is in Developer Mode or otherwise supports the full MCP tool set. search/fetch therefore need three special MCP-facing choices: 1. mcp_security_profile=\"connector_compatible\" advertises a client-facing noauth-or-oauth securitySchemes profile for connector discovery. This is metadata only; AuthMiddleware still enforces real HTTP/MCP auth. 2. annotations=\"read_only\" marks the tools as non-mutating document-source operations. 3. Their typed return models keep the connector-facing search/fetch payloads in the exact document-source shape expected by connector clients.",
       "headers": [
         "Tool",
         "Parameters",
@@ -1195,7 +1140,7 @@
               }
             ]
           },
-          "Fetch one workspace UTF-8 text file as a connector-compatible document."
+          "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, numbered content, and edit-grounding snapshot metadata."
         ],
         [
           {
@@ -1212,7 +1157,7 @@
               }
             ]
           },
-          "Connector-style workspace document search. Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as search, glob_search, tree_view, or read. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch."
+          "Search workspace text files and return connector-compatible result cards. Use this sessionless read-only tool for connector-style document retrieval clients that expect a search -> fetch workflow: call workspace_search first, then pass a returned result id to fetch. This is a broad literal text search from the configured workspace root and returns at most one card per matched file. For coding-agent work inside an explicit session, prefer session-bound tree_view/glob_search for path discovery, search for content matches with grounding metadata, and read for precise file ranges."
         ]
       ]
     }
@@ -1378,133 +1323,12 @@
       }
     },
     {
-      "description": "Apply a unified diff inside an explicit agent/workspace session.",
-      "inputSchema": {
-        "properties": {
-          "cwd": {
-            "default": ".",
-            "description": "Working directory where patch paths are resolved. Relative paths resolve inside the agent/workspace session workdir.",
-            "title": "Cwd",
-            "type": "string"
-          },
-          "patch": {
-            "description": "Unified diff text to validate and apply with git apply.",
-            "title": "Patch",
-            "type": "string"
-          },
-          "session_id": {
-            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
-            "maxLength": 8,
-            "minLength": 8,
-            "pattern": "^[A-Za-z0-9]{8}$",
-            "title": "Session Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id",
-          "patch"
-        ],
-        "title": "apply_patchArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "shell:read",
-              "shell:write",
-              "git:write"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "apply_patch",
-      "outputSchema": {
-        "description": "Result of checking and applying a unified diff.",
-        "properties": {
-          "command": {
-            "description": "Shell command string that was executed.",
-            "title": "Command",
-            "type": "string"
-          },
-          "cwd": {
-            "description": "Working directory used to run the command, displayed relative to the workspace when possible.",
-            "title": "Cwd",
-            "type": "string"
-          },
-          "duration_ms": {
-            "description": "Elapsed command runtime in milliseconds.",
-            "title": "Duration Ms",
-            "type": "integer"
-          },
-          "exit_code": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Process exit code, or null when no process exited.",
-            "title": "Exit Code"
-          },
-          "ok": {
-            "description": "Whether the subprocess exited with code 0 before timeout.",
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "patch_path": {
-            "description": "Workspace-relative path to the temporary patch file used for git apply.",
-            "title": "Patch Path",
-            "type": "string"
-          },
-          "stderr": {
-            "default": "",
-            "description": "Captured standard error after byte-limit truncation.",
-            "title": "Stderr",
-            "type": "string"
-          },
-          "stdout": {
-            "default": "",
-            "description": "Captured standard output after byte-limit truncation.",
-            "title": "Stdout",
-            "type": "string"
-          },
-          "timed_out": {
-            "default": false,
-            "description": "Whether execution was terminated after exceeding its timeout.",
-            "title": "Timed Out",
-            "type": "boolean"
-          },
-          "truncated": {
-            "default": false,
-            "description": "Whether stdout or stderr was truncated to fit output limits.",
-            "title": "Truncated",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok",
-          "exit_code",
-          "duration_ms",
-          "cwd",
-          "command",
-          "patch_path"
-        ],
-        "title": "ApplyPatchOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, scripts, and other shell work. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Default mode is bounded and returns captured stdout/stderr. Set `async_=true` for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the `job` companion. Set `pty=true` only for interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools. Do not use shell_id with `job`, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, edit_lines for snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
             "default": false,
-            "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session.",
+            "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session. Returns job_id for the job tool, not shell_id.",
             "title": "Async",
             "type": "boolean"
           },
@@ -1515,7 +1339,7 @@
           },
           "cwd": {
             "default": ".",
-            "description": "Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir.",
+            "description": "Optional working directory for the command, resolved inside the agent/workspace session workdir. Omit or pass . to use the session workdir.",
             "title": "Cwd",
             "type": "string"
           },
@@ -1532,7 +1356,7 @@
               }
             ],
             "default": null,
-            "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
+            "description": "Optional environment variables for multiline, quote-heavy, or caller-provided values; reference them from the command instead of embedding them directly.",
             "title": "Env"
           },
           "max_output_bytes": {
@@ -1545,7 +1369,7 @@
               }
             ],
             "default": null,
-            "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
+            "description": "Optional combined stdout/stderr byte budget for bounded command mode. Values above the configured server cap are clamped.",
             "title": "Max Output Bytes"
           },
           "name": {
@@ -1558,12 +1382,12 @@
               }
             ],
             "default": null,
-            "description": "Optional name for the tracked job or persistent shell.",
+            "description": "Optional name for the tracked async job or persistent PTY shell.",
             "title": "Name"
           },
           "pty": {
             "default": false,
-            "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools.",
+            "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools, not job_id.",
             "title": "Pty",
             "type": "boolean"
           },
@@ -1598,7 +1422,7 @@
               }
             ],
             "default": null,
-            "description": "Optional timeout in seconds for bounded command mode.",
+            "description": "Optional timeout in seconds for bounded command mode. For long-running work, prefer async_=true and manage the returned job_id with job.",
             "title": "Timeout S"
           }
         },
@@ -1622,7 +1446,7 @@
       },
       "name": "bash",
       "outputSchema": {
-        "description": "Result returned by the bash tool.",
+        "description": "Result returned by the bash shell execution tool.",
         "properties": {
           "command": {
             "description": "Shell command submitted by the caller.",
@@ -1630,7 +1454,7 @@
             "type": "string"
           },
           "cwd": {
-            "description": "Resolved working directory used for this bash call.",
+            "description": "Resolved working directory used for this shell execution.",
             "title": "Cwd",
             "type": "string"
           },
@@ -1646,7 +1470,7 @@
           },
           "result": {
             "additionalProperties": true,
-            "description": "Structured result from the selected bash mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools.",
+            "description": "Structured result from the selected shell mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools.",
             "title": "Result",
             "type": "object"
           }
@@ -1657,7 +1481,7 @@
           "cwd",
           "result"
         ],
-        "title": "BashOutput",
+        "title": "ShellExecutionOutput",
         "type": "object"
       }
     },
@@ -2296,7 +2120,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Fetch one workspace UTF-8 text file as a connector-compatible document.",
+      "description": "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, numbered content, and edit-grounding snapshot metadata.",
       "inputSchema": {
         "properties": {
           "id": {
@@ -2374,7 +2198,7 @@
       }
     },
     {
-      "description": "Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: 5000.",
+      "description": "Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Use glob_search for path discovery by pattern; use tree_view for directory shape; use search for content matches with edit-grounding metadata. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: 5000.",
       "inputSchema": {
         "properties": {
           "cwd": {
@@ -3321,7 +3145,7 @@
       }
     },
     {
-      "description": "List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values; async bash jobs are listed with job(session_id, list_jobs=true) instead.",
+      "description": "List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values. Async bash jobs are not listed here; use job(session_id, list_jobs=true) to inspect bash(async_=true) background jobs.",
       "inputSchema": {
         "properties": {},
         "title": "list_persistent_shellsArguments",
@@ -3416,7 +3240,7 @@
       }
     },
     {
-      "description": "Read files or list directories with optional selector suffixes in the path. Use this for normal code context. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
+      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
           "path": {
@@ -3868,7 +3692,7 @@
       }
     },
     {
-      "description": "Read the current agent todo list for one session.",
+      "description": "Read the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start. Use this when resuming or checking multi-step work in the current session before deciding what to do next. Todos are session-scoped: items from one session are not shared with another local or remote session, and shell_id/job_id values are not valid here. For changing the list, use write_todos with the complete replacement list.",
       "inputSchema": {
         "properties": {
           "session_id": {
@@ -3965,7 +3789,7 @@
       }
     },
     {
-      "description": "Run compact remote control-plane actions. Use action=\"list\" to discover worker names; action=\"invite\" to create a one-time join command; action=\"revoke\" to remove a stale or untrusted worker; and action=\"rename\" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s=600 seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability.",
+      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
       "inputSchema": {
         "properties": {
           "action": {
@@ -4087,23 +3911,23 @@
       }
     },
     {
-      "description": "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
             "default": false,
-            "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session.",
+            "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session. Returns job_id for the job tool, not shell_id.",
             "title": "Async",
             "type": "boolean"
           },
           "code": {
-            "description": "Complete Python source code to write to a temporary script and execute.",
+            "description": "Complete Python source code to write to a temporary script and execute through the shell execution surface.",
             "title": "Code",
             "type": "string"
           },
           "cwd": {
             "default": ".",
-            "description": "Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir.",
+            "description": "Optional working directory for the command, resolved inside the agent/workspace session workdir. Omit or pass . to use the session workdir.",
             "title": "Cwd",
             "type": "string"
           },
@@ -4120,7 +3944,7 @@
               }
             ],
             "default": null,
-            "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
+            "description": "Optional environment variables for multiline, quote-heavy, or caller-provided values; reference them from the command instead of embedding them directly.",
             "title": "Env"
           },
           "max_output_bytes": {
@@ -4133,7 +3957,7 @@
               }
             ],
             "default": null,
-            "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
+            "description": "Optional combined stdout/stderr byte budget for bounded command mode. Values above the configured server cap are clamped.",
             "title": "Max Output Bytes"
           },
           "name": {
@@ -4146,12 +3970,12 @@
               }
             ],
             "default": null,
-            "description": "Optional name for the tracked job or persistent shell.",
+            "description": "Optional name for the tracked async job or persistent PTY shell.",
             "title": "Name"
           },
           "pty": {
             "default": false,
-            "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools.",
+            "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools, not job_id.",
             "title": "Pty",
             "type": "boolean"
           },
@@ -4186,7 +4010,7 @@
               }
             ],
             "default": null,
-            "description": "Optional timeout in seconds for bounded command mode.",
+            "description": "Optional timeout in seconds for bounded command mode. For long-running work, prefer async_=true and manage the returned job_id with job.",
             "title": "Timeout S"
           }
         },
@@ -4210,7 +4034,7 @@
       },
       "name": "run_python_code",
       "outputSchema": {
-        "description": "Result of writing Python code to a temporary file and executing it through bash modes.",
+        "description": "Result of writing Python code to a temporary file and executing it through shell modes.",
         "properties": {
           "command": {
             "description": "Generated shell command used to run the temporary Python script.",
@@ -4234,7 +4058,7 @@
           },
           "result": {
             "additionalProperties": true,
-            "description": "Structured result from the selected execution mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools.",
+            "description": "Structured result from the selected shell mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools.",
             "title": "Result",
             "type": "object"
           },
@@ -4262,7 +4086,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search code content for matching lines. Use this tool for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200.",
+      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry grounding metadata for edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
@@ -4647,7 +4471,7 @@
       }
     },
     {
-      "description": "Send input to an existing persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use this for interactive programs, REPLs, prompts, and manually managed server shells that need later input. Jobs started with bash(async_=true) are non-interactive background jobs; use the job companion for those instead. Set enter=false only when intentionally sending partial input without a newline.",
+      "description": "Send input to an existing persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use this only for interactive or manually managed shells that need later input, such as REPLs, prompts, or development servers. Jobs started with bash(async_=true) are non-interactive background jobs; use the job companion for those instead. Set enter=false only when intentionally sending partial input without a newline.",
       "inputSchema": {
         "properties": {
           "enter": {
@@ -5146,7 +4970,7 @@
       }
     },
     {
-      "description": "Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: 5000.",
+      "description": "Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Use tree_view when you need structure, directories, and broad layout; use glob_search when you already know filename patterns; use search when you need content matches. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: 5000.",
       "inputSchema": {
         "properties": {
           "cwd": {
@@ -5362,7 +5186,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Connector-style workspace document search. Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as search, glob_search, tree_view, or read. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch.",
+      "description": "Search workspace text files and return connector-compatible result cards. Use this sessionless read-only tool for connector-style document retrieval clients that expect a search -> fetch workflow: call workspace_search first, then pass a returned result id to fetch. This is a broad literal text search from the configured workspace root and returns at most one card per matched file. For coding-agent work inside an explicit session, prefer session-bound tree_view/glob_search for path discovery, search for content matches with grounding metadata, and read for precise file ranges.",
       "inputSchema": {
         "properties": {
           "query": {
@@ -5440,7 +5264,7 @@
       }
     },
     {
-      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
+      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "content": {
@@ -5517,7 +5341,7 @@
       }
     },
     {
-      "description": "Replace the current structured agent todo list for one session.",
+      "description": "Replace the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start and provide the full desired todo list, not a partial patch; omitted existing items are removed. Use this for multi-step coding work where tracking in_progress/completed/pending items helps coordinate the current session. Keep todo content concise and actionable, and use read_todos first when preserving existing items matters.",
       "inputSchema": {
         "properties": {
           "session_id": {

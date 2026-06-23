@@ -16,8 +16,8 @@ from local_shell_mcp.schemas.result_models.shell import CommandResult
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
-from local_shell_mcp.tools.registry import bash as bash_tools_module
 from local_shell_mcp.tools.registry import files as fs_tools_module
+from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_structured
 
 
@@ -52,7 +52,7 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        bash_tools_module,
+        shell_tools_module,
         "bash_execute",
         hanging_bash_execute,
     )

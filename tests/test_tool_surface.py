@@ -52,7 +52,6 @@ LOCAL_MCP_TOOL_NAMES = {
     "write_file",
     "edit_lines",
     "delete_file_or_dir",
-    "apply_patch",
     "create_file_link",
     "list_file_links",
     "revoke_file_link",
@@ -634,33 +633,6 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
         assert handler_tool_names == mcp_tool_names | internal_worker_handlers
     finally:
         local_tool_handlers.cache_clear()
-
-
-@pytest.mark.asyncio
-async def test_apply_patch_tool_creates_temp_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    clear_settings_cache()
-    (tmp_path / "target.txt").write_text("old\n", encoding="utf-8")
-
-    patch = """diff --git a/target.txt b/target.txt
---- a/target.txt
-+++ b/target.txt
-@@ -1 +1 @@
--old
-+new
-"""
-
-    session = await call_local_tool("session_start", {"workdir": "."})
-    payload = await call_local_tool(
-        "apply_patch",
-        {"session_id": session.session_id, "patch": patch, "cwd": "."},
-    )
-
-    assert payload.ok is True
-    assert (tmp_path / "target.txt").read_text(encoding="utf-8") == "new\n"
 
 
 @pytest.mark.asyncio

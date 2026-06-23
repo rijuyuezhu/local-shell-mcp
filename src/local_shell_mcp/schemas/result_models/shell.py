@@ -43,8 +43,23 @@ class RunShellCommandOutput(CommandResult):
     """Result of running one bounded non-interactive shell command."""
 
 
+class ShellExecutionOutput(BaseModel):
+    """Result returned by the bash shell execution tool."""
+
+    mode: Literal["command", "job", "pty"] = Field(
+        description="Execution mode selected by the bash tool."
+    )
+    command: str = Field(description="Shell command submitted by the caller.")
+    cwd: str = Field(
+        description="Resolved working directory used for this shell execution."
+    )
+    result: dict[str, Any] = Field(
+        description="Structured result from the selected shell mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools."
+    )
+
+
 class RunPythonCodeOutput(BaseModel):
-    """Result of writing Python code to a temporary file and executing it through bash modes."""
+    """Result of writing Python code to a temporary file and executing it through shell modes."""
 
     mode: Literal["command", "job", "pty"] = Field(
         description="Execution mode selected for the generated Python script."
@@ -56,7 +71,7 @@ class RunPythonCodeOutput(BaseModel):
         description="Resolved working directory used for this Python execution."
     )
     result: dict[str, Any] = Field(
-        description="Structured result from the selected execution mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools."
+        description="Structured result from the selected shell mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools."
     )
     script_path: str = Field(
         description="Path to the temporary Python script that was executed."

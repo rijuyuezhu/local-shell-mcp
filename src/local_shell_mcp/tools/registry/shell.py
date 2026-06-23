@@ -1,20 +1,12 @@
 """Shell MCP tool registry."""
 
-from ...ops.bash import run_python_code_execute
 from ...ops.shell import (
+    bash_execute,
     kill_persistent_shell_execute,
     list_persistent_shells_execute,
     read_persistent_shell_output_execute,
+    run_python_code_execute,
     send_persistent_shell_input_execute,
-)
-from ...schemas.input_models.bash import (
-    BashAsyncArg,
-    BashCwdArg,
-    BashEnvArg,
-    BashMaxOutputBytesArg,
-    BashNameArg,
-    BashPtyArg,
-    BashTimeoutArg,
 )
 from ...schemas.input_models.session import SessionIdArg
 from ...schemas.input_models.shell import (
@@ -22,7 +14,15 @@ from ...schemas.input_models.shell import (
     InputTextArg,
     LinesArg,
     PythonCodeArg,
+    ShellAsyncArg,
+    ShellCommandArg,
+    ShellCwdArg,
+    ShellEnvArg,
     ShellIdArg,
+    ShellMaxOutputBytesArg,
+    ShellNameArg,
+    ShellPtyArg,
+    ShellTimeoutArg,
     ToolPurposeArg,
 )
 from ...schemas.result_models.shell import (
@@ -31,6 +31,7 @@ from ...schemas.result_models.shell import (
     ReadPersistentShellOutput,
     RunPythonCodeOutput,
     SendPersistentShellInputOutput,
+    ShellExecutionOutput,
 )
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
@@ -47,9 +48,51 @@ class ShellToolRegistry(DeclarativeToolRegistry):
 local_tool = ShellToolRegistry.get_tool_decorator()
 
 
+def _bash_description(context: McpToolContext) -> str:
+    settings = context.settings
+    return f"""Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, edit_lines for snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.
+
+Default mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: {settings.run_shell_default_timeout_s}/{settings.run_shell_max_timeout_s} seconds."""
+
+
+@local_tool(
+    http_method="POST",
+    http_path="/tools/bash",
+    description=_bash_description,
+    mcp_scopes=("shell:read", "shell:execute"),
+)
+async def bash(
+    session_id: SessionIdArg,
+    command: ShellCommandArg,
+    cwd: ShellCwdArg = ".",
+    timeout_s: ShellTimeoutArg = None,
+    max_output_bytes: ShellMaxOutputBytesArg = None,
+    env: ShellEnvArg = None,
+    async_: ShellAsyncArg = False,
+    pty: ShellPtyArg = False,
+    name: ShellNameArg = None,
+    purpose: ToolPurposeArg = None,
+) -> ShellExecutionOutput:
+    """Run a shell command via bounded, job, or PTY mode."""
+    audit_tool_purpose("bash", purpose)
+    return await bash_execute(
+        session_id,
+        command,
+        cwd,
+        timeout_s,
+        max_output_bytes,
+        env,
+        async_,
+        pty,
+        name,
+    )
+
+
 def _run_python_code_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: {settings.run_shell_default_timeout_s}/{settings.run_shell_max_timeout_s} seconds."""
+    return f"""Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/edit_lines/write_file when the task is file inspection or editing rather than script execution.
+
+cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: {settings.run_shell_default_timeout_s}/{settings.run_shell_max_timeout_s} seconds."""
 
 
 @local_tool(
@@ -61,16 +104,16 @@ def _run_python_code_description(context: McpToolContext) -> str:
 async def run_python_code(
     session_id: SessionIdArg,
     code: PythonCodeArg,
-    cwd: BashCwdArg = ".",
-    timeout_s: BashTimeoutArg = None,
-    max_output_bytes: BashMaxOutputBytesArg = None,
-    env: BashEnvArg = None,
-    async_: BashAsyncArg = False,
-    pty: BashPtyArg = False,
-    name: BashNameArg = None,
+    cwd: ShellCwdArg = ".",
+    timeout_s: ShellTimeoutArg = None,
+    max_output_bytes: ShellMaxOutputBytesArg = None,
+    env: ShellEnvArg = None,
+    async_: ShellAsyncArg = False,
+    pty: ShellPtyArg = False,
+    name: ShellNameArg = None,
     purpose: ToolPurposeArg = None,
 ) -> RunPythonCodeOutput:
-    """Write Python code to a temporary file and execute it through bash modes."""
+    """Write Python code to a temporary file and execute it through shell modes."""
     audit_tool_purpose("run_python_code", purpose)
     return await run_python_code_execute(
         session_id,
@@ -93,7 +136,7 @@ async def run_python_code(
 async def send_persistent_shell_input(
     shell_id: ShellIdArg, input_text: InputTextArg, enter: EnterArg = True
 ) -> SendPersistentShellInputOutput:
-    """Send input to an existing persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use this for interactive programs, REPLs, prompts, and manually managed server shells that need later input. Jobs started with bash(async_=true) are non-interactive background jobs; use the job companion for those instead. Set enter=false only when intentionally sending partial input without a newline."""
+    """Send input to an existing persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use this only for interactive or manually managed shells that need later input, such as REPLs, prompts, or development servers. Jobs started with bash(async_=true) are non-interactive background jobs; use the job companion for those instead. Set enter=false only when intentionally sending partial input without a newline."""
     return await send_persistent_shell_input_execute(
         shell_id, input_text, enter
     )
@@ -129,5 +172,5 @@ async def kill_persistent_shell(
     mcp_scopes=("shell:read",),
 )
 async def list_persistent_shells() -> ListPersistentShellsOutput:
-    """List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values; async bash jobs are listed with job(session_id, list_jobs=true) instead."""
+    """List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values. Async bash jobs are not listed here; use job(session_id, list_jobs=true) to inspect bash(async_=true) background jobs."""
     return await list_persistent_shells_execute()

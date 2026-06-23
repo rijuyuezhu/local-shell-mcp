@@ -1,12 +1,12 @@
 import pytest
 
-import local_shell_mcp.ops.bash as bash_ops
 import local_shell_mcp.ops.files as file_ops
 import local_shell_mcp.ops.jobs as job_ops
 import local_shell_mcp.ops.read as read_ops
 import local_shell_mcp.ops.remote as remote_ops
 import local_shell_mcp.ops.search as search_ops
 import local_shell_mcp.ops.session as session_ops
+import local_shell_mcp.ops.shell as shell_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
@@ -251,7 +251,7 @@ async def test_remote_session_dispatches_read_search_edit_bash_job(monkeypatch):
     edit_result = await file_ops.edit_lines_dispatch_execute(
         "demo.txt", 1, 1, "changed", "snap1", control.session_id
     )
-    bash_result = await bash_ops.bash_execute(
+    bash_result = await shell_ops.bash_execute(
         control.session_id, "printf hi", timeout_s=5
     )
     job_result = await job_ops.job_execute(control.session_id)

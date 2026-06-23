@@ -38,7 +38,6 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "glob_search", None),
     RemoteWorkerToolSpec("", "write_file", None),
     RemoteWorkerToolSpec("", "delete_file_or_dir", None),
-    RemoteWorkerToolSpec("", "apply_patch", None),
     RemoteWorkerToolSpec("", "secret_scan", None),
     RemoteWorkerToolSpec("", "read", None),
     RemoteWorkerToolSpec("", "search", None),

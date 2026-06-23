@@ -109,11 +109,6 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "shell:read",
         "shell:write",
     ]
-    assert tool_oauth_scopes("apply_patch") == [
-        "shell:read",
-        "shell:write",
-        "git:write",
-    ]
     assert tool_oauth_scopes("create_file_link") == [
         "shell:read",
         "file:share",
@@ -122,7 +117,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
     assert all(tool.outputSchema is not None for tool in tools.values())
     bash_schema = tools["bash"].outputSchema
     assert bash_schema is not None
-    assert bash_schema["title"] == "BashOutput"
+    assert bash_schema["title"] == "ShellExecutionOutput"
     assert set(bash_schema["properties"]) >= {
         "mode",
         "command",
@@ -147,6 +142,13 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "url",
         "metadata",
     }
+    assert "search -> fetch workflow" in (
+        tools["workspace_search"].description or ""
+    )
+    assert "id should normally come from a prior workspace_search" in (
+        tools["fetch"].description or ""
+    )
+    assert "prefer read(session_id, path)" in (tools["fetch"].description or "")
 
     structured = mcp_structured(
         await mcp.call_tool("session_start", {"workdir": "."})
@@ -188,7 +190,7 @@ async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
     assert "session_id returned by session_start" in description
     assert "job_id owned by the same session_id" in description
     assert "shell_id for persistent-shell companion tools" in description
-    assert "Do not use shell_id with `job`" in description
+    assert "Do not use shell_id with job" in description
 
 
 @pytest.mark.asyncio
@@ -348,19 +350,13 @@ async def test_misc_tool_input_and_output_schema_descriptions_are_exposed(
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    patch_tool = tools["apply_patch"]
     todo_tool = tools["write_todos"]
     secret_tool = tools["secret_scan"]
 
-    patch_output_schema = _output_schema(patch_tool)
     todo_output_schema = _output_schema(todo_tool)
     secret_output_schema = _output_schema(secret_tool)
-    assert patch_output_schema["title"] == "ApplyPatchOutput"
     assert todo_output_schema["title"] == "WriteTodosOutput"
     assert secret_output_schema["title"] == "SecretScanOutput"
-    assert patch_tool.inputSchema["properties"]["patch"]["description"] == (
-        "Unified diff text to validate and apply with git apply."
-    )
     assert (
         "Replacement todo list"
         in todo_tool.inputSchema["properties"]["todos"]["description"]

@@ -23,7 +23,6 @@ CORE_TOOL_NAMES = {
     "glob_search",
     "write_file",
     "delete_file_or_dir",
-    "apply_patch",
     "secret_scan",
     "run_python_code",
     "list_persistent_shells",
@@ -228,22 +227,6 @@ async def exercise_filesystem_and_search_tools(
         "ALPHA BETA\nneedle two\n"
     )
 
-    patch = """diff --git a/notes/demo.txt b/notes/demo.txt
---- a/notes/demo.txt
-+++ b/notes/demo.txt
-@@ -1,2 +1,3 @@
- ALPHA BETA
- needle two
-+patched line
-"""
-    patch_result = await client.call_tool(
-        "apply_patch", {"session_id": session_id, "patch": patch, "cwd": "."}
-    )
-    assert patch_result["ok"] is True
-    assert "patched line" in (workspace / "notes" / "demo.txt").read_text(
-        encoding="utf-8"
-    )
-
     scan_file = workspace / "notes" / "token.txt"
     scan_file.write_text(
         "password = 'local-only-test-value'\n",
@@ -264,16 +247,14 @@ async def exercise_filesystem_and_search_tools(
 
 
 async def exercise_workspace_connector_tools(client: ToolClient) -> None:
-    search = await client.call_tool(
-        "workspace_search", {"query": "patched line"}
-    )
+    search = await client.call_tool("workspace_search", {"query": "needle two"})
     assert "results" in search
     if search["results"]:
         assert search["results"][0]["id"] == "notes/demo.txt"
 
     fetched = await client.call_tool("fetch", {"id": "notes/demo.txt"})
     assert fetched["id"] == "notes/demo.txt"
-    assert "patched line" in fetched["text"]
+    assert "needle two" in fetched["text"]
 
 
 async def exercise_file_download_links(

@@ -46,7 +46,7 @@ def _list_files_description(context: McpToolContext) -> str:
 
 def _write_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use patch tools only when clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 def _edit_lines_description(context: McpToolContext) -> str:

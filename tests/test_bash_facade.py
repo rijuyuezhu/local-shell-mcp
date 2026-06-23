@@ -1,6 +1,6 @@
 import pytest
 
-import local_shell_mcp.ops.bash as bash_ops
+import local_shell_mcp.ops.shell as shell_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.schemas.result_models.jobs import JobStartOutput
 from local_shell_mcp.schemas.result_models.shell import (
@@ -18,7 +18,7 @@ def _create_session(workdir: str = ".") -> str:
 
 
 @pytest.mark.asyncio
-async def test_bash_facade_runs_bounded_command_in_session_workdir(
+async def test_shell_execution_runs_bounded_command_in_session_workdir(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -27,7 +27,7 @@ async def test_bash_facade_runs_bounded_command_in_session_workdir(
     session_dir.mkdir()
     session_id = _create_session("project")
 
-    result = await bash_ops.bash_execute(
+    result = await shell_ops.bash_execute(
         session_id,
         "sh -c 'printf \"$FOO:$PWD\"'",
         cwd=".",
@@ -42,7 +42,7 @@ async def test_bash_facade_runs_bounded_command_in_session_workdir(
 
 
 @pytest.mark.asyncio
-async def test_bash_facade_rejects_cwd_escape(tmp_path, monkeypatch):
+async def test_shell_execution_rejects_cwd_escape(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "project").mkdir()
@@ -50,11 +50,11 @@ async def test_bash_facade_rejects_cwd_escape(tmp_path, monkeypatch):
     session_id = _create_session("project")
 
     with pytest.raises(ValueError, match="Path escapes session workdir"):
-        await bash_ops.bash_execute(session_id, "pwd", cwd="../other")
+        await shell_ops.bash_execute(session_id, "pwd", cwd="../other")
 
 
 @pytest.mark.asyncio
-async def test_bash_facade_routes_async_to_session_job(monkeypatch):
+async def test_shell_execution_routes_async_to_session_job(monkeypatch):
     calls = []
 
     async def fake_job_start(session_id, command, cwd=".", name=None):
@@ -88,15 +88,19 @@ async def test_bash_facade_routes_async_to_session_job(monkeypatch):
                 updated_at=1.0,
             )
 
-    monkeypatch.setattr(bash_ops, "job_start_execute", fake_job_start)
-    monkeypatch.setattr(bash_ops, "get_tool_session_store", lambda: FakeStore())
     monkeypatch.setattr(
-        bash_ops,
+        "local_shell_mcp.ops.jobs.job_start_execute", fake_job_start
+    )
+    monkeypatch.setattr(
+        shell_ops, "get_tool_session_store", lambda: FakeStore()
+    )
+    monkeypatch.setattr(
+        shell_ops,
         "resolve_session_path",
         lambda session, cwd, must_exist=False: "/tmp/project/app",
     )
 
-    result = await bash_ops.bash_execute(
+    result = await shell_ops.bash_execute(
         "ABC12345", "npm test", cwd="app", async_=True, name="tests"
     )
 
@@ -108,7 +112,7 @@ async def test_bash_facade_routes_async_to_session_job(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_bash_facade_routes_pty_to_persistent_shell(
+async def test_shell_execution_routes_pty_to_persistent_shell(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -129,10 +133,10 @@ async def test_bash_facade_routes_pty_to_persistent_shell(
         )
 
     monkeypatch.setattr(
-        bash_ops, "start_persistent_shell_execute", fake_start_shell
+        shell_ops, "start_persistent_shell_execute", fake_start_shell
     )
 
-    result = await bash_ops.bash_execute(
+    result = await shell_ops.bash_execute(
         session_id, "python -i", cwd=".", pty=True, name="server"
     )
 
@@ -142,7 +146,7 @@ async def test_bash_facade_routes_pty_to_persistent_shell(
 
 
 @pytest.mark.asyncio
-async def test_bash_facade_is_exposed_in_mcp(tmp_path, monkeypatch):
+async def test_shell_execution_is_exposed_in_mcp(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()

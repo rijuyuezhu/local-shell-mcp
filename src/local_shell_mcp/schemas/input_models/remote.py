@@ -188,13 +188,6 @@ RemoteRecursiveArg = Annotated[
         description="Whether remote deletion may recurse into non-empty directories."
     ),
 ]
-RemotePatchArg = Annotated[
-    str,
-    Field(
-        description="Unified diff text to apply on the selected remote worker."
-    ),
-]
-
 RemoteAdminActionArg = Annotated[
     Literal["invite", "list", "revoke", "rename"],
     Field(

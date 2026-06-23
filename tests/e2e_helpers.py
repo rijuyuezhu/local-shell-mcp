@@ -179,7 +179,6 @@ REST_ROUTES: dict[str, tuple[str, str]] = {
     "write_file": ("POST", "/tools/write_file"),
     "edit_lines": ("POST", "/tools/edit_lines"),
     "delete_file_or_dir": ("POST", "/tools/delete"),
-    "apply_patch": ("POST", "/tools/apply_patch"),
     "create_file_link": ("POST", "/tools/file_link/create"),
     "list_file_links": ("GET", "/tools/file_link/list"),
     "revoke_file_link": ("POST", "/tools/file_link/revoke"),

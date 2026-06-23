@@ -106,7 +106,6 @@ Required session tools should include at least:
 - `job`
 - `write_file`
 - `delete_file_or_dir`
-- `apply_patch`
 - todos if they remain session-scoped
 - remote-session-dispatched equivalents of the above
 
@@ -195,7 +194,7 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ### Slice 9: Remaining stateful tools and docs
 
-- [x] Decide session policy for `write_file`, `delete_file_or_dir`, `apply_patch`, todos, file links, secret scan, and connector-style search/fetch.
+- [x] Decide session policy for `write_file`, `delete_file_or_dir`, todos, file links, secret scan, and connector-style search/fetch.
 - [x] Make workspace-affecting tools session-bound where appropriate.
 - [x] Update user docs, examples, troubleshooting, generated references, and PR body.
 - [x] Run full validation and update this document with final status.
@@ -209,7 +208,7 @@ Latest completed session/tool-surface status:
 - The model-facing surface uses explicit agent/workspace sessions: `session_start(workdir=...)`, `session_change_cwd(session_id, workdir)`, and session-bound normal tools.
 - `environment_info` and generic `remote(machine, op, args)` are absent from the model-facing MCP/HTTP/generated surface.
 - Persistent shell handles are model-facing `shell_id`; agent/workspace sessions remain `session_id`.
-- Slice 9 completed the remaining session policy: `list_files`, `write_file`, `delete_file_or_dir`, `apply_patch`, `secret_scan`, file-link tools, and todo tools require `session_id`; `workspace_search` and `fetch` remain sessionless read-only connector-compatible exceptions.
+- Slice 9 completed the remaining session policy: `list_files`, `write_file`, `delete_file_or_dir`, `secret_scan`, file-link tools, and todo tools require `session_id`; `workspace_search` and `fetch` remain sessionless read-only connector-compatible exceptions.
 - Download links are owned by local agent sessions, todos are persisted per agent session, and HTTP GET tool routes pass query parameters while ignoring query `tool_name` overrides.
 - Cleanup completed after review: removed unused `explanation` audit metadata, fixed typed coercion for HTTP GET query arguments, removed unexposed legacy remote facade code/tests/schemas, and refreshed docs/generated references.
 - PR description has been rewritten with a detailed summary, scoped change list, validation checklist, and reviewer notes.
@@ -217,6 +216,14 @@ Latest completed session/tool-surface status:
 Current cleanup/hardening task:
 
 Review follow-up hardening has been completed in small pushed commits, each with this source-of-truth document updated before commit and PR CI checked after push.
+
+Current review iteration requested by the user has been implemented locally:
+
+1. Shell execution implementation naming was merged: the public `bash` tool remains, but its operation, registry, input annotations, and result model now live in shell-named modules. The former parallel bash modules were deleted.
+2. Model-facing descriptions/docstrings were expanded for shell tools, read/search/path-discovery tools, connector search/fetch, and todo tools.
+3. Overlapping tools now include concise choice guidance in their model-facing descriptions.
+4. `RemoteToolRegistry.register_mcp` now uses the declarative superclass registration path when remote tools are enabled, so `remote_admin` receives its normal metadata and description from ToolDefinition.
+5. The public diff-application tool was removed entirely; command-driven diff application can be done through bash when needed, while normal precise edits should prefer grounded edit_lines.
 
 1. P1 `run_python_code`: make it an explicit session-bound Python convenience wrapper over the bash execution surface. It now requires `session_id`, writes code to a temporary script, runs `python3 <temporary-script>`, defaults relative `cwd` to the session workdir, supports `timeout_s`, `max_output_bytes`, `env`, `async_`, `pty`, and `name`, and dispatches through remote sessions using the paired worker session. Local focused validation passed: ruff on touched files, `test_run_python_code_creates_temp_file`, and `test_mcp_metadata_for_chatgpt_developer_mode`.
 2. P2 `tree_view` and `glob_search`: require `session_id`, resolve relative paths against the session workdir, dispatch through remote sessions, and update model-facing descriptions/MCP instructions. Local focused validation passed: ruff on touched files, `tests/test_search_ops.py`, `test_search_tool_input_and_output_schema_descriptions_are_exposed`, `test_mcp_metadata_for_chatgpt_developer_mode`, generated references refreshed, and live MCP schema confirmed `tree_view`/`glob_search` require `session_id`.

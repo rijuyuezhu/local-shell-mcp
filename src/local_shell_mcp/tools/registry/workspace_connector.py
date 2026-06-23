@@ -24,7 +24,7 @@ class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):
     search tools. Regular ChatGPT custom connectors and Deep Research-style
     clients often expose only a document-source pattern: search for result cards,
     then fetch one result by id. They may not surface general-purpose tools such
-    as code search, file reads, shell commands, patches, or remote-worker operations unless
+    as code search, file reads, shell commands, edits, or remote-worker operations unless
     the client is in Developer Mode or otherwise supports the full MCP tool set.
 
     search/fetch therefore need three special MCP-facing choices:
@@ -53,7 +53,7 @@ local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
     mcp_error_handler=search_error_output,
 )
 async def workspace_search(query: ConnectorSearchQueryArg) -> SearchOutput:
-    """Connector-style workspace document search. Search workspace text files and return connector-compatible result cards. Use this for connector-style document retrieval clients that expect a search -> fetch workflow. For code navigation or precise workspace inspection, use tools such as search, glob_search, tree_view, or read. Parameter: query is a case-insensitive literal text query. The tool searches from the workspace root, returns at most one result card per matched file, and each card id is the value to pass to fetch."""
+    """Search workspace text files and return connector-compatible result cards. Use this sessionless read-only tool for connector-style document retrieval clients that expect a search -> fetch workflow: call workspace_search first, then pass a returned result id to fetch. This is a broad literal text search from the configured workspace root and returns at most one card per matched file. For coding-agent work inside an explicit session, prefer session-bound tree_view/glob_search for path discovery, search for content matches with grounding metadata, and read for precise file ranges."""
     return await search_execute(query)
 
 
@@ -65,5 +65,5 @@ async def workspace_search(query: ConnectorSearchQueryArg) -> SearchOutput:
     mcp_error_handler=fetch_error_output,
 )
 async def fetch(id: ConnectorFetchIdArg) -> FetchOutput:
-    """Fetch one workspace UTF-8 text file as a connector-compatible document."""
+    """Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, numbered content, and edit-grounding snapshot metadata."""
     return await fetch_execute(id)

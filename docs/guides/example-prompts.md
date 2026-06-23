@@ -11,7 +11,7 @@ Use local-shell-mcp. Clone https://github.com/fwerkor/FrameDiff.git into /worksp
 ## Make a change safely
 
 ```text
-Use local-shell-mcp. Start a session in /workspace/FrameDiff, create a new branch ai/example-change with `bash(session_id=...)`, inspect the target files with `read` or `search`, make the requested code edit with `edit_lines` or `apply_patch(session_id=...)`, run relevant tests with `bash(session_id=...)`, run `secret_scan(session_id=...)`, show git diff --stat, commit, and push the branch.
+Use local-shell-mcp. Start a session in /workspace/FrameDiff, create a new branch ai/example-change with `bash(session_id=...)`, inspect the target files with `read` or `search`, make the requested code edit with grounded `edit_lines`, run relevant tests with `bash(session_id=...)`, run `secret_scan(session_id=...)`, show git diff --stat, commit, and push the branch.
 ```
 
 ## One-command remote worker onboarding

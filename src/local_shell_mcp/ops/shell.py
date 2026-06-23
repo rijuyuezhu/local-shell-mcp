@@ -8,6 +8,7 @@ import signal
 import time
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from ..audit import audit
 from ..config.settings import get_settings
@@ -16,14 +17,23 @@ from ..schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     ReadPersistentShellOutput,
+    RunPythonCodeOutput,
     RunShellCommandOutput,
     SendPersistentShellInputOutput,
+    ShellExecutionOutput,
     StartPersistentShellOutput,
 )
+from ..tool_session.store import (
+    get_tool_session_store,
+    resolve_session_path,
+)
+from ..utils.serialization import to_jsonable
 from .utils.path import (
     relative_display,
     resolve_path,
 )
+from .utils.remote_session import call_remote_session_tool
+from .utils.temp_file import write_temp_text_file
 
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2
@@ -32,6 +42,7 @@ INTERNAL_SHELL_DEFAULT_TIMEOUT_S = 60
 INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
 _COMMAND_SEMAPHORE_SIZE: int | None = None
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass
@@ -341,6 +352,143 @@ async def run_shell_command_execute(
         max_output_bytes,
     )
     return RunShellCommandOutput.model_validate(result.model_dump())
+
+
+def _command_with_env(command: str, env: dict[str, str] | None) -> str:
+    """Return a shell command prefixed with validated environment assignments."""
+    if not env:
+        return command
+    assignments: list[str] = []
+    for name, value in env.items():
+        if not _ENV_NAME_RE.match(name):
+            raise ValueError(f"Invalid environment variable name: {name!r}")
+        assignments.append(f"{name}={shlex.quote(value)}")
+    return f"{' '.join(assignments)} {command}"
+
+
+def _as_result_dict(value: Any) -> dict[str, Any]:
+    """Return a JSON-compatible result dictionary."""
+    data = to_jsonable(value)
+    return data if isinstance(data, dict) else {"result": data}
+
+
+async def bash_execute(
+    session_id: str,
+    command: str,
+    cwd: str = ".",
+    timeout_s: int | None = None,
+    max_output_bytes: int | None = None,
+    env: dict[str, str] | None = None,
+    async_: bool = False,
+    pty: bool = False,
+    name: str | None = None,
+) -> ShellExecutionOutput:
+    """Run a shell command via bounded, tracked-job, or PTY mode inside a session."""
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "bash",
+            {
+                "command": command,
+                "cwd": cwd,
+                "timeout_s": timeout_s,
+                "max_output_bytes": max_output_bytes,
+                "env": env,
+                "async_": async_,
+                "pty": pty,
+                "name": name,
+            },
+            timeout_s if isinstance(timeout_s, int) else None,
+        )
+        return ShellExecutionOutput.model_validate(data)
+
+    resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
+    cwd_text = str(resolved_cwd)
+    command_with_env = _command_with_env(command, env)
+    if pty:
+        result = await start_persistent_shell_execute(
+            cwd_text, name, command_with_env
+        )
+        return ShellExecutionOutput(
+            mode="pty",
+            command=command,
+            cwd=cwd_text,
+            result=_as_result_dict(result),
+        )
+    if async_:
+        from .jobs import job_start_execute
+
+        result = await job_start_execute(
+            session_id, command_with_env, cwd_text, name
+        )
+        return ShellExecutionOutput(
+            mode="job",
+            command=command,
+            cwd=cwd_text,
+            result=_as_result_dict(result),
+        )
+    result = await run_shell_command_execute(
+        command_with_env, cwd_text, timeout_s, max_output_bytes
+    )
+    return ShellExecutionOutput(
+        mode="command",
+        command=command,
+        cwd=cwd_text,
+        result=_as_result_dict(result),
+    )
+
+
+async def run_python_code_execute(
+    session_id: str,
+    code: str,
+    cwd: str = ".",
+    timeout_s: int | None = None,
+    max_output_bytes: int | None = None,
+    env: dict[str, str] | None = None,
+    async_: bool = False,
+    pty: bool = False,
+    name: str | None = None,
+) -> RunPythonCodeOutput:
+    """Write Python code to a temporary file and execute it through shell modes."""
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "run_python_code",
+            {
+                "code": code,
+                "cwd": cwd,
+                "timeout_s": timeout_s,
+                "max_output_bytes": max_output_bytes,
+                "env": env,
+                "async_": async_,
+                "pty": pty,
+                "name": name,
+            },
+            timeout_s if isinstance(timeout_s, int) else None,
+        )
+        return RunPythonCodeOutput.model_validate(data)
+
+    resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
+    script_path = await write_temp_text_file(
+        "Python script", code, "script", "py"
+    )
+    command = f"python3 {shlex.quote(str(script_path))}"
+    result = await bash_execute(
+        session_id,
+        command,
+        str(resolved_cwd),
+        timeout_s,
+        max_output_bytes,
+        env,
+        async_,
+        pty,
+        name,
+    )
+    return RunPythonCodeOutput(
+        **result.model_dump(), script_path=str(script_path)
+    )
 
 
 def _tmux_session_name(name: str | None = None) -> str:

@@ -40,17 +40,17 @@ local_tool = SearchToolRegistry.get_tool_decorator()
 
 def _tree_view_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: {settings.max_tree_entries}."""
+    return f"""Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Use tree_view when you need structure, directories, and broad layout; use glob_search when you already know filename patterns; use search when you need content matches. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: {settings.max_tree_entries}."""
 
 
 def _glob_search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: {settings.max_glob_results}."""
+    return f"""Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Use glob_search for path discovery by pattern; use tree_view for directory shape; use search for content matches with edit-grounding metadata. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: {settings.max_glob_results}."""
 
 
 def _search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search code content for matching lines. Use this tool for content discovery so results carry grounding metadata. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results={settings.max_grep_results}."""
+    return f"""Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry grounding metadata for edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(
