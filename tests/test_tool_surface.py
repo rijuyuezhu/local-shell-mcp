@@ -357,6 +357,54 @@ def test_http_tool_missing_required_arg_returns_validation_error(
         }
 
 
+def test_http_get_query_params_are_type_coerced(tmp_path, monkeypatch):
+    (tmp_path / "artifact.txt").write_text("hello", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    from local_shell_mcp.ops import downloads as download_ops
+
+    clock = {"now": 1_000.0}
+    monkeypatch.setattr(download_ops, "now_s", lambda: clock["now"])
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    create_response = client.post(
+        "/tools/file_link/create",
+        json={
+            "session_id": session["session_id"],
+            "path": "artifact.txt",
+            "ttl_s": 10,
+        },
+    )
+    assert create_response.status_code == 200
+
+    clock["now"] = 1_020.0
+    include_response = client.get(
+        "/tools/file_link/list",
+        params={
+            "session_id": session["session_id"],
+            "include_expired": "true",
+        },
+    )
+    assert include_response.status_code == 200
+    assert len(include_response.json()["links"]) == 1
+
+    prune_response = client.get(
+        "/tools/file_link/list",
+        params={
+            "session_id": session["session_id"],
+            "include_expired": "false",
+        },
+    )
+    assert prune_response.status_code == 200
+    assert prune_response.json()["links"] == []
+
+
 def test_todos_are_session_scoped(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))

@@ -9,6 +9,7 @@ from typing import Any, ClassVar, Literal, Protocol
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
+from pydantic import TypeAdapter, ValidationError
 
 from ..config.settings import Settings
 from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
@@ -71,6 +72,16 @@ def _normalize_description(text: str) -> str:
     )
 
 
+def _coerce_tool_arg(parameter: inspect.Parameter, value: Any) -> Any:
+    """Coerce HTTP-style mapped values through the tool signature annotation."""
+    if parameter.annotation is inspect.Parameter.empty:
+        return value
+    try:
+        return TypeAdapter(parameter.annotation).validate_python(value)
+    except ValidationError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _tool_kwargs_from_mapping(
     signature: inspect.Signature, args: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -82,7 +93,7 @@ def _tool_kwargs_from_mapping(
         }:
             continue
         if name in args:
-            kwargs[name] = args[name]
+            kwargs[name] = _coerce_tool_arg(parameter, args[name])
         elif parameter.default is inspect.Parameter.empty:
             raise ValueError(f"Missing required argument: {name}")
     return kwargs
