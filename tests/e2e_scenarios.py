@@ -81,11 +81,10 @@ async def exercise_explicit_session_workflow(
         {
             "session_id": session_id,
             "pattern": "needle",
-            "paths": "notes.txt",
             "regex": False,
         },
     )
-    assert search_result["count"] == 1
+    assert search_result["count"] == 1, search_result
     assert search_result["matches"][0]["session_id"] == session_id
     assert search_result["matches"][0]["numbered_line"] == "2|needle one"
 
@@ -97,7 +96,7 @@ async def exercise_explicit_session_workflow(
             "start_line": 2,
             "end_line": 2,
             "replacement": "needle two\n",
-            "snapshot_id": search_result["matches"][0]["snapshot_id"],
+            "snapshot_id": read_result["file"]["snapshot_id"],
         },
     )
     assert "+needle two" in edit_result["diff"]
