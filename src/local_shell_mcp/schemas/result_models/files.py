@@ -83,7 +83,7 @@ class ReadFileOutput(BaseModel):
     )
     session_id: str | None = Field(
         default=None,
-        description="Agent grounding session that recorded this read; defaults to the process-local session when omitted.",
+        description="Explicit agent/workspace session that recorded this read, or null when no grounding snapshot was recorded.",
     )
     snapshot_id: str | None = Field(
         default=None,

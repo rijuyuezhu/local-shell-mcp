@@ -3,8 +3,8 @@
 import asyncio
 
 from ...ops.read import read_execute
-from ...schemas.input_models.files import ToolSessionIdArg
 from ...schemas.input_models.read import ReadPathArg
+from ...schemas.input_models.session import SessionIdArg
 from ...schemas.result_models.read import ReadOutput
 from ...tools.contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
@@ -32,8 +32,8 @@ def _read_description(context: McpToolContext) -> str:
     mcp_scopes=("shell:read",),
 )
 async def read(
+    session_id: SessionIdArg,
     path: ReadPathArg,
-    session_id: ToolSessionIdArg = None,
 ) -> ReadOutput:
     """Read a file or directory with optional path selector suffixes."""
     return await asyncio.to_thread(read_execute, path, session_id)

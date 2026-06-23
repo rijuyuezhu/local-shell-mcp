@@ -9,6 +9,13 @@ from local_shell_mcp.ops.search import (
     search_execute,
     tree_view_execute,
 )
+from local_shell_mcp.tool_session.store import get_tool_session_store
+
+
+def _create_session() -> str:
+    store = get_tool_session_store()
+    store.clear()
+    return store.create_session(workdir=".").session_id
 
 
 @pytest.mark.asyncio
@@ -104,7 +111,11 @@ async def test_grep_search_returns_grounded_numbered_matches(
         "alpha\nneedle here\ngamma\n", encoding="utf-8"
     )
 
-    result = await grep_search_execute("needle", cwd=".", regex=False)
+    session_id = _create_session()
+
+    result = await grep_search_execute(
+        "needle", cwd=".", regex=False, session_id=session_id
+    )
 
     assert result.ok is True
     assert result.count == 1
@@ -131,7 +142,11 @@ async def test_high_level_search_scopes_to_paths(tmp_path, monkeypatch):
         "needle\n", encoding="utf-8"
     )
 
-    result = await search_execute("needle", paths="src", regex=False)
+    session_id = _create_session()
+
+    result = await search_execute(
+        "needle", paths="src", regex=False, session_id=session_id
+    )
 
     assert result.ok is True
     assert result.count == 1
@@ -154,9 +169,18 @@ async def test_mcp_search_facade_returns_grounded_results(
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("needle\n", encoding="utf-8")
 
+    session = mcp_structured(
+        await build_mcp().call_tool("session_start", {"workdir": "."})
+    )
     payload = mcp_structured(
         await build_mcp().call_tool(
-            "search", {"pattern": "needle", "paths": "src", "regex": False}
+            "search",
+            {
+                "session_id": session["session_id"],
+                "pattern": "needle",
+                "paths": "src",
+                "regex": False,
+            },
         )
     )
 

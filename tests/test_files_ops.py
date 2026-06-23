@@ -17,7 +17,14 @@ from local_shell_mcp.ops.shell import check_command_policy
 from local_shell_mcp.ops.utils.path import resolve_path
 from local_shell_mcp.schemas.input_models.files import ReadFileRequest
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.tool_session.store import get_tool_session_store
 from tests.helpers import nested_mcp_text
+
+
+def _create_session() -> str:
+    store = get_tool_session_store()
+    store.clear()
+    return store.create_session(workdir=".").session_id
 
 
 def test_write_read_edit(tmp_path, monkeypatch):
@@ -78,7 +85,11 @@ def test_read_text_returns_line_numbers_and_snapshot_metadata(
         "alpha\nbeta\ngamma\n", encoding="utf-8"
     )
 
-    result = read_file_execute("lines.txt", start_line=2, end_line=3)
+    session_id = _create_session()
+
+    result = read_file_execute(
+        "lines.txt", start_line=2, end_line=3, session_id=session_id
+    )
 
     assert result.content == "beta\ngamma"
     assert result.start_line == 2
@@ -87,7 +98,7 @@ def test_read_text_returns_line_numbers_and_snapshot_metadata(
     assert result.lines[0].line == 2
     assert result.lines[0].text == "beta"
     assert result.numbered_content == "2|beta\n3|gamma"
-    assert result.session_id == "default"
+    assert result.session_id == session_id
     assert result.snapshot_id
     assert result.file_sha256
     assert [item.model_dump() for item in result.seen_ranges] == [
@@ -256,7 +267,10 @@ def test_edit_lines_uses_snapshot_and_returns_diff_context(
     (tmp_path / "edit.py").write_text(
         "alpha\nbeta\ngamma\ndelta\n", encoding="utf-8"
     )
-    read_result = read_file_execute("edit.py", start_line=2, end_line=3)
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=2, end_line=3, session_id=session_id
+    )
 
     result = edit_lines_execute(
         "edit.py",
@@ -283,7 +297,10 @@ def test_edit_lines_rejects_stale_snapshot(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\n", encoding="utf-8")
-    read_result = read_file_execute("edit.py", start_line=1, end_line=1)
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=1, end_line=1, session_id=session_id
+    )
     (tmp_path / "edit.py").write_text("changed\nbeta\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="file changed since snapshot"):
@@ -301,7 +318,10 @@ def test_edit_lines_rejects_unseen_snapshot_range(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
     (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
-    read_result = read_file_execute("edit.py", start_line=1, end_line=1)
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=1, end_line=1, session_id=session_id
+    )
 
     with pytest.raises(ValueError, match="edit range was not shown"):
         edit_lines_execute(

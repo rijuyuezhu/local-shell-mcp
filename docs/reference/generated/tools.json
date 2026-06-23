@@ -286,25 +286,6 @@
       ]
     },
     {
-      "body": "Register environment/probe tools.",
-      "headers": [
-        "Tool",
-        "Parameters",
-        "Description"
-      ],
-      "heading": "Environment",
-      "kind": "table",
-      "rows": [
-        [
-          {
-            "code": "environment_info"
-          },
-          "none",
-          "Return the active workspace, server settings, auth/policy state, and a small environment probe. Use this before planning tool-heavy work when you need to know the workspace root, auth/network policy, or basic runtime versions. This is read-only and intended for orientation, not for executing arbitrary commands."
-        ]
-      ]
-    },
-    {
       "body": "Register file operation tools.",
       "headers": [
         "Tool",
@@ -366,11 +347,11 @@
                 "note": "(string, required)"
               },
               {
-                "description": "Optional agent grounding session id. Omit to use the process-local default session.",
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
                 "head": {
                   "code": "session_id"
                 },
-                "note": "(string / null, optional)"
+                "note": "(string, required)"
               },
               {
                 "description": "Optional snapshot_id returned by read or search. When provided, the edit is rejected if the file changed or the line range was not shown.",
@@ -578,11 +559,11 @@
                 "note": "(string, required)"
               },
               {
-                "description": "Optional agent grounding session id. Omit to use the process-local default session.",
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
                 "head": {
                   "code": "session_id"
                 },
-                "note": "(string / null, optional)"
+                "note": "(string, required)"
               }
             ]
           },
@@ -625,7 +606,7 @@
                 "head": {
                   "code": "op"
                 },
-                "note": "(environment / read / search / edit_lines / bash / python / list_files / tree / glob / write_file / apply_patch / delete / job / session / transfer, required)"
+                "note": "(read / search / edit_lines / bash / python / list_files / tree / glob / write_file / apply_patch / delete / job / session / transfer, required)"
               }
             ]
           },
@@ -653,7 +634,7 @@
               }
             ]
           },
-          "Run compact remote control-plane actions. Use action=\"list\" to discover worker names before calling remote(machine, op, args); action=\"invite\" to create a one-time join command; action=\"revoke\" to remove a stale or untrusted worker; and action=\"rename\" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s=600 seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability."
+          "Run compact remote control-plane actions. Use action=\"list\" to discover worker names; action=\"invite\" to create a one-time join command; action=\"revoke\" to remove a stale or untrusted worker; and action=\"rename\" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s=600 seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability."
         ]
       ]
     },
@@ -740,11 +721,11 @@
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Optional agent grounding session id. Omit to use the process-local default session.",
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
                 "head": {
                   "code": "session_id"
                 },
-                "note": "(string / null, optional)"
+                "note": "(string, required)"
               }
             ]
           },
@@ -823,6 +804,56 @@
             ]
           },
           "Scan workspace text files for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: 200."
+        ]
+      ]
+    },
+    {
+      "body": "Register explicit agent session tools.",
+      "headers": [
+        "Tool",
+        "Parameters",
+        "Description"
+      ],
+      "heading": "Session",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "session_start"
+          },
+          {
+            "items": [
+              {
+                "description": "Optional human-readable label for this agent session.",
+                "head": {
+                  "code": "label"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Remote worker machine name for remote sessions. Omit for local sessions.",
+                "head": {
+                  "code": "machine"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Session target. Use local for this workspace; remote support is added in a later slice.",
+                "head": {
+                  "code": "target"
+                },
+                "note": "(local / remote, optional)"
+              },
+              {
+                "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
+                "head": {
+                  "code": "workdir"
+                },
+                "note": "(string, optional)"
+              }
+            ]
+          },
+          "Start an explicit agent/workspace session and bind it to a workdir. Call this before substantial workspace work, then pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools. Local sessions are supported now; remote sessions will create a paired worker session in a later slice."
         ]
       ]
     },
@@ -1811,17 +1842,12 @@
             "type": "string"
           },
           "session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional agent grounding session id. Omit to use the process-local default session.",
-            "title": "Session Id"
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           },
           "snapshot_id": {
             "anyOf": [
@@ -1846,7 +1872,8 @@
           "path",
           "start_line",
           "end_line",
-          "replacement"
+          "replacement",
+          "session_id"
         ],
         "title": "edit_linesArguments",
         "type": "object"
@@ -1981,7 +2008,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Agent grounding session that recorded this read; defaults to the process-local session when omitted.",
+                "description": "Explicit agent/workspace session that recorded this read, or null when no grounding snapshot was recorded.",
                 "title": "Session Id"
               },
               "snapshot_id": {
@@ -2114,118 +2141,6 @@
           "context"
         ],
         "title": "EditLinesOutput",
-        "type": "object"
-      }
-    },
-    {
-      "description": "Return the active workspace, server settings, auth/policy state, and a small environment probe. Use this before planning tool-heavy work when you need to know the workspace root, auth/network policy, or basic runtime versions. This is read-only and intended for orientation, not for executing arbitrary commands.",
-      "inputSchema": {
-        "properties": {},
-        "title": "environment_infoArguments",
-        "type": "object"
-      },
-      "meta": {
-        "securitySchemes": [
-          {
-            "scopes": [
-              "shell:read"
-            ],
-            "type": "oauth2"
-          }
-        ]
-      },
-      "name": "environment_info",
-      "outputSchema": {
-        "$defs": {
-          "RunShellCommandOutput": {
-            "description": "Result of running one bounded non-interactive shell command.",
-            "properties": {
-              "command": {
-                "description": "Shell command string that was executed.",
-                "title": "Command",
-                "type": "string"
-              },
-              "cwd": {
-                "description": "Working directory used to run the command, displayed relative to the workspace when possible.",
-                "title": "Cwd",
-                "type": "string"
-              },
-              "duration_ms": {
-                "description": "Elapsed command runtime in milliseconds.",
-                "title": "Duration Ms",
-                "type": "integer"
-              },
-              "exit_code": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Process exit code, or null when no process exited.",
-                "title": "Exit Code"
-              },
-              "ok": {
-                "description": "Whether the subprocess exited with code 0 before timeout.",
-                "title": "Ok",
-                "type": "boolean"
-              },
-              "stderr": {
-                "default": "",
-                "description": "Captured standard error after byte-limit truncation.",
-                "title": "Stderr",
-                "type": "string"
-              },
-              "stdout": {
-                "default": "",
-                "description": "Captured standard output after byte-limit truncation.",
-                "title": "Stdout",
-                "type": "string"
-              },
-              "timed_out": {
-                "default": false,
-                "description": "Whether execution was terminated after exceeding its timeout.",
-                "title": "Timed Out",
-                "type": "boolean"
-              },
-              "truncated": {
-                "default": false,
-                "description": "Whether stdout or stderr was truncated to fit output limits.",
-                "title": "Truncated",
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "ok",
-              "exit_code",
-              "duration_ms",
-              "cwd",
-              "command"
-            ],
-            "title": "RunShellCommandOutput",
-            "type": "object"
-          }
-        },
-        "description": "Workspace, runtime, policy, and environment probe information.",
-        "properties": {
-          "probe": {
-            "$ref": "#/$defs/RunShellCommandOutput",
-            "description": "Bounded shell probe showing basic OS, user, working directory, Python, and git information."
-          },
-          "settings": {
-            "additionalProperties": true,
-            "description": "Safe server settings with secrets redacted, including workspace, auth, limits, and policy configuration.",
-            "title": "Settings",
-            "type": "object"
-          }
-        },
-        "required": [
-          "settings",
-          "probe"
-        ],
-        "title": "EnvironmentInfoOutput",
         "type": "object"
       }
     },
@@ -3293,20 +3208,16 @@
             "type": "string"
           },
           "session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional agent grounding session id. Omit to use the process-local default session.",
-            "title": "Session Id"
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
         "required": [
+          "session_id",
           "path"
         ],
         "title": "readArguments",
@@ -3517,7 +3428,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Agent grounding session that recorded this read; defaults to the process-local session when omitted.",
+                "description": "Explicit agent/workspace session that recorded this read, or null when no grounding snapshot was recorded.",
                 "title": "Session Id"
               },
               "snapshot_id": {
@@ -3842,7 +3753,6 @@
           "op": {
             "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, job, session, or transfer.",
             "enum": [
-              "environment",
               "read",
               "search",
               "edit_lines",
@@ -3921,7 +3831,7 @@
       }
     },
     {
-      "description": "Run compact remote control-plane actions. Use action=\"list\" to discover worker names before calling remote(machine, op, args); action=\"invite\" to create a one-time join command; action=\"revoke\" to remove a stale or untrusted worker; and action=\"rename\" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s=600 seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability.",
+      "description": "Run compact remote control-plane actions. Use action=\"list\" to discover worker names; action=\"invite\" to create a one-time join command; action=\"revoke\" to remove a stale or untrusted worker; and action=\"rename\" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s=600 seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability.",
       "inputSchema": {
         "properties": {
           "action": {
@@ -4236,20 +4146,16 @@
             "type": "boolean"
           },
           "session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional agent grounding session id. Omit to use the process-local default session.",
-            "title": "Session Id"
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
         "required": [
+          "session_id",
           "pattern"
         ],
         "title": "searchArguments",
@@ -4625,6 +4531,247 @@
           "enter"
         ],
         "title": "SendPersistentShellInputOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Start an explicit agent/workspace session and bind it to a workdir. Call this before substantial workspace work, then pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools. Local sessions are supported now; remote sessions will create a paired worker session in a later slice.",
+      "inputSchema": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional human-readable label for this agent session.",
+            "title": "Label"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Remote worker machine name for remote sessions. Omit for local sessions.",
+            "title": "Machine"
+          },
+          "target": {
+            "default": "local",
+            "description": "Session target. Use local for this workspace; remote support is added in a later slice.",
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "workdir": {
+            "default": ".",
+            "description": "Working directory to bind to the session. Local paths resolve inside the configured workspace.",
+            "title": "Workdir",
+            "type": "string"
+          }
+        },
+        "title": "session_startArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "session_start",
+      "outputSchema": {
+        "$defs": {
+          "GitSessionInfo": {
+            "description": "Lightweight git orientation for a session workdir.",
+            "properties": {
+              "branch": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Current branch or short commit name, if available.",
+                "title": "Branch"
+              },
+              "dirty": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Whether git reports uncommitted changes, if available.",
+                "title": "Dirty"
+              },
+              "is_repo": {
+                "description": "Whether the session workdir is inside a git repository.",
+                "title": "Is Repo",
+                "type": "boolean"
+              },
+              "root": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Git repository root, if available.",
+                "title": "Root"
+              }
+            },
+            "required": [
+              "is_repo"
+            ],
+            "title": "GitSessionInfo",
+            "type": "object"
+          }
+        },
+        "description": "New explicit agent/workspace session.",
+        "properties": {
+          "created_at": {
+            "description": "Unix timestamp when the session was created.",
+            "title": "Created At",
+            "type": "number"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional Unix timestamp when the session expires.",
+            "title": "Expires At"
+          },
+          "git": {
+            "$ref": "#/$defs/GitSessionInfo",
+            "description": "Lightweight git orientation for the session workdir."
+          },
+          "instruction_files": {
+            "description": "Workspace-relative project instruction files discovered near the session workdir.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Instruction Files",
+            "type": "array"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional human-readable session label.",
+            "title": "Label"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Remote worker name for remote sessions.",
+            "title": "Machine"
+          },
+          "message": {
+            "description": "Short model-facing instruction for using this session.",
+            "title": "Message",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session id.",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "target": {
+            "description": "Execution target bound to this session.",
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "Unix timestamp when the session was last touched.",
+            "title": "Updated At",
+            "type": "number"
+          },
+          "workdir": {
+            "description": "Canonical workdir bound to this session.",
+            "title": "Workdir",
+            "type": "string"
+          },
+          "worker_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Worker-side paired session id for remote sessions.",
+            "title": "Worker Session Id"
+          },
+          "workspace_root": {
+            "description": "Configured local workspace root for this server.",
+            "title": "Workspace Root",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "target",
+          "workdir",
+          "created_at",
+          "updated_at",
+          "workspace_root",
+          "git",
+          "instruction_files",
+          "message"
+        ],
+        "title": "SessionStartOutput",
         "type": "object"
       }
     },

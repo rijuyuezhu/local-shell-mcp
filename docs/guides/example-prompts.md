@@ -23,11 +23,11 @@ Use local-shell-mcp. Create a remote worker invite named npu-4card with workdir 
 ## Remote machine diagnostics
 
 ```text
-Use local-shell-mcp. On remote machine npu-4card, run pwd, hostname, python3 --version, git log -1 --oneline, and npu-smi info from /home/cyh/FrameDiff. Use `remote(machine, op="bash", args={...})`.
+Use local-shell-mcp. Start a local session for the project, inspect the workspace, and run the relevant verification commands with `bash` using the returned session_id.
 ```
 
 ## Remote code edit and test
 
 ```text
-Use local-shell-mcp. On remote machine hpc-a, inspect /home/cyh/project, search for the requested symbol with `remote(op="search")`, edit with `remote(op="edit_lines")` or `remote(op="apply_patch")`, run the relevant test with `remote(op="bash")`, then show git diff --stat with `remote(op="bash")`.
+Use local-shell-mcp. Start a session for the target project, search for the requested symbol with `search`, edit with `edit_lines`, run the relevant test with `bash`, then show git diff --stat with `bash`, always passing the returned session_id.
 ```

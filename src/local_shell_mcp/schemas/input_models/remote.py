@@ -197,7 +197,6 @@ RemotePatchArg = Annotated[
 
 RemoteFacadeOpArg = Annotated[
     Literal[
-        "environment",
         "read",
         "search",
         "edit_lines",

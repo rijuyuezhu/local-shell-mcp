@@ -14,6 +14,7 @@ from ..schemas.result_models.search import (
     GrepSearchOutput,
     TreeViewOutput,
 )
+from ..tool_session.store import get_tool_session_store
 from .files import read_file_execute
 from .shell import run_shell
 from .utils.path import missing_path_context, relative_display, resolve_path
@@ -222,6 +223,12 @@ async def search_execute(
     session_id: str | None = None,
 ) -> GrepSearchOutput:
     """Search code content with optional path scopes and edit grounding."""
+    if session_id is not None:
+        session = get_tool_session_store().touch_session(session_id)
+        if session.target != "local":
+            raise ValueError("remote sessions are not dispatchable locally yet")
+        if cwd == ".":
+            cwd = session.workdir
     return await grep_search_execute(
         pattern,
         cwd=cwd,

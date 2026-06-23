@@ -38,7 +38,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "search",
     "workspace_search",
     "fetch",
-    "environment_info",
+    "session_start",
     "version",
     "run_python_code",
     "send_persistent_shell_input",
@@ -310,7 +310,7 @@ def test_http_tool_missing_required_arg_returns_validation_error(
     assert response.status_code == 400
     assert response.json() == {
         "error": "validation_error",
-        "message": "Missing required argument: path",
+        "message": "Missing required argument: session_id",
     }
 
 
@@ -320,8 +320,11 @@ def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).post(
-        "/tools/read", json={"path": "missing.txt"}
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    response = client.post(
+        "/tools/read",
+        json={"session_id": session["session_id"], "path": "missing.txt"},
     )
 
     assert response.status_code == 400
@@ -379,7 +382,7 @@ async def test_mcp_tool_missing_required_arg_uses_fastmcp_tool_error(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    with pytest.raises(ToolError, match="validation error for readArguments"):
+    with pytest.raises(ToolError, match="validation errors for readArguments"):
         await build_mcp().call_tool("read", {})
 
 

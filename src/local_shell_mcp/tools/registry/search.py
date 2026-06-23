@@ -7,7 +7,6 @@ from ...ops.search import (
     search_execute,
     tree_view_execute,
 )
-from ...schemas.input_models.files import ToolSessionIdArg
 from ...schemas.input_models.search import (
     CaseSensitiveArg,
     GlobMaxResultsArg,
@@ -21,6 +20,7 @@ from ...schemas.input_models.search import (
     TreeDepthArg,
     TreeMaxEntriesArg,
 )
+from ...schemas.input_models.session import SessionIdArg
 from ...schemas.result_models.search import (
     GlobSearchOutput,
     GrepSearchOutput,
@@ -95,12 +95,12 @@ async def glob_search(
     mcp_scopes=("shell:read",),
 )
 async def search(
+    session_id: SessionIdArg,
     pattern: GrepQueryArg,
     paths: SearchPathsArg = None,
     regex: RegexArg = True,
     case_sensitive: CaseSensitiveArg = True,
     max_results: GrepMaxResultsArg = None,
-    session_id: ToolSessionIdArg = None,
 ) -> GrepSearchOutput:
     """Search code content with optional path scopes."""
     return await search_execute(

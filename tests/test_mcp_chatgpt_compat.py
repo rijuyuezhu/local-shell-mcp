@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import re
 import time
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -78,13 +79,14 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
     search_meta = tools["workspace_search"].meta
-    environment_meta = tools["environment_info"].meta
+    session_meta = tools["session_start"].meta
+    assert "environment_info" not in tools
     assert search_meta is not None
-    assert environment_meta is not None
+    assert session_meta is not None
     assert search_meta["securitySchemes"][0]["type"] == "noauth"
     assert search_meta["securitySchemes"][1]["scopes"] == ["shell:read"]
-    assert environment_meta["securitySchemes"][0]["type"] == "oauth2"
-    assert environment_meta["securitySchemes"][0]["scopes"] == ["shell:read"]
+    assert session_meta["securitySchemes"][0]["type"] == "oauth2"
+    assert session_meta["securitySchemes"][0]["scopes"] == ["shell:read"]
 
     def tool_oauth_scopes(name: str) -> list[str]:
         meta = tools[name].meta
@@ -141,9 +143,17 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "metadata",
     }
 
-    structured = mcp_structured(await mcp.call_tool("environment_info", {}))
-    assert "workspace_root" in structured["settings"]
-    assert structured["probe"]["ok"] is True
+    structured = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+    assert re.fullmatch(r"[A-Za-z0-9]{8}", structured["session_id"])
+    assert structured["target"] == "local"
+    assert structured["workdir"] == str(tmp_path)
+    assert structured["workspace_root"] == str(tmp_path)
+    assert (
+        structured["message"]
+        == "Use this session_id in subsequent workspace tool calls."
+    )
 
 
 @pytest.mark.asyncio

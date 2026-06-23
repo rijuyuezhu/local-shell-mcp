@@ -127,34 +127,34 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 - [x] Create this stateful plan document.
 - [ ] Confirm final plan with the user.
-- [ ] Keep this file updated after each implementation slice.
+- [x] Keep this file updated after each implementation slice.
 
 ### Slice 2: Session model and store
 
-- [ ] Replace the current snapshot-only/default session workaround with first-class session records.
-- [ ] Add 8-character alphanumeric session id generation with collision retry.
-- [ ] Add `create_session`, `require_session`, `touch_session`, `end_session`, and test helpers.
-- [ ] Store `workdir`, target, optional machine, optional worker session id, timestamps, and optional label.
-- [ ] Remove normal-path fallback to `DEFAULT_TOOL_SESSION_ID`.
-- [ ] Add unit tests for id format, uniqueness retry, missing session errors, workdir storage, and snapshot isolation.
+- [x] Replace the current snapshot-only/default session workaround with first-class session records.
+- [x] Add 8-character alphanumeric session id generation with collision retry.
+- [x] Add `create_session`, `require_session`, `touch_session`, `end_session`, and test helpers.
+- [x] Store `workdir`, target, optional machine, optional worker session id, timestamps, and optional label.
+- [x] Remove normal-path fallback to `DEFAULT_TOOL_SESSION_ID`.
+- [x] Add unit tests for id format, uniqueness retry, missing session errors, workdir storage, and snapshot isolation.
 
 ### Slice 3: `session_start` tool
 
-- [ ] Add input/result models for `session_start`.
-- [ ] Add model-facing `session_start(target="local", workdir=".", machine=None, label=None)`.
-- [ ] Return `session_id`, target, workdir, and lightweight orientation/discovery metadata.
-- [ ] Remove `environment_info` from the default/model-facing surface.
-- [ ] Update MCP server instructions to start substantial workspace work with `session_start`.
-- [ ] Update docs and generated references.
-- [ ] Add tests proving `environment_info` is absent from the default MCP surface and `session_start` is present.
+- [x] Add input/result models for `session_start`.
+- [x] Add model-facing `session_start(target="local", workdir=".", machine=None, label=None)`.
+- [x] Return `session_id`, target, workdir, and lightweight orientation/discovery metadata.
+- [x] Remove `environment_info` from the default/model-facing surface.
+- [x] Update MCP server instructions to start substantial workspace work with `session_start`.
+- [x] Update docs and generated references.
+- [x] Add tests proving `environment_info` is absent from the default MCP surface and `session_start` is present.
 
 ### Slice 4: Local session-bound read/search/edit
 
-- [ ] Make `read`, `search`, and `edit_lines` require `session_id`.
-- [ ] Resolve relative paths against the session workdir.
-- [ ] Ensure read/search snapshots are recorded under the explicit session.
-- [ ] Ensure `edit_lines` rejects missing session, unknown snapshot, cross-session snapshot, stale snapshot, and unseen ranges.
-- [ ] Update docs/generated references/tests.
+- [x] Make `read`, `search`, and `edit_lines` require `session_id`.
+- [x] Resolve relative paths against the session workdir.
+- [x] Ensure read/search snapshots are recorded under the explicit session.
+- [x] Ensure `edit_lines` rejects missing session, unknown snapshot, cross-session snapshot, stale snapshot, and unseen ranges.
+- [x] Update docs/generated references/tests.
 
 ### Slice 5: Local session-bound bash/job
 
@@ -197,11 +197,35 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ## Current TODO
 
+Completed in the latest local-session slice:
+
+- Added first-class process-local agent sessions with 8-character alphanumeric ids, workdir binding, timestamps, labels, and snapshot ownership.
+- Added model-facing `session_start` for local sessions and removed `environment_info` from public MCP/HTTP/generated tool surfaces.
+- Made `read`, `search`, and `edit_lines` require explicit `session_id` at the model-facing layer.
+- Added explicit-session e2e workflow coverage across REST, streamable MCP HTTP, and stdio: `session_start -> read/search -> edit_lines`, plus cross-session and unknown-session failure checks.
+- Updated MCP server instructions and generated tool references for session-first usage.
+
 Next implementation task:
 
-1. Confirm this plan with the user.
-2. Implement Slice 2 and Slice 3 first: first-class local sessions plus `session_start`, and remove `environment_info` from the default/model-facing surface.
+1. Commit and push the completed local-session slice, then watch CI for PR #79.
+2. Implement Slice 5: make `bash` and `job` session-bound, default `bash` cwd to the session workdir, and isolate job list/poll/cancel/retry by session.
 3. Keep this document updated after each slice, including completed checkboxes, changed design decisions, validation commands, and known risks.
+
+Latest validation run for this slice:
+
+```bash
+uv run pytest tests/test_session_store.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_read_facade.py -q
+uv run pytest tests/test_files_ops.py -q
+uv run pytest tests/test_search_ops.py -q
+uv run pytest tests/test_audit_tool_calls.py tests/test_export_tools_json.py -q
+uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories -q
+uv run pytest tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories -q
+uv run pytest tests/test_e2e_stdio.py::test_stdio_process_exercises_core_tool_categories -q
+uv run pytest tests/test_e2e_remote_worker.py -q
+uv run ruff check src tests && uv run pyright && uv run pytest -q
+```
+
+Result: all passed; full suite reported 257 passed, 1 warning.
 
 ## Validation checklist
 
@@ -226,7 +250,7 @@ Before reporting completion of an implementation slice, inspect the live MCP sur
 
 ## Known risks and open questions
 
-- How much legacy compatibility to keep for HTTP routes is undecided; model-facing MCP surface should still remove `environment_info` and generic `remote(...)`.
+- `environment_info` compatibility is intentionally not kept; the public MCP/HTTP/generated surface now uses `session_start`. Generic `remote(...)` removal is still scheduled for Slice 8.
 - Renaming persistent shell handles from `session_id` to `shell_id` may require compatibility shims or coordinated test updates.
 - Remote paired session lifecycle needs careful cleanup if the control server session ends while the worker remains online, or if the worker restarts.
 - Session persistence across server restarts is undecided. Initial implementation may be process-local, but the design should not preclude persisted sessions later.

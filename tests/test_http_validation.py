@@ -17,7 +17,7 @@ def test_http_missing_required_argument_returns_validation_error(
     assert response.status_code == 400
     assert response.json() == {
         "error": "validation_error",
-        "message": "Missing required argument: path",
+        "message": "Missing required argument: session_id",
     }
 
 

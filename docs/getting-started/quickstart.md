@@ -128,7 +128,7 @@ Complete the OAuth approval flow with the PIN from `LOCAL_SHELL_MCP_OAUTH_ADMIN_
 ## 7. Try a first prompt
 
 ```text
-Use local-shell-mcp. First run environment_info and summarize the workspace root, auth mode, and safety limits. Do not change files yet.
+Use local-shell-mcp. First run session_start with workdir "." and summarize the returned session_id, workdir, git status, and instruction file paths. Do not change files yet.
 ```
 
 Then try a repository workflow:

@@ -51,7 +51,9 @@ curl -i http://127.0.0.1:13444/healthz
 Inspect environment through the REST debug API:
 
 ```bash
-curl -s http://127.0.0.1:13444/tools/environment_info | jq
+curl -s -X POST http://127.0.0.1:13444/tools/session_start \
+  -H 'content-type: application/json' \
+  -d '{"workdir":"."}' | jq
 ```
 
 Read a file through the REST debug API:

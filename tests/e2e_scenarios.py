@@ -10,7 +10,7 @@ from tests.e2e_helpers import ToolClient, assert_required_tools
 
 CORE_TOOL_NAMES = {
     "bash",
-    "environment_info",
+    "session_start",
     "search",
     "workspace_search",
     "fetch",
@@ -42,17 +42,95 @@ async def assert_core_tool_surface(client: ToolClient) -> None:
 async def exercise_environment_tool(
     client: ToolClient, workspace: Path
 ) -> None:
-    payload = await client.call_tool("environment_info")
+    payload = await client.call_tool("session_start", {"workdir": "."})
 
-    assert payload["settings"]["workspace_root"] == str(workspace)
-    assert payload["settings"]["auth_mode"] == "none"
-    assert payload["probe"]["ok"] is True
-    assert "Python" in payload["probe"]["stdout"]
+    assert payload["target"] == "local"
+    assert payload["workdir"] == str(workspace)
+    assert payload["workspace_root"] == str(workspace)
+    assert len(payload["session_id"]) == 8
+
+
+async def exercise_explicit_session_workflow(
+    client: ToolClient, workspace: Path
+) -> None:
+    session_dir = workspace / "session-work"
+    session_dir.mkdir()
+    (session_dir / "notes.txt").write_text(
+        "alpha\nneedle one\ngamma\n", encoding="utf-8"
+    )
+
+    session = await client.call_tool(
+        "session_start", {"workdir": "session-work", "label": "e2e"}
+    )
+    session_id = session["session_id"]
+    assert len(session_id) == 8
+    assert session["target"] == "local"
+    assert session["workdir"] == str(session_dir)
+
+    read_result = await client.call_tool(
+        "read", {"session_id": session_id, "path": "notes.txt:1-2"}
+    )
+    assert read_result["kind"] == "file"
+    assert read_result["content"] == "1|alpha\n2|needle one"
+    assert read_result["file"]["session_id"] == session_id
+    assert read_result["file"]["snapshot_id"]
+
+    search_result = await client.call_tool(
+        "search",
+        {
+            "session_id": session_id,
+            "pattern": "needle",
+            "paths": "notes.txt",
+            "regex": False,
+        },
+    )
+    assert search_result["count"] == 1
+    assert search_result["matches"][0]["session_id"] == session_id
+    assert search_result["matches"][0]["numbered_line"] == "2|needle one"
+
+    edit_result = await client.call_tool(
+        "edit_lines",
+        {
+            "session_id": session_id,
+            "path": "notes.txt",
+            "start_line": 2,
+            "end_line": 2,
+            "replacement": "needle two\n",
+            "snapshot_id": search_result["matches"][0]["snapshot_id"],
+        },
+    )
+    assert "+needle two" in edit_result["diff"]
+    assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
+        "alpha\nneedle two\ngamma\n"
+    )
+
+    second = await client.call_tool(
+        "session_start", {"workdir": "session-work"}
+    )
+    with pytest.raises((AssertionError, httpx.HTTPStatusError)):
+        await client.call_tool(
+            "edit_lines",
+            {
+                "session_id": second["session_id"],
+                "path": "notes.txt",
+                "start_line": 1,
+                "end_line": 1,
+                "replacement": "ALPHA\n",
+                "snapshot_id": read_result["file"]["snapshot_id"],
+            },
+        )
+    with pytest.raises((AssertionError, httpx.HTTPStatusError)):
+        await client.call_tool(
+            "read", {"session_id": "BAD00000", "path": "notes.txt"}
+        )
 
 
 async def exercise_filesystem_and_search_tools(
     client: ToolClient, workspace: Path
 ) -> None:
+    session = await client.call_tool("session_start", {"workdir": "."})
+    session_id = session["session_id"]
+
     await client.call_tool(
         "write_file",
         {
@@ -82,12 +160,19 @@ async def exercise_filesystem_and_search_tools(
 
     search_result = await client.call_tool(
         "search",
-        {"pattern": "needle", "paths": "notes/demo.txt", "regex": False},
+        {
+            "session_id": session_id,
+            "pattern": "needle",
+            "paths": "notes/demo.txt",
+            "regex": False,
+        },
     )
     assert "matches" in search_result
     assert "count" in search_result
 
-    read_result = await client.call_tool("read", {"path": "notes/demo.txt"})
+    read_result = await client.call_tool(
+        "read", {"session_id": session_id, "path": "notes/demo.txt"}
+    )
     assert "alpha beta" in read_result["content"]
     assert "needle one" in read_result["content"]
 
@@ -95,17 +180,21 @@ async def exercise_filesystem_and_search_tools(
         "edit_lines",
         {
             "path": "notes/demo.txt",
+            "session_id": session_id,
             "start_line": 2,
             "end_line": 2,
             "replacement": "needle two\n",
             "snapshot_id": read_result["file"]["snapshot_id"],
         },
     )
-    read_result = await client.call_tool("read", {"path": "notes/demo.txt"})
+    read_result = await client.call_tool(
+        "read", {"session_id": session_id, "path": "notes/demo.txt"}
+    )
     await client.call_tool(
         "edit_lines",
         {
             "path": "notes/demo.txt",
+            "session_id": session_id,
             "start_line": 1,
             "end_line": 1,
             "replacement": "ALPHA BETA\n",

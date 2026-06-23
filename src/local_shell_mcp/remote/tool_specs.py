@@ -29,7 +29,6 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "read_persistent_shell_output", None),
     RemoteWorkerToolSpec("", "kill_persistent_shell", None),
     RemoteWorkerToolSpec("", "list_persistent_shells", None),
-    RemoteWorkerToolSpec("", "environment_info", None),
     RemoteWorkerToolSpec(
         "", "run_python_code", None, timeout_arg="timeout_s", default_timeout=60
     ),

@@ -48,7 +48,7 @@ def register_remote_mcp(mcp: FastMCP, context: McpToolContext) -> None:
         structured_output=True,
         meta=remote_admin_meta,
         description=_description(
-            f"""Run compact remote control-plane actions. Use action="list" to discover worker names before calling remote(machine, op, args); action="invite" to create a one-time join command; action="revoke" to remove a stale or untrusted worker; and action="rename" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability."""
+            f"""Run compact remote control-plane actions. Use action="list" to discover worker names; action="invite" to create a one-time join command; action="revoke" to remove a stale or untrusted worker; and action="rename" to give a worker a stable name. Defaults: invite ttl_s defaults to the configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted. Security: treat invite output as sensitive because it grants enrollment capability."""
         ),
     )
     async def remote_admin(

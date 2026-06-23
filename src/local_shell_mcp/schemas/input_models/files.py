@@ -43,7 +43,7 @@ EndLineArg = Annotated[
 ToolSessionIdArg = Annotated[
     str | None,
     Field(
-        description="Optional agent grounding session id. Omit to use the process-local default session."
+        description="Optional explicit agent/workspace session id returned by session_start. Internal helpers may omit it when no grounding snapshot is needed."
     ),
 ]
 EditStartLineArg = Annotated[

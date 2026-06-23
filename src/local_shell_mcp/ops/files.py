@@ -20,7 +20,11 @@ from ..schemas.result_models.files import (
     ReadManyFilesOutput,
     WriteFileOutput,
 )
-from ..tool_session.store import file_sha256, get_tool_session_store
+from ..tool_session.store import (
+    file_sha256,
+    get_tool_session_store,
+    resolve_session_path,
+)
 from .utils.path import relative_display, resolve_path
 
 
@@ -99,9 +103,17 @@ def read_file_execute(
     end_line: int | None = None,
     session_id: str | None = None,
 ) -> ReadFileOutput:
-    """Read a UTF-8 text file by optional line range and record grounding."""
+    """Read a UTF-8 text file by optional line range and record grounding when session-bound."""
     settings = get_settings()
-    p = resolve_path(path, must_exist=True)
+    store = get_tool_session_store()
+    session = (
+        store.touch_session(session_id) if session_id is not None else None
+    )
+    p = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
     size = p.stat().st_size
     with p.open("rb") as fh:
         data = fh.read(settings.max_file_read_bytes + 1)
@@ -128,12 +140,16 @@ def read_file_execute(
         seen_ranges = ()
         seen_range_models = []
     relative_path = relative_display(p)
-    record = get_tool_session_store().record_file_snapshot(
-        session_id=session_id,
-        path=relative_path,
-        file_sha256=file_sha256(p),
-        total_lines=total_lines,
-        seen_ranges=seen_ranges,
+    record = (
+        store.record_file_snapshot(
+            session_id=session.session_id,
+            path=relative_path,
+            file_sha256=file_sha256(p),
+            total_lines=total_lines,
+            seen_ranges=seen_ranges,
+        )
+        if session is not None
+        else None
     )
     return ReadFileOutput(
         path=relative_path,
@@ -146,10 +162,10 @@ def read_file_execute(
         line_count=len(selected_lines),
         lines=selected_lines,
         numbered_content=_numbered_content(selected_lines),
-        session_id=record.session_id,
-        snapshot_id=record.snapshot_id,
-        file_sha256=record.file_sha256,
-        seen_ranges=seen_range_models,
+        session_id=record.session_id if record is not None else None,
+        snapshot_id=record.snapshot_id if record is not None else None,
+        file_sha256=record.file_sha256 if record is not None else None,
+        seen_ranges=seen_range_models if record is not None else [],
         truncated=truncated,
         content=text,
     )
@@ -182,6 +198,7 @@ def _read_many_file_parts(
 
 def read_many_files_execute(
     files_to_read: Sequence[_ReadManyFileSpec],
+    session_id: str | None = None,
 ) -> ReadManyFilesOutput:
     """Read many files with per-file optional line ranges."""
     settings = get_settings()
@@ -194,7 +211,7 @@ def read_many_files_execute(
     total_content_bytes = 0
     for item_to_read in files_to_read:
         path, start_line, end_line = _read_many_file_parts(item_to_read)
-        item = read_file_execute(path, start_line, end_line)
+        item = read_file_execute(path, start_line, end_line, session_id)
         content = item.content
         total_content_bytes += len(content.encode("utf-8"))
         if total_content_bytes > settings.max_read_many_total_bytes:
@@ -274,6 +291,8 @@ def _validate_snapshot_for_edit(
     """Validate optional snapshot freshness and visible-range grounding."""
     if snapshot_id is None:
         return
+    if session_id is None:
+        raise ValueError("session_id is required when snapshot_id is provided")
     record = get_tool_session_store().get_snapshot(session_id, snapshot_id)
     if record is None:
         raise ValueError(
@@ -340,7 +359,15 @@ def edit_lines_execute(
         raise ValueError("end_line must be >= start_line")
 
     settings = get_settings()
-    p = resolve_path(path, must_exist=True)
+    store = get_tool_session_store()
+    session = (
+        store.touch_session(session_id) if session_id is not None else None
+    )
+    p = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
     size = p.stat().st_size
     if size > settings.max_file_write_bytes:
         raise ValueError(
@@ -404,9 +431,7 @@ def edit_lines_execute(
         len(updated_lines),
         max(start_line, start_line + max(replacement_line_count, 1) + 3),
     )
-    context = read_file_execute(
-        relative_path, context_start, context_end, session_id
-    )
+    context = read_file_execute(str(p), context_start, context_end, session_id)
     return EditLinesOutput(
         path=relative_path,
         start_line=start_line,

@@ -245,18 +245,6 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             row = await wait_for_machine(client, worker, machine)
             assert row["workdir"] == str(remote_workspace)
 
-            remote_env = await client.call_tool(
-                "remote", {"machine": machine, "op": "environment", "args": {}}
-            )
-            remote_env = remote_env["data"]
-            assert remote_env["settings"]["workspace_root"] == str(
-                remote_workspace
-            )
-            assert remote_env["settings"]["auth_mode"] == "none"
-            assert "effective_tool_limits" not in remote_env
-            assert remote_env["probe"]["ok"] is True
-            assert str(remote_workspace) in remote_env["probe"]["stdout"]
-
             write_result = await client.call_tool(
                 "remote",
                 {
@@ -287,18 +275,6 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert any(
                 item.get("path") == "remote/demo.txt"
                 for item in listing["entries"]
-            )
-
-            read_result = await client.call_tool(
-                "remote",
-                {
-                    "machine": machine,
-                    "op": "read",
-                    "args": {"path": "remote/demo.txt:raw"},
-                },
-            )
-            assert (
-                read_result["data"]["content"] == "hello from remote worker\n"
             )
 
             shell_result = await client.call_tool(

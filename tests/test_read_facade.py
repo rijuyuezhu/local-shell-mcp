@@ -14,7 +14,12 @@ async def test_read_facade_reads_line_selector_with_numbered_content(
     clear_settings_cache()
     (tmp_path / "demo.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
 
-    response = await build_mcp().call_tool("read", {"path": "demo.py:2-3"})
+    session = mcp_structured(
+        await build_mcp().call_tool("session_start", {"workdir": "."})
+    )
+    response = await build_mcp().call_tool(
+        "read", {"session_id": session["session_id"], "path": "demo.py:2-3"}
+    )
     result = mcp_structured(response)
 
     assert result["kind"] == "file"
@@ -33,7 +38,12 @@ async def test_read_facade_raw_selector_returns_unnumbered_content(
     clear_settings_cache()
     (tmp_path / "demo.py").write_text("alpha\nbeta\n", encoding="utf-8")
 
-    response = await build_mcp().call_tool("read", {"path": "demo.py:raw"})
+    session = mcp_structured(
+        await build_mcp().call_tool("session_start", {"workdir": "."})
+    )
+    response = await build_mcp().call_tool(
+        "read", {"session_id": session["session_id"], "path": "demo.py:raw"}
+    )
     result = mcp_structured(response)
 
     assert result["kind"] == "file"
@@ -50,7 +60,12 @@ async def test_read_facade_lists_directories(tmp_path, monkeypatch):
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "demo.py").write_text("", encoding="utf-8")
 
-    response = await build_mcp().call_tool("read", {"path": "pkg"})
+    session = mcp_structured(
+        await build_mcp().call_tool("session_start", {"workdir": "."})
+    )
+    response = await build_mcp().call_tool(
+        "read", {"session_id": session["session_id"], "path": "pkg"}
+    )
     result = mcp_structured(response)
 
     assert result["kind"] == "directory"

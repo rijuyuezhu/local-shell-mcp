@@ -138,7 +138,6 @@ REMOTE_SESSION_ACTION_TOOL_MAP: dict[str, str] = {
 
 
 REMOTE_FACADE_TOOL_MAP: dict[str, str] = {
-    "environment": "environment_info",
     "read": "read",
     "search": "search",
     "edit_lines": "edit_lines",

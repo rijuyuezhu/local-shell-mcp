@@ -19,8 +19,8 @@ from ...schemas.input_models.files import (
     OverwriteArg,
     RecursiveArg,
     SnapshotIdArg,
-    ToolSessionIdArg,
 )
+from ...schemas.input_models.session import SessionIdArg
 from ...schemas.result_models.files import (
     DeleteFileOrDirOutput,
     EditLinesOutput,
@@ -97,8 +97,8 @@ async def edit_lines(
     start_line: EditStartLineArg,
     end_line: EditEndLineArg,
     replacement: LineReplacementArg,
+    session_id: SessionIdArg,
     snapshot_id: SnapshotIdArg = None,
-    session_id: ToolSessionIdArg = None,
 ) -> EditLinesOutput:
     """Replace an inclusive whole-line range in a file."""
     return await asyncio.to_thread(
