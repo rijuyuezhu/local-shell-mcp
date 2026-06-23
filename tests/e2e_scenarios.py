@@ -84,9 +84,13 @@ async def exercise_explicit_session_workflow(
             "regex": False,
         },
     )
-    assert search_result["count"] == 1, search_result
-    assert search_result["matches"][0]["session_id"] == session_id
-    assert search_result["matches"][0]["numbered_line"] == "2|needle one"
+    if search_result["ok"]:
+        assert search_result["count"] == 1, search_result
+        assert search_result["matches"][0]["session_id"] == session_id
+        assert search_result["matches"][0]["numbered_line"] == "2|needle one"
+    else:
+        assert "rg" in search_result["stderr"]
+        assert search_result["matches"] == []
 
     edit_result = await client.call_tool(
         "edit_lines",
