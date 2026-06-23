@@ -166,6 +166,7 @@ def unwrap_tool_payload(value: Any) -> Any:
 
 REST_ROUTES: dict[str, tuple[str, str]] = {
     "bash": ("POST", "/tools/bash"),
+    "job": ("POST", "/tools/job"),
     "session_start": ("POST", "/tools/session_start"),
     "session_change_cwd": ("POST", "/tools/session_change_cwd"),
     "read": ("POST", "/tools/read"),

@@ -27,9 +27,15 @@ def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).post(
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    response = client.post(
         "/tools/bash",
-        json={"command": "echo ok", "timeout_s": 3600},
+        json={
+            "session_id": session["session_id"],
+            "command": "echo ok",
+            "timeout_s": 3600,
+        },
     )
 
     assert response.status_code == 400

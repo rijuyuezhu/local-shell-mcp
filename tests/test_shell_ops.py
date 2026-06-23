@@ -18,6 +18,7 @@ from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tools.registry import bash as bash_tools_module
 from local_shell_mcp.tools.registry import files as fs_tools_module
+from tests.helpers import mcp_structured
 
 
 @pytest.mark.asyncio
@@ -25,10 +26,19 @@ async def test_bash_rejects_timeout_above_public_cap(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+
     with pytest.raises(ToolError, match="timeout_s must be <= 60 seconds"):
-        await build_mcp().call_tool(
+        await mcp.call_tool(
             "bash",
-            {"command": "echo ok", "timeout_s": 3600},
+            {
+                "session_id": session["session_id"],
+                "command": "echo ok",
+                "timeout_s": 3600,
+            },
         )
 
 
@@ -47,11 +57,19 @@ async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
         hanging_bash_execute,
     )
 
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+
     with pytest.raises(
         ToolError,
         match="bash exceeded 0.01 second tool timeout",
     ):
-        await build_mcp().call_tool("bash", {"command": "echo ok"})
+        await mcp.call_tool(
+            "bash",
+            {"session_id": session["session_id"], "command": "echo ok"},
+        )
 
 
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):

@@ -126,7 +126,7 @@
           {
             "items": [
               {
-                "description": "Whether to start long-running non-interactive work as a tracked background job.",
+                "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session.",
                 "head": {
                   "code": "async_"
                 },
@@ -140,7 +140,7 @@
                 "note": "(string, required)"
               },
               {
-                "description": "Working directory for the command; prefer this over embedding directory changes in the command.",
+                "description": "Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir.",
                 "head": {
                   "code": "cwd"
                 },
@@ -189,6 +189,13 @@
                 "note": "(string / null, optional)"
               },
               {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              },
+              {
                 "description": "Optional timeout in seconds for bounded command mode.",
                 "head": {
                   "code": "timeout_s"
@@ -197,7 +204,7 @@
               }
             ]
           },
-          "Run terminal commands for builds, tests, package managers, git inspection, scripts, and other shell work. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Set `async_=true` for long-running non-interactive work tracked by job id, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds."
+          "Run terminal commands inside an explicit agent session for builds, tests, package managers, git inspection, scripts, and other shell work. Pass session_id from session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Set `async_=true` for long-running non-interactive work tracked by job id in the same session, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds."
         ]
       ]
     },
@@ -452,7 +459,7 @@
           {
             "items": [
               {
-                "description": "Tracked bash job ids to stop because they are stalled, hung, or no longer needed.",
+                "description": "Tracked bash job ids in this session to stop because they are stalled, hung, or no longer needed.",
                 "head": {
                   "code": "cancel"
                 },
@@ -466,36 +473,43 @@
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Number of recent terminal lines to capture from the backing persistent shell. Output is available only while the backing session still exists.",
+                "description": "Number of recent terminal lines to capture for a tracked job. Output is available only while the background job can still be inspected.",
                 "head": {
                   "code": "lines"
                 },
                 "note": "(integer, optional)"
               },
               {
-                "description": "Whether to return a snapshot of tracked bash jobs. Omit all other job actions to list by default.",
+                "description": "Whether to return a snapshot of tracked bash jobs owned by this session. Omit all other job actions to list by default.",
                 "head": {
                   "code": "list_jobs"
                 },
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Tracked bash job ids whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
+                "description": "Tracked bash job ids in this session whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
                 "head": {
                   "code": "poll"
                 },
                 "note": "(array / null, optional)"
               },
               {
-                "description": "Tracked bash job ids to restart with their original command and working directory.",
+                "description": "Tracked bash job ids in this session to restart with their original command and working directory.",
                 "head": {
                   "code": "retry"
                 },
                 "note": "(array / null, optional)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
               }
             ]
           },
-          "Inspect, read output from, stop, or retry async bash jobs.\n\nResults for `bash(async_=true)` are tracked by job id. Reach for this companion tool only when you need to intervene: list running work, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nCall with no action, or with `list_jobs=true`, to list jobs. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call."
+          "Inspect, read output from, stop, or retry async bash jobs owned by an explicit agent session.\n\nResults for `bash(async_=true)` are tracked by job id under the same session_id. Reach for this companion tool only when you need to intervene: list running work in the session, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call."
         ]
       ]
     },
@@ -602,15 +616,15 @@
                 "note": "(string, required)"
               },
               {
-                "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, job, session, or transfer.",
+                "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, job, session_start, session, or transfer.",
                 "head": {
                   "code": "op"
                 },
-                "note": "(read / search / edit_lines / bash / python / list_files / tree / glob / write_file / apply_patch / delete / job / session / transfer, required)"
+                "note": "(read / search / edit_lines / bash / python / session_start / list_files / tree / glob / write_file / apply_patch / delete / job / session / transfer, required)"
               }
             ]
           },
-          "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
+          "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work."
         ],
         [
           {
@@ -1392,12 +1406,12 @@
       }
     },
     {
-      "description": "Run terminal commands for builds, tests, package managers, git inspection, scripts, and other shell work. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Set `async_=true` for long-running non-interactive work tracked by job id, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Run terminal commands inside an explicit agent session for builds, tests, package managers, git inspection, scripts, and other shell work. Pass session_id from session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer the `cwd` argument over embedded directory changes; use `env` for multiline or quote-heavy values. Set `async_=true` for long-running non-interactive work tracked by job id in the same session, and `pty=true` only for interactive programs, REPLs, servers, or commands that need later input. Use built-in `search` for source/content discovery so output carries edit-grounding metadata. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
             "default": false,
-            "description": "Whether to start long-running non-interactive work as a tracked background job.",
+            "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session.",
             "title": "Async",
             "type": "boolean"
           },
@@ -1408,7 +1422,7 @@
           },
           "cwd": {
             "default": ".",
-            "description": "Working directory for the command; prefer this over embedding directory changes in the command.",
+            "description": "Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir.",
             "title": "Cwd",
             "type": "string"
           },
@@ -1486,6 +1500,14 @@
             "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
             "title": "Purpose"
           },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          },
           "timeout_s": {
             "anyOf": [
               {
@@ -1501,6 +1523,7 @@
           }
         },
         "required": [
+          "session_id",
           "command"
         ],
         "title": "bashArguments",
@@ -1527,7 +1550,7 @@
             "type": "string"
           },
           "cwd": {
-            "description": "Working directory requested by the caller.",
+            "description": "Resolved working directory used for this bash call.",
             "title": "Cwd",
             "type": "string"
           },
@@ -1543,7 +1566,7 @@
           },
           "result": {
             "additionalProperties": true,
-            "description": "Structured result from bounded command, async job, or PTY mode selected by bash.",
+            "description": "Structured result from bounded command, async job, or PTY mode selected by bash. Async job results include the owning agent session_id and job_id.",
             "title": "Result",
             "type": "object"
           }
@@ -2311,7 +2334,7 @@
       }
     },
     {
-      "description": "Inspect, read output from, stop, or retry async bash jobs.\n\nResults for `bash(async_=true)` are tracked by job id. Reach for this companion tool only when you need to intervene: list running work, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nCall with no action, or with `list_jobs=true`, to list jobs. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call.",
+      "description": "Inspect, read output from, stop, or retry async bash jobs owned by an explicit agent session.\n\nResults for `bash(async_=true)` are tracked by job id under the same session_id. Reach for this companion tool only when you need to intervene: list running work in the session, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call.",
       "inputSchema": {
         "properties": {
           "cancel": {
@@ -2327,7 +2350,7 @@
               }
             ],
             "default": null,
-            "description": "Tracked bash job ids to stop because they are stalled, hung, or no longer needed.",
+            "description": "Tracked bash job ids in this session to stop because they are stalled, hung, or no longer needed.",
             "title": "Cancel"
           },
           "include_finished": {
@@ -2338,7 +2361,7 @@
           },
           "lines": {
             "default": 200,
-            "description": "Number of recent terminal lines to capture from the backing persistent shell. Output is available only while the backing session still exists.",
+            "description": "Number of recent terminal lines to capture for a tracked job. Output is available only while the background job can still be inspected.",
             "maximum": 5000,
             "minimum": 1,
             "title": "Lines",
@@ -2346,7 +2369,7 @@
           },
           "list_jobs": {
             "default": false,
-            "description": "Whether to return a snapshot of tracked bash jobs. Omit all other job actions to list by default.",
+            "description": "Whether to return a snapshot of tracked bash jobs owned by this session. Omit all other job actions to list by default.",
             "title": "List Jobs",
             "type": "boolean"
           },
@@ -2363,7 +2386,7 @@
               }
             ],
             "default": null,
-            "description": "Tracked bash job ids whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
+            "description": "Tracked bash job ids in this session whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
             "title": "Poll"
           },
           "retry": {
@@ -2379,10 +2402,21 @@
               }
             ],
             "default": null,
-            "description": "Tracked bash job ids to restart with their original command and working directory.",
+            "description": "Tracked bash job ids in this session to restart with their original command and working directory.",
             "title": "Retry"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
           }
         },
+        "required": [
+          "session_id"
+        ],
         "title": "jobArguments",
         "type": "object"
       },
@@ -2401,25 +2435,12 @@
       "outputSchema": {
         "$defs": {
           "JobInfo": {
-            "description": "One tracked command backed by a persistent shell session.",
+            "description": "One tracked command owned by an explicit agent session.",
             "properties": {
               "attempts": {
                 "description": "Number of times this tracked job has been started, including retries.",
                 "title": "Attempts",
                 "type": "integer"
-              },
-              "backend": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-                "title": "Backend"
               },
               "command": {
                 "description": "Original shell command used to start the job. The retry action reuses this command.",
@@ -2432,12 +2453,12 @@
                 "type": "number"
               },
               "cwd": {
-                "description": "Working directory used to start the job. The retry action reuses this directory.",
+                "description": "Working directory used to start the job. The retry action reuses this directory when it remains inside the owning session workdir.",
                 "title": "Cwd",
                 "type": "string"
               },
               "job_id": {
-                "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions.",
+                "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session.",
                 "title": "Job Id",
                 "type": "string"
               },
@@ -2452,13 +2473,13 @@
                 "type": "string"
               },
               "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer the `job` companion for tracked-job operations.",
+                "description": "Agent/workspace session_id that owns this tracked job.",
                 "title": "Session Id",
                 "type": "string"
               },
               "status": {
                 "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when cancelled; lost when the backing session cannot be inspected."
+                "description": "Tracked job status: running while the background command can still be inspected; exited when it disappears naturally; stopped when cancelled; lost when output/control cannot be inspected."
               },
               "updated_at": {
                 "description": "Unix timestamp when the tracked job record was last updated.",
@@ -2489,19 +2510,6 @@
                 "title": "Attempts",
                 "type": "integer"
               },
-              "backend": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "description": "Persistent shell backend, such as tmux, when reported by the shell layer.",
-                "title": "Backend"
-              },
               "command": {
                 "description": "Original shell command used to start the job. The retry action reuses this command.",
                 "title": "Command",
@@ -2513,12 +2521,12 @@
                 "type": "number"
               },
               "cwd": {
-                "description": "Working directory used to start the job. The retry action reuses this directory.",
+                "description": "Working directory used to start the job. The retry action reuses this directory when it remains inside the owning session workdir.",
                 "title": "Cwd",
                 "type": "string"
               },
               "job_id": {
-                "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions.",
+                "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session.",
                 "title": "Job Id",
                 "type": "string"
               },
@@ -2533,13 +2541,13 @@
                 "type": "string"
               },
               "session_id": {
-                "description": "Backing persistent shell session id. This is exposed for diagnostics; prefer the `job` companion for tracked-job operations.",
+                "description": "Agent/workspace session_id that owns this tracked job.",
                 "title": "Session Id",
                 "type": "string"
               },
               "status": {
                 "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when cancelled; lost when the backing session cannot be inspected."
+                "description": "Tracked job status: running while the background command can still be inspected; exited when it disappears naturally; stopped when cancelled; lost when output/control cannot be inspected."
               },
               "updated_at": {
                 "description": "Unix timestamp when the tracked job record was last updated.",
@@ -2580,13 +2588,13 @@
                 "description": "Tracked job metadata after stop attempt."
               },
               "killed": {
-                "description": "Whether the backing persistent shell session was killed.",
+                "description": "Whether the tracked job was stopped.",
                 "title": "Killed",
                 "type": "boolean"
               },
               "stderr": {
                 "default": "",
-                "description": "Backend stderr from the stop attempt, when reported by the shell layer.",
+                "description": "Backend stderr from the stop attempt, when reported.",
                 "title": "Stderr",
                 "type": "string"
               }
@@ -2615,12 +2623,12 @@
                   }
                 ],
                 "default": null,
-                "description": "Diagnostic message when output is unavailable, for example after the backing session exits or is lost.",
+                "description": "Diagnostic message when output is unavailable, for example after the job exits or is lost.",
                 "title": "Message"
               },
               "output": {
                 "default": "",
-                "description": "Recent output captured from the backing persistent shell. Full job logs are not persisted separately.",
+                "description": "Recent output captured for the tracked job. Full job logs are not persisted separately.",
                 "title": "Output",
                 "type": "string"
               }
@@ -3760,7 +3768,7 @@
       }
     },
     {
-      "description": "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
+      "description": "Run work on a selected remote worker. Use this for remote reads, searches, line edits, shell commands, jobs, persistent-session companion actions, transfers, and workspace operations. Use op to choose the operation and args for operation-specific parameters; do not include machine inside args. Use op=\"session_start\" to create a worker-side session for session-bound remote bash/read/search/edit/job calls. Use op=\"session\" with args.action of send/read/kill/list for persistent shells created by remote bash PTY work. Use op=\"transfer\" with args.action of push_file, pull_file, push_dir, pull_dir, copy_file, or copy_dir for binary-safe movement. Use remote_admin for invite/list/revoke/rename control-plane work.",
       "inputSchema": {
         "properties": {
           "args": {
@@ -3775,13 +3783,14 @@
             "type": "string"
           },
           "op": {
-            "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, job, session, or transfer.",
+            "description": "High-level semantic remote operation to run on the selected worker, such as read, search, edit_lines, bash, job, session_start, session, or transfer.",
             "enum": [
               "read",
               "search",
               "edit_lines",
               "bash",
               "python",
+              "session_start",
               "list_files",
               "tree",
               "glob",

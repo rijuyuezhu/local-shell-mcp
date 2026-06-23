@@ -163,11 +163,11 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ### Slice 5: Local session-bound bash/job
 
-- [ ] Make `bash` require `session_id` and default cwd to the session workdir.
-- [ ] Bind tracked jobs to `session_id` in the job store.
-- [ ] Make `job` require `session_id` and list/poll/cancel/retry only jobs in that session.
-- [ ] Ensure job ids remain stable and job output does not expose shell internals unnecessarily.
-- [ ] Update tests for cross-session job isolation.
+- [x] Make `bash` require `session_id` and default cwd to the session workdir.
+- [x] Bind tracked jobs to `session_id` in the job store.
+- [x] Make `job` require `session_id` and list/poll/cancel/retry only jobs in that session.
+- [x] Ensure job ids remain stable and job output does not expose shell internals unnecessarily.
+- [x] Update tests for cross-session job isolation.
 
 ### Slice 6: Rename persistent shell handle to `shell_id`
 
@@ -204,49 +204,35 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 Latest completed session/cwd slice status:
 
-- Pushed commits on `feat/agent-tool-surface`:
-  - `958c12a feat: add explicit local sessions`
-  - `19912be feat: support session cwd changes`
-  - `18a6b1f test: stabilize session e2e search`
-  - `22b30d1 test: handle absent ripgrep in session e2e`
-- PR #79 CI is green for the latest push:
-  - build: passed
-  - pre-commit: passed
-  - pyright: passed
-  - vscode-extension: passed
-  - Test (ubuntu-latest): passed
-  - Test (macos-latest): passed
-  - deploy: skipped
-- `session_start(workdir=...)` is model-facing and requires an explicit workdir.
-- `session_change_cwd(session_id, workdir)` is model-facing and updates a local session workdir, clears stale snapshots for that session, and returns refreshed orientation/instruction-file metadata.
-- Public/model-facing `environment_info` is removed; initialization now uses `session_start`.
-- `read`, `search`, and `edit_lines` require explicit `session_id` at the model-facing layer.
-- REST, streamable MCP HTTP, and stdio e2e coverage exercises `session_start -> read/search -> edit_lines -> session_change_cwd`, including cross-session and unknown-session failures. Search assertions tolerate CI runners without `rg` while still checking structured search behavior.
+- Pushed commits on `feat/agent-tool-surface` through the docs handoff commit `81b1357` before this Slice 5 implementation.
+- Slice 5 is implemented in this update: `bash` and `job` now require explicit `session_id` at the model-facing layer.
+- `bash(session_id, command, cwd=".")` resolves cwd against the session workdir, defaults to that workdir, rejects cwd escapes, and binds `async_=true` jobs to the same agent session.
+- Tracked job metadata records the agent/workspace `session_id`; the internal persistent-shell handle is stored separately and is not exposed in `JobInfo`.
+- `job(session_id, ...)` lists only that session's jobs and rejects cross-session poll/cancel/retry by treating the job as not found in that session.
+- REST, streamable MCP HTTP, and stdio e2e coverage exercises session-bound `bash`/`job`, including cross-session job isolation.
+- The generic `remote(...)` facade currently supports `op="session_start"` for creating a worker-side session needed by session-bound remote operations. First-class `session_start(target="remote")` remains part of Slice 7.
 - Model-facing descriptions, generated references, and MCP server instructions must describe only currently available behavior. Do not mention future slices, later planned support, or roadmap language there.
+
+Validation run for Slice 5:
+
+```bash
+uv run ruff check .
+uv run ruff format --diff .
+uv run --with pyright pyright
+uv run pytest tests/test_bash_facade.py tests/test_jobs.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_export_tools_json.py -q
+uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories -q
+uv run pytest tests/test_e2e_stdio.py -q
+uv run pytest -q
+```
 
 Next implementation task:
 
-1. Implement Slice 5: make `bash` and `job` session-bound.
-2. `bash` should require `session_id` in the model-facing surface and default cwd to the session workdir. If a cwd override is kept, it should resolve safely inside or relative to the session workdir.
-3. `job` should require `session_id`; list/poll/cancel/retry must only operate on jobs owned by that session.
-4. Job metadata should record `session_id`; cross-session job visibility/control must be rejected or hidden.
-5. Add focused tests and e2e coverage for session-bound bash/job behavior, including cross-session isolation.
-6. Update MCP descriptions, generated references, docs, and this file after the slice.
-7. Run validation, commit, push to PR #79, update PR body, and watch CI.
-
-Suggested validation for Slice 5:
-
-```bash
-uv run ruff check src tests
-uv run pyright
-uv run pytest tests/test_bash_facade.py tests/test_jobs.py tests/test_tool_surface.py tests/test_mcp_chatgpt_compat.py tests/test_export_tools_json.py -q
-uv run pytest tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories -q
-uv run pytest tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories -q
-uv run pytest tests/test_e2e_stdio.py::test_stdio_process_exercises_core_tool_categories -q
-uv run pytest -q
-pre-commit run --all-files
-git diff --check
-```
+1. Implement Slice 6: rename persistent shell model-facing handles from `session_id` to `shell_id`.
+2. Update local persistent-shell companion tools (`send_persistent_shell_input`, `read_persistent_shell_output`, `kill_persistent_shell`, `list_persistent_shells`) so the model-facing handle is `shell_id`.
+3. Update remote persistent-shell companion behavior and descriptions to avoid calling shell handles agent sessions.
+4. Update result models, docs, generated references, and tests.
+5. Add surface tests preventing persistent shell descriptions from using agent-session terminology for shell handles.
+6. Run validation, commit, push to PR #79, update PR body, and watch CI.
 
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
@@ -257,10 +243,11 @@ Cross-context continuation prompt is maintained at the end of this file. It shou
 
 唯一信源是：`/workspace/local-shell-mcp-tool-compare/docs/maintenance/session-surface-redesign-plan.md`
 
-请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines` require `session_id` 都已经完成并推送，最新 CI 绿。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
+请先读取这个文件，再检查 `git status`、最新 commits、PR diff 和 CI 状态，然后继续实现里面的当前 TODO。当前最新状态：explicit local session、required `session_start(workdir=...)`、`session_change_cwd(session_id, workdir)`、model-facing 删除 `environment_info`、`read/search/edit_lines/bash/job` require `session_id` 都已经完成；`bash` 默认 cwd 使用 session workdir；`job` 只列出/控制同一 session 拥有的 job，job metadata 记录 agent `session_id`，不暴露内部 persistent-shell handle。model-facing desc / generated refs / MCP instructions 只能描述当前可用能力，不要写 future slice / planned / once enabled 这类路线图措辞；路线图只放在这个计划文件里。
 
-下一步做 Slice 5：让 `bash` 和 `job` session-bound。要求：`bash` model-facing 必须传 `session_id`，默认 cwd 使用 session workdir；`job` 必须传 `session_id`，只能 list/poll/cancel/retry 该 session 拥有的 job；job metadata 记录 `session_id`；添加 focused tests 和 REST/MCP HTTP/stdio e2e，覆盖 session-bound bash/job 和跨 session 隔离。完成后更新唯一信源、generated refs、PR body；运行 ruff、pyright、focused tests、e2e、full pytest、pre-commit、git diff --check；commit、push 到 PR #79 并查看 CI。
+下一步做 Slice 6：把 persistent shell model-facing handle 从 `session_id` 改名为 `shell_id`。要求：本地 persistent shell companion tools 和远程 persistent shell companion 行为/描述都不要把 shell handle 叫 agent session；输出模型返回 `shell_id`；必要时只在内部保留兼容字段；更新 docs/generated refs/MCP instructions/tests，添加 surface tests 防止描述混淆。完成后更新唯一信源、generated refs、PR body；运行 ruff、pyright、focused tests、e2e、full pytest、pre-commit、git diff --check；commit、push 到 PR #79 并查看 CI。
 ```
+
 
 ## Validation checklist
 

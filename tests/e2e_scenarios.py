@@ -1,3 +1,4 @@
+import asyncio
 import json
 import shutil
 import time
@@ -10,6 +11,7 @@ from tests.e2e_helpers import ToolClient, assert_required_tools
 
 CORE_TOOL_NAMES = {
     "bash",
+    "job",
     "session_start",
     "session_change_cwd",
     "search",
@@ -312,12 +314,40 @@ async def exercise_file_download_links(
     assert missing.status_code == 404
 
 
-async def exercise_shell_tools(client: ToolClient) -> None:
+async def exercise_shell_tools(client: ToolClient, workspace: Path) -> None:
+    shell_dir = workspace / "shell-work"
+    shell_dir.mkdir(exist_ok=True)
+    (shell_dir / "marker.txt").write_text("e2e-shell", encoding="utf-8")
+    session = await client.call_tool(
+        "session_start", {"workdir": "shell-work", "label": "shell-e2e"}
+    )
+    session_id = session["session_id"]
+
     shell_result = await client.call_tool(
-        "bash", {"command": "printf e2e-shell", "timeout_s": 5}
+        "bash",
+        {
+            "session_id": session_id,
+            "command": "printf e2e-shell && pwd",
+            "timeout_s": 5,
+        },
     )
     assert shell_result["mode"] == "command"
-    assert shell_result["result"]["stdout"] == "e2e-shell"
+    assert shell_result["cwd"] == str(shell_dir)
+    assert shell_result["result"]["stdout"].strip() == f"e2e-shell{shell_dir}"
+
+    subdir = shell_dir / "subdir"
+    subdir.mkdir()
+    subdir_result = await client.call_tool(
+        "bash",
+        {
+            "session_id": session_id,
+            "command": "pwd",
+            "cwd": "subdir",
+            "timeout_s": 5,
+        },
+    )
+    assert subdir_result["cwd"] == str(subdir)
+    assert subdir_result["result"]["stdout"].strip() == str(subdir)
 
     python_result = await client.call_tool(
         "run_python_code",
@@ -333,13 +363,82 @@ async def exercise_shell_tools(client: ToolClient) -> None:
     assert "sessions" in list_persistent_shells
 
 
+async def exercise_session_bound_job_tools(
+    client: ToolClient, workspace: Path
+) -> None:
+    if shutil.which("tmux") is None:
+        pytest.skip("tmux is required for async bash job e2e coverage")
+
+    job_dir = workspace / "job-work"
+    other_dir = workspace / "job-other"
+    job_dir.mkdir(exist_ok=True)
+    other_dir.mkdir(exist_ok=True)
+    first = await client.call_tool("session_start", {"workdir": "job-work"})
+    second = await client.call_tool("session_start", {"workdir": "job-other"})
+    first_session = first["session_id"]
+    second_session = second["session_id"]
+
+    started = await client.call_tool(
+        "bash",
+        {
+            "session_id": first_session,
+            "command": "python -u -c \"import time; print('job-ready', flush=True); time.sleep(60)\"",
+            "async_": True,
+            "name": "session-job-e2e",
+        },
+    )
+    job_id = started["result"]["job_id"]
+    assert started["mode"] == "job"
+    assert started["result"]["session_id"] == first_session
+    assert "backend" not in started["result"]
+    assert "shell_session_id" not in started["result"]
+
+    try:
+        first_list = await client.call_tool(
+            "job", {"session_id": first_session, "list_jobs": True}
+        )
+        second_list = await client.call_tool(
+            "job", {"session_id": second_session, "list_jobs": True}
+        )
+        assert job_id in {job["job_id"] for job in first_list["jobs"]}
+        assert job_id not in {job["job_id"] for job in second_list["jobs"]}
+
+        with pytest.raises((AssertionError, httpx.HTTPStatusError)):
+            await client.call_tool(
+                "job", {"session_id": second_session, "poll": [job_id]}
+            )
+
+        output = ""
+        for _ in range(20):
+            poll = await client.call_tool(
+                "job",
+                {"session_id": first_session, "poll": [job_id], "lines": 20},
+            )
+            output = poll["outputs"][0].get("output", "")
+            if "job-ready" in output:
+                break
+            await asyncio.sleep(0.25)
+        assert "job-ready" in output
+    finally:
+        await client.call_tool(
+            "job", {"session_id": first_session, "cancel": [job_id]}
+        )
+
+
 async def exercise_interactive_shell_tools(client: ToolClient) -> None:
     if shutil.which("tmux") is None:
         pytest.skip("tmux is required for interactive shell e2e coverage")
 
     await assert_required_tools(client, INTERACTIVE_SHELL_TOOL_NAMES)
+    session = await client.call_tool("session_start", {"workdir": "."})
     started = await client.call_tool(
-        "bash", {"command": "bash", "pty": True, "name": "e2e"}
+        "bash",
+        {
+            "session_id": session["session_id"],
+            "command": "bash",
+            "pty": True,
+            "name": "e2e",
+        },
     )
     session_id = started["result"]["session_id"]
     try:

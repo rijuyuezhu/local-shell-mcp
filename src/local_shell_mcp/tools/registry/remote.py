@@ -67,7 +67,7 @@ async def remote(
     op: RemoteFacadeOpArg,
     args: RemoteFacadeArgsArg,
 ) -> RemoteFacadeOutput:
-    """Run work on a selected remote worker. Use this for remote read, search, edit_lines, bash/python, jobs, persistent sessions, transfers, and workspace operations. Use remote_admin for invite/list/revoke/rename control-plane work. Keep remote edits grounded by remote read/search snapshots just like local edits."""
+    """Run work on a selected remote worker. Use this for remote read, search, edit_lines, bash/python, jobs, worker-side session_start, persistent sessions, transfers, and workspace operations. Use remote_admin for invite/list/revoke/rename control-plane work. Keep remote edits grounded by remote read/search snapshots just like local edits."""
     return await remote_execute(machine, op, args)
 
 

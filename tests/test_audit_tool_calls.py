@@ -7,7 +7,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
-from tests.helpers import mcp_text
+from tests.helpers import mcp_structured, mcp_text
 
 
 def _audit_records(path):
@@ -136,9 +136,14 @@ async def test_shell_tool_purpose_metadata_is_audited(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    await build_mcp().call_tool(
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+    await mcp.call_tool(
         "bash",
         {
+            "session_id": session["session_id"],
             "command": "echo ok",
             "purpose": "verify workspace state",
             "explanation": "The command is bounded and only prints a constant.",

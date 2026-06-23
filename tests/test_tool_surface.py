@@ -306,13 +306,19 @@ def test_http_tool_missing_required_arg_returns_validation_error(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    response = TestClient(build_http_app()).post("/tools/read", json={})
+    client = TestClient(build_http_app())
+    for path, payload in (
+        ("/tools/read", {}),
+        ("/tools/bash", {"command": "echo ok"}),
+        ("/tools/job", {}),
+    ):
+        response = client.post(path, json=payload)
 
-    assert response.status_code == 400
-    assert response.json() == {
-        "error": "validation_error",
-        "message": "Missing required argument: session_id",
-    }
+        assert response.status_code == 400
+        assert response.json() == {
+            "error": "validation_error",
+            "message": "Missing required argument: session_id",
+        }
 
 
 def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):

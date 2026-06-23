@@ -7,30 +7,58 @@ from local_shell_mcp.schemas.result_models.shell import (
     StartPersistentShellOutput,
 )
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.tool_session.store import get_tool_session_store
 from tests.helpers import mcp_structured
 
 
+def _create_session(workdir: str = ".") -> str:
+    store = get_tool_session_store()
+    store.clear()
+    return store.create_session(workdir=workdir).session_id
+
+
 @pytest.mark.asyncio
-async def test_bash_facade_runs_bounded_command(tmp_path, monkeypatch):
+async def test_bash_facade_runs_bounded_command_in_session_workdir(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
+    session_dir = tmp_path / "project"
+    session_dir.mkdir()
+    session_id = _create_session("project")
 
     result = await bash_ops.bash_execute(
-        "sh -c 'printf \"$FOO\"'", cwd=".", env={"FOO": "hello"}
+        session_id,
+        "sh -c 'printf \"$FOO:$PWD\"'",
+        cwd=".",
+        env={"FOO": "hello"},
     )
 
     assert result.mode == "command"
-    assert result.command == "sh -c 'printf \"$FOO\"'"
+    assert result.command == "sh -c 'printf \"$FOO:$PWD\"'"
+    assert result.cwd == str(session_dir)
     assert result.result["ok"] is True
-    assert result.result["stdout"] == "hello"
+    assert result.result["stdout"] == f"hello:{session_dir}"
 
 
 @pytest.mark.asyncio
-async def test_bash_facade_routes_async_to_job(monkeypatch):
+async def test_bash_facade_rejects_cwd_escape(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "project").mkdir()
+    (tmp_path / "other").mkdir()
+    session_id = _create_session("project")
+
+    with pytest.raises(ValueError, match="Path escapes session workdir"):
+        await bash_ops.bash_execute(session_id, "pwd", cwd="../other")
+
+
+@pytest.mark.asyncio
+async def test_bash_facade_routes_async_to_session_job(monkeypatch):
     calls = []
 
-    async def fake_job_start(command, cwd=".", name=None):
-        calls.append((command, cwd, name))
+    async def fake_job_start(session_id, command, cwd=".", name=None):
+        calls.append((session_id, command, cwd, name))
         return JobStartOutput.model_validate(
             {
                 "job_id": "job_123",
@@ -38,8 +66,7 @@ async def test_bash_facade_routes_async_to_job(monkeypatch):
                 "status": "running",
                 "command": command,
                 "cwd": cwd,
-                "session_id": "session-1",
-                "backend": "tmux",
+                "session_id": session_id,
                 "created_at": 1.0,
                 "updated_at": 1.0,
                 "last_started_at": 1.0,
@@ -47,19 +74,46 @@ async def test_bash_facade_routes_async_to_job(monkeypatch):
             }
         )
 
+    class FakeStore:
+        def touch_session(self, session_id):
+            from local_shell_mcp.tool_session.store import AgentSession
+
+            return AgentSession(
+                session_id=session_id,
+                target="local",
+                workdir="/tmp/project",
+                machine=None,
+                worker_session_id=None,
+                created_at=1.0,
+                updated_at=1.0,
+            )
+
     monkeypatch.setattr(bash_ops, "job_start_execute", fake_job_start)
+    monkeypatch.setattr(bash_ops, "get_tool_session_store", lambda: FakeStore())
+    monkeypatch.setattr(
+        bash_ops,
+        "resolve_session_path",
+        lambda session, cwd, must_exist=False: "/tmp/project/app",
+    )
 
     result = await bash_ops.bash_execute(
-        "npm test", cwd="app", async_=True, name="tests"
+        "ABC12345", "npm test", cwd="app", async_=True, name="tests"
     )
 
     assert result.mode == "job"
     assert result.result["job_id"] == "job_123"
-    assert calls == [("npm test", "app", "tests")]
+    assert result.result["session_id"] == "ABC12345"
+    assert "backend" not in result.result
+    assert calls == [("ABC12345", "npm test", "/tmp/project/app", "tests")]
 
 
 @pytest.mark.asyncio
-async def test_bash_facade_routes_pty_to_persistent_shell(monkeypatch):
+async def test_bash_facade_routes_pty_to_persistent_shell(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    session_id = _create_session()
     calls = []
 
     async def fake_start_shell(cwd=".", name=None, command=None):
@@ -79,12 +133,12 @@ async def test_bash_facade_routes_pty_to_persistent_shell(monkeypatch):
     )
 
     result = await bash_ops.bash_execute(
-        "python -i", cwd=".", pty=True, name="server"
+        session_id, "python -i", cwd=".", pty=True, name="server"
     )
 
     assert result.mode == "pty"
     assert result.result["session_id"] == "session-1"
-    assert calls == [(".", "server", "python -i")]
+    assert calls == [(str(tmp_path), "server", "python -i")]
 
 
 @pytest.mark.asyncio
@@ -92,10 +146,19 @@ async def test_bash_facade_is_exposed_in_mcp(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
+    get_tool_session_store().clear()
 
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
     payload = mcp_structured(
-        await build_mcp().call_tool("bash", {"command": "printf hi"})
+        await mcp.call_tool(
+            "bash",
+            {"session_id": session["session_id"], "command": "printf hi"},
+        )
     )
 
     assert payload["mode"] == "command"
+    assert payload["cwd"] == str(tmp_path)
     assert payload["result"]["stdout"] == "hi"

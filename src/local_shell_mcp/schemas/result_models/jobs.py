@@ -1,4 +1,4 @@
-"""Typed structured outputs for tracked persistent-shell job tools."""
+"""Typed structured outputs for tracked bash job tools."""
 
 from typing import Literal
 
@@ -8,29 +8,25 @@ type JobStatus = Literal["running", "exited", "stopped", "lost", "unknown"]
 
 
 class JobInfo(BaseModel):
-    """One tracked command backed by a persistent shell session."""
+    """One tracked command owned by an explicit agent session."""
 
     job_id: str = Field(
-        description="Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions."
+        description="Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session."
     )
     name: str = Field(
         description="Human-readable job name, or the generated job_id when no name was provided."
     )
     status: JobStatus = Field(
-        description="Tracked job status: running while the backing session exists; exited when it disappears naturally; stopped when cancelled; lost when the backing session cannot be inspected."
+        description="Tracked job status: running while the background command can still be inspected; exited when it disappears naturally; stopped when cancelled; lost when output/control cannot be inspected."
     )
     command: str = Field(
         description="Original shell command used to start the job. The retry action reuses this command."
     )
     cwd: str = Field(
-        description="Working directory used to start the job. The retry action reuses this directory."
+        description="Working directory used to start the job. The retry action reuses this directory when it remains inside the owning session workdir."
     )
     session_id: str = Field(
-        description="Backing persistent shell session id. This is exposed for diagnostics; prefer the `job` companion for tracked-job operations."
-    )
-    backend: str | None = Field(
-        default=None,
-        description="Persistent shell backend, such as tmux, when reported by the shell layer.",
+        description="Agent/workspace session_id that owns this tracked job."
     )
     created_at: float = Field(
         description="Unix timestamp when the tracked job record was created."
@@ -55,13 +51,13 @@ class JobRetryOutput(JobInfo):
 
 
 class JobListOutput(BaseModel):
-    """Tracked job inventory."""
+    """Tracked job inventory for one agent session."""
 
     jobs: list[JobInfo] = Field(
-        description="Tracked jobs sorted newest first, optionally excluding terminal jobs."
+        description="Tracked jobs for the requested session, sorted newest first, optionally excluding terminal jobs."
     )
     counts: dict[str, int] = Field(
-        description="Counts for all tracked jobs by status, before include_finished filtering."
+        description="Counts for tracked jobs owned by the requested session, before include_finished filtering."
     )
 
 
@@ -73,11 +69,11 @@ class JobTailOutput(BaseModel):
     )
     output: str = Field(
         default="",
-        description="Recent output captured from the backing persistent shell. Full job logs are not persisted separately.",
+        description="Recent output captured for the tracked job. Full job logs are not persisted separately.",
     )
     message: str | None = Field(
         default=None,
-        description="Diagnostic message when output is unavailable, for example after the backing session exits or is lost.",
+        description="Diagnostic message when output is unavailable, for example after the job exits or is lost.",
     )
 
 
@@ -85,12 +81,10 @@ class JobStopOutput(BaseModel):
     """Result of stopping one tracked job."""
 
     job: JobInfo = Field(description="Tracked job metadata after stop attempt.")
-    killed: bool = Field(
-        description="Whether the backing persistent shell session was killed."
-    )
+    killed: bool = Field(description="Whether the tracked job was stopped.")
     stderr: str = Field(
         default="",
-        description="Backend stderr from the stop attempt, when reported by the shell layer.",
+        description="Backend stderr from the stop attempt, when reported.",
     )
 
 

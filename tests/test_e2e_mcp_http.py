@@ -8,6 +8,7 @@ from tests.e2e_scenarios import (
     exercise_file_download_links,
     exercise_filesystem_and_search_tools,
     exercise_interactive_shell_tools,
+    exercise_session_bound_job_tools,
     exercise_shell_tools,
     exercise_todo_tools,
     exercise_workspace_connector_tools,
@@ -30,6 +31,7 @@ async def test_mcp_streamable_http_process_exercises_core_tool_categories(
         await exercise_filesystem_and_search_tools(client, workspace)
         await exercise_workspace_connector_tools(client)
         await exercise_file_download_links(client, base_url, workspace)
-        await exercise_shell_tools(client)
+        await exercise_shell_tools(client, workspace)
+        await exercise_session_bound_job_tools(client, workspace)
         await exercise_interactive_shell_tools(client)
         await exercise_todo_tools(client)

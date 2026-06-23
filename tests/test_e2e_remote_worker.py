@@ -277,12 +277,23 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 for item in listing["entries"]
             )
 
+            remote_session = await client.call_tool(
+                "remote",
+                {
+                    "machine": machine,
+                    "op": "session_start",
+                    "args": {"workdir": "."},
+                },
+            )
+            remote_session_id = remote_session["data"]["session_id"]
+
             shell_result = await client.call_tool(
                 "remote",
                 {
                     "machine": machine,
                     "op": "bash",
                     "args": {
+                        "session_id": remote_session_id,
                         "command": "printf remote-shell-ok",
                         "timeout_s": 5,
                     },

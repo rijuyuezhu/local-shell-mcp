@@ -142,6 +142,7 @@ REMOTE_FACADE_TOOL_MAP: dict[str, str] = {
     "search": "search",
     "edit_lines": "edit_lines",
     "bash": "bash",
+    "session_start": "session_start",
     "python": "run_python_code",
     "list_files": "list_files",
     "tree": "tree_view",

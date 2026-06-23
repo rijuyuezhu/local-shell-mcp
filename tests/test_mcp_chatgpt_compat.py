@@ -129,6 +129,8 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "cwd",
         "result",
     }
+    assert "session_id" in tools["bash"].inputSchema["required"]
+    assert "session_id" in tools["job"].inputSchema["required"]
     search_schema = tools["search"].outputSchema
     assert search_schema is not None
     assert "matches" in search_schema["properties"]
@@ -168,11 +170,14 @@ async def test_shell_tool_input_and_output_schema_descriptions_are_exposed(
 
     output_schema = _output_schema(tool)
     command_input = tool.inputSchema["properties"]["command"]
+    session_input = tool.inputSchema["properties"]["session_id"]
     timeout_input = tool.inputSchema["properties"]["timeout_s"]
     mode_output = output_schema["properties"]["mode"]
     result_output = output_schema["properties"]["result"]
 
     assert "terminal work" in command_input["description"]
+    assert "agent/workspace session_id" in session_input["description"]
+    assert "session_id" in tool.inputSchema["required"]
     assert "bounded command mode" in timeout_input["description"]
     assert "Execution mode" in mode_output["description"]
     assert "bounded command" in result_output["description"]
@@ -186,8 +191,15 @@ async def test_shell_tool_returns_per_tool_structured_content(
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
     structured = mcp_structured(
-        await build_mcp().call_tool("bash", {"command": "echo ok"})
+        await mcp.call_tool(
+            "bash",
+            {"session_id": session["session_id"], "command": "echo ok"},
+        )
     )
 
     assert structured["mode"] == "command"
@@ -315,9 +327,10 @@ async def test_job_tool_schema_descriptions_explain_bash_companion(
     assert lines_schema["minimum"] == 1
     assert lines_schema["maximum"] == 5000
     assert (
-        "Output is available only while the backing session still exists"
+        "Output is available only while the background job can still be inspected"
         in lines_schema["description"]
     )
+    assert "session_id" in companion.inputSchema["required"]
     assert (
         "Tracked bash"
         in companion.inputSchema["properties"]["cancel"]["description"]
@@ -332,6 +345,12 @@ async def test_job_tool_schema_descriptions_explain_bash_companion(
         "lost",
         "unknown",
     ]
+    job_info_schema = output_schema["$defs"]["JobInfo"]
+    assert "backend" not in job_info_schema["properties"]
+    assert (
+        job_info_schema["properties"]["session_id"]["description"]
+        == "Agent/workspace session_id that owns this tracked job."
+    )
     assert (
         output_schema["properties"]["operation"]["description"]
         == "Job operation performed by the unified job companion tool."

@@ -5,6 +5,10 @@ import shlex
 from typing import Any
 
 from ..schemas.result_models.bash import BashOutput
+from ..tool_session.store import (
+    get_tool_session_store,
+    resolve_session_path,
+)
 from ..utils.serialization import to_jsonable
 from .jobs import job_start_execute
 from .shell import run_shell_command_execute, start_persistent_shell_execute
@@ -31,6 +35,7 @@ def _as_result_dict(value: Any) -> dict[str, Any]:
 
 
 async def bash_execute(
+    session_id: str,
     command: str,
     cwd: str = ".",
     timeout_s: int | None = None,
@@ -41,31 +46,36 @@ async def bash_execute(
     name: str | None = None,
 ) -> BashOutput:
     """Run a shell command via bounded, tracked-job, or PTY mode."""
+    session = get_tool_session_store().touch_session(session_id)
+    resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
+    cwd_text = str(resolved_cwd)
     command_with_env = _command_with_env(command, env)
     if pty:
         result = await start_persistent_shell_execute(
-            cwd, name, command_with_env
+            cwd_text, name, command_with_env
         )
         return BashOutput(
             mode="pty",
             command=command,
-            cwd=cwd,
+            cwd=cwd_text,
             result=_as_result_dict(result),
         )
     if async_:
-        result = await job_start_execute(command_with_env, cwd, name)
+        result = await job_start_execute(
+            session_id, command_with_env, cwd_text, name
+        )
         return BashOutput(
             mode="job",
             command=command,
-            cwd=cwd,
+            cwd=cwd_text,
             result=_as_result_dict(result),
         )
     result = await run_shell_command_execute(
-        command_with_env, cwd, timeout_s, max_output_bytes
+        command_with_env, cwd_text, timeout_s, max_output_bytes
     )
     return BashOutput(
         mode="command",
         command=command,
-        cwd=cwd,
+        cwd=cwd_text,
         result=_as_result_dict(result),
     )

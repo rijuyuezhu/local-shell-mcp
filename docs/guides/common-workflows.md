@@ -22,7 +22,7 @@ Use local-shell-mcp to propose a minimal implementation plan. Do not edit files 
 Use local-shell-mcp to implement this change. Keep the diff focused, run the relevant tests, and summarize the result with git diff highlights.
 ```
 
-For code changes, use `read` for file or directory context, `search(pattern, paths=...)` for content discovery, `edit_lines` for snapshot-grounded whole-line edits, and `bash` for terminal work such as tests, builds, package managers, git inspection, and scripts. Prefer `read` selectors such as `src/foo.py:50-80`, `src/foo.py:50+20`, and `src/foo.py:raw`; numbered output and search snippets carry `snapshot_id`, `file_sha256`, and visible ranges. Pass that `snapshot_id` to `edit_lines`, keep ranges tight, and re-read after each successful edit or stale/surprising result. The intended default surface should stay small and semantic.
+For code changes, start with `session_start(workdir=...)`, then pass the returned `session_id` to session-bound tools. Use `read` for file or directory context, `search(pattern, paths=...)` for content discovery, `edit_lines` for snapshot-grounded whole-line edits, and `bash(session_id=...)` for terminal work such as tests, builds, package managers, git inspection, and scripts. Prefer `read` selectors such as `src/foo.py:50-80`, `src/foo.py:50+20`, and `src/foo.py:raw`; numbered output and search snippets carry `snapshot_id`, `file_sha256`, and visible ranges. Pass that `snapshot_id` to `edit_lines`, keep ranges tight, and re-read after each successful edit or stale/surprising result. The intended default surface should stay small and semantic.
 
 ## Run tests and checks
 
@@ -48,16 +48,16 @@ Use local-shell-mcp to show git status, summarize the diff, and run secret_scan 
 
 ## Work with long-running commands
 
-Use `bash` for terminal work. By default it runs bounded one-shot commands; set `async_=true` for tracked long-running non-interactive work, and `pty=true` for dev servers, REPLs, and interactive processes:
+Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive work owned by that session, and manage it with `job(session_id=...)`. Set `pty=true` for dev servers, REPLs, and interactive processes:
 
 ```text
-Use local-shell-mcp to start a persistent shell session for the development server, read the first output, and tell me the local URL.
+Use local-shell-mcp. Start a session for this project, start a persistent shell session for the development server with bash using that session_id, read the first output, and tell me the local URL.
 ```
 
 When done:
 
 ```text
-Use local-shell-mcp to list persistent shell sessions and kill the development server session.
+Use local-shell-mcp to list persistent shell sessions and kill the development server session. For async bash jobs, use job with the same session_id to poll or cancel them.
 ```
 
 ## Debug tool behavior

@@ -13,7 +13,7 @@ BashCommandArg = Annotated[
 BashCwdArg = Annotated[
     str,
     Field(
-        description="Working directory for the command; prefer this over embedding directory changes in the command."
+        description="Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir."
     ),
 ]
 BashTimeoutArg = Annotated[
@@ -35,7 +35,7 @@ BashEnvArg = Annotated[
 BashAsyncArg = Annotated[
     bool,
     Field(
-        description="Whether to start long-running non-interactive work as a tracked background job."
+        description="Whether to start long-running non-interactive work as a tracked background job owned by this session."
     ),
 ]
 BashPtyArg = Annotated[
