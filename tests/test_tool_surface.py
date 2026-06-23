@@ -663,9 +663,18 @@ async def test_run_python_code_creates_temp_file(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
+    session = await call_local_tool("session_start", {"workdir": "."})
     payload = await call_local_tool(
-        "run_python_code", {"code": "print('py314')", "cwd": "."}
+        "run_python_code",
+        {
+            "session_id": session.session_id,
+            "code": "print('py314')",
+            "cwd": ".",
+        },
     )
 
-    assert payload.ok is True
-    assert payload.stdout == "py314\n"
+    assert payload.mode == "command"
+    assert payload.cwd == str(tmp_path)
+    assert payload.result["ok"] is True
+    assert payload.result["stdout"] == "py314\n"
+    assert payload.script_path.endswith(".py")

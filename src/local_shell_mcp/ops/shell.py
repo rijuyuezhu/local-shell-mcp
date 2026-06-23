@@ -16,7 +16,6 @@ from ..schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     ReadPersistentShellOutput,
-    RunPythonCodeOutput,
     RunShellCommandOutput,
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
@@ -25,7 +24,6 @@ from .utils.path import (
     relative_display,
     resolve_path,
 )
-from .utils.temp_file import write_temp_text_file
 
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2
@@ -343,22 +341,6 @@ async def run_shell_command_execute(
         max_output_bytes,
     )
     return RunShellCommandOutput.model_validate(result.model_dump())
-
-
-async def run_python_code_execute(
-    code: str, cwd: str = ".", timeout_s: int = 60
-) -> RunPythonCodeOutput:
-    """Execute provided Python code from a temporary file."""
-    path = await write_temp_text_file("Python script", code, "script", "py")
-    result = await run_shell(
-        f"python3 {shlex.quote(str(path))}",
-        cwd=cwd,
-        timeout_s=run_shell_command_timeout(timeout_s),
-        max_output_bytes=1_000_000,
-    )
-    return RunPythonCodeOutput.model_validate(
-        {**result.model_dump(), "script_path": relative_display(path)}
-    )
 
 
 def _tmux_session_name(name: str | None = None) -> str:

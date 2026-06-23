@@ -1,5 +1,7 @@
 """Typed structured outputs for shell-facing tools."""
 
+from typing import Any, Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -41,11 +43,23 @@ class RunShellCommandOutput(CommandResult):
     """Result of running one bounded non-interactive shell command."""
 
 
-class RunPythonCodeOutput(CommandResult):
-    """Result of writing Python code to a temporary file and executing it."""
+class RunPythonCodeOutput(BaseModel):
+    """Result of writing Python code to a temporary file and executing it through bash modes."""
 
+    mode: Literal["command", "job", "pty"] = Field(
+        description="Execution mode selected for the generated Python script."
+    )
+    command: str = Field(
+        description="Generated shell command used to run the temporary Python script."
+    )
+    cwd: str = Field(
+        description="Resolved working directory used for this Python execution."
+    )
+    result: dict[str, Any] = Field(
+        description="Structured result from the selected execution mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools."
+    )
     script_path: str = Field(
-        description="Workspace-relative path to the temporary Python script that was executed."
+        description="Path to the temporary Python script that was executed."
     )
 
 

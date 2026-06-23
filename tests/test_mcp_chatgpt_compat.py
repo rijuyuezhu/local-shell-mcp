@@ -130,6 +130,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "result",
     }
     assert "session_id" in tools["bash"].inputSchema["required"]
+    assert "session_id" in tools["run_python_code"].inputSchema["required"]
     assert "session_id" in tools["job"].inputSchema["required"]
     search_schema = tools["search"].outputSchema
     assert search_schema is not None

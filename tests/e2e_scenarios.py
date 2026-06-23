@@ -366,12 +366,14 @@ async def exercise_shell_tools(client: ToolClient, workspace: Path) -> None:
     python_result = await client.call_tool(
         "run_python_code",
         {
+            "session_id": session_id,
             "code": "import json; print(json.dumps({'e2e': 314}))",
             "timeout_s": 5,
         },
     )
-    assert python_result["ok"] is True
-    assert json.loads(python_result["stdout"])["e2e"] == 314
+    assert python_result["mode"] == "command"
+    assert python_result["result"]["ok"] is True
+    assert json.loads(python_result["result"]["stdout"])["e2e"] == 314
 
     list_persistent_shells = await client.call_tool("list_persistent_shells")
     assert "shells" in list_persistent_shells

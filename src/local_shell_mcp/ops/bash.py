@@ -5,6 +5,7 @@ import shlex
 from typing import Any
 
 from ..schemas.result_models.bash import BashOutput
+from ..schemas.result_models.shell import RunPythonCodeOutput
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -13,6 +14,7 @@ from ..utils.serialization import to_jsonable
 from .jobs import job_start_execute
 from .shell import run_shell_command_execute, start_persistent_shell_execute
 from .utils.remote_session import call_remote_session_tool
+from .utils.temp_file import write_temp_text_file
 
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -96,4 +98,56 @@ async def bash_execute(
         command=command,
         cwd=cwd_text,
         result=_as_result_dict(result),
+    )
+
+
+async def run_python_code_execute(
+    session_id: str,
+    code: str,
+    cwd: str = ".",
+    timeout_s: int | None = None,
+    max_output_bytes: int | None = None,
+    env: dict[str, str] | None = None,
+    async_: bool = False,
+    pty: bool = False,
+    name: str | None = None,
+) -> RunPythonCodeOutput:
+    """Write Python code to a temporary file and execute it through the bash execution surface."""
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "run_python_code",
+            {
+                "code": code,
+                "cwd": cwd,
+                "timeout_s": timeout_s,
+                "max_output_bytes": max_output_bytes,
+                "env": env,
+                "async_": async_,
+                "pty": pty,
+                "name": name,
+            },
+            timeout_s if isinstance(timeout_s, int) else None,
+        )
+        return RunPythonCodeOutput.model_validate(data)
+
+    resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
+    script_path = await write_temp_text_file(
+        "Python script", code, "script", "py"
+    )
+    command = f"python3 {shlex.quote(str(script_path))}"
+    result = await bash_execute(
+        session_id,
+        command,
+        str(resolved_cwd),
+        timeout_s,
+        max_output_bytes,
+        env,
+        async_,
+        pty,
+        name,
+    )
+    return RunPythonCodeOutput(
+        **result.model_dump(), script_path=str(script_path)
     )

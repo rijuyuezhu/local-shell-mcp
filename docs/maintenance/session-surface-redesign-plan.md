@@ -216,9 +216,13 @@ Latest completed session/tool-surface status:
 
 Current cleanup/hardening task:
 
-1. Commit and push this final maintenance-plan sync.
-2. Confirm PR CI on the resulting docs-only head.
-3. Final handoff should report the latest head, CI status, PR body status, validation performed, and any remaining risks.
+Review follow-up hardening is in progress. Fixes are being completed in small pushed commits, each with this source-of-truth document updated before commit and PR CI checked after push.
+
+1. P1 `run_python_code`: make it an explicit session-bound Python convenience wrapper over the bash execution surface. It now requires `session_id`, writes code to a temporary script, runs `python3 <temporary-script>`, defaults relative `cwd` to the session workdir, supports `timeout_s`, `max_output_bytes`, `env`, `async_`, `pty`, and `name`, and dispatches through remote sessions using the paired worker session. Local focused validation passed: ruff on touched files, `test_run_python_code_creates_temp_file`, and `test_mcp_metadata_for_chatgpt_developer_mode`.
+2. P2 `tree_view` and `glob_search`: require `session_id`, resolve relative paths against the session workdir, dispatch through remote sessions, and update model-facing descriptions.
+3. P3 surface guard: replace the partial stateful-tool test with a deny-by-default check so new workspace-affecting tools cannot silently remain sessionless.
+4. P4 stale public/config text: remove obsolete `read_many_files tool` references from generated examples/settings descriptions.
+5. After P1-P4, run deeper validation and review the final surface, generated references, MCP instructions, PR diff, and CI.
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
 ## Cross-context continuation prompt

@@ -978,6 +978,13 @@
           {
             "items": [
               {
+                "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session.",
+                "head": {
+                  "code": "async_"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
                 "description": "Complete Python source code to write to a temporary script and execute.",
                 "head": {
                   "code": "code"
@@ -985,11 +992,39 @@
                 "note": "(string, required)"
               },
               {
-                "description": "Working directory for the operation. Relative paths resolve inside the configured workspace.",
+                "description": "Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir.",
                 "head": {
                   "code": "cwd"
                 },
                 "note": "(string, optional)"
+              },
+              {
+                "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
+                "head": {
+                  "code": "env"
+                },
+                "note": "(object / null, optional)"
+              },
+              {
+                "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
+                "head": {
+                  "code": "max_output_bytes"
+                },
+                "note": "(integer / null, optional)"
+              },
+              {
+                "description": "Optional name for the tracked job or persistent shell.",
+                "head": {
+                  "code": "name"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools.",
+                "head": {
+                  "code": "pty"
+                },
+                "note": "(boolean, optional)"
               },
               {
                 "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
@@ -999,15 +1034,22 @@
                 "note": "(string / null, optional)"
               },
               {
-                "description": "Python script timeout in seconds, bounded by the public shell timeout cap.",
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Optional timeout in seconds for bounded command mode.",
                 "head": {
                   "code": "timeout_s"
                 },
-                "note": "(integer, optional)"
+                "note": "(integer / null, optional)"
               }
             ]
           },
-          "Write Python code to a temporary file and execute it in the controlled workspace/container. Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. Current timeout cap: 60 seconds. Current combined output cap: 200000 bytes. Keep code non-interactive and write durable outputs explicitly if needed."
+          "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: 10/60 seconds."
         ],
         [
           {
@@ -4022,9 +4064,15 @@
       }
     },
     {
-      "description": "Write Python code to a temporary file and execute it in the controlled workspace/container. Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. Current timeout cap: 60 seconds. Current combined output cap: 200000 bytes. Keep code non-interactive and write durable outputs explicitly if needed.",
+      "description": "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
+          "async_": {
+            "default": false,
+            "description": "Whether to start long-running non-interactive work as a tracked background job owned by this session.",
+            "title": "Async",
+            "type": "boolean"
+          },
           "code": {
             "description": "Complete Python source code to write to a temporary script and execute.",
             "title": "Code",
@@ -4032,9 +4080,57 @@
           },
           "cwd": {
             "default": ".",
-            "description": "Working directory for the operation. Relative paths resolve inside the configured workspace.",
+            "description": "Optional working directory for the command, resolved inside the agent session workdir. Omit or pass . to use the session workdir.",
             "title": "Cwd",
             "type": "string"
+          },
+          "env": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
+            "title": "Env"
+          },
+          "max_output_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
+            "title": "Max Output Bytes"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional name for the tracked job or persistent shell.",
+            "title": "Name"
+          },
+          "pty": {
+            "default": false,
+            "description": "Whether to start the command in a persistent PTY shell for interactive programs, REPLs, servers, or commands needing later input. PTY mode returns shell_id for persistent-shell companion tools.",
+            "title": "Pty",
+            "type": "boolean"
           },
           "purpose": {
             "anyOf": [
@@ -4049,14 +4145,30 @@
             "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
             "title": "Purpose"
           },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          },
           "timeout_s": {
-            "default": 60,
-            "description": "Python script timeout in seconds, bounded by the public shell timeout cap.",
-            "title": "Timeout S",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional timeout in seconds for bounded command mode.",
+            "title": "Timeout S"
           }
         },
         "required": [
+          "session_id",
           "code"
         ],
         "title": "run_python_codeArguments",
@@ -4075,76 +4187,45 @@
       },
       "name": "run_python_code",
       "outputSchema": {
-        "description": "Result of writing Python code to a temporary file and executing it.",
+        "description": "Result of writing Python code to a temporary file and executing it through bash modes.",
         "properties": {
           "command": {
-            "description": "Shell command string that was executed.",
+            "description": "Generated shell command used to run the temporary Python script.",
             "title": "Command",
             "type": "string"
           },
           "cwd": {
-            "description": "Working directory used to run the command, displayed relative to the workspace when possible.",
+            "description": "Resolved working directory used for this Python execution.",
             "title": "Cwd",
             "type": "string"
           },
-          "duration_ms": {
-            "description": "Elapsed command runtime in milliseconds.",
-            "title": "Duration Ms",
-            "type": "integer"
-          },
-          "exit_code": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
+          "mode": {
+            "description": "Execution mode selected for the generated Python script.",
+            "enum": [
+              "command",
+              "job",
+              "pty"
             ],
-            "description": "Process exit code, or null when no process exited.",
-            "title": "Exit Code"
+            "title": "Mode",
+            "type": "string"
           },
-          "ok": {
-            "description": "Whether the subprocess exited with code 0 before timeout.",
-            "title": "Ok",
-            "type": "boolean"
+          "result": {
+            "additionalProperties": true,
+            "description": "Structured result from the selected execution mode: bounded command output, async job metadata with owning agent session_id and job_id, or PTY metadata with shell_id for persistent-shell companion tools.",
+            "title": "Result",
+            "type": "object"
           },
           "script_path": {
-            "description": "Workspace-relative path to the temporary Python script that was executed.",
+            "description": "Path to the temporary Python script that was executed.",
             "title": "Script Path",
             "type": "string"
-          },
-          "stderr": {
-            "default": "",
-            "description": "Captured standard error after byte-limit truncation.",
-            "title": "Stderr",
-            "type": "string"
-          },
-          "stdout": {
-            "default": "",
-            "description": "Captured standard output after byte-limit truncation.",
-            "title": "Stdout",
-            "type": "string"
-          },
-          "timed_out": {
-            "default": false,
-            "description": "Whether execution was terminated after exceeding its timeout.",
-            "title": "Timed Out",
-            "type": "boolean"
-          },
-          "truncated": {
-            "default": false,
-            "description": "Whether stdout or stderr was truncated to fit output limits.",
-            "title": "Truncated",
-            "type": "boolean"
           }
         },
         "required": [
-          "ok",
-          "exit_code",
-          "duration_ms",
-          "cwd",
+          "mode",
           "command",
+          "cwd",
+          "result",
           "script_path"
         ],
         "title": "RunPythonCodeOutput",

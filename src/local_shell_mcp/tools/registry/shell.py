@@ -1,19 +1,27 @@
 """Shell MCP tool registry."""
 
+from ...ops.bash import run_python_code_execute
 from ...ops.shell import (
     kill_persistent_shell_execute,
     list_persistent_shells_execute,
     read_persistent_shell_output_execute,
-    run_python_code_execute,
     send_persistent_shell_input_execute,
 )
+from ...schemas.input_models.bash import (
+    BashAsyncArg,
+    BashCwdArg,
+    BashEnvArg,
+    BashMaxOutputBytesArg,
+    BashNameArg,
+    BashPtyArg,
+    BashTimeoutArg,
+)
+from ...schemas.input_models.session import SessionIdArg
 from ...schemas.input_models.shell import (
-    CwdArg,
     EnterArg,
     InputTextArg,
     LinesArg,
     PythonCodeArg,
-    PythonTimeoutArg,
     ShellIdArg,
     ToolPurposeArg,
 )
@@ -41,7 +49,7 @@ local_tool = ShellToolRegistry.get_tool_decorator()
 
 def _run_python_code_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Write Python code to a temporary file and execute it in the controlled workspace/container. Use for short scripts, structured file analysis, JSON manipulation, or calculations that are easier and safer in Python than shell. Current timeout cap: {settings.run_shell_max_timeout_s} seconds. Current combined output cap: {settings.max_output_bytes} bytes. Keep code non-interactive and write durable outputs explicitly if needed."""
+    return f"""Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only when the Python process needs an interactive terminal, returning shell_id for persistent-shell companion tools. Current bounded command timeout default/cap: {settings.run_shell_default_timeout_s}/{settings.run_shell_max_timeout_s} seconds."""
 
 
 @local_tool(
@@ -51,14 +59,30 @@ def _run_python_code_description(context: McpToolContext) -> str:
     mcp_scopes=("shell:read", "shell:execute"),
 )
 async def run_python_code(
+    session_id: SessionIdArg,
     code: PythonCodeArg,
-    cwd: CwdArg = ".",
-    timeout_s: PythonTimeoutArg = 60,
+    cwd: BashCwdArg = ".",
+    timeout_s: BashTimeoutArg = None,
+    max_output_bytes: BashMaxOutputBytesArg = None,
+    env: BashEnvArg = None,
+    async_: BashAsyncArg = False,
+    pty: BashPtyArg = False,
+    name: BashNameArg = None,
     purpose: ToolPurposeArg = None,
 ) -> RunPythonCodeOutput:
-    """Write Python code to a temporary file and execute it."""
+    """Write Python code to a temporary file and execute it through bash modes."""
     audit_tool_purpose("run_python_code", purpose)
-    return await run_python_code_execute(code, cwd, timeout_s)
+    return await run_python_code_execute(
+        session_id,
+        code,
+        cwd,
+        timeout_s,
+        max_output_bytes,
+        env,
+        async_,
+        pty,
+        name,
+    )
 
 
 @local_tool(
