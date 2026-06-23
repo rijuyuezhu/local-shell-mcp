@@ -202,21 +202,24 @@ Consider adding declarative metadata such as `requires_session=True` on `ToolDef
 
 ## Current TODO
 
-Latest completed session/tool-surface slice status:
+Latest completed session/tool-surface status:
 
-- Slice 9 is implemented in this update. Remaining workspace-affecting/stateful tools are now session-bound in the model-facing surface where appropriate.
-- `list_files`, `write_file`, `delete_file_or_dir`, `apply_patch`, `secret_scan`, `create_file_link`, `list_file_links`, `revoke_file_link`, `read_todos`, and `write_todos` require `session_id`.
-- `workspace_search` and `fetch` remain sessionless read-only connector-compatible exceptions.
-- Download links are owned by local agent sessions, and todos are persisted per agent session.
-- HTTP GET tool routes now pass query parameters into tool validation and ignore any query `tool_name` override.
-- MCP instructions and generated refs describe the current Slice 9 surface.
+- Slices 1-9 are complete and pushed on PR #79.
+- Current confirmed PR head before this final cleanup pass is `e3f2d0c test: keep mcp watchdog setup outside timeout`.
+- Last confirmed PR state: branch synced, clean worktree, `mergeStateStatus` `CLEAN`, and all required PR CI checks green.
+- The model-facing surface uses explicit agent/workspace sessions: `session_start(workdir=...)`, `session_change_cwd(session_id, workdir)`, and session-bound normal tools.
+- `environment_info` and generic `remote(machine, op, args)` are absent from the model-facing MCP/HTTP/generated surface.
+- Persistent shell handles are model-facing `shell_id`; agent/workspace sessions remain `session_id`.
+- Slice 9 completed the remaining session policy: `list_files`, `write_file`, `delete_file_or_dir`, `apply_patch`, `secret_scan`, file-link tools, and todo tools require `session_id`; `workspace_search` and `fetch` remain sessionless read-only connector-compatible exceptions.
+- Download links are owned by local agent sessions, todos are persisted per agent session, and HTTP GET tool routes pass query parameters while ignoring query `tool_name` overrides.
 
-Validation completed for Slice 9: formatting/lint, generated references, focused unit tests, core e2e workflows, remote worker e2e, broad unit groups, pyright, generated config check, pre-commit, and `git diff --check -- .`.
+Current final cleanup/hardening task:
 
-Next implementation task:
-
-1. Finalize Slice 9: run final diff review, commit, push to PR #79, update PR body, and check CI.
-2. Then inspect this plan for any remaining cleanup/final-hardening TODO before asking for review or merge.
+1. Review model-facing descriptions, generated references, and MCP instructions for stale roadmap language or capabilities that are no longer exposed.
+2. Confirm there is no old model-facing `remote(...)` or `environment_info` usage, and that `shell_id`/`session_id` wording is consistent.
+3. Inspect the PR diff for unnecessary noise or obvious omissions.
+4. If only maintenance-plan or PR-body cleanup is needed, make a minimal docs-only commit, push it, update the PR body, and confirm PR CI.
+5. If code/generated/model-facing issues are found, make the smallest patch, rerun the relevant generated-reference and test validation, commit, push, and confirm PR CI.
 
 Cross-context continuation prompt is maintained at the end of this file. It should be copied into a new AI context when handing off the task.
 
