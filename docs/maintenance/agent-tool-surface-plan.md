@@ -72,9 +72,9 @@ Existing low-level tools can remain during migration, but MCP instructions shoul
 
 ### Slice 4: search grounding
 
-- [ ] Extend `grep_search` output with line-numbered snippets and visible ranges.
+- [x] Extend `grep_search` output with line-numbered snippets and visible ranges.
 - [ ] Add high-level `search(pattern, paths=None, ...)` facade.
-- [ ] Record displayed search snippets in the tool session store.
+- [x] Record displayed search snippets in the tool session store.
 
 ### Slice 5: remote organization
 
