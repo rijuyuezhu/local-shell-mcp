@@ -96,14 +96,14 @@ def clamp_timeout(timeout_s: int | None) -> int:
 
 
 def run_shell_command_timeout(timeout_s: int | None) -> int:
-    """Resolve run_shell_command timeout from configured defaults and caps."""
+    """Resolve bounded shell command timeout from configured defaults and caps."""
     settings = get_settings()
     default = max(1, settings.run_shell_default_timeout_s)
     cap = max(1, settings.run_shell_max_timeout_s)
     if timeout_s is not None and timeout_s > cap:
         raise ValueError(
-            f"timeout_s must be <= {cap} seconds for run_shell_command; "
-            "use start_persistent_shell for long-running or streaming commands"
+            f"timeout_s must be <= {cap} seconds for bounded shell commands; "
+            "use bash async or PTY mode for long-running or streaming commands"
         )
     return max(1, min(timeout_s or default, cap))
 

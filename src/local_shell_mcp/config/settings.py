@@ -85,9 +85,9 @@ class Settings(BaseSettings):
     tool_timeout_s: float = 60
     """MCP/HTTP tool watchdog timeout in seconds."""
     run_shell_default_timeout_s: int = 10
-    """Default timeout for run_shell_command calls in seconds."""
+    """Default timeout for bounded shell command calls in seconds."""
     run_shell_max_timeout_s: int = 60
-    """Maximum timeout accepted by run_shell_command calls in seconds."""
+    """Maximum timeout accepted by bounded shell command calls in seconds."""
     max_output_bytes: int = 200_000
     """Command output limit in bytes."""
     max_file_read_bytes: int = 512_000

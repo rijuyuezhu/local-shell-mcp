@@ -48,9 +48,9 @@ allow_network: true
 relaxed_client_tool_hints: false
 # MCP/HTTP tool watchdog timeout in seconds.
 tool_timeout_s: 60
-# Default timeout for run_shell_command calls in seconds.
+# Default timeout for bounded shell command calls in seconds.
 run_shell_default_timeout_s: 10
-# Maximum timeout accepted by run_shell_command calls in seconds.
+# Maximum timeout accepted by bounded shell command calls in seconds.
 run_shell_max_timeout_s: 60
 # Command output limit in bytes.
 max_output_bytes: 200000

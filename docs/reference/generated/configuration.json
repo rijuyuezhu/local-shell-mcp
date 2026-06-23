@@ -461,7 +461,7 @@
           {
             "code": "10"
           },
-          "Default timeout for run_shell_command calls in seconds."
+          "Default timeout for bounded shell command calls in seconds."
         ],
         [
           {
@@ -481,7 +481,7 @@
           {
             "code": "60"
           },
-          "Maximum timeout accepted by run_shell_command calls in seconds."
+          "Maximum timeout accepted by bounded shell command calls in seconds."
         ],
         [
           {
@@ -1563,7 +1563,7 @@
       "cli": "--run-shell-default-timeout-s",
       "default": 10,
       "default_display": "10",
-      "description": "Default timeout for run_shell_command calls in seconds.",
+      "description": "Default timeout for bounded shell command calls in seconds.",
       "env": "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S",
       "name": "run_shell_default_timeout_s",
       "nullable": false,
@@ -1576,7 +1576,7 @@
       "cli": "--run-shell-max-timeout-s",
       "default": 60,
       "default_display": "60",
-      "description": "Maximum timeout accepted by run_shell_command calls in seconds.",
+      "description": "Maximum timeout accepted by bounded shell command calls in seconds.",
       "env": "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S",
       "name": "run_shell_max_timeout_s",
       "nullable": false,

@@ -30,8 +30,8 @@ docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit_lo
 Every normal routed MCP or REST debug tool call produces a start/end pair linked by `call_id`:
 
 ```json
-{"ts": 1710000000.0, "event": "tool_call_start", "call_id": "...", "transport": "mcp", "tool": "read", "input": {"path": "README.md"}, "principal": null, "context": {}}
-{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read", "ok": true, "duration_ms": 12, "output": {"ok": true, "message": "", "data": {"kind": "file", "path": "README.md", "content": "1|...", "file": {"snapshot_id": "..."}}}}
+{"ts": 1710000000.0, "event": "tool_call_start", "call_id": "...", "transport": "mcp", "tool": "read", "input": {"session_id": "Ab12Cd34", "path": "README.md"}, "principal": null, "context": {}}
+{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read", "ok": true, "duration_ms": 12, "output": {"kind": "file", "path": "README.md", "content": "1|...", "file": {"session_id": "Ab12Cd34", "snapshot_id": "..."}}}
 ```
 
 Failures and timeouts are also linked by `call_id`.

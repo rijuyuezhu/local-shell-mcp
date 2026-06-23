@@ -11,13 +11,13 @@ Use local-shell-mcp. Clone https://github.com/fwerkor/FrameDiff.git into /worksp
 ## Make a change safely
 
 ```text
-Use local-shell-mcp. In /workspace/FrameDiff, create a new branch ai/example-change, make the requested code edit with edit_file or apply_patch, run relevant tests, show git diff --stat, run secret_scan, commit, and push the branch.
+Use local-shell-mcp. Start a session in /workspace/FrameDiff, create a new branch ai/example-change with `bash(session_id=...)`, inspect the target files with `read` or `search`, make the requested code edit with `edit_lines` or `apply_patch(session_id=...)`, run relevant tests with `bash(session_id=...)`, run `secret_scan(session_id=...)`, show git diff --stat, commit, and push the branch.
 ```
 
 ## One-command remote worker onboarding
 
 ```text
-Use local-shell-mcp. Create a remote worker invite named npu-4card with workdir /home/cyh/FrameDiff using `remote_admin(action="invite")`. Show me only the pasteable join command and then, after I say it has run, call `remote_admin(action="list", args={})` to confirm it is online.
+Use local-shell-mcp. Create a remote worker invite with `remote_admin(action="invite", args={"name": "npu-4card", "workdir": "/home/cyh/FrameDiff"})`. Show me only the pasteable join command and then, after I say it has run, call `remote_admin(action="list", args={})` to confirm it is online.
 ```
 
 ## Remote machine diagnostics
