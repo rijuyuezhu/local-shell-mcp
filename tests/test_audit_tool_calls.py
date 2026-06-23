@@ -146,7 +146,6 @@ async def test_shell_tool_purpose_metadata_is_audited(tmp_path, monkeypatch):
             "session_id": session["session_id"],
             "command": "echo ok",
             "purpose": "verify workspace state",
-            "explanation": "The command is bounded and only prints a constant.",
         },
     )
 
@@ -160,7 +159,4 @@ async def test_shell_tool_purpose_metadata_is_audited(tmp_path, monkeypatch):
     assert len(purpose_records) == 1
     assert purpose_records[0]["tool"] == "bash"
     assert purpose_records[0]["purpose"] == "verify workspace state"
-    assert (
-        purpose_records[0]["explanation"]
-        == "The command is bounded and only prints a constant."
-    )
+    assert "explanation" not in purpose_records[0]

@@ -154,13 +154,6 @@
                 "note": "(object / null, optional)"
               },
               {
-                "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-                "head": {
-                  "code": "explanation"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
                 "description": "Optional combined stdout/stderr byte budget for bounded command mode.",
                 "head": {
                   "code": "max_output_bytes"
@@ -999,13 +992,6 @@
                 "note": "(string, optional)"
               },
               {
-                "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-                "head": {
-                  "code": "explanation"
-                },
-                "note": "(string / null, optional)"
-              },
-              {
                 "description": "Optional short purpose explaining why this tool call is being made. Maximum 500 characters.",
                 "head": {
                   "code": "purpose"
@@ -1492,19 +1478,6 @@
             "default": null,
             "description": "Optional environment variables for multiline or quote-heavy values; reference them from the command.",
             "title": "Env"
-          },
-          "explanation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-            "title": "Explanation"
           },
           "max_output_bytes": {
             "anyOf": [
@@ -4062,19 +4035,6 @@
             "description": "Working directory for the operation. Relative paths resolve inside the configured workspace.",
             "title": "Cwd",
             "type": "string"
-          },
-          "explanation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Optional longer explanation for the tool call. Maximum 2000 characters.",
-            "title": "Explanation"
           },
           "purpose": {
             "anyOf": [

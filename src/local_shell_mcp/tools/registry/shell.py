@@ -15,7 +15,6 @@ from ...schemas.input_models.shell import (
     PythonCodeArg,
     PythonTimeoutArg,
     ShellIdArg,
-    ToolExplanationArg,
     ToolPurposeArg,
 )
 from ...schemas.result_models.shell import (
@@ -56,10 +55,9 @@ async def run_python_code(
     cwd: CwdArg = ".",
     timeout_s: PythonTimeoutArg = 60,
     purpose: ToolPurposeArg = None,
-    explanation: ToolExplanationArg = None,
 ) -> RunPythonCodeOutput:
     """Write Python code to a temporary file and execute it."""
-    audit_tool_purpose("run_python_code", purpose, explanation)
+    audit_tool_purpose("run_python_code", purpose)
     return await run_python_code_execute(code, cwd, timeout_s)
 
 

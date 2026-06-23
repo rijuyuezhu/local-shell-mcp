@@ -12,7 +12,7 @@ from ...schemas.input_models.bash import (
     BashTimeoutArg,
 )
 from ...schemas.input_models.session import SessionIdArg
-from ...schemas.input_models.shell import ToolExplanationArg, ToolPurposeArg
+from ...schemas.input_models.shell import ToolPurposeArg
 from ...schemas.result_models.bash import BashOutput
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
@@ -51,10 +51,9 @@ async def bash(
     pty: BashPtyArg = False,
     name: BashNameArg = None,
     purpose: ToolPurposeArg = None,
-    explanation: ToolExplanationArg = None,
 ) -> BashOutput:
     """Run a shell command via bounded, job, or PTY mode."""
-    audit_tool_purpose("bash", purpose, explanation)
+    audit_tool_purpose("bash", purpose)
     return await bash_execute(
         session_id,
         command,
