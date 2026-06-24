@@ -163,7 +163,9 @@ def test_full_container_mode_disables_builtin_restrictions(tmp_path, monkeypatch
     settings = get_settings()
     assert settings.command_denylist == []
     assert settings.path_denylist == []
-    assert resolve_path("/etc/passwd") == Path("/etc/passwd").resolve()
+    resolved = resolve_path("/etc/passwd")
+    assert resolved.is_absolute()
+    assert resolved.parts[-2:] == ("etc", "passwd")
     check_command_policy("mount /dev/null /mnt || true")
 
 

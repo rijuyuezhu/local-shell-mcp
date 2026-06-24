@@ -13,5 +13,5 @@ def python_shell_command(code: str) -> str:
         escaped_executable = sys.executable.replace("'", "''")
         encoded = base64.b64encode(code.encode("utf-8")).decode("ascii")
         wrapper = f"import base64; exec(base64.b64decode('{encoded}'))"
-        return f"& '{escaped_executable}' -c {shlex.quote(wrapper)}"
+        return f'& "{escaped_executable}" -c "{wrapper}"'
     return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
