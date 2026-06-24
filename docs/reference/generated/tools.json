@@ -1,11 +1,11 @@
 {
-  "count": 33,
+  "count": 34,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "33"
+          "code": "34"
         },
         "."
       ],
@@ -305,7 +305,31 @@
               }
             ]
           },
-          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read` or `search` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
+          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for structured code edits when you already know path/start/end/replacement. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
+        ],
+        [
+          {
+            "code": "hashline_edit"
+          },
+          {
+            "items": [
+              {
+                "description": "Compact edit text starting with [path#snapshot_id], followed by copied line rows and + replacement lines or SWAP/INSERT directives.",
+                "head": {
+                  "code": "input"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "Apply a compact grounded edit copied from `read` or `search` output. The input must start with `[path#snapshot_id]`; then use copied `line:text` rows followed by `+replacement` rows, `SWAP start[-end]:` plus replacement rows, or `INSERT [BEFORE|AFTER] line:` plus inserted rows. Use this when editing from the hashline text the model just saw. Keep edits small; stale files, wrong paths, or unseen ranges are rejected. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -1792,7 +1816,7 @@
       }
     },
     {
-      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read` or `search` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
+      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for structured code edits when you already know path/start/end/replacement. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "end_line": {
@@ -2261,6 +2285,297 @@
           "paths"
         ],
         "title": "GlobSearchOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Apply a compact grounded edit copied from `read` or `search` output. The input must start with `[path#snapshot_id]`; then use copied `line:text` rows followed by `+replacement` rows, `SWAP start[-end]:` plus replacement rows, or `INSERT [BEFORE|AFTER] line:` plus inserted rows. Use this when editing from the hashline text the model just saw. Keep edits small; stale files, wrong paths, or unseen ranges are rejected. Current write cap: 5000000 bytes.",
+      "inputSchema": {
+        "properties": {
+          "input": {
+            "description": "Compact edit text starting with [path#snapshot_id], followed by copied line rows and + replacement lines or SWAP/INSERT directives.",
+            "title": "Input",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "input"
+        ],
+        "title": "hashline_editArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read",
+              "shell:write"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "hashline_edit",
+      "outputSchema": {
+        "$defs": {
+          "LineRange": {
+            "description": "Inclusive 1-based line range shown to the agent.",
+            "properties": {
+              "end": {
+                "description": "Final visible 1-based line number.",
+                "title": "End",
+                "type": "integer"
+              },
+              "start": {
+                "description": "First visible 1-based line number.",
+                "title": "Start",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "title": "LineRange",
+            "type": "object"
+          },
+          "ReadFileOutput": {
+            "description": "UTF-8 text file content plus edit-grounding metadata.",
+            "properties": {
+              "bytes": {
+                "description": "Total file size in bytes.",
+                "title": "Bytes",
+                "type": "integer"
+              },
+              "bytes_read": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Number of bytes read into the text response, when applicable.",
+                "title": "Bytes Read"
+              },
+              "content": {
+                "description": "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing.",
+                "title": "Content",
+                "type": "string"
+              },
+              "end_line": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Final original 1-based line number returned in lines, or null when no lines were returned.",
+                "title": "End Line"
+              },
+              "file_sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "SHA-256 digest of the complete file at the time it was read.",
+                "title": "File Sha256"
+              },
+              "line_count": {
+                "default": 0,
+                "description": "Number of decoded text lines returned in lines and grounded numbered_content.",
+                "title": "Line Count",
+                "type": "integer"
+              },
+              "lines": {
+                "description": "Returned lines with original 1-based line numbers for precise follow-up edits.",
+                "items": {
+                  "$ref": "#/$defs/ReadLine"
+                },
+                "title": "Lines",
+                "type": "array"
+              },
+              "numbered_content": {
+                "default": "",
+                "description": "Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows.",
+                "title": "Numbered Content",
+                "type": "string"
+              },
+              "path": {
+                "description": "Workspace-relative file path that was read.",
+                "title": "Path",
+                "type": "string"
+              },
+              "seen_ranges": {
+                "description": "Inclusive original line ranges that were actually shown and are eligible for grounded line edits.",
+                "items": {
+                  "$ref": "#/$defs/LineRange"
+                },
+                "title": "Seen Ranges",
+                "type": "array"
+              },
+              "session_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Explicit agent/workspace session that recorded this read, or null when no grounding snapshot was recorded.",
+                "title": "Session Id"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Opaque handle for this displayed file snapshot, used by line-based edit tools to reject stale edits.",
+                "title": "Snapshot Id"
+              },
+              "start_line": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "First original 1-based line number returned in lines, or null when no lines were returned.",
+                "title": "Start Line"
+              },
+              "total_lines": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Total decoded text line count before optional line-range selection.",
+                "title": "Total Lines"
+              },
+              "truncated": {
+                "default": false,
+                "description": "Whether text content was truncated to fit the read limit.",
+                "title": "Truncated",
+                "type": "boolean"
+              },
+              "truncated_bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Number of file bytes omitted due to the read limit, when applicable.",
+                "title": "Truncated Bytes"
+              }
+            },
+            "required": [
+              "path",
+              "bytes",
+              "content"
+            ],
+            "title": "ReadFileOutput",
+            "type": "object"
+          },
+          "ReadLine": {
+            "description": "One decoded line with its original file line number.",
+            "properties": {
+              "line": {
+                "description": "Original 1-based line number in the file.",
+                "title": "Line",
+                "type": "integer"
+              },
+              "text": {
+                "description": "Line text without its trailing newline.",
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "line",
+              "text"
+            ],
+            "title": "ReadLine",
+            "type": "object"
+          }
+        },
+        "description": "Grounded whole-line edit result.",
+        "properties": {
+          "context": {
+            "$ref": "#/$defs/ReadFileOutput",
+            "description": "Numbered post-edit context around the changed line range, including a fresh snapshot_id."
+          },
+          "diff": {
+            "description": "Unified diff for the applied line edit.",
+            "title": "Diff",
+            "type": "string"
+          },
+          "end_line": {
+            "description": "Original 1-based final line replaced by this edit.",
+            "title": "End Line",
+            "type": "integer"
+          },
+          "path": {
+            "description": "Workspace-relative file path that was edited.",
+            "title": "Path",
+            "type": "string"
+          },
+          "replacement_line_count": {
+            "description": "Number of replacement lines inserted for the selected range.",
+            "title": "Replacement Line Count",
+            "type": "integer"
+          },
+          "start_line": {
+            "description": "Original 1-based first line replaced by this edit.",
+            "title": "Start Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "start_line",
+          "end_line",
+          "replacement_line_count",
+          "diff",
+          "context"
+        ],
+        "title": "EditLinesOutput",
         "type": "object"
       }
     },

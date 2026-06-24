@@ -3,6 +3,7 @@
 from ...ops.files import (
     delete_file_or_dir_dispatch_execute,
     edit_lines_dispatch_execute,
+    hashline_edit_dispatch_execute,
     list_files_dispatch_execute,
     write_file_dispatch_execute,
 )
@@ -11,6 +12,7 @@ from ...schemas.input_models.files import (
     EditStartLineArg,
     FileContentArg,
     FilePathArg,
+    HashlineEditInputArg,
     LineReplacementArg,
     ListPathArg,
     MaxEntriesArg,
@@ -51,7 +53,12 @@ def _write_file_description(context: McpToolContext) -> str:
 
 def _edit_lines_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read` or `search` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for structured code edits when you already know path/start/end/replacement. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
+
+
+def _hashline_edit_description(context: McpToolContext) -> str:
+    settings = context.settings
+    return f"""Apply a compact grounded edit copied from `read` or `search` output. The input must start with `[path#snapshot_id]`; then use copied `line:text` rows followed by `+replacement` rows, `SWAP start[-end]:` plus replacement rows, or `INSERT [BEFORE|AFTER] line:` plus inserted rows. Use this when editing from the hashline text the model just saw. Keep edits small; stale files, wrong paths, or unseen ranges are rejected. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 @local_tool(
@@ -113,6 +120,20 @@ async def edit_lines(
         snapshot_id,
         session_id,
     )
+
+
+@local_tool(
+    http_method="POST",
+    http_path="/tools/hashline_edit",
+    description=_hashline_edit_description,
+    mcp_scopes=("shell:read", "shell:write"),
+)
+async def hashline_edit(
+    session_id: SessionIdArg,
+    input: HashlineEditInputArg,
+) -> EditLinesOutput:
+    """Apply a compact hashline edit copied from read/search output."""
+    return await hashline_edit_dispatch_execute(input, session_id)
 
 
 @local_tool(

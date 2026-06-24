@@ -7,8 +7,10 @@ from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.files import (
     edit_file_execute,
     edit_lines_execute,
+    hashline_edit_execute,
     list_files_execute,
     multi_edit_file_execute,
+    parse_hashline_edit_input,
     read_file_execute,
     read_many_files_execute,
     write_file_execute,
@@ -334,3 +336,136 @@ def test_edit_lines_rejects_unseen_snapshot_range(tmp_path, monkeypatch):
             snapshot_id=read_result.snapshot_id,
             session_id=read_result.session_id,
         )
+
+
+def test_hashline_edit_replaces_copied_line_rows(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=2, end_line=2, session_id=session_id
+    )
+
+    result = hashline_edit_execute(
+        f"[edit.py#{read_result.snapshot_id}]\n2:beta\n+BETA",
+        session_id=session_id,
+    )
+
+    assert (tmp_path / "edit.py").read_text(encoding="utf-8") == (
+        "alpha\nBETA\ngamma\n"
+    )
+    assert result.start_line == 2
+    assert result.end_line == 2
+    assert result.context.numbered_content.startswith("[edit.py#")
+    assert result.context.snapshot_id != read_result.snapshot_id
+
+
+def test_hashline_edit_deletes_when_no_replacement_lines(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=2, end_line=2, session_id=session_id
+    )
+
+    hashline_edit_execute(
+        f"[edit.py#{read_result.snapshot_id}]\n2:beta",
+        session_id=session_id,
+    )
+
+    assert (tmp_path / "edit.py").read_text(encoding="utf-8") == (
+        "alpha\ngamma\n"
+    )
+
+
+def test_hashline_edit_supports_swap_directive(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=2, end_line=3, session_id=session_id
+    )
+
+    hashline_edit_execute(
+        f"[edit.py#{read_result.snapshot_id}]\nSWAP 2-3:\n+BETA\n+GAMMA",
+        session_id=session_id,
+    )
+
+    assert (tmp_path / "edit.py").read_text(encoding="utf-8") == (
+        "alpha\nBETA\nGAMMA\n"
+    )
+
+
+def test_hashline_edit_supports_insert_directive(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "edit.py").write_text("alpha\nbeta\n", encoding="utf-8")
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=2, end_line=2, session_id=session_id
+    )
+
+    hashline_edit_execute(
+        f"[edit.py#{read_result.snapshot_id}]\nINSERT BEFORE 2:\n+inserted",
+        session_id=session_id,
+    )
+
+    assert (tmp_path / "edit.py").read_text(encoding="utf-8") == (
+        "alpha\ninserted\nbeta\n"
+    )
+
+
+def test_hashline_edit_accepts_workspace_relative_header_from_nested_session(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "edit.py").write_text("alpha\nbeta\n", encoding="utf-8")
+    store = get_tool_session_store()
+    store.clear()
+    session_id = store.create_session(workdir="project").session_id
+    read_result = read_file_execute(
+        "edit.py", start_line=2, end_line=2, session_id=session_id
+    )
+
+    assert read_result.path == "project/edit.py"
+    payload = (
+        "[project/edit.py#"
+        + str(read_result.snapshot_id)
+        + "]"
+        + chr(10)
+        + "2:beta"
+        + chr(10)
+        + "+BETA"
+    )
+    hashline_edit_execute(payload, session_id=session_id)
+
+    assert (project / "edit.py").read_text(encoding="utf-8") == (
+        "alpha\nBETA\n"
+    )
+
+
+def test_hashline_edit_rejects_mismatched_old_text(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "edit.py").write_text("alpha\nbeta\n", encoding="utf-8")
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=2, end_line=2, session_id=session_id
+    )
+
+    with pytest.raises(ValueError, match="old text does not match"):
+        hashline_edit_execute(
+            f"[edit.py#{read_result.snapshot_id}]\n2:not beta\n+BETA",
+            session_id=session_id,
+        )
+
+
+def test_parse_hashline_edit_rejects_non_consecutive_rows():
+    with pytest.raises(ValueError, match="consecutive"):
+        parse_hashline_edit_input("[a.txt#snap]\n2:b\n4:d\n+x")

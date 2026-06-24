@@ -2,8 +2,10 @@
 
 import codecs
 import difflib
+import re
 import shutil
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from ..config.settings import get_settings
 from ..schemas.input_models.files import ReadFileRequest
@@ -25,7 +27,7 @@ from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
 )
-from .utils.path import relative_display, resolve_path
+from .utils.path import relative_display, resolve_path, workspace_root
 from .utils.remote_session import call_remote_session_tool
 
 
@@ -364,6 +366,228 @@ def _range_is_visible(
     )
 
 
+_HASHLINE_HEADER_RE = re.compile(r"^\[(?P<path>.+)#(?P<snapshot>[^\]]+)\]$")
+_HASHLINE_ROW_RE = re.compile(r"^(?P<line>\d+):(?P<text>.*)$")
+_HASHLINE_SWAP_RE = re.compile(
+    r"^SWAP\s+(?P<start>\d+)(?:-(?P<end>\d+))?:\s*$", re.IGNORECASE
+)
+_HASHLINE_INSERT_RE = re.compile(
+    r"^INSERT(?:\s+(?P<where>BEFORE|AFTER))?\s+(?P<line>\d+):\s*$",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class _ParsedHashlineEdit:
+    """Parsed hashline replacement or deletion operation."""
+
+    path: str
+    snapshot_id: str
+    start_line: int
+    end_line: int
+    replacement: str
+    expected_lines: tuple[ReadLine, ...] = ()
+
+
+@dataclass(frozen=True)
+class _ParsedHashlineInsert:
+    """Parsed hashline insertion anchored on a visible line."""
+
+    path: str
+    snapshot_id: str
+    anchor_line: int
+    insert_after: bool
+    inserted_lines: tuple[str, ...]
+
+
+type _ParsedHashlineOperation = _ParsedHashlineEdit | _ParsedHashlineInsert
+
+
+def _hashline_replacement_text(lines: Sequence[str]) -> str:
+    """Convert plus-prefixed hashline payload rows into edit_lines replacement text."""
+    if not lines:
+        return ""
+    text = "\n".join(lines)
+    if lines[-1] == "":
+        text += "\n"
+    return text
+
+
+def _hashline_plus_lines(
+    lines: Sequence[str], *, require: bool
+) -> tuple[str, ...]:
+    """Return replacement payload lines after stripping one leading '+'."""
+    if require and not lines:
+        raise ValueError(
+            "hashline edit requires at least one + replacement line"
+        )
+    for line in lines:
+        if not line.startswith("+"):
+            raise ValueError("hashline replacement lines must start with '+'")
+    return tuple(line[1:] for line in lines)
+
+
+def _parse_hashline_header(input_text: str) -> tuple[str, str, list[str]]:
+    """Parse and remove the [path#snapshot] header from hashline edit input."""
+    lines = [line.rstrip("\r") for line in input_text.splitlines()]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        raise ValueError("hashline edit input is empty")
+    match = _HASHLINE_HEADER_RE.match(lines[0].strip())
+    if match is None:
+        raise ValueError(
+            "hashline edit input must start with [path#snapshot_id]"
+        )
+    body = lines[1:]
+    if not body:
+        raise ValueError("hashline edit input must include an edit hunk")
+    return match.group("path"), match.group("snapshot"), body
+
+
+def parse_hashline_edit_input(input_text: str) -> _ParsedHashlineOperation:
+    """Parse the compact hashline edit format accepted by hashline_edit."""
+    path, snapshot_id, body = _parse_hashline_header(input_text)
+
+    swap_match = _HASHLINE_SWAP_RE.match(body[0].strip())
+    if swap_match is not None:
+        start_line = int(swap_match.group("start"))
+        end_line = int(swap_match.group("end") or start_line)
+        if end_line < start_line:
+            raise ValueError("SWAP end line must be >= start line")
+        plus_lines = _hashline_plus_lines(body[1:], require=False)
+        return _ParsedHashlineEdit(
+            path=path,
+            snapshot_id=snapshot_id,
+            start_line=start_line,
+            end_line=end_line,
+            replacement=_hashline_replacement_text(plus_lines),
+        )
+
+    insert_match = _HASHLINE_INSERT_RE.match(body[0].strip())
+    if insert_match is not None:
+        plus_lines = _hashline_plus_lines(body[1:], require=True)
+        where = (insert_match.group("where") or "BEFORE").upper()
+        return _ParsedHashlineInsert(
+            path=path,
+            snapshot_id=snapshot_id,
+            anchor_line=int(insert_match.group("line")),
+            insert_after=where == "AFTER",
+            inserted_lines=plus_lines,
+        )
+
+    old_lines: list[ReadLine] = []
+    replacement_start = len(body)
+    for index, line in enumerate(body):
+        if line.startswith("+"):
+            replacement_start = index
+            break
+        row_match = _HASHLINE_ROW_RE.match(line)
+        if row_match is None:
+            raise ValueError(
+                "hashline old lines must use '<line>:<text>' rows copied from read/search output"
+            )
+        old_lines.append(
+            ReadLine(
+                line=int(row_match.group("line")),
+                text=row_match.group("text"),
+            )
+        )
+    if not old_lines:
+        raise ValueError("hashline edit must include old lines or a directive")
+    expected_line = old_lines[0].line
+    for old_line in old_lines:
+        if old_line.line != expected_line:
+            raise ValueError("hashline old lines must be consecutive")
+        expected_line += 1
+    plus_lines = _hashline_plus_lines(body[replacement_start:], require=False)
+    return _ParsedHashlineEdit(
+        path=path,
+        snapshot_id=snapshot_id,
+        start_line=old_lines[0].line,
+        end_line=old_lines[-1].line,
+        replacement=_hashline_replacement_text(plus_lines),
+        expected_lines=tuple(old_lines),
+    )
+
+
+def _path_for_hashline_operation(
+    path: str, snapshot_id: str, session_id: str | None
+) -> str:
+    """Return a path usable by edit_lines, preserving copied read/search headers."""
+    if session_id is None:
+        return path
+    store = get_tool_session_store()
+    session = store.touch_session(session_id)
+    if session.target != "local":
+        return path
+    record = store.get_snapshot(session_id, snapshot_id)
+    if record is None or record.path != path:
+        return path
+    candidate = workspace_root() / record.path
+    if candidate.exists():
+        return str(candidate)
+    return path
+
+
+def _current_hashline_texts(
+    path: str,
+    start_line: int,
+    end_line: int,
+    session_id: str | None,
+) -> list[str]:
+    """Read current line text for hashline validation or insertion anchoring."""
+    store = get_tool_session_store()
+    session = (
+        store.touch_session(session_id) if session_id is not None else None
+    )
+    p = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
+    lines = p.read_text(encoding="utf-8").splitlines()
+    if start_line < 1:
+        raise ValueError("line numbers must be >= 1")
+    if end_line > len(lines):
+        raise ValueError(
+            f"line {end_line} is beyond file line count {len(lines)}"
+        )
+    return lines[start_line - 1 : end_line]
+
+
+def _validate_hashline_expected_lines(
+    path: str, expected_lines: Sequence[ReadLine], session_id: str | None
+) -> None:
+    """Reject direct hashline edits when copied old text no longer matches."""
+    if not expected_lines:
+        return
+    current = _current_hashline_texts(
+        path, expected_lines[0].line, expected_lines[-1].line, session_id
+    )
+    expected = [line.text for line in expected_lines]
+    if current != expected:
+        raise ValueError(
+            "hashline old text does not match current file; re-read before editing"
+        )
+
+
+def _hashline_insert_replacement(
+    path: str, operation: _ParsedHashlineInsert, session_id: str | None
+) -> str:
+    """Build a replacement range for an insert anchored on a visible line."""
+    anchor_text = _current_hashline_texts(
+        path, operation.anchor_line, operation.anchor_line, session_id
+    )[0]
+    if operation.insert_after:
+        lines = (anchor_text, *operation.inserted_lines)
+    else:
+        lines = (*operation.inserted_lines, anchor_text)
+    return _hashline_replacement_text(lines)
+
+
 def _validate_snapshot_for_edit(
     *,
     path: str,
@@ -426,6 +650,38 @@ def edit_file_execute(
     p.write_text(updated, encoding="utf-8")
     return EditFileOutput(
         path=relative_display(p), replacements=count if replace_all else 1
+    )
+
+
+def hashline_edit_execute(
+    input_text: str, session_id: str | None = None
+) -> EditLinesOutput:
+    """Apply a compact hashline edit by reusing edit_lines grounding checks."""
+    operation = parse_hashline_edit_input(input_text)
+    path = _path_for_hashline_operation(
+        operation.path, operation.snapshot_id, session_id
+    )
+    if isinstance(operation, _ParsedHashlineInsert):
+        replacement = _hashline_insert_replacement(path, operation, session_id)
+        return edit_lines_execute(
+            path,
+            operation.anchor_line,
+            operation.anchor_line,
+            replacement,
+            operation.snapshot_id,
+            session_id,
+        )
+
+    _validate_hashline_expected_lines(
+        path, operation.expected_lines, session_id
+    )
+    return edit_lines_execute(
+        path,
+        operation.start_line,
+        operation.end_line,
+        operation.replacement,
+        operation.snapshot_id,
+        session_id,
     )
 
 
@@ -525,6 +781,23 @@ def edit_lines_execute(
         diff=diff,
         context=context,
     )
+
+
+async def hashline_edit_dispatch_execute(
+    input_text: str, session_id: str | None = None
+) -> EditLinesOutput:
+    """Dispatch hashline_edit to a local or remote session."""
+    if session_id is None:
+        return hashline_edit_execute(input_text, session_id)
+    session = get_tool_session_store().touch_session(session_id)
+    if session.target == "remote":
+        data = await call_remote_session_tool(
+            session,
+            "hashline_edit",
+            {"input": input_text},
+        )
+        return EditLinesOutput.model_validate(data)
+    return hashline_edit_execute(input_text, session_id)
 
 
 async def edit_lines_dispatch_execute(

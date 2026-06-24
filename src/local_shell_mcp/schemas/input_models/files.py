@@ -72,6 +72,14 @@ SnapshotIdArg = Annotated[
 ]
 
 
+HashlineEditInputArg = Annotated[
+    str,
+    Field(
+        description="Compact edit text starting with [path#snapshot_id], followed by copied line rows and + replacement lines or SWAP/INSERT directives."
+    ),
+]
+
+
 class ReadFileRequest(BaseModel):
     """One UTF-8 file read request with an optional per-file line range."""
 

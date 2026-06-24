@@ -51,6 +51,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "glob_search",
     "write_file",
     "edit_lines",
+    "hashline_edit",
     "delete_file_or_dir",
     "create_file_link",
     "list_file_links",

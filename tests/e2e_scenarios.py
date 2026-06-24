@@ -22,6 +22,7 @@ CORE_TOOL_NAMES = {
     "tree_view",
     "glob_search",
     "write_file",
+    "hashline_edit",
     "delete_file_or_dir",
     "secret_scan",
     "run_python_code",
@@ -115,6 +116,22 @@ async def exercise_explicit_session_workflow(
     assert "+needle two" in edit_result["diff"]
     assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
         "alpha\nneedle two\ngamma\n"
+    )
+
+    hash_read = await client.call_tool(
+        "read", {"session_id": session_id, "path": "notes.txt:2-2"}
+    )
+    hash_snapshot = hash_read["file"]["snapshot_id"]
+    hash_edit = await client.call_tool(
+        "hashline_edit",
+        {
+            "session_id": session_id,
+            "input": f"[notes.txt#{hash_snapshot}]\n2:needle two\n+needle three",
+        },
+    )
+    assert "+needle three" in hash_edit["diff"]
+    assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
+        "alpha\nneedle three\ngamma\n"
     )
 
     other_dir = workspace / "other-work"
