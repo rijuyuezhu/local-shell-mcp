@@ -152,7 +152,7 @@ Comparison baseline:
 
 - `read(session_id, path)` is explicit-session and filesystem/workspace oriented.
 - File output uses hashline-style grounding: `[path#snapshot_id]` plus `line:text` rows, with metadata including `session_id`, `snapshot_id`, seen ranges, and truncation state.
-- Supported selectors are deliberately small: `path:50`, `path:50-80`, `path:50+20`, `path:raw`, and `path:50-80:raw`.
+- Supported selectors are deliberately small but now include multi-range file windows: `path:50`, `path:50-80`, `path:50+20`, `path:5-16,960-973`, `path:raw`, `path:50-80:raw`, and `path:5-16,960-973:raw`.
 - Directory listing is available through `read` and also through specialized tools such as `list_files`, `tree_view`, and `glob_search`.
 
 `oh-my-pi` read is broader and more integrated:
@@ -169,9 +169,9 @@ Practical delta: `local-shell-mcp` has the core editable read grounding, but `oh
 
 `local-shell-mcp` search:
 
-- `search(session_id, pattern, paths?, regex=true, case_sensitive=true, max_results?)` is a direct workspace text/code search.
-- Results carry hashline grounding usable by both `hashline_edit` and `edit_lines`.
-- `paths` can scope files/directories/globs, and results include grouped context, snapshot metadata, and displayed ranges.
+- `search(session_id, pattern, paths?, regex=true, case_sensitive=true, max_results?, skip=0, gitignore=true)` is a direct workspace text/code search.
+- Results carry hashline grounding usable by both `hashline_edit` and `edit_lines`; `matches` stays actual matches only, while `displayed_lines.kind` marks editable displayed rows as `match` or `context`.
+- `paths` can scope files/directories/globs and concrete file line selectors; search also supports skip pagination and explicit gitignore control.
 
 `oh-my-pi` search:
 
@@ -424,22 +424,38 @@ Use this prompt to continue in a fresh context:
 ```text
 继续 local-shell-mcp 的 agent-facing read/search/edit tool-surface grounding 重构。请用中文和我沟通，保持客观、直接。
 
-项目根目录是 `/workspace/local-shell-mcp`，分支是 `feat/oh-my-pi-style-grounding`，远端分支同名。唯一信源是：`/workspace/local-shell-mcp/docs/maintenance/agent-tool-surface-grounding.md`。请先读取这个文件，再检查 `git status --short --branch`、最近 commits、branch diff、是否有关联 PR、以及最新 GitHub Actions Docs/CI 状态，然后从该文件的 “Planned follow-up slices selected by the user” 继续。
+项目根目录是 `/workspace/local-shell-mcp`，分支是 `feat/oh-my-pi-style-grounding`，远端分支同名。唯一信源是：`/workspace/local-shell-mcp/docs/maintenance/agent-tool-surface-grounding.md`。请先读取这个文件，再检查 `git status --short --branch`、最近 commits、branch diff、是否有关联 PR、以及最新 GitHub Actions Docs/CI 状态，然后只继续该文件中的 Slice E。
 
-当前已完成状态：
+当前最新状态：
+- 最新 commit 是 `f0cc1af feat: support multi-range read selectors`，已 push 到 `origin/feat/oh-my-pi-style-grounding`。
+- 该 commit 的 GitHub Actions 已绿：Docs `28086743238` success，CI `28086743220` success。
+- 当前没有关联 PR：`gh pr list --head feat/oh-my-pi-style-grounding --json number,title,state,url` 返回 `[]`。
 - `read` / `search` 已输出 hashline-style grounding：`[path#snapshot_id]` plus `line:text` rows。
-- `search(session_id, pattern, paths?, ..., skip=0)` 已支持 `skip` 分页；`paths` 已支持 concrete file line selectors，如 `src/app.py:50-80,100+10`。
-- `hashline_edit(session_id, input)` 已实现、测试、生成引用、写入 model-facing instructions/docs，并作为 copied hashline text 的默认编辑流程。
+- `hashline_edit(session_id, input)` 是 copied hashline text 的默认编辑流程，已支持 multi-hunk / repeated header / multi-file sections，并保留 stale snapshot、seen range、old-text validation。
+- `search` 已支持 `skip` pagination、line-scoped `paths`、match/context `displayed_lines.kind`、以及 `gitignore: bool = true` 控制。
+- `read` 已支持单文件 multi-range selectors，例如 `file.py:5-16,960-973` 和 `file.py:5-16,960-973:raw`。
 - `edit_lines` 必须保留，作为已有 path/start/end/replacement 参数时的结构化低层精确编辑工具。
 - 远端 worker e2e 已覆盖 first-class remote session 下的 `hashline_edit`，同时保留 `edit_lines` 远端覆盖。
-- 唯一信源中已经记录了当前 `local-shell-mcp` 与当前 `oh-my-pi` 的 read/edit/search 对比结论。
 
-用户已明确选择要继续补五个目标，但不要一次性混在一个大改里。按小 slice 逐个实现：
-1. `hashline_edit` multi-hunk input。
-2. search match/context output markers。
-3. explicit `search` gitignore control。
-4. `read` multi-range selectors。
-5. stronger model-facing critical rules。
+下一步只做 Slice E — stronger model-facing critical rules。目标是强化当前工具描述和 MCP/server instructions，让 agent 更可靠地使用 `read` / `search` / `hashline_edit`，但不要添加新能力。
 
-不要重新设计已经完成的实现。做任何新 slice 时，保持 model-facing 描述只描述当前可用能力；不要在工具描述或 generated instructions 里提 oh-my-pi、future/planned 能力或内部架构词。每完成一个 slice，运行相关 focused tests、必要的 generated reference check、pyright/pytest 或 mkdocs，commit、push、看 CI，并更新唯一信源。
+Slice E 范围：
+- 添加简洁、高信号规则到当前 tool descriptions 和 MCP/server instructions。
+- 强调需要可编辑 grounding 的内容搜索时使用内置 `search`，不要 shell grep/ripgrep。
+- 强调 `hashline_edit` body rows 是最终内容；编辑范围要紧；snapshot/tag 必须复制，不得编造；每次 edit 后必须用返回的新 context 或重新 `read` / `search` re-ground。
+- 明确 `write_file` 只用于新文件或有意整文件替换。
+- 保持描述短，不要写成外部项目那种长 prompt。
+
+Slice E 禁止事项：
+- 不添加新的 edit/search/read 能力。
+- 不在 model-facing tool descriptions、generated instructions、schemas 中提 oh-my-pi、future/planned 能力或内部架构词。
+- 不要重新设计或重写已经完成的 Slice A-D。
+
+完成 Slice E 后必须：
+- 跑相关 focused tests，至少覆盖 `tests/test_tool_surface.py` 和 generated reference tests。
+- 如果改了 descriptions / schemas / instructions，运行：
+  `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json`
+  以及同命令的 `--check`。
+- 运行 `uv run pyright`，并根据改动范围决定是否跑 `uv run pytest` 和/或 `uv run mkdocs build --strict`。
+- commit、push、检查 GitHub Actions Docs/CI，并更新唯一信源。
 ```
