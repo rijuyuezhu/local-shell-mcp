@@ -4,7 +4,6 @@ Security model: see ``docs/security.md#oauth-security``. This middleware is the
 resource-server boundary for tool and MCP requests.
 """
 
-from dataclasses import dataclass
 from typing import Any
 
 import jwt
@@ -13,7 +12,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..audit import audit
-from ..config.settings import Settings, get_settings
+from ..config.settings import get_settings
 from .tokens import validate_bearer_token
 from .urls import protected_resource_metadata_url
 
@@ -29,18 +28,6 @@ PUBLIC_PATHS = {
     "/remote/poll",
     "/remote/result",
 }
-
-
-@dataclass
-class Principal:
-    """Authenticated caller identity attached to requests after local bypass or OAuth verification."""
-
-    email: str | None
-    """Authenticated caller email address when present in token claims."""
-    subject: str | None
-    """Stable subject identifier for the authenticated caller."""
-    claims: dict[str, Any]
-    """Validated bearer token claims or localhost-bypass identity metadata."""
 
 
 def _client_host(request: Request) -> str:
@@ -73,8 +60,8 @@ def _bearer_challenge(request: Request, *, error: str | None = None) -> str:
     return "Bearer " + ", ".join(parts)
 
 
-def _verify_oauth(request: Request, settings: Settings) -> Principal:
-    """Validate an OAuth bearer token and return the subject claims used by downstream handlers."""
+def _verify_oauth(request: Request) -> dict[str, Any]:
+    """Validate an OAuth bearer token and return its claims."""
     token = _extract_token(request)
     if not token:
         raise HTTPException(
@@ -102,29 +89,23 @@ def _verify_oauth(request: Request, settings: Settings) -> Principal:
                 )
             },
         ) from exc
-    return Principal(email=None, subject=claims.get("sub"), claims=claims)
+    return claims
 
 
-def verify_request(request: Request) -> Principal:
-    """Resolve the effective principal for a request according to configured auth mode and local bypass rules."""
+def verify_request(request: Request) -> None:
+    """Verify a request according to configured auth mode and local bypass rules."""
     settings = get_settings()
     match settings.auth_mode:
         case "none":
-            return Principal(
-                email=None, subject="anonymous", claims={"auth": "none"}
-            )
+            return
         case "oauth" if (
             settings.auth_bypass_localhost
             and _is_localhost(request)
             and settings.mode == "http"
         ):
-            return Principal(
-                email="localhost",
-                subject="localhost",
-                claims={"auth": "localhost-bypass"},
-            )
+            return
         case "oauth":
-            principal = _verify_oauth(request, settings)
+            claims = _verify_oauth(request)
         case _:
             raise HTTPException(
                 status_code=500,
@@ -132,11 +113,11 @@ def verify_request(request: Request) -> Principal:
             )
     audit(
         "auth_ok",
-        subject=principal.subject,
+        subject=claims.get("sub"),
         path=str(request.url.path),
         ip=_client_host(request),
     )
-    return principal
+    return
 
 
 class AuthMiddleware:
@@ -148,7 +129,7 @@ class AuthMiddleware:
     async def __call__(
         self, scope: Scope, receive: Receive, send: Send
     ) -> None:
-        """Apply public-route bypasses and principal injection for protected HTTP requests."""
+        """Apply public-route bypasses and bearer verification for protected HTTP requests."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -167,8 +148,7 @@ class AuthMiddleware:
 
         try:
             request = Request(scope, receive)
-            principal = verify_request(request)
-            scope.setdefault("state", {})["principal"] = principal
+            verify_request(request)
         except HTTPException as exc:
             headers = exc.headers or {}
             response = JSONResponse(
