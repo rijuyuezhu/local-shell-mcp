@@ -774,6 +774,28 @@ def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
     assert claims["client_id"] == "test-client"
 
 
+def test_oauth_authorize_form_is_mobile_friendly(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    response = _authorize_form(
+        {
+            "client_id": "client",
+            "redirect_uri": "https://example.test/callback",
+            "resource": "https://resource.test/mcp",
+            "scope": "shell:read",
+        }
+    )
+    body = bytes(response.body).decode("utf-8")
+
+    assert (
+        'name="viewport" content="width=device-width, initial-scale=1"' in body
+    )
+    assert "Only approve this request if you initiated this connection." in body
+    assert 'autocomplete="one-time-code"' in body
+    assert "overflow-wrap: anywhere" in body
+
+
 def test_oauth_authorize_form_escapes_reflected_fields(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
