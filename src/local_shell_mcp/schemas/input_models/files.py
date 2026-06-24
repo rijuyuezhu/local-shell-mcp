@@ -67,7 +67,7 @@ LineReplacementArg = Annotated[
 SnapshotIdArg = Annotated[
     str | None,
     Field(
-        description="Optional snapshot_id returned by read or search. When provided, the edit is rejected if the file changed or the line range was not shown."
+        description="Optional snapshot_id returned by read or search; copy it exactly, do not invent it. When provided, the edit is rejected if the file changed or the line range was not shown."
     ),
 ]
 
@@ -75,7 +75,7 @@ SnapshotIdArg = Annotated[
 HashlineEditInputArg = Annotated[
     str,
     Field(
-        description="Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT directives. Separate multiple non-overlapping hunks with blank lines or repeated headers."
+        description="Hashline edit text starting with [path#snapshot_id]. Copy the header/tag and displayed line:text rows from read/search; do not invent snapshot ids. Add + final-content rows, or use SWAP/INSERT directives. Separate multiple non-overlapping hunks with blank lines or repeated headers."
     ),
 ]
 

@@ -170,6 +170,8 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
     assert "`[path#snapshot_id]` plus `line:text` rows" in mcp.instructions
     assert "`hashline_edit` as the default edit tool" in mcp.instructions
     assert "Body rows are final content only" in mcp.instructions
+    assert "never invent or reuse them from memory" in mcp.instructions
+    assert "new `read`/`search` after each edit" in mcp.instructions
     assert "Use `edit_lines` only when" in mcp.instructions
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
@@ -195,13 +197,17 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
     assert "path:5-16,960-973" in descriptions["read"]
     assert "ordered and non-overlapping" in descriptions["read"]
     assert "instead of shell grep/ripgrep" in descriptions["search"]
+    assert "editable grounding" in descriptions["search"]
     assert "copied into hashline_edit" in descriptions["search"]
     assert "gitignore defaults to true" in descriptions["search"]
     assert "gitignore=false" in descriptions["search"]
     assert "use hashline_edit" in descriptions["write_file"]
+    assert "do not use it for partial edits" in descriptions["write_file"]
     assert "Low-level structured line edit" in descriptions["edit_lines"]
     assert "Default model-facing edit tool" in descriptions["hashline_edit"]
+    assert "never invent snapshot ids/tags" in descriptions["hashline_edit"]
     assert "Body rows are final content only" in descriptions["hashline_edit"]
+    assert "After every edit" in descriptions["hashline_edit"]
     assert (
         "hashline_edit when editing copied read/search rows"
         in descriptions["bash"]
