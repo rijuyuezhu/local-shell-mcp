@@ -1,13 +1,17 @@
 """Build and run the MCP server."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
+from starlette.routing import BaseRoute, Mount
 
 from ...config.settings import get_settings
 from ...oauth.middleware import AuthMiddleware
-from ...oauth.routes import wrap_http_app
+from ...oauth.routes import oauth_public_routes
 from ...remote.http import remote_routes
 from ...tools.contracts import McpToolContext
 from ...tools.discovery import discover_tool_registries
@@ -59,25 +63,42 @@ def build_mcp() -> FastMCP:
     return mcp
 
 
+def _wrap_mcp_http_app(inner_app: Starlette) -> Starlette:
+    """Wrap the SDK MCP ASGI app with public routes before mounting it."""
+    settings = get_settings()
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncGenerator[None]:
+        async with inner_app.router.lifespan_context(inner_app):
+            yield
+
+    routes: list[BaseRoute] = [
+        *public_http_routes(
+            settings,
+            readyz_include_workspace_root=False,
+        ),
+        *(remote_routes() if settings.remote_enabled else ()),
+        *oauth_public_routes(),
+        Mount("/", app=inner_app),
+    ]
+    return Starlette(routes=routes, lifespan=lifespan)
+
+
+def _build_mcp_http_transport_app(inner_app: Starlette) -> Starlette:
+    """Build one MCP HTTP transport app from a FastMCP SDK ASGI app."""
+    settings = get_settings()
+    app = _wrap_mcp_http_app(inner_app)
+    if settings.auth_mode != "none":
+        app.add_middleware(AuthMiddleware)
+    return app
+
+
 def build_mcp_http_app(mcp: FastMCP) -> Starlette:
     """Build the MCP HTTP ASGI app for the current settings and SDK version."""
-    settings = get_settings()
     for attr in ("streamable_http_app", "sse_app"):
         if hasattr(mcp, attr):
             inner: Starlette = getattr(mcp, attr)()
-            app = wrap_http_app(
-                inner,
-                extra_routes=(
-                    *public_http_routes(
-                        settings,
-                        readyz_include_workspace_root=False,
-                    ),
-                    *(remote_routes() if settings.remote_enabled else ()),
-                ),
-            )
-            if settings.auth_mode != "none":
-                app.add_middleware(AuthMiddleware)
-            return app
+            return _build_mcp_http_transport_app(inner)
     raise RuntimeError(
         "MCP HTTP ASGI app not available since both streamable_http_app and sse_app are not available"
     )

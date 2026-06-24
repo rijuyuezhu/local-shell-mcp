@@ -4,14 +4,23 @@ import uvicorn
 from fastapi import FastAPI
 
 from ... import __version__
-from ...config.settings import get_settings
+from ...config.settings import Settings, get_settings
 from ...oauth.middleware import AuthMiddleware
-from ..shared.public_routes import install_public_http_routes
+from ...oauth.routes import oauth_public_routes
+from ..shared.public_routes import public_http_routes
 from .errors import install_error_handlers
 from .tool_routes import (
     install_tools_timeout_middleware,
     register_http_tool_routes,
 )
+
+
+def _install_public_routes(app: FastAPI, settings: Settings) -> None:
+    """Install public non-tool routes for the REST app."""
+    app.router.routes.extend(
+        public_http_routes(settings, readyz_include_workspace_root=True)
+    )
+    app.router.routes.extend(oauth_public_routes())
 
 
 def build_http_app() -> FastAPI:
@@ -23,7 +32,7 @@ def build_http_app() -> FastAPI:
 
     install_error_handlers(app)
     install_tools_timeout_middleware(app)
-    install_public_http_routes(app, settings)
+    _install_public_routes(app, settings)
     register_http_tool_routes(app)
     return app
 
