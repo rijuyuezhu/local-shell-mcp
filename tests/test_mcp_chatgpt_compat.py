@@ -316,6 +316,10 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
         ]
     )
     assert (
+        "line-scoped file selector"
+        in search_tool.inputSchema["properties"]["paths"]["description"]
+    )
+    assert (
         "page through noisy searches"
         in search_tool.inputSchema["properties"]["skip"]["description"]
     )

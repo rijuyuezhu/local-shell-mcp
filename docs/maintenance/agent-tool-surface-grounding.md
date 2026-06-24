@@ -107,13 +107,26 @@ This file is the single source of truth for the current agent-facing read/search
   - `uv run pyright .` passed: 0 errors, 0 warnings, 0 informations.
   - `uv run pytest -q` passed: 269 passed, 1 warning.
 
+
+### `feat: add line-scoped search paths`
+
+- Added line-scoped concrete file selectors to `search` paths, e.g. `paths="src/app.py:50-80"`.
+- The selector is stripped before invoking ripgrep, and returned matches are filtered to the selected inclusive line range before `skip` pagination and hashline grounding.
+- Directory, glob, and unscoped file paths keep their previous behavior.
+- Search input schema, model-facing description, generated reference data, and schema tests now document line-scoped path selectors.
+- Validation before commit:
+  - `uv run python -m pytest tests/test_search_ops.py tests/test_mcp_chatgpt_compat.py -q` passed: 32 passed, 1 warning.
+  - `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check` passed.
+  - `uv run pyright .` passed: 0 errors, 0 warnings, 0 informations.
+  - `uv run pytest -q` passed: 271 passed, 1 warning.
+
 ## Current known state
 
-- The branch is functionally green through the model-facing hashline-default clarification pass and search skip pagination follow-up.
+- The branch is functionally green through the model-facing hashline-default clarification pass, search skip pagination, and line-scoped search path follow-ups.
 - `hashline_edit` is available and generated into `docs/reference/generated/tools.json`.
 - MCP/server instructions, model-facing tool descriptions, generated reference data, and guides now teach `hashline_edit` as the default edit path for existing files when the model is editing from copied `[path#snapshot_id]` plus `line:text` output.
 - Existing `edit_lines` remains available for structured/programmatic edits when the caller already has exact path/start/end/replacement arguments, but it is no longer presented as a peer default for ordinary model edits.
-- `search` now supports `skip` pagination while preserving hashline grounding for returned matches.
+- `search` now supports `skip` pagination and concrete file line-scoped path selectors such as `src/app.py:50-80`, while preserving hashline grounding for returned matches.
 - Remote worker e2e coverage now exercises the first-class remote session path for `hashline_edit`: `tests/test_e2e_remote_worker.py` reads a remote file, applies `hashline_edit` from copied hashline grounding, then still applies `edit_lines` to keep structured remote edit coverage.
 - Latest local validation for the adoption pass and remote follow-up:
   - focused surface/export tests passed: 51 passed, 1 warning.

@@ -3,6 +3,7 @@
 import asyncio
 import fnmatch
 import json
+import re
 import shlex
 from pathlib import Path
 from typing import Any, cast
@@ -111,6 +112,59 @@ def _grep_numbered_content(matches: list[GrepMatch]) -> str:
 
 
 type _SearchPaths = str | list[str] | None
+type _LineRanges = tuple[tuple[int, int | None], ...]
+
+_SEARCH_LINE_RANGE_RE = re.compile(r"^(\d+)(?:([-+])(\d*)?)?$")
+
+
+def _parse_search_line_range(part: str) -> tuple[int, int | None] | None:
+    match = _SEARCH_LINE_RANGE_RE.match(part)
+    if match is None:
+        return None
+    start = int(match.group(1))
+    mode = match.group(2)
+    end_text = match.group(3)
+    if start < 1:
+        return None
+    if mode is None or mode == "-" and not end_text:
+        return start, None
+    if mode == "-":
+        end = int(end_text)
+        if end < start:
+            return None
+        return start, end
+    if mode == "+":
+        count = int(end_text)
+        if count < 1:
+            return None
+        return start, start + count - 1
+    return None
+
+
+def _split_line_scoped_search_path(
+    path: str,
+) -> tuple[str, _LineRanges | None]:
+    parts = path.rsplit(":", 1)
+    if len(parts) != 2:
+        return path, None
+    raw_path, raw_ranges = parts
+    if not raw_path or not raw_ranges:
+        return path, None
+    ranges: list[tuple[int, int | None]] = []
+    for raw_part in raw_ranges.split(","):
+        parsed = _parse_search_line_range(raw_part)
+        if parsed is None:
+            return path, None
+        ranges.append(parsed)
+    return raw_path, tuple(ranges)
+
+
+def _line_in_ranges(line: int | None, ranges: _LineRanges) -> bool:
+    if line is None:
+        return False
+    return any(
+        line >= start and (end is None or line <= end) for start, end in ranges
+    )
 
 
 def _search_path_items(paths: _SearchPaths) -> list[str]:
@@ -129,25 +183,34 @@ def _looks_like_glob(path: str) -> bool:
 
 def _split_search_scopes(
     cwd: str, paths: _SearchPaths
-) -> tuple[list[str], list[str]]:
-    """Return ripgrep path args and glob args for high-level search scopes."""
+) -> tuple[list[str], list[str], dict[str, _LineRanges]]:
+    """Return ripgrep path args, glob args, and optional per-file line filters."""
     base = resolve_path(cwd, must_exist=True)
     path_args: list[str] = []
     glob_args: list[str] = []
+    line_scopes: dict[str, _LineRanges] = {}
     for item in _search_path_items(paths):
         if _looks_like_glob(item):
             glob_args.append(item)
             continue
-        raw_path = Path(item)
+        path_item, line_ranges = _split_line_scoped_search_path(item)
+        raw_path = Path(path_item)
         candidate = raw_path if raw_path.is_absolute() else base / raw_path
         resolved = resolve_path(str(candidate), must_exist=True)
+        if line_ranges is not None and not resolved.is_file():
+            raise ValueError(
+                "search path line selectors are supported only for files"
+            )
         if resolved == base:
-            path_args.append(".")
+            path_arg = "."
         elif resolved.is_relative_to(base):
-            path_args.append(str(resolved.relative_to(base)))
+            path_arg = str(resolved.relative_to(base))
         else:
-            path_args.append(str(resolved))
-    return path_args, glob_args
+            path_arg = str(resolved)
+        path_args.append(path_arg)
+        if line_ranges is not None:
+            line_scopes[str(resolved)] = line_ranges
+    return path_args, glob_args, line_scopes
 
 
 async def grep_search_execute(
@@ -170,7 +233,7 @@ async def grep_search_execute(
         args.append("--fixed-strings")
     if not case_sensitive:
         args.append("--ignore-case")
-    path_args, glob_args = _split_search_scopes(cwd, paths)
+    path_args, glob_args, line_scopes = _split_search_scopes(cwd, paths)
     for glob_arg in glob_args:
         args.extend(["--glob", glob_arg])
     if glob:
@@ -219,13 +282,34 @@ async def grep_search_execute(
             else {}
         )
         path_text = path_data.get("text")
+        line_number = match_data.get("line_number")
+        read_path = _search_match_path(cwd, path_text)
+        if read_path is not None:
+            try:
+                resolved_match_path = str(
+                    resolve_path(read_path, must_exist=True)
+                )
+            except OSError, ValueError:
+                resolved_match_path = None
+        else:
+            resolved_match_path = None
+        scoped_ranges = (
+            line_scopes.get(resolved_match_path)
+            if resolved_match_path is not None
+            else None
+        )
+        if scoped_ranges is not None and not _line_in_ranges(
+            line_number if isinstance(line_number, int) else None,
+            scoped_ranges,
+        ):
+            continue
         line_text = line_data.get("text", "")
         if matched_seen < skip:
             matched_seen += 1
             continue
         match = GrepMatch(
             path=path_text,
-            line=match_data.get("line_number"),
+            line=line_number,
             column=first_start + 1 if isinstance(first_start, int) else None,
             text=str(line_text).rstrip("\n"),
         )

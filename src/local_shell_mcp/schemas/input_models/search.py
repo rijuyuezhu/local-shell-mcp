@@ -70,6 +70,6 @@ GrepSkipArg = Annotated[
 SearchPathsArg = Annotated[
     str | list[str] | None,
     Field(
-        description="Optional file, directory, glob, or list of them that scopes the high-level search; omit to search the workspace root."
+        description="Optional file, directory, glob, line-scoped file selector such as src/app.py:10-20,30-40, or list of them that scopes the high-level search; omit to search the workspace root."
     ),
 ]

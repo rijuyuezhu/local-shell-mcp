@@ -194,6 +194,37 @@ async def test_high_level_search_scopes_to_paths(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_high_level_search_accepts_line_scoped_path_selector(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text(
+        "needle first\nneedle second\nneedle third\n", encoding="utf-8"
+    )
+
+    session_id = _create_session()
+
+    result = await search_execute(
+        "needle",
+        paths="src/app.py:2-2",
+        regex=False,
+        session_id=session_id,
+    )
+
+    assert result.ok is True
+    assert result.count == 1
+    assert result.matches[0].path == "src/app.py"
+    assert result.matches[0].line == 2
+    assert result.matches[0].numbered_line is not None
+    assert result.matches[0].numbered_line.startswith("[src/app.py#")
+    assert result.matches[0].numbered_line.endswith("]\n2:needle second")
+
+
+@pytest.mark.asyncio
 async def test_high_level_search_skip_pages_grounded_results(
     tmp_path, monkeypatch
 ):
@@ -234,6 +265,39 @@ async def test_high_level_search_skip_pages_grounded_results(
     assert second.matches[0].numbered_line is not None
     assert second.matches[0].numbered_line.startswith("[src/app.py#")
     assert second.matches[0].numbered_line.endswith("]\n2:needle second")
+
+
+@pytest.mark.asyncio
+async def test_high_level_search_paths_accept_line_scoped_file_selectors(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text(
+        "needle first\nignore\nneedle middle\nignore\nneedle last\n",
+        encoding="utf-8",
+    )
+
+    session_id = _create_session()
+
+    result = await search_execute(
+        "needle",
+        paths="src/app.py:3-3,5-5",
+        regex=False,
+        session_id=session_id,
+    )
+
+    assert result.ok is True
+    assert result.count == 2
+    assert [match.line for match in result.matches] == [3, 5]
+    assert all(match.path == "src/app.py" for match in result.matches)
+    assert result.matches[0].numbered_line is not None
+    assert result.matches[0].numbered_line.startswith("[src/app.py#")
+    assert result.matches[0].numbered_line.endswith("]\n3:needle middle")
+    assert "1:needle first" not in result.numbered_content
 
 
 @pytest.mark.asyncio
