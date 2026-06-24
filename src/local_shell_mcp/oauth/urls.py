@@ -14,19 +14,10 @@ from .scopes import SUPPORTED_OAUTH_SCOPES
 
 
 def base_url(request: Request | None = None) -> str:
-    """Determine the externally visible base URL from configured public URL or request headers."""
+    """Return the configured canonical base URL without trusting request Host headers."""
+    del request
     settings = get_settings()
-    if settings.base_url:
-        return settings.base_url.rstrip("/")
-    if request is not None:
-        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-        host = (
-            request.headers.get("x-forwarded-host")
-            or request.headers.get("host")
-            or request.url.netloc
-        )
-        return f"{proto}://{host}".rstrip("/")
-    return settings.resolved_base_url
+    return (settings.base_url or settings.resolved_base_url).rstrip("/")
 
 
 def issuer_url(request: Request | None = None) -> str:

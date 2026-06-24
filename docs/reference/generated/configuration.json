@@ -238,7 +238,7 @@
           {
             "code": "unset"
           },
-          "Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, request-aware routes derive it from forwarded/Host headers, and non-request generated links fall back to the bind host and port."
+          "Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, URLs fall back to the bind host and port; configure this before exposing the service behind a proxy or public hostname."
         ],
         [
           {
@@ -1424,7 +1424,7 @@
       "cli": "--base-url",
       "default": null,
       "default_display": "unset",
-      "description": "Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, request-aware routes derive it from forwarded/Host headers, and non-request generated links fall back to the bind host and port.",
+      "description": "Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, URLs fall back to the bind host and port; configure this before exposing the service behind a proxy or public hostname.",
       "env": "LOCAL_SHELL_MCP_BASE_URL",
       "name": "base_url",
       "nullable": true,

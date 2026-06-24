@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     auth_bypass_localhost: bool = True
     """Allow localhost requests without bearer authentication."""
     base_url: str | None = None
-    """Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, request-aware routes derive it from forwarded/Host headers, and non-request generated links fall back to the bind host and port."""
+    """Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, URLs fall back to the bind host and port; configure this before exposing the service behind a proxy or public hostname."""
     oauth_issuer: str | None = None
     """Override URL for OAuth issuer metadata; usually derived from base_url."""
     oauth_resource: str | None = None

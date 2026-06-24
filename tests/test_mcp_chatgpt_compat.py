@@ -13,6 +13,7 @@ from starlette.applications import Starlette
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.oauth.authorization import _authorize_form
+from local_shell_mcp.oauth.models import _CLIENTS, _CODES
 from local_shell_mcp.oauth.tokens import (
     issue_access_token,
     validate_bearer_token,
@@ -52,6 +53,73 @@ def test_oauth_resource_defaults_to_mcp_endpoint(tmp_path, monkeypatch):
     clear_settings_cache()
 
     assert resource_url() == "https://local-shell-mcp.example.com/mcp"
+
+
+def test_oauth_urls_ignore_untrusted_request_host_headers(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
+    monkeypatch.delenv("LOCAL_SHELL_MCP_BASE_URL", raising=False)
+    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
+    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
+    clear_settings_cache()
+    _CLIENTS.clear()
+    _CODES.clear()
+
+    headers = {
+        "host": "attacker.example",
+        "x-forwarded-host": "forwarded-attacker.example",
+        "x-forwarded-proto": "https",
+    }
+    client = TestClient(
+        _wrap_mcp_http_app(Starlette()), base_url="https://attacker.example"
+    )
+
+    metadata = client.get(
+        "/.well-known/oauth-protected-resource/mcp", headers=headers
+    )
+    assert metadata.status_code == 200
+    assert metadata.json()["resource"] == "http://127.0.0.1:8765/mcp"
+    assert metadata.json()["authorization_servers"] == ["http://127.0.0.1:8765"]
+
+    register = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["https://client.example/callback"]},
+        headers=headers,
+    ).json()
+    authorize = client.post(
+        "/oauth/authorize",
+        data={
+            "response_type": "code",
+            "client_id": register["client_id"],
+            "redirect_uri": "https://client.example/callback",
+            "resource": "http://127.0.0.1:8765/mcp",
+            "pin": "1234",
+        },
+        headers=headers,
+        follow_redirects=False,
+    )
+    assert authorize.status_code == 302
+    redirect_query = parse_qs(urlparse(authorize.headers["location"]).query)
+    assert redirect_query["iss"] == ["http://127.0.0.1:8765"]
+
+    token_response = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": redirect_query["code"][0],
+            "client_id": register["client_id"],
+            "redirect_uri": "https://client.example/callback",
+            "resource": "http://127.0.0.1:8765/mcp",
+        },
+        headers=headers,
+    )
+    assert token_response.status_code == 200
+    claims = validate_bearer_token(token_response.json()["access_token"])
+    assert claims["iss"] == "http://127.0.0.1:8765"
+    assert claims["aud"] == "http://127.0.0.1:8765/mcp"
 
 
 @pytest.mark.asyncio
