@@ -11,7 +11,10 @@ from local_shell_mcp.ops.downloads import (
     revoke_file_link_execute,
 )
 from local_shell_mcp.server.mcp.app import build_mcp
-from local_shell_mcp.server.shared.downloads import download_routes
+from local_shell_mcp.server.shared.downloads import (
+    _token_fingerprint,
+    download_routes,
+)
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 
@@ -151,3 +154,13 @@ async def test_file_link_tools_are_hidden_in_stdio(tmp_path, monkeypatch):
         "list_file_links",
         "revoke_file_link",
     }.isdisjoint(names)
+
+
+def test_download_token_fingerprint_does_not_expose_token():
+    token = "secret-download-token"
+
+    fingerprint = _token_fingerprint(token)
+
+    assert token not in fingerprint
+    assert len(fingerprint) == 16
+    assert fingerprint == _token_fingerprint(token)

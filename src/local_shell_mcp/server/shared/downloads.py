@@ -1,5 +1,6 @@
 """Public HTTP routes for tokenized file downloads."""
 
+import hashlib
 import mimetypes
 from pathlib import Path
 from typing import Any, cast
@@ -25,6 +26,11 @@ def download_error_response(payload: dict[str, Any]) -> JSONResponse:
     )
 
 
+def _token_fingerprint(token: str) -> str:
+    """Return a short non-secret fingerprint for a download token."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+
+
 async def download_endpoint(request: Request) -> Response:
     """Serve a tokenized file download without requiring bearer auth."""
     token = request.path_params.get("token", "")
@@ -38,7 +44,7 @@ async def download_endpoint(request: Request) -> Response:
     audit(
         "download_link_served",
         path=link.get("display_path"),
-        token=token,
+        token_sha256=_token_fingerprint(token),
         method=request.method,
     )
     return FileResponse(

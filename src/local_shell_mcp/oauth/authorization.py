@@ -55,11 +55,9 @@ def _validate_authorize_params(params: dict[str, str]) -> str | None:
     if _normalize_resource(params["resource"]) != resource_url():
         return "resource does not match this MCP server"
     client = _CLIENTS.get(params["client_id"])
-    if (
-        client
-        and client.redirect_uris
-        and params["redirect_uri"] not in client.redirect_uris
-    ):
+    if client is None:
+        return "Unknown client_id"
+    if params["redirect_uri"] not in client.redirect_uris:
         return "redirect_uri is not registered for this client"
     # Docs compliance: accept only syntactically valid PKCE challenge material;
     # S256 is advertised and preferred, while plain remains for compatibility.

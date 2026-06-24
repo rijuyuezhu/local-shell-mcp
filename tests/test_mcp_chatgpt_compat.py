@@ -585,6 +585,78 @@ async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
     assert tools["bash"].annotations is None
 
 
+def test_oauth_registration_requires_redirect_uri(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    clear_settings_cache()
+
+    client = TestClient(_wrap_mcp_http_app(Starlette()))
+    response = client.post(
+        "/oauth/register", json={"client_name": "Missing Redirects"}
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "invalid_request",
+        "error_description": "redirect_uris must be a non-empty list",
+    }
+
+
+def test_oauth_authorize_requires_registered_client_and_redirect(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
+    clear_settings_cache()
+
+    client = TestClient(_wrap_mcp_http_app(Starlette()))
+    unknown_response = client.post(
+        "/oauth/authorize",
+        data={
+            "response_type": "code",
+            "client_id": "unknown-client",
+            "redirect_uri": "https://client.example/callback",
+            "resource": "https://local-shell-mcp.example.com/mcp",
+            "pin": "1234",
+        },
+        follow_redirects=False,
+    )
+    assert unknown_response.status_code == 200
+    assert "Unknown client_id" in unknown_response.text
+
+    register_response = client.post(
+        "/oauth/register",
+        json={
+            "client_name": "Redirect Bound Client",
+            "redirect_uris": ["https://client.example/callback"],
+        },
+    )
+    client_id = register_response.json()["client_id"]
+
+    mismatch_response = client.post(
+        "/oauth/authorize",
+        data={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": "https://attacker.example/callback",
+            "resource": "https://local-shell-mcp.example.com/mcp",
+            "pin": "1234",
+        },
+        follow_redirects=False,
+    )
+
+    assert mismatch_response.status_code == 200
+    assert (
+        "redirect_uri is not registered for this client"
+        in mismatch_response.text
+    )
+
+
 def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv(
