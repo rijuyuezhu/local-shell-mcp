@@ -2,7 +2,6 @@
 
 import argparse
 
-from . import __version__
 from .config.settings import configure_settings, load_settings
 from .config.surface import cli_overrides_from_args, register_setting_cli_args
 from .remote.worker import add_worker_cli_args, run_worker_from_args
@@ -21,7 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s {__version__}",
+        version=format_version_info(),
     )
     parser.add_argument(
         "--config",
