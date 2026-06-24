@@ -196,24 +196,141 @@ Practical delta: `local-shell-mcp` has safer and simpler grounded search for MCP
 
 Practical delta: `local-shell-mcp` now has the important “copy grounded output into edit tool” workflow, but it intentionally avoids oh-my-pi's larger hashline grammar and LSP/editor integrations. The next reasonable edit-feature candidate, if needed, is multi-hunk `hashline_edit`; block-aware edits should wait until there is a parser/tree-sitter story and a clear user need.
 
-## Recommended next slice
+## Planned follow-up slices selected by the user
 
-No immediate implementation slice is required for this grounding plan after the adoption pass, remote `hashline_edit` e2e follow-up, and current oh-my-pi comparison.
+The user explicitly selected all five follow-up goals below. Future agents should implement them as separate, small, reviewable slices unless a later user instruction changes the order or scope. These are planning targets only; do not describe a slice in model-facing tool descriptions or generated instructions until that slice is actually implemented and tested.
 
-Keep these invariants for future slices:
+Keep these invariants for every slice:
 
 - Do not remove `edit_lines`; keep it as the structured low-level precise edit tool.
 - Keep `hashline_edit` as the model-facing default for copied hashline text.
 - Model-facing tool descriptions and generated instructions must describe only currently available capabilities.
 - Do not mention oh-my-pi or other external reference projects in model-facing tool descriptions or generated instructions.
+- Prefer one feature per commit. After each complete slice: run focused tests, generated-reference checks when schemas/descriptions/instructions change, broader validation as appropriate, commit, push, and check CI.
 
-If continuing, pick from these follow-ups only when there is a clear product need:
+### Slice A — `hashline_edit` multi-hunk input
 
-- Review stale user/docs examples outside `docs/guides/*` now that the main adoption pass is done.
-- Consider whether `hashline_edit` should support multi-hunk input. Only do this if there is a clear product need; current single-hunk behavior is smaller and safer.
-- Consider remaining search ergonomics from the comparison: gitignore control or further model-facing guidance against shell grep. Pagination and concrete file line-scoped path selectors are already implemented.
-- Consider read ergonomics from the comparison: multi-range selectors, richer document/URL/archive readers, or conflict-specific read views.
-- Review whether `ReadOutput.content` and `ReadOutput.numbered_content` naming should be simplified in a breaking-change slice.
+Goal: let one `hashline_edit(session_id, input)` call contain multiple non-overlapping hunks and, where practical, multiple file sections, while preserving existing stale-file, seen-range, snapshot, and old-text validation.
+
+Scope:
+
+- Extend the parser/executor so a single input may contain multiple operations under one or more `[path#snapshot_id]` headers.
+- Preserve current single-hunk forms exactly: copied rows plus `+replacement` rows, delete by copied rows with no `+` rows, `SWAP start[-end]:`, and `INSERT [BEFORE|AFTER] line:`.
+- Apply hunks against original line numbers, not shifted post-edit line numbers.
+- Reject overlapping or duplicate touched ranges in the same file.
+- Return useful per-file or combined diffs plus fresh context sufficient for the next grounded edit. Keep the response compact.
+
+Out of scope for this slice:
+
+- Block-aware edits such as `SWAP.BLK` / `DEL.BLK`.
+- Renames, creates, deletes of whole files, or arbitrary patch/apply-patch modes.
+- Removing or hiding `edit_lines`.
+
+Tests to add/update:
+
+- Unit tests for multiple replacements in one file, insert + replace in one file, deletion + replacement in one file, and overlapping-range rejection.
+- Unit or integration tests for multi-file input if implemented.
+- Remote/session forwarding coverage if the public tool contract changes.
+- Tool-surface tests ensuring descriptions explain multi-hunk syntax only after implementation.
+
+### Slice B — search match/context output markers
+
+Goal: make `search` output more useful for editing by including nearby context lines and explicitly marking which rows are actual matches versus context, while keeping hashline grounding valid for rows that can be copied into `hashline_edit`.
+
+Scope:
+
+- Add match/context distinction to model-facing `search` output, for example match rows marked differently from surrounding context rows.
+- Include a small, bounded amount of context around matches when useful, without making noisy searches too large.
+- Preserve `GrepMatch` structured fields and existing hashline grounding (`snapshot_id`, `seen_range`, `numbered_line`) for editable displayed rows.
+- Ensure `skip` pagination and line-scoped `paths` continue to work with context output.
+
+Design cautions:
+
+- Decide whether context rows are editable grounding or purely display context. If editable, they must be recorded in `seen_ranges`; if not, the output must clearly avoid suggesting they can be edited.
+- Do not break consumers that expect `matches` to represent actual matches only.
+
+Tests to add/update:
+
+- Search result with context before/after a match.
+- Multiple matches in one file with merged context windows.
+- Pagination behavior with context enabled.
+- Hashline edit from a displayed search row after context output changes.
+- Generated reference/tool-surface tests for any new input parameters or output fields.
+
+### Slice C — explicit `search` gitignore control
+
+Goal: add a model-facing `gitignore` control to `search` so callers can choose whether ignored files are searched, while documenting the default clearly.
+
+Scope:
+
+- Add `gitignore` input to `search`, using a simple boolean or nullable boolean with an explicit default.
+- Preserve current default behavior unless there is a deliberate, tested reason to change it.
+- Wire the option through local search and remote session forwarding.
+- Update tool descriptions, input schema docs, generated reference JSON, and tests.
+
+Design cautions:
+
+- State the behavior in terms of current available capability only. Do not reference external tools or future search plans.
+- Keep interaction with `paths`, globs, `skip`, and line-scoped selectors predictable.
+
+Tests to add/update:
+
+- Search excludes ignored files by default if that is current behavior, or includes them by default if current behavior does that; document whichever is true.
+- Search with `gitignore=false` can include an ignored file.
+- Search with `gitignore=true` respects ignore rules.
+- Remote search forwards the option.
+- MCP/tool schema tests cover the new input description.
+
+### Slice D — `read` multi-range selectors
+
+Goal: support `read(session_id, path="file.py:5-16,960-973")` so agents can request several precise windows from one file without multiple tool calls.
+
+Scope:
+
+- Extend read selector parsing to support comma-separated line ranges.
+- Preserve existing selectors: `path:50`, `path:50-80`, `path:50+20`, `path:raw`, and `path:50-80:raw`.
+- Output should remain hashline-style `[path#snapshot_id]` plus `line:text` rows, with clear separators or compact grouping between non-contiguous ranges.
+- Record all displayed ranges in `seen_ranges` so later `hashline_edit` / `edit_lines` validation remains correct.
+- Make truncation and metadata behavior clear for multi-range reads.
+
+Out of scope for this slice:
+
+- URL/document/archive readers.
+- Conflict-specific read views.
+- Structural code summaries.
+
+Tests to add/update:
+
+- Single file multi-range read with two non-contiguous ranges.
+- Multi-range plus `:raw` behavior.
+- Invalid range ordering and malformed selector rejection.
+- `seen_ranges` contains exactly the displayed ranges.
+- Editing a displayed line from a multi-range read succeeds; editing an undisplayed gap is rejected.
+- Generated reference/tool-surface tests for selector descriptions.
+
+### Slice E — stronger model-facing critical rules
+
+Goal: strengthen model-facing tool descriptions and server instructions so agents reliably use `read`/`search`/`hashline_edit` correctly, without adding unsupported behavior.
+
+Scope:
+
+- Add concise, high-signal rules to current tool descriptions and MCP/server instructions.
+- Emphasize that built-in `search` should be used for editable content search instead of shell grep/ripgrep when grounding matters.
+- Emphasize `hashline_edit` body rows are final content only, edits must be tightly scoped, tags/snapshot ids must be copied not invented, and agents must re-ground after each edit.
+- Clarify `write_file` is for new files or intentional whole-file replacement only.
+- Keep descriptions shorter than the full external-reference prompt style; prefer compact rules that fit MCP tool descriptions.
+
+Out of scope for this slice:
+
+- Adding new edit/search/read capabilities.
+- Mentioning external reference projects in generated or model-facing surfaces.
+- Describing planned multi-hunk, gitignore, or multi-range capabilities before they are implemented.
+
+Tests to add/update:
+
+- Tool-surface tests asserting the key critical rules appear in descriptions/instructions.
+- Generated reference check.
+- `mkdocs build --strict` if docs are touched.
 
 ## New-context prompt
 
@@ -222,9 +339,9 @@ Use this prompt to continue in a fresh context:
 ```text
 继续 local-shell-mcp 的 agent-facing read/search/edit tool-surface grounding 重构。请用中文和我沟通，保持客观、直接。
 
-项目根目录是 `/workspace/local-shell-mcp`，分支是 `feat/oh-my-pi-style-grounding`，远端分支同名。唯一信源是：`/workspace/local-shell-mcp/docs/maintenance/agent-tool-surface-grounding.md`。请先读取这个文件，再检查 `git status`、最近 commits、PR/branch diff 和 CI 状态，然后从该文件的 “Recommended next slice” 继续。
+项目根目录是 `/workspace/local-shell-mcp`，分支是 `feat/oh-my-pi-style-grounding`，远端分支同名。唯一信源是：`/workspace/local-shell-mcp/docs/maintenance/agent-tool-surface-grounding.md`。请先读取这个文件，再检查 `git status --short --branch`、最近 commits、branch diff、是否有关联 PR、以及最新 GitHub Actions Docs/CI 状态，然后从该文件的 “Planned follow-up slices selected by the user” 继续。
 
-当前状态：
+当前已完成状态：
 - `read` / `search` 已输出 hashline-style grounding：`[path#snapshot_id]` plus `line:text` rows。
 - `search(session_id, pattern, paths?, ..., skip=0)` 已支持 `skip` 分页；`paths` 已支持 concrete file line selectors，如 `src/app.py:50-80,100+10`。
 - `hashline_edit(session_id, input)` 已实现、测试、生成引用、写入 model-facing instructions/docs，并作为 copied hashline text 的默认编辑流程。
@@ -232,5 +349,12 @@ Use this prompt to continue in a fresh context:
 - 远端 worker e2e 已覆盖 first-class remote session 下的 `hashline_edit`，同时保留 `edit_lines` 远端覆盖。
 - 唯一信源中已经记录了当前 `local-shell-mcp` 与当前 `oh-my-pi` 的 read/edit/search 对比结论。
 
-不要重新设计已经完成的实现。当前没有必须继续做的 implementation slice；只有在用户明确选择时，才从唯一信源的 follow-up 列表中挑一个小 slice 做。做任何新 slice 时，保持 model-facing 描述只描述当前可用能力，不要在工具描述或 generated instructions 里提 oh-my-pi、future/planned 能力或内部架构词。完成后跑相关 focused tests、必要的 generated reference check、pyright/pytest，commit、push、看 CI，并更新唯一信源。
+用户已明确选择要继续补五个目标，但不要一次性混在一个大改里。按小 slice 逐个实现：
+1. `hashline_edit` multi-hunk input。
+2. search match/context output markers。
+3. explicit `search` gitignore control。
+4. `read` multi-range selectors。
+5. stronger model-facing critical rules。
+
+不要重新设计已经完成的实现。做任何新 slice 时，保持 model-facing 描述只描述当前可用能力；不要在工具描述或 generated instructions 里提 oh-my-pi、future/planned 能力或内部架构词。每完成一个 slice，运行相关 focused tests、必要的 generated reference check、pyright/pytest 或 mkdocs，commit、push、看 CI，并更新唯一信源。
 ```
