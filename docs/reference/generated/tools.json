@@ -497,7 +497,7 @@
           {
             "items": [
               {
-                "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
+                "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:5-16,960-973, file.py:raw, file.py:50-80:raw, file.py:5-16,960-973:raw.",
                 "head": {
                   "code": "path"
                 },
@@ -512,7 +512,7 @@
               }
             ]
           },
-          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
+          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:5-16,960-973, path:raw, path:50-80:raw, and path:5-16,960-973:raw. For comma-separated ranges, ranges must be ordered and non-overlapping; open-ended ranges are only allowed as the final range. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
@@ -1956,7 +1956,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Final original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "Final original 1-based line number returned across selected ranges, or null when no lines were returned.",
                 "title": "End Line"
               },
               "file_sha256": {
@@ -1974,7 +1974,7 @@
               },
               "line_count": {
                 "default": 0,
-                "description": "Number of decoded text lines returned in lines and grounded numbered_content.",
+                "description": "Number of decoded text lines returned in lines and grounded numbered_content across all selected ranges.",
                 "title": "Line Count",
                 "type": "integer"
               },
@@ -1988,7 +1988,7 @@
               },
               "numbered_content": {
                 "default": "",
-                "description": "Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows.",
+                "description": "Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows for all selected ranges.",
                 "title": "Numbered Content",
                 "type": "string"
               },
@@ -2041,7 +2041,7 @@
                   }
                 ],
                 "default": null,
-                "description": "First original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "First original 1-based line number returned across selected ranges, or null when no lines were returned.",
                 "title": "Start Line"
               },
               "total_lines": {
@@ -2436,7 +2436,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Final original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "Final original 1-based line number returned across selected ranges, or null when no lines were returned.",
                 "title": "End Line"
               },
               "file_sha256": {
@@ -2454,7 +2454,7 @@
               },
               "line_count": {
                 "default": 0,
-                "description": "Number of decoded text lines returned in lines and grounded numbered_content.",
+                "description": "Number of decoded text lines returned in lines and grounded numbered_content across all selected ranges.",
                 "title": "Line Count",
                 "type": "integer"
               },
@@ -2468,7 +2468,7 @@
               },
               "numbered_content": {
                 "default": "",
-                "description": "Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows.",
+                "description": "Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows for all selected ranges.",
                 "title": "Numbered Content",
                 "type": "string"
               },
@@ -2521,7 +2521,7 @@
                   }
                 ],
                 "default": null,
-                "description": "First original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "First original 1-based line number returned across selected ranges, or null when no lines were returned.",
                 "title": "Start Line"
               },
               "total_lines": {
@@ -3622,11 +3622,11 @@
       }
     },
     {
-      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
+      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:5-16,960-973, path:raw, path:50-80:raw, and path:5-16,960-973:raw. For comma-separated ranges, ranges must be ordered and non-overlapping; open-ended ranges are only allowed as the final range. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
           "path": {
-            "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
+            "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:5-16,960-973, file.py:raw, file.py:50-80:raw, file.py:5-16,960-973:raw.",
             "title": "Path",
             "type": "string"
           },
@@ -3787,7 +3787,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Final original 1-based line number shown, or null when no lines were shown.",
+                "description": "Final original 1-based line number shown across selected ranges, or null when no lines were shown.",
                 "title": "End Line"
               },
               "file_sha256": {
@@ -3805,7 +3805,7 @@
               },
               "line_count": {
                 "default": 0,
-                "description": "Number of decoded text lines shown in content.",
+                "description": "Number of decoded text lines shown across all selected ranges.",
                 "title": "Line Count",
                 "type": "integer"
               },
@@ -3858,7 +3858,7 @@
                   }
                 ],
                 "default": null,
-                "description": "First original 1-based line number shown, or null when no lines were shown.",
+                "description": "First original 1-based line number shown across selected ranges, or null when no lines were shown.",
                 "title": "Start Line"
               },
               "total_lines": {

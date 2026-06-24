@@ -28,7 +28,7 @@ async def read_execute(path: str, session_id: str) -> ReadOutput:
         resolve_session_path(session, target.path, must_exist=True)
     )
     listed = None
-    if not target.raw and target.start_line is None and target.end_line is None:
+    if not target.raw and not target.line_ranges:
         try:
             listed = list_files_execute(target_path, False, 500)
         except NotADirectoryError:
@@ -47,6 +47,7 @@ async def read_execute(path: str, session_id: str) -> ReadOutput:
         target.start_line,
         target.end_line,
         session.session_id,
+        line_ranges=target.line_ranges or None,
     )
     return ReadOutput(
         kind="file",

@@ -255,11 +255,79 @@ def test_parse_read_target_supports_line_and_raw_selectors():
     assert ranged.path == "src/foo.py"
     assert ranged.start_line == 50
     assert ranged.end_line == 69
+    assert ranged.line_ranges == ((50, 69),)
     assert ranged.raw is True
     raw_first = parse_read_target("src/foo.py:raw:10-12")
     assert raw_first.start_line == 10
     assert raw_first.end_line == 12
+    assert raw_first.line_ranges == ((10, 12),)
     assert raw_first.raw is True
+    multi = parse_read_target("src/foo.py:5-6,10+2:raw")
+    assert multi.path == "src/foo.py"
+    assert multi.start_line == 5
+    assert multi.end_line == 11
+    assert multi.line_ranges == ((5, 6), (10, 11))
+    assert multi.raw is True
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "src/foo.py:10-5",
+        "src/foo.py:5-8,7-9",
+        "src/foo.py:5,10",
+        "src/foo.py:5,,10",
+    ],
+)
+def test_parse_read_target_rejects_invalid_multi_range_selectors(target):
+    from local_shell_mcp.tool_session.selectors import parse_read_target
+
+    with pytest.raises(ValueError):
+        parse_read_target(target)
+
+
+def test_read_file_execute_multi_ranges_records_grounding_and_edits(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "multi.py").write_text(
+        "one\ntwo\nthree\nfour\nfive\n", encoding="utf-8"
+    )
+    session_id = _create_session()
+
+    read_result = read_file_execute(
+        "multi.py",
+        session_id=session_id,
+        line_ranges=((2, 3), (5, 5)),
+    )
+
+    assert [line.line for line in read_result.lines] == [2, 3, 5]
+    assert read_result.start_line == 2
+    assert read_result.end_line == 5
+    assert read_result.line_count == 3
+    assert [line.model_dump() for line in read_result.seen_ranges] == [
+        {"start": 2, "end": 3},
+        {"start": 5, "end": 5},
+    ]
+    assert read_result.numbered_content.startswith("[multi.py#")
+    assert "2:two" in read_result.numbered_content
+    assert "3:three" in read_result.numbered_content
+    assert "5:five" in read_result.numbered_content
+    assert "4:four" not in read_result.numbered_content
+    assert read_result.snapshot_id is not None
+
+    with pytest.raises(ValueError, match="not shown"):
+        edit_lines_execute(
+            "multi.py", 4, 4, "FOUR", read_result.snapshot_id, session_id
+        )
+
+    edit_lines_execute(
+        "multi.py", 5, 5, "FIVE", read_result.snapshot_id, session_id
+    )
+    assert (tmp_path / "multi.py").read_text(encoding="utf-8") == (
+        "one\ntwo\nthree\nfour\nFIVE\n"
+    )
 
 
 def test_edit_lines_uses_snapshot_and_returns_diff_context(

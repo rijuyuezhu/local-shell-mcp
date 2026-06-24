@@ -63,15 +63,15 @@ class ReadFileOutput(BaseModel):
     )
     start_line: int | None = Field(
         default=None,
-        description="First original 1-based line number returned in lines, or null when no lines were returned.",
+        description="First original 1-based line number returned across selected ranges, or null when no lines were returned.",
     )
     end_line: int | None = Field(
         default=None,
-        description="Final original 1-based line number returned in lines, or null when no lines were returned.",
+        description="Final original 1-based line number returned across selected ranges, or null when no lines were returned.",
     )
     line_count: int = Field(
         default=0,
-        description="Number of decoded text lines returned in lines and grounded numbered_content.",
+        description="Number of decoded text lines returned in lines and grounded numbered_content across all selected ranges.",
     )
     lines: list[ReadLine] = Field(
         default_factory=list,
@@ -79,7 +79,7 @@ class ReadFileOutput(BaseModel):
     )
     numbered_content: str = Field(
         default="",
-        description="Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows.",
+        description="Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows for all selected ranges.",
     )
     session_id: str | None = Field(
         default=None,
@@ -125,15 +125,15 @@ class ReadFileMetadata(BaseModel):
     )
     start_line: int | None = Field(
         default=None,
-        description="First original 1-based line number shown, or null when no lines were shown.",
+        description="First original 1-based line number shown across selected ranges, or null when no lines were shown.",
     )
     end_line: int | None = Field(
         default=None,
-        description="Final original 1-based line number shown, or null when no lines were shown.",
+        description="Final original 1-based line number shown across selected ranges, or null when no lines were shown.",
     )
     line_count: int = Field(
         default=0,
-        description="Number of decoded text lines shown in content.",
+        description="Number of decoded text lines shown across all selected ranges.",
     )
     session_id: str | None = Field(
         default=None,

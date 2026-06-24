@@ -122,21 +122,22 @@ This file is the single source of truth for the current agent-facing read/search
 
 ## Current known state
 
-- The branch is functionally green through multi-hunk `hashline_edit`, search skip pagination, line-scoped search paths, search match/context display markers, and explicit `search(gitignore=...)` control.
+- The branch is functionally green through multi-hunk `hashline_edit`, search skip pagination, line-scoped search paths, search match/context display markers, explicit `search(gitignore=...)` control, and `read` multi-range selectors.
 - `hashline_edit` is available and generated into `docs/reference/generated/tools.json`.
 - MCP/server instructions, model-facing tool descriptions, generated reference data, and guides now teach `hashline_edit` as the default edit path for existing files when the model is editing from copied `[path#snapshot_id]` plus `line:text` output.
 - Existing `edit_lines` remains available for structured/programmatic edits when the caller already has exact path/start/end/replacement arguments, but it is no longer presented as a peer default for ordinary model edits.
 - `search` now supports `skip` pagination, concrete file line-scoped path selectors such as `src/app.py:50-80`, displayed context rows marked by `displayed_lines.kind` as `match` or `context`, and `gitignore` control; `matches` remains actual matches only.
 - Search `gitignore` defaults to `true`, so search respects `.gitignore`, `.ignore`, and related ignore rules by default; `gitignore=false` includes ignored files.
-- Search `numbered_content` still uses copyable `[path#snapshot_id]` plus `line:text` rows, and context rows are editable grounding recorded in `seen_ranges`.
+- `read` now supports comma-separated non-overlapping line ranges such as `file.py:5-16,960-973`, including `:raw` combinations.
+- Read/search `numbered_content` still uses copyable `[path#snapshot_id]` plus `line:text` rows, and displayed rows are editable grounding recorded in `seen_ranges`.
 - Remote worker e2e coverage now exercises the first-class remote session path for `hashline_edit`: `tests/test_e2e_remote_worker.py` reads a remote file, applies `hashline_edit` from copied hashline grounding, then still applies `edit_lines` to keep structured remote edit coverage.
-- Latest local validation for Slice C:
-  - `uv run python -m py_compile src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/input_models/search.py src/local_shell_mcp/tools/registry/search.py` passed.
-  - `uv run pytest tests/test_search_ops.py tests/test_remote_facade.py tests/test_tool_surface.py -q` passed: 53 passed, 1 warning.
+- Latest local validation for Slice D:
+  - `uv run python -m py_compile src/local_shell_mcp/tool_session/selectors.py src/local_shell_mcp/ops/files.py src/local_shell_mcp/ops/read.py` passed.
+  - `uv run pytest tests/test_files_ops.py tests/test_read_facade.py tests/test_tool_surface.py -q` passed: 69 passed, 1 warning.
   - `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check` passed.
-  - `uv run pytest tests/test_export_tools_json.py tests/test_tool_surface.py tests/test_search_ops.py tests/test_remote_facade.py -q` passed: 55 passed, 1 warning.
+  - `uv run pytest tests/test_export_tools_json.py tests/test_tool_surface.py tests/test_read_facade.py tests/test_files_ops.py -q` passed: 71 passed, 1 warning.
   - `uv run pyright` passed: 0 errors, 0 warnings, 0 informations.
-  - `uv run pytest` passed: 278 passed, 1 warning.
+  - `uv run pytest` passed: 285 passed, 1 warning.
 
 ## Current read/edit/search comparison with oh-my-pi
 
@@ -369,6 +370,28 @@ Tests to add/update:
 - `seen_ranges` contains exactly the displayed ranges.
 - Editing a displayed line from a multi-range read succeeds; editing an undisplayed gap is rejected.
 - Generated reference/tool-surface tests for selector descriptions.
+
+Status: implemented in this slice. Current behavior:
+
+- `read` accepts comma-separated line ranges in a single file selector, for example `file.py:5-16,960-973`.
+- Existing selectors remain supported: `path:50`, `path:50-80`, `path:50+20`, `path:raw`, and `path:50-80:raw`.
+- Multi-range selectors also combine with `:raw`, for example `file.py:5-16,960-973:raw`.
+- Comma-separated ranges must be ordered and non-overlapping; open-ended ranges such as `50` or `50-` are only allowed as the final range.
+- File output still uses one `[path#snapshot_id]` header followed by copyable `line:text` rows; non-contiguous windows are represented by the original line numbers.
+- `seen_ranges` records each non-empty displayed window exactly, so editing a displayed line succeeds and editing an undisplayed gap is rejected.
+- `start_line` and `end_line` describe the first and last returned line; `line_count` is the number of displayed lines across all ranges.
+
+Validation run for this slice:
+
+- `uv run python -m py_compile src/local_shell_mcp/tool_session/selectors.py src/local_shell_mcp/ops/files.py src/local_shell_mcp/ops/read.py`
+- `uv run pytest tests/test_files_ops.py tests/test_read_facade.py tests/test_tool_surface.py -q` → 69 passed, 1 warning
+- `uv run ruff format src/local_shell_mcp/tool_session/selectors.py src/local_shell_mcp/ops/files.py src/local_shell_mcp/ops/read.py src/local_shell_mcp/schemas/input_models/read.py src/local_shell_mcp/tools/registry/read.py tests/test_files_ops.py tests/test_read_facade.py tests/test_tool_surface.py`
+- `uv run ruff check src/local_shell_mcp/tool_session/selectors.py src/local_shell_mcp/ops/files.py src/local_shell_mcp/ops/read.py src/local_shell_mcp/schemas/input_models/read.py src/local_shell_mcp/tools/registry/read.py tests/test_files_ops.py tests/test_read_facade.py tests/test_tool_surface.py` → All checks passed
+- `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json`
+- `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check`
+- `uv run pytest tests/test_export_tools_json.py tests/test_tool_surface.py tests/test_read_facade.py tests/test_files_ops.py -q` → 71 passed, 1 warning
+- `uv run pyright` → 0 errors, 0 warnings, 0 informations
+- `uv run pytest` → 285 passed, 1 warning
 
 ### Slice E — stronger model-facing critical rules
 

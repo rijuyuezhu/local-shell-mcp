@@ -192,6 +192,8 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
     assert "line:text" in descriptions["read"]
     assert "copied directly into hashline_edit" in descriptions["read"]
     assert "Use edit_lines only" in descriptions["read"]
+    assert "path:5-16,960-973" in descriptions["read"]
+    assert "ordered and non-overlapping" in descriptions["read"]
     assert "instead of shell grep/ripgrep" in descriptions["search"]
     assert "copied into hashline_edit" in descriptions["search"]
     assert "gitignore defaults to true" in descriptions["search"]

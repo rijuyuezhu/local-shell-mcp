@@ -115,6 +115,9 @@ async def list_files_dispatch_execute(
     return list_files_execute(path, recursive, max_entries, session_id)
 
 
+type _ReadLineRange = tuple[int | None, int | None]
+
+
 def _selected_read_lines(
     lines: list[str],
     start_line: int | None,
@@ -132,6 +135,21 @@ def _selected_read_lines(
         ReadLine(line=line_number, text=lines[line_number - 1])
         for line_number in range(start, end + 1)
     ]
+
+
+def _selected_read_lines_by_ranges(
+    lines: list[str], ranges: Sequence[_ReadLineRange]
+) -> tuple[list[ReadLine], tuple[tuple[int, int], ...]]:
+    """Return decoded lines plus the exact non-empty ranges actually shown."""
+    selected_lines: list[ReadLine] = []
+    seen_ranges: list[tuple[int, int]] = []
+    for start_line, end_line in ranges:
+        range_lines = _selected_read_lines(lines, start_line, end_line)
+        if not range_lines:
+            continue
+        selected_lines.extend(range_lines)
+        seen_ranges.append((range_lines[0].line, range_lines[-1].line))
+    return selected_lines, tuple(seen_ranges)
 
 
 def _numbered_content(
@@ -152,6 +170,7 @@ def read_file_execute(
     start_line: int | None = None,
     end_line: int | None = None,
     session_id: str | None = None,
+    line_ranges: Sequence[_ReadLineRange] | None = None,
 ) -> ReadFileOutput:
     """Read a UTF-8 text file by optional line range and record grounding when session-bound."""
     settings = get_settings()
@@ -177,18 +196,27 @@ def read_file_execute(
     text = decoder.decode(data, final=not truncated)
     all_lines = text.splitlines()
     total_lines = len(all_lines)
-    selected_lines = _selected_read_lines(all_lines, start_line, end_line)
-    if start_line is not None or end_line is not None:
+    range_specs = (
+        tuple(line_ranges)
+        if line_ranges is not None
+        else ((start_line, end_line),)
+    )
+    selected_lines, seen_ranges = _selected_read_lines_by_ranges(
+        all_lines, range_specs
+    )
+    if (
+        line_ranges is not None
+        or start_line is not None
+        or end_line is not None
+    ):
         text = "\n".join(line.text for line in selected_lines)
 
     start = selected_lines[0].line if selected_lines else None
     end = selected_lines[-1].line if selected_lines else None
-    if start is not None and end is not None:
-        seen_ranges = ((start, end),)
-        seen_range_models = [LineRange(start=start, end=end)]
-    else:
-        seen_ranges = ()
-        seen_range_models = []
+    seen_range_models = [
+        LineRange(start=range_start, end=range_end)
+        for range_start, range_end in seen_ranges
+    ]
     relative_path = relative_display(p)
     record = (
         store.record_file_snapshot(
