@@ -657,7 +657,7 @@
               }
             ]
           },
-          "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, globs, or file line selectors such as `src/app.py:10-20,30-40`. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200."
+          "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because displayed rows carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, globs, or file line selectors such as `src/app.py:10-20,30-40`. matches contains actual matched lines only. displayed_lines contains the shown editable rows and marks each row with kind=\"match\" or kind=\"context\"; numbered_content keeps the same rows in copyable `[path#snapshot_id]` plus `line:text` form that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later actual matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200."
         ],
         [
           {
@@ -4420,7 +4420,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, globs, or file line selectors such as `src/app.py:10-20,30-40`. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200.",
+      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because displayed rows carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, globs, or file line selectors such as `src/app.py:10-20,30-40`. matches contains actual matched lines only. displayed_lines contains the shown editable rows and marks each row with kind=\"match\" or kind=\"context\"; numbered_content keeps the same rows in copyable `[path#snapshot_id]` plus `line:text` form that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later actual matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
@@ -4507,6 +4507,107 @@
       "name": "search",
       "outputSchema": {
         "$defs": {
+          "GrepDisplayLine": {
+            "description": "One displayed search output line, either an actual match or context.",
+            "properties": {
+              "file_sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "SHA-256 digest of the complete matched file when displayed.",
+                "title": "File Sha256"
+              },
+              "kind": {
+                "description": "Whether this displayed line is an actual match or surrounding context.",
+                "enum": [
+                  "match",
+                  "context"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "line": {
+                "description": "1-based displayed line number.",
+                "title": "Line",
+                "type": "integer"
+              },
+              "numbered_line": {
+                "description": "Copyable 'line:text' row for this displayed line; use with the enclosing [path#snapshot_id] header from numbered_content.",
+                "title": "Numbered Line",
+                "type": "string"
+              },
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Path containing the displayed line.",
+                "title": "Path"
+              },
+              "seen_range": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/LineRange"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Inclusive original line range shown in this displayed context window."
+              },
+              "session_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Agent grounding session that recorded this displayed line.",
+                "title": "Session Id"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Snapshot handle for the displayed context window, usable with hashline_edit and edit_lines.",
+                "title": "Snapshot Id"
+              },
+              "text": {
+                "description": "Displayed line text without the trailing newline.",
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "line",
+              "kind",
+              "text",
+              "numbered_line"
+            ],
+            "title": "GrepDisplayLine",
+            "type": "object"
+          },
           "GrepMatch": {
             "description": "One ripgrep match.",
             "properties": {
@@ -4649,10 +4750,30 @@
         },
         "description": "Ripgrep content search result.",
         "properties": {
+          "context_radius": {
+            "default": 0,
+            "description": "Number of surrounding context lines requested around each returned match.",
+            "title": "Context Radius",
+            "type": "integer"
+          },
           "count": {
             "description": "Number of matches returned.",
             "title": "Count",
             "type": "integer"
+          },
+          "displayed_count": {
+            "default": 0,
+            "description": "Number of displayed match and context lines returned.",
+            "title": "Displayed Count",
+            "type": "integer"
+          },
+          "displayed_lines": {
+            "description": "Displayed hashline rows with kind='match' for actual matches and kind='context' for surrounding context.",
+            "items": {
+              "$ref": "#/$defs/GrepDisplayLine"
+            },
+            "title": "Displayed Lines",
+            "type": "array"
           },
           "matches": {
             "description": "Returned ripgrep matches.",
@@ -4664,7 +4785,7 @@
           },
           "numbered_content": {
             "default": "",
-            "description": "Grouped grounded hashline match snippets with [path#snapshot_id] headers and line:text rows.",
+            "description": "Grouped grounded hashline search snippets with [path#snapshot_id] headers and copyable line:text rows; use displayed_lines.kind to distinguish actual matches from context.",
             "title": "Numbered Content",
             "type": "string"
           },

@@ -5,12 +5,14 @@ import fnmatch
 import json
 import re
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
 from ..config.settings import get_settings
 from ..schemas.result_models.search import (
     GlobSearchOutput,
+    GrepDisplayLine,
     GrepMatch,
     GrepSearchOutput,
     TreeViewOutput,
@@ -97,22 +99,131 @@ def _ground_match_line(
     )
 
 
-def _grep_numbered_content(matches: list[GrepMatch]) -> str:
-    """Return grouped line-numbered snippets for grep matches."""
-    lines: list[str] = []
-    current_path: str | None = None
-    for match in matches:
-        if match.path != current_path:
-            if lines:
-                lines.append("")
-            current_path = match.path
-            lines.append(str(match.path or "<unknown>"))
-        lines.append(match.numbered_line or f"{match.line}:{match.text}")
-    return "\n".join(lines)
-
-
 type _SearchPaths = str | list[str] | None
 type _LineRanges = tuple[tuple[int, int | None], ...]
+
+_SEARCH_CONTEXT_RADIUS = 1
+
+
+@dataclass(frozen=True)
+class _RawSearchMatch:
+    """One returned actual match plus path-scope metadata for display context."""
+
+    match: GrepMatch
+    scoped_ranges: _LineRanges | None
+
+
+@dataclass(frozen=True)
+class _SearchDisplayWindow:
+    """Merged displayed line window around one or more actual matches."""
+
+    read_path: str
+    start: int
+    end: int
+    match_lines: frozenset[int]
+
+
+def _context_window_for_line(
+    line: int, ranges: _LineRanges | None, radius: int
+) -> tuple[int, int]:
+    """Return a bounded context window around one match line."""
+    start = max(1, line - radius)
+    end = line + radius
+    if ranges is None:
+        return start, end
+    for range_start, range_end in ranges:
+        if line >= range_start and (range_end is None or line <= range_end):
+            start = max(start, range_start)
+            if range_end is not None:
+                end = min(end, range_end)
+            break
+    return start, max(start, end)
+
+
+def _display_windows(
+    raw_matches: list[_RawSearchMatch], cwd: str, radius: int
+) -> list[_SearchDisplayWindow]:
+    """Build merged per-file display windows from returned actual matches."""
+    windows: list[_SearchDisplayWindow] = []
+    by_path: dict[str, list[tuple[int, int, int]]] = {}
+    for raw in raw_matches:
+        if raw.match.line is None:
+            continue
+        read_path = _search_match_path(cwd, raw.match.path)
+        if read_path is None:
+            continue
+        start, end = _context_window_for_line(
+            raw.match.line, raw.scoped_ranges, radius
+        )
+        by_path.setdefault(read_path, []).append((start, end, raw.match.line))
+
+    for read_path, ranges in by_path.items():
+        merged: list[_SearchDisplayWindow] = []
+        for start, end, match_line in sorted(ranges):
+            if merged and start <= merged[-1].end + 1:
+                previous = merged[-1]
+                merged[-1] = _SearchDisplayWindow(
+                    read_path=previous.read_path,
+                    start=previous.start,
+                    end=max(previous.end, end),
+                    match_lines=previous.match_lines | frozenset({match_line}),
+                )
+                continue
+            merged.append(
+                _SearchDisplayWindow(
+                    read_path=read_path,
+                    start=start,
+                    end=end,
+                    match_lines=frozenset({match_line}),
+                )
+            )
+        windows.extend(merged)
+    return windows
+
+
+def _grep_display_output(
+    raw_matches: list[_RawSearchMatch],
+    cwd: str,
+    session_id: str | None,
+    radius: int,
+) -> tuple[list[GrepDisplayLine], str]:
+    """Return displayed search lines and copyable grouped hashline text."""
+    displayed: list[GrepDisplayLine] = []
+    sections: list[str] = []
+    for window in _display_windows(raw_matches, cwd, radius):
+        try:
+            read_result = read_file_execute(
+                window.read_path, window.start, window.end, session_id
+            )
+        except OSError, UnicodeDecodeError, ValueError:
+            continue
+        seen_range = (
+            read_result.seen_ranges[0] if read_result.seen_ranges else None
+        )
+        if sections:
+            sections.append("")
+        sections.append(str(read_result.path or "<unknown>"))
+        sections.append(read_result.numbered_content)
+        for line in read_result.lines:
+            displayed.append(
+                GrepDisplayLine(
+                    path=read_result.path,
+                    line=line.line,
+                    kind=(
+                        "match"
+                        if line.line in window.match_lines
+                        else "context"
+                    ),
+                    text=line.text,
+                    numbered_line=f"{line.line}:{line.text}",
+                    session_id=read_result.session_id,
+                    snapshot_id=read_result.snapshot_id,
+                    file_sha256=read_result.file_sha256,
+                    seen_range=seen_range,
+                )
+            )
+    return displayed, "\n".join(sections)
+
 
 _SEARCH_LINE_RANGE_RE = re.compile(r"^(\d+)(?:([-+])(\d*)?)?$")
 
@@ -244,6 +355,7 @@ async def grep_search_execute(
         cmd, cwd=cwd, timeout_s=60, max_output_bytes=1_000_000
     )
     matches: list[GrepMatch] = []
+    raw_matches: list[_RawSearchMatch] = []
     matched_seen = 0
     for line in result.stdout.splitlines():
         try:
@@ -313,18 +425,31 @@ async def grep_search_execute(
             column=first_start + 1 if isinstance(first_start, int) else None,
             text=str(line_text).rstrip("\n"),
         )
-        matches.append(_ground_match_line(match, cwd, session_id))
+        grounded_match = _ground_match_line(match, cwd, session_id)
+        matches.append(grounded_match)
+        raw_matches.append(
+            _RawSearchMatch(
+                match=grounded_match,
+                scoped_ranges=scoped_ranges,
+            )
+        )
         matched_seen += 1
         if len(matches) >= max_results:
             break
+    displayed_lines, numbered_content = _grep_display_output(
+        raw_matches, cwd, session_id, _SEARCH_CONTEXT_RADIUS
+    )
     return GrepSearchOutput(
         ok=result.exit_code in {0, 1},
         matches=matches,
+        displayed_lines=displayed_lines,
         count=len(matches),
+        displayed_count=len(displayed_lines),
+        context_radius=_SEARCH_CONTEXT_RADIUS if matches else 0,
         skipped=skip,
         truncated=len(matches) >= max_results or result.truncated,
         stderr=result.stderr,
-        numbered_content=_grep_numbered_content(matches),
+        numbered_content=numbered_content,
     )
 
 

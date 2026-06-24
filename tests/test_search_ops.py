@@ -3,6 +3,7 @@ import shutil
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.ops.files import hashline_edit_execute
 from local_shell_mcp.ops.search import (
     glob_search_execute,
     grep_search_execute,
@@ -162,8 +163,85 @@ async def test_grep_search_returns_grounded_numbered_matches(
     assert match.file_sha256
     assert match.seen_range is not None
     assert match.seen_range.model_dump() == {"start": 2, "end": 2}
+    assert result.displayed_count == 3
+    assert result.context_radius == 1
+    assert [line.line for line in result.displayed_lines] == [1, 2, 3]
+    assert [line.kind for line in result.displayed_lines] == [
+        "context",
+        "match",
+        "context",
+    ]
+    assert all(line.snapshot_id for line in result.displayed_lines)
+    assert result.displayed_lines[0].seen_range is not None
+    assert result.displayed_lines[0].seen_range.model_dump() == {
+        "start": 1,
+        "end": 3,
+    }
     assert result.numbered_content.startswith("src/app.py\n[src/app.py#")
-    assert result.numbered_content.endswith("]\n2:needle here")
+    assert "1:alpha" in result.numbered_content
+    assert "2:needle here" in result.numbered_content
+    assert result.numbered_content.endswith("3:gamma")
+
+
+@pytest.mark.asyncio
+async def test_search_merges_context_windows_for_multiple_matches(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text(
+        "one\nneedle alpha\nmiddle\nneedle beta\ntail\n",
+        encoding="utf-8",
+    )
+
+    session_id = _create_session()
+
+    result = await search_execute(
+        "needle", paths="src", regex=False, session_id=session_id
+    )
+
+    assert result.count == 2
+    assert [match.line for match in result.matches] == [2, 4]
+    assert [line.line for line in result.displayed_lines] == [1, 2, 3, 4, 5]
+    assert [line.kind for line in result.displayed_lines] == [
+        "context",
+        "match",
+        "context",
+        "match",
+        "context",
+    ]
+    assert result.numbered_content.count("[src/app.py#") == 1
+
+
+@pytest.mark.asyncio
+async def test_hashline_edit_accepts_displayed_search_context_row(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "src").mkdir()
+    target = tmp_path / "src" / "app.py"
+    target.write_text("alpha\nneedle here\ngamma\n", encoding="utf-8")
+
+    session_id = _create_session()
+    result = await search_execute(
+        "needle", paths="src", regex=False, session_id=session_id
+    )
+
+    header = next(
+        line
+        for line in result.numbered_content.splitlines()
+        if line.startswith("[src/app.py#")
+    )
+    hashline_input = f"{header}\n1:alpha\n+ALPHA"
+    hashline_edit_execute(hashline_input, session_id)
+
+    assert target.read_text(encoding="utf-8") == "ALPHA\nneedle here\ngamma\n"
 
 
 @pytest.mark.asyncio
@@ -222,6 +300,10 @@ async def test_high_level_search_accepts_line_scoped_path_selector(
     assert result.matches[0].numbered_line is not None
     assert result.matches[0].numbered_line.startswith("[src/app.py#")
     assert result.matches[0].numbered_line.endswith("]\n2:needle second")
+    assert [line.line for line in result.displayed_lines] == [2]
+    assert [line.kind for line in result.displayed_lines] == ["match"]
+    assert "1:needle first" not in result.numbered_content
+    assert "3:needle third" not in result.numbered_content
 
 
 @pytest.mark.asyncio
@@ -258,6 +340,8 @@ async def test_high_level_search_skip_pages_grounded_results(
     assert first.count == 1
     assert first.skipped == 0
     assert first.matches[0].line == 1
+    assert [line.line for line in first.displayed_lines] == [1, 2]
+    assert [line.kind for line in first.displayed_lines] == ["match", "context"]
     assert first.truncated is True
     assert second.count == 1
     assert second.skipped == 1
@@ -265,6 +349,12 @@ async def test_high_level_search_skip_pages_grounded_results(
     assert second.matches[0].numbered_line is not None
     assert second.matches[0].numbered_line.startswith("[src/app.py#")
     assert second.matches[0].numbered_line.endswith("]\n2:needle second")
+    assert [line.line for line in second.displayed_lines] == [1, 2, 3]
+    assert [line.kind for line in second.displayed_lines] == [
+        "context",
+        "match",
+        "context",
+    ]
 
 
 @pytest.mark.asyncio
@@ -297,7 +387,11 @@ async def test_high_level_search_paths_accept_line_scoped_file_selectors(
     assert result.matches[0].numbered_line is not None
     assert result.matches[0].numbered_line.startswith("[src/app.py#")
     assert result.matches[0].numbered_line.endswith("]\n3:needle middle")
+    assert [line.line for line in result.displayed_lines] == [3, 5]
+    assert [line.kind for line in result.displayed_lines] == ["match", "match"]
     assert "1:needle first" not in result.numbered_content
+    assert "2:ignore" not in result.numbered_content
+    assert "4:ignore" not in result.numbered_content
 
 
 @pytest.mark.asyncio
@@ -332,5 +426,9 @@ async def test_mcp_search_facade_returns_grounded_results(
 
     assert payload["matches"][0]["path"] == "src/app.py"
     assert payload["matches"][0]["snapshot_id"]
+    assert payload["displayed_lines"][0]["line"] == 1
+    assert payload["displayed_lines"][0]["kind"] == "match"
+    assert payload["displayed_lines"][0]["snapshot_id"]
+    assert payload["displayed_count"] == 1
     assert payload["numbered_content"].startswith("src/app.py\n[src/app.py#")
     assert payload["numbered_content"].endswith("]\n1:needle")

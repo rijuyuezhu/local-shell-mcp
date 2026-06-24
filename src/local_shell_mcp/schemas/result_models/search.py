@@ -1,5 +1,7 @@
 """Typed structured outputs for search and tree-view tools."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from .files import LineRange
@@ -83,6 +85,38 @@ class GrepMatch(BaseModel):
     )
 
 
+class GrepDisplayLine(BaseModel):
+    """One displayed search output line, either an actual match or context."""
+
+    path: str | None = Field(description="Path containing the displayed line.")
+    line: int = Field(description="1-based displayed line number.")
+    kind: Literal["match", "context"] = Field(
+        description="Whether this displayed line is an actual match or surrounding context."
+    )
+    text: str = Field(
+        description="Displayed line text without the trailing newline."
+    )
+    numbered_line: str = Field(
+        description="Copyable 'line:text' row for this displayed line; use with the enclosing [path#snapshot_id] header from numbered_content."
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Agent grounding session that recorded this displayed line.",
+    )
+    snapshot_id: str | None = Field(
+        default=None,
+        description="Snapshot handle for the displayed context window, usable with hashline_edit and edit_lines.",
+    )
+    file_sha256: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the complete matched file when displayed.",
+    )
+    seen_range: LineRange | None = Field(
+        default=None,
+        description="Inclusive original line range shown in this displayed context window.",
+    )
+
+
 class GrepSearchOutput(BaseModel):
     """Ripgrep content search result."""
 
@@ -90,7 +124,19 @@ class GrepSearchOutput(BaseModel):
         description="Whether ripgrep completed successfully or with no matches."
     )
     matches: list[GrepMatch] = Field(description="Returned ripgrep matches.")
+    displayed_lines: list[GrepDisplayLine] = Field(
+        default_factory=list,
+        description="Displayed hashline rows with kind='match' for actual matches and kind='context' for surrounding context.",
+    )
     count: int = Field(description="Number of matches returned.")
+    displayed_count: int = Field(
+        default=0,
+        description="Number of displayed match and context lines returned.",
+    )
+    context_radius: int = Field(
+        default=0,
+        description="Number of surrounding context lines requested around each returned match.",
+    )
     skipped: int = Field(
         default=0,
         description="Number of earlier matches skipped before the returned page.",
@@ -103,5 +149,5 @@ class GrepSearchOutput(BaseModel):
     )
     numbered_content: str = Field(
         default="",
-        description="Grouped grounded hashline match snippets with [path#snapshot_id] headers and line:text rows.",
+        description="Grouped grounded hashline search snippets with [path#snapshot_id] headers and copyable line:text rows; use displayed_lines.kind to distinguish actual matches from context.",
     )

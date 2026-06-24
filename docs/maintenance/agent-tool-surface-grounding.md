@@ -122,18 +122,20 @@ This file is the single source of truth for the current agent-facing read/search
 
 ## Current known state
 
-- The branch is functionally green through the model-facing hashline-default clarification pass, search skip pagination, and line-scoped search path follow-ups.
+- The branch is functionally green through multi-hunk `hashline_edit`, search skip pagination, line-scoped search paths, and search match/context display markers.
 - `hashline_edit` is available and generated into `docs/reference/generated/tools.json`.
 - MCP/server instructions, model-facing tool descriptions, generated reference data, and guides now teach `hashline_edit` as the default edit path for existing files when the model is editing from copied `[path#snapshot_id]` plus `line:text` output.
 - Existing `edit_lines` remains available for structured/programmatic edits when the caller already has exact path/start/end/replacement arguments, but it is no longer presented as a peer default for ordinary model edits.
-- `search` now supports `skip` pagination and concrete file line-scoped path selectors such as `src/app.py:50-80`, while preserving hashline grounding for returned matches.
+- `search` now supports `skip` pagination, concrete file line-scoped path selectors such as `src/app.py:50-80`, and displayed context rows marked by `displayed_lines.kind` as `match` or `context`; `matches` remains actual matches only.
+- Search `numbered_content` still uses copyable `[path#snapshot_id]` plus `line:text` rows, and context rows are editable grounding recorded in `seen_ranges`.
 - Remote worker e2e coverage now exercises the first-class remote session path for `hashline_edit`: `tests/test_e2e_remote_worker.py` reads a remote file, applies `hashline_edit` from copied hashline grounding, then still applies `edit_lines` to keep structured remote edit coverage.
-- Latest local validation for the adoption pass and remote follow-up:
-  - focused surface/export tests passed: 51 passed, 1 warning.
-  - `uv run pyright .` passed: 0 errors, 0 warnings, 0 informations.
-  - generated tool/instruction reference check passed.
-  - `uv run pytest -q` passed: 268 passed, 1 warning.
-  - remote worker e2e focused test passed: `uv run pytest -q tests/test_e2e_remote_worker.py` -> 1 passed.
+- Latest local validation for Slice B:
+  - `uv run python -m py_compile src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/result_models/search.py` passed.
+  - `uv run pytest tests/test_search_ops.py -q` passed: 14 passed.
+  - `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check` passed.
+  - `uv run pytest tests/test_tool_surface.py tests/test_export_tools_json.py tests/test_search_ops.py -q` passed: 45 passed, 1 warning.
+  - `uv run pyright` passed: 0 errors, 0 warnings, 0 informations.
+  - `uv run pytest` passed: 277 passed, 1 warning.
 
 ## Current read/edit/search comparison with oh-my-pi
 
@@ -274,6 +276,27 @@ Tests to add/update:
 - Pagination behavior with context enabled.
 - Hashline edit from a displayed search row after context output changes.
 - Generated reference/tool-surface tests for any new input parameters or output fields.
+
+Status: implemented in this slice. Current behavior:
+
+- `matches` remains actual matched lines only, preserving existing consumers.
+- Search output now includes `displayed_lines`, with each displayed editable row marked as `kind="match"` or `kind="context"`.
+- `displayed_lines` rows include line text, copyable `numbered_line`, snapshot metadata, file digest, and `seen_range` metadata.
+- Search displays a bounded one-line context radius around returned matches and merges overlapping same-file context windows.
+- Context display respects line-scoped `paths`; context does not leak outside the selected ranges.
+- `numbered_content` keeps copyable `[path#snapshot_id]` plus `line:text` rows so displayed match/context rows can be copied into `hashline_edit`.
+
+Validation run for this slice:
+
+- `uv run python -m py_compile src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/result_models/search.py`
+- `uv run pytest tests/test_search_ops.py -q` → 14 passed
+- `uv run ruff format src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/result_models/search.py src/local_shell_mcp/tools/registry/search.py tests/test_search_ops.py`
+- `uv run ruff check src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/result_models/search.py src/local_shell_mcp/tools/registry/search.py tests/test_search_ops.py` → All checks passed
+- `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json`
+- `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check`
+- `uv run pytest tests/test_tool_surface.py tests/test_export_tools_json.py tests/test_search_ops.py -q` → 45 passed, 1 warning
+- `uv run pyright` → 0 errors, 0 warnings, 0 informations
+- `uv run pytest` → 277 passed, 1 warning
 
 ### Slice C — explicit `search` gitignore control
 
