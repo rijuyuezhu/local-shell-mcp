@@ -72,15 +72,15 @@ def _wrap_mcp_http_app(inner_app: Starlette) -> Starlette:
         async with inner_app.router.lifespan_context(inner_app):
             yield
 
-    routes: list[BaseRoute] = [
+    public_routes: list[BaseRoute] = [
         *public_http_routes(
             settings,
             readyz_include_workspace_root=False,
         ),
         *(remote_routes() if settings.remote_enabled else ()),
         *oauth_public_routes(),
-        Mount("/", app=inner_app),
     ]
+    routes = [*public_routes, Mount("/", app=inner_app)]
     return Starlette(routes=routes, lifespan=lifespan)
 
 
@@ -89,7 +89,7 @@ def _build_mcp_http_transport_app(inner_app: Starlette) -> Starlette:
     settings = get_settings()
     app = _wrap_mcp_http_app(inner_app)
     if settings.auth_mode != "none":
-        app.add_middleware(AuthMiddleware)
+        app.add_middleware(AuthMiddleware, public_routes=app.routes[:-1])
     return app
 
 

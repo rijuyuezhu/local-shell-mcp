@@ -4,11 +4,13 @@ Security model: see ``docs/security.md#oauth-security``. This middleware is the
 resource-server boundary for tool and MCP requests.
 """
 
+from collections.abc import Iterable
 from typing import Any
 
 import jwt
 from fastapi import HTTPException, Request
 from starlette.responses import JSONResponse
+from starlette.routing import BaseRoute
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..audit import audit
@@ -16,18 +18,31 @@ from ..config.settings import get_settings
 from .tokens import validate_bearer_token
 from .urls import protected_resource_metadata_url
 
-PUBLIC_PATHS = {
-    "/healthz",
-    "/readyz",
-    "/docs",
-    "/openapi.json",
-    "/join",
-    "/remote/worker-bundle.tgz",
-    "/remote/register",
-    "/remote/resume",
-    "/remote/poll",
-    "/remote/result",
-}
+
+def _route_path(route: BaseRoute) -> str | None:
+    """Return the route path when the ASGI route object exposes one."""
+    path = getattr(route, "path", None)
+    return path if isinstance(path, str) else None
+
+
+def _public_path_matchers(
+    routes: Iterable[BaseRoute],
+) -> tuple[frozenset[str], tuple[str, ...]]:
+    """Build exact-path and dynamic-prefix matchers from mounted public routes."""
+    paths: set[str] = set()
+    prefixes: set[str] = set()
+    for route in routes:
+        path = _route_path(route)
+        if not path:
+            continue
+        dynamic_start = path.find("{")
+        if dynamic_start < 0:
+            paths.add(path)
+            continue
+        prefix = path[:dynamic_start]
+        if prefix:
+            prefixes.add(prefix)
+    return frozenset(paths), tuple(sorted(prefixes, key=len, reverse=True))
 
 
 def _client_host(request: Request) -> str:
@@ -123,8 +138,19 @@ def verify_request(request: Request) -> None:
 class AuthMiddleware:
     """ASGI middleware for OAuth bearer verification."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(
+        self, app: ASGIApp, *, public_routes: Iterable[BaseRoute] = ()
+    ) -> None:
         self.app = app
+        self._public_paths, self._public_prefixes = _public_path_matchers(
+            public_routes
+        )
+
+    def _is_public_path(self, path: str) -> bool:
+        """Return whether a request path is served by a configured public route."""
+        return path in self._public_paths or any(
+            path.startswith(prefix) for prefix in self._public_prefixes
+        )
 
     async def __call__(
         self, scope: Scope, receive: Receive, send: Send
@@ -137,12 +163,7 @@ class AuthMiddleware:
         path = scope.get("path", "")
         # Docs compliance: OAuth discovery and bootstrap endpoints must remain
         # reachable without a bearer token; tool/MCP routes remain protected.
-        if (
-            path in PUBLIC_PATHS
-            or path.startswith("/.well-known/")
-            or path.startswith("/oauth/")
-            or path.startswith("/download/")
-        ):
+        if self._is_public_path(path):
             await self.app(scope, receive, send)
             return
 
