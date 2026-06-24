@@ -59,7 +59,7 @@ def _remote_admin_description(context: McpToolContext) -> str:
     settings = context.settings
     return f"""Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.
 
-Do not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted."""
+Do not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted."""
 
 
 @local_tool(

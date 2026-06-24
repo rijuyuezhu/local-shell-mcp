@@ -154,6 +154,64 @@ async def test_model_facing_tools_require_session_id_by_default(
         )
 
 
+@pytest.mark.asyncio
+async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    mcp = build_mcp()
+    assert mcp.instructions is not None
+    assert "`read` for file/directory context" in mcp.instructions
+    assert (
+        "`search(pattern, paths=...)` for content discovery" in mcp.instructions
+    )
+    assert "`[path#snapshot_id]` plus `line:text` rows" in mcp.instructions
+    assert "Prefer `hashline_edit`" in mcp.instructions
+    assert "structured path/start/end/replacement" in mcp.instructions
+
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
+    descriptions = {
+        name: tools[name].description or ""
+        for name in (
+            "read",
+            "search",
+            "write_file",
+            "edit_lines",
+            "hashline_edit",
+            "bash",
+            "run_python_code",
+            "session_start",
+            "remote_admin",
+        )
+    }
+
+    assert "[path#snapshot_id]" in descriptions["read"]
+    assert "line:text" in descriptions["read"]
+    assert "copied directly into hashline_edit" in descriptions["read"]
+    assert "hashline_edit and edit_lines" in descriptions["search"]
+    assert "prefer hashline_edit" in descriptions["write_file"]
+    assert "low-level structured edits" in descriptions["edit_lines"]
+    assert "Apply a compact grounded edit" in descriptions["hashline_edit"]
+    assert (
+        "hashline_edit when editing copied read/search rows"
+        in descriptions["bash"]
+    )
+    assert (
+        "read/search/hashline_edit/edit_lines/write_file"
+        in descriptions["run_python_code"]
+    )
+    assert (
+        "read, search, hashline_edit, edit_lines"
+        in descriptions["session_start"]
+    )
+    assert (
+        "read, search, hashline_edit, edit_lines"
+        in descriptions["remote_admin"]
+    )
+
+
 def test_remote_registry_declares_only_remote_admin(monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")

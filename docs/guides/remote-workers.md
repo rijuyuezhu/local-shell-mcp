@@ -82,7 +82,7 @@ The normal flow before remote edits is:
 1. `remote_admin(action="list", args={})`
 2. `session_start(target="remote", machine="gpu1", workdir="/home/me/project")`
 3. `read(session_id=..., path=".")` or `search(session_id=..., pattern=..., paths=[...])`
-4. `edit_lines(session_id=..., ...)` for snapshot-grounded edits
+4. `hashline_edit(session_id=..., input=...)` from copied hashline rows, or `edit_lines(session_id=..., ...)` for structured snapshot-grounded edits
 5. `bash(session_id=..., command=...)` for commands and validation
 
 ## Run remote commands

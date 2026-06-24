@@ -48,12 +48,12 @@ def _list_files_description(context: McpToolContext) -> str:
 
 def _write_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer hashline_edit from copied read/search rows or edit_lines when you already have structured path/start/end/replacement data; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 def _edit_lines_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for structured code edits when you already know path/start/end/replacement. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for low-level structured edits when you already know path/start/end/replacement; prefer hashline_edit when editing directly from copied `[path#snapshot_id]` plus `line:text` output. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 def _hashline_edit_description(context: McpToolContext) -> str:

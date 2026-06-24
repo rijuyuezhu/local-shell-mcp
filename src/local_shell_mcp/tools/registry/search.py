@@ -50,7 +50,7 @@ def _glob_search_description(context: McpToolContext) -> str:
 
 def _search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry grounding metadata for edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results={settings.max_grep_results}."""
+    return f"""Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry hashline grounding for hashline_edit and edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` match rows, grouped context, snapshot metadata, and displayed ranges that can ground hashline_edit and edit_lines. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(

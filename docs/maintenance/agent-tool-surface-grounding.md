@@ -74,46 +74,25 @@ This file is the single source of truth for the current agent-facing read/search
 
 ## Current known state
 
-- The branch is functionally green through `f02d10b`.
+- The branch is functionally green through the model-facing hashline adoption pass.
 - `hashline_edit` is available and generated into `docs/reference/generated/tools.json`.
-- The underlying tool instructions and docs have not yet been fully adapted to prefer `hashline_edit` where it is now the better model-facing edit path.
+- MCP/server instructions, model-facing tool descriptions, generated reference data, and guides now teach `hashline_edit` as the default edit path when the model is editing directly from copied `[path#snapshot_id]` plus `line:text` output.
 - Existing `edit_lines` remains useful for structured/programmatic edits when the caller already has exact path/start/end/replacement arguments.
+- Latest local validation for the adoption pass:
+  - focused surface/export tests passed: 51 passed, 1 warning.
+  - `uv run pyright .` passed: 0 errors, 0 warnings, 0 informations.
+  - generated tool/instruction reference check passed.
+  - `uv run pytest -q` passed: 268 passed, 1 warning.
 
 ## Recommended next slice
 
-Do a model-facing adoption pass for the now-available `hashline_edit` capability.
+No immediate implementation slice is required for this grounding plan after the adoption pass. If continuing, pick from the later follow-ups only when there is a clear product need.
 
-Rationale: the implementation is green, but several current model-facing or user-facing texts still teach the old default edit flow. That can make agents keep using `edit_lines` even when the hashline text they just saw can be edited more directly.
+Keep these invariants for future slices:
 
-Scope for the next slice:
-
-1. Update MCP/server instructions source so the default workflow says:
-   - Use `read` and `search` for context.
-   - Treat `[path#snapshot_id]` plus `line:text` rows as the authoritative edit grounding.
-   - Prefer `hashline_edit` when editing directly from copied hashline output.
-   - Use `edit_lines` when the caller already has structured path/start/end/replacement data.
-2. Update model-facing tool descriptions where needed:
-   - `read` should mention hashline output and `hashline_edit` as the direct edit companion.
-   - `search` should mention that results can ground `hashline_edit` and `edit_lines`.
-   - `bash` / `run_python_code` descriptions should not imply `edit_lines` is the only precise edit tool.
-   - `write_file` should prefer `hashline_edit` or `edit_lines` for precise edits instead of only `edit_lines`.
-   - Remote-admin normal-work examples should include `hashline_edit` if listing edit tools.
-3. Update hand-written docs that still describe the old workflow:
-   - `docs/guides/common-workflows.md`
-   - `docs/guides/example-prompts.md`
-   - `docs/guides/audit-log.md` because it still has an old `1|...` output example and repeated old metadata shape.
-4. Regenerate generated references after model-facing text changes:
-   - `docs/reference/generated/tools.json`
-   - `docs/reference/generated/server-instructions.json`
-5. Add or adjust tests that lock the intended text at a high level, preferably in existing surface tests rather than brittle full-string assertions.
-6. Validate:
-   - focused docs/tool-surface tests touched by the slice.
-   - `uv run pyright .`
-   - generated reference check.
-   - `uv run pytest -q` when feasible.
-7. Commit, push, and check CI.
-
-Do not remove `edit_lines` in this slice. Treat `hashline_edit` as the model-facing default for copied hashline text, and `edit_lines` as the structured low-level precise edit tool.
+- Do not remove `edit_lines`; keep it as the structured low-level precise edit tool.
+- Keep `hashline_edit` as the model-facing default for copied hashline text.
+- Model-facing tool descriptions and generated instructions must describe only currently available capabilities.
 
 ## Later follow-ups after the adoption pass
 

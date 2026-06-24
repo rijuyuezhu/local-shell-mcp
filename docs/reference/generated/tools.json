@@ -305,7 +305,7 @@
               }
             ]
           },
-          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for structured code edits when you already know path/start/end/replacement. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
+          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for low-level structured edits when you already know path/start/end/replacement; prefer hashline_edit when editing directly from copied `[path#snapshot_id]` plus `line:text` output. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -405,7 +405,7 @@
               }
             ]
           },
-          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
+          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer hashline_edit from copied read/search rows or edit_lines when you already have structured path/start/end/replacement data; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
         ]
       ]
     },
@@ -512,7 +512,7 @@
               }
             ]
           },
-          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
+          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit or edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep hashline output for edit grounding: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit, while the same snapshot metadata can ground edit_lines when you already have structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
@@ -548,7 +548,7 @@
               }
             ]
           },
-          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
+          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
         ]
       ]
     },
@@ -650,7 +650,7 @@
               }
             ]
           },
-          "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry grounding metadata for edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200."
+          "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry hashline grounding for hashline_edit and edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` match rows, grouped context, snapshot metadata, and displayed ranges that can ground hashline_edit and edit_lines. Current max_grep_results=200."
         ],
         [
           {
@@ -812,7 +812,7 @@
               }
             ]
           },
-          "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."
+          "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."
         ]
       ]
     },
@@ -904,7 +904,7 @@
               }
             ]
           },
-          "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, edit_lines for snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds."
+          "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, hashline_edit when editing copied read/search rows, edit_lines for structured snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds."
         ],
         [
           {
@@ -1032,7 +1032,7 @@
               }
             ]
           },
-          "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: 10/60 seconds."
+          "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/hashline_edit/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: 10/60 seconds."
         ],
         [
           {
@@ -1164,7 +1164,7 @@
               }
             ]
           },
-          "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, numbered content, and edit-grounding snapshot metadata."
+          "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, hashline output, and grounding metadata for hashline_edit/edit_lines."
         ],
         [
           {
@@ -1347,7 +1347,7 @@
       }
     },
     {
-      "description": "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, edit_lines for snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, hashline_edit when editing copied read/search rows, edit_lines for structured snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
@@ -1816,7 +1816,7 @@
       }
     },
     {
-      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for structured code edits when you already know path/start/end/replacement. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
+      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for low-level structured edits when you already know path/start/end/replacement; prefer hashline_edit when editing directly from copied `[path#snapshot_id]` plus `line:text` output. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "end_line": {
@@ -1928,7 +1928,7 @@
                 "title": "Bytes Read"
               },
               "content": {
-                "description": "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing.",
+                "description": "Decoded UTF-8 text content. Prefer numbered_content/hashline output for grounded edits.",
                 "title": "Content",
                 "type": "string"
               },
@@ -2097,7 +2097,7 @@
         "properties": {
           "context": {
             "$ref": "#/$defs/ReadFileOutput",
-            "description": "Numbered post-edit context around the changed line range, including a fresh snapshot_id."
+            "description": "Hashline post-edit context around the changed line range, including a fresh snapshot_id."
           },
           "diff": {
             "description": "Unified diff for the applied line edit.",
@@ -2144,7 +2144,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, numbered content, and edit-grounding snapshot metadata.",
+      "description": "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, hashline output, and grounding metadata for hashline_edit/edit_lines.",
       "inputSchema": {
         "properties": {
           "id": {
@@ -2370,7 +2370,7 @@
                 "title": "Bytes Read"
               },
               "content": {
-                "description": "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing.",
+                "description": "Decoded UTF-8 text content. Prefer numbered_content/hashline output for grounded edits.",
                 "title": "Content",
                 "type": "string"
               },
@@ -2539,7 +2539,7 @@
         "properties": {
           "context": {
             "$ref": "#/$defs/ReadFileOutput",
-            "description": "Numbered post-edit context around the changed line range, including a fresh snapshot_id."
+            "description": "Hashline post-edit context around the changed line range, including a fresh snapshot_id."
           },
           "diff": {
             "description": "Unified diff for the applied line edit.",
@@ -3555,7 +3555,7 @@
       }
     },
     {
-      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
+      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit or edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep hashline output for edit grounding: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit, while the same snapshot metadata can ground edit_lines when you already have structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
           "path": {
@@ -4063,7 +4063,7 @@
       }
     },
     {
-      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
+      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
       "inputSchema": {
         "properties": {
           "action": {
@@ -4185,7 +4185,7 @@
       }
     },
     {
-      "description": "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/hashline_edit/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
@@ -4360,7 +4360,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry grounding metadata for edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200.",
+      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry hashline grounding for hashline_edit and edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` match rows, grouped context, snapshot metadata, and displayed ranges that can ground hashline_edit and edit_lines. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
@@ -4541,7 +4541,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Snapshot handle for the displayed match line, usable with edit_lines.",
+                "description": "Snapshot handle for the displayed match line, usable with hashline_edit and edit_lines.",
                 "title": "Snapshot Id"
               },
               "text": {
@@ -4598,7 +4598,7 @@
           },
           "numbered_content": {
             "default": "",
-            "description": "Grouped grounded match snippets with line-numbered rows.",
+            "description": "Grouped grounded hashline match snippets with [path#snapshot_id] headers and line:text rows.",
             "title": "Numbered Content",
             "type": "string"
           },
@@ -5014,7 +5014,7 @@
       }
     },
     {
-      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session.",
+      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session.",
       "inputSchema": {
         "properties": {
           "label": {
@@ -5538,7 +5538,7 @@
       }
     },
     {
-      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
+      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer hashline_edit from copied read/search rows or edit_lines when you already have structured path/start/end/replacement data; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "content": {

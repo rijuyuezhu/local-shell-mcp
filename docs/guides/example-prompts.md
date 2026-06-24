@@ -11,7 +11,7 @@ Use local-shell-mcp. Clone https://github.com/fwerkor/FrameDiff.git into /worksp
 ## Make a change safely
 
 ```text
-Use local-shell-mcp. Start a session in /workspace/FrameDiff, create a new branch ai/example-change with `bash(session_id=...)`, inspect the target files with `read` or `search`, make the requested code edit with grounded `edit_lines`, run relevant tests with `bash(session_id=...)`, run `secret_scan(session_id=...)`, show git diff --stat, commit, and push the branch.
+Use local-shell-mcp. Start a session in /workspace/FrameDiff, create a new branch ai/example-change with `bash(session_id=...)`, inspect the target files with `read` or `search`, make the requested code edit with `hashline_edit` from copied `[path#snapshot_id]` / `line:text` rows, run relevant tests with `bash(session_id=...)`, run `secret_scan(session_id=...)`, show git diff --stat, commit, and push the branch.
 ```
 
 ## One-command remote worker onboarding
@@ -29,5 +29,5 @@ Use local-shell-mcp. Start a local session for the project, inspect the workspac
 ## Remote code edit and test
 
 ```text
-Use local-shell-mcp. Start a session for the target project, search for the requested symbol with `search`, edit with `edit_lines`, run the relevant test with `bash`, then show git diff --stat with `bash`, always passing the returned session_id.
+Use local-shell-mcp. Start a session for the target project, search for the requested symbol with `search`, edit with `hashline_edit` from the displayed hashline result (or `edit_lines` if the range is already structured), run the relevant test with `bash`, then show git diff --stat with `bash`, always passing the returned session_id.
 ```

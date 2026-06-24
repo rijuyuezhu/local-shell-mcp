@@ -71,7 +71,7 @@ class GrepMatch(BaseModel):
     )
     snapshot_id: str | None = Field(
         default=None,
-        description="Snapshot handle for the displayed match line, usable with edit_lines.",
+        description="Snapshot handle for the displayed match line, usable with hashline_edit and edit_lines.",
     )
     file_sha256: str | None = Field(
         default=None,
@@ -99,5 +99,5 @@ class GrepSearchOutput(BaseModel):
     )
     numbered_content: str = Field(
         default="",
-        description="Grouped grounded match snippets with line-numbered rows.",
+        description="Grouped grounded hashline match snippets with [path#snapshot_id] headers and line:text rows.",
     )

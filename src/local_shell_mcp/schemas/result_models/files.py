@@ -102,7 +102,7 @@ class ReadFileOutput(BaseModel):
         description="Whether text content was truncated to fit the read limit.",
     )
     content: str = Field(
-        description="Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing."
+        description="Decoded UTF-8 text content. Prefer numbered_content/hashline output for grounded edits."
     )
 
 
@@ -231,7 +231,7 @@ class EditLinesOutput(BaseModel):
     )
     diff: str = Field(description="Unified diff for the applied line edit.")
     context: ReadFileOutput = Field(
-        description="Numbered post-edit context around the changed line range, including a fresh snapshot_id."
+        description="Hashline post-edit context around the changed line range, including a fresh snapshot_id."
     )
 
 
