@@ -211,7 +211,7 @@ If continuing, pick from these follow-ups only when there is a clear product nee
 
 - Review stale user/docs examples outside `docs/guides/*` now that the main adoption pass is done.
 - Consider whether `hashline_edit` should support multi-hunk input. Only do this if there is a clear product need; current single-hunk behavior is smaller and safer.
-- Consider search ergonomics from the comparison: pagination, gitignore control, line-scoped path selectors, or stronger model-facing guidance against shell grep.
+- Consider remaining search ergonomics from the comparison: gitignore control or further model-facing guidance against shell grep. Pagination and concrete file line-scoped path selectors are already implemented.
 - Consider read ergonomics from the comparison: multi-range selectors, richer document/URL/archive readers, or conflict-specific read views.
 - Review whether `ReadOutput.content` and `ReadOutput.numbered_content` naming should be simplified in a breaking-change slice.
 
@@ -226,6 +226,7 @@ Use this prompt to continue in a fresh context:
 
 当前状态：
 - `read` / `search` 已输出 hashline-style grounding：`[path#snapshot_id]` plus `line:text` rows。
+- `search(session_id, pattern, paths?, ..., skip=0)` 已支持 `skip` 分页；`paths` 已支持 concrete file line selectors，如 `src/app.py:50-80,100+10`。
 - `hashline_edit(session_id, input)` 已实现、测试、生成引用、写入 model-facing instructions/docs，并作为 copied hashline text 的默认编辑流程。
 - `edit_lines` 必须保留，作为已有 path/start/end/replacement 参数时的结构化低层精确编辑工具。
 - 远端 worker e2e 已覆盖 first-class remote session 下的 `hashline_edit`，同时保留 `edit_lines` 远端覆盖。
