@@ -92,12 +92,28 @@ This file is the single source of truth for the current agent-facing read/search
   - `uv run pytest -q` passed: 268 passed, 1 warning.
   - Follow-up validation after regenerating with `--wrapped`: `uv run python -m pytest tests/test_tool_surface.py tests/test_export_tools_json.py -q` passed: 31 passed, 1 warning; `uv run mkdocs build --strict` passed.
 
+
+### `feat: add search skip pagination`
+
+- Added `skip` to the model-facing `search(session_id, pattern, paths?, regex?, case_sensitive?, max_results?, skip=0)` tool.
+- `skip` omits earlier matches before returning and grounding the current page, so callers can page through noisy or truncated searches with the same pattern and paths.
+- `GrepSearchOutput` now includes `skipped` to report the number of earlier matches skipped before the returned page.
+- Remote session search forwarding passes `skip` through to the worker session.
+- Search tool descriptions and generated reference data now document `skip` pagination and keep hashline grounding guidance intact.
+- Validation before commit:
+  - `uv run python -m pytest tests/test_search_ops.py tests/test_mcp_chatgpt_compat.py -q` passed: 30 passed, 1 warning.
+  - `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check` passed.
+  - `uv run python -m pytest tests/test_search_ops.py tests/test_mcp_chatgpt_compat.py tests/test_remote_facade.py -q` passed: 39 passed, 1 warning.
+  - `uv run pyright .` passed: 0 errors, 0 warnings, 0 informations.
+  - `uv run pytest -q` passed: 269 passed, 1 warning.
+
 ## Current known state
 
-- The branch is functionally green through the model-facing hashline-default clarification pass.
+- The branch is functionally green through the model-facing hashline-default clarification pass and search skip pagination follow-up.
 - `hashline_edit` is available and generated into `docs/reference/generated/tools.json`.
 - MCP/server instructions, model-facing tool descriptions, generated reference data, and guides now teach `hashline_edit` as the default edit path for existing files when the model is editing from copied `[path#snapshot_id]` plus `line:text` output.
 - Existing `edit_lines` remains available for structured/programmatic edits when the caller already has exact path/start/end/replacement arguments, but it is no longer presented as a peer default for ordinary model edits.
+- `search` now supports `skip` pagination while preserving hashline grounding for returned matches.
 - Remote worker e2e coverage now exercises the first-class remote session path for `hashline_edit`: `tests/test_e2e_remote_worker.py` reads a remote file, applies `hashline_edit` from copied hashline grounding, then still applies `edit_lines` to keep structured remote edit coverage.
 - Latest local validation for the adoption pass and remote follow-up:
   - focused surface/export tests passed: 51 passed, 1 warning.

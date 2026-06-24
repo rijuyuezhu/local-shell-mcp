@@ -60,6 +60,12 @@ GrepMaxResultsArg = Annotated[
         description="Optional maximum number of matches to return. Omit to use the configured server limit."
     ),
 ]
+GrepSkipArg = Annotated[
+    int,
+    Field(
+        description="Number of earlier matches to skip before returning results. Use with the same pattern/paths to page through noisy searches."
+    ),
+]
 
 SearchPathsArg = Annotated[
     str | list[str] | None,

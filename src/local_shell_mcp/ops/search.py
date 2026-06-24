@@ -159,10 +159,12 @@ async def grep_search_execute(
     max_results: int | None = None,
     session_id: str | None = None,
     paths: _SearchPaths = None,
+    skip: int = 0,
 ) -> GrepSearchOutput:
     """Run ripgrep with workspace path resolution and return structured match records."""
     settings = get_settings()
     max_results = max_results or settings.max_grep_results
+    skip = max(0, skip)
     args = [settings.rg_bin, "--json", "--line-number", "--column"]
     if not regex:
         args.append("--fixed-strings")
@@ -179,6 +181,7 @@ async def grep_search_execute(
         cmd, cwd=cwd, timeout_s=60, max_output_bytes=1_000_000
     )
     matches: list[GrepMatch] = []
+    matched_seen = 0
     for line in result.stdout.splitlines():
         try:
             obj = json.loads(line)
@@ -217,6 +220,9 @@ async def grep_search_execute(
         )
         path_text = path_data.get("text")
         line_text = line_data.get("text", "")
+        if matched_seen < skip:
+            matched_seen += 1
+            continue
         match = GrepMatch(
             path=path_text,
             line=match_data.get("line_number"),
@@ -224,12 +230,14 @@ async def grep_search_execute(
             text=str(line_text).rstrip("\n"),
         )
         matches.append(_ground_match_line(match, cwd, session_id))
+        matched_seen += 1
         if len(matches) >= max_results:
             break
     return GrepSearchOutput(
         ok=result.exit_code in {0, 1},
         matches=matches,
         count=len(matches),
+        skipped=skip,
         truncated=len(matches) >= max_results or result.truncated,
         stderr=result.stderr,
         numbered_content=_grep_numbered_content(matches),
@@ -244,6 +252,7 @@ async def search_execute(
     case_sensitive: bool = True,
     max_results: int | None = None,
     session_id: str | None = None,
+    skip: int = 0,
 ) -> GrepSearchOutput:
     """Search code content with optional path scopes and edit grounding."""
     if session_id is not None:
@@ -258,6 +267,7 @@ async def search_execute(
                     "regex": regex,
                     "case_sensitive": case_sensitive,
                     "max_results": max_results,
+                    "skip": skip,
                 },
             )
             return GrepSearchOutput.model_validate(data)
@@ -271,6 +281,7 @@ async def search_execute(
         max_results=max_results,
         session_id=session_id,
         paths=paths,
+        skip=skip,
     )
 
 

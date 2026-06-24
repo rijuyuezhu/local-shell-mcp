@@ -647,10 +647,17 @@
                   "code": "session_id"
                 },
                 "note": "(string, required)"
+              },
+              {
+                "description": "Number of earlier matches to skip before returning results. Use with the same pattern/paths to page through noisy searches.",
+                "head": {
+                  "code": "skip"
+                },
+                "note": "(integer, optional)"
               }
             ]
           },
-          "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200."
+          "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200."
         ],
         [
           {
@@ -4360,7 +4367,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200.",
+      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
@@ -4419,6 +4426,12 @@
             "pattern": "^[A-Za-z0-9]{8}$",
             "title": "Session Id",
             "type": "string"
+          },
+          "skip": {
+            "default": 0,
+            "description": "Number of earlier matches to skip before returning results. Use with the same pattern/paths to page through noisy searches.",
+            "title": "Skip",
+            "type": "integer"
           }
         },
         "required": [
@@ -4606,6 +4619,12 @@
             "description": "Whether ripgrep completed successfully or with no matches.",
             "title": "Ok",
             "type": "boolean"
+          },
+          "skipped": {
+            "default": 0,
+            "description": "Number of earlier matches skipped before the returned page.",
+            "title": "Skipped",
+            "type": "integer"
           },
           "stderr": {
             "description": "Captured ripgrep stderr, after output limiting.",

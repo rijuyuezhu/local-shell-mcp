@@ -278,6 +278,7 @@ async def test_remote_session_dispatches_read_search_edit_bash_job(monkeypatch):
                 "regex": False,
                 "case_sensitive": True,
                 "max_results": None,
+                "skip": 0,
                 "session_id": "WORKER12",
             },
             None,

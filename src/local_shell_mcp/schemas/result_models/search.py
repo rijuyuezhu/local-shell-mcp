@@ -91,6 +91,10 @@ class GrepSearchOutput(BaseModel):
     )
     matches: list[GrepMatch] = Field(description="Returned ripgrep matches.")
     count: int = Field(description="Number of matches returned.")
+    skipped: int = Field(
+        default=0,
+        description="Number of earlier matches skipped before the returned page.",
+    )
     truncated: bool = Field(
         description="Whether results were truncated by match or output limits."
     )

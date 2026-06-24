@@ -194,6 +194,49 @@ async def test_high_level_search_scopes_to_paths(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_high_level_search_skip_pages_grounded_results(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text(
+        "needle first\nneedle second\nneedle third\n", encoding="utf-8"
+    )
+
+    session_id = _create_session()
+
+    first = await search_execute(
+        "needle",
+        paths="src",
+        regex=False,
+        session_id=session_id,
+        max_results=1,
+    )
+    second = await search_execute(
+        "needle",
+        paths="src",
+        regex=False,
+        session_id=session_id,
+        max_results=1,
+        skip=1,
+    )
+
+    assert first.count == 1
+    assert first.skipped == 0
+    assert first.matches[0].line == 1
+    assert first.truncated is True
+    assert second.count == 1
+    assert second.skipped == 1
+    assert second.matches[0].line == 2
+    assert second.matches[0].numbered_line is not None
+    assert second.matches[0].numbered_line.startswith("[src/app.py#")
+    assert second.matches[0].numbered_line.endswith("]\n2:needle second")
+
+
+@pytest.mark.asyncio
 async def test_mcp_search_facade_returns_grounded_results(
     tmp_path, monkeypatch
 ):

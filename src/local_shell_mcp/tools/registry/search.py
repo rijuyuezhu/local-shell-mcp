@@ -11,6 +11,7 @@ from ...schemas.input_models.search import (
     GlobPatternArg,
     GrepMaxResultsArg,
     GrepQueryArg,
+    GrepSkipArg,
     RegexArg,
     SearchCwdArg,
     SearchPathsArg,
@@ -50,7 +51,7 @@ def _glob_search_description(context: McpToolContext) -> str:
 
 def _search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results={settings.max_grep_results}."""
+    return f"""Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(
@@ -99,8 +100,16 @@ async def search(
     regex: RegexArg = True,
     case_sensitive: CaseSensitiveArg = True,
     max_results: GrepMaxResultsArg = None,
+    skip: GrepSkipArg = 0,
 ) -> GrepSearchOutput:
     """Search code content with optional path scopes."""
     return await search_execute(
-        pattern, paths, ".", regex, case_sensitive, max_results, session_id
+        pattern,
+        paths,
+        ".",
+        regex,
+        case_sensitive,
+        max_results,
+        session_id,
+        skip,
     )

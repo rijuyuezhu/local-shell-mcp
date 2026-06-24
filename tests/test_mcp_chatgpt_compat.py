@@ -316,8 +316,16 @@ async def test_search_tool_input_and_output_schema_descriptions_are_exposed(
         ]
     )
     assert (
+        "page through noisy searches"
+        in search_tool.inputSchema["properties"]["skip"]["description"]
+    )
+    assert (
         search_output_schema["properties"]["matches"]["description"]
         == "Returned ripgrep matches."
+    )
+    assert (
+        search_output_schema["properties"]["skipped"]["description"]
+        == "Number of earlier matches skipped before the returned page."
     )
     assert "session_id" in tree_tool.inputSchema["required"]
     assert "session_id" in glob_tool.inputSchema["required"]
