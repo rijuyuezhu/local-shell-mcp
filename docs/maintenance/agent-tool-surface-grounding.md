@@ -72,12 +72,32 @@ This file is the single source of truth for the current agent-facing read/search
   - Docs `28073674665`: success.
   - CI `28073674648`: success across pre-commit, pyright, vscode-extension, Ubuntu pytest, and macOS pytest.
 
+
+### `docs: clarify hashline edit as default`
+
+- Tightened model-facing edit guidance so `hashline_edit` is clearly the default model editing path for existing files.
+- Clarified `hashline_edit` usage in tool descriptions and server instructions:
+  - Copy `[path#snapshot_id]` plus displayed `line:text` rows from `read`/`search`.
+  - Provide final new content only as `+text` rows.
+  - A copied-row edit with no `+` rows deletes those rows.
+  - `SWAP start[-end]:` and `INSERT [BEFORE|AFTER] line:` are the supported explicit directive forms.
+  - Re-ground from returned fresh context or a new `read` after every successful edit or stale/surprising result.
+- Reworded `edit_lines` descriptions so it remains available but is only recommended when exact structured path/start/end/replacement data is already available.
+- Strengthened `search` guidance to prefer built-in search over shell grep/ripgrep when editable grounded results are needed.
+- Regenerated tool and server-instruction reference JSON.
+- Validation before commit:
+  - `uv run python -m pytest tests/test_tool_surface.py -q` passed: 29 passed, 1 warning.
+  - `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check` passed.
+  - `uv run pyright .` passed: 0 errors, 0 warnings, 0 informations.
+  - `uv run pytest -q` passed: 268 passed, 1 warning.
+  - Follow-up validation after regenerating with `--wrapped`: `uv run python -m pytest tests/test_tool_surface.py tests/test_export_tools_json.py -q` passed: 31 passed, 1 warning; `uv run mkdocs build --strict` passed.
+
 ## Current known state
 
-- The branch is functionally green through the model-facing hashline adoption pass.
+- The branch is functionally green through the model-facing hashline-default clarification pass.
 - `hashline_edit` is available and generated into `docs/reference/generated/tools.json`.
-- MCP/server instructions, model-facing tool descriptions, generated reference data, and guides now teach `hashline_edit` as the default edit path when the model is editing directly from copied `[path#snapshot_id]` plus `line:text` output.
-- Existing `edit_lines` remains useful for structured/programmatic edits when the caller already has exact path/start/end/replacement arguments.
+- MCP/server instructions, model-facing tool descriptions, generated reference data, and guides now teach `hashline_edit` as the default edit path for existing files when the model is editing from copied `[path#snapshot_id]` plus `line:text` output.
+- Existing `edit_lines` remains available for structured/programmatic edits when the caller already has exact path/start/end/replacement arguments, but it is no longer presented as a peer default for ordinary model edits.
 - Remote worker e2e coverage now exercises the first-class remote session path for `hashline_edit`: `tests/test_e2e_remote_worker.py` reads a remote file, applies `hashline_edit` from copied hashline grounding, then still applies `edit_lines` to keep structured remote edit coverage.
 - Latest local validation for the adoption pass and remote follow-up:
   - focused surface/export tests passed: 51 passed, 1 warning.

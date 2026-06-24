@@ -29,5 +29,5 @@ Use local-shell-mcp. Start a local session for the project, inspect the workspac
 ## Remote code edit and test
 
 ```text
-Use local-shell-mcp. Start a session for the target project, search for the requested symbol with `search`, edit with `hashline_edit` from the displayed hashline result (or `edit_lines` if the range is already structured), run the relevant test with `bash`, then show git diff --stat with `bash`, always passing the returned session_id.
+Use local-shell-mcp. Start a session for the target project, search for the requested symbol with `search`, edit with `hashline_edit` from the displayed hashline result, run the relevant test with `bash`, then show git diff --stat with `bash`, always passing the returned session_id. Use `edit_lines` only if exact structured range arguments are already available.
 ```

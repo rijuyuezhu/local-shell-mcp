@@ -168,8 +168,9 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
         "`search(pattern, paths=...)` for content discovery" in mcp.instructions
     )
     assert "`[path#snapshot_id]` plus `line:text` rows" in mcp.instructions
-    assert "Prefer `hashline_edit`" in mcp.instructions
-    assert "structured path/start/end/replacement" in mcp.instructions
+    assert "`hashline_edit` as the default edit tool" in mcp.instructions
+    assert "Body rows are final content only" in mcp.instructions
+    assert "Use `edit_lines` only when" in mcp.instructions
 
     tools = {tool.name: tool for tool in await mcp.list_tools()}
     descriptions = {
@@ -190,10 +191,13 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
     assert "[path#snapshot_id]" in descriptions["read"]
     assert "line:text" in descriptions["read"]
     assert "copied directly into hashline_edit" in descriptions["read"]
-    assert "hashline_edit and edit_lines" in descriptions["search"]
-    assert "prefer hashline_edit" in descriptions["write_file"]
-    assert "low-level structured edits" in descriptions["edit_lines"]
-    assert "Apply a compact grounded edit" in descriptions["hashline_edit"]
+    assert "Use edit_lines only" in descriptions["read"]
+    assert "instead of shell grep/ripgrep" in descriptions["search"]
+    assert "copied into hashline_edit" in descriptions["search"]
+    assert "use hashline_edit" in descriptions["write_file"]
+    assert "Low-level structured line edit" in descriptions["edit_lines"]
+    assert "Default model-facing edit tool" in descriptions["hashline_edit"]
+    assert "Body rows are final content only" in descriptions["hashline_edit"]
     assert (
         "hashline_edit when editing copied read/search rows"
         in descriptions["bash"]

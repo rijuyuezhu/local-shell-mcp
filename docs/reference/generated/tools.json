@@ -305,7 +305,7 @@
               }
             ]
           },
-          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for low-level structured edits when you already know path/start/end/replacement; prefer hashline_edit when editing directly from copied `[path#snapshot_id]` plus `line:text` output. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
+          "Low-level structured line edit for callers that already have exact path/start_line/end_line/replacement data. Do not use this as the normal model editing path from read/search output; use hashline_edit for copied `[path#snapshot_id]` plus `line:text` rows. If you do call edit_lines, pass the same session_id and the snapshot_id from the read/search result so stale files or unseen ranges are rejected. The range is inclusive, 1-based, and should cover only lines being changed; use an empty replacement to delete. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -314,7 +314,7 @@
           {
             "items": [
               {
-                "description": "Compact edit text starting with [path#snapshot_id], followed by copied line rows and + replacement lines or SWAP/INSERT directives.",
+                "description": "Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT single-hunk directives.",
                 "head": {
                   "code": "input"
                 },
@@ -329,7 +329,7 @@
               }
             ]
           },
-          "Apply a compact grounded edit copied from `read` or `search` output. The input must start with `[path#snapshot_id]`; then use copied `line:text` rows followed by `+replacement` rows, `SWAP start[-end]:` plus replacement rows, or `INSERT [BEFORE|AFTER] line:` plus inserted rows. Use this when editing from the hashline text the model just saw. Keep edits small; stale files, wrong paths, or unseen ranges are rejected. Current write cap: 5000000 bytes."
+          "Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output, then provide the final new content as `+text` rows. Supported single-hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Line numbers refer to the original displayed snapshot; stale files, wrong paths, or unseen ranges are rejected. After a successful edit, use the returned fresh context or re-read before the next edit. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -405,7 +405,7 @@
               }
             ]
           },
-          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer hashline_edit from copied read/search rows or edit_lines when you already have structured path/start/end/replacement data; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
+          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For ordinary edits to existing files, use hashline_edit from copied read/search rows instead of rewriting the file. Use edit_lines only when you already have exact structured path/start/end/replacement data. Use bash only when a command-driven transformation is clearer. Current write cap: 5000000 bytes."
         ]
       ]
     },
@@ -512,7 +512,7 @@
               }
             ]
           },
-          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit or edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep hashline output for edit grounding: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit, while the same snapshot metadata can ground edit_lines when you already have structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
+          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
@@ -650,7 +650,7 @@
               }
             ]
           },
-          "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry hashline grounding for hashline_edit and edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` match rows, grouped context, snapshot metadata, and displayed ranges that can ground hashline_edit and edit_lines. Current max_grep_results=200."
+          "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200."
         ],
         [
           {
@@ -1816,7 +1816,7 @@
       }
     },
     {
-      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for low-level structured edits when you already know path/start/end/replacement; prefer hashline_edit when editing directly from copied `[path#snapshot_id]` plus `line:text` output. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
+      "description": "Low-level structured line edit for callers that already have exact path/start_line/end_line/replacement data. Do not use this as the normal model editing path from read/search output; use hashline_edit for copied `[path#snapshot_id]` plus `line:text` rows. If you do call edit_lines, pass the same session_id and the snapshot_id from the read/search result so stale files or unseen ranges are rejected. The range is inclusive, 1-based, and should cover only lines being changed; use an empty replacement to delete. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "end_line": {
@@ -2289,11 +2289,11 @@
       }
     },
     {
-      "description": "Apply a compact grounded edit copied from `read` or `search` output. The input must start with `[path#snapshot_id]`; then use copied `line:text` rows followed by `+replacement` rows, `SWAP start[-end]:` plus replacement rows, or `INSERT [BEFORE|AFTER] line:` plus inserted rows. Use this when editing from the hashline text the model just saw. Keep edits small; stale files, wrong paths, or unseen ranges are rejected. Current write cap: 5000000 bytes.",
+      "description": "Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output, then provide the final new content as `+text` rows. Supported single-hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Line numbers refer to the original displayed snapshot; stale files, wrong paths, or unseen ranges are rejected. After a successful edit, use the returned fresh context or re-read before the next edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "input": {
-            "description": "Compact edit text starting with [path#snapshot_id], followed by copied line rows and + replacement lines or SWAP/INSERT directives.",
+            "description": "Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT single-hunk directives.",
             "title": "Input",
             "type": "string"
           },
@@ -3555,7 +3555,7 @@
       }
     },
     {
-      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit or edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep hashline output for edit grounding: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit, while the same snapshot metadata can ground edit_lines when you already have structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
+      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
           "path": {
@@ -4360,7 +4360,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry hashline grounding for hashline_edit and edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` match rows, grouped context, snapshot metadata, and displayed ranges that can ground hashline_edit and edit_lines. Current max_grep_results=200.",
+      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because matches carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include `[path#snapshot_id]` plus `line:text` rows, grouped context, snapshot metadata, and displayed ranges that can be copied into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
@@ -5538,7 +5538,7 @@
       }
     },
     {
-      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer hashline_edit from copied read/search rows or edit_lines when you already have structured path/start/end/replacement data; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
+      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For ordinary edits to existing files, use hashline_edit from copied read/search rows instead of rewriting the file. Use edit_lines only when you already have exact structured path/start/end/replacement data. Use bash only when a command-driven transformation is clearer. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "content": {

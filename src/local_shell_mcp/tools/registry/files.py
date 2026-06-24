@@ -48,17 +48,17 @@ def _list_files_description(context: McpToolContext) -> str:
 
 def _write_file_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer hashline_edit from copied read/search rows or edit_lines when you already have structured path/start/end/replacement data; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For ordinary edits to existing files, use hashline_edit from copied read/search rows instead of rewriting the file. Use edit_lines only when you already have exact structured path/start/end/replacement data. Use bash only when a command-driven transformation is clearer. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 def _edit_lines_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for low-level structured edits when you already know path/start/end/replacement; prefer hashline_edit when editing directly from copied `[path#snapshot_id]` plus `line:text` output. Pass `snapshot_id` from the grounding result and the same `session_id` when present. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Low-level structured line edit for callers that already have exact path/start_line/end_line/replacement data. Do not use this as the normal model editing path from read/search output; use hashline_edit for copied `[path#snapshot_id]` plus `line:text` rows. If you do call edit_lines, pass the same session_id and the snapshot_id from the read/search result so stale files or unseen ranges are rejected. The range is inclusive, 1-based, and should cover only lines being changed; use an empty replacement to delete. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 def _hashline_edit_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Apply a compact grounded edit copied from `read` or `search` output. The input must start with `[path#snapshot_id]`; then use copied `line:text` rows followed by `+replacement` rows, `SWAP start[-end]:` plus replacement rows, or `INSERT [BEFORE|AFTER] line:` plus inserted rows. Use this when editing from the hashline text the model just saw. Keep edits small; stale files, wrong paths, or unseen ranges are rejected. Current write cap: {settings.max_file_write_bytes} bytes."""
+    return f"""Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output, then provide the final new content as `+text` rows. Supported single-hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Line numbers refer to the original displayed snapshot; stale files, wrong paths, or unseen ranges are rejected. After a successful edit, use the returned fresh context or re-read before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
 @local_tool(
