@@ -20,7 +20,9 @@ def oauth_security_scheme(
     return {"type": "oauth2", "scopes": dedupe_scopes(scopes)}
 
 
-def oauth_security_meta(scopes: list[str] | tuple[str, ...]) -> dict[str, Any]:
+def scoped_oauth_security_meta(
+    scopes: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
     """Return MCP security metadata for one OAuth scope set."""
     return security_meta([oauth_security_scheme(scopes)])
 
@@ -42,6 +44,11 @@ def connector_compatible_security_meta() -> dict[str, Any]:
     return security_meta(
         [NOAUTH_SECURITY_SCHEMES[0], oauth_security_scheme((SCOPE_SHELL_READ,))]
     )
+
+
+def oauth_security_meta() -> dict[str, Any]:
+    """Return MCP metadata for OAuth-protected tools."""
+    return security_meta(OAUTH_SECURITY_SCHEMES)
 
 
 def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:

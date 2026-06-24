@@ -19,9 +19,9 @@ from local_shell_mcp.oauth.tokens import (
     validate_bearer_token,
 )
 from local_shell_mcp.oauth.urls import _scopes, resource_url
-from local_shell_mcp.server.mcp.app import (
-    _transport_security_settings,
-    build_mcp,
+from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.server.mcp.transport_security import (
+    transport_security_settings,
 )
 from local_shell_mcp.tools.registry import agent as tools_module
 from tests.helpers import mcp_structured
@@ -447,7 +447,7 @@ def test_transport_security_uses_exact_base_url_host(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://example.com:8443")
     clear_settings_cache()
 
-    transport_security = _transport_security_settings()
+    transport_security = transport_security_settings()
 
     assert "example.com:8443" in transport_security.allowed_hosts
     assert "example.com" not in transport_security.allowed_hosts
@@ -463,7 +463,7 @@ def test_transport_security_handles_default_ports_and_ipv6(
     monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://[2001:db8::1]:443")
     clear_settings_cache()
 
-    transport_security = _transport_security_settings()
+    transport_security = transport_security_settings()
 
     assert "[2001:db8::1]" in transport_security.allowed_hosts
     assert "[2001:db8::1]:443" in transport_security.allowed_hosts
