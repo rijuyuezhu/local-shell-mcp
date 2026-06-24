@@ -202,7 +202,6 @@ def _grep_display_output(
         )
         if sections:
             sections.append("")
-        sections.append(str(read_result.path or "<unknown>"))
         sections.append(read_result.numbered_content)
         for line in read_result.lines:
             displayed.append(
@@ -245,11 +244,18 @@ def _parse_search_line_range(part: str) -> tuple[int, int | None] | None:
             return None
         return start, end
     if mode == "+":
+        if not end_text:
+            return None
         count = int(end_text)
         if count < 1:
             return None
         return start, start + count - 1
     return None
+
+
+def _looks_like_search_line_selector(selector: str) -> bool:
+    """Return whether a malformed suffix appears to be a line selector."""
+    return bool(selector) and ("," in selector or selector[0].isdigit())
 
 
 def _split_line_scoped_search_path(
@@ -265,6 +271,8 @@ def _split_line_scoped_search_path(
     for raw_part in raw_ranges.split(","):
         parsed = _parse_search_line_range(raw_part)
         if parsed is None:
+            if _looks_like_search_line_selector(raw_ranges):
+                raise ValueError(f"invalid search line selector: {raw_ranges}")
             return path, None
         ranges.append(parsed)
     return raw_path, tuple(ranges)
@@ -292,14 +300,42 @@ def _looks_like_glob(path: str) -> bool:
     return any(char in path for char in "*?[")
 
 
+def _merge_line_ranges(ranges: _LineRanges) -> _LineRanges:
+    """Return ordered, coalesced inclusive line ranges."""
+    merged: list[tuple[int, int | None]] = []
+    for start, end in sorted(
+        ranges,
+        key=lambda item: (
+            item[0],
+            float("inf") if item[1] is None else item[1],
+        ),
+    ):
+        if not merged:
+            merged.append((start, end))
+            continue
+        previous_start, previous_end = merged[-1]
+        if previous_end is None:
+            continue
+        if start <= previous_end + 1:
+            merged[-1] = (
+                previous_start,
+                None if end is None else max(previous_end, end),
+            )
+            continue
+        merged.append((start, end))
+    return tuple(merged)
+
+
 def _split_search_scopes(
     cwd: str, paths: _SearchPaths
 ) -> tuple[list[str], list[str], dict[str, _LineRanges]]:
     """Return ripgrep path args, glob args, and optional per-file line filters."""
     base = resolve_path(cwd, must_exist=True)
     path_args: list[str] = []
+    seen_path_args: set[str] = set()
     glob_args: list[str] = []
     line_scopes: dict[str, _LineRanges] = {}
+    unrestricted_files: set[str] = set()
     for item in _search_path_items(paths):
         if _looks_like_glob(item):
             glob_args.append(item)
@@ -318,9 +354,18 @@ def _split_search_scopes(
             path_arg = str(resolved.relative_to(base))
         else:
             path_arg = str(resolved)
-        path_args.append(path_arg)
-        if line_ranges is not None:
-            line_scopes[str(resolved)] = line_ranges
+        if path_arg not in seen_path_args:
+            path_args.append(path_arg)
+            seen_path_args.add(path_arg)
+
+        resolved_key = str(resolved)
+        if line_ranges is None:
+            unrestricted_files.add(resolved_key)
+            line_scopes.pop(resolved_key, None)
+        elif resolved_key not in unrestricted_files:
+            line_scopes[resolved_key] = _merge_line_ranges(
+                (*line_scopes.get(resolved_key, ()), *line_ranges)
+            )
     return path_args, glob_args, line_scopes
 
 

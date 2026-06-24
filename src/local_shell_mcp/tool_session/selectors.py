@@ -49,6 +49,8 @@ def _parse_line_selector(selector: str) -> LineRangeSelector | None:
             return None
         return start, end
     if mode == "+":
+        if not end_text:
+            return None
         count = int(end_text)
         if count < 1:
             return None

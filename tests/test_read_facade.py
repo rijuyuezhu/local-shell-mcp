@@ -2,7 +2,13 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.tool_session.selectors import parse_read_target
 from tests.helpers import mcp_structured
+
+
+def test_parse_read_target_rejects_missing_plus_count():
+    with pytest.raises(ValueError, match=r"invalid read line selector: 10\+"):
+        parse_read_target("demo.py:10+")
 
 
 @pytest.mark.asyncio
