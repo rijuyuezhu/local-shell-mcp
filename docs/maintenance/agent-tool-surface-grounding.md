@@ -115,7 +115,7 @@ This file is the single source of truth for the current agent-facing read/search
 - Directory, glob, and unscoped file paths keep their previous behavior.
 - Search input schema, model-facing description, generated reference data, and schema tests now document line-scoped path selectors.
 - Validation before commit:
-  - `uv run python -m pytest tests/test_search_ops.py tests/test_mcp_chatgpt_compat.py -q` passed: 32 passed, 1 warning.
+  - `uv run python -m pytest tests/test_search_ops.py tests/test_mcp_chatgpt_compat.py -q` passed: 31 passed, 1 warning.
   - `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check` passed.
   - `uv run pyright .` passed: 0 errors, 0 warnings, 0 informations.
   - `uv run pytest -q` passed: 271 passed, 1 warning.
