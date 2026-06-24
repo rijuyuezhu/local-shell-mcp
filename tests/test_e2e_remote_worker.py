@@ -253,7 +253,8 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
 
             (remote_workspace / "remote").mkdir()
             (remote_workspace / "remote" / "demo.txt").write_text(
-                "hello from remote worker\n", encoding="utf-8"
+                "hello from remote worker\nsecond remote line\n",
+                encoding="utf-8",
             )
             assert not (control_workspace / "remote" / "demo.txt").exists()
 
@@ -297,24 +298,53 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert "count" in first_class_search
             assert "matches" in first_class_search
 
+            hashline_edit = await client.call_tool(
+                "hashline_edit",
+                {
+                    "session_id": first_class_session_id,
+                    "input": (
+                        f"[remote/demo.txt#{first_class_snapshot_id}]\n"
+                        "1:hello from remote worker\n"
+                        "+edited through hashline remote session"
+                    ),
+                },
+            )
+            assert (
+                hashline_edit["context"]["session_id"] == first_class_session_id
+            )
+            assert (remote_workspace / "remote" / "demo.txt").read_text() == (
+                "edited through hashline remote session\nsecond remote line\n"
+            )
+            assert not (control_workspace / "remote" / "demo.txt").exists()
+
+            second_line_read = await client.call_tool(
+                "read",
+                {
+                    "session_id": first_class_session_id,
+                    "path": "remote/demo.txt:2",
+                },
+            )
+            second_line_snapshot_id = second_line_read["file"]["snapshot_id"]
+
             first_class_edit = await client.call_tool(
                 "edit_lines",
                 {
                     "session_id": first_class_session_id,
                     "path": "remote/demo.txt",
-                    "start_line": 1,
-                    "end_line": 1,
-                    "replacement": "edited through first-class remote session",
-                    "snapshot_id": first_class_snapshot_id,
+                    "start_line": 2,
+                    "end_line": 2,
+                    "replacement": "edited through structured remote edit",
+                    "snapshot_id": second_line_snapshot_id,
                 },
             )
             assert (
                 first_class_edit["context"]["session_id"]
                 == first_class_session_id
             )
-            assert (
-                remote_workspace / "remote" / "demo.txt"
-            ).read_text() == "edited through first-class remote session\n"
+            assert (remote_workspace / "remote" / "demo.txt").read_text() == (
+                "edited through hashline remote session\n"
+                "edited through structured remote edit\n"
+            )
             assert not (control_workspace / "remote" / "demo.txt").exists()
 
             first_class_bash = await client.call_tool(

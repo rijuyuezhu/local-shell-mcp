@@ -1,11 +1,11 @@
 {
-  "count": 33,
+  "count": 34,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "33"
+          "code": "34"
         },
         "."
       ],
@@ -290,7 +290,7 @@
                 "note": "(string, required)"
               },
               {
-                "description": "Optional snapshot_id returned by read or search. When provided, the edit is rejected if the file changed or the line range was not shown.",
+                "description": "Optional snapshot_id returned by read or search; copy it exactly, do not invent it. When provided, the edit is rejected if the file changed or the line range was not shown.",
                 "head": {
                   "code": "snapshot_id"
                 },
@@ -305,7 +305,31 @@
               }
             ]
           },
-          "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read` or `search` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes."
+          "Low-level structured line edit for callers that already have exact path/start_line/end_line/replacement data. Do not use this as the normal model editing path from read/search output; use hashline_edit for copied `[path#snapshot_id]` plus `line:text` rows. If you do call edit_lines, pass the same session_id and the snapshot_id from the read/search result so stale files or unseen ranges are rejected. The range is inclusive, 1-based, and should cover only lines being changed; use an empty replacement to delete. Current write cap: 5000000 bytes."
+        ],
+        [
+          {
+            "code": "hashline_edit"
+          },
+          {
+            "items": [
+              {
+                "description": "Hashline edit text starting with [path#snapshot_id]. Copy the header/tag and displayed line:text rows from read/search; do not invent snapshot ids. Add + final-content rows, or use SWAP/INSERT directives. Separate multiple non-overlapping hunks with blank lines or repeated headers.",
+                "head": {
+                  "code": "input"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output; never invent snapshot ids/tags. Then provide the final new content as `+text` rows. Supported hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. To apply multiple non-overlapping hunks, separate hunk bodies with a blank line under the same header or repeat a `[path#snapshot_id]` header for another section or file. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Keep hunks tight. Line numbers refer to the original displayed snapshot; stale files, wrong paths, overlapping hunks, or unseen ranges are rejected. After every edit, use the returned fresh hunk contexts or run read/search again before the next edit. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -381,7 +405,7 @@
               }
             ]
           },
-          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes."
+          "Write a complete UTF-8 file inside an explicit agent/workspace session. Use only for new files or intentional whole-file replacement; do not use it for partial edits. For ordinary edits to existing files, use hashline_edit from copied read/search rows instead of rewriting the file. Use edit_lines only when you already have exact structured path/start/end/replacement data. Use bash only when a command-driven transformation is clearer. Current write cap: 5000000 bytes."
         ]
       ]
     },
@@ -473,7 +497,7 @@
           {
             "items": [
               {
-                "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
+                "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:5-16,960-973, file.py:raw, file.py:50-80:raw, file.py:5-16,960-973:raw.",
                 "head": {
                   "code": "path"
                 },
@@ -488,7 +512,7 @@
               }
             ]
           },
-          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes."
+          "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:5-16,960-973, path:raw, path:50-80:raw, and path:5-16,960-973:raw. For comma-separated ranges, ranges must be ordered and non-overlapping; open-ended ranges are only allowed as the final range. Current per-file read cap: 512000 bytes."
         ]
       ]
     },
@@ -524,7 +548,7 @@
               }
             ]
           },
-          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
+          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
         ]
       ]
     },
@@ -590,6 +614,13 @@
                 "note": "(boolean, optional)"
               },
               {
+                "description": "Whether search should respect .gitignore, .ignore, and related ignore rules. Defaults to true; set false to include ignored files.",
+                "head": {
+                  "code": "gitignore"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
                 "description": "Optional maximum number of matches to return. Omit to use the configured server limit.",
                 "head": {
                   "code": "max_results"
@@ -597,7 +628,7 @@
                 "note": "(integer / null, optional)"
               },
               {
-                "description": "Optional file, directory, glob, or list of them that scopes the high-level search; omit to search the workspace root.",
+                "description": "Optional file, directory, glob, line-scoped file selector such as src/app.py:10-20,30-40, or list of them that scopes the high-level search; omit to search the workspace root.",
                 "head": {
                   "code": "paths"
                 },
@@ -623,10 +654,17 @@
                   "code": "session_id"
                 },
                 "note": "(string, required)"
+              },
+              {
+                "description": "Number of earlier matches to skip before returning results. Use with the same pattern/paths to page through noisy searches.",
+                "head": {
+                  "code": "skip"
+                },
+                "note": "(integer, optional)"
               }
             ]
           },
-          "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry grounding metadata for edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200."
+          "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable grounding, because displayed rows carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, globs, or file line selectors such as `src/app.py:10-20,30-40`. gitignore defaults to true, so search respects .gitignore, .ignore, and related ignore rules; set gitignore=false to include ignored files. matches contains actual matched lines only. displayed_lines contains the shown editable rows and marks each row with kind=\"match\" or kind=\"context\"; numbered_content keeps the same rows in copyable `[path#snapshot_id]` plus `line:text` form that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later actual matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200."
         ],
         [
           {
@@ -788,7 +826,7 @@
               }
             ]
           },
-          "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."
+          "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."
         ]
       ]
     },
@@ -880,7 +918,7 @@
               }
             ]
           },
-          "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, edit_lines for snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds."
+          "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, hashline_edit when editing copied read/search rows, edit_lines for structured snapshot-grounded precise edits, write_file only for new files or intentional whole-file replacements, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds."
         ],
         [
           {
@@ -1008,7 +1046,7 @@
               }
             ]
           },
-          "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: 10/60 seconds."
+          "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/hashline_edit/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: 10/60 seconds."
         ],
         [
           {
@@ -1140,7 +1178,7 @@
               }
             ]
           },
-          "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, numbered content, and edit-grounding snapshot metadata."
+          "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, hashline output, and grounding metadata for hashline_edit/edit_lines."
         ],
         [
           {
@@ -1323,7 +1361,7 @@
       }
     },
     {
-      "description": "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, edit_lines for snapshot-grounded precise edits, write_file only for intentional whole-file writes, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Run terminal commands inside an explicit agent/workspace session for builds, tests, package managers, git inspection, one-off scripts, and other work that genuinely needs a shell. Pass the session_id returned by session_start. cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Prefer specialized tools for file context and edits: use read/search/tree_view/glob_search/list_files for inspection, hashline_edit when editing copied read/search rows, edit_lines for structured snapshot-grounded precise edits, write_file only for new files or intentional whole-file replacements, and delete_file_or_dir only for intentional removals. Use bash when the task is a command, not when a structured tool can do the job more safely.\n\nDefault mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
@@ -1792,7 +1830,7 @@
       }
     },
     {
-      "description": "Replace an inclusive 1-based whole-line range in a UTF-8 file, grounded by a recent read/search snapshot. Prefer this for normal code edits after `read` or `search` displayed the target lines. Pass `snapshot_id` from the grounding result and the same `session_id` when present. `replacement` is the final content for the range. Keep ranges tight, edit only displayed lines, and use the fresh numbered context returned by a successful edit before the next edit. Current write cap: 5000000 bytes.",
+      "description": "Low-level structured line edit for callers that already have exact path/start_line/end_line/replacement data. Do not use this as the normal model editing path from read/search output; use hashline_edit for copied `[path#snapshot_id]` plus `line:text` rows. If you do call edit_lines, pass the same session_id and the snapshot_id from the read/search result so stale files or unseen ranges are rejected. The range is inclusive, 1-based, and should cover only lines being changed; use an empty replacement to delete. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "end_line": {
@@ -1828,7 +1866,7 @@
               }
             ],
             "default": null,
-            "description": "Optional snapshot_id returned by read or search. When provided, the edit is rejected if the file changed or the line range was not shown.",
+            "description": "Optional snapshot_id returned by read or search; copy it exactly, do not invent it. When provided, the edit is rejected if the file changed or the line range was not shown.",
             "title": "Snapshot Id"
           },
           "start_line": {
@@ -1904,7 +1942,7 @@
                 "title": "Bytes Read"
               },
               "content": {
-                "description": "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing.",
+                "description": "Decoded UTF-8 text content. Prefer numbered_content/hashline output for grounded edits.",
                 "title": "Content",
                 "type": "string"
               },
@@ -1918,7 +1956,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Final original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "Final original 1-based line number returned across selected ranges, or null when no lines were returned.",
                 "title": "End Line"
               },
               "file_sha256": {
@@ -1936,7 +1974,7 @@
               },
               "line_count": {
                 "default": 0,
-                "description": "Number of decoded text lines returned in lines and numbered_content.",
+                "description": "Number of decoded text lines returned in lines and grounded numbered_content across all selected ranges.",
                 "title": "Line Count",
                 "type": "integer"
               },
@@ -1950,7 +1988,7 @@
               },
               "numbered_content": {
                 "default": "",
-                "description": "Model-facing content formatted as 'line|text' so later edits can refer to original line numbers.",
+                "description": "Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows for all selected ranges.",
                 "title": "Numbered Content",
                 "type": "string"
               },
@@ -2003,7 +2041,7 @@
                   }
                 ],
                 "default": null,
-                "description": "First original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "First original 1-based line number returned across selected ranges, or null when no lines were returned.",
                 "title": "Start Line"
               },
               "total_lines": {
@@ -2073,7 +2111,7 @@
         "properties": {
           "context": {
             "$ref": "#/$defs/ReadFileOutput",
-            "description": "Numbered post-edit context around the changed line range, including a fresh snapshot_id."
+            "description": "Hashline post-edit context around the changed line range, including a fresh snapshot_id."
           },
           "diff": {
             "description": "Unified diff for the applied line edit.",
@@ -2120,7 +2158,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, numbered content, and edit-grounding snapshot metadata.",
+      "description": "Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, hashline output, and grounding metadata for hashline_edit/edit_lines.",
       "inputSchema": {
         "properties": {
           "id": {
@@ -2261,6 +2299,350 @@
           "paths"
         ],
         "title": "GlobSearchOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output; never invent snapshot ids/tags. Then provide the final new content as `+text` rows. Supported hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. To apply multiple non-overlapping hunks, separate hunk bodies with a blank line under the same header or repeat a `[path#snapshot_id]` header for another section or file. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Keep hunks tight. Line numbers refer to the original displayed snapshot; stale files, wrong paths, overlapping hunks, or unseen ranges are rejected. After every edit, use the returned fresh hunk contexts or run read/search again before the next edit. Current write cap: 5000000 bytes.",
+      "inputSchema": {
+        "properties": {
+          "input": {
+            "description": "Hashline edit text starting with [path#snapshot_id]. Copy the header/tag and displayed line:text rows from read/search; do not invent snapshot ids. Add + final-content rows, or use SWAP/INSERT directives. Separate multiple non-overlapping hunks with blank lines or repeated headers.",
+            "title": "Input",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "input"
+        ],
+        "title": "hashline_editArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read",
+              "shell:write"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "hashline_edit",
+      "outputSchema": {
+        "$defs": {
+          "HashlineEditHunkOutput": {
+            "description": "One applied hashline edit hunk.",
+            "properties": {
+              "context": {
+                "$ref": "#/$defs/ReadFileOutput",
+                "description": "Hashline post-edit context around this hunk, including a fresh snapshot_id."
+              },
+              "end_line": {
+                "description": "Original 1-based final line touched by this hunk.",
+                "title": "End Line",
+                "type": "integer"
+              },
+              "path": {
+                "description": "Workspace-relative file path edited by this hunk.",
+                "title": "Path",
+                "type": "string"
+              },
+              "replacement_line_count": {
+                "description": "Number of replacement lines inserted for this hunk.",
+                "title": "Replacement Line Count",
+                "type": "integer"
+              },
+              "start_line": {
+                "description": "Original 1-based first line touched by this hunk.",
+                "title": "Start Line",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "start_line",
+              "end_line",
+              "replacement_line_count",
+              "context"
+            ],
+            "title": "HashlineEditHunkOutput",
+            "type": "object"
+          },
+          "LineRange": {
+            "description": "Inclusive 1-based line range shown to the agent.",
+            "properties": {
+              "end": {
+                "description": "Final visible 1-based line number.",
+                "title": "End",
+                "type": "integer"
+              },
+              "start": {
+                "description": "First visible 1-based line number.",
+                "title": "Start",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "title": "LineRange",
+            "type": "object"
+          },
+          "ReadFileOutput": {
+            "description": "UTF-8 text file content plus edit-grounding metadata.",
+            "properties": {
+              "bytes": {
+                "description": "Total file size in bytes.",
+                "title": "Bytes",
+                "type": "integer"
+              },
+              "bytes_read": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Number of bytes read into the text response, when applicable.",
+                "title": "Bytes Read"
+              },
+              "content": {
+                "description": "Decoded UTF-8 text content. Prefer numbered_content/hashline output for grounded edits.",
+                "title": "Content",
+                "type": "string"
+              },
+              "end_line": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Final original 1-based line number returned across selected ranges, or null when no lines were returned.",
+                "title": "End Line"
+              },
+              "file_sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "SHA-256 digest of the complete file at the time it was read.",
+                "title": "File Sha256"
+              },
+              "line_count": {
+                "default": 0,
+                "description": "Number of decoded text lines returned in lines and grounded numbered_content across all selected ranges.",
+                "title": "Line Count",
+                "type": "integer"
+              },
+              "lines": {
+                "description": "Returned lines with original 1-based line numbers for precise follow-up edits.",
+                "items": {
+                  "$ref": "#/$defs/ReadLine"
+                },
+                "title": "Lines",
+                "type": "array"
+              },
+              "numbered_content": {
+                "default": "",
+                "description": "Grounded model-facing text: optional [path#snapshot_id] header plus 'line:text' rows for all selected ranges.",
+                "title": "Numbered Content",
+                "type": "string"
+              },
+              "path": {
+                "description": "Workspace-relative file path that was read.",
+                "title": "Path",
+                "type": "string"
+              },
+              "seen_ranges": {
+                "description": "Inclusive original line ranges that were actually shown and are eligible for grounded line edits.",
+                "items": {
+                  "$ref": "#/$defs/LineRange"
+                },
+                "title": "Seen Ranges",
+                "type": "array"
+              },
+              "session_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Explicit agent/workspace session that recorded this read, or null when no grounding snapshot was recorded.",
+                "title": "Session Id"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Opaque handle for this displayed file snapshot, used by line-based edit tools to reject stale edits.",
+                "title": "Snapshot Id"
+              },
+              "start_line": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "First original 1-based line number returned across selected ranges, or null when no lines were returned.",
+                "title": "Start Line"
+              },
+              "total_lines": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Total decoded text line count before optional line-range selection.",
+                "title": "Total Lines"
+              },
+              "truncated": {
+                "default": false,
+                "description": "Whether text content was truncated to fit the read limit.",
+                "title": "Truncated",
+                "type": "boolean"
+              },
+              "truncated_bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Number of file bytes omitted due to the read limit, when applicable.",
+                "title": "Truncated Bytes"
+              }
+            },
+            "required": [
+              "path",
+              "bytes",
+              "content"
+            ],
+            "title": "ReadFileOutput",
+            "type": "object"
+          },
+          "ReadLine": {
+            "description": "One decoded line with its original file line number.",
+            "properties": {
+              "line": {
+                "description": "Original 1-based line number in the file.",
+                "title": "Line",
+                "type": "integer"
+              },
+              "text": {
+                "description": "Line text without its trailing newline.",
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "line",
+              "text"
+            ],
+            "title": "ReadLine",
+            "type": "object"
+          }
+        },
+        "description": "Grounded hashline edit result for one or more applied hunks.",
+        "properties": {
+          "context": {
+            "$ref": "#/$defs/ReadFileOutput",
+            "description": "Hashline post-edit context around the changed line range, including a fresh snapshot_id."
+          },
+          "diff": {
+            "description": "Unified diff for the applied line edit.",
+            "title": "Diff",
+            "type": "string"
+          },
+          "end_line": {
+            "description": "Original 1-based final line replaced by this edit.",
+            "title": "End Line",
+            "type": "integer"
+          },
+          "hunk_count": {
+            "description": "Number of hashline hunks applied.",
+            "title": "Hunk Count",
+            "type": "integer"
+          },
+          "hunks": {
+            "description": "Per-hunk edit summaries in original input order.",
+            "items": {
+              "$ref": "#/$defs/HashlineEditHunkOutput"
+            },
+            "title": "Hunks",
+            "type": "array"
+          },
+          "path": {
+            "description": "Workspace-relative file path that was edited.",
+            "title": "Path",
+            "type": "string"
+          },
+          "replacement_line_count": {
+            "description": "Number of replacement lines inserted for the selected range.",
+            "title": "Replacement Line Count",
+            "type": "integer"
+          },
+          "start_line": {
+            "description": "Original 1-based first line replaced by this edit.",
+            "title": "Start Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "start_line",
+          "end_line",
+          "replacement_line_count",
+          "diff",
+          "context",
+          "hunk_count",
+          "hunks"
+        ],
+        "title": "HashlineEditOutput",
         "type": "object"
       }
     },
@@ -3240,11 +3622,11 @@
       }
     },
     {
-      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before edit_lines. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and keep numbered output for edit grounding. File output includes snapshot metadata for edit_lines. Supported selectors: path:50, path:50-80, path:50+20, path:raw, and path:50-80:raw. Current per-file read cap: 512000 bytes.",
+      "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:5-16,960-973, path:raw, path:50-80:raw, and path:5-16,960-973:raw. For comma-separated ranges, ranges must be ordered and non-overlapping; open-ended ranges are only allowed as the final range. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
           "path": {
-            "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:raw, file.py:50-80:raw.",
+            "description": "File or directory path with optional selector suffix. Examples: file.py, file.py:50, file.py:50-80, file.py:50+20, file.py:5-16,960-973, file.py:raw, file.py:50-80:raw, file.py:5-16,960-973:raw.",
             "title": "Path",
             "type": "string"
           },
@@ -3374,8 +3756,8 @@
             "title": "ListFilesOutput",
             "type": "object"
           },
-          "ReadFileOutput": {
-            "description": "UTF-8 text file content plus edit-grounding metadata.",
+          "ReadFileMetadata": {
+            "description": "File read metadata without duplicate file text.",
             "properties": {
               "bytes": {
                 "description": "Total file size in bytes.",
@@ -3395,11 +3777,6 @@
                 "description": "Number of bytes read into the text response, when applicable.",
                 "title": "Bytes Read"
               },
-              "content": {
-                "description": "Decoded UTF-8 text content. Prefer numbered_content for locating lines before editing.",
-                "title": "Content",
-                "type": "string"
-              },
               "end_line": {
                 "anyOf": [
                   {
@@ -3410,7 +3787,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Final original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "Final original 1-based line number shown across selected ranges, or null when no lines were shown.",
                 "title": "End Line"
               },
               "file_sha256": {
@@ -3428,23 +3805,9 @@
               },
               "line_count": {
                 "default": 0,
-                "description": "Number of decoded text lines returned in lines and numbered_content.",
+                "description": "Number of decoded text lines shown across all selected ranges.",
                 "title": "Line Count",
                 "type": "integer"
-              },
-              "lines": {
-                "description": "Returned lines with original 1-based line numbers for precise follow-up edits.",
-                "items": {
-                  "$ref": "#/$defs/ReadLine"
-                },
-                "title": "Lines",
-                "type": "array"
-              },
-              "numbered_content": {
-                "default": "",
-                "description": "Model-facing content formatted as 'line|text' so later edits can refer to original line numbers.",
-                "title": "Numbered Content",
-                "type": "string"
               },
               "path": {
                 "description": "Workspace-relative file path that was read.",
@@ -3452,7 +3815,7 @@
                 "type": "string"
               },
               "seen_ranges": {
-                "description": "Inclusive original line ranges that were actually shown and are eligible for grounded line edits.",
+                "description": "Inclusive original line ranges that were actually shown and are eligible for grounded edits.",
                 "items": {
                   "$ref": "#/$defs/LineRange"
                 },
@@ -3482,7 +3845,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Opaque handle for this displayed file snapshot, used by line-based edit tools to reject stale edits.",
+                "description": "Opaque handle for this displayed file snapshot, used by edit tools to reject stale edits.",
                 "title": "Snapshot Id"
               },
               "start_line": {
@@ -3495,7 +3858,7 @@
                   }
                 ],
                 "default": null,
-                "description": "First original 1-based line number returned in lines, or null when no lines were returned.",
+                "description": "First original 1-based line number shown across selected ranges, or null when no lines were shown.",
                 "title": "Start Line"
               },
               "total_lines": {
@@ -3533,38 +3896,16 @@
             },
             "required": [
               "path",
-              "bytes",
-              "content"
+              "bytes"
             ],
-            "title": "ReadFileOutput",
-            "type": "object"
-          },
-          "ReadLine": {
-            "description": "One decoded line with its original file line number.",
-            "properties": {
-              "line": {
-                "description": "Original 1-based line number in the file.",
-                "title": "Line",
-                "type": "integer"
-              },
-              "text": {
-                "description": "Line text without its trailing newline.",
-                "title": "Text",
-                "type": "string"
-              }
-            },
-            "required": [
-              "line",
-              "text"
-            ],
-            "title": "ReadLine",
+            "title": "ReadFileMetadata",
             "type": "object"
           }
         },
         "description": "Read result for files and directories.",
         "properties": {
           "content": {
-            "description": "Model-facing content. File reads use numbered_content unless raw is true; directories use a compact listing.",
+            "description": "Model-facing content. File reads use hashline-style text unless raw is true; directories use a compact listing.",
             "title": "Content",
             "type": "string"
           },
@@ -3583,14 +3924,14 @@
           "file": {
             "anyOf": [
               {
-                "$ref": "#/$defs/ReadFileOutput"
+                "$ref": "#/$defs/ReadFileMetadata"
               },
               {
                 "type": "null"
               }
             ],
             "default": null,
-            "description": "Structured file read data when kind is file."
+            "description": "File metadata without duplicate file text when kind is file."
           },
           "kind": {
             "description": "Type of target that was read.",
@@ -3789,7 +4130,7 @@
       }
     },
     {
-      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
+      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
       "inputSchema": {
         "properties": {
           "action": {
@@ -3911,7 +4252,7 @@
       }
     },
     {
-      "description": "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: 10/60 seconds.",
+      "description": "Write Python code to a temporary file and execute it inside an explicit agent/workspace session. Pass the session_id returned by session_start. This is a convenience wrapper over bash that runs `python3 <temporary-script>` and supports the same cwd, timeout_s, max_output_bytes, env, async_, pty, and name controls. Use it for quick Python calculations, project-aware scripts, or structured file analysis where Python is clearer than a shell pipeline. Use bash instead when you already have a concrete terminal command; use read/search/hashline_edit/edit_lines/write_file when the task is file inspection or editing rather than script execution.\n\ncwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: 10/60 seconds.",
       "inputSchema": {
         "properties": {
           "async_": {
@@ -4086,13 +4427,19 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this for content discovery so results carry grounding metadata for edit_lines. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, or globs. Results include numbered match lines, grouped context, snapshot metadata, and displayed ranges that can ground edit_lines. Current max_grep_results=200.",
+      "description": "Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable grounding, because displayed rows carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, globs, or file line selectors such as `src/app.py:10-20,30-40`. gitignore defaults to true, so search respects .gitignore, .ignore, and related ignore rules; set gitignore=false to include ignored files. matches contains actual matched lines only. displayed_lines contains the shown editable rows and marks each row with kind=\"match\" or kind=\"context\"; numbered_content keeps the same rows in copyable `[path#snapshot_id]` plus `line:text` form that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later actual matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results=200.",
       "inputSchema": {
         "properties": {
           "case_sensitive": {
             "default": true,
             "description": "Whether matching should be case-sensitive.",
             "title": "Case Sensitive",
+            "type": "boolean"
+          },
+          "gitignore": {
+            "default": true,
+            "description": "Whether search should respect .gitignore, .ignore, and related ignore rules. Defaults to true; set false to include ignored files.",
+            "title": "Gitignore",
             "type": "boolean"
           },
           "max_results": {
@@ -4124,7 +4471,7 @@
               }
             ],
             "default": null,
-            "description": "Optional file, directory, glob, or list of them that scopes the high-level search; omit to search the workspace root.",
+            "description": "Optional file, directory, glob, line-scoped file selector such as src/app.py:10-20,30-40, or list of them that scopes the high-level search; omit to search the workspace root.",
             "title": "Paths"
           },
           "pattern": {
@@ -4145,6 +4492,12 @@
             "pattern": "^[A-Za-z0-9]{8}$",
             "title": "Session Id",
             "type": "string"
+          },
+          "skip": {
+            "default": 0,
+            "description": "Number of earlier matches to skip before returning results. Use with the same pattern/paths to page through noisy searches.",
+            "title": "Skip",
+            "type": "integer"
           }
         },
         "required": [
@@ -4167,6 +4520,107 @@
       "name": "search",
       "outputSchema": {
         "$defs": {
+          "GrepDisplayLine": {
+            "description": "One displayed search output line, either an actual match or context.",
+            "properties": {
+              "file_sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "SHA-256 digest of the complete matched file when displayed.",
+                "title": "File Sha256"
+              },
+              "kind": {
+                "description": "Whether this displayed line is an actual match or surrounding context.",
+                "enum": [
+                  "match",
+                  "context"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "line": {
+                "description": "1-based displayed line number.",
+                "title": "Line",
+                "type": "integer"
+              },
+              "numbered_line": {
+                "description": "Copyable 'line:text' row for this displayed line; use with the enclosing [path#snapshot_id] header from numbered_content.",
+                "title": "Numbered Line",
+                "type": "string"
+              },
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Path containing the displayed line.",
+                "title": "Path"
+              },
+              "seen_range": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/LineRange"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Inclusive original line range shown in this displayed context window."
+              },
+              "session_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Agent grounding session that recorded this displayed line.",
+                "title": "Session Id"
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Snapshot handle for the displayed context window, usable with hashline_edit and edit_lines.",
+                "title": "Snapshot Id"
+              },
+              "text": {
+                "description": "Displayed line text without the trailing newline.",
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "line",
+              "kind",
+              "text",
+              "numbered_line"
+            ],
+            "title": "GrepDisplayLine",
+            "type": "object"
+          },
           "GrepMatch": {
             "description": "One ripgrep match.",
             "properties": {
@@ -4217,7 +4671,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Model-facing match line formatted as 'line|text' for grounded follow-up edits.",
+                "description": "Grounded match text with optional hashline header plus 'line:text' row.",
                 "title": "Numbered Line"
               },
               "path": {
@@ -4267,7 +4721,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Snapshot handle for the displayed match line, usable with edit_lines.",
+                "description": "Snapshot handle for the displayed match line, usable with hashline_edit and edit_lines.",
                 "title": "Snapshot Id"
               },
               "text": {
@@ -4309,10 +4763,30 @@
         },
         "description": "Ripgrep content search result.",
         "properties": {
+          "context_radius": {
+            "default": 0,
+            "description": "Number of surrounding context lines requested around each returned match.",
+            "title": "Context Radius",
+            "type": "integer"
+          },
           "count": {
             "description": "Number of matches returned.",
             "title": "Count",
             "type": "integer"
+          },
+          "displayed_count": {
+            "default": 0,
+            "description": "Number of displayed match and context lines returned.",
+            "title": "Displayed Count",
+            "type": "integer"
+          },
+          "displayed_lines": {
+            "description": "Displayed hashline rows with kind='match' for actual matches and kind='context' for surrounding context.",
+            "items": {
+              "$ref": "#/$defs/GrepDisplayLine"
+            },
+            "title": "Displayed Lines",
+            "type": "array"
           },
           "matches": {
             "description": "Returned ripgrep matches.",
@@ -4324,7 +4798,7 @@
           },
           "numbered_content": {
             "default": "",
-            "description": "Grouped model-facing match snippets with file paths and line-numbered match lines.",
+            "description": "Grouped grounded hashline search snippets with [path#snapshot_id] headers and copyable line:text rows; use displayed_lines.kind to distinguish actual matches from context.",
             "title": "Numbered Content",
             "type": "string"
           },
@@ -4332,6 +4806,12 @@
             "description": "Whether ripgrep completed successfully or with no matches.",
             "title": "Ok",
             "type": "boolean"
+          },
+          "skipped": {
+            "default": 0,
+            "description": "Number of earlier matches skipped before the returned page.",
+            "title": "Skipped",
+            "type": "integer"
           },
           "stderr": {
             "description": "Captured ripgrep stderr, after output limiting.",
@@ -4740,7 +5220,7 @@
       }
     },
     {
-      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session.",
+      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session.",
       "inputSchema": {
         "properties": {
           "label": {
@@ -5264,7 +5744,7 @@
       }
     },
     {
-      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use for new files or intentional whole-file replacement. For precise modifications to existing files, prefer grounded `edit_lines`; use bash only when a command-driven transformation is clearer. Do not replace an existing file wholesale unless that is the intended edit. Current write cap: 5000000 bytes.",
+      "description": "Write a complete UTF-8 file inside an explicit agent/workspace session. Use only for new files or intentional whole-file replacement; do not use it for partial edits. For ordinary edits to existing files, use hashline_edit from copied read/search rows instead of rewriting the file. Use edit_lines only when you already have exact structured path/start/end/replacement data. Use bash only when a command-driven transformation is clearer. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "content": {

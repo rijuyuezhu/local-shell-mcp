@@ -30,8 +30,8 @@ docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit_lo
 Every normal routed MCP or REST debug tool call produces a start/end pair linked by `call_id`:
 
 ```json
-{"ts": 1710000000.0, "event": "tool_call_start", "call_id": "...", "transport": "mcp", "tool": "read", "input": {"session_id": "Ab12Cd34", "path": "README.md"}, "principal": null, "context": {}}
-{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read", "ok": true, "duration_ms": 12, "output": {"kind": "file", "path": "README.md", "content": "1|...", "file": {"session_id": "Ab12Cd34", "snapshot_id": "..."}}}
+{"ts": 1710000000.0, "event": "tool_call_start", "call_id": "...", "transport": "mcp", "tool": "read", "input": {"session_id": "Ab12Cd34", "path": "README.md:1-2"}, "principal": null, "context": {}}
+{"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read", "ok": true, "duration_ms": 12, "output": {"kind": "file", "path": "README.md", "content": "[README.md#snap1]\n1:# Project\n2:Intro", "numbered_content": "[README.md#snap1]\n1:# Project\n2:Intro", "file": {"path": "README.md", "bytes": 123, "bytes_read": 123, "total_lines": 2, "start_line": 1, "end_line": 2, "line_count": 2}, "session_id": "Ab12Cd34", "snapshot_id": "snap1", "seen_ranges": [{"start": 1, "end": 2}], "truncated": false}}
 ```
 
 Failures and timeouts are also linked by `call_id`.

@@ -246,7 +246,7 @@ async def test_remote_session_dispatches_read_search_edit_bash_job(monkeypatch):
 
     read_result = await read_ops.read_execute("demo.txt:1", control.session_id)
     search_result = await search_ops.search_execute(
-        "hello", session_id=control.session_id, regex=False
+        "hello", session_id=control.session_id, regex=False, gitignore=False
     )
     edit_result = await file_ops.edit_lines_dispatch_execute(
         "demo.txt", 1, 1, "changed", "snap1", control.session_id
@@ -278,6 +278,8 @@ async def test_remote_session_dispatches_read_search_edit_bash_job(monkeypatch):
                 "regex": False,
                 "case_sensitive": True,
                 "max_results": None,
+                "skip": 0,
+                "gitignore": False,
                 "session_id": "WORKER12",
             },
             None,

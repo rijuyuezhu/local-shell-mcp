@@ -1,6 +1,6 @@
 """Read tool operations built on lower-level file ops."""
 
-from ..schemas.result_models.files import ListFilesOutput
+from ..schemas.result_models.files import ListFilesOutput, ReadFileMetadata
 from ..schemas.result_models.read import ReadOutput
 from ..tool_session.selectors import parse_read_target
 from ..tool_session.store import get_tool_session_store, resolve_session_path
@@ -28,7 +28,7 @@ async def read_execute(path: str, session_id: str) -> ReadOutput:
         resolve_session_path(session, target.path, must_exist=True)
     )
     listed = None
-    if not target.raw and target.start_line is None and target.end_line is None:
+    if not target.raw and not target.line_ranges:
         try:
             listed = list_files_execute(target_path, False, 500)
         except NotADirectoryError:
@@ -47,6 +47,7 @@ async def read_execute(path: str, session_id: str) -> ReadOutput:
         target.start_line,
         target.end_line,
         session.session_id,
+        line_ranges=target.line_ranges or None,
     )
     return ReadOutput(
         kind="file",
@@ -55,5 +56,5 @@ async def read_execute(path: str, session_id: str) -> ReadOutput:
         content=file_result.content
         if target.raw
         else file_result.numbered_content,
-        file=file_result,
+        file=ReadFileMetadata.from_read_result(file_result),
     )

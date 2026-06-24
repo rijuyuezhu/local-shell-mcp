@@ -22,6 +22,7 @@ CORE_TOOL_NAMES = {
     "tree_view",
     "glob_search",
     "write_file",
+    "hashline_edit",
     "delete_file_or_dir",
     "secret_scan",
     "run_python_code",
@@ -73,7 +74,12 @@ async def exercise_explicit_session_workflow(
         "read", {"session_id": session_id, "path": "notes.txt:1-2"}
     )
     assert read_result["kind"] == "file"
-    assert read_result["content"] == "1|alpha\n2|needle one"
+    read_path = read_result["file"]["path"]
+    snapshot_id = read_result["file"]["snapshot_id"]
+    assert (
+        read_result["content"]
+        == f"[{read_path}#{snapshot_id}]\n1:alpha\n2:needle one"
+    )
     assert read_result["file"]["session_id"] == session_id
     assert read_result["file"]["snapshot_id"]
 
@@ -87,8 +93,11 @@ async def exercise_explicit_session_workflow(
     )
     if search_result["ok"]:
         assert search_result["count"] == 1, search_result
-        assert search_result["matches"][0]["session_id"] == session_id
-        assert search_result["matches"][0]["numbered_line"] == "2|needle one"
+        match = search_result["matches"][0]
+        assert match["session_id"] == session_id
+        search_line = match["numbered_line"]
+        assert search_line.startswith(f"[{match['path']}#")
+        assert search_line.endswith("]\n2:needle one")
     else:
         assert "rg" in search_result["stderr"]
         assert search_result["matches"] == []
@@ -107,6 +116,22 @@ async def exercise_explicit_session_workflow(
     assert "+needle two" in edit_result["diff"]
     assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
         "alpha\nneedle two\ngamma\n"
+    )
+
+    hash_read = await client.call_tool(
+        "read", {"session_id": session_id, "path": "notes.txt:2-2"}
+    )
+    hash_snapshot = hash_read["file"]["snapshot_id"]
+    hash_edit = await client.call_tool(
+        "hashline_edit",
+        {
+            "session_id": session_id,
+            "input": f"[notes.txt#{hash_snapshot}]\n2:needle two\n+needle three",
+        },
+    )
+    assert "+needle three" in hash_edit["diff"]
+    assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
+        "alpha\nneedle three\ngamma\n"
     )
 
     other_dir = workspace / "other-work"
@@ -250,7 +275,8 @@ async def exercise_workspace_connector_tools(client: ToolClient) -> None:
     search = await client.call_tool("workspace_search", {"query": "needle two"})
     assert "results" in search
     if search["results"]:
-        assert search["results"][0]["id"] == "notes/demo.txt"
+        result_ids = {item["id"] for item in search["results"]}
+        assert "notes/demo.txt" in result_ids
 
     fetched = await client.call_tool("fetch", {"id": "notes/demo.txt"})
     assert fetched["id"] == "notes/demo.txt"

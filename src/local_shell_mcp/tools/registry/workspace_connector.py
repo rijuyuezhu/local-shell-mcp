@@ -65,5 +65,5 @@ async def workspace_search(query: ConnectorSearchQueryArg) -> SearchOutput:
     mcp_error_handler=fetch_error_output,
 )
 async def fetch(id: ConnectorFetchIdArg) -> FetchOutput:
-    """Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, numbered content, and edit-grounding snapshot metadata."""
+    """Fetch one UTF-8 workspace text file as a connector-compatible document. The id should normally come from a prior workspace_search result card; fetch is the second step in the connector search -> fetch workflow. This tool is sessionless and read-only for connector clients. For coding-agent work that already has a session_id, prefer read(session_id, path) because it supports line selectors, hashline output, and grounding metadata for hashline_edit/edit_lines."""
     return await fetch_execute(id)
