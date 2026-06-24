@@ -12,7 +12,7 @@ from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.oauth.authorization import _authorize_form
+from local_shell_mcp.oauth.authorization import _authorize_form, _make_redirect
 from local_shell_mcp.oauth.models import _CLIENTS, _CODES
 from local_shell_mcp.oauth.tokens import (
     issue_access_token,
@@ -941,6 +941,21 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
     }
 
 
+def test_oauth_authorize_redirect_preserves_existing_query():
+    response = _make_redirect(
+        "https://client.example/callback?existing=value",
+        {"code": "abc", "state": "xyz"},
+    )
+    location = response.headers["location"]
+    parsed = urlparse(location)
+    query = parse_qs(parsed.query)
+
+    assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == (
+        "https://client.example/callback"
+    )
+    assert query == {"existing": ["value"], "code": ["abc"], "state": ["xyz"]}
+
+
 def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.delenv("LOCAL_SHELL_MCP_BASE_URL", raising=False)
@@ -977,6 +992,9 @@ def test_oauth_authorize_form_is_mobile_friendly(tmp_path, monkeypatch):
         'name="viewport" content="width=device-width, initial-scale=1"' in body
     )
     assert "Only approve this request if you initiated this connection." in body
+    assert "Redirect URI:" in body
+    assert "example.test/callback" in body
+    assert "Unknown client" in body
     assert 'autocomplete="one-time-code"' in body
     assert "overflow-wrap: anywhere" in body
 

@@ -11,7 +11,7 @@ from typing import Any
 import jwt
 from fastapi import HTTPException, Request
 from starlette.responses import JSONResponse
-from starlette.routing import BaseRoute
+from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..audit import audit
@@ -25,30 +25,10 @@ OAUTH_CLAIMS: ContextVar[dict[str, Any] | None] = ContextVar(
 )
 
 
-def _route_path(route: BaseRoute) -> str | None:
-    """Return the route path when the ASGI route object exposes one."""
-    path = getattr(route, "path", None)
-    return path if isinstance(path, str) else None
-
-
-def _public_path_matchers(
-    routes: Iterable[BaseRoute],
-) -> tuple[frozenset[str], tuple[str, ...]]:
-    """Build exact-path and dynamic-prefix matchers from mounted public routes."""
-    paths: set[str] = set()
-    prefixes: set[str] = set()
-    for route in routes:
-        path = _route_path(route)
-        if not path:
-            continue
-        dynamic_start = path.find("{")
-        if dynamic_start < 0:
-            paths.add(path)
-            continue
-        prefix = path[:dynamic_start]
-        if prefix:
-            prefixes.add(prefix)
-    return frozenset(paths), tuple(sorted(prefixes, key=len, reverse=True))
+def _public_route_matches(route: BaseRoute, scope: Scope) -> bool:
+    """Return whether a configured public route fully matches the request scope."""
+    match, _ = route.matches(scope)
+    return match is Match.FULL
 
 
 def _client_host(request: Request) -> str:
@@ -167,14 +147,12 @@ class AuthMiddleware:
         self, app: ASGIApp, *, public_routes: Iterable[BaseRoute] = ()
     ) -> None:
         self.app = app
-        self._public_paths, self._public_prefixes = _public_path_matchers(
-            public_routes
-        )
+        self._public_routes = tuple(public_routes)
 
-    def _is_public_path(self, path: str) -> bool:
-        """Return whether a request path is served by a configured public route."""
-        return path in self._public_paths or any(
-            path.startswith(prefix) for prefix in self._public_prefixes
+    def _is_public_scope(self, scope: Scope) -> bool:
+        """Return whether a request scope is served by a configured public route."""
+        return any(
+            _public_route_matches(route, scope) for route in self._public_routes
         )
 
     async def __call__(
@@ -185,10 +163,9 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        path = scope.get("path", "")
         # Docs compliance: OAuth discovery and bootstrap endpoints must remain
         # reachable without a bearer token; tool/MCP routes remain protected.
-        if self._is_public_path(path):
+        if self._is_public_scope(scope):
             await self.app(scope, receive, send)
             return
 

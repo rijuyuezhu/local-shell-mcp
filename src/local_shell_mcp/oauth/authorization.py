@@ -9,7 +9,8 @@ import html as html_lib
 import secrets
 from functools import lru_cache
 from importlib.resources import files
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from xml.sax.saxutils import quoteattr
 
 from authlib.oauth2.rfc7636.challenge import CODE_CHALLENGE_PATTERN
 from starlette.requests import Request
@@ -80,7 +81,7 @@ def _hidden_inputs(params: dict[str, str]) -> str:
     """Preserve validated authorization parameters as hidden fields in the approval form."""
 
     return "\n".join(
-        f'<input type="hidden" name="{html_lib.escape(k, quote=True)}" value="{html_lib.escape(v, quote=True)}" />'
+        f'<input type="hidden" name={quoteattr(k)} value={quoteattr(v)} />'
         for k, v in params.items()
     )
 
@@ -92,6 +93,14 @@ def _authorize_form(
     settings = get_settings()
     scope = params.get("scope") or _default_scope()
     resource = params.get("resource") or resource_url()
+    redirect_uri = params.get("redirect_uri") or ""
+    client = _CLIENTS.get(params.get("client_id", ""))
+    client_name = (
+        client.client_name
+        if client and client.client_name
+        else "Unknown client"
+    )
+    client_id = params.get("client_id") or ""
     error_html = (
         f'<p style="color:#b00020">{html_lib.escape(error)}</p>'
         if error
@@ -102,6 +111,9 @@ def _authorize_form(
         pin_hint = "No admin PIN is configured. Click Approve to continue. Set LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN before exposing this publicly."
     html = (
         _authorize_template()
+        .replace("{{CLIENT_NAME}}", html_lib.escape(client_name))
+        .replace("{{CLIENT_ID}}", html_lib.escape(client_id))
+        .replace("{{REDIRECT_URI}}", html_lib.escape(redirect_uri))
         .replace("{{RESOURCE}}", html_lib.escape(resource))
         .replace("{{SCOPE}}", html_lib.escape(scope))
         .replace("{{ERROR_HTML}}", error_html)
@@ -115,10 +127,13 @@ def _make_redirect(
     redirect_uri: str, query: dict[str, str]
 ) -> RedirectResponse:
     """Append authorization response parameters to a redirect URI."""
-    sep = "&" if "?" in redirect_uri else "?"
-    return RedirectResponse(
-        f"{redirect_uri}{sep}{urlencode(query)}", status_code=302
-    )
+    parts = urlsplit(redirect_uri)
+    merged_query = [
+        *parse_qsl(parts.query, keep_blank_values=True),
+        *query.items(),
+    ]
+    location = urlunsplit(parts._replace(query=urlencode(merged_query)))
+    return RedirectResponse(location, status_code=302)
 
 
 async def authorize_get(request: Request) -> Response:

@@ -133,7 +133,7 @@ def test_auth_middleware_uses_configured_public_route_matchers():
     client = TestClient(app)
 
     assert client.get("/extra/value").status_code == 200
-
+    assert client.get("/extra/value/nested").status_code == 401
     protected_response = client.get("/private")
     assert protected_response.status_code == 401
     assert "resource_metadata" in protected_response.headers["www-authenticate"]
