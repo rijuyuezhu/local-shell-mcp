@@ -184,6 +184,39 @@ async def test_grep_search_returns_grounded_numbered_matches(
 
 
 @pytest.mark.asyncio
+async def test_search_respects_gitignore_by_default_and_can_include_ignored(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (tmp_path / "visible.txt").write_text("needle\n", encoding="utf-8")
+    (tmp_path / "ignored.txt").write_text("needle\n", encoding="utf-8")
+
+    session_id = _create_session()
+
+    default_result = await search_execute(
+        "needle", regex=False, session_id=session_id
+    )
+    explicit_result = await search_execute(
+        "needle", regex=False, session_id=session_id, gitignore=True
+    )
+    no_ignore_result = await search_execute(
+        "needle", regex=False, session_id=session_id, gitignore=False
+    )
+
+    assert [match.path for match in default_result.matches] == ["visible.txt"]
+    assert [match.path for match in explicit_result.matches] == ["visible.txt"]
+    assert {match.path for match in no_ignore_result.matches} == {
+        "visible.txt",
+        "ignored.txt",
+    }
+
+
+@pytest.mark.asyncio
 async def test_search_merges_context_windows_for_multiple_matches(
     tmp_path, monkeypatch
 ):

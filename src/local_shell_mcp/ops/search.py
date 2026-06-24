@@ -334,12 +334,15 @@ async def grep_search_execute(
     session_id: str | None = None,
     paths: _SearchPaths = None,
     skip: int = 0,
+    gitignore: bool = True,
 ) -> GrepSearchOutput:
     """Run ripgrep with workspace path resolution and return structured match records."""
     settings = get_settings()
     max_results = max_results or settings.max_grep_results
     skip = max(0, skip)
     args = [settings.rg_bin, "--json", "--line-number", "--column"]
+    if not gitignore:
+        args.append("--no-ignore")
     if not regex:
         args.append("--fixed-strings")
     if not case_sensitive:
@@ -462,6 +465,7 @@ async def search_execute(
     max_results: int | None = None,
     session_id: str | None = None,
     skip: int = 0,
+    gitignore: bool = True,
 ) -> GrepSearchOutput:
     """Search code content with optional path scopes and edit grounding."""
     if session_id is not None:
@@ -477,6 +481,7 @@ async def search_execute(
                     "case_sensitive": case_sensitive,
                     "max_results": max_results,
                     "skip": skip,
+                    "gitignore": gitignore,
                 },
             )
             return GrepSearchOutput.model_validate(data)
@@ -491,6 +496,7 @@ async def search_execute(
         session_id=session_id,
         paths=paths,
         skip=skip,
+        gitignore=gitignore,
     )
 
 

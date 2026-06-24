@@ -9,6 +9,7 @@ from ...schemas.input_models.search import (
     CaseSensitiveArg,
     GlobMaxResultsArg,
     GlobPatternArg,
+    GrepGitignoreArg,
     GrepMaxResultsArg,
     GrepQueryArg,
     GrepSkipArg,
@@ -51,7 +52,7 @@ def _glob_search_description(context: McpToolContext) -> str:
 
 def _search_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because displayed rows carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, globs, or file line selectors such as `src/app.py:10-20,30-40`. matches contains actual matched lines only. displayed_lines contains the shown editable rows and marks each row with kind="match" or kind="context"; numbered_content keeps the same rows in copyable `[path#snapshot_id]` plus `line:text` form that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later actual matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results={settings.max_grep_results}."""
+    return f"""Search code content inside an explicit agent/workspace session for matching lines. Use this built-in search for content discovery instead of shell grep/ripgrep when you need editable results, because displayed rows carry hashline grounding for hashline_edit. Use read when you already know the exact file/range, glob_search when you only need matching paths, and workspace_search/fetch only for connector-style sessionless document retrieval. pattern is text or regex depending on regex; paths scopes to files, directories, globs, or file line selectors such as `src/app.py:10-20,30-40`. gitignore defaults to true, so search respects .gitignore, .ignore, and related ignore rules; set gitignore=false to include ignored files. matches contains actual matched lines only. displayed_lines contains the shown editable rows and marks each row with kind="match" or kind="context"; numbered_content keeps the same rows in copyable `[path#snapshot_id]` plus `line:text` form that can be copied into hashline_edit. Use `skip` with the same pattern and paths to page through later actual matches when results are truncated or noisy. Use edit_lines only when you already have exact structured path/start/end/replacement data. Current max_grep_results={settings.max_grep_results}."""
 
 
 @local_tool(
@@ -101,6 +102,7 @@ async def search(
     case_sensitive: CaseSensitiveArg = True,
     max_results: GrepMaxResultsArg = None,
     skip: GrepSkipArg = 0,
+    gitignore: GrepGitignoreArg = True,
 ) -> GrepSearchOutput:
     """Search code content with optional path scopes."""
     return await search_execute(
@@ -112,4 +114,5 @@ async def search(
         max_results,
         session_id,
         skip,
+        gitignore,
     )

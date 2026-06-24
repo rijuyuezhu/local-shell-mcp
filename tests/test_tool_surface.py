@@ -194,6 +194,8 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
     assert "Use edit_lines only" in descriptions["read"]
     assert "instead of shell grep/ripgrep" in descriptions["search"]
     assert "copied into hashline_edit" in descriptions["search"]
+    assert "gitignore defaults to true" in descriptions["search"]
+    assert "gitignore=false" in descriptions["search"]
     assert "use hashline_edit" in descriptions["write_file"]
     assert "Low-level structured line edit" in descriptions["edit_lines"]
     assert "Default model-facing edit tool" in descriptions["hashline_edit"]

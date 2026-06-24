@@ -122,20 +122,21 @@ This file is the single source of truth for the current agent-facing read/search
 
 ## Current known state
 
-- The branch is functionally green through multi-hunk `hashline_edit`, search skip pagination, line-scoped search paths, and search match/context display markers.
+- The branch is functionally green through multi-hunk `hashline_edit`, search skip pagination, line-scoped search paths, search match/context display markers, and explicit `search(gitignore=...)` control.
 - `hashline_edit` is available and generated into `docs/reference/generated/tools.json`.
 - MCP/server instructions, model-facing tool descriptions, generated reference data, and guides now teach `hashline_edit` as the default edit path for existing files when the model is editing from copied `[path#snapshot_id]` plus `line:text` output.
 - Existing `edit_lines` remains available for structured/programmatic edits when the caller already has exact path/start/end/replacement arguments, but it is no longer presented as a peer default for ordinary model edits.
-- `search` now supports `skip` pagination, concrete file line-scoped path selectors such as `src/app.py:50-80`, and displayed context rows marked by `displayed_lines.kind` as `match` or `context`; `matches` remains actual matches only.
+- `search` now supports `skip` pagination, concrete file line-scoped path selectors such as `src/app.py:50-80`, displayed context rows marked by `displayed_lines.kind` as `match` or `context`, and `gitignore` control; `matches` remains actual matches only.
+- Search `gitignore` defaults to `true`, so search respects `.gitignore`, `.ignore`, and related ignore rules by default; `gitignore=false` includes ignored files.
 - Search `numbered_content` still uses copyable `[path#snapshot_id]` plus `line:text` rows, and context rows are editable grounding recorded in `seen_ranges`.
 - Remote worker e2e coverage now exercises the first-class remote session path for `hashline_edit`: `tests/test_e2e_remote_worker.py` reads a remote file, applies `hashline_edit` from copied hashline grounding, then still applies `edit_lines` to keep structured remote edit coverage.
-- Latest local validation for Slice B:
-  - `uv run python -m py_compile src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/result_models/search.py` passed.
-  - `uv run pytest tests/test_search_ops.py -q` passed: 14 passed.
+- Latest local validation for Slice C:
+  - `uv run python -m py_compile src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/input_models/search.py src/local_shell_mcp/tools/registry/search.py` passed.
+  - `uv run pytest tests/test_search_ops.py tests/test_remote_facade.py tests/test_tool_surface.py -q` passed: 53 passed, 1 warning.
   - `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check` passed.
-  - `uv run pytest tests/test_tool_surface.py tests/test_export_tools_json.py tests/test_search_ops.py -q` passed: 45 passed, 1 warning.
+  - `uv run pytest tests/test_export_tools_json.py tests/test_tool_surface.py tests/test_search_ops.py tests/test_remote_facade.py -q` passed: 55 passed, 1 warning.
   - `uv run pyright` passed: 0 errors, 0 warnings, 0 informations.
-  - `uv run pytest` passed: 277 passed, 1 warning.
+  - `uv run pytest` passed: 278 passed, 1 warning.
 
 ## Current read/edit/search comparison with oh-my-pi
 
@@ -321,6 +322,26 @@ Tests to add/update:
 - Search with `gitignore=true` respects ignore rules.
 - Remote search forwards the option.
 - MCP/tool schema tests cover the new input description.
+
+Status: implemented in this slice. Current behavior:
+
+- `search` exposes `gitignore: bool = true` in the model-facing tool surface.
+- With the default `gitignore=true`, search preserves current ripgrep behavior and respects `.gitignore`, `.ignore`, and related ignore rules.
+- With `gitignore=false`, search passes `--no-ignore` to ripgrep so ignored files can be searched.
+- The option is forwarded through remote session search dispatch.
+- Existing `paths`, glob filters, `skip`, line-scoped path selectors, and displayed match/context grounding continue to work.
+
+Validation run for this slice:
+
+- `uv run python -m py_compile src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/input_models/search.py src/local_shell_mcp/tools/registry/search.py`
+- `uv run pytest tests/test_search_ops.py tests/test_remote_facade.py tests/test_tool_surface.py -q` → 53 passed, 1 warning
+- `uv run ruff format src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/input_models/search.py src/local_shell_mcp/tools/registry/search.py tests/test_search_ops.py tests/test_remote_facade.py tests/test_tool_surface.py`
+- `uv run ruff check src/local_shell_mcp/ops/search.py src/local_shell_mcp/schemas/input_models/search.py src/local_shell_mcp/tools/registry/search.py tests/test_search_ops.py tests/test_remote_facade.py tests/test_tool_surface.py` → All checks passed
+- `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json`
+- `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check`
+- `uv run pytest tests/test_export_tools_json.py tests/test_tool_surface.py tests/test_search_ops.py tests/test_remote_facade.py -q` → 55 passed, 1 warning
+- `uv run pyright` → 0 errors, 0 warnings, 0 informations
+- `uv run pytest` → 278 passed, 1 warning
 
 ### Slice D — `read` multi-range selectors
 

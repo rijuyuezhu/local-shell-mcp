@@ -66,6 +66,12 @@ GrepSkipArg = Annotated[
         description="Number of earlier matches to skip before returning results. Use with the same pattern/paths to page through noisy searches."
     ),
 ]
+GrepGitignoreArg = Annotated[
+    bool,
+    Field(
+        description="Whether search should respect .gitignore, .ignore, and related ignore rules. Defaults to true; set false to include ignored files."
+    ),
+]
 
 SearchPathsArg = Annotated[
     str | list[str] | None,
