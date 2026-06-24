@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 import shlex
 import sys
@@ -10,6 +11,7 @@ def python_shell_command(code: str) -> str:
 
     if os.name == "nt":
         escaped_executable = sys.executable.replace("'", "''")
-        escaped_code = code.replace("'", "''")
-        return f"& '{escaped_executable}' -c '{escaped_code}'"
+        encoded = base64.b64encode(code.encode("utf-8")).decode("ascii")
+        wrapper = f"import base64; exec(base64.b64decode('{encoded}'))"
+        return f"& '{escaped_executable}' -c {shlex.quote(wrapper)}"
     return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"

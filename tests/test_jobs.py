@@ -8,6 +8,7 @@ from local_shell_mcp.settings import get_settings
 @pytest.mark.asyncio
 async def test_jobs_track_tail_stop_and_retry(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
     get_settings.cache_clear()
 
     active_sessions = set()
@@ -59,6 +60,7 @@ async def test_jobs_track_tail_stop_and_retry(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_job_list_marks_missing_running_session_exited(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
     get_settings.cache_clear()
 
     async def fake_start_shell(cwd=".", name=None, command=None):  # noqa: ARG001
