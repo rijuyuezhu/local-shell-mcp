@@ -19,6 +19,7 @@ from local_shell_mcp.oauth.tokens import (
     validate_bearer_token,
 )
 from local_shell_mcp.oauth.urls import _scopes, resource_url
+from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import _wrap_mcp_http_app, build_mcp
 from local_shell_mcp.server.mcp.transport_security import (
     transport_security_settings,
@@ -31,6 +32,11 @@ def _output_schema(tool: Any) -> dict[str, Any]:
     schema = tool.outputSchema
     assert schema is not None
     return schema
+
+
+def _s256_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
 def test_oauth_supported_scopes_include_feature_scopes():
@@ -89,6 +95,7 @@ def test_oauth_urls_ignore_untrusted_request_host_headers(
         json={"redirect_uris": ["https://client.example/callback"]},
         headers=headers,
     ).json()
+    verifier = "h" * 64
     authorize = client.post(
         "/oauth/authorize",
         data={
@@ -96,6 +103,8 @@ def test_oauth_urls_ignore_untrusted_request_host_headers(
             "client_id": register["client_id"],
             "redirect_uri": "https://client.example/callback",
             "resource": "http://127.0.0.1:8765/mcp",
+            "code_challenge": _s256_challenge(verifier),
+            "code_challenge_method": "S256",
             "pin": "1234",
         },
         headers=headers,
@@ -113,6 +122,7 @@ def test_oauth_urls_ignore_untrusted_request_host_headers(
             "client_id": register["client_id"],
             "redirect_uri": "https://client.example/callback",
             "resource": "http://127.0.0.1:8765/mcp",
+            "code_verifier": verifier,
         },
         headers=headers,
     )
@@ -672,6 +682,35 @@ def test_oauth_registration_requires_redirect_uri(tmp_path, monkeypatch):
     }
 
 
+def test_oauth_registration_rejects_unsafe_redirect_uris(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    clear_settings_cache()
+
+    client = TestClient(_wrap_mcp_http_app(Starlette()))
+    for redirect_uri in (
+        "javascript:alert(1)",
+        "data:text/html,unsafe",
+        "http://attacker.example/callback",
+    ):
+        response = client.post(
+            "/oauth/register", json={"redirect_uris": [redirect_uri]}
+        )
+        assert response.status_code == 400
+        assert (
+            "redirect_uris must be https"
+            in response.json()["error_description"]
+        )
+
+    loopback = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["http://127.0.0.1:9876/callback"]},
+    )
+    assert loopback.status_code == 201
+
+
 def test_oauth_authorize_requires_registered_client_and_redirect(
     tmp_path, monkeypatch
 ):
@@ -722,6 +761,84 @@ def test_oauth_authorize_requires_registered_client_and_redirect(
     assert (
         "redirect_uri is not registered for this client"
         in mismatch_response.text
+    )
+
+
+def test_oauth_authorize_requires_pkce_and_supported_scope(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
+    clear_settings_cache()
+
+    client = TestClient(_wrap_mcp_http_app(Starlette()))
+    register = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["https://client.example/callback"]},
+    ).json()
+    base_data = {
+        "response_type": "code",
+        "client_id": register["client_id"],
+        "redirect_uri": "https://client.example/callback",
+        "resource": "https://local-shell-mcp.example.com/mcp",
+        "pin": "1234",
+    }
+
+    missing_pkce = client.post(
+        "/oauth/authorize", data=base_data, follow_redirects=False
+    )
+    assert missing_pkce.status_code == 200
+    assert "Missing code_challenge" in missing_pkce.text
+
+    unsupported_scope = client.post(
+        "/oauth/authorize",
+        data={
+            **base_data,
+            "scope": "shell:read unknown:scope",
+            "code_challenge": _s256_challenge("s" * 64),
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
+    )
+    assert unsupported_scope.status_code == 200
+    assert "Unsupported scope: unknown:scope" in unsupported_scope.text
+
+
+def test_oauth_scope_enforced_for_rest_tools(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "oauth")
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    read_token = issue_access_token(
+        client_id="limited-client",
+        scope="shell:read",
+        resource="https://local-shell-mcp.example.com/mcp",
+    )
+    headers = {"Authorization": f"Bearer {read_token}"}
+
+    search_response = client.post(
+        "/tools/workspace_search", json={"query": "anything"}, headers=headers
+    )
+    assert search_response.status_code == 200
+
+    bash_response = client.post(
+        "/tools/bash",
+        json={"session_id": "ABCDEFGH", "command": "echo ok"},
+        headers=headers,
+    )
+    assert bash_response.status_code == 403
+    assert (
+        "Missing required OAuth scope: shell:execute"
+        in bash_response.json()["message"]
     )
 
 

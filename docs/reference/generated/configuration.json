@@ -213,9 +213,9 @@
           },
           "true | false",
           {
-            "code": "true"
+            "code": "false"
           },
-          "Allow localhost requests without bearer authentication."
+          "Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through proxies or shared hosts."
         ],
         [
           {
@@ -1409,9 +1409,9 @@
         "false"
       ],
       "cli": "--auth-bypass-localhost",
-      "default": true,
-      "default_display": "true",
-      "description": "Allow localhost requests without bearer authentication.",
+      "default": false,
+      "default_display": "false",
+      "description": "Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through proxies or shared hosts.",
       "env": "LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST",
       "name": "auth_bypass_localhost",
       "nullable": false,

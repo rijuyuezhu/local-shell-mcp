@@ -18,6 +18,7 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 from ..audit import audit
 from ..config.settings import get_settings
 from .models import _CLIENTS, _CODES, AuthCode
+from .scopes import normalize_requested_scope
 from .urls import (
     _default_scope,
     _normalize_resource,
@@ -59,10 +60,15 @@ def _validate_authorize_params(params: dict[str, str]) -> str | None:
         return "Unknown client_id"
     if params["redirect_uri"] not in client.redirect_uris:
         return "redirect_uri is not registered for this client"
-    # Docs compliance: accept only syntactically valid PKCE challenge material;
-    # S256 is advertised and preferred, while plain remains for compatibility.
+    try:
+        normalize_requested_scope(params.get("scope"))
+    except ValueError as exc:
+        return str(exc)
+    # Docs compliance: public clients must bind authorization codes with PKCE.
     challenge = params.get("code_challenge")
-    if challenge and not CODE_CHALLENGE_PATTERN.match(challenge):
+    if not challenge:
+        return "Missing code_challenge"
+    if not CODE_CHALLENGE_PATTERN.match(challenge):
         return "Invalid code_challenge"
     method = params.get("code_challenge_method")
     if method and method not in {"S256", "plain"}:
@@ -142,11 +148,12 @@ async def authorize_post(request: Request) -> Response:
         return _authorize_form(params, error="Invalid admin PIN")
 
     code = secrets.token_urlsafe(32)
+    normalized_scope = normalize_requested_scope(params.get("scope"))
     auth_code = AuthCode(
         code=code,
         client_id=params["client_id"],
         redirect_uri=params["redirect_uri"],
-        scope=params.get("scope") or _default_scope(),
+        scope=normalized_scope,
         resource=_normalize_resource(params["resource"]),
         code_challenge=params.get("code_challenge"),
         code_challenge_method=params.get("code_challenge_method"),

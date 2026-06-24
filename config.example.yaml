@@ -20,8 +20,9 @@ state_dir: "/workspace/.local-shell-mcp"
 # Authentication mode. Do not expose public services with none.
 # Choices: none, oauth.
 auth_mode: "oauth"
-# Allow localhost requests without bearer authentication.
-auth_bypass_localhost: true
+# Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through
+# proxies or shared hosts.
+auth_bypass_localhost: false
 # Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset,
 # URLs fall back to the bind host and port; configure this before exposing the service behind a proxy
 # or public hostname.

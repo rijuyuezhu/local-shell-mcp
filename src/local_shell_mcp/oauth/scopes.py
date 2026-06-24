@@ -17,6 +17,27 @@ SUPPORTED_OAUTH_SCOPES = (
 )
 
 
+SUPPORTED_OAUTH_SCOPE_SET = frozenset(SUPPORTED_OAUTH_SCOPES)
+
+
 def dedupe_scopes(scopes: list[str] | tuple[str, ...]) -> list[str]:
     """Return scopes in input order without duplicates."""
     return list(dict.fromkeys(scopes))
+
+
+def normalize_requested_scope(scope: str | None) -> str:
+    """Return a normalized supported scope string, or raise ValueError."""
+    if scope is None or not scope.strip():
+        return " ".join(SUPPORTED_OAUTH_SCOPES)
+    requested = dedupe_scopes(scope.split())
+    unsupported = [
+        item for item in requested if item not in SUPPORTED_OAUTH_SCOPE_SET
+    ]
+    if unsupported:
+        raise ValueError(f"Unsupported scope: {unsupported[0]}")
+    return " ".join(requested)
+
+
+def scope_set(scope: str | None) -> set[str]:
+    """Parse a space-delimited scope claim into a set."""
+    return set((scope or "").split())

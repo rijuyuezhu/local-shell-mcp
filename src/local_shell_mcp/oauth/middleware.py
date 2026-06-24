@@ -5,6 +5,7 @@ resource-server boundary for tool and MCP requests.
 """
 
 from collections.abc import Iterable
+from contextvars import ContextVar
 from typing import Any
 
 import jwt
@@ -15,8 +16,13 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..audit import audit
 from ..config.settings import get_settings
+from .scopes import scope_set
 from .tokens import validate_bearer_token
 from .urls import protected_resource_metadata_url
+
+OAUTH_CLAIMS: ContextVar[dict[str, Any] | None] = ContextVar(
+    "local_shell_mcp_oauth_claims", default=None
+)
 
 
 def _route_path(route: BaseRoute) -> str | None:
@@ -107,18 +113,37 @@ def _verify_oauth(request: Request) -> dict[str, Any]:
     return claims
 
 
-def verify_request(request: Request) -> None:
+def current_oauth_claims() -> dict[str, Any] | None:
+    """Return bearer claims for the current protected request, if any."""
+    return OAUTH_CLAIMS.get()
+
+
+def require_oauth_scopes(required_scopes: tuple[str, ...]) -> None:
+    """Reject the current request unless its bearer token includes all required scopes."""
+    claims = current_oauth_claims()
+    if claims is None or not required_scopes:
+        return
+    granted = scope_set(str(claims.get("scope") or ""))
+    missing = [scope for scope in required_scopes if scope not in granted]
+    if missing:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Missing required OAuth scope: {missing[0]}",
+        )
+
+
+def verify_request(request: Request) -> dict[str, Any] | None:
     """Verify a request according to configured auth mode and local bypass rules."""
     settings = get_settings()
     match settings.auth_mode:
         case "none":
-            return
+            return None
         case "oauth" if (
             settings.auth_bypass_localhost
             and _is_localhost(request)
             and settings.mode == "http"
         ):
-            return
+            return None
         case "oauth":
             claims = _verify_oauth(request)
         case _:
@@ -132,7 +157,7 @@ def verify_request(request: Request) -> None:
         path=str(request.url.path),
         ip=_client_host(request),
     )
-    return
+    return claims
 
 
 class AuthMiddleware:
@@ -169,7 +194,7 @@ class AuthMiddleware:
 
         try:
             request = Request(scope, receive)
-            verify_request(request)
+            claims = verify_request(request)
         except HTTPException as exc:
             headers = exc.headers or {}
             response = JSONResponse(
@@ -180,4 +205,8 @@ class AuthMiddleware:
             await response(scope, receive, send)
             return
 
-        await self.app(scope, receive, send)
+        claims_token = OAUTH_CLAIMS.set(claims)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            OAUTH_CLAIMS.reset(claims_token)

@@ -60,8 +60,8 @@ class Settings(BaseSettings):
     # Authentication and OAuth.
     auth_mode: Literal["none", "oauth"] = "oauth"
     """Authentication mode. Do not expose public services with none."""
-    auth_bypass_localhost: bool = True
-    """Allow localhost requests without bearer authentication."""
+    auth_bypass_localhost: bool = False
+    """Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through proxies or shared hosts."""
     base_url: str | None = None
     """Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, URLs fall back to the bind host and port; configure this before exposing the service behind a proxy or public hostname."""
     oauth_issuer: str | None = None

@@ -15,6 +15,22 @@ from ..audit import audit
 from .models import _CLIENTS, OAuthClient
 from .responses import _invalid_request, _json
 
+LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
+BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
+
+
+def _is_allowed_redirect_uri(uri: str) -> bool:
+    """Accept HTTPS, loopback HTTP, and custom private-use redirect URIs."""
+    parsed = urlparse(uri)
+    scheme = parsed.scheme.lower()
+    if not scheme or scheme in BLOCKED_REDIRECT_SCHEMES:
+        return False
+    if scheme == "https":
+        return bool(parsed.netloc)
+    if scheme == "http":
+        return parsed.hostname in LOOPBACK_REDIRECT_HOSTS
+    return True
+
 
 async def register_client(request: Request) -> JSONResponse:
     """Accept dynamic client registration and persist the issued client identifier."""
@@ -34,8 +50,10 @@ async def register_client(request: Request) -> JSONResponse:
     ]
     if len(redirect_uris) != len(raw_redirect_uris) or not redirect_uris:
         return _invalid_request("redirect_uris must contain non-empty strings")
-    if any(not urlparse(uri).scheme for uri in redirect_uris):
-        return _invalid_request("redirect_uris must be absolute URIs")
+    if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
+        return _invalid_request(
+            "redirect_uris must be https, loopback http, or custom private-use URIs"
+        )
 
     # Docs compliance: dynamic registration is intentionally low-friction, but
     # issues opaque client IDs and relies on later local approval before token

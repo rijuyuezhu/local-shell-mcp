@@ -12,6 +12,8 @@ from mcp.types import ToolAnnotations
 from pydantic import TypeAdapter, ValidationError
 
 from ..config.settings import Settings
+from ..oauth.middleware import require_oauth_scopes
+from ..oauth.scopes import SCOPE_SHELL_READ, SUPPORTED_OAUTH_SCOPES
 from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]
@@ -139,8 +141,15 @@ class ToolDefinition:
             return None
         return HttpToolRoute(self.http_method, self.http_path, self.name)
 
+    def required_oauth_scopes(self) -> tuple[str, ...]:
+        """Return server-enforced OAuth scopes for this tool."""
+        if self.mcp_security_profile == "connector_compatible":
+            return (SCOPE_SHELL_READ,)
+        return self.mcp_scopes or tuple(SUPPORTED_OAUTH_SCOPES)
+
     async def call_from_mapping(self, args: Mapping[str, Any]) -> Any:
         """Invoke the typed tool function from an HTTP-style argument mapping."""
+        require_oauth_scopes(self.required_oauth_scopes())
         return await self.func(
             **_tool_kwargs_from_mapping(self.signature, args)
         )
@@ -193,6 +202,7 @@ class ToolDefinition:
         @wraps(self.func)
         async def mcp_handler(*args: Any, **kwargs: Any) -> Any:
             try:
+                require_oauth_scopes(self.required_oauth_scopes())
                 return await self.func(*args, **kwargs)
             except Exception as exc:
                 if self.mcp_error_handler is not None:
