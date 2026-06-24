@@ -6,6 +6,7 @@ import re
 import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..config.settings import get_settings
 from ..schemas.input_models.files import ReadFileRequest
@@ -14,6 +15,8 @@ from ..schemas.result_models.files import (
     EditFileOutput,
     EditLinesOutput,
     EntryInfo,
+    HashlineEditHunkOutput,
+    HashlineEditOutput,
     LineRange,
     ListFilesOutput,
     MultiEditFileOutput,
@@ -403,6 +406,29 @@ class _ParsedHashlineInsert:
 type _ParsedHashlineOperation = _ParsedHashlineEdit | _ParsedHashlineInsert
 
 
+@dataclass(frozen=True)
+class _PreparedHashlineHunk:
+    """One validated hashline hunk prepared for a file-level edit."""
+
+    input_index: int
+    path_obj: Path
+    relative_path: str
+    start_line: int
+    end_line: int
+    replacement_lines: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _HashlineFileSnapshot:
+    """Original file state shared by all hunks targeting one file."""
+
+    path_obj: Path
+    relative_path: str
+    original: str
+    original_lines: tuple[str, ...]
+    current_sha256: str
+
+
 def _hashline_replacement_text(lines: Sequence[str]) -> str:
     """Convert plus-prefixed hashline payload rows into edit_lines replacement text."""
     if not lines:
@@ -427,29 +453,12 @@ def _hashline_plus_lines(
     return tuple(line[1:] for line in lines)
 
 
-def _parse_hashline_header(input_text: str) -> tuple[str, str, list[str]]:
-    """Parse and remove the [path#snapshot] header from hashline edit input."""
-    lines = [line.rstrip("\r") for line in input_text.splitlines()]
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    if not lines:
-        raise ValueError("hashline edit input is empty")
-    match = _HASHLINE_HEADER_RE.match(lines[0].strip())
-    if match is None:
-        raise ValueError(
-            "hashline edit input must start with [path#snapshot_id]"
-        )
-    body = lines[1:]
+def _parse_hashline_hunk(
+    path: str, snapshot_id: str, body: Sequence[str]
+) -> _ParsedHashlineOperation:
+    """Parse one non-empty hashline hunk body under a header."""
     if not body:
         raise ValueError("hashline edit input must include an edit hunk")
-    return match.group("path"), match.group("snapshot"), body
-
-
-def parse_hashline_edit_input(input_text: str) -> _ParsedHashlineOperation:
-    """Parse the compact hashline edit format accepted by hashline_edit."""
-    path, snapshot_id, body = _parse_hashline_header(input_text)
 
     swap_match = _HASHLINE_SWAP_RE.match(body[0].strip())
     if swap_match is not None:
@@ -511,6 +520,63 @@ def parse_hashline_edit_input(input_text: str) -> _ParsedHashlineOperation:
         replacement=_hashline_replacement_text(plus_lines),
         expected_lines=tuple(old_lines),
     )
+
+
+def parse_hashline_edit_input(
+    input_text: str,
+) -> tuple[_ParsedHashlineOperation, ...]:
+    """Parse the compact hashline edit format accepted by hashline_edit."""
+    lines = [line.rstrip("\r") for line in input_text.splitlines()]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        raise ValueError("hashline edit input is empty")
+
+    operations: list[_ParsedHashlineOperation] = []
+    current_path: str | None = None
+    current_snapshot_id: str | None = None
+    current_body: list[str] = []
+
+    def flush_hunk() -> None:
+        nonlocal current_body
+        if current_path is None or current_snapshot_id is None:
+            if current_body:
+                raise ValueError(
+                    "hashline edit input must start with [path#snapshot_id]"
+                )
+            return
+        if not current_body:
+            return
+        operations.append(
+            _parse_hashline_hunk(
+                current_path, current_snapshot_id, current_body
+            )
+        )
+        current_body = []
+
+    for line in lines:
+        stripped = line.strip()
+        header_match = _HASHLINE_HEADER_RE.match(stripped)
+        if header_match is not None:
+            flush_hunk()
+            current_path = header_match.group("path")
+            current_snapshot_id = header_match.group("snapshot")
+            continue
+        if current_path is None or current_snapshot_id is None:
+            raise ValueError(
+                "hashline edit input must start with [path#snapshot_id]"
+            )
+        if not stripped:
+            flush_hunk()
+            continue
+        current_body.append(line)
+
+    flush_hunk()
+    if not operations:
+        raise ValueError("hashline edit input must include an edit hunk")
+    return tuple(operations)
 
 
 def _path_for_hashline_operation(
@@ -653,35 +719,275 @@ def edit_file_execute(
     )
 
 
-def hashline_edit_execute(
-    input_text: str, session_id: str | None = None
-) -> EditLinesOutput:
-    """Apply a compact hashline edit by reusing edit_lines grounding checks."""
-    operation = parse_hashline_edit_input(input_text)
-    path = _path_for_hashline_operation(
+def _hashline_file_snapshot(
+    path: str, session_id: str | None
+) -> _HashlineFileSnapshot:
+    """Resolve a hashline path and capture current file state."""
+    settings = get_settings()
+    store = get_tool_session_store()
+    session = (
+        store.touch_session(session_id) if session_id is not None else None
+    )
+    p = (
+        resolve_session_path(session, path, must_exist=True)
+        if session is not None
+        else resolve_path(path, must_exist=True)
+    )
+    size = p.stat().st_size
+    if size > settings.max_file_write_bytes:
+        raise ValueError(
+            f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+        )
+    original = p.read_text(encoding="utf-8")
+    return _HashlineFileSnapshot(
+        path_obj=p,
+        relative_path=relative_display(p),
+        original=original,
+        original_lines=tuple(original.splitlines(keepends=True)),
+        current_sha256=file_sha256(p),
+    )
+
+
+def _hashline_operation_range(
+    operation: _ParsedHashlineOperation,
+) -> tuple[int, int]:
+    """Return the original inclusive line range touched by an operation."""
+    if isinstance(operation, _ParsedHashlineInsert):
+        return operation.anchor_line, operation.anchor_line
+    return operation.start_line, operation.end_line
+
+
+def _prepare_hashline_hunk(
+    *,
+    input_index: int,
+    operation: _ParsedHashlineOperation,
+    session_id: str | None,
+    snapshots: dict[Path, _HashlineFileSnapshot],
+) -> _PreparedHashlineHunk:
+    """Validate one parsed hashline hunk and convert it to replacement lines."""
+    path_arg = _path_for_hashline_operation(
         operation.path, operation.snapshot_id, session_id
     )
-    if isinstance(operation, _ParsedHashlineInsert):
-        replacement = _hashline_insert_replacement(path, operation, session_id)
-        return edit_lines_execute(
-            path,
-            operation.anchor_line,
-            operation.anchor_line,
-            replacement,
-            operation.snapshot_id,
-            session_id,
+    snapshot = _hashline_file_snapshot(path_arg, session_id)
+    snapshots.setdefault(snapshot.path_obj, snapshot)
+    snapshot = snapshots[snapshot.path_obj]
+
+    start_line, end_line = _hashline_operation_range(operation)
+    if start_line < 1:
+        raise ValueError("line numbers must be >= 1")
+    if end_line < start_line:
+        raise ValueError("end_line must be >= start_line")
+
+    total_lines = len(snapshot.original_lines)
+    if end_line > total_lines:
+        raise ValueError(
+            f"line {end_line} is beyond file line count {total_lines}"
         )
 
-    _validate_hashline_expected_lines(
-        path, operation.expected_lines, session_id
+    _validate_snapshot_for_edit(
+        path=snapshot.relative_path,
+        current_sha256=snapshot.current_sha256,
+        start_line=start_line,
+        end_line=end_line,
+        snapshot_id=operation.snapshot_id,
+        session_id=session_id,
     )
-    return edit_lines_execute(
-        path,
-        operation.start_line,
-        operation.end_line,
-        operation.replacement,
-        operation.snapshot_id,
-        session_id,
+
+    decoded_lines = snapshot.original.splitlines()
+    if isinstance(operation, _ParsedHashlineInsert):
+        anchor_text = decoded_lines[operation.anchor_line - 1]
+        if operation.insert_after:
+            replacement_text = _hashline_replacement_text(
+                (anchor_text, *operation.inserted_lines)
+            )
+        else:
+            replacement_text = _hashline_replacement_text(
+                (*operation.inserted_lines, anchor_text)
+            )
+    else:
+        if operation.expected_lines:
+            expected = [line.text for line in operation.expected_lines]
+            current = decoded_lines[start_line - 1 : end_line]
+            if current != expected:
+                raise ValueError(
+                    "hashline old text does not match current file; re-read before editing"
+                )
+        replacement_text = operation.replacement
+
+    selected = snapshot.original_lines[start_line - 1 : end_line]
+    replacement_lines = _replacement_lines(
+        replacement_text,
+        newline=_newline_for_text(snapshot.original),
+        selected_had_trailing_newline=bool(
+            selected and selected[-1].endswith(("\n", "\r"))
+        ),
+        has_following_lines=end_line < total_lines,
+    )
+    return _PreparedHashlineHunk(
+        input_index=input_index,
+        path_obj=snapshot.path_obj,
+        relative_path=snapshot.relative_path,
+        start_line=start_line,
+        end_line=end_line,
+        replacement_lines=tuple(replacement_lines),
+    )
+
+
+def _validate_hashline_hunk_overlap(
+    hunks: Sequence[_PreparedHashlineHunk],
+) -> None:
+    """Reject multiple hunks that touch overlapping original line ranges."""
+    by_file: dict[Path, list[_PreparedHashlineHunk]] = {}
+    for hunk in hunks:
+        by_file.setdefault(hunk.path_obj, []).append(hunk)
+    for file_hunks in by_file.values():
+        previous: _PreparedHashlineHunk | None = None
+        for hunk in sorted(file_hunks, key=lambda item: item.start_line):
+            if previous is not None and hunk.start_line <= previous.end_line:
+                raise ValueError(
+                    "hashline edit hunks overlap; use non-overlapping original line ranges"
+                )
+            previous = hunk
+
+
+def _apply_hashline_file_hunks(
+    snapshot: _HashlineFileSnapshot,
+    hunks: Sequence[_PreparedHashlineHunk],
+) -> tuple[tuple[str, ...], str]:
+    """Apply prepared hunks to one file and return updated lines plus diff."""
+    settings = get_settings()
+    updated_lines = list(snapshot.original_lines)
+    for hunk in sorted(hunks, key=lambda item: item.start_line, reverse=True):
+        updated_lines = (
+            updated_lines[: hunk.start_line - 1]
+            + list(hunk.replacement_lines)
+            + updated_lines[hunk.end_line :]
+        )
+    updated = "".join(updated_lines)
+    updated_bytes = len(updated.encode("utf-8"))
+    if updated_bytes > settings.max_file_write_bytes:
+        raise ValueError(
+            f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+        )
+
+    diff = "".join(
+        difflib.unified_diff(
+            snapshot.original.splitlines(keepends=True),
+            updated.splitlines(keepends=True),
+            fromfile=snapshot.relative_path,
+            tofile=snapshot.relative_path,
+        )
+    )
+    with snapshot.path_obj.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(updated)
+    return tuple(updated_lines), diff
+
+
+def _hashline_hunk_contexts(
+    *,
+    prepared_hunks: Sequence[_PreparedHashlineHunk],
+    updated_by_file: dict[Path, tuple[str, ...]],
+    snapshots: dict[Path, _HashlineFileSnapshot],
+    session_id: str | None,
+) -> list[HashlineEditHunkOutput]:
+    """Build fresh post-edit context for each hunk in original input order."""
+    outputs_by_index: dict[int, HashlineEditHunkOutput] = {}
+    by_file: dict[Path, list[_PreparedHashlineHunk]] = {}
+    for hunk in prepared_hunks:
+        by_file.setdefault(hunk.path_obj, []).append(hunk)
+
+    for path_obj, file_hunks in by_file.items():
+        delta = 0
+        updated_lines = updated_by_file[path_obj]
+        snapshot = snapshots[path_obj]
+        for hunk in sorted(file_hunks, key=lambda item: item.start_line):
+            new_start = max(1, hunk.start_line + delta)
+            replacement_line_count = len(hunk.replacement_lines)
+            context_start = max(1, new_start - 3)
+            context_end = min(
+                len(updated_lines),
+                max(
+                    new_start,
+                    new_start + max(replacement_line_count, 1) + 3,
+                ),
+            )
+            if not updated_lines:
+                context_start = context_end = 1
+            context = read_file_execute(
+                str(snapshot.path_obj), context_start, context_end, session_id
+            )
+            outputs_by_index[hunk.input_index] = HashlineEditHunkOutput(
+                path=hunk.relative_path,
+                start_line=hunk.start_line,
+                end_line=hunk.end_line,
+                replacement_line_count=replacement_line_count,
+                context=context,
+            )
+            delta += replacement_line_count - (
+                hunk.end_line - hunk.start_line + 1
+            )
+
+    return [
+        outputs_by_index[hunk.input_index]
+        for hunk in sorted(prepared_hunks, key=lambda item: item.input_index)
+    ]
+
+
+def hashline_edit_execute(
+    input_text: str, session_id: str | None = None
+) -> HashlineEditOutput:
+    """Apply one or more compact hashline edits against original line numbers."""
+    operations = parse_hashline_edit_input(input_text)
+    snapshots: dict[Path, _HashlineFileSnapshot] = {}
+    prepared_hunks = [
+        _prepare_hashline_hunk(
+            input_index=index,
+            operation=operation,
+            session_id=session_id,
+            snapshots=snapshots,
+        )
+        for index, operation in enumerate(operations)
+    ]
+    _validate_hashline_hunk_overlap(prepared_hunks)
+
+    hunks_by_file: dict[Path, list[_PreparedHashlineHunk]] = {}
+    for hunk in prepared_hunks:
+        hunks_by_file.setdefault(hunk.path_obj, []).append(hunk)
+
+    updated_by_file: dict[Path, tuple[str, ...]] = {}
+    diff_parts: list[str] = []
+    for path_obj, file_hunks in hunks_by_file.items():
+        updated_lines, diff = _apply_hashline_file_hunks(
+            snapshots[path_obj], file_hunks
+        )
+        updated_by_file[path_obj] = updated_lines
+        diff_parts.append(diff)
+
+    hunk_outputs = _hashline_hunk_contexts(
+        prepared_hunks=prepared_hunks,
+        updated_by_file=updated_by_file,
+        snapshots=snapshots,
+        session_id=session_id,
+    )
+    first_hunk = hunk_outputs[0]
+    first_path = first_hunk.path
+    if all(hunk.path == first_path for hunk in hunk_outputs):
+        start_line = min(hunk.start_line for hunk in hunk_outputs)
+        end_line = max(hunk.end_line for hunk in hunk_outputs)
+    else:
+        start_line = first_hunk.start_line
+        end_line = first_hunk.end_line
+    return HashlineEditOutput(
+        path=first_path,
+        start_line=start_line,
+        end_line=end_line,
+        replacement_line_count=sum(
+            hunk.replacement_line_count for hunk in hunk_outputs
+        ),
+        diff="".join(diff_parts),
+        context=first_hunk.context,
+        hunk_count=len(hunk_outputs),
+        hunks=hunk_outputs,
     )
 
 
@@ -785,7 +1091,7 @@ def edit_lines_execute(
 
 async def hashline_edit_dispatch_execute(
     input_text: str, session_id: str | None = None
-) -> EditLinesOutput:
+) -> HashlineEditOutput:
     """Dispatch hashline_edit to a local or remote session."""
     if session_id is None:
         return hashline_edit_execute(input_text, session_id)
@@ -796,7 +1102,7 @@ async def hashline_edit_dispatch_execute(
             "hashline_edit",
             {"input": input_text},
         )
-        return EditLinesOutput.model_validate(data)
+        return HashlineEditOutput.model_validate(data)
     return hashline_edit_execute(input_text, session_id)
 
 

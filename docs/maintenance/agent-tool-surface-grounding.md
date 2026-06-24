@@ -183,7 +183,7 @@ Practical delta: `local-shell-mcp` has safer and simpler grounded search for MCP
 `local-shell-mcp` edit surface is split intentionally:
 
 - `hashline_edit(session_id, input)` is the model-facing default for edits copied from `[path#snapshot_id]` plus `line:text` output.
-- Current `hashline_edit` supports a deliberately small single-hunk grammar: copied rows plus `+replacement` rows, `SWAP start[-end]:`, and `INSERT [BEFORE|AFTER] line:`.
+- Current `hashline_edit` supports multiple non-overlapping hunks in one call. Hunk forms remain deliberately small: copied rows plus `+replacement` rows, copied rows with no `+` rows to delete, `SWAP start[-end]:`, and `INSERT [BEFORE|AFTER] line:`.
 - `edit_lines(session_id, path, start_line, end_line, replacement, snapshot_id?)` remains the structured low-level tool when exact path/range/replacement data already exists.
 - `write_file` is reserved for new files or intentional whole-file replacement.
 
@@ -194,7 +194,7 @@ Practical delta: `local-shell-mcp` has safer and simpler grounded search for MCP
 - It has explicit operations such as `SWAP`, `DEL`, `INS.PRE`, `INS.POST`, `INS.HEAD`, `INS.TAIL`, plus block-aware forms such as `SWAP.BLK`, `DEL.BLK`, and `INS.BLK.POST`.
 - It includes stale-tag recovery, seen-line validation, no-op loop protection, streaming diff preview support, and LSP diagnostics integration.
 
-Practical delta: `local-shell-mcp` now has the important “copy grounded output into edit tool” workflow, but it intentionally avoids oh-my-pi's larger hashline grammar and LSP/editor integrations. The next reasonable edit-feature candidate, if needed, is multi-hunk `hashline_edit`; block-aware edits should wait until there is a parser/tree-sitter story and a clear user need.
+Practical delta: `local-shell-mcp` now has the important “copy grounded output into edit tool” workflow, including non-overlapping multi-hunk edits, but it intentionally avoids oh-my-pi's larger hashline grammar and LSP/editor integrations. Block-aware edits should wait until there is a parser/tree-sitter story and a clear user need.
 
 ## Planned follow-up slices selected by the user
 
@@ -232,6 +232,24 @@ Tests to add/update:
 - Unit or integration tests for multi-file input if implemented.
 - Remote/session forwarding coverage if the public tool contract changes.
 - Tool-surface tests ensuring descriptions explain multi-hunk syntax only after implementation.
+
+Status: implemented in this slice. Current behavior:
+
+- A single `hashline_edit(session_id, input)` call may include multiple non-overlapping hunks under the same `[path#snapshot_id]` header, separated by blank lines.
+- Inputs may also repeat `[path#snapshot_id]` headers for additional sections, including multiple files in one call.
+- Existing single-hunk forms are preserved: copied rows plus `+replacement`, delete by copied rows with no `+` rows, `SWAP start[-end]:`, and `INSERT [BEFORE|AFTER] line:`.
+- Hunks are validated against original snapshot line numbers, then applied from bottom to top per file so earlier hunks do not shift later original-line coordinates.
+- The executor rejects stale snapshots, unseen ranges, old-text mismatches, wrong paths, out-of-range lines, and overlapping touched ranges in the same file.
+- The result remains compatible with the old `EditLinesOutput` fields and adds `hunk_count` plus per-hunk `hunks` with fresh post-edit contexts.
+
+Validation run for this slice:
+
+- `uv run python -m py_compile src/local_shell_mcp/ops/files.py src/local_shell_mcp/schemas/result_models/files.py src/local_shell_mcp/tools/registry/files.py`
+- `uv run pytest tests/test_files_ops.py -q` → 30 passed
+- `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json`
+- `uv run python scripts/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json --check`
+- `uv run pyright` → 0 errors
+- `uv run pytest` → 275 passed, 1 warning
 
 ### Slice B — search match/context output markers
 

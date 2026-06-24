@@ -314,7 +314,7 @@
           {
             "items": [
               {
-                "description": "Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT single-hunk directives.",
+                "description": "Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT directives. Separate multiple non-overlapping hunks with blank lines or repeated headers.",
                 "head": {
                   "code": "input"
                 },
@@ -329,7 +329,7 @@
               }
             ]
           },
-          "Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output, then provide the final new content as `+text` rows. Supported single-hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Line numbers refer to the original displayed snapshot; stale files, wrong paths, or unseen ranges are rejected. After a successful edit, use the returned fresh context or re-read before the next edit. Current write cap: 5000000 bytes."
+          "Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output, then provide the final new content as `+text` rows. Supported hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. To apply multiple non-overlapping hunks, separate hunk bodies with a blank line under the same header or repeat a `[path#snapshot_id]` header for another section or file. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Line numbers refer to the original displayed snapshot; stale files, wrong paths, overlapping hunks, or unseen ranges are rejected. After a successful edit, use the returned fresh hunk contexts or re-read before the next edit. Current write cap: 5000000 bytes."
         ],
         [
           {
@@ -2296,11 +2296,11 @@
       }
     },
     {
-      "description": "Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output, then provide the final new content as `+text` rows. Supported single-hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Line numbers refer to the original displayed snapshot; stale files, wrong paths, or unseen ranges are rejected. After a successful edit, use the returned fresh context or re-read before the next edit. Current write cap: 5000000 bytes.",
+      "description": "Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output, then provide the final new content as `+text` rows. Supported hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. To apply multiple non-overlapping hunks, separate hunk bodies with a blank line under the same header or repeat a `[path#snapshot_id]` header for another section or file. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Line numbers refer to the original displayed snapshot; stale files, wrong paths, overlapping hunks, or unseen ranges are rejected. After a successful edit, use the returned fresh hunk contexts or re-read before the next edit. Current write cap: 5000000 bytes.",
       "inputSchema": {
         "properties": {
           "input": {
-            "description": "Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT single-hunk directives.",
+            "description": "Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT directives. Separate multiple non-overlapping hunks with blank lines or repeated headers.",
             "title": "Input",
             "type": "string"
           },
@@ -2334,6 +2334,44 @@
       "name": "hashline_edit",
       "outputSchema": {
         "$defs": {
+          "HashlineEditHunkOutput": {
+            "description": "One applied hashline edit hunk.",
+            "properties": {
+              "context": {
+                "$ref": "#/$defs/ReadFileOutput",
+                "description": "Hashline post-edit context around this hunk, including a fresh snapshot_id."
+              },
+              "end_line": {
+                "description": "Original 1-based final line touched by this hunk.",
+                "title": "End Line",
+                "type": "integer"
+              },
+              "path": {
+                "description": "Workspace-relative file path edited by this hunk.",
+                "title": "Path",
+                "type": "string"
+              },
+              "replacement_line_count": {
+                "description": "Number of replacement lines inserted for this hunk.",
+                "title": "Replacement Line Count",
+                "type": "integer"
+              },
+              "start_line": {
+                "description": "Original 1-based first line touched by this hunk.",
+                "title": "Start Line",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "start_line",
+              "end_line",
+              "replacement_line_count",
+              "context"
+            ],
+            "title": "HashlineEditHunkOutput",
+            "type": "object"
+          },
           "LineRange": {
             "description": "Inclusive 1-based line range shown to the agent.",
             "properties": {
@@ -2542,7 +2580,7 @@
             "type": "object"
           }
         },
-        "description": "Grounded whole-line edit result.",
+        "description": "Grounded hashline edit result for one or more applied hunks.",
         "properties": {
           "context": {
             "$ref": "#/$defs/ReadFileOutput",
@@ -2557,6 +2595,19 @@
             "description": "Original 1-based final line replaced by this edit.",
             "title": "End Line",
             "type": "integer"
+          },
+          "hunk_count": {
+            "description": "Number of hashline hunks applied.",
+            "title": "Hunk Count",
+            "type": "integer"
+          },
+          "hunks": {
+            "description": "Per-hunk edit summaries in original input order.",
+            "items": {
+              "$ref": "#/$defs/HashlineEditHunkOutput"
+            },
+            "title": "Hunks",
+            "type": "array"
           },
           "path": {
             "description": "Workspace-relative file path that was edited.",
@@ -2580,9 +2631,11 @@
           "end_line",
           "replacement_line_count",
           "diff",
-          "context"
+          "context",
+          "hunk_count",
+          "hunks"
         ],
-        "title": "EditLinesOutput",
+        "title": "HashlineEditOutput",
         "type": "object"
       }
     },

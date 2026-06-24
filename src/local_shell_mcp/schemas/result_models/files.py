@@ -235,6 +235,35 @@ class EditLinesOutput(BaseModel):
     )
 
 
+class HashlineEditHunkOutput(BaseModel):
+    """One applied hashline edit hunk."""
+
+    path: str = Field(
+        description="Workspace-relative file path edited by this hunk."
+    )
+    start_line: int = Field(
+        description="Original 1-based first line touched by this hunk."
+    )
+    end_line: int = Field(
+        description="Original 1-based final line touched by this hunk."
+    )
+    replacement_line_count: int = Field(
+        description="Number of replacement lines inserted for this hunk."
+    )
+    context: ReadFileOutput = Field(
+        description="Hashline post-edit context around this hunk, including a fresh snapshot_id."
+    )
+
+
+class HashlineEditOutput(EditLinesOutput):
+    """Grounded hashline edit result for one or more applied hunks."""
+
+    hunk_count: int = Field(description="Number of hashline hunks applied.")
+    hunks: list[HashlineEditHunkOutput] = Field(
+        description="Per-hunk edit summaries in original input order."
+    )
+
+
 class DeleteFileOrDirOutput(BaseModel):
     """File or directory deletion result."""
 

@@ -75,7 +75,7 @@ SnapshotIdArg = Annotated[
 HashlineEditInputArg = Annotated[
     str,
     Field(
-        description="Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT single-hunk directives."
+        description="Hashline edit text starting with [path#snapshot_id]. Copy displayed line:text rows from read/search, then add + final-content rows, or use SWAP/INSERT directives. Separate multiple non-overlapping hunks with blank lines or repeated headers."
     ),
 ]
 

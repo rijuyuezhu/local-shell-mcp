@@ -469,3 +469,118 @@ def test_hashline_edit_rejects_mismatched_old_text(tmp_path, monkeypatch):
 def test_parse_hashline_edit_rejects_non_consecutive_rows():
     with pytest.raises(ValueError, match="consecutive"):
         parse_hashline_edit_input("[a.txt#snap]\n2:b\n4:d\n+x")
+
+
+def test_hashline_edit_supports_multiple_hunks_same_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "edit.py").write_text(
+        "alpha\nbeta\ngamma\ndelta\n", encoding="utf-8"
+    )
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=1, end_line=4, session_id=session_id
+    )
+
+    result = hashline_edit_execute(
+        f"[edit.py#{read_result.snapshot_id}]\n"
+        "2:beta\n"
+        "+BETA\n"
+        "\n"
+        "4:delta\n"
+        "+DELTA",
+        session_id=session_id,
+    )
+
+    assert (tmp_path / "edit.py").read_text(encoding="utf-8") == (
+        "alpha\nBETA\ngamma\nDELTA\n"
+    )
+    assert result.hunk_count == 2
+    assert [(h.start_line, h.end_line) for h in result.hunks] == [
+        (2, 2),
+        (4, 4),
+    ]
+    assert all(h.context.snapshot_id for h in result.hunks)
+
+
+def test_hashline_edit_supports_multiple_hunks_with_insert(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=1, end_line=3, session_id=session_id
+    )
+
+    result = hashline_edit_execute(
+        f"[edit.py#{read_result.snapshot_id}]\n"
+        "INSERT AFTER 1:\n"
+        "+inserted\n"
+        "\n"
+        "3:gamma\n"
+        "+GAMMA",
+        session_id=session_id,
+    )
+
+    assert (tmp_path / "edit.py").read_text(encoding="utf-8") == (
+        "alpha\ninserted\nbeta\nGAMMA\n"
+    )
+    assert result.hunk_count == 2
+    assert result.hunks[0].replacement_line_count == 2
+    assert result.hunks[1].replacement_line_count == 1
+
+
+def test_hashline_edit_supports_multiple_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "one.py").write_text("alpha\nbeta\n", encoding="utf-8")
+    (tmp_path / "two.py").write_text("gamma\ndelta\n", encoding="utf-8")
+    session_id = _create_session()
+    one = read_file_execute(
+        "one.py", start_line=2, end_line=2, session_id=session_id
+    )
+    two = read_file_execute(
+        "two.py", start_line=1, end_line=1, session_id=session_id
+    )
+
+    result = hashline_edit_execute(
+        f"[one.py#{one.snapshot_id}]\n"
+        "2:beta\n"
+        "+BETA\n"
+        f"[two.py#{two.snapshot_id}]\n"
+        "1:gamma\n"
+        "+GAMMA",
+        session_id=session_id,
+    )
+
+    assert (tmp_path / "one.py").read_text(encoding="utf-8") == "alpha\nBETA\n"
+    assert (tmp_path / "two.py").read_text(encoding="utf-8") == "GAMMA\ndelta\n"
+    assert result.hunk_count == 2
+    assert [h.path for h in result.hunks] == ["one.py", "two.py"]
+
+
+def test_hashline_edit_rejects_overlapping_hunks(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    (tmp_path / "edit.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    session_id = _create_session()
+    read_result = read_file_execute(
+        "edit.py", start_line=1, end_line=3, session_id=session_id
+    )
+
+    with pytest.raises(ValueError, match="overlap"):
+        hashline_edit_execute(
+            f"[edit.py#{read_result.snapshot_id}]\n"
+            "1:alpha\n"
+            "2:beta\n"
+            "+ALPHA\n"
+            "+BETA\n"
+            "\n"
+            "2:beta\n"
+            "3:gamma\n"
+            "+BETA\n"
+            "+GAMMA",
+            session_id=session_id,
+        )
