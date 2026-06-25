@@ -11,6 +11,7 @@ from ...oauth.http.routes import oauth_public_routes
 from ..shared.public_routes import public_http_routes
 from .errors import install_error_handlers
 from .tool_routes import (
+    install_tool_cache_control_middleware,
     install_tools_timeout_middleware,
     register_http_tool_routes,
 )
@@ -57,6 +58,7 @@ def build_http_app() -> FastAPI:
     register_http_tool_routes(app)
     if settings.auth_mode != "none":
         app.add_middleware(AuthMiddleware, public_routes=public_routes)
+    install_tool_cache_control_middleware(app)
     return app
 
 

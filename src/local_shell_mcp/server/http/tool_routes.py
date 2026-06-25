@@ -16,6 +16,25 @@ from ...tools.local_invocations import call_local_tool
 type ToolRouteHandler = Callable[..., Awaitable[Any]]
 
 
+def _disable_response_cache(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+
+def install_tool_cache_control_middleware(app: FastAPI) -> None:
+    """Install no-store headers for GET REST tool responses."""
+
+    @app.middleware("http")
+    async def tool_cache_control_middleware(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        response = await call_next(request)
+        if request.method == "GET" and request.url.path.startswith("/tools/"):
+            _disable_response_cache(response)
+        return response
+
+
 def install_tools_timeout_middleware(app: FastAPI) -> None:
     """Install the tool timeout middleware for REST tool routes."""
 

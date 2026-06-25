@@ -414,6 +414,21 @@ def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
     assert "todos" in response.json()
 
 
+def test_get_http_tools_disable_response_caching(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    response = client.get("/tools/version")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["expires"] == "0"
+
+
 def test_http_tool_missing_required_arg_returns_validation_error(
     tmp_path, monkeypatch
 ):
