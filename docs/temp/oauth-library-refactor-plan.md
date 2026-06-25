@@ -421,12 +421,13 @@ Answer these during the relevant slice and record decisions here:
 ## Implementation decisions recorded during this refactor
 
 - Slice 2 centralized OAuth JSON/error responses in `responses.py` and replaced manual authorization redirect URL reconstruction with Starlette `URL.include_query_params()`.
-- Slice 3 added `adapters.py` and `service.py`; authorization request validation now uses Authlib-shaped `LocalOAuth2Request` and `LocalOAuthClient`, while admin PIN and approval HTML remain explicit route/UI policy.
+- Slice 3 added `adapters.py` and `service.py`; authorization request validation uses the Authlib `ClientMixin` wrapper `LocalOAuthClient` where it adds value, while admin PIN and approval HTML remain explicit route/UI policy.
 - Slice 4 uses an Authlib-shaped service instead of full `AuthorizationCodeGrant`. Full grant subclassing was not used because preserving local MCP resource binding, admin-PIN approval, process-local client/code stores, exact legacy error text, and public-client PKCE behavior would require enough overrides that it would not simplify the code.
 - Slice 4 added `token_codec.py` to keep local JWT signing/validation separate from token exchange service logic; follow-up cleanup removed `tokens.py` compatibility exports so JWT helpers are imported from `oauth.protocol.token_codec` directly.
 - Slice 5 added `bearer.py` with Authlib resource-server validation. Middleware delegates Authorization header parsing and credential validation to that module while keeping project-owned challenge headers and request context.
 - Slice 6 moved dynamic registration payload checks, redirect policy, client creation, and audit into `service.py`; `registration.py` is now a thin JSON adapter.
 - Follow-up layering cleanup added typed service input models in `oauth.core.requests` and HTTP extraction helpers in `oauth.http.requests`; registration, authorization, and token endpoints now parse Starlette request data in the HTTP layer before calling `oauth.core.service`.
+- Follow-up URL cleanup removed unused `Request` parameters from canonical URL helpers, moved advertised/default scope helpers to `oauth.core.scopes`, and removed the no-op `LocalOAuth2Request` adapter path.
 
 
 ## Layered package layout decision
@@ -471,7 +472,7 @@ Recommended reading spine:
    - Authorization flow: `oauth.http.authorization.authorize_get()` and `authorize_post()` parse query/form data through `oauth.http.requests`, validate typed `AuthorizationRequestInput` in `oauth.core.service.validate_authorization_request()`, check the configured admin PIN in the HTTP approval adapter, then call `oauth.core.service.issue_authorization_response()` and redirect through `oauth.http.responses.oauth_redirect()`.
    - Token flow: `oauth.http.tokens.token_endpoint()` parses form data through `oauth.http.requests.parse_token_request()` and calls `oauth.core.service.exchange_authorization_code()` with a typed `TokenRequestInput`, which checks grant type, resource binding, one-time code use, expiry, client/redirect match, and PKCE before issuing a local bearer credential through `oauth.protocol.token_codec.issue_access_token()`.
 5. **Library/protocol boundary**
-   - Read `src/local_shell_mcp/oauth/protocol/adapters.py` for the Authlib request/client wrappers used by service validation.
+   - Read `src/local_shell_mcp/oauth/protocol/adapters.py` for the Authlib client wrapper used by service validation.
    - Read `src/local_shell_mcp/oauth/protocol/token_codec.py` for local JWT signing and issuer/audience validation.
    - Read `src/local_shell_mcp/oauth/protocol/bearer.py` for Authlib `ResourceProtector` / `BearerTokenValidator` integration.
 6. **Protected request validation**

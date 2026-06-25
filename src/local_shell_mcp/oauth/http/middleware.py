@@ -1,8 +1,4 @@
-"""Authenticate HTTP and MCP requests while keeping OAuth bootstrap routes public.
-
-Security model: see ``docs/security.md#oauth-security``. This middleware is the
-resource-server boundary for tool and MCP requests.
-"""
+"""Authenticate HTTP and MCP requests while keeping OAuth bootstrap routes public."""
 
 from collections.abc import Iterable
 from contextvars import ContextVar
@@ -42,11 +38,9 @@ def _is_localhost(request: Request) -> bool:
     return host in {"127.0.0.1", "::1", "localhost"}
 
 
-def _bearer_challenge(request: Request, *, error: str | None = None) -> str:
+def _bearer_challenge(*, error: str | None = None) -> str:
     """Build the OAuth challenge advertised to MCP clients when auth is missing or invalid."""
-    # Docs compliance: MCP requires 401 challenges to advertise protected
-    # resource metadata through the RFC 9728 ``resource_metadata`` parameter.
-    metadata_url = protected_resource_metadata_url(request)
+    metadata_url = protected_resource_metadata_url()
     parts = [f'resource_metadata="{metadata_url}"']
     if error:
         parts.append(f'error="{error}"')
@@ -56,14 +50,12 @@ def _bearer_challenge(request: Request, *, error: str | None = None) -> str:
 def _verify_oauth(request: Request) -> dict[str, Any]:
     """Validate an OAuth bearer token and return its claims."""
     try:
-        # Docs compliance: inbound bearer tokens must be validated before any
-        # tool request is processed, including issuer and audience checks.
         return validate_bearer_request(request)
     except MissingAuthorizationError as exc:
         raise HTTPException(
             status_code=401,
             detail="Missing OAuth bearer token",
-            headers={"WWW-Authenticate": _bearer_challenge(request)},
+            headers={"WWW-Authenticate": _bearer_challenge()},
         ) from exc
     except OAuth2Error as exc:
         audit(
@@ -76,9 +68,7 @@ def _verify_oauth(request: Request) -> dict[str, Any]:
             status_code=401,
             detail="Invalid OAuth bearer token",
             headers={
-                "WWW-Authenticate": _bearer_challenge(
-                    request, error="invalid_token"
-                )
+                "WWW-Authenticate": _bearer_challenge(error="invalid_token")
             },
         ) from exc
 
@@ -153,8 +143,6 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Docs compliance: OAuth discovery and bootstrap endpoints must remain
-        # reachable without a bearer token; tool/MCP routes remain protected.
         if self._is_public_scope(scope):
             await self.app(scope, receive, send)
             return

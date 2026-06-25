@@ -1,51 +1,34 @@
-"""OAuth public URL, issuer, resource, and scope helpers.
-
-Security model: see ``docs/security.md#oauth-security``. These helpers define
-the canonical issuer/resource values that later metadata and token validation
-must use consistently.
-"""
+"""OAuth URL helpers."""
 
 from urllib.parse import urlparse, urlunparse
 
-from starlette.requests import Request
-
 from ...config.settings import get_settings
-from .scopes import SUPPORTED_OAUTH_SCOPES
 
 
-def base_url(request: Request | None = None) -> str:
-    """Return the configured canonical base URL without trusting request Host headers."""
-    del request
+def base_url() -> str:
+    """Return the canonical public base URL."""
+    return get_settings().resolved_base_url
+
+
+def issuer_url() -> str:
+    """Return the OAuth issuer URL."""
     settings = get_settings()
-    return (settings.base_url or settings.resolved_base_url).rstrip("/")
+    return (settings.oauth_issuer or base_url()).rstrip("/")
 
 
-def issuer_url(request: Request | None = None) -> str:
-    """Return the OAuth issuer URL advertised in metadata and encoded into access tokens."""
-    settings = get_settings()
-    return (settings.oauth_issuer or base_url(request)).rstrip("/")
-
-
-def resource_url(request: Request | None = None) -> str:
-    """Return the canonical MCP resource URI used for OAuth audience binding."""
+def resource_url() -> str:
+    """Return the OAuth resource identifier for the MCP endpoint."""
     settings = get_settings()
     if settings.oauth_resource:
         return settings.oauth_resource.rstrip("/")
-    # Docs compliance: OAuth security requires token audience binding to the
-    # most specific MCP resource. Use the MCP endpoint, not just the origin, so
-    # access tokens are not valid for every service on the same host.
-    return (base_url(request).rstrip("/") + "/mcp").rstrip("/")
+    return f"{base_url()}/mcp"
 
 
-def protected_resource_metadata_url(request: Request | None = None) -> str:
-    """Return the RFC9728 metadata URL for the canonical protected resource."""
-    parsed = urlparse(resource_url(request))
-    path = parsed.path or ""
-    if path == "/":
-        path = ""
-    # Docs compliance: RFC 9728 inserts the well-known protected-resource
-    # suffix between the host and the protected resource path/query.
-    metadata_path = "/.well-known/oauth-protected-resource" + path
+def protected_resource_metadata_url() -> str:
+    """Return the well-known metadata URL for the configured resource."""
+    parsed = urlparse(resource_url())
+    resource_path = "" if parsed.path == "/" else parsed.path
+    metadata_path = "/.well-known/oauth-protected-resource" + resource_path
     return urlunparse(
         (
             parsed.scheme,
@@ -58,16 +41,6 @@ def protected_resource_metadata_url(request: Request | None = None) -> str:
     )
 
 
-def _normalize_resource(value: str) -> str:
-    """Normalize resource indicators for exact-but-slash-tolerant comparisons."""
+def normalize_resource(value: str) -> str:
+    """Normalize resource indicators for slash-tolerant comparisons."""
     return value.rstrip("/")
-
-
-def _default_scope() -> str:
-    """Return the default local single-user scope grant."""
-    return " ".join(_scopes())
-
-
-def _scopes() -> list[str]:
-    """Return the static scopes supported by local-shell-mcp's OAuth flow."""
-    return list(SUPPORTED_OAUTH_SCOPES)

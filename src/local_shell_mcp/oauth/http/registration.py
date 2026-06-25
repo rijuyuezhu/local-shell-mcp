@@ -1,9 +1,4 @@
-"""OAuth dynamic client registration endpoint.
-
-Security model: see ``docs/security.md#oauth-security``. Registration is
-permissive for MCP onboarding; local approval and redirect/resource checks occur
-later in the authorization flow.
-"""
+"""OAuth dynamic client registration endpoint."""
 
 from authlib.oauth2.rfc6749.errors import OAuth2Error
 from starlette.requests import Request

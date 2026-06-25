@@ -1,8 +1,4 @@
-"""OAuth token endpoint route.
-
-Security model: see ``docs/security.md#oauth-security``. Token exchange binds
-authorization codes to client, redirect URI, resource, PKCE, and one-time use.
-"""
+"""OAuth token endpoint route."""
 
 from authlib.oauth2.rfc6749.errors import OAuth2Error
 from starlette.requests import Request

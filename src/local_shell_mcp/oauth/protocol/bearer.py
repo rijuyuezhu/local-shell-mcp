@@ -1,9 +1,4 @@
-"""Authlib-backed bearer validation for protected resource requests.
-
-Security model: see ``docs/security.md#oauth-security``. This module adapts
-local signed bearer credentials to Authlib resource-server validators while
-leaving MCP-specific challenge headers in middleware.
-"""
+"""Bearer-token validation for protected resource requests."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -18,51 +13,38 @@ from .token_codec import validate_bearer_token
 
 @dataclass(frozen=True)
 class LocalBearerToken:
-    """Authlib token object backed by decoded local bearer claims."""
+    """Decoded bearer claims exposed through Authlib's token interface."""
 
     claims: dict[str, Any]
-    """Decoded and validated local bearer claims."""
+    """Decoded token claims."""
 
     def get_scope(self) -> str:
-        """Return the scope claim in Authlib's expected format."""
+        """Return the space-delimited scope claim."""
         return str(self.claims.get("scope") or "")
 
     def is_expired(self) -> bool:
-        """Return whether the token is expired.
-
-        PyJWT already enforces `exp` during decode when present, so a decoded
-        local token is not expired at this boundary.
-        """
+        """Return whether the token is expired."""
         return False
 
     def is_revoked(self) -> bool:
-        """Return whether the token is revoked.
-
-        local-shell-mcp has no central token revocation store today.
-        """
+        """Return whether the token is revoked."""
         return False
 
 
 class LocalBearerTokenValidator(BearerTokenValidator):
-    """Authlib BearerTokenValidator for locally signed bearer credentials."""
-
-    def __init__(self, request: Request):
-        super().__init__()
-        self._request = request
+    """BearerTokenValidator for locally signed tokens."""
 
     def authenticate_token(self, token_string: str) -> LocalBearerToken | None:
-        """Decode the local bearer credential and expose claims to Authlib."""
+        """Return decoded claims for a valid token."""
         try:
-            return LocalBearerToken(
-                validate_bearer_token(token_string, self._request)
-            )
+            return LocalBearerToken(validate_bearer_token(token_string))
         except jwt.PyJWTError:
             return None
 
 
 def validate_bearer_request(request: Request) -> dict[str, Any]:
-    """Validate a Starlette request with Authlib resource-server helpers."""
+    """Validate the bearer token on a Starlette request."""
     protector = ResourceProtector()
-    protector.register_token_validator(LocalBearerTokenValidator(request))
+    protector.register_token_validator(LocalBearerTokenValidator())
     token = protector.validate_request((), request)
     return token.claims

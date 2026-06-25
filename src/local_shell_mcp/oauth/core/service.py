@@ -1,9 +1,4 @@
-"""Authlib-backed OAuth service operations.
-
-Security model: see ``docs/security.md#oauth-security``. This module keeps
-project-specific MCP policy explicit while moving OAuth request validation and
-code issuance out of Starlette route handlers.
-"""
+"""Authlib-backed OAuth service operations."""
 
 import secrets
 import time
@@ -25,7 +20,7 @@ from authlib.oauth2.rfc7636.challenge import (
 )
 
 from ...audit import audit
-from ..protocol.adapters import LocalOAuth2Request, LocalOAuthClient
+from ..protocol.adapters import LocalOAuthClient
 from ..protocol.token_codec import issue_access_token
 from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
 from .requests import (
@@ -33,7 +28,8 @@ from .requests import (
     RegistrationRequest,
     TokenRequestInput,
 )
-from .urls import _default_scope, _normalize_resource, issuer_url, resource_url
+from .scopes import default_scope
+from .urls import issuer_url, normalize_resource, resource_url
 
 LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
@@ -46,23 +42,20 @@ REGISTRATION_REDIRECT_ERROR = (
 class AuthorizationRequest:
     """Validated authorization-code request data."""
 
-    oauth_request: LocalOAuth2Request
-    """Authlib-shaped request adapter for the authorization request."""
-
     client: LocalOAuthClient
-    """Authlib client adapter for the registered dynamic client."""
+    """Registered client adapter."""
 
     client_name: str
-    """Human-readable client name for local approval UI display."""
+    """Client display name."""
 
     input: AuthorizationRequestInput
-    """Parsed authorization endpoint input validated by this service."""
+    """Validated authorization input."""
 
     scope: str
-    """Normalized approved scope string."""
+    """Granted scope string."""
 
     resource: str
-    """Normalized MCP resource URL bound to the authorization code."""
+    """Bound resource identifier."""
 
     @property
     def client_id(self) -> str:
@@ -89,22 +82,22 @@ class AuthorizationFormContext:
     """Display data consumed by the local authorization approval form."""
 
     params: dict[str, str]
-    """Authorization parameters preserved as hidden approval form inputs."""
+    """Hidden form parameters."""
 
     client_id: str
-    """Client identifier displayed on the approval form."""
+    """Client identifier."""
 
     client_name: str
-    """Human-readable client name displayed on the approval form."""
+    """Client display name."""
 
     redirect_uri: str
-    """Redirect URI displayed on the approval form."""
+    """Redirect URI shown to the user."""
 
     resource: str
-    """Requested protected resource displayed on the approval form."""
+    """Requested resource."""
 
     scope: str
-    """Requested OAuth scope string displayed on the approval form."""
+    """Requested scope string."""
 
 
 @dataclass(frozen=True)
@@ -112,13 +105,13 @@ class AuthorizationResponse:
     """Authorization-code response values for the redirect adapter."""
 
     redirect_uri: str
-    """Registered client redirect URI that receives the authorization response."""
+    """Redirect URI for the authorization response."""
 
     query: dict[str, str]
-    """OAuth response parameters appended to the redirect URI."""
+    """Query parameters for the redirect."""
 
     code: AuthCode
-    """Stored authorization code object for the issued code."""
+    """Stored authorization code."""
 
 
 @dataclass(frozen=True)
@@ -126,16 +119,16 @@ class TokenResponse:
     """Token endpoint response values after authorization-code exchange."""
 
     access_token: str
-    """Signed bearer credential returned to the OAuth client."""
+    """Signed bearer token."""
 
     token_type: str
-    """OAuth token type value returned by the token endpoint."""
+    """OAuth token type."""
 
     scope: str
-    """Scope string granted to the issued credential."""
+    """Granted scope string."""
 
     expires_in: int | None
-    """Lifetime in seconds when the local credential has a configured TTL."""
+    """Token lifetime in seconds, if configured."""
 
 
 def oauth_error_message(exc: OAuth2Error) -> str:
@@ -167,7 +160,7 @@ def authorization_form_context(
         redirect_uri=display_input.redirect_uri or "",
         resource=display_input.resource or resource_url(),
         scope=(auth_request.scope if auth_request else display_input.scope)
-        or _default_scope(),
+        or default_scope(),
     )
 
 
@@ -217,9 +210,6 @@ def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
     if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
         raise InvalidRequestError(description=REGISTRATION_REDIRECT_ERROR)
 
-    # Docs compliance: dynamic registration is intentionally low-friction, but
-    # issues opaque client IDs and relies on later local approval before token
-    # issuance.
     client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
     client = OAuthClient(
         client_id=client_id,
@@ -238,11 +228,8 @@ def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
 def validate_authorization_request(
     request_input: AuthorizationRequestInput,
 ) -> AuthorizationRequest:
-    """Validate authorization request parameters with Authlib-shaped adapters."""
-    oauth_request = LocalOAuth2Request(
-        "GET", "authorize", request_input.to_oauth_params()
-    )
-    request_params = oauth_request.params
+    """Validate authorization request parameters."""
+    request_params = request_input.to_oauth_params()
     if request_params.get("response_type") != "code":
         _raise_invalid("Only response_type=code is supported")
 
@@ -250,9 +237,7 @@ def validate_authorization_request(
     redirect_uri = _required_param(request_params, "redirect_uri")
     resource = _required_param(request_params, "resource")
 
-    # Docs compliance: MCP clients must send RFC 8707 ``resource`` and it must
-    # match this server before a code can be issued.
-    normalized_resource = _normalize_resource(resource)
+    normalized_resource = normalize_resource(resource)
     if normalized_resource != resource_url():
         _raise_invalid("resource does not match this MCP server")
 
@@ -271,7 +256,6 @@ def validate_authorization_request(
     except ValueError as exc:
         raise _invalid_authorization_request(str(exc)) from exc
 
-    # Docs compliance: public clients must bind authorization codes with PKCE.
     challenge = request_params.get("code_challenge")
     if not challenge:
         _raise_invalid("Missing code_challenge")
@@ -282,7 +266,6 @@ def validate_authorization_request(
         _raise_invalid("Unsupported code_challenge_method")
 
     return AuthorizationRequest(
-        oauth_request=oauth_request,
         client=client,
         client_name=client_record.client_name or "Unknown client",
         input=request_input,
@@ -324,9 +307,6 @@ def issue_authorization_response(
 
 def _verify_pkce(code_obj: AuthCode, verifier: str | None) -> bool:
     """Validate PKCE using Authlib's RFC7636 challenge helpers."""
-    # Docs compliance: authorization-code exchange verifies PKCE when the
-    # authorization request included a challenge; S256 uses Authlib's RFC 7636
-    # comparison helper.
     if not code_obj.code_challenge:
         return verifier is None
     if not verifier or not CODE_VERIFIER_PATTERN.match(verifier):
@@ -360,17 +340,14 @@ def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
 def exchange_authorization_code(
     request_input: TokenRequestInput,
 ) -> TokenResponse:
-    """Exchange an authorization code for a bearer token after Authlib-shaped validation."""
+    """Exchange an authorization code for a bearer token."""
     from ...config.settings import get_settings
 
-    LocalOAuth2Request("POST", "token", request_input.to_oauth_params())
     grant_type = request_input.grant_type or ""
     if grant_type != "authorization_code":
         raise UnsupportedGrantTypeError(grant_type=grant_type)
 
     resource = request_input.resource or ""
-    # Docs compliance: MCP requires RFC 8707 ``resource`` in token requests, and
-    # the resource must match the one bound to the authorization code.
     if not resource:
         raise InvalidRequestError(description="Missing resource")
 
@@ -391,7 +368,7 @@ def exchange_authorization_code(
         raise InvalidGrantError(description="Expired code")
     if code_obj.client_id != client_id or code_obj.redirect_uri != redirect_uri:
         raise InvalidGrantError(description="Client or redirect mismatch")
-    if _normalize_resource(resource) != _normalize_resource(code_obj.resource):
+    if normalize_resource(resource) != normalize_resource(code_obj.resource):
         raise InvalidGrantError(description="Resource mismatch")
     if not _verify_pkce(code_obj, verifier):
         raise InvalidGrantError(description="PKCE verification failed")

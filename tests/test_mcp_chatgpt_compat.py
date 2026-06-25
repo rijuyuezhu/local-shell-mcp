@@ -13,8 +13,9 @@ from starlette.applications import Starlette
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES, AuthCode
+from local_shell_mcp.oauth.core.scopes import supported_scopes
 from local_shell_mcp.oauth.core.service import _prune_codes
-from local_shell_mcp.oauth.core.urls import _scopes, resource_url
+from local_shell_mcp.oauth.core.urls import resource_url
 from local_shell_mcp.oauth.http.authorization import _authorize_form
 from local_shell_mcp.oauth.http.responses import oauth_redirect
 from local_shell_mcp.oauth.protocol.token_codec import (
@@ -42,7 +43,7 @@ def _s256_challenge(verifier: str) -> str:
 
 
 def test_oauth_supported_scopes_include_feature_scopes():
-    assert _scopes() == [
+    assert supported_scopes() == [
         "shell:read",
         "shell:write",
         "shell:execute",

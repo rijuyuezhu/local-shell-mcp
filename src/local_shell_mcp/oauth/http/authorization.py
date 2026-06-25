@@ -1,8 +1,4 @@
-"""OAuth authorization endpoint, local approval form, and code issuance.
-
-Security model: see ``docs/security.md#oauth-security``. Authorization requests
-are validated before rendering local approval UI or issuing one-time codes.
-"""
+"""OAuth authorization endpoint, local approval form, and code issuance."""
 
 import hmac
 import html as html_lib
@@ -120,8 +116,6 @@ async def authorize_post(request: Request) -> Response:
     form_context = authorization_form_context(request_input, auth_request)
     settings = get_settings()
     expected_pin = settings.oauth_admin_pin
-    # Docs compliance: a configured admin PIN is required before issuing local
-    # approval codes; use a constant-time comparison for failed attempts.
     if not expected_pin:
         audit("oauth_pin_missing", client_id=request_input.client_id)
         return _authorize_form(

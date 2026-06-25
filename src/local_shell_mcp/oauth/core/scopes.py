@@ -1,4 +1,4 @@
-"""OAuth scope constants shared by metadata and authorization helpers."""
+"""OAuth scope helpers."""
 
 SCOPE_SHELL_READ = "shell:read"
 SCOPE_SHELL_WRITE = "shell:write"
@@ -16,8 +16,17 @@ SUPPORTED_OAUTH_SCOPES = (
     SCOPE_REMOTE_USE,
 )
 
-
 SUPPORTED_OAUTH_SCOPE_SET = frozenset(SUPPORTED_OAUTH_SCOPES)
+
+
+def supported_scopes() -> list[str]:
+    """Return supported OAuth scopes in advertised order."""
+    return list(SUPPORTED_OAUTH_SCOPES)
+
+
+def default_scope() -> str:
+    """Return the default scope grant."""
+    return " ".join(SUPPORTED_OAUTH_SCOPES)
 
 
 def dedupe_scopes(scopes: list[str] | tuple[str, ...]) -> list[str]:
@@ -28,7 +37,7 @@ def dedupe_scopes(scopes: list[str] | tuple[str, ...]) -> list[str]:
 def normalize_requested_scope(scope: str | None) -> str:
     """Return a normalized supported scope string, or raise ValueError."""
     if scope is None or not scope.strip():
-        return " ".join(SUPPORTED_OAUTH_SCOPES)
+        return default_scope()
     requested = dedupe_scopes(scope.split())
     unsupported = [
         item for item in requested if item not in SUPPORTED_OAUTH_SCOPE_SET
