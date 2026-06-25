@@ -390,6 +390,8 @@ Prefer small commits by slice:
 4. `refactor: move token exchange into oauth service`
 5. `refactor: use authlib bearer validation`
 6. `refactor: simplify oauth registration validation`
+7. `refactor: layer oauth package`
+8. `docs: add oauth code-reading handoff`
 
 If a slice becomes too invasive, stop and update this plan with the reason before continuing.
 
@@ -448,6 +450,69 @@ oauth.protocol -> oauth.core only for small data/URL/scope helpers
 Do not keep root-level compatibility shims for the moved modules in this branch; update internal imports and tests to the layered paths so the tree itself communicates the architecture.
 
 Package `__init__.py` files should carry layer-level docstrings that describe each layer's responsibility, even though the current public-docstrings test skips `__init__.py`.
+
+
+## Code-reading handoff for a new context
+
+Use this section when asking a fresh agent/context to guide a code walkthrough. The walkthrough should follow runtime flow, not alphabetical files or package layout.
+
+Recommended reading spine:
+
+1. **Runtime setup and mode selection**
+   - Start at `src/local_shell_mcp/main.py`. The console script dispatches through `main()`, `_build_parser()`, `_run_server_from_args()`, `load_settings()`, `configure_settings()`, then either `run_http()` or `run_mcp()` depending on `settings.mode`.
+2. **REST HTTP app setup**
+   - Read `src/local_shell_mcp/server/http/app.py`. `build_http_app()` installs shared public routes, OAuth public routes, REST tool routes, and then adds `AuthMiddleware` when `auth_mode != "none"`.
+3. **MCP server and MCP HTTP setup**
+   - Read `src/local_shell_mcp/server/mcp/app.py`. `build_mcp()` discovers tool registries and registers MCP tools; `build_mcp_http_app()` wraps the SDK HTTP app with shared public routes, remote routes when enabled, OAuth public routes, and `AuthMiddleware`. Stdio mode runs the FastMCP stdio transport and does not install HTTP OAuth middleware.
+4. **OAuth public bootstrap routes**
+   - Read `src/local_shell_mcp/oauth/http/routes.py`. These public routes provide metadata, registration, authorization, and token endpoints while tool/MCP routes remain protected by middleware.
+   - Registration flow: `oauth.http.registration.register_client()` parses JSON and delegates validation/client creation to `oauth.core.service.register_dynamic_client()`.
+   - Authorization flow: `oauth.http.authorization.authorize_get()` validates request params before rendering the approval form; `authorize_post()` validates params again, checks the configured admin PIN, then calls `oauth.core.service.issue_authorization_response()` and redirects through `oauth.http.responses.oauth_redirect()`.
+   - Token flow: `oauth.http.tokens.token_endpoint()` parses form data and calls `oauth.core.service.exchange_authorization_code()`, which checks grant type, resource binding, one-time code use, expiry, client/redirect match, and PKCE before issuing a local bearer credential through `oauth.protocol.token_codec.issue_access_token()`.
+5. **Library/protocol boundary**
+   - Read `src/local_shell_mcp/oauth/protocol/adapters.py` for the Authlib request/client wrappers used by service validation.
+   - Read `src/local_shell_mcp/oauth/protocol/token_codec.py` for local JWT signing and issuer/audience validation.
+   - Read `src/local_shell_mcp/oauth/protocol/bearer.py` for Authlib `ResourceProtector` / `BearerTokenValidator` integration.
+6. **Protected request validation**
+   - Read `src/local_shell_mcp/oauth/http/middleware.py`. `AuthMiddleware` bypasses only configured public routes, validates protected requests through `verify_request()`, delegates bearer parsing/validation to `oauth.protocol.bearer.validate_bearer_request()`, stores claims in `OAUTH_CLAIMS`, and preserves MCP `WWW-Authenticate` challenge behavior.
+   - Read `src/local_shell_mcp/tools/declarative.py` only after middleware. It consumes `require_oauth_scopes()` for per-tool scope enforcement after the transport has already authenticated the request.
+7. **Validation path**
+   - Targeted OAuth/security checks used during this refactor:
+     - `uv run pytest tests/test_mcp_chatgpt_compat.py tests/test_mcp_app.py tests/test_http_validation.py`
+     - `uv run pytest tests/test_declarative_tools.py tests/test_public_docstrings.py`
+   - Final checks used after the layered move:
+     - `uv run ruff check .`
+     - `uv run pyright`
+     - `uv run pytest`
+
+Copyable prompt for the next context:
+
+```text
+你要带我对 local-shell-mcp 当前工作区做一次代码导读。请用中文，客观、直接，不要泛泛讲架构，一定从代码真实流动方向导读。
+
+工作区：`/workspace/local-shell-mcp-human`
+分支：`refactor/oauth-lib-simplify`
+唯一信源：`/workspace/local-shell-mcp-human/docs/temp/oauth-library-refactor-plan.md`
+
+开始前请先读取唯一信源，再检查 `git status -sb` 和最近提交，确认当前分支状态。不要依赖记忆，也不要先按目录树讲。
+
+导读请按真实运行流分几条脉络展开，并且每一段都指出对应代码文件和关键函数：
+
+1. 启动/setup 脉络：从 `src/local_shell_mcp/main.py` 的 CLI 入口讲到 settings 加载、`configure_settings()`，再讲 `settings.mode` 如何进入 `run_http()` 或 `run_mcp()`。
+2. REST HTTP app setup 脉络：读 `src/local_shell_mcp/server/http/app.py`，解释 `build_http_app()` 如何安装 public routes、OAuth public routes、tool routes，以及何时安装 `AuthMiddleware`。
+3. MCP HTTP setup 脉络：读 `src/local_shell_mcp/server/mcp/app.py`，解释 `build_mcp()`、tool registry 注册、SDK HTTP app wrapping、public routes、remote routes、OAuth routes、AuthMiddleware，以及 stdio 模式为什么不走 HTTP OAuth middleware。
+4. OAuth bootstrap 脉络：从 `oauth/http/routes.py` 进入 registration、authorization、token 三条 public endpoint 流，分别追到 `oauth/core/service.py` 和 `oauth/protocol/*`，说明注册、授权页、admin PIN、code issuance、token exchange、PKCE、resource binding、JWT issue 是怎么完成的。
+5. 受保护请求验证脉络：从 `oauth/http/middleware.py` 的 `AuthMiddleware` 讲 public route bypass、`verify_request()`、Authlib bearer validation、claims context，再接到 `tools/declarative.py` 里的 per-tool scope enforcement。
+6. 分层边界脉络：解释 `oauth/http`、`oauth/core`、`oauth/protocol` 各自职责，以及哪些方向的 import 是被允许/有意保留的。
+7. 验证脉络：告诉我本次 refactor 后真实跑过哪些验证命令，它们覆盖什么风险；包括 targeted tests、`uv run ruff check .`、`uv run pyright`、`uv run pytest`。
+
+要求：
+- 每一条脉络都要从调用者走到被调用者，避免只罗列文件。
+- 讲清楚 setup 是怎么完成的，验证是怎么完成的。
+- 对 OAuth 这部分要重点说明此次 `refactor/oauth-lib-simplify` 的分层结果：`oauth.http`、`oauth.core`、`oauth.protocol`。
+- 不要修改代码；这是导读任务。
+- 如果发现唯一信源和代码不一致，优先相信代码，并明确指出不一致。
+```
 
 ## Definition of done
 
