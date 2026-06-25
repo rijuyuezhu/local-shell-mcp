@@ -49,7 +49,7 @@ def _create_file_link_description(context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/file_link/create",
     description=_create_file_link_description,
-    mcp_scopes=("shell:read", "file:share"),
+    oauth_scopes=("shell:read", "file:share"),
     enabled=_download_tools_enabled,
 )
 async def create_file_link(
@@ -73,7 +73,7 @@ async def create_file_link(
 @local_tool(
     http_method="GET",
     http_path="/tools/file_link/list",
-    mcp_scopes=("shell:read", "file:share"),
+    oauth_scopes=("shell:read", "file:share"),
     enabled=_download_tools_enabled,
 )
 async def list_file_links(
@@ -89,7 +89,7 @@ async def list_file_links(
 @local_tool(
     http_method="POST",
     http_path="/tools/file_link/revoke",
-    mcp_scopes=("shell:read", "file:share"),
+    oauth_scopes=("shell:read", "file:share"),
     enabled=_download_tools_enabled,
 )
 async def revoke_file_link(

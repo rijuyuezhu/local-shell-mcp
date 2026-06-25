@@ -17,7 +17,8 @@ from ..oauth.core.context import (
     MissingOAuthScopeError,
     require_oauth_scopes,
 )
-from ..oauth.core.scopes import SCOPE_SHELL_READ, SUPPORTED_OAUTH_SCOPES
+from ..oauth.core.scopes import SUPPORTED_OAUTH_SCOPES
+from ..server.mcp.metadata import oauth_security_meta
 from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]
@@ -64,7 +65,7 @@ class LocalToolDecoratorFactory(Protocol):
         http_path: str | None,
         name: str | None = None,
         mcp_security_profile: McpSecurityProfile = "oauth",
-        mcp_scopes: tuple[str, ...] | None = None,
+        oauth_scopes: tuple[str, ...] | None = None,
         annotations: ToolAnnotation | None = None,
         description: ToolDescription | None = None,
         mcp_error_handler: McpErrorHandler | None = None,
@@ -127,8 +128,8 @@ class ToolDefinition:
     """HTTP path for the REST adapter route, or None for MCP-only tools."""
     mcp_security_profile: McpSecurityProfile = "oauth"
     """Client-facing MCP securitySchemes profile advertised for this tool."""
-    mcp_scopes: tuple[str, ...] | None = None
-    """Optional narrower OAuth scopes advertised for this tool."""
+    oauth_scopes: tuple[str, ...] | None = None
+    """Server-enforced OAuth scopes for this tool. Also drives MCP security metadata."""
     annotations: ToolAnnotation | None = None
     """MCP tool annotations applied during registration."""
     description: ToolDescription | None = None
@@ -155,9 +156,7 @@ class ToolDefinition:
 
     def required_oauth_scopes(self) -> tuple[str, ...]:
         """Return server-enforced OAuth scopes for this tool."""
-        if self.mcp_security_profile == "connector_compatible":
-            return (SCOPE_SHELL_READ,)
-        return self.mcp_scopes or tuple(SUPPORTED_OAUTH_SCOPES)
+        return self.oauth_scopes or tuple(SUPPORTED_OAUTH_SCOPES)
 
     async def call_from_mapping(self, args: Mapping[str, Any]) -> Any:
         """Invoke the typed tool function from an HTTP-style argument mapping."""
@@ -174,14 +173,15 @@ class ToolDefinition:
 
         return handler
 
-    def _mcp_security_meta(self, context: McpToolContext) -> dict[str, Any]:
+    def _mcp_security_meta(self) -> dict[str, Any]:
         match self.mcp_security_profile:
-            case "connector_compatible":
-                return context.connector_compatible_security_meta
-            case "oauth":
-                if self.mcp_scopes is not None:
-                    return context.scoped_oauth_security_meta(self.mcp_scopes)
-                return context.oauth_security_meta
+            case "connector_compatible" | "oauth":
+                return oauth_security_meta(
+                    self.required_oauth_scopes(),
+                    connector_compatible=(
+                        self.mcp_security_profile == "connector_compatible"
+                    ),
+                )
             case _:
                 raise ValueError(
                     f"Invalid MCP security profile: {self.mcp_security_profile}"
@@ -192,7 +192,7 @@ class ToolDefinition:
     ) -> ToolAnnotations | None:
         match self.annotations:
             case "read_only":
-                return context.read_only_tool
+                return context.read_only_tool_annotations
             case None:
                 return None
             case _:
@@ -228,7 +228,7 @@ class ToolDefinition:
         mcp.tool(
             description=self._mcp_description(context),
             annotations=self._mcp_annotations(context),
-            meta=self._mcp_security_meta(context),
+            meta=self._mcp_security_meta(),
             structured_output=True,
         )(mcp_handler)
 
@@ -263,7 +263,7 @@ class DeclarativeToolRegistry(ToolRegistry):
             http_path: str | None,
             name: str | None = None,
             mcp_security_profile: McpSecurityProfile = "oauth",
-            mcp_scopes: tuple[str, ...] | None = None,
+            oauth_scopes: tuple[str, ...] | None = None,
             annotations: ToolAnnotation | None = None,
             description: ToolDescription | None = None,
             mcp_error_handler: McpErrorHandler | None = None,
@@ -277,7 +277,7 @@ class DeclarativeToolRegistry(ToolRegistry):
                         http_method=http_method,
                         http_path=http_path,
                         mcp_security_profile=mcp_security_profile,
-                        mcp_scopes=mcp_scopes,
+                        oauth_scopes=oauth_scopes,
                         annotations=annotations,
                         description=description,
                         mcp_error_handler=mcp_error_handler,

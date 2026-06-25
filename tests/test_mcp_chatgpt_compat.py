@@ -24,7 +24,7 @@ from local_shell_mcp.oauth.protocol.token_codec import (
 )
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import (
-    _wrap_mcp_http_app_with_public_routes,
+    _add_public_routes_to_mcp_http_app,
     build_mcp,
 )
 from local_shell_mcp.server.mcp.transport_security import (
@@ -86,7 +86,7 @@ def test_oauth_urls_ignore_untrusted_request_host_headers(
         "x-forwarded-proto": "https",
     }
     client = TestClient(
-        _wrap_mcp_http_app_with_public_routes(Starlette())[0],
+        _add_public_routes_to_mcp_http_app(Starlette())[0],
         base_url="https://attacker.example",
     )
 
@@ -677,7 +677,7 @@ def test_oauth_registration_requires_redirect_uri(tmp_path, monkeypatch):
     )
     clear_settings_cache()
 
-    client = TestClient(_wrap_mcp_http_app_with_public_routes(Starlette())[0])
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     response = client.post(
         "/oauth/register", json={"client_name": "Missing Redirects"}
     )
@@ -696,7 +696,7 @@ def test_oauth_registration_rejects_unsafe_redirect_uris(tmp_path, monkeypatch):
     )
     clear_settings_cache()
 
-    client = TestClient(_wrap_mcp_http_app_with_public_routes(Starlette())[0])
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     for redirect_uri in (
         "javascript:alert(1)",
         "data:text/html,unsafe",
@@ -735,7 +735,7 @@ def test_oauth_authorize_requires_registered_client_and_redirect(
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
     clear_settings_cache()
 
-    client = TestClient(_wrap_mcp_http_app_with_public_routes(Starlette())[0])
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     unknown_response = client.post(
         "/oauth/authorize",
         data={
@@ -788,7 +788,7 @@ def test_oauth_authorize_requires_pkce_and_supported_scope(
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
     clear_settings_cache()
 
-    client = TestClient(_wrap_mcp_http_app_with_public_routes(Starlette())[0])
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     register = client.post(
         "/oauth/register",
         json={"redirect_uris": ["https://client.example/callback"]},
@@ -831,7 +831,7 @@ def test_pin_needed_for_oauth_approval(tmp_path, monkeypatch):
     _CLIENTS.clear()
     _CODES.clear()
 
-    client = TestClient(_wrap_mcp_http_app_with_public_routes(Starlette())[0])
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     register = client.post(
         "/oauth/register",
         json={"redirect_uris": ["https://client.example/callback"]},
@@ -903,7 +903,7 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
     clear_settings_cache()
 
-    client = TestClient(_wrap_mcp_http_app_with_public_routes(Starlette())[0])
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     register_response = client.post(
         "/oauth/register",
         json={

@@ -17,17 +17,13 @@ from ...tools.contracts import McpToolContext
 from ...tools.discovery import discover_tool_registries
 from ..shared.public_routes import public_http_routes
 from .instructions import SERVER_INSTRUCTIONS
-from .metadata import (
-    connector_compatible_security_meta,
-    install_full_container_auto_approval_hints,
-    oauth_security_meta,
-    scoped_oauth_security_meta,
-)
+from .metadata import install_full_container_auto_approval_hints
 from .transport_security import transport_security_settings
 from .watchdogs import install_mcp_tool_watchdogs
 
 
-def _get_read_only_tool() -> ToolAnnotations:
+def _make_read_only_tool_annotations() -> ToolAnnotations:
+    """Mark a tool as read-only for MCP clients."""
     return ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -37,24 +33,16 @@ def _get_read_only_tool() -> ToolAnnotations:
 
 
 def build_mcp() -> FastMCP:
-    """Create the configured FastMCP server from discovered tool registries."""
+    """Create the MCP server and register the local tools."""
     settings = get_settings()
     mcp = FastMCP(
         "local-shell-mcp",
         instructions=SERVER_INSTRUCTIONS,
         transport_security=transport_security_settings(),
     )
-    # Tool-level securitySchemes are client-facing MCP metadata only. Actual
-    # HTTP/MCP authentication is enforced by AuthMiddleware at the transport
-    # boundary, not by these per-tool advertisements. The noauth-or-oauth
-    # profile exists only for connector-compatible read-only search/fetch
-    # clients; it is not a server-side auth bypass.
     context = McpToolContext(
         settings=settings,
-        read_only_tool=_get_read_only_tool(),
-        connector_compatible_security_meta=connector_compatible_security_meta(),
-        oauth_security_meta=oauth_security_meta(),
-        scoped_oauth_security_meta=scoped_oauth_security_meta,
+        read_only_tool_annotations=_make_read_only_tool_annotations(),
     )
     for registry in discover_tool_registries():
         registry.register_mcp(mcp, context)
@@ -63,15 +51,15 @@ def build_mcp() -> FastMCP:
     return mcp
 
 
-def _wrap_mcp_http_app_with_public_routes(
-    inner_app: Starlette,
+def _add_public_routes_to_mcp_http_app(
+    mcp_app: Starlette,
 ) -> tuple[Starlette, list[BaseRoute]]:
-    """Wrap the SDK MCP ASGI app and return the public routes used by middleware."""
+    """Serve health/OAuth routes directly and send everything else to MCP."""
     settings = get_settings()
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:
-        async with inner_app.router.lifespan_context(inner_app):
+        async with mcp_app.router.lifespan_context(mcp_app):
             yield
 
     public_routes: list[BaseRoute] = [
@@ -82,37 +70,37 @@ def _wrap_mcp_http_app_with_public_routes(
         *(remote_routes() if settings.remote_enabled else ()),
         *oauth_public_routes(),
     ]
-    routes = [*public_routes, Mount("/", app=inner_app)]
+    routes = [*public_routes, Mount("/", app=mcp_app)]
     return Starlette(routes=routes, lifespan=lifespan), public_routes
 
 
-def _build_mcp_http_transport_app(inner_app: Starlette) -> Starlette:
-    """Build one MCP HTTP transport app from a FastMCP SDK ASGI app."""
+def _build_authenticated_mcp_http_app(mcp_app: Starlette) -> Starlette:
+    """Add OAuth protection around the MCP HTTP app when auth is enabled."""
     settings = get_settings()
-    app, public_routes = _wrap_mcp_http_app_with_public_routes(inner_app)
+    app, public_routes = _add_public_routes_to_mcp_http_app(mcp_app)
     if settings.auth_mode != "none":
         app.add_middleware(AuthMiddleware, public_routes=public_routes)
     return app
 
 
 def build_mcp_http_app(mcp: FastMCP) -> Starlette:
-    """Build the MCP HTTP ASGI app for the current settings and SDK version."""
+    """Use the MCP SDK's HTTP app and add local public routes/auth."""
     for attr in ("streamable_http_app", "sse_app"):
         if hasattr(mcp, attr):
             inner: Starlette = getattr(mcp, attr)()
-            return _build_mcp_http_transport_app(inner)
+            return _build_authenticated_mcp_http_app(inner)
     raise RuntimeError(
         "MCP HTTP ASGI app not available since both streamable_http_app and sse_app are not available"
     )
 
 
 def run_mcp() -> None:
-    """Run the FastMCP server."""
+    """Start the configured MCP server, over stdio or HTTP."""
     settings = get_settings()
     mcp = build_mcp()
 
     if settings.mode == "stdio":
-        # stdio do not need http service
+        # stdio mode talks directly to the parent process; no HTTP app is needed.
         mcp.run(transport="stdio")
     else:
         app = build_mcp_http_app(mcp)

@@ -36,7 +36,7 @@ Pass the session_id from session_start. Call with no action, or with `list_jobs=
     http_method="POST",
     http_path="/tools/job",
     description=_job_description,
-    mcp_scopes=("shell:read", "shell:execute"),
+    oauth_scopes=("shell:read", "shell:execute"),
 )
 async def job(
     session_id: SessionIdArg,

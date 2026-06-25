@@ -22,7 +22,7 @@ local_tool = TodoToolRegistry.get_tool_decorator()
 @local_tool(
     http_method="GET",
     http_path="/tools/todo",
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def read_todos(session_id: SessionIdArg) -> ReadTodosOutput:
     """Read the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start. Use this when resuming or checking multi-step work in the current session before deciding what to do next. Todos are session-scoped: items from one session are not shared with another local or remote session, and shell_id/job_id values are not valid here. For changing the list, use write_todos with the complete replacement list."""
@@ -32,7 +32,7 @@ async def read_todos(session_id: SessionIdArg) -> ReadTodosOutput:
 @local_tool(
     http_method="POST",
     http_path="/tools/todo",
-    mcp_scopes=("shell:read", "shell:write"),
+    oauth_scopes=("shell:read", "shell:write"),
 )
 async def write_todos(
     session_id: SessionIdArg, todos: TodosArg

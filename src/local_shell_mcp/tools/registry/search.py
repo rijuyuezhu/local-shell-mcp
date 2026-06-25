@@ -59,7 +59,7 @@ def _search_description(context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/tree",
     description=_tree_view_description,
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def tree_view(
     session_id: SessionIdArg,
@@ -75,7 +75,7 @@ async def tree_view(
     http_method="POST",
     http_path="/tools/glob",
     description=_glob_search_description,
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def glob_search(
     session_id: SessionIdArg,
@@ -92,7 +92,7 @@ async def glob_search(
     http_path="/tools/search",
     description=_search_description,
     annotations="read_only",
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def search(
     session_id: SessionIdArg,

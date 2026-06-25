@@ -37,7 +37,7 @@ def _session_change_cwd_description(_context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/session_start",
     description=_session_start_description,
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def session_start(
     workdir: SessionWorkdirArg,
@@ -53,7 +53,7 @@ async def session_start(
     http_method="POST",
     http_path="/tools/session_change_cwd",
     description=_session_change_cwd_description,
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def session_change_cwd(
     session_id: SessionIdArg,

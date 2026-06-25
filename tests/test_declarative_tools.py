@@ -91,12 +91,7 @@ def _sample_context():
 
     return McpToolContext(
         settings=Settings(),
-        read_only_tool=ToolAnnotations(readOnlyHint=True),
-        connector_compatible_security_meta={
-            "openai/toolInvocation/invoking": "Reading"
-        },
-        oauth_security_meta={"openai/toolInvocation/invoking": "Working"},
-        scoped_oauth_security_meta=lambda scopes: {"scopes": list(scopes)},
+        read_only_tool_annotations=ToolAnnotations(readOnlyHint=True),
     )
 
 
@@ -128,7 +123,7 @@ async def test_mcp_handler_enforces_required_oauth_scopes():
         name="sample_tool",
         http_method="POST",
         http_path="/tools/sample_tool",
-        mcp_scopes=("shell:read", "shell:execute"),
+        oauth_scopes=("shell:read", "shell:execute"),
     )
     mcp = _FakeMcp()
 
@@ -166,7 +161,7 @@ def test_tool_definition_rejects_unknown_mcp_security_profile():
     with pytest.raises(
         ValueError, match="Invalid MCP security profile: future-profile"
     ):
-        definition._mcp_security_meta(_sample_context())
+        definition._mcp_security_meta()
 
 
 def test_tool_definition_rejects_unknown_annotations():

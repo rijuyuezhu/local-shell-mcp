@@ -27,15 +27,10 @@ class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):
     as code search, file reads, shell commands, edits, or remote-worker operations unless
     the client is in Developer Mode or otherwise supports the full MCP tool set.
 
-    search/fetch therefore need three special MCP-facing choices:
-    1. mcp_security_profile="connector_compatible" advertises a client-facing
-       noauth-or-oauth securitySchemes profile for connector discovery. This is
-       metadata only; AuthMiddleware still enforces real HTTP/MCP auth.
-    2. annotations="read_only" marks the tools as non-mutating document-source
-       operations.
-    3. Their typed return models keep the connector-facing search/fetch
-       payloads in the exact document-source shape expected by connector
-       clients.
+    search/fetch use mcp_security_profile="connector_compatible" so MCP
+    clients can discover them as document-source tools. oauth_scopes remains
+    the server-enforced source of truth; the connector profile only affects MCP
+    securitySchemes metadata.
     """
 
     name = "workspace_connector"
@@ -49,6 +44,7 @@ local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
     http_method="POST",
     http_path="/tools/workspace_search",
     mcp_security_profile="connector_compatible",
+    oauth_scopes=("shell:read",),
     annotations="read_only",
     mcp_error_handler=search_error_output,
 )
@@ -61,6 +57,7 @@ async def workspace_search(query: ConnectorSearchQueryArg) -> SearchOutput:
     http_method="POST",
     http_path="/tools/fetch",
     mcp_security_profile="connector_compatible",
+    oauth_scopes=("shell:read",),
     annotations="read_only",
     mcp_error_handler=fetch_error_output,
 )
