@@ -86,12 +86,6 @@ def _wrap_mcp_http_app_with_public_routes(
     return Starlette(routes=routes, lifespan=lifespan), public_routes
 
 
-def _wrap_mcp_http_app(inner_app: Starlette) -> Starlette:
-    """Wrap the SDK MCP ASGI app with public routes before mounting it."""
-    app, _ = _wrap_mcp_http_app_with_public_routes(inner_app)
-    return app
-
-
 def _build_mcp_http_transport_app(inner_app: Starlette) -> Starlette:
     """Build one MCP HTTP transport app from a FastMCP SDK ASGI app."""
     settings = get_settings()

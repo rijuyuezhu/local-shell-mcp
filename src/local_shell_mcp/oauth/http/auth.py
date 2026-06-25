@@ -57,7 +57,7 @@ def verify_oauth(request: Request) -> dict[str, Any]:
 
 
 def verify_request(request: Request) -> dict[str, Any] | None:
-    """Verify one HTTP request according to the configured auth mode."""
+    """Verify one HTTP request according to the configured auth mode. It returns the bearer claims if the request is authenticated, or None if not."""
     settings = get_settings()
     match settings.auth_mode:
         case "none":

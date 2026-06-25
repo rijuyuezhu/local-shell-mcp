@@ -36,7 +36,7 @@ def _fastapi_documentation_routes(app: FastAPI) -> list[BaseRoute]:
 
 
 def _install_public_routes(app: FastAPI, settings: Settings) -> list[BaseRoute]:
-    """Install public non-tool routes for the REST app."""
+    """Install public non-tool routes for the REST app. It returns public routes for oauth usage."""
     documentation_routes = _fastapi_documentation_routes(app)
     installed_routes = [
         *public_http_routes(settings, readyz_include_workspace_root=True),
