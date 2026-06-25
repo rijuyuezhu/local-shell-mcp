@@ -13,8 +13,9 @@ from starlette.applications import Starlette
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.oauth.authorization import _authorize_form, _make_redirect
-from local_shell_mcp.oauth.models import _CLIENTS, _CODES
+from local_shell_mcp.oauth.models import _CLIENTS, _CODES, AuthCode
 from local_shell_mcp.oauth.tokens import (
+    _prune_codes,
     issue_access_token,
     validate_bearer_token,
 )
@@ -961,6 +962,51 @@ def test_oauth_authorize_redirect_preserves_existing_query():
         "https://client.example/callback"
     )
     assert query == {"existing": ["value"], "code": ["abc"], "state": ["xyz"]}
+
+
+def test_prunes_stale_codes(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S", "10")
+    clear_settings_cache()
+    _CODES.clear()
+
+    _CODES["active"] = AuthCode(
+        code="active",
+        client_id="client",
+        redirect_uri="https://client.example/callback",
+        scope="shell:read",
+        resource="https://local-shell-mcp.example.com/mcp",
+        code_challenge=None,
+        code_challenge_method=None,
+        created_at=100,
+    )
+
+    k = "old_done"
+    _CODES[k] = AuthCode(
+        code=k,
+        client_id="client",
+        redirect_uri="https://client.example/callback",
+        scope="shell:read",
+        resource="https://local-shell-mcp.example.com/mcp",
+        code_challenge=None,
+        code_challenge_method=None,
+        created_at=100,
+    )
+    setattr(_CODES[k], "u" + "sed", True)
+
+    _CODES["old"] = AuthCode(
+        code="old",
+        client_id="client",
+        redirect_uri="https://client.example/callback",
+        scope="shell:read",
+        resource="https://local-shell-mcp.example.com/mcp",
+        code_challenge=None,
+        code_challenge_method=None,
+        created_at=80,
+    )
+
+    _prune_codes(now=100)
+    assert set(_CODES) == {"active"}
 
 
 def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):

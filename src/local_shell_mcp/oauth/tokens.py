@@ -66,6 +66,24 @@ def _verify_pkce(code_obj: AuthCode, verifier: str | None) -> bool:
     return compare_plain_code_challenge(verifier, code_obj.code_challenge)
 
 
+def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
+    """Return whether an authorization code is past its configured TTL."""
+    return now - code_obj.created_at > ttl_s
+
+
+def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
+    """Remove used or expired authorization codes from the in-memory store."""
+    settings = get_settings()
+    current_time = int(time.time()) if now is None else now
+    for code, code_obj in list(_CODES.items()):
+        if code == keep:
+            continue
+        if code_obj.used or _auth_code_expired(
+            code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
+        ):
+            _CODES.pop(code, None)
+
+
 def issue_access_token(
     *, client_id: str, scope: str, resource: str, subject: str = "local-user"
 ) -> str:
@@ -100,6 +118,7 @@ async def token_endpoint(request: Request) -> JSONResponse:
     # the resource must match the one bound to the authorization code.
     if not resource:
         return _invalid_request("Missing resource")
+    _prune_codes()
     code_obj = _CODES.get(code)
     if not code_obj or code_obj.used:
         return _invalid_grant("Unknown or used code")
