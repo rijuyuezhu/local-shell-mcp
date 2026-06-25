@@ -11,14 +11,14 @@ from urllib.parse import urlparse
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from .responses import oauth_json
-from .urls import (
+from ..core.urls import (
     _scopes,
     base_url,
     issuer_url,
     protected_resource_metadata_url,
     resource_url,
 )
+from .responses import oauth_json
 
 
 def protected_resource_metadata(request: Request) -> dict[str, Any]:

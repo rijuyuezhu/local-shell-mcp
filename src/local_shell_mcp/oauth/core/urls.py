@@ -9,7 +9,7 @@ from urllib.parse import urlparse, urlunparse
 
 from starlette.requests import Request
 
-from ..config.settings import get_settings
+from ...config.settings import get_settings
 from .scopes import SUPPORTED_OAUTH_SCOPES
 
 

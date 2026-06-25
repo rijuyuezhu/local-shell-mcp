@@ -14,16 +14,16 @@ from authlib.oauth2.rfc6749.errors import OAuth2Error
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, Response
 
-from ..audit import audit
-from ..config.settings import get_settings
-from .models import _CLIENTS
-from .responses import oauth_redirect
-from .service import (
+from ...audit import audit
+from ...config.settings import get_settings
+from ..core.models import _CLIENTS
+from ..core.service import (
     issue_authorization_response,
     oauth_error_message,
     validate_authorization_request,
 )
-from .urls import _default_scope, resource_url
+from ..core.urls import _default_scope, resource_url
+from .responses import oauth_redirect
 
 _AUTHORIZE_TEMPLATE = "authorize.html"
 
@@ -32,7 +32,7 @@ _AUTHORIZE_TEMPLATE = "authorize.html"
 def _authorize_template() -> str:
     """Read the package HTML template used by the local approval form."""
     return (
-        files("local_shell_mcp.oauth")
+        files("local_shell_mcp.oauth.http")
         .joinpath(_AUTHORIZE_TEMPLATE)
         .read_text(encoding="utf-8")
     )

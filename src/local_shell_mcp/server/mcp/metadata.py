@@ -6,7 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from ...config.settings import get_settings
-from ...oauth.scopes import (
+from ...oauth.core.scopes import (
     SCOPE_SHELL_READ,
     SUPPORTED_OAUTH_SCOPES,
     dedupe_scopes,

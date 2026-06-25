@@ -6,8 +6,8 @@ from starlette.routing import BaseRoute
 
 from ... import __version__
 from ...config.settings import Settings, get_settings
-from ...oauth.middleware import AuthMiddleware
-from ...oauth.routes import oauth_public_routes
+from ...oauth.http.middleware import AuthMiddleware
+from ...oauth.http.routes import oauth_public_routes
 from ..shared.public_routes import public_http_routes
 from .errors import install_error_handlers
 from .tool_routes import (

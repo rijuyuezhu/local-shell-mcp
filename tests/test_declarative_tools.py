@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 from mcp.types import ToolAnnotations
 
-from local_shell_mcp.oauth.middleware import OAUTH_CLAIMS
+from local_shell_mcp.oauth.http.middleware import OAUTH_CLAIMS
 from local_shell_mcp.tools.declarative import ToolDefinition
 
 

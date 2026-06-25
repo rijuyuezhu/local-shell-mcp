@@ -10,9 +10,9 @@ from authlib.oauth2.rfc6749.errors import OAuth2Error
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from ..core.service import _prune_codes, exchange_authorization_code
+from ..protocol.token_codec import issue_access_token, validate_bearer_token
 from .responses import oauth_error, oauth_json
-from .service import _prune_codes, exchange_authorization_code
-from .token_codec import issue_access_token, validate_bearer_token
 
 __all__ = [
     "_prune_codes",

@@ -9,8 +9,8 @@ from authlib.oauth2.rfc6749.errors import OAuth2Error
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from ..core.service import register_dynamic_client
 from .responses import oauth_error, oauth_json
-from .service import register_dynamic_client
 
 
 async def register_client(request: Request) -> JSONResponse:

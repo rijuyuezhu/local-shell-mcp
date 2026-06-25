@@ -14,11 +14,11 @@ from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from ..audit import audit
-from ..config.settings import get_settings
-from .bearer import validate_bearer_request
-from .scopes import scope_set
-from .urls import protected_resource_metadata_url
+from ...audit import audit
+from ...config.settings import get_settings
+from ..core.scopes import scope_set
+from ..core.urls import protected_resource_metadata_url
+from ..protocol.bearer import validate_bearer_request
 
 OAUTH_CLAIMS: ContextVar[dict[str, Any] | None] = ContextVar(
     "local_shell_mcp_oauth_claims", default=None

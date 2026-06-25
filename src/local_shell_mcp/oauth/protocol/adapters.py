@@ -8,8 +8,8 @@ from collections.abc import Collection, Mapping
 
 from authlib.oauth2.rfc6749 import ClientMixin, OAuth2Request
 
-from .models import OAuthClient
-from .scopes import normalize_requested_scope
+from ..core.models import OAuthClient
+from ..core.scopes import normalize_requested_scope
 
 _AUTHLIB_ADAPTER_BASE_URI = "https://local-shell-mcp.invalid/oauth"
 

@@ -24,10 +24,10 @@ from authlib.oauth2.rfc7636.challenge import (
     compare_s256_code_challenge,
 )
 
-from ..audit import audit
-from .adapters import LocalOAuth2Request, LocalOAuthClient
+from ...audit import audit
+from ..protocol.adapters import LocalOAuth2Request, LocalOAuthClient
+from ..protocol.token_codec import issue_access_token
 from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
-from .token_codec import issue_access_token
 from .urls import _normalize_resource, issuer_url, resource_url
 
 LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
@@ -293,7 +293,7 @@ def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
 
 def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
     """Remove used or expired authorization codes from the in-memory store."""
-    from ..config.settings import get_settings
+    from ...config.settings import get_settings
 
     settings = get_settings()
     current_time = int(time.time()) if now is None else now
@@ -308,7 +308,7 @@ def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
 
 def exchange_authorization_code(params: dict[str, str]) -> TokenResponse:
     """Exchange an authorization code for a bearer token after Authlib-shaped validation."""
-    from ..config.settings import get_settings
+    from ...config.settings import get_settings
 
     oauth_request = LocalOAuth2Request("POST", "token", params)
     request_params = oauth_request.params

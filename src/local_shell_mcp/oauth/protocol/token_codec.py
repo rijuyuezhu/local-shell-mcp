@@ -12,8 +12,8 @@ from typing import Any
 import jwt
 from starlette.requests import Request
 
-from ..config.settings import get_settings
-from .urls import issuer_url, resource_url
+from ...config.settings import get_settings
+from ..core.urls import issuer_url, resource_url
 
 
 def _jwt_secret() -> str:

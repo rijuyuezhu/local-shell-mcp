@@ -12,8 +12,8 @@ from mcp.types import ToolAnnotations
 from pydantic import TypeAdapter, ValidationError
 
 from ..config.settings import Settings
-from ..oauth.middleware import require_oauth_scopes
-from ..oauth.scopes import SCOPE_SHELL_READ, SUPPORTED_OAUTH_SCOPES
+from ..oauth.core.scopes import SCOPE_SHELL_READ, SUPPORTED_OAUTH_SCOPES
+from ..oauth.http.middleware import require_oauth_scopes
 from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]

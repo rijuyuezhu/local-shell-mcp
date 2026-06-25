@@ -425,6 +425,30 @@ Answer these during the relevant slice and record decisions here:
 - Slice 5 added `bearer.py` with Authlib resource-server validation. Middleware delegates Authorization header parsing and credential validation to that module while keeping project-owned challenge headers and request context.
 - Slice 6 moved dynamic registration payload checks, redirect policy, client creation, and audit into `service.py`; `registration.py` is now a thin JSON adapter.
 
+
+## Layered package layout decision
+
+The OAuth package should not remain as flat endpoint/service files. Keep the public OAuth behavior unchanged, but move implementation into layered subpackages:
+
+```text
+src/local_shell_mcp/oauth/
+  core/       project OAuth state, policy, URL helpers, scopes, and service operations
+  http/       Starlette/FastAPI route handlers, middleware, responses, and templates
+  protocol/   Authlib/PyJWT adapters and local credential codec
+```
+
+Import direction should stay one-way where practical:
+
+```text
+oauth.http -> oauth.core -> oauth.protocol
+oauth.http -> oauth.protocol only for resource-server middleware where needed
+oauth.protocol -> oauth.core only for small data/URL/scope helpers
+```
+
+Do not keep root-level compatibility shims for the moved modules in this branch; update internal imports and tests to the layered paths so the tree itself communicates the architecture.
+
+Package `__init__.py` files should carry layer-level docstrings that describe each layer's responsibility, even though the current public-docstrings test skips `__init__.py`.
+
 ## Definition of done
 
 - OAuth routes are thinner than before and no longer contain most protocol validation logic.
