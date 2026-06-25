@@ -5622,11 +5622,6 @@
       "outputSchema": {
         "description": "Package and runtime version information.",
         "properties": {
-          "executable": {
-            "description": "Python executable path.",
-            "title": "Executable",
-            "type": "string"
-          },
           "package_version": {
             "description": "Installed distribution version when available.",
             "title": "Package Version",
@@ -5652,8 +5647,7 @@
           "version",
           "package_version",
           "python",
-          "platform",
-          "executable"
+          "platform"
         ],
         "title": "VersionInfoOutput",
         "type": "object"

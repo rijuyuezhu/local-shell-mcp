@@ -23,7 +23,6 @@ def version_info() -> dict[str, Any]:
         "package_version": package_version(),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
-        "executable": sys.executable,
     }
 
 
