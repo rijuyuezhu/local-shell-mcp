@@ -19,6 +19,11 @@ LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
 
 
+def _is_private_use_redirect_scheme(parsed_scheme: str, netloc: str) -> bool:
+    """Return whether a non-HTTP redirect scheme is private-use style."""
+    return "." in parsed_scheme and not netloc
+
+
 def _is_allowed_redirect_uri(uri: str) -> bool:
     """Accept HTTPS, loopback HTTP, and custom private-use redirect URIs."""
     parsed = urlparse(uri)
@@ -29,7 +34,7 @@ def _is_allowed_redirect_uri(uri: str) -> bool:
         return bool(parsed.netloc)
     if scheme == "http":
         return parsed.hostname in LOOPBACK_REDIRECT_HOSTS
-    return True
+    return _is_private_use_redirect_scheme(scheme, parsed.netloc)
 
 
 async def register_client(request: Request) -> JSONResponse:

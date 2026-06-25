@@ -108,7 +108,7 @@ def _authorize_form(
     )
     pin_hint = "Enter LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN to approve this ChatGPT connector."
     if not settings.oauth_admin_pin:
-        pin_hint = "No admin PIN is configured. Click Approve to continue. Set LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN before exposing this publicly."
+        pin_hint = "No admin PIN is configured. Set LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN before OAuth approval can continue."
     html = (
         _authorize_template()
         .replace("{{CLIENT_NAME}}", html_lib.escape(client_name))

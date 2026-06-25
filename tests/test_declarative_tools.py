@@ -1,6 +1,11 @@
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
+
 import pytest
+from fastapi import HTTPException
 from mcp.types import ToolAnnotations
 
+from local_shell_mcp.oauth.middleware import OAUTH_CLAIMS
 from local_shell_mcp.tools.declarative import ToolDefinition
 
 
@@ -94,6 +99,56 @@ def _sample_context():
 
 async def _sample_tool() -> dict:
     return {}
+
+
+class _FakeMcp:
+    def __init__(self) -> None:
+        self.handler = None
+
+    def tool(self, **kwargs):
+        del kwargs
+
+        def decorator(handler):
+            self.handler = handler
+            return handler
+
+        return decorator
+
+
+@pytest.mark.asyncio
+async def test_mcp_handler_enforces_required_oauth_scopes():
+    async def sample_tool() -> dict:
+        return {"ok": True}
+
+    definition = ToolDefinition(
+        func=sample_tool,
+        name="sample_tool",
+        http_method="POST",
+        http_path="/tools/sample_tool",
+        mcp_scopes=("shell:read", "shell:execute"),
+    )
+    mcp = _FakeMcp()
+
+    definition.register_mcp(cast(Any, mcp), _sample_context())
+    assert mcp.handler is not None
+    handler = cast(Callable[[], Awaitable[dict[str, bool]]], mcp.handler)
+
+    claims_token = OAUTH_CLAIMS.set({"scope": "shell:read"})
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            await handler()
+    finally:
+        OAUTH_CLAIMS.reset(claims_token)
+    assert exc_info.value.status_code == 403
+    assert (
+        exc_info.value.detail == "Missing required OAuth scope: shell:execute"
+    )
+
+    claims_token = OAUTH_CLAIMS.set({"scope": "shell:read shell:execute"})
+    try:
+        assert await handler() == {"ok": True}
+    finally:
+        OAUTH_CLAIMS.reset(claims_token)
 
 
 def test_tool_definition_rejects_unknown_mcp_security_profile():

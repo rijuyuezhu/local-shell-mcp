@@ -695,6 +695,7 @@ def test_oauth_registration_rejects_unsafe_redirect_uris(tmp_path, monkeypatch):
         "javascript:alert(1)",
         "data:text/html,unsafe",
         "http://attacker.example/callback",
+        "ftp://attacker.example/callback",
     ):
         response = client.post(
             "/oauth/register", json={"redirect_uris": [redirect_uri]}
@@ -710,6 +711,12 @@ def test_oauth_registration_rejects_unsafe_redirect_uris(tmp_path, monkeypatch):
         json={"redirect_uris": ["http://127.0.0.1:9876/callback"]},
     )
     assert loopback.status_code == 201
+
+    private_use = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["com.example.app:/oauth2redirect"]},
+    )
+    assert private_use.status_code == 201
 
 
 def test_oauth_authorize_requires_registered_client_and_redirect(
@@ -810,9 +817,39 @@ def test_oauth_authorize_requires_pkce_and_supported_scope(
 
 def test_pin_needed_for_oauth_approval(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", raising=False)
     clear_settings_cache()
+    _CLIENTS.clear()
+    _CODES.clear()
 
-    assert True
+    client = TestClient(_wrap_mcp_http_app(Starlette()))
+    register = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["https://client.example/callback"]},
+    ).json()
+    response = client.post(
+        "/oauth/authorize",
+        data={
+            "response_type": "code",
+            "client_id": register["client_id"],
+            "redirect_uri": "https://client.example/callback",
+            "resource": "https://local-shell-mcp.example.com/mcp",
+            "code_challenge": _s256_challenge("p" * 64),
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert (
+        "Admin PIN is required before OAuth approval can continue"
+        in response.text
+    )
+    assert "code=" not in response.text
+    assert _CODES == {}
 
 
 def test_oauth_scope_enforced_for_rest_tools(tmp_path, monkeypatch):
