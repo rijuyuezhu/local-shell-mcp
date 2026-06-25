@@ -423,6 +423,7 @@ Answer these during the relevant slice and record decisions here:
 - Slice 4 uses an Authlib-shaped service instead of full `AuthorizationCodeGrant`. Full grant subclassing was not used because preserving local MCP resource binding, admin-PIN approval, process-local client/code stores, exact legacy error text, and public-client PKCE behavior would require enough overrides that it would not simplify the code.
 - Slice 4 added `token_codec.py` to keep local JWT signing/validation separate from token exchange service logic. `tokens.py` remains a thin Starlette endpoint plus compatibility exports for existing tests/callers.
 - Slice 5 added `bearer.py` with Authlib resource-server validation. Middleware delegates Authorization header parsing and credential validation to that module while keeping project-owned challenge headers and request context.
+- Slice 6 moved dynamic registration payload checks, redirect policy, client creation, and audit into `service.py`; `registration.py` is now a thin JSON adapter.
 
 ## Definition of done
 

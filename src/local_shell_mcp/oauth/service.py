@@ -8,7 +8,8 @@ code issuance out of Starlette route handlers.
 import secrets
 import time
 from dataclasses import dataclass
-from typing import NoReturn
+from typing import Any, NoReturn
+from urllib.parse import urlparse
 
 from authlib.oauth2.rfc6749.errors import (
     InvalidGrantError,
@@ -25,9 +26,15 @@ from authlib.oauth2.rfc7636.challenge import (
 
 from ..audit import audit
 from .adapters import LocalOAuth2Request, LocalOAuthClient
-from .models import _CLIENTS, _CODES, AuthCode
+from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
 from .token_codec import issue_access_token
 from .urls import _normalize_resource, issuer_url, resource_url
+
+LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
+BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
+REGISTRATION_REDIRECT_ERROR = (
+    "redirect_uris must be https, loopback http, or custom private-use URIs"
+)
 
 
 @dataclass(frozen=True)
@@ -96,6 +103,67 @@ def _required_param(params: dict[str, str], key: str) -> str:
 def _raise_invalid(description: str) -> NoReturn:
     """Raise an Authlib invalid_request error while satisfying type checkers."""
     raise _invalid_authorization_request(description)
+
+
+def _is_private_use_redirect_scheme(parsed_scheme: str, netloc: str) -> bool:
+    """Return whether a non-HTTP redirect scheme is private-use style."""
+    return "." in parsed_scheme and not netloc
+
+
+def _is_allowed_redirect_uri(uri: str) -> bool:
+    """Accept HTTPS, loopback HTTP, and custom private-use redirect URIs."""
+    parsed = urlparse(uri)
+    scheme = parsed.scheme.lower()
+    if not scheme or scheme in BLOCKED_REDIRECT_SCHEMES:
+        return False
+    if scheme == "https":
+        return bool(parsed.netloc)
+    if scheme == "http":
+        return parsed.hostname in LOOPBACK_REDIRECT_HOSTS
+    return _is_private_use_redirect_scheme(scheme, parsed.netloc)
+
+
+def register_dynamic_client(body: Any) -> OAuthClient:
+    """Validate dynamic client registration payload and persist a local client."""
+    if not isinstance(body, dict):
+        raise InvalidRequestError(
+            description="Registration payload must be a JSON object"
+        )
+    raw_redirect_uris = body.get("redirect_uris")
+    if not isinstance(raw_redirect_uris, list):
+        raise InvalidRequestError(
+            description="redirect_uris must be a non-empty list"
+        )
+    redirect_uris = [
+        value.strip()
+        for value in raw_redirect_uris
+        if isinstance(value, str) and value.strip()
+    ]
+    if len(redirect_uris) != len(raw_redirect_uris) or not redirect_uris:
+        raise InvalidRequestError(
+            description="redirect_uris must contain non-empty strings"
+        )
+    if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
+        raise InvalidRequestError(description=REGISTRATION_REDIRECT_ERROR)
+
+    # Docs compliance: dynamic registration is intentionally low-friction, but
+    # issues opaque client IDs and relies on later local approval before token
+    # issuance.
+    client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
+    client = OAuthClient(
+        client_id=client_id,
+        redirect_uris=redirect_uris,
+        client_name=body.get("client_name")
+        if isinstance(body.get("client_name"), str)
+        else None,
+    )
+    _CLIENTS[client_id] = client
+    audit(
+        "oauth_client_registered",
+        client_id=client_id,
+        redirect_uris=redirect_uris,
+    )
+    return client
 
 
 def validate_authorization_request(
