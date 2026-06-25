@@ -61,7 +61,6 @@ def register_http_tool_routes(app: FastAPI) -> None:
 def _make_get_tool_handler(tool_name: str) -> ToolRouteHandler:
     async def get_handler(request: Request) -> Any:
         args = dict(request.query_params)
-        args.pop("tool_name", None)
         return await call_local_tool(tool_name, args or None)
 
     return get_handler
