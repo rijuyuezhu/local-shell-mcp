@@ -6,26 +6,24 @@ are validated before rendering local approval UI or issuing one-time codes.
 
 import hmac
 import html as html_lib
-import secrets
 from functools import lru_cache
 from importlib.resources import files
 from xml.sax.saxutils import quoteattr
 
-from authlib.oauth2.rfc7636.challenge import CODE_CHALLENGE_PATTERN
+from authlib.oauth2.rfc6749.errors import OAuth2Error
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, Response
 
 from ..audit import audit
 from ..config.settings import get_settings
-from .models import _CLIENTS, _CODES, AuthCode
+from .models import _CLIENTS
 from .responses import oauth_redirect
-from .scopes import normalize_requested_scope
-from .urls import (
-    _default_scope,
-    _normalize_resource,
-    issuer_url,
-    resource_url,
+from .service import (
+    issue_authorization_response,
+    oauth_error_message,
+    validate_authorization_request,
 )
+from .urls import _default_scope, resource_url
 
 _AUTHORIZE_TEMPLATE = "authorize.html"
 
@@ -38,43 +36,6 @@ def _authorize_template() -> str:
         .joinpath(_AUTHORIZE_TEMPLATE)
         .read_text(encoding="utf-8")
     )
-
-
-def _validate_authorize_params(params: dict[str, str]) -> str | None:
-    """Validate authorization request parameters before rendering the consent form or redirecting."""
-    # Docs compliance: this server intentionally supports the authorization
-    # code flow only; token/implicit-style authorization responses are rejected.
-    if params.get("response_type") != "code":
-        return "Only response_type=code is supported"
-    if not params.get("client_id"):
-        return "Missing client_id"
-    if not params.get("redirect_uri"):
-        return "Missing redirect_uri"
-    if not params.get("resource"):
-        return "Missing resource"
-    # Docs compliance: MCP clients must send RFC 8707 ``resource`` and it must
-    # match this server before a code can be issued.
-    if _normalize_resource(params["resource"]) != resource_url():
-        return "resource does not match this MCP server"
-    client = _CLIENTS.get(params["client_id"])
-    if client is None:
-        return "Unknown client_id"
-    if params["redirect_uri"] not in client.redirect_uris:
-        return "redirect_uri is not registered for this client"
-    try:
-        normalize_requested_scope(params.get("scope"))
-    except ValueError as exc:
-        return str(exc)
-    # Docs compliance: public clients must bind authorization codes with PKCE.
-    challenge = params.get("code_challenge")
-    if not challenge:
-        return "Missing code_challenge"
-    if not CODE_CHALLENGE_PATTERN.match(challenge):
-        return "Invalid code_challenge"
-    method = params.get("code_challenge_method")
-    if method and method not in {"S256", "plain"}:
-        return "Unsupported code_challenge_method"
-    return None
 
 
 def _hidden_inputs(params: dict[str, str]) -> str:
@@ -126,9 +87,10 @@ def _authorize_form(
 async def authorize_get(request: Request) -> Response:
     """Validate authorization input and render the approval form for the local user."""
     params = {k: v for k, v in request.query_params.items()}
-    error = _validate_authorize_params(params)
-    if error:
-        return _authorize_form(params, error=error)
+    try:
+        validate_authorization_request(params)
+    except OAuth2Error as exc:
+        return _authorize_form(params, error=oauth_error_message(exc))
     return _authorize_form(params)
 
 
@@ -136,9 +98,10 @@ async def authorize_post(request: Request) -> Response:
     """Issue an authorization code after form approval and redirect the client back."""
     form = await request.form()
     params = {k: str(v) for k, v in form.items() if k != "pin"}
-    error = _validate_authorize_params(params)
-    if error:
-        return _authorize_form(params, error=error)
+    try:
+        auth_request = validate_authorization_request(params)
+    except OAuth2Error as exc:
+        return _authorize_form(params, error=oauth_error_message(exc))
 
     settings = get_settings()
     expected_pin = settings.oauth_admin_pin
@@ -155,24 +118,7 @@ async def authorize_post(request: Request) -> Response:
         audit("oauth_pin_failed", client_id=params.get("client_id"))
         return _authorize_form(params, error="Invalid admin PIN")
 
-    code = secrets.token_urlsafe(32)
-    normalized_scope = normalize_requested_scope(params.get("scope"))
-    auth_code = AuthCode(
-        code=code,
-        client_id=params["client_id"],
-        redirect_uri=params["redirect_uri"],
-        scope=normalized_scope,
-        resource=_normalize_resource(params["resource"]),
-        code_challenge=params.get("code_challenge"),
-        code_challenge_method=params.get("code_challenge_method"),
+    authorization_response = issue_authorization_response(auth_request)
+    return oauth_redirect(
+        authorization_response.redirect_uri, authorization_response.query
     )
-    _CODES[code] = auth_code
-    audit(
-        "oauth_code_issued",
-        client_id=auth_code.client_id,
-        resource=auth_code.resource,
-    )
-    query = {"code": code, "iss": issuer_url(request)}
-    if params.get("state"):
-        query["state"] = params["state"]
-    return oauth_redirect(params["redirect_uri"], query)
