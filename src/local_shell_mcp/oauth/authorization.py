@@ -156,9 +156,15 @@ async def authorize_post(request: Request) -> Response:
     settings = get_settings()
     expected_pin = settings.oauth_admin_pin
     submitted_pin = str(form.get("pin") or "")
-    # Docs compliance: the optional admin PIN gates local user approval; use a
-    # constant-time comparison so failed PIN attempts do not leak prefix timing.
-    if expected_pin and not hmac.compare_digest(submitted_pin, expected_pin):
+    # Docs compliance: a configured admin PIN is required before issuing local
+    # approval codes; use a constant-time comparison for failed attempts.
+    if not expected_pin:
+        audit("oauth_pin_missing", client_id=params.get("client_id"))
+        return _authorize_form(
+            params,
+            error="Admin PIN is required before OAuth approval can continue",
+        )
+    if not hmac.compare_digest(submitted_pin, expected_pin):
         audit("oauth_pin_failed", client_id=params.get("client_id"))
         return _authorize_form(params, error="Invalid admin PIN")
 

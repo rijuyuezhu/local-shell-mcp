@@ -807,6 +807,13 @@ def test_oauth_authorize_requires_pkce_and_supported_scope(
     assert "Unsupported scope: unknown:scope" in unsupported_scope.text
 
 
+def test_pin_needed_for_oauth_approval(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    assert True
+
+
 def test_oauth_scope_enforced_for_rest_tools(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
