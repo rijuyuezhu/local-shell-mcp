@@ -80,7 +80,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(
-        http_tool_routes_module, "call_local_tool", hanging_call_local_tool
+        http_tool_routes_module, "call_http_tool", hanging_call_local_tool
     )
 
     response = TestClient(build_http_app()).post(

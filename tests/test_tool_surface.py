@@ -25,7 +25,7 @@ from local_shell_mcp.tools.declarative import (
     _normalize_description,
 )
 from local_shell_mcp.tools.discovery import discover_tool_registries
-from local_shell_mcp.tools.local_invocations import (
+from local_shell_mcp.tools.local_handlers import (
     UnknownLocalToolError,
     call_local_tool,
     local_tool_handlers,
@@ -554,7 +554,7 @@ def test_http_tool_unexpected_error_returns_json_error(tmp_path, monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
-        http_tool_routes_module, "call_local_tool", broken_call_local_tool
+        http_tool_routes_module, "call_http_tool", broken_call_local_tool
     )
 
     response = TestClient(build_http_app(), raise_server_exceptions=False).post(
@@ -645,12 +645,12 @@ def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_local_invocations_report_unknown_tool(monkeypatch):
+async def test_local_handlers_report_unknown_tool(monkeypatch):
     class EmptyRegistry(ToolRegistry):
         pass
 
     monkeypatch.setattr(
-        "local_shell_mcp.tools.local_invocations.discover_tool_registries",
+        "local_shell_mcp.tools.local_handlers.discover_tool_registries",
         lambda: [EmptyRegistry()],
     )
     local_tool_handlers.cache_clear()
@@ -665,7 +665,7 @@ async def test_local_invocations_report_unknown_tool(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_local_invocations_are_collected_from_discovered_registries(
+async def test_local_handlers_are_collected_from_discovered_registries(
     monkeypatch,
 ):
     async def example_handler(args):
@@ -676,7 +676,7 @@ async def test_local_invocations_are_collected_from_discovered_registries(
             return {"example_tool": example_handler}
 
     monkeypatch.setattr(
-        "local_shell_mcp.tools.local_invocations.discover_tool_registries",
+        "local_shell_mcp.tools.local_handlers.discover_tool_registries",
         lambda: [ExampleRegistry()],
     )
     local_tool_handlers.cache_clear()

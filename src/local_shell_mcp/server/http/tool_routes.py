@@ -11,7 +11,7 @@ from starlette.responses import Response
 
 from ...ops.shell import tool_timeout_s
 from ...tools.discovery import discover_tool_registries
-from ...tools.local_invocations import call_local_tool
+from .invocations import call_http_tool
 
 type ToolRouteHandler = Callable[..., Awaitable[Any]]
 
@@ -80,13 +80,13 @@ def register_http_tool_routes(app: FastAPI) -> None:
 def _make_get_tool_handler(tool_name: str) -> ToolRouteHandler:
     async def get_handler(request: Request) -> Any:
         args = dict(request.query_params)
-        return await call_local_tool(tool_name, args or None)
+        return await call_http_tool(tool_name, args or None)
 
     return get_handler
 
 
 def _make_post_tool_handler(tool_name: str) -> ToolRouteHandler:
     async def post_handler(body: dict[str, Any] | None = None) -> Any:
-        return await call_local_tool(tool_name, body)
+        return await call_http_tool(tool_name, body)
 
     return post_handler

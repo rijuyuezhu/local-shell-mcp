@@ -31,7 +31,7 @@ async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
     """Dispatch a remote-worker tool call through the canonical local handler."""
     if tool not in WORKER_TOOL_NAMES:
         raise ValueError(f"unsupported remote worker tool: {tool}")
-    from ..tools.local_invocations import call_local_tool
+    from ..tools.local_handlers import call_local_tool
 
     return await call_local_tool(tool, args)
 
