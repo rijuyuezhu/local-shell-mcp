@@ -8,7 +8,7 @@ code issuance out of Starlette route handlers.
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Any, NoReturn
+from typing import NoReturn
 from urllib.parse import urlparse
 
 from authlib.oauth2.rfc6749.errors import (
@@ -28,7 +28,12 @@ from ...audit import audit
 from ..protocol.adapters import LocalOAuth2Request, LocalOAuthClient
 from ..protocol.token_codec import issue_access_token
 from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
-from .urls import _normalize_resource, issuer_url, resource_url
+from .requests import (
+    AuthorizationRequestInput,
+    RegistrationRequest,
+    TokenRequestInput,
+)
+from .urls import _default_scope, _normalize_resource, issuer_url, resource_url
 
 LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
@@ -47,8 +52,11 @@ class AuthorizationRequest:
     client: LocalOAuthClient
     """Authlib client adapter for the registered dynamic client."""
 
-    params: dict[str, str]
-    """Validated authorization request parameters."""
+    client_name: str
+    """Human-readable client name for local approval UI display."""
+
+    input: AuthorizationRequestInput
+    """Parsed authorization endpoint input validated by this service."""
 
     scope: str
     """Normalized approved scope string."""
@@ -64,12 +72,39 @@ class AuthorizationRequest:
     @property
     def redirect_uri(self) -> str:
         """Return the validated redirect URI."""
-        return self.params["redirect_uri"]
+        if self.input.redirect_uri is None:
+            raise RuntimeError(
+                "Validated authorization request is missing redirect_uri"
+            )
+        return self.input.redirect_uri
 
     @property
     def state(self) -> str | None:
         """Return optional client state."""
-        return self.params.get("state")
+        return self.input.state
+
+
+@dataclass(frozen=True)
+class AuthorizationFormContext:
+    """Display data consumed by the local authorization approval form."""
+
+    params: dict[str, str]
+    """Authorization parameters preserved as hidden approval form inputs."""
+
+    client_id: str
+    """Client identifier displayed on the approval form."""
+
+    client_name: str
+    """Human-readable client name displayed on the approval form."""
+
+    redirect_uri: str
+    """Redirect URI displayed on the approval form."""
+
+    resource: str
+    """Requested protected resource displayed on the approval form."""
+
+    scope: str
+    """Requested OAuth scope string displayed on the approval form."""
 
 
 @dataclass(frozen=True)
@@ -108,6 +143,34 @@ def oauth_error_message(exc: OAuth2Error) -> str:
     return str(exc.description or exc.error or "invalid_request")
 
 
+def authorization_form_context(
+    request_input: AuthorizationRequestInput,
+    auth_request: AuthorizationRequest | None = None,
+) -> AuthorizationFormContext:
+    """Return local approval form display data without exposing stores to HTTP routes."""
+    display_input = auth_request.input if auth_request else request_input
+    form_params = display_input.to_oauth_params()
+    client_id = (
+        auth_request.client_id
+        if auth_request
+        else request_input.client_id or ""
+    )
+    client_name = auth_request.client_name if auth_request else "Unknown client"
+    if auth_request is None and request_input.client_id:
+        client_record = _CLIENTS.get(request_input.client_id)
+        if client_record and client_record.client_name:
+            client_name = client_record.client_name
+    return AuthorizationFormContext(
+        params=form_params,
+        client_id=client_id,
+        client_name=client_name,
+        redirect_uri=display_input.redirect_uri or "",
+        resource=display_input.resource or resource_url(),
+        scope=(auth_request.scope if auth_request else display_input.scope)
+        or _default_scope(),
+    )
+
+
 def _invalid_authorization_request(description: str) -> InvalidRequestError:
     """Create an Authlib invalid_request error with legacy UI text."""
     return InvalidRequestError(description=description)
@@ -144,26 +207,13 @@ def _is_allowed_redirect_uri(uri: str) -> bool:
     return _is_private_use_redirect_scheme(scheme, parsed.netloc)
 
 
-def register_dynamic_client(body: Any) -> OAuthClient:
-    """Validate dynamic client registration payload and persist a local client."""
-    if not isinstance(body, dict):
-        raise InvalidRequestError(
-            description="Registration payload must be a JSON object"
-        )
-    raw_redirect_uris = body.get("redirect_uris")
-    if not isinstance(raw_redirect_uris, list):
+def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
+    """Validate dynamic client registration policy and persist a local client."""
+    if not request.redirect_uris:
         raise InvalidRequestError(
             description="redirect_uris must be a non-empty list"
         )
-    redirect_uris = [
-        value.strip()
-        for value in raw_redirect_uris
-        if isinstance(value, str) and value.strip()
-    ]
-    if len(redirect_uris) != len(raw_redirect_uris) or not redirect_uris:
-        raise InvalidRequestError(
-            description="redirect_uris must contain non-empty strings"
-        )
+    redirect_uris = list(request.redirect_uris)
     if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
         raise InvalidRequestError(description=REGISTRATION_REDIRECT_ERROR)
 
@@ -174,9 +224,7 @@ def register_dynamic_client(body: Any) -> OAuthClient:
     client = OAuthClient(
         client_id=client_id,
         redirect_uris=redirect_uris,
-        client_name=body.get("client_name")
-        if isinstance(body.get("client_name"), str)
-        else None,
+        client_name=request.client_name,
     )
     _CLIENTS[client_id] = client
     audit(
@@ -188,10 +236,12 @@ def register_dynamic_client(body: Any) -> OAuthClient:
 
 
 def validate_authorization_request(
-    params: dict[str, str],
+    request_input: AuthorizationRequestInput,
 ) -> AuthorizationRequest:
     """Validate authorization request parameters with Authlib-shaped adapters."""
-    oauth_request = LocalOAuth2Request("GET", "authorize", params)
+    oauth_request = LocalOAuth2Request(
+        "GET", "authorize", request_input.to_oauth_params()
+    )
     request_params = oauth_request.params
     if request_params.get("response_type") != "code":
         _raise_invalid("Only response_type=code is supported")
@@ -234,7 +284,8 @@ def validate_authorization_request(
     return AuthorizationRequest(
         oauth_request=oauth_request,
         client=client,
-        params=dict(request_params),
+        client_name=client_record.client_name or "Unknown client",
+        input=request_input,
         scope=scope,
         resource=normalized_resource,
     )
@@ -251,8 +302,8 @@ def issue_authorization_response(
         redirect_uri=request.redirect_uri,
         scope=request.scope,
         resource=request.resource,
-        code_challenge=request.params.get("code_challenge"),
-        code_challenge_method=request.params.get("code_challenge_method"),
+        code_challenge=request.input.code_challenge,
+        code_challenge_method=request.input.code_challenge_method,
     )
     _CODES[code] = auth_code
     audit(
@@ -306,26 +357,27 @@ def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
             _CODES.pop(code, None)
 
 
-def exchange_authorization_code(params: dict[str, str]) -> TokenResponse:
+def exchange_authorization_code(
+    request_input: TokenRequestInput,
+) -> TokenResponse:
     """Exchange an authorization code for a bearer token after Authlib-shaped validation."""
     from ...config.settings import get_settings
 
-    oauth_request = LocalOAuth2Request("POST", "token", params)
-    request_params = oauth_request.params
-    grant_type = request_params.get("grant_type") or ""
+    LocalOAuth2Request("POST", "token", request_input.to_oauth_params())
+    grant_type = request_input.grant_type or ""
     if grant_type != "authorization_code":
         raise UnsupportedGrantTypeError(grant_type=grant_type)
 
-    resource = request_params.get("resource") or ""
+    resource = request_input.resource or ""
     # Docs compliance: MCP requires RFC 8707 ``resource`` in token requests, and
     # the resource must match the one bound to the authorization code.
     if not resource:
         raise InvalidRequestError(description="Missing resource")
 
-    code = request_params.get("code") or ""
-    client_id = request_params.get("client_id") or ""
-    redirect_uri = request_params.get("redirect_uri") or ""
-    verifier = request_params.get("code_verifier") or None
+    code = request_input.code or ""
+    client_id = request_input.client_id or ""
+    redirect_uri = request_input.redirect_uri or ""
+    verifier = request_input.code_verifier
 
     _prune_codes()
     code_obj = _CODES.get(code)

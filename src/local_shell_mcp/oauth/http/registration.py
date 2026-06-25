@@ -10,17 +10,15 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from ..core.service import register_dynamic_client
+from .requests import parse_registration_request
 from .responses import oauth_error, oauth_json
 
 
 async def register_client(request: Request) -> JSONResponse:
     """Accept dynamic client registration and persist the issued client identifier."""
     try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    try:
-        client = register_dynamic_client(body)
+        registration_request = await parse_registration_request(request)
+        client = register_dynamic_client(registration_request)
     except OAuth2Error as exc:
         return oauth_error(exc)
 

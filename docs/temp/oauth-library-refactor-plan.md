@@ -423,9 +423,10 @@ Answer these during the relevant slice and record decisions here:
 - Slice 2 centralized OAuth JSON/error responses in `responses.py` and replaced manual authorization redirect URL reconstruction with Starlette `URL.include_query_params()`.
 - Slice 3 added `adapters.py` and `service.py`; authorization request validation now uses Authlib-shaped `LocalOAuth2Request` and `LocalOAuthClient`, while admin PIN and approval HTML remain explicit route/UI policy.
 - Slice 4 uses an Authlib-shaped service instead of full `AuthorizationCodeGrant`. Full grant subclassing was not used because preserving local MCP resource binding, admin-PIN approval, process-local client/code stores, exact legacy error text, and public-client PKCE behavior would require enough overrides that it would not simplify the code.
-- Slice 4 added `token_codec.py` to keep local JWT signing/validation separate from token exchange service logic. `tokens.py` remains a thin Starlette endpoint plus compatibility exports for existing tests/callers.
+- Slice 4 added `token_codec.py` to keep local JWT signing/validation separate from token exchange service logic; follow-up cleanup removed `tokens.py` compatibility exports so JWT helpers are imported from `oauth.protocol.token_codec` directly.
 - Slice 5 added `bearer.py` with Authlib resource-server validation. Middleware delegates Authorization header parsing and credential validation to that module while keeping project-owned challenge headers and request context.
 - Slice 6 moved dynamic registration payload checks, redirect policy, client creation, and audit into `service.py`; `registration.py` is now a thin JSON adapter.
+- Follow-up layering cleanup added typed service input models in `oauth.core.requests` and HTTP extraction helpers in `oauth.http.requests`; registration, authorization, and token endpoints now parse Starlette request data in the HTTP layer before calling `oauth.core.service`.
 
 
 ## Layered package layout decision
@@ -466,9 +467,9 @@ Recommended reading spine:
    - Read `src/local_shell_mcp/server/mcp/app.py`. `build_mcp()` discovers tool registries and registers MCP tools; `build_mcp_http_app()` wraps the SDK HTTP app with shared public routes, remote routes when enabled, OAuth public routes, and `AuthMiddleware`. Stdio mode runs the FastMCP stdio transport and does not install HTTP OAuth middleware.
 4. **OAuth public bootstrap routes**
    - Read `src/local_shell_mcp/oauth/http/routes.py`. These public routes provide metadata, registration, authorization, and token endpoints while tool/MCP routes remain protected by middleware.
-   - Registration flow: `oauth.http.registration.register_client()` parses JSON and delegates validation/client creation to `oauth.core.service.register_dynamic_client()`.
-   - Authorization flow: `oauth.http.authorization.authorize_get()` validates request params before rendering the approval form; `authorize_post()` validates params again, checks the configured admin PIN, then calls `oauth.core.service.issue_authorization_response()` and redirects through `oauth.http.responses.oauth_redirect()`.
-   - Token flow: `oauth.http.tokens.token_endpoint()` parses form data and calls `oauth.core.service.exchange_authorization_code()`, which checks grant type, resource binding, one-time code use, expiry, client/redirect match, and PKCE before issuing a local bearer credential through `oauth.protocol.token_codec.issue_access_token()`.
+   - Registration flow: `oauth.http.registration.register_client()` delegates JSON extraction to `oauth.http.requests.parse_registration_request()`, then calls `oauth.core.service.register_dynamic_client()` with a typed `RegistrationRequest`.
+   - Authorization flow: `oauth.http.authorization.authorize_get()` and `authorize_post()` parse query/form data through `oauth.http.requests`, validate typed `AuthorizationRequestInput` in `oauth.core.service.validate_authorization_request()`, check the configured admin PIN in the HTTP approval adapter, then call `oauth.core.service.issue_authorization_response()` and redirect through `oauth.http.responses.oauth_redirect()`.
+   - Token flow: `oauth.http.tokens.token_endpoint()` parses form data through `oauth.http.requests.parse_token_request()` and calls `oauth.core.service.exchange_authorization_code()` with a typed `TokenRequestInput`, which checks grant type, resource binding, one-time code use, expiry, client/redirect match, and PKCE before issuing a local bearer credential through `oauth.protocol.token_codec.issue_access_token()`.
 5. **Library/protocol boundary**
    - Read `src/local_shell_mcp/oauth/protocol/adapters.py` for the Authlib request/client wrappers used by service validation.
    - Read `src/local_shell_mcp/oauth/protocol/token_codec.py` for local JWT signing and issuer/audience validation.
