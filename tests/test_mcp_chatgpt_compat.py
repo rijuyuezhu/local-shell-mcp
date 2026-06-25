@@ -12,8 +12,9 @@ from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.oauth.authorization import _authorize_form, _make_redirect
+from local_shell_mcp.oauth.authorization import _authorize_form
 from local_shell_mcp.oauth.models import _CLIENTS, _CODES, AuthCode
+from local_shell_mcp.oauth.responses import oauth_redirect
 from local_shell_mcp.oauth.tokens import (
     _prune_codes,
     issue_access_token,
@@ -987,7 +988,7 @@ def test_oauth_dynamic_registration_authorize_token_flow(tmp_path, monkeypatch):
 
 
 def test_oauth_authorize_redirect_preserves_existing_query():
-    response = _make_redirect(
+    response = oauth_redirect(
         "https://client.example/callback?existing=value",
         {"code": "abc", "state": "xyz"},
     )

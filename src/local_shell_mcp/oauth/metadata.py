@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from .responses import _json
+from .responses import oauth_json
 from .urls import (
     _scopes,
     base_url,
@@ -63,9 +63,9 @@ async def protected_resource_endpoint(
     expected_path = urlparse(protected_resource_metadata_url(request)).path
     if request.url.path != expected_path:
         return Response(status_code=404)
-    return _json(protected_resource_metadata(request))
+    return oauth_json(protected_resource_metadata(request))
 
 
 async def server_metadata_endpoint(request: Request) -> JSONResponse:
     """Serve authorization-server metadata from the well-known OAuth endpoint."""
-    return _json(authorization_server_metadata(request))
+    return oauth_json(authorization_server_metadata(request))

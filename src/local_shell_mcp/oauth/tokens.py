@@ -22,10 +22,10 @@ from ..audit import audit
 from ..config.settings import get_settings
 from .models import _CODES, AuthCode
 from .responses import (
-    _invalid_grant,
-    _invalid_request,
-    _json,
-    _oauth_error,
+    invalid_grant,
+    invalid_request,
+    oauth_error,
+    oauth_json,
 )
 from .urls import _normalize_resource, issuer_url, resource_url
 
@@ -108,7 +108,7 @@ async def token_endpoint(request: Request) -> JSONResponse:
     form = await request.form()
     grant_type = str(form.get("grant_type") or "")
     if grant_type != "authorization_code":
-        return _oauth_error(UnsupportedGrantTypeError(grant_type=grant_type))
+        return oauth_error(UnsupportedGrantTypeError(grant_type=grant_type))
     code = str(form.get("code") or "")
     client_id = str(form.get("client_id") or "")
     redirect_uri = str(form.get("redirect_uri") or "")
@@ -117,19 +117,19 @@ async def token_endpoint(request: Request) -> JSONResponse:
     # Docs compliance: MCP requires RFC 8707 ``resource`` in token requests, and
     # the resource must match the one bound to the authorization code.
     if not resource:
-        return _invalid_request("Missing resource")
+        return invalid_request("Missing resource")
     _prune_codes()
     code_obj = _CODES.get(code)
     if not code_obj or code_obj.used:
-        return _invalid_grant("Unknown or used code")
+        return invalid_grant("Unknown or used code")
     if int(time.time()) - code_obj.created_at > get_settings().oauth_code_ttl_s:
-        return _invalid_grant("Expired code")
+        return invalid_grant("Expired code")
     if code_obj.client_id != client_id or code_obj.redirect_uri != redirect_uri:
-        return _invalid_grant("Client or redirect mismatch")
+        return invalid_grant("Client or redirect mismatch")
     if _normalize_resource(resource) != _normalize_resource(code_obj.resource):
-        return _invalid_grant("Resource mismatch")
+        return invalid_grant("Resource mismatch")
     if not _verify_pkce(code_obj, verifier):
-        return _invalid_grant("PKCE verification failed")
+        return invalid_grant("PKCE verification failed")
     code_obj.used = True
     token = issue_access_token(
         client_id=client_id, scope=code_obj.scope, resource=code_obj.resource
@@ -142,7 +142,7 @@ async def token_endpoint(request: Request) -> JSONResponse:
     }
     if get_settings().oauth_access_token_ttl_s > 0:
         body["expires_in"] = get_settings().oauth_access_token_ttl_s
-    return _json(body)
+    return oauth_json(body)
 
 
 def validate_bearer_token(

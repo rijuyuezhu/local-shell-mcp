@@ -9,16 +9,16 @@ import html as html_lib
 import secrets
 from functools import lru_cache
 from importlib.resources import files
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from xml.sax.saxutils import quoteattr
 
 from authlib.oauth2.rfc7636.challenge import CODE_CHALLENGE_PATTERN
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, Response
 
 from ..audit import audit
 from ..config.settings import get_settings
 from .models import _CLIENTS, _CODES, AuthCode
+from .responses import oauth_redirect
 from .scopes import normalize_requested_scope
 from .urls import (
     _default_scope,
@@ -123,19 +123,6 @@ def _authorize_form(
     return HTMLResponse(html)
 
 
-def _make_redirect(
-    redirect_uri: str, query: dict[str, str]
-) -> RedirectResponse:
-    """Append authorization response parameters to a redirect URI."""
-    parts = urlsplit(redirect_uri)
-    merged_query = [
-        *parse_qsl(parts.query, keep_blank_values=True),
-        *query.items(),
-    ]
-    location = urlunsplit(parts._replace(query=urlencode(merged_query)))
-    return RedirectResponse(location, status_code=302)
-
-
 async def authorize_get(request: Request) -> Response:
     """Validate authorization input and render the approval form for the local user."""
     params = {k: v for k, v in request.query_params.items()}
@@ -188,4 +175,4 @@ async def authorize_post(request: Request) -> Response:
     query = {"code": code, "iss": issuer_url(request)}
     if params.get("state"):
         query["state"] = params["state"]
-    return _make_redirect(params["redirect_uri"], query)
+    return oauth_redirect(params["redirect_uri"], query)

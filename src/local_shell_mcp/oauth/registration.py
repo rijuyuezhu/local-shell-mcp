@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse
 
 from ..audit import audit
 from .models import _CLIENTS, OAuthClient
-from .responses import _invalid_request, _json
+from .responses import invalid_request, oauth_json
 
 LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
@@ -44,19 +44,19 @@ async def register_client(request: Request) -> JSONResponse:
     except Exception:
         body = {}
     if not isinstance(body, dict):
-        return _invalid_request("Registration payload must be a JSON object")
+        return invalid_request("Registration payload must be a JSON object")
     raw_redirect_uris = body.get("redirect_uris")
     if not isinstance(raw_redirect_uris, list):
-        return _invalid_request("redirect_uris must be a non-empty list")
+        return invalid_request("redirect_uris must be a non-empty list")
     redirect_uris = [
         value.strip()
         for value in raw_redirect_uris
         if isinstance(value, str) and value.strip()
     ]
     if len(redirect_uris) != len(raw_redirect_uris) or not redirect_uris:
-        return _invalid_request("redirect_uris must contain non-empty strings")
+        return invalid_request("redirect_uris must contain non-empty strings")
     if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
-        return _invalid_request(
+        return invalid_request(
             "redirect_uris must be https, loopback http, or custom private-use URIs"
         )
 
@@ -77,7 +77,7 @@ async def register_client(request: Request) -> JSONResponse:
         client_id=client_id,
         redirect_uris=redirect_uris,
     )
-    return _json(
+    return oauth_json(
         {
             "client_id": client_id,
             "client_id_issued_at": client.created_at,
