@@ -35,7 +35,6 @@ from ...schemas.result_models.shell import (
 )
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
-from ..purpose import audit_tool_purpose
 
 
 class ShellToolRegistry(DeclarativeToolRegistry):
@@ -74,7 +73,6 @@ async def bash(
     purpose: ToolPurposeArg = None,
 ) -> ShellExecutionOutput:
     """Run a shell command via bounded, job, or PTY mode."""
-    audit_tool_purpose("bash", purpose)
     return await bash_execute(
         session_id,
         command,
@@ -114,7 +112,6 @@ async def run_python_code(
     purpose: ToolPurposeArg = None,
 ) -> RunPythonCodeOutput:
     """Write Python code to a temporary file and execute it through shell modes."""
-    audit_tool_purpose("run_python_code", purpose)
     return await run_python_code_execute(
         session_id,
         code,
