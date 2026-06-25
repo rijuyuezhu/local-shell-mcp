@@ -63,8 +63,10 @@ def build_mcp() -> FastMCP:
     return mcp
 
 
-def _wrap_mcp_http_app(inner_app: Starlette) -> Starlette:
-    """Wrap the SDK MCP ASGI app with public routes before mounting it."""
+def _wrap_mcp_http_app_with_public_routes(
+    inner_app: Starlette,
+) -> tuple[Starlette, list[BaseRoute]]:
+    """Wrap the SDK MCP ASGI app and return the public routes used by middleware."""
     settings = get_settings()
 
     @asynccontextmanager
@@ -81,15 +83,21 @@ def _wrap_mcp_http_app(inner_app: Starlette) -> Starlette:
         *oauth_public_routes(),
     ]
     routes = [*public_routes, Mount("/", app=inner_app)]
-    return Starlette(routes=routes, lifespan=lifespan)
+    return Starlette(routes=routes, lifespan=lifespan), public_routes
+
+
+def _wrap_mcp_http_app(inner_app: Starlette) -> Starlette:
+    """Wrap the SDK MCP ASGI app with public routes before mounting it."""
+    app, _ = _wrap_mcp_http_app_with_public_routes(inner_app)
+    return app
 
 
 def _build_mcp_http_transport_app(inner_app: Starlette) -> Starlette:
     """Build one MCP HTTP transport app from a FastMCP SDK ASGI app."""
     settings = get_settings()
-    app = _wrap_mcp_http_app(inner_app)
+    app, public_routes = _wrap_mcp_http_app_with_public_routes(inner_app)
     if settings.auth_mode != "none":
-        app.add_middleware(AuthMiddleware, public_routes=app.routes[:-1])
+        app.add_middleware(AuthMiddleware, public_routes=public_routes)
     return app
 
 
