@@ -428,6 +428,7 @@ Answer these during the relevant slice and record decisions here:
 - Slice 6 moved dynamic registration payload checks, redirect policy, client creation, and audit into `service.py`; `registration.py` is now a thin JSON adapter.
 - Follow-up layering cleanup added typed service input models in `oauth.core.requests` and HTTP extraction helpers in `oauth.http.requests`; registration, authorization, and token endpoints now parse Starlette request data in the HTTP layer before calling `oauth.core.service`.
 - Follow-up URL cleanup removed unused `Request` parameters from canonical URL helpers, moved advertised/default scope helpers to `oauth.core.scopes`, and removed the no-op `LocalOAuth2Request` adapter path.
+- Follow-up boundary cleanup moved request-local OAuth claims and scope checks to `oauth.core.context`, split HTTP auth verification into `oauth.http.auth`, and kept `oauth.http.middleware` focused on ASGI wrapping/public-route bypasses.
 
 
 ## Layered package layout decision
@@ -436,7 +437,7 @@ The OAuth package should not remain as flat endpoint/service files. Keep the pub
 
 ```text
 src/local_shell_mcp/oauth/
-  core/       project OAuth state, policy, URL helpers, scopes, and service operations
+  core/       project OAuth state, request context, policy, URL helpers, scopes, and service operations
   http/       Starlette/FastAPI route handlers, middleware, responses, and templates
   protocol/   Authlib/PyJWT adapters and local credential codec
 ```
@@ -474,10 +475,12 @@ Recommended reading spine:
 5. **Library/protocol boundary**
    - Read `src/local_shell_mcp/oauth/protocol/adapters.py` for the Authlib client wrapper used by service validation.
    - Read `src/local_shell_mcp/oauth/protocol/token_codec.py` for local JWT signing and issuer/audience validation.
-   - Read `src/local_shell_mcp/oauth/protocol/bearer.py` for Authlib `ResourceProtector` / `BearerTokenValidator` integration.
+   - Read `src/local_shell_mcp/oauth/protocol/bearer.py` for the local Authlib bearer token validator/protector.
 6. **Protected request validation**
-   - Read `src/local_shell_mcp/oauth/http/middleware.py`. `AuthMiddleware` bypasses only configured public routes, validates protected requests through `verify_request()`, delegates bearer parsing/validation to `oauth.protocol.bearer.validate_bearer_request()`, stores claims in `OAUTH_CLAIMS`, and preserves MCP `WWW-Authenticate` challenge behavior.
-   - Read `src/local_shell_mcp/tools/declarative.py` only after middleware. It consumes `require_oauth_scopes()` for per-tool scope enforcement after the transport has already authenticated the request.
+   - Read `src/local_shell_mcp/oauth/http/middleware.py`. `AuthMiddleware` bypasses only configured public routes, calls `oauth.http.auth.verify_request()`, binds verified claims through `oauth.core.context`, and converts auth failures to JSON responses.
+   - Read `src/local_shell_mcp/oauth/http/auth.py` for HTTP auth-mode handling, localhost bypass policy, bearer challenge headers, audit, and Authlib resource-protector invocation.
+   - Read `src/local_shell_mcp/oauth/core/context.py` for request-local bearer claims and scope checks.
+   - Read `src/local_shell_mcp/tools/declarative.py` after context handling. It consumes `oauth.core.context.require_oauth_scopes()` through a small transport error adapter for per-tool scope enforcement.
 7. **Validation path**
    - Targeted OAuth/security checks used during this refactor:
      - `uv run pytest tests/test_mcp_chatgpt_compat.py tests/test_mcp_app.py tests/test_http_validation.py`

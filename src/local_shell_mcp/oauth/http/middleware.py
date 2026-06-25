@@ -1,123 +1,20 @@
-"""Authenticate HTTP and MCP requests while keeping OAuth bootstrap routes public."""
+"""ASGI middleware for OAuth-protected HTTP and MCP requests."""
 
 from collections.abc import Iterable
-from contextvars import ContextVar
-from typing import Any
 
-from authlib.oauth2.rfc6749.errors import MissingAuthorizationError, OAuth2Error
 from fastapi import HTTPException, Request
 from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from ...audit import audit
-from ...config.settings import get_settings
-from ..core.scopes import scope_set
-from ..core.urls import protected_resource_metadata_url
-from ..protocol.bearer import validate_bearer_request
-
-OAUTH_CLAIMS: ContextVar[dict[str, Any] | None] = ContextVar(
-    "local_shell_mcp_oauth_claims", default=None
-)
+from ..core.context import bind_oauth_claims, reset_oauth_claims
+from .auth import verify_request
 
 
 def _public_route_matches(route: BaseRoute, scope: Scope) -> bool:
     """Return whether a configured public route fully matches the request scope."""
     match, _ = route.matches(scope)
     return match is Match.FULL
-
-
-def _client_host(request: Request) -> str:
-    """Extract the peer host from a FastAPI request without failing when client metadata is absent."""
-    return request.client.host if request.client else ""
-
-
-def _is_localhost(request: Request) -> bool:
-    """Detect requests eligible for localhost auth bypass in HTTP mode."""
-    host = _client_host(request)
-    return host in {"127.0.0.1", "::1", "localhost"}
-
-
-def _bearer_challenge(*, error: str | None = None) -> str:
-    """Build the OAuth challenge advertised to MCP clients when auth is missing or invalid."""
-    metadata_url = protected_resource_metadata_url()
-    parts = [f'resource_metadata="{metadata_url}"']
-    if error:
-        parts.append(f'error="{error}"')
-    return "Bearer " + ", ".join(parts)
-
-
-def _verify_oauth(request: Request) -> dict[str, Any]:
-    """Validate an OAuth bearer token and return its claims."""
-    try:
-        return validate_bearer_request(request)
-    except MissingAuthorizationError as exc:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing OAuth bearer token",
-            headers={"WWW-Authenticate": _bearer_challenge()},
-        ) from exc
-    except OAuth2Error as exc:
-        audit(
-            "oauth_auth_failed",
-            error=str(exc),
-            path=str(request.url.path),
-            ip=_client_host(request),
-        )
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid OAuth bearer token",
-            headers={
-                "WWW-Authenticate": _bearer_challenge(error="invalid_token")
-            },
-        ) from exc
-
-
-def current_oauth_claims() -> dict[str, Any] | None:
-    """Return bearer claims for the current protected request, if any."""
-    return OAUTH_CLAIMS.get()
-
-
-def require_oauth_scopes(required_scopes: tuple[str, ...]) -> None:
-    """Reject the current request unless its bearer token includes all required scopes."""
-    claims = current_oauth_claims()
-    if claims is None or not required_scopes:
-        return
-    granted = scope_set(str(claims.get("scope") or ""))
-    missing = [scope for scope in required_scopes if scope not in granted]
-    if missing:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Missing required OAuth scope: {missing[0]}",
-        )
-
-
-def verify_request(request: Request) -> dict[str, Any] | None:
-    """Verify a request according to configured auth mode and local bypass rules."""
-    settings = get_settings()
-    match settings.auth_mode:
-        case "none":
-            return None
-        case "oauth" if (
-            settings.auth_bypass_localhost
-            and _is_localhost(request)
-            and settings.mode == "http"
-        ):
-            return None
-        case "oauth":
-            claims = _verify_oauth(request)
-        case _:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Unsupported auth_mode: {settings.auth_mode}",
-            )
-    audit(
-        "auth_ok",
-        subject=claims.get("sub"),
-        path=str(request.url.path),
-        ip=_client_host(request),
-    )
-    return claims
 
 
 class AuthMiddleware:
@@ -138,7 +35,7 @@ class AuthMiddleware:
     async def __call__(
         self, scope: Scope, receive: Receive, send: Send
     ) -> None:
-        """Apply public-route bypasses and bearer verification for protected HTTP requests."""
+        """Apply public-route bypasses and bearer verification."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -151,17 +48,16 @@ class AuthMiddleware:
             request = Request(scope, receive)
             claims = verify_request(request)
         except HTTPException as exc:
-            headers = exc.headers or {}
             response = JSONResponse(
                 {"detail": exc.detail},
                 status_code=exc.status_code,
-                headers=headers,
+                headers=exc.headers or {},
             )
             await response(scope, receive, send)
             return
 
-        claims_token = OAUTH_CLAIMS.set(claims)
+        claims_token = bind_oauth_claims(claims)
         try:
             await self.app(scope, receive, send)
         finally:
-            OAUTH_CLAIMS.reset(claims_token)
+            reset_oauth_claims(claims_token)

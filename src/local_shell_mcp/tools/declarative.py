@@ -7,13 +7,17 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any, ClassVar, Literal, Protocol
 
+from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import TypeAdapter, ValidationError
 
 from ..config.settings import Settings
+from ..oauth.core.context import (
+    MissingOAuthScopeError,
+    require_oauth_scopes,
+)
 from ..oauth.core.scopes import SCOPE_SHELL_READ, SUPPORTED_OAUTH_SCOPES
-from ..oauth.http.middleware import require_oauth_scopes
 from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]
@@ -23,6 +27,14 @@ ToolEnabled = Callable[[Settings], bool]
 ToolFunc = Callable[..., Awaitable[Any]]
 McpErrorHandler = Callable[[Exception, tuple[Any, ...], dict[str, Any]], Any]
 _MCP_HANDLER_ERROR_HANDLER_ATTR = "__local_shell_mcp_error_handler__"
+
+
+def _enforce_oauth_scopes(required_scopes: tuple[str, ...]) -> None:
+    """Translate OAuth scope failures to the transport error shape."""
+    try:
+        require_oauth_scopes(required_scopes)
+    except MissingOAuthScopeError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 def mark_mcp_handler_error_handler(
@@ -149,7 +161,7 @@ class ToolDefinition:
 
     async def call_from_mapping(self, args: Mapping[str, Any]) -> Any:
         """Invoke the typed tool function from an HTTP-style argument mapping."""
-        require_oauth_scopes(self.required_oauth_scopes())
+        _enforce_oauth_scopes(self.required_oauth_scopes())
         return await self.func(
             **_tool_kwargs_from_mapping(self.signature, args)
         )
@@ -202,7 +214,7 @@ class ToolDefinition:
         @wraps(self.func)
         async def mcp_handler(*args: Any, **kwargs: Any) -> Any:
             try:
-                require_oauth_scopes(self.required_oauth_scopes())
+                _enforce_oauth_scopes(self.required_oauth_scopes())
                 return await self.func(*args, **kwargs)
             except Exception as exc:
                 if self.mcp_error_handler is not None:

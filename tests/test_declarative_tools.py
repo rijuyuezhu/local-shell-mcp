@@ -5,7 +5,10 @@ import pytest
 from fastapi import HTTPException
 from mcp.types import ToolAnnotations
 
-from local_shell_mcp.oauth.http.middleware import OAUTH_CLAIMS
+from local_shell_mcp.oauth.core.context import (
+    bind_oauth_claims,
+    reset_oauth_claims,
+)
 from local_shell_mcp.tools.declarative import ToolDefinition
 
 
@@ -133,22 +136,22 @@ async def test_mcp_handler_enforces_required_oauth_scopes():
     assert mcp.handler is not None
     handler = cast(Callable[[], Awaitable[dict[str, bool]]], mcp.handler)
 
-    claims_token = OAUTH_CLAIMS.set({"scope": "shell:read"})
+    claims_token = bind_oauth_claims({"scope": "shell:read"})
     try:
         with pytest.raises(HTTPException) as exc_info:
             await handler()
     finally:
-        OAUTH_CLAIMS.reset(claims_token)
+        reset_oauth_claims(claims_token)
     assert exc_info.value.status_code == 403
     assert (
         exc_info.value.detail == "Missing required OAuth scope: shell:execute"
     )
 
-    claims_token = OAUTH_CLAIMS.set({"scope": "shell:read shell:execute"})
+    claims_token = bind_oauth_claims({"scope": "shell:read shell:execute"})
     try:
         assert await handler() == {"ok": True}
     finally:
-        OAUTH_CLAIMS.reset(claims_token)
+        reset_oauth_claims(claims_token)
 
 
 def test_tool_definition_rejects_unknown_mcp_security_profile():

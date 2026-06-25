@@ -1,0 +1,84 @@
+"""HTTP authentication helpers for protected OAuth routes."""
+
+from typing import Any
+
+from authlib.oauth2.rfc6749.errors import MissingAuthorizationError, OAuth2Error
+from fastapi import HTTPException, Request
+
+from ...audit import audit
+from ...config.settings import get_settings
+from ..core.urls import protected_resource_metadata_url
+from ..protocol.bearer import bearer_resource_protector
+
+
+def client_host(request: Request) -> str:
+    """Return the peer host, or an empty string when absent."""
+    return request.client.host if request.client else ""
+
+
+def is_localhost(request: Request) -> bool:
+    """Return whether the request came from a localhost peer."""
+    return client_host(request) in {"127.0.0.1", "::1", "localhost"}
+
+
+def bearer_challenge(*, error: str | None = None) -> str:
+    """Build the WWW-Authenticate challenge for MCP OAuth clients."""
+    parts = [f'resource_metadata="{protected_resource_metadata_url()}"']
+    if error:
+        parts.append(f'error="{error}"')
+    return "Bearer " + ", ".join(parts)
+
+
+def verify_oauth(request: Request) -> dict[str, Any]:
+    """Validate a bearer token and return its claims."""
+    try:
+        token = bearer_resource_protector().validate_request((), request)
+        return token.claims
+    except MissingAuthorizationError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing OAuth bearer token",
+            headers={"WWW-Authenticate": bearer_challenge()},
+        ) from exc
+    except OAuth2Error as exc:
+        audit(
+            "oauth_auth_failed",
+            error=str(exc),
+            path=str(request.url.path),
+            ip=client_host(request),
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid OAuth bearer token",
+            headers={
+                "WWW-Authenticate": bearer_challenge(error="invalid_token")
+            },
+        ) from exc
+
+
+def verify_request(request: Request) -> dict[str, Any] | None:
+    """Verify one HTTP request according to the configured auth mode."""
+    settings = get_settings()
+    match settings.auth_mode:
+        case "none":
+            return None
+        case "oauth" if (
+            settings.auth_bypass_localhost
+            and is_localhost(request)
+            and settings.mode == "http"
+        ):
+            return None
+        case "oauth":
+            claims = verify_oauth(request)
+        case _:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unsupported auth_mode: {settings.auth_mode}",
+            )
+    audit(
+        "auth_ok",
+        subject=claims.get("sub"),
+        path=str(request.url.path),
+        ip=client_host(request),
+    )
+    return claims

@@ -1,4 +1,4 @@
-"""Bearer-token validation for protected resource requests."""
+"""Bearer-token validation adapters."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -6,7 +6,6 @@ from typing import Any
 import jwt
 from authlib.oauth2.rfc6749.resource_protector import ResourceProtector
 from authlib.oauth2.rfc6750 import BearerTokenValidator
-from starlette.requests import Request
 
 from .token_codec import validate_bearer_token
 
@@ -42,9 +41,8 @@ class LocalBearerTokenValidator(BearerTokenValidator):
             return None
 
 
-def validate_bearer_request(request: Request) -> dict[str, Any]:
-    """Validate the bearer token on a Starlette request."""
+def bearer_resource_protector() -> ResourceProtector:
+    """Return an Authlib resource protector for local bearer tokens."""
     protector = ResourceProtector()
     protector.register_token_validator(LocalBearerTokenValidator())
-    token = protector.validate_request((), request)
-    return token.claims
+    return protector
