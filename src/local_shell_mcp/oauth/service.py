@@ -6,15 +6,27 @@ code issuance out of Starlette route handlers.
 """
 
 import secrets
+import time
 from dataclasses import dataclass
 from typing import NoReturn
 
-from authlib.oauth2.rfc6749.errors import InvalidRequestError, OAuth2Error
-from authlib.oauth2.rfc7636.challenge import CODE_CHALLENGE_PATTERN
+from authlib.oauth2.rfc6749.errors import (
+    InvalidGrantError,
+    InvalidRequestError,
+    OAuth2Error,
+    UnsupportedGrantTypeError,
+)
+from authlib.oauth2.rfc7636.challenge import (
+    CODE_CHALLENGE_PATTERN,
+    CODE_VERIFIER_PATTERN,
+    compare_plain_code_challenge,
+    compare_s256_code_challenge,
+)
 
 from ..audit import audit
 from .adapters import LocalOAuth2Request, LocalOAuthClient
 from .models import _CLIENTS, _CODES, AuthCode
+from .token_codec import issue_access_token
 from .urls import _normalize_resource, issuer_url, resource_url
 
 
@@ -51,6 +63,16 @@ class AuthorizationResponse:
     redirect_uri: str
     query: dict[str, str]
     code: AuthCode
+
+
+@dataclass(frozen=True)
+class TokenResponse:
+    """Token endpoint response values after authorization-code exchange."""
+
+    access_token: str
+    token_type: str
+    scope: str
+    expires_in: int | None
 
 
 def oauth_error_message(exc: OAuth2Error) -> str:
@@ -157,4 +179,95 @@ def issue_authorization_response(
         redirect_uri=request.redirect_uri,
         query=query,
         code=auth_code,
+    )
+
+
+def _verify_pkce(code_obj: AuthCode, verifier: str | None) -> bool:
+    """Validate PKCE using Authlib's RFC7636 challenge helpers."""
+    # Docs compliance: authorization-code exchange verifies PKCE when the
+    # authorization request included a challenge; S256 uses Authlib's RFC 7636
+    # comparison helper.
+    if not code_obj.code_challenge:
+        return verifier is None
+    if not verifier or not CODE_VERIFIER_PATTERN.match(verifier):
+        return False
+    method = code_obj.code_challenge_method or "plain"
+    if method == "S256":
+        return compare_s256_code_challenge(verifier, code_obj.code_challenge)
+    return compare_plain_code_challenge(verifier, code_obj.code_challenge)
+
+
+def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
+    """Return whether an authorization code is past its configured TTL."""
+    return now - code_obj.created_at > ttl_s
+
+
+def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
+    """Remove used or expired authorization codes from the in-memory store."""
+    from ..config.settings import get_settings
+
+    settings = get_settings()
+    current_time = int(time.time()) if now is None else now
+    for code, code_obj in list(_CODES.items()):
+        if code == keep:
+            continue
+        if code_obj.used or _auth_code_expired(
+            code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
+        ):
+            _CODES.pop(code, None)
+
+
+def exchange_authorization_code(params: dict[str, str]) -> TokenResponse:
+    """Exchange an authorization code for a bearer token after Authlib-shaped validation."""
+    from ..config.settings import get_settings
+
+    oauth_request = LocalOAuth2Request("POST", "token", params)
+    request_params = oauth_request.params
+    grant_type = request_params.get("grant_type") or ""
+    if grant_type != "authorization_code":
+        raise UnsupportedGrantTypeError(grant_type=grant_type)
+
+    resource = request_params.get("resource") or ""
+    # Docs compliance: MCP requires RFC 8707 ``resource`` in token requests, and
+    # the resource must match the one bound to the authorization code.
+    if not resource:
+        raise InvalidRequestError(description="Missing resource")
+
+    code = request_params.get("code") or ""
+    client_id = request_params.get("client_id") or ""
+    redirect_uri = request_params.get("redirect_uri") or ""
+    verifier = request_params.get("code_verifier") or None
+
+    _prune_codes()
+    code_obj = _CODES.get(code)
+    if not code_obj or code_obj.used:
+        raise InvalidGrantError(description="Unknown or used code")
+
+    settings = get_settings()
+    if _auth_code_expired(
+        code_obj, now=int(time.time()), ttl_s=settings.oauth_code_ttl_s
+    ):
+        raise InvalidGrantError(description="Expired code")
+    if code_obj.client_id != client_id or code_obj.redirect_uri != redirect_uri:
+        raise InvalidGrantError(description="Client or redirect mismatch")
+    if _normalize_resource(resource) != _normalize_resource(code_obj.resource):
+        raise InvalidGrantError(description="Resource mismatch")
+    if not _verify_pkce(code_obj, verifier):
+        raise InvalidGrantError(description="PKCE verification failed")
+
+    code_obj.used = True
+    credential = issue_access_token(
+        client_id=client_id, scope=code_obj.scope, resource=code_obj.resource
+    )
+    audit("oauth_token_issued", client_id=client_id, resource=code_obj.resource)
+    expires_in = (
+        settings.oauth_access_token_ttl_s
+        if settings.oauth_access_token_ttl_s > 0
+        else None
+    )
+    return TokenResponse(
+        access_token=credential,
+        token_type="Bearer",
+        scope=code_obj.scope,
+        expires_in=expires_in,
     )

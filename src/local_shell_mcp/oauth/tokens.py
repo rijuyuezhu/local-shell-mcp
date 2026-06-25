@@ -1,161 +1,42 @@
-"""OAuth token exchange, JWT signing, PKCE verification, and bearer validation.
+"""OAuth token endpoint route and bearer-token compatibility exports.
 
 Security model: see ``docs/security.md#oauth-security``. Token exchange binds
 authorization codes to client, redirect URI, resource, PKCE, and one-time use.
 """
 
-import secrets
-import time
 from typing import Any
 
-import jwt
-from authlib.oauth2.rfc6749.errors import UnsupportedGrantTypeError
-from authlib.oauth2.rfc7636.challenge import (
-    CODE_VERIFIER_PATTERN,
-    compare_plain_code_challenge,
-    compare_s256_code_challenge,
-)
+from authlib.oauth2.rfc6749.errors import OAuth2Error
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from ..audit import audit
-from ..config.settings import get_settings
-from .models import _CODES, AuthCode
-from .responses import (
-    invalid_grant,
-    invalid_request,
-    oauth_error,
-    oauth_json,
-)
-from .urls import _normalize_resource, issuer_url, resource_url
+from .responses import oauth_error, oauth_json
+from .service import _prune_codes, exchange_authorization_code
+from .token_codec import issue_access_token, validate_bearer_token
 
-
-def _jwt_secret() -> str:
-    """Return a configured or persisted signing secret for local bearer tokens."""
-    settings = get_settings()
-    # Docs compliance: bearer tokens are signed locally with state-directory
-    # key material. Operators must protect and rotate this state between trust
-    # domains because there is no central revocation service.
-    secret_path = settings.state_dir / "oauth-jwt-secret"
-    try:
-        secret = secret_path.read_text(encoding="utf-8").strip()
-        if secret:
-            return secret
-    except FileNotFoundError:
-        pass
-
-    settings.state_dir.mkdir(parents=True, exist_ok=True)
-    secret = secrets.token_urlsafe(48)
-    secret_path.write_text(secret + "\n", encoding="utf-8")
-    secret_path.chmod(0o600)
-    return secret
-
-
-def _verify_pkce(code_obj: AuthCode, verifier: str | None) -> bool:
-    """Validate PKCE using Authlib's RFC7636 challenge helpers."""
-    # Docs compliance: authorization-code exchange verifies PKCE when the
-    # authorization request included a challenge; S256 uses Authlib's RFC 7636
-    # comparison helper.
-    if not code_obj.code_challenge:
-        return verifier is None
-    if not verifier or not CODE_VERIFIER_PATTERN.match(verifier):
-        return False
-    method = code_obj.code_challenge_method or "plain"
-    if method == "S256":
-        return compare_s256_code_challenge(verifier, code_obj.code_challenge)
-    return compare_plain_code_challenge(verifier, code_obj.code_challenge)
-
-
-def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
-    """Return whether an authorization code is past its configured TTL."""
-    return now - code_obj.created_at > ttl_s
-
-
-def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
-    """Remove used or expired authorization codes from the in-memory store."""
-    settings = get_settings()
-    current_time = int(time.time()) if now is None else now
-    for code, code_obj in list(_CODES.items()):
-        if code == keep:
-            continue
-        if code_obj.used or _auth_code_expired(
-            code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
-        ):
-            _CODES.pop(code, None)
-
-
-def issue_access_token(
-    *, client_id: str, scope: str, resource: str, subject: str = "local-user"
-) -> str:
-    """Create a signed bearer token for an approved client, scope, resource, and subject."""
-    settings = get_settings()
-    now = int(time.time())
-    payload = {
-        "iss": issuer_url(),
-        "sub": subject,
-        "aud": resource,
-        "iat": now,
-        "client_id": client_id,
-        "scope": scope,
-    }
-    if settings.oauth_access_token_ttl_s > 0:
-        payload["exp"] = now + settings.oauth_access_token_ttl_s
-    return jwt.encode(payload, _jwt_secret(), algorithm="HS256")
+__all__ = [
+    "_prune_codes",
+    "exchange_authorization_code",
+    "issue_access_token",
+    "token_endpoint",
+    "validate_bearer_token",
+]
 
 
 async def token_endpoint(request: Request) -> JSONResponse:
-    """Exchange an authorization code for an access token after client, redirect, expiry, and PKCE checks."""
+    """Exchange an authorization code for an access token after service-level grant checks."""
     form = await request.form()
-    grant_type = str(form.get("grant_type") or "")
-    if grant_type != "authorization_code":
-        return oauth_error(UnsupportedGrantTypeError(grant_type=grant_type))
-    code = str(form.get("code") or "")
-    client_id = str(form.get("client_id") or "")
-    redirect_uri = str(form.get("redirect_uri") or "")
-    verifier = str(form.get("code_verifier") or "") or None
-    resource = str(form.get("resource") or "")
-    # Docs compliance: MCP requires RFC 8707 ``resource`` in token requests, and
-    # the resource must match the one bound to the authorization code.
-    if not resource:
-        return invalid_request("Missing resource")
-    _prune_codes()
-    code_obj = _CODES.get(code)
-    if not code_obj or code_obj.used:
-        return invalid_grant("Unknown or used code")
-    if int(time.time()) - code_obj.created_at > get_settings().oauth_code_ttl_s:
-        return invalid_grant("Expired code")
-    if code_obj.client_id != client_id or code_obj.redirect_uri != redirect_uri:
-        return invalid_grant("Client or redirect mismatch")
-    if _normalize_resource(resource) != _normalize_resource(code_obj.resource):
-        return invalid_grant("Resource mismatch")
-    if not _verify_pkce(code_obj, verifier):
-        return invalid_grant("PKCE verification failed")
-    code_obj.used = True
-    token = issue_access_token(
-        client_id=client_id, scope=code_obj.scope, resource=code_obj.resource
-    )
-    audit("oauth_token_issued", client_id=client_id, resource=code_obj.resource)
+    params = {k: str(v) for k, v in form.items()}
+    try:
+        token_response = exchange_authorization_code(params)
+    except OAuth2Error as exc:
+        return oauth_error(exc)
+
     body: dict[str, Any] = {
-        "access_token": token,
-        "token_type": "Bearer",
-        "scope": code_obj.scope,
+        "access_token": token_response.access_token,
+        "token_type": token_response.token_type,
+        "scope": token_response.scope,
     }
-    if get_settings().oauth_access_token_ttl_s > 0:
-        body["expires_in"] = get_settings().oauth_access_token_ttl_s
+    if token_response.expires_in is not None:
+        body["expires_in"] = token_response.expires_in
     return oauth_json(body)
-
-
-def validate_bearer_token(
-    token: str, request: Request | None = None
-) -> dict[str, Any]:
-    """Decode and validate issuer, audience, resource, and scope claims for incoming bearer tokens."""
-    # Docs compliance: resource-server validation requires accepting only tokens
-    # issued by this issuer and audience-bound to this MCP resource.
-    return jwt.decode(
-        token,
-        _jwt_secret(),
-        algorithms=["HS256"],
-        audience=resource_url(request),
-        issuer=issuer_url(request),
-        options={"require": ["iat", "aud", "iss"]},
-    )

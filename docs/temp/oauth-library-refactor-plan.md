@@ -416,6 +416,13 @@ Answer these during the relevant slice and record decisions here:
 4. Should custom private-use redirect URI parsing use Starlette `URL`?
    - Current default: keep `urllib.parse.urlparse` for redirect policy unless Starlette behavior is verified for `com.example.app:/oauth2redirect` and `ftp://...`.
 
+## Implementation decisions recorded during this refactor
+
+- Slice 2 centralized OAuth JSON/error responses in `responses.py` and replaced manual authorization redirect URL reconstruction with Starlette `URL.include_query_params()`.
+- Slice 3 added `adapters.py` and `service.py`; authorization request validation now uses Authlib-shaped `LocalOAuth2Request` and `LocalOAuthClient`, while admin PIN and approval HTML remain explicit route/UI policy.
+- Slice 4 uses an Authlib-shaped service instead of full `AuthorizationCodeGrant`. Full grant subclassing was not used because preserving local MCP resource binding, admin-PIN approval, process-local client/code stores, exact legacy error text, and public-client PKCE behavior would require enough overrides that it would not simplify the code.
+- Slice 4 added `token_codec.py` to keep local JWT signing/validation separate from token exchange service logic. `tokens.py` remains a thin Starlette endpoint plus compatibility exports for existing tests/callers.
+
 ## Definition of done
 
 - OAuth routes are thinner than before and no longer contain most protocol validation logic.
