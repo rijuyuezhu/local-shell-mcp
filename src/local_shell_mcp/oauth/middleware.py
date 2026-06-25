@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from contextvars import ContextVar
 from typing import Any
 
-import jwt
+from authlib.oauth2.rfc6749.errors import MissingAuthorizationError, OAuth2Error
 from fastapi import HTTPException, Request
 from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Match
@@ -16,8 +16,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..audit import audit
 from ..config.settings import get_settings
+from .bearer import validate_bearer_request
 from .scopes import scope_set
-from .tokens import validate_bearer_token
 from .urls import protected_resource_metadata_url
 
 OAUTH_CLAIMS: ContextVar[dict[str, Any] | None] = ContextVar(
@@ -42,14 +42,6 @@ def _is_localhost(request: Request) -> bool:
     return host in {"127.0.0.1", "::1", "localhost"}
 
 
-def _extract_token(request: Request) -> str | None:
-    """Parse a bearer token from the Authorization header without accepting other auth schemes."""
-    auth = request.headers.get("authorization")
-    if auth and auth.lower().startswith("bearer "):
-        return auth.split(" ", 1)[1].strip()
-    return None
-
-
 def _bearer_challenge(request: Request, *, error: str | None = None) -> str:
     """Build the OAuth challenge advertised to MCP clients when auth is missing or invalid."""
     # Docs compliance: MCP requires 401 challenges to advertise protected
@@ -63,18 +55,17 @@ def _bearer_challenge(request: Request, *, error: str | None = None) -> str:
 
 def _verify_oauth(request: Request) -> dict[str, Any]:
     """Validate an OAuth bearer token and return its claims."""
-    token = _extract_token(request)
-    if not token:
+    try:
+        # Docs compliance: inbound bearer tokens must be validated before any
+        # tool request is processed, including issuer and audience checks.
+        return validate_bearer_request(request)
+    except MissingAuthorizationError as exc:
         raise HTTPException(
             status_code=401,
             detail="Missing OAuth bearer token",
             headers={"WWW-Authenticate": _bearer_challenge(request)},
-        )
-    try:
-        # Docs compliance: inbound bearer tokens must be validated before any
-        # tool request is processed, including issuer and audience checks.
-        claims = validate_bearer_token(token, request)
-    except jwt.PyJWTError as exc:
+        ) from exc
+    except OAuth2Error as exc:
         audit(
             "oauth_auth_failed",
             error=str(exc),
@@ -90,7 +81,6 @@ def _verify_oauth(request: Request) -> dict[str, Any]:
                 )
             },
         ) from exc
-    return claims
 
 
 def current_oauth_claims() -> dict[str, Any] | None:
