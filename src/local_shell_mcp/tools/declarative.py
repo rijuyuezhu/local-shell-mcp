@@ -19,7 +19,13 @@ from ..oauth.core.context import (
 )
 from ..oauth.core.scopes import SUPPORTED_OAUTH_SCOPES
 from ..server.mcp.metadata import oauth_security_meta
-from .contracts import HttpMethod, HttpToolRoute, McpToolContext, ToolRegistry
+from .contracts import (
+    HttpMethod,
+    HttpToolRoute,
+    McpToolContext,
+    ToolHandler,
+    ToolRegistry,
+)
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]
 ToolAnnotation = Literal["read_only"]
@@ -310,7 +316,7 @@ class DeclarativeToolRegistry(ToolRegistry):
 
     def http_handlers(
         self,
-    ) -> Mapping[str, Callable[[dict[str, Any]], Awaitable[Any]]]:
+    ) -> Mapping[str, ToolHandler]:
         """Return enabled declarative HTTP handlers keyed by tool name."""
         return {
             tool.name: tool.http_handler() for tool in self._enabled_tools()
