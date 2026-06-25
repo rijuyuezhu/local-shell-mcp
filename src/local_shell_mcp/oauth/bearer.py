@@ -21,6 +21,7 @@ class LocalBearerToken:
     """Authlib token object backed by decoded local bearer claims."""
 
     claims: dict[str, Any]
+    """Decoded and validated local bearer claims."""
 
     def get_scope(self) -> str:
         """Return the scope claim in Authlib's expected format."""

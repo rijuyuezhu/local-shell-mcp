@@ -42,10 +42,19 @@ class AuthorizationRequest:
     """Validated authorization-code request data."""
 
     oauth_request: LocalOAuth2Request
+    """Authlib-shaped request adapter for the authorization request."""
+
     client: LocalOAuthClient
+    """Authlib client adapter for the registered dynamic client."""
+
     params: dict[str, str]
+    """Validated authorization request parameters."""
+
     scope: str
+    """Normalized approved scope string."""
+
     resource: str
+    """Normalized MCP resource URL bound to the authorization code."""
 
     @property
     def client_id(self) -> str:
@@ -68,8 +77,13 @@ class AuthorizationResponse:
     """Authorization-code response values for the redirect adapter."""
 
     redirect_uri: str
+    """Registered client redirect URI that receives the authorization response."""
+
     query: dict[str, str]
+    """OAuth response parameters appended to the redirect URI."""
+
     code: AuthCode
+    """Stored authorization code object for the issued code."""
 
 
 @dataclass(frozen=True)
@@ -77,9 +91,16 @@ class TokenResponse:
     """Token endpoint response values after authorization-code exchange."""
 
     access_token: str
+    """Signed bearer credential returned to the OAuth client."""
+
     token_type: str
+    """OAuth token type value returned by the token endpoint."""
+
     scope: str
+    """Scope string granted to the issued credential."""
+
     expires_in: int | None
+    """Lifetime in seconds when the local credential has a configured TTL."""
 
 
 def oauth_error_message(exc: OAuth2Error) -> str:
