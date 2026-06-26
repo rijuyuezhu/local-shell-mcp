@@ -195,6 +195,8 @@ def _is_allowed_redirect_uri(uri: str) -> bool:
     scheme = parsed.scheme.lower()
     if not scheme or scheme in BLOCKED_REDIRECT_SCHEMES:
         return False
+    if parsed.fragment:
+        return False
     if scheme == "https":
         return bool(parsed.netloc)
     if scheme == "http":

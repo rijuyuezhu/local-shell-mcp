@@ -706,6 +706,9 @@ def test_oauth_registration_rejects_unsafe_redirect_uris(tmp_path, monkeypatch):
         "javascript:alert(1)",
         "data:text/html,unsafe",
         "http://attacker.example/callback",
+        "http://127.0.0.1:9876/callback#fragment",
+        "https://client.example/callback#fragment",
+        "com.example.app:/oauth2redirect#fragment",
         "ftp://attacker.example/callback",
     ):
         response = client.post(

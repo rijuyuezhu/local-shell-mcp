@@ -181,12 +181,12 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "oauth_registration_max_redirect_uri_chars",
         "Authentication and OAuth",
-        metavar="COUNT",
+        metavar="CHARS",
     ),
     SettingSpec(
         "oauth_registration_max_client_name_chars",
         "Authentication and OAuth",
-        metavar="COUNT",
+        metavar="CHARS",
     ),
     SettingSpec("allow_full_control", "Safety and resource limits"),
     SettingSpec("allow_network", "Safety and resource limits"),
