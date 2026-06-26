@@ -1,3 +1,6 @@
+import argparse
+import textwrap
+
 import pytest
 
 import local_shell_mcp.main as cli
@@ -6,6 +9,30 @@ from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     cli_overrides_from_args,
 )
+
+
+class NoBreakHelpFormatter(argparse.HelpFormatter):
+    """Formatter used by tests to keep long environment variable names intact."""
+
+    def _split_lines(self, text, width):
+        return textwrap.wrap(
+            text,
+            width,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+
+    def _fill_text(self, text, width, indent):
+        return "\n".join(
+            textwrap.wrap(
+                text,
+                width,
+                initial_indent=indent,
+                subsequent_indent=indent,
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+        )
 
 
 def test_server_options_parse_to_default_handler():
@@ -66,7 +93,9 @@ def test_version_subcommand_prints_package_version(capsys):
 
 
 def test_every_setting_has_cli_option():
-    help_text = cli._build_parser().format_help()
+    parser = cli._build_parser()
+    parser.formatter_class = NoBreakHelpFormatter
+    help_text = parser.format_help()
 
     assert "<object object at" not in help_text
     assert "--audit-log-path" not in help_text
