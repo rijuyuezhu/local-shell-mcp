@@ -346,18 +346,27 @@ jobs:
         env:
           DOCKER_TAGS_JSON: ${{ needs.validate-release.outputs.docker_tags }}
         run: |
-          python - <<'PY' > /tmp/create-manifests.sh
+          python - <<'PY'
           import json
           import os
+          import subprocess
 
           tags = json.loads(os.environ["DOCKER_TAGS_JSON"])
           for tag in tags:
-              print("docker buildx imagetools create \")
-              print(f"  -t {tag} \")
-              print(f"  {tag}-amd64 \")
-              print(f"  {tag}-arm64")
+              subprocess.run(
+                  [
+                      "docker",
+                      "buildx",
+                      "imagetools",
+                      "create",
+                      "-t",
+                      tag,
+                      f"{tag}-amd64",
+                      f"{tag}-arm64",
+                  ],
+                  check=True,
+              )
           PY
-          bash /tmp/create-manifests.sh
 
   github-release:
     name: Publish GitHub release
