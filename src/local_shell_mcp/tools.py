@@ -384,6 +384,26 @@ def _secret_scan_candidates(base: Any, glob: str | None = None) -> list[Any]:
     return candidates
 
 
+def _is_placeholder_secret_match(kind: str, text: str) -> bool:
+    if kind != "generic_assignment":
+        return False
+    lowered = text.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "${",
+            "dev-",
+            "dummy",
+            "example",
+            "fixture",
+            "ci-local-shell-mcp",
+            "recent-token",
+            "stale-token",
+            "lsmcp_wk_",
+        )
+    )
+
+
 def _secret_scan_sync(cwd: str = ".", glob: str | None = None, max_results: int = 200) -> dict:
     import re
 
@@ -406,6 +426,8 @@ def _secret_scan_sync(cwd: str = ".", glob: str | None = None, max_results: int 
         text = data.get("content") or ""
         for name, pattern in SECRET_PATTERNS.items():
             for match in re.finditer(pattern, text):
+                if _is_placeholder_secret_match(name, match.group(0)):
+                    continue
                 line = text.count("\n", 0, match.start()) + 1
                 findings.append({"type": name, "path": relative_display(path), "line": line})
                 if len(findings) >= max_results:

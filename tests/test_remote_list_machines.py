@@ -10,8 +10,8 @@ def test_list_machines_reports_counts_and_details(tmp_path, monkeypatch):
     now = 1_000_000.0
     monkeypatch.setattr("local_shell_mcp.remote._utc", lambda: now)
 
-    recent = RemoteWorker(name="recent-worker", token="recent-token", last_seen=now - 5)
-    stale = RemoteWorker(name="stale-worker", token="stale-token", last_seen=now - 500)
+    recent = RemoteWorker(name="recent-worker", token="recent", last_seen=now - 5)
+    stale = RemoteWorker(name="stale-worker", token="stale", last_seen=now - 500)
     manager.workers = {recent.name: recent, stale.name: stale}
     manager.tokens = {recent.token: recent.name, stale.token: stale.name}
     recent.queue.put_nowait({"id": "job-1"})
