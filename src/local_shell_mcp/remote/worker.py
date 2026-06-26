@@ -194,6 +194,33 @@ def _worker_state_dir() -> Path:
     return Path.home() / ".local" / "state" / "local-shell-mcp-worker"
 
 
+def _normalized_env_path(path: str) -> str:
+    """Normalize an environment path without requiring the path to exist."""
+    expanded = os.path.expandvars(os.path.expanduser(path))
+    return os.path.abspath(expanded)
+
+
+def _env_is_absent_or_default(name: str, default: str) -> bool:
+    """Return whether a worker env path is unset or still the package default."""
+    value = os.getenv(name)
+    return not value or _normalized_env_path(value) == default
+
+
+def _configure_worker_runtime_env(workdir: str) -> None:
+    """Configure worker-local runtime paths before loading normal settings."""
+    if _env_is_absent_or_default(
+        "LOCAL_SHELL_MCP_WORKSPACE_ROOT", "/workspace"
+    ):
+        os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] = workdir
+    if _env_is_absent_or_default(
+        "LOCAL_SHELL_MCP_STATE_DIR", "/workspace/.local-shell-mcp"
+    ):
+        os.environ["LOCAL_SHELL_MCP_STATE_DIR"] = str(
+            _worker_state_dir() / "runtime"
+        )
+    os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] = "true"
+
+
 def _worker_identity_path() -> Path:
     """Return the JSON identity file path for this worker process."""
     return _worker_state_dir() / REMOTE_WORKER_IDENTITY_FILE_NAME
@@ -308,8 +335,7 @@ async def run_worker(
 ) -> None:
     """Register with a server, poll for jobs, execute tools locally, and submit results until stopped."""
     workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
-    os.environ.setdefault("LOCAL_SHELL_MCP_WORKSPACE_ROOT", workdir)
-    os.environ.setdefault("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "true")
+    _configure_worker_runtime_env(workdir)
     from ..config.settings import clear_settings_cache
 
     clear_settings_cache()

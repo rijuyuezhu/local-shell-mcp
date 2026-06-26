@@ -1,4 +1,5 @@
 import builtins
+import os
 import subprocess
 import sys
 import urllib.error
@@ -255,6 +256,47 @@ async def test_worker_post_json_forever_retries_until_success(
         "Status: poll failed: temporary failure 1. Retrying in 1s..."
         in capsys.readouterr().err
     )
+
+
+def test_worker_runtime_env_replaces_default_workspace_paths(
+    tmp_path, monkeypatch
+):
+    import local_shell_mcp.remote.worker as worker
+
+    workdir = tmp_path / "remote-workdir"
+    worker_state = tmp_path / "worker-state"
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", "/workspace")
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_STATE_DIR", "/workspace/.local-shell-mcp"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(worker_state))
+
+    worker._configure_worker_runtime_env(str(workdir))
+
+    assert os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] == str(workdir)
+    assert os.environ["LOCAL_SHELL_MCP_STATE_DIR"] == str(
+        worker_state / "runtime"
+    )
+    assert os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] == "true"
+
+
+def test_worker_runtime_env_preserves_explicit_custom_paths(
+    tmp_path, monkeypatch
+):
+    import local_shell_mcp.remote.worker as worker
+
+    custom_workspace = tmp_path / "custom-workspace"
+    custom_state = tmp_path / "custom-state"
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(custom_workspace))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(custom_state))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
+
+    worker._configure_worker_runtime_env(str(tmp_path / "remote-workdir"))
+
+    assert os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] == str(custom_workspace)
+    assert os.environ["LOCAL_SHELL_MCP_STATE_DIR"] == str(custom_state)
+    assert os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] == "true"
 
 
 def test_worker_identity_round_trips_and_filters_by_server_name(
