@@ -1,11 +1,11 @@
 import pytest
 
-from local_shell_mcp.settings import get_settings
 from local_shell_mcp.remote import (
     REMOTE_WORKER_TOOL_NAMES,
     execute_worker_tool,
     worker_capabilities,
 )
+from local_shell_mcp.settings import get_settings
 
 
 @pytest.mark.asyncio

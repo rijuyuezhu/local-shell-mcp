@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shlex
+from contextlib import suppress
 
 from .fs_ops import missing_path_context, resolve_path
 from .settings import get_settings
-from .shell_ops import run_shell
 
 
 async def grep(query: str, cwd: str = ".", glob: str | None = None, regex: bool = True, case_sensitive: bool = True, max_results: int | None = None) -> dict:
     settings = get_settings()
     max_results = max(1, min(max_results or settings.max_grep_results, settings.max_grep_results))
+    base = resolve_path(cwd, must_exist=True)
     args = [settings.rg_bin, "--json", "--line-number", "--column"]
     if not regex:
         args.append("--fixed-strings")
@@ -20,48 +20,74 @@ async def grep(query: str, cwd: str = ".", glob: str | None = None, regex: bool 
     if glob:
         args.extend(["--glob", glob])
     args.extend(["--", query])
-    rg_cmd = " ".join(shlex.quote(x) for x in args)
-    filter_code = (
-        "import sys\n"
-        "limit=int(sys.argv[1])\n"
-        "count=0\n"
-        "for line in sys.stdin:\n"
-        "    if '\"type\":\"match\"' not in line:\n"
-        "        continue\n"
-        "    sys.stdout.write(line)\n"
-        "    count += 1\n"
-        "    if count >= limit:\n"
-        "        break\n"
+
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        cwd=str(base),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    cmd = f"{rg_cmd} | {shlex.quote(settings.python_bin)} -c {shlex.quote(filter_code)} {max_results}"
-    result = await run_shell(cmd, cwd=cwd, timeout_s=60, max_output_bytes=1_000_000)
     matches = []
-    for line in result.stdout.splitlines():
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if obj.get("type") != "match":
-            continue
-        data = obj.get("data", {})
-        submatches = data.get("submatches") or [{}]
-        first = submatches[0]
-        matches.append(
-            {
-                "path": data.get("path", {}).get("text"),
-                "line": data.get("line_number"),
-                "column": first.get("start") + 1 if first.get("start") is not None else None,
-                "text": data.get("lines", {}).get("text", "").rstrip("\n"),
-            }
-        )
-        if len(matches) >= max_results:
-            break
+    stderr_parts: list[bytes] = []
+    stopped_early = False
+    timed_out = False
+
+    async def read_stderr() -> None:
+        if proc.stderr is None:
+            return
+        stderr_parts.append(await proc.stderr.read(settings.max_output_bytes + 1))
+
+    stderr_task = asyncio.create_task(read_stderr())
+    try:
+        if proc.stdout is not None:
+            while True:
+                line = await asyncio.wait_for(proc.stdout.readline(), timeout=60)
+                if not line:
+                    break
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") != "match":
+                    continue
+                data = obj.get("data", {})
+                submatches = data.get("submatches") or [{}]
+                first = submatches[0]
+                matches.append(
+                    {
+                        "path": data.get("path", {}).get("text"),
+                        "line": data.get("line_number"),
+                        "column": first.get("start") + 1 if first.get("start") is not None else None,
+                        "text": data.get("lines", {}).get("text", "").rstrip("\n"),
+                    }
+                )
+                if len(matches) >= max_results:
+                    stopped_early = True
+                    proc.terminate()
+                    break
+        with suppress(TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=2 if stopped_early else 60)
+    except TimeoutError:
+        timed_out = True
+        proc.terminate()
+        with suppress(Exception):
+            await proc.wait()
+    finally:
+        if not stderr_task.done():
+            stderr_task.cancel()
+        with suppress(Exception):
+            await stderr_task
+
+    stderr_bytes = b"".join(stderr_parts)
+    stderr_truncated = len(stderr_bytes) > settings.max_output_bytes
+    if stderr_truncated:
+        stderr_bytes = stderr_bytes[: settings.max_output_bytes]
     return {
-        "ok": result.exit_code in {0, 1},
+        "ok": (not timed_out) and (stopped_early or proc.returncode in {0, 1}),
         "matches": matches,
         "count": len(matches),
-        "truncated": len(matches) >= max_results or result.truncated,
-        "stderr": result.stderr,
+        "truncated": stopped_early or stderr_truncated,
+        "stderr": stderr_bytes.decode(errors="replace"),
     }
 
 
