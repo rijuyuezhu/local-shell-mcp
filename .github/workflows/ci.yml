@@ -110,6 +110,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ripgrep tmux
 
+      - name: Remove unused Homebrew taps
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
+        run: |
+          set -euxo pipefail
+          brew untap aws/tap || true
+          brew untap azure/bicep || true
+
       - name: Install macOS runtime tools
         if: runner.os == 'macOS'
         env:
@@ -200,6 +209,15 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ripgrep tmux
+
+      - name: Remove unused Homebrew taps
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
+        run: |
+          set -euxo pipefail
+          brew untap aws/tap || true
+          brew untap azure/bicep || true
 
       - name: Install macOS runtime tools
         if: runner.os == 'macOS'
