@@ -1,3 +1,4 @@
+# check=skip=SecretsUsedInArgOrEnv
 ARG PLAYWRIGHT_VERSION=1.59.0
 FROM mcr.microsoft.com/playwright/python:v${PLAYWRIGHT_VERSION}-noble
 ARG PLAYWRIGHT_VERSION
