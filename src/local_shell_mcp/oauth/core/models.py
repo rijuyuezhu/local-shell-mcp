@@ -1,8 +1,4 @@
-"""OAuth data models and in-memory state stores.
-
-Security model: see ``docs/security.md#oauth-security``. Client registrations
-and authorization codes are intentionally process-local; restart drops them.
-"""
+"""OAuth data models and in-memory state stores."""
 
 import time
 from dataclasses import dataclass, field

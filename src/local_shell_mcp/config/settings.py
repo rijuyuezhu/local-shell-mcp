@@ -60,10 +60,10 @@ class Settings(BaseSettings):
     # Authentication and OAuth.
     auth_mode: Literal["none", "oauth"] = "oauth"
     """Authentication mode. Do not expose public services with none."""
-    auth_bypass_localhost: bool = True
-    """Allow localhost requests without bearer authentication."""
+    auth_bypass_localhost: bool = False
+    """Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through proxies or shared hosts."""
     base_url: str | None = None
-    """Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, request-aware routes derive it from forwarded/Host headers, and non-request generated links fall back to the bind host and port."""
+    """Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, URLs fall back to the bind host and port; configure this before exposing the service behind a proxy or public hostname."""
     oauth_issuer: str | None = None
     """Override URL for OAuth issuer metadata; usually derived from base_url."""
     oauth_resource: str | None = None
@@ -74,6 +74,18 @@ class Settings(BaseSettings):
     """Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed."""
     oauth_code_ttl_s: int = 300
     """OAuth authorization-code lifetime in seconds. The authorization must be done within this time."""
+    oauth_client_ttl_s: int = 86400
+    """Dynamic OAuth client registration lifetime in seconds. Set to 0 to keep clients until process exit or capacity pruning."""
+    oauth_max_dynamic_clients: int = 256
+    """Maximum dynamic OAuth clients kept in memory. Set to 0 to disable this capacity limit."""
+    oauth_registration_max_body_bytes: int = 16384
+    """Maximum JSON body size accepted by dynamic OAuth client registration."""
+    oauth_registration_max_redirect_uris: int = 10
+    """Maximum redirect URIs accepted in one dynamic OAuth client registration."""
+    oauth_registration_max_redirect_uri_chars: int = 2048
+    """Maximum length of each dynamic OAuth client redirect URI."""
+    oauth_registration_max_client_name_chars: int = 200
+    """Maximum length of a dynamic OAuth client display name."""
 
     # Safety and resource limits.
     allow_full_control: bool = False

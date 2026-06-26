@@ -1,6 +1,5 @@
 """Shared public HTTP route assembly for REST and MCP transports."""
 
-from starlette.applications import Starlette
 from starlette.routing import Route
 
 from ...config.settings import Settings
@@ -19,17 +18,3 @@ def public_http_routes(
         ),
         *download_routes(),
     ]
-
-
-def install_public_http_routes(app: Starlette, settings: Settings) -> None:
-    """Install shared public routes on the REST app."""
-    for route in public_http_routes(
-        settings, readyz_include_workspace_root=True
-    ):
-        app.add_route(
-            route.path,
-            route.endpoint,
-            methods=sorted(route.methods or []),
-            name=route.name,
-            include_in_schema=route.include_in_schema,
-        )

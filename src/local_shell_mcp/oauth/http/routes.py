@@ -1,14 +1,6 @@
-"""ASGI route assembly for OAuth-protected HTTP mode.
+"""Public OAuth route helpers for HTTP-capable transports."""
 
-Security model: see ``docs/security.md#oauth-security``. Route ordering keeps
-OAuth discovery/public bootstrap ahead of the mounted protected MCP app.
-"""
-
-from collections.abc import AsyncGenerator, Sequence
-from contextlib import asynccontextmanager
-
-from starlette.applications import Starlette
-from starlette.routing import BaseRoute, Mount, Route
+from starlette.routing import Route
 
 from .authorization import authorize_get, authorize_post
 from .metadata import protected_resource_endpoint, server_metadata_endpoint
@@ -16,20 +8,9 @@ from .registration import register_client
 from .tokens import token_endpoint
 
 
-def wrap_http_app(
-    inner_app: Starlette, *, extra_routes: Sequence[BaseRoute] = ()
-) -> Starlette:
-    """Wrap an inner ASGI app with public, OAuth, and fallback routes."""
-
-    @asynccontextmanager
-    async def lifespan(app: Starlette) -> AsyncGenerator[None]:
-        async with inner_app.router.lifespan_context(inner_app):
-            yield
-
-    routes = [
-        *extra_routes,
-        # Docs compliance: protected-resource metadata and AS metadata are
-        # public discovery routes; AuthMiddleware protects the mounted app.
+def oauth_public_routes() -> list[Route]:
+    """Return public OAuth discovery, registration, authorization, and token routes."""
+    return [
         Route(
             "/.well-known/oauth-protected-resource",
             protected_resource_endpoint,
@@ -54,6 +35,4 @@ def wrap_http_app(
         Route("/oauth/authorize", authorize_get, methods=["GET"]),
         Route("/oauth/authorize", authorize_post, methods=["POST"]),
         Route("/oauth/token", token_endpoint, methods=["POST"]),
-        Mount("/", app=inner_app),
     ]
-    return Starlette(routes=routes, lifespan=lifespan)

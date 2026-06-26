@@ -1,5 +1,6 @@
 """Tokenized file download link state and policy operations."""
 
+import hashlib
 import json
 import os
 import secrets
@@ -23,6 +24,11 @@ from .utils.path import relative_display, resolve_path
 DOWNLOAD_PREFIX = "/download"
 DOWNLOAD_STORE_VERSION = 1
 STORE_LOCK = threading.RLock()
+
+
+def download_token_fingerprint(token: str) -> str:
+    """Return a short non-secret fingerprint for a download token."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
 
 
 def now_s() -> float:
@@ -197,7 +203,7 @@ def create_file_link_execute(
     audit(
         "download_link_created",
         path=link["display_path"],
-        token=token,
+        token_sha256=download_token_fingerprint(token),
         expires_at=link["expires_at"],
     )
     return CreateFileLinkOutput.model_validate(
@@ -247,7 +253,7 @@ def revoke_file_link_execute(
         audit(
             "download_link_revoked",
             path=removed.get("display_path"),
-            token=token,
+            token_sha256=download_token_fingerprint(token),
         )
     return RevokeFileLinkOutput(revoked=removed is not None, token=token)
 

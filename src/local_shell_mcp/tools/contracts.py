@@ -32,14 +32,8 @@ class McpToolContext:
 
     settings: Settings
     """Runtime settings object shared by all tool registries."""
-    read_only_tool: ToolAnnotations
+    read_only_tool_annotations: ToolAnnotations
     """MCP annotation applied to read-only tools."""
-    connector_compatible_security_meta: dict[str, Any]
-    """Client-facing securitySchemes metadata for connector-compatible search/fetch tools."""
-    oauth_security_meta: dict[str, Any]
-    """Client-facing securitySchemes metadata for OAuth-protected MCP tools."""
-    scoped_oauth_security_meta: Callable[[tuple[str, ...]], dict[str, Any]]
-    """Build client-facing OAuth metadata for tools that advertise narrower scopes."""
 
 
 class ToolRegistry:

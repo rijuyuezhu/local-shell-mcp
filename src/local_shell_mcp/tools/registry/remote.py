@@ -66,7 +66,7 @@ Do not use remote_admin for normal remote code work. For that, create a remote a
     http_method="POST",
     http_path="/tools/remote_admin",
     description=_remote_admin_description,
-    mcp_scopes=("remote:use",),
+    oauth_scopes=("remote:use",),
 )
 async def remote_admin(
     action: RemoteAdminActionArg,

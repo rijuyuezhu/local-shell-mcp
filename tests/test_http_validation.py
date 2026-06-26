@@ -41,3 +41,47 @@ def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
     assert response.status_code == 400
     assert response.json()["error"] == "validation_error"
     assert "timeout_s must be <= 60 seconds" in response.json()["message"]
+
+
+def test_http_app_exposes_oauth_public_routes(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "oauth")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://example.com")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+
+    server_metadata = client.get("/.well-known/oauth-authorization-server")
+    assert server_metadata.status_code == 200
+    assert (
+        server_metadata.json()["token_endpoint"]
+        == "https://example.com/oauth/token"
+    )
+
+    resource_metadata = client.get("/.well-known/oauth-protected-resource/mcp")
+    assert resource_metadata.status_code == 200
+    assert resource_metadata.json()["resource"] == "https://example.com/mcp"
+
+
+def test_http_localhost_bypass_is_opt_in(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "oauth")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://example.com")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    protected = TestClient(build_http_app(), client=("127.0.0.1", 50000)).post(
+        "/tools/read", json={}
+    )
+    assert protected.status_code == 401
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST", "true")
+    clear_settings_cache()
+    bypassed = TestClient(build_http_app(), client=("127.0.0.1", 50000)).post(
+        "/tools/read", json={}
+    )
+    assert bypassed.status_code == 400
+    assert bypassed.json()["error"] == "validation_error"

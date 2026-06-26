@@ -66,7 +66,7 @@ def _hashline_edit_description(context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/list_files",
     description=_list_files_description,
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def list_files(
     session_id: SessionIdArg,
@@ -84,7 +84,7 @@ async def list_files(
     http_method="POST",
     http_path="/tools/write_file",
     description=_write_file_description,
-    mcp_scopes=("shell:read", "shell:write"),
+    oauth_scopes=("shell:read", "shell:write"),
 )
 async def write_file(
     session_id: SessionIdArg,
@@ -102,7 +102,7 @@ async def write_file(
     http_method="POST",
     http_path="/tools/edit_lines",
     description=_edit_lines_description,
-    mcp_scopes=("shell:read", "shell:write"),
+    oauth_scopes=("shell:read", "shell:write"),
 )
 async def edit_lines(
     path: FilePathArg,
@@ -127,7 +127,7 @@ async def edit_lines(
     http_method="POST",
     http_path="/tools/hashline_edit",
     description=_hashline_edit_description,
-    mcp_scopes=("shell:read", "shell:write"),
+    oauth_scopes=("shell:read", "shell:write"),
 )
 async def hashline_edit(
     session_id: SessionIdArg,
@@ -140,7 +140,7 @@ async def hashline_edit(
 @local_tool(
     http_method="POST",
     http_path="/tools/delete",
-    mcp_scopes=("shell:read", "shell:write"),
+    oauth_scopes=("shell:read", "shell:write"),
 )
 async def delete_file_or_dir(
     session_id: SessionIdArg, path: FilePathArg, recursive: RecursiveArg = False

@@ -11,9 +11,28 @@ from starlette.responses import Response
 
 from ...ops.shell import tool_timeout_s
 from ...tools.discovery import discover_tool_registries
-from ...tools.local_invocations import call_local_tool
+from .invocations import call_http_tool
 
 type ToolRouteHandler = Callable[..., Awaitable[Any]]
+
+
+def _disable_response_cache(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+
+def install_tool_cache_control_middleware(app: FastAPI) -> None:
+    """Install no-store headers for GET REST tool responses."""
+
+    @app.middleware("http")
+    async def tool_cache_control_middleware(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        response = await call_next(request)
+        if request.method == "GET" and request.url.path.startswith("/tools/"):
+            _disable_response_cache(response)
+        return response
 
 
 def install_tools_timeout_middleware(app: FastAPI) -> None:
@@ -61,14 +80,13 @@ def register_http_tool_routes(app: FastAPI) -> None:
 def _make_get_tool_handler(tool_name: str) -> ToolRouteHandler:
     async def get_handler(request: Request) -> Any:
         args = dict(request.query_params)
-        args.pop("tool_name", None)
-        return await call_local_tool(tool_name, args or None)
+        return await call_http_tool(tool_name, args or None)
 
     return get_handler
 
 
 def _make_post_tool_handler(tool_name: str) -> ToolRouteHandler:
     async def post_handler(body: dict[str, Any] | None = None) -> Any:
-        return await call_local_tool(tool_name, body)
+        return await call_http_tool(tool_name, body)
 
     return post_handler

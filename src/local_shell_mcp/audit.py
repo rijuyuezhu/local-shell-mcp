@@ -1,12 +1,36 @@
 """Append structured audit events to a bounded JSONL log in the server state directory."""
 
 import json
+import re
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
+from .agent_bridge.redaction import redact_mapping
 from .config.settings import get_settings
+
+DOWNLOAD_URL_TOKEN_RE = re.compile(
+    r"(?P<prefix>(?:https?://[^\s/?#]+)?/download/)[A-Za-z0-9_-]+"
+)
+
+
+def _redact_download_urls(value: Any) -> Any:
+    """Mask tokenized download URL path segments in audit payloads."""
+    if isinstance(value, dict):
+        return {
+            key: _redact_download_urls(child) for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_download_urls(item) for item in value]
+    if isinstance(value, str):
+        return DOWNLOAD_URL_TOKEN_RE.sub(r"\g<prefix><redacted>", value)
+    return value
+
+
+def _redact_audit_value(value: Any) -> Any:
+    """Apply key-based and download URL redaction before writing audit logs."""
+    return _redact_download_urls(redact_mapping(value))
 
 
 def _trim_audit_log(path: Path, max_bytes: int) -> None:
@@ -54,13 +78,13 @@ def audit_tool_call_start(
     tool: str,
     input: Any,
 ) -> None:
-    """Record the full input and caller context for one tool call."""
+    """Record the redacted input and caller context for one tool call."""
     audit(
         "tool_call_start",
         call_id=call_id,
         transport=transport,
         tool=tool,
-        input=input,
+        input=_redact_audit_value(input),
     )
 
 
@@ -74,7 +98,7 @@ def audit_tool_call_end(
     output: Any = None,
     error: dict[str, Any] | None = None,
 ) -> None:
-    """Record the full output or exception for one tool call."""
+    """Record the redacted output or exception for one tool call."""
     fields: dict[str, Any] = {
         "call_id": call_id,
         "transport": transport,
@@ -83,7 +107,7 @@ def audit_tool_call_end(
         "duration_ms": duration_ms,
     }
     if error is not None:
-        fields["error"] = error
+        fields["error"] = _redact_audit_value(error)
     else:
-        fields["output"] = output
+        fields["output"] = _redact_audit_value(output)
     audit("tool_call_end", **fields)

@@ -1,11 +1,13 @@
 from typing import Any, cast
 
 from starlette.applications import Starlette
+from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
 import local_shell_mcp.server.mcp.app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
+from local_shell_mcp.oauth.http.middleware import AuthMiddleware
 
 
 async def _ok(request):
@@ -101,3 +103,37 @@ def test_oauth_challenge_metadata_url_matches_rfc9728_path_resource():
     wrong_metadata = client.get("/.well-known/oauth-protected-resource/other")
 
     assert wrong_metadata.status_code == 404
+
+
+async def _public_marker(request):
+    return PlainTextResponse("public")
+
+
+async def _private_marker(request):
+    return PlainTextResponse("private")
+
+
+def test_auth_middleware_uses_configured_public_route_matchers():
+    configure_settings(
+        Settings(
+            mode="mcp",
+            auth_mode="oauth",
+            remote_enabled=False,
+            base_url="https://local-shell-mcp.example.com",
+        )
+    )
+    public_route = Route("/extra/{name}", _public_marker, methods=["GET"])
+    app = Starlette(
+        routes=[
+            public_route,
+            Route("/private", _private_marker, methods=["GET"]),
+        ]
+    )
+    app.add_middleware(AuthMiddleware, public_routes=[public_route])
+    client = TestClient(app)
+
+    assert client.get("/extra/value").status_code == 200
+    assert client.get("/extra/value/nested").status_code == 401
+    protected_response = client.get("/private")
+    assert protected_response.status_code == 401
+    assert "resource_metadata" in protected_response.headers["www-authenticate"]

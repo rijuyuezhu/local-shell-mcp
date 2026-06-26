@@ -35,7 +35,6 @@ from ...schemas.result_models.shell import (
 )
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
-from ..purpose import audit_tool_purpose
 
 
 class ShellToolRegistry(DeclarativeToolRegistry):
@@ -59,7 +58,7 @@ Default mode is bounded and returns captured stdout/stderr. Use run_python_code 
     http_method="POST",
     http_path="/tools/bash",
     description=_bash_description,
-    mcp_scopes=("shell:read", "shell:execute"),
+    oauth_scopes=("shell:read", "shell:execute"),
 )
 async def bash(
     session_id: SessionIdArg,
@@ -74,7 +73,6 @@ async def bash(
     purpose: ToolPurposeArg = None,
 ) -> ShellExecutionOutput:
     """Run a shell command via bounded, job, or PTY mode."""
-    audit_tool_purpose("bash", purpose)
     return await bash_execute(
         session_id,
         command,
@@ -99,7 +97,7 @@ cwd defaults to the session workdir; any cwd override resolves inside that sessi
     http_method="POST",
     http_path="/tools/run_python_code",
     description=_run_python_code_description,
-    mcp_scopes=("shell:read", "shell:execute"),
+    oauth_scopes=("shell:read", "shell:execute"),
 )
 async def run_python_code(
     session_id: SessionIdArg,
@@ -114,7 +112,6 @@ async def run_python_code(
     purpose: ToolPurposeArg = None,
 ) -> RunPythonCodeOutput:
     """Write Python code to a temporary file and execute it through shell modes."""
-    audit_tool_purpose("run_python_code", purpose)
     return await run_python_code_execute(
         session_id,
         code,
@@ -131,7 +128,7 @@ async def run_python_code(
 @local_tool(
     http_method="POST",
     http_path="/tools/send_persistent_shell_input",
-    mcp_scopes=("shell:read", "shell:execute"),
+    oauth_scopes=("shell:read", "shell:execute"),
 )
 async def send_persistent_shell_input(
     shell_id: ShellIdArg, input_text: InputTextArg, enter: EnterArg = True
@@ -145,7 +142,7 @@ async def send_persistent_shell_input(
 @local_tool(
     http_method="POST",
     http_path="/tools/read_persistent_shell_output",
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def read_persistent_shell_output(
     shell_id: ShellIdArg, lines: LinesArg = 200
@@ -157,7 +154,7 @@ async def read_persistent_shell_output(
 @local_tool(
     http_method="POST",
     http_path="/tools/kill_persistent_shell",
-    mcp_scopes=("shell:read", "shell:execute"),
+    oauth_scopes=("shell:read", "shell:execute"),
 )
 async def kill_persistent_shell(
     shell_id: ShellIdArg,
@@ -169,7 +166,7 @@ async def kill_persistent_shell(
 @local_tool(
     http_method="GET",
     http_path="/tools/list_persistent_shells",
-    mcp_scopes=("shell:read",),
+    oauth_scopes=("shell:read",),
 )
 async def list_persistent_shells() -> ListPersistentShellsOutput:
     """List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values. Async bash jobs are not listed here; use job(session_id, list_jobs=true) to inspect bash(async_=true) background jobs."""

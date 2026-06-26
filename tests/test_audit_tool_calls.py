@@ -7,7 +7,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
-from tests.helpers import mcp_structured, mcp_text
+from tests.helpers import mcp_text
 
 
 def _audit_records(path):
@@ -127,36 +127,3 @@ async def test_mcp_tool_structured_errors_are_audited_with_input_and_output(
     assert ends[0]["ok"] is False
     assert ends[0]["error"]["type"] == "FileNotFoundError"
     assert "missing.txt" in ends[0]["error"]["message"]
-
-
-@pytest.mark.asyncio
-async def test_shell_tool_purpose_metadata_is_audited(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    clear_settings_cache()
-
-    mcp = build_mcp()
-    session = mcp_structured(
-        await mcp.call_tool("session_start", {"workdir": "."})
-    )
-    await mcp.call_tool(
-        "bash",
-        {
-            "session_id": session["session_id"],
-            "command": "echo ok",
-            "purpose": "verify workspace state",
-        },
-    )
-
-    records = _audit_records(get_settings().audit_log_path)
-    purpose_records = [
-        record
-        for record in records
-        if record.get("event") == "tool_call_purpose"
-    ]
-
-    assert len(purpose_records) == 1
-    assert purpose_records[0]["tool"] == "bash"
-    assert purpose_records[0]["purpose"] == "verify workspace state"
-    assert "explanation" not in purpose_records[0]

@@ -1,0 +1,427 @@
+"""Authlib-backed OAuth service operations."""
+
+import secrets
+import time
+from dataclasses import dataclass
+from typing import NoReturn
+from urllib.parse import urlparse
+
+from authlib.oauth2.rfc6749.errors import (
+    InvalidGrantError,
+    InvalidRequestError,
+    OAuth2Error,
+    UnsupportedGrantTypeError,
+)
+from authlib.oauth2.rfc7636.challenge import (
+    CODE_CHALLENGE_PATTERN,
+    CODE_VERIFIER_PATTERN,
+    compare_plain_code_challenge,
+    compare_s256_code_challenge,
+)
+
+from ...audit import audit
+from ...config.settings import get_settings
+from ..protocol.adapters import LocalOAuthClient
+from ..protocol.token_codec import issue_access_token
+from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
+from .requests import (
+    AuthorizationRequestInput,
+    RegistrationRequest,
+    TokenRequestInput,
+)
+from .scopes import default_scope
+from .urls import issuer_url, normalize_resource, resource_url
+
+LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
+BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
+CLIENT_ID_GENERATION_ATTEMPTS = 8
+REGISTRATION_REDIRECT_ERROR = (
+    "redirect_uris must be https, loopback http, or custom private-use URIs"
+)
+
+
+@dataclass(frozen=True)
+class AuthorizationRequest:
+    """Validated authorization-code request data."""
+
+    client: LocalOAuthClient
+    """Registered client adapter."""
+
+    client_name: str
+    """Client display name."""
+
+    input: AuthorizationRequestInput
+    """Validated authorization input."""
+
+    scope: str
+    """Granted scope string."""
+
+    resource: str
+    """Bound resource identifier."""
+
+    @property
+    def client_id(self) -> str:
+        """Return the validated client identifier."""
+        return self.client.get_client_id()
+
+    @property
+    def redirect_uri(self) -> str:
+        """Return the validated redirect URI."""
+        if self.input.redirect_uri is None:
+            raise RuntimeError(
+                "Validated authorization request is missing redirect_uri"
+            )
+        return self.input.redirect_uri
+
+    @property
+    def state(self) -> str | None:
+        """Return optional client state."""
+        return self.input.state
+
+
+@dataclass(frozen=True)
+class AuthorizationFormContext:
+    """Display data consumed by the local authorization approval form."""
+
+    params: dict[str, str]
+    """Hidden form parameters."""
+
+    client_id: str
+    """Client identifier."""
+
+    client_name: str
+    """Client display name."""
+
+    redirect_uri: str
+    """Redirect URI shown to the user."""
+
+    resource: str
+    """Requested resource."""
+
+    scope: str
+    """Requested scope string."""
+
+
+@dataclass(frozen=True)
+class AuthorizationResponse:
+    """Authorization-code response values for the redirect adapter."""
+
+    redirect_uri: str
+    """Redirect URI for the authorization response."""
+
+    query: dict[str, str]
+    """Query parameters for the redirect."""
+
+    code: AuthCode
+    """Stored authorization code."""
+
+
+@dataclass(frozen=True)
+class TokenResponse:
+    """Token endpoint response values after authorization-code exchange."""
+
+    access_token: str
+    """Signed bearer token."""
+
+    token_type: str
+    """OAuth token type."""
+
+    scope: str
+    """Granted scope string."""
+
+    expires_in: int | None
+    """Token lifetime in seconds, if configured."""
+
+
+def oauth_error_message(exc: OAuth2Error) -> str:
+    """Return a user-facing message for local approval UI errors."""
+    return str(exc.description or exc.error or "invalid_request")
+
+
+def authorization_form_context(
+    request_input: AuthorizationRequestInput,
+    auth_request: AuthorizationRequest | None = None,
+) -> AuthorizationFormContext:
+    """Return local approval form display data without exposing stores to HTTP routes."""
+    display_input = auth_request.input if auth_request else request_input
+    form_params = display_input.to_oauth_params()
+    client_id = (
+        auth_request.client_id
+        if auth_request
+        else request_input.client_id or ""
+    )
+    client_name = auth_request.client_name if auth_request else "Unknown client"
+    if auth_request is None and request_input.client_id:
+        client_record = _CLIENTS.get(request_input.client_id)
+        if client_record and client_record.client_name:
+            client_name = client_record.client_name
+    return AuthorizationFormContext(
+        params=form_params,
+        client_id=client_id,
+        client_name=client_name,
+        redirect_uri=display_input.redirect_uri or "",
+        resource=display_input.resource or resource_url(),
+        scope=(auth_request.scope if auth_request else display_input.scope)
+        or default_scope(),
+    )
+
+
+def _invalid_authorization_request(description: str) -> InvalidRequestError:
+    """Create an Authlib invalid_request error with legacy UI text."""
+    return InvalidRequestError(description=description)
+
+
+def _required_param(params: dict[str, str], key: str) -> str:
+    """Return a required authorization parameter or raise an OAuth error."""
+    value = params.get(key)
+    if value:
+        return value
+    _raise_invalid(f"Missing {key}")
+
+
+def _raise_invalid(description: str) -> NoReturn:
+    """Raise an Authlib invalid_request error while satisfying type checkers."""
+    raise _invalid_authorization_request(description)
+
+
+def _is_private_use_redirect_scheme(parsed_scheme: str, netloc: str) -> bool:
+    """Return whether a non-HTTP redirect scheme is private-use style."""
+    return "." in parsed_scheme and not netloc
+
+
+def _is_allowed_redirect_uri(uri: str) -> bool:
+    """Accept HTTPS, loopback HTTP, and custom private-use redirect URIs."""
+    parsed = urlparse(uri)
+    scheme = parsed.scheme.lower()
+    if not scheme or scheme in BLOCKED_REDIRECT_SCHEMES:
+        return False
+    if parsed.fragment:
+        return False
+    if scheme == "https":
+        return bool(parsed.netloc)
+    if scheme == "http":
+        return parsed.hostname in LOOPBACK_REDIRECT_HOSTS
+    return _is_private_use_redirect_scheme(scheme, parsed.netloc)
+
+
+def _new_client_id() -> str:
+    """Generate a dynamic client id without overwriting an existing client."""
+    for _ in range(CLIENT_ID_GENERATION_ATTEMPTS):
+        client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
+        if client_id not in _CLIENTS:
+            return client_id
+    raise InvalidRequestError(description="Unable to allocate unique client_id")
+
+
+def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
+    """Return whether a dynamic client registration is past its configured TTL."""
+    return ttl_s > 0 and now - client.created_at > ttl_s
+
+
+def _prune_clients(*, now: int | None = None) -> None:
+    """Remove expired dynamic client registrations from the in-memory store."""
+    settings = get_settings()
+    if settings.oauth_client_ttl_s <= 0:
+        return
+    current_time = int(time.time()) if now is None else now
+    for client_id, client in list(_CLIENTS.items()):
+        if _client_expired(
+            client, now=current_time, ttl_s=settings.oauth_client_ttl_s
+        ):
+            _CLIENTS.pop(client_id, None)
+
+
+def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
+    """Validate dynamic client registration policy and persist a local client."""
+    if not request.redirect_uris:
+        raise InvalidRequestError(
+            description="redirect_uris must be a non-empty list"
+        )
+    redirect_uris = list(request.redirect_uris)
+    if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
+        raise InvalidRequestError(description=REGISTRATION_REDIRECT_ERROR)
+
+    _prune_clients()
+    settings = get_settings()
+    max_clients = settings.oauth_max_dynamic_clients
+    if max_clients > 0 and len(_CLIENTS) >= max_clients:
+        raise InvalidRequestError(
+            description="Too many registered OAuth clients"
+        )
+
+    client_id = _new_client_id()
+    client = OAuthClient(
+        client_id=client_id,
+        redirect_uris=redirect_uris,
+        client_name=request.client_name,
+    )
+    _CLIENTS[client_id] = client
+    audit(
+        "oauth_client_registered",
+        client_id=client_id,
+        redirect_uris=redirect_uris,
+    )
+    return client
+
+
+def validate_authorization_request(
+    request_input: AuthorizationRequestInput,
+) -> AuthorizationRequest:
+    """Validate authorization request parameters."""
+    request_params = request_input.to_oauth_params()
+    if request_params.get("response_type") != "code":
+        _raise_invalid("Only response_type=code is supported")
+
+    client_id = _required_param(request_params, "client_id")
+    redirect_uri = _required_param(request_params, "redirect_uri")
+    resource = _required_param(request_params, "resource")
+
+    normalized_resource = normalize_resource(resource)
+    if normalized_resource != resource_url():
+        _raise_invalid("resource does not match this MCP server")
+
+    _prune_clients()
+    client_record = _CLIENTS.get(client_id)
+    if client_record is None:
+        _raise_invalid("Unknown client_id")
+    client = LocalOAuthClient(client_record)
+
+    if not client.check_response_type(request_params["response_type"]):
+        _raise_invalid("Only response_type=code is supported")
+    if not client.check_redirect_uri(redirect_uri):
+        _raise_invalid("redirect_uri is not registered for this client")
+
+    try:
+        scope = client.get_allowed_scope(request_params.get("scope"))
+    except ValueError as exc:
+        raise _invalid_authorization_request(str(exc)) from exc
+
+    challenge = request_params.get("code_challenge")
+    if not challenge:
+        _raise_invalid("Missing code_challenge")
+    if not CODE_CHALLENGE_PATTERN.match(challenge):
+        _raise_invalid("Invalid code_challenge")
+    method = request_params.get("code_challenge_method")
+    if method and method not in {"S256", "plain"}:
+        _raise_invalid("Unsupported code_challenge_method")
+
+    return AuthorizationRequest(
+        client=client,
+        client_name=client_record.client_name or "Unknown client",
+        input=request_input,
+        scope=scope,
+        resource=normalized_resource,
+    )
+
+
+def issue_authorization_response(
+    request: AuthorizationRequest,
+) -> AuthorizationResponse:
+    """Issue and store a one-time authorization code for a validated request."""
+    code = secrets.token_urlsafe(32)
+    auth_code = AuthCode(
+        code=code,
+        client_id=request.client_id,
+        redirect_uri=request.redirect_uri,
+        scope=request.scope,
+        resource=request.resource,
+        code_challenge=request.input.code_challenge,
+        code_challenge_method=request.input.code_challenge_method,
+    )
+    _CODES[code] = auth_code
+    audit(
+        "oauth_code_issued",
+        client_id=auth_code.client_id,
+        resource=auth_code.resource,
+    )
+
+    query = {"code": code, "iss": issuer_url()}
+    if request.state:
+        query["state"] = request.state
+    return AuthorizationResponse(
+        redirect_uri=request.redirect_uri,
+        query=query,
+        code=auth_code,
+    )
+
+
+def _verify_pkce(code_obj: AuthCode, verifier: str | None) -> bool:
+    """Validate PKCE using Authlib's RFC7636 challenge helpers."""
+    if not code_obj.code_challenge:
+        return verifier is None
+    if not verifier or not CODE_VERIFIER_PATTERN.match(verifier):
+        return False
+    method = code_obj.code_challenge_method or "plain"
+    if method == "S256":
+        return compare_s256_code_challenge(verifier, code_obj.code_challenge)
+    return compare_plain_code_challenge(verifier, code_obj.code_challenge)
+
+
+def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
+    """Return whether an authorization code is past its configured TTL."""
+    return now - code_obj.created_at > ttl_s
+
+
+def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
+    """Remove used or expired authorization codes from the in-memory store."""
+    settings = get_settings()
+    current_time = int(time.time()) if now is None else now
+    for code, code_obj in list(_CODES.items()):
+        if code == keep:
+            continue
+        if code_obj.used or _auth_code_expired(
+            code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
+        ):
+            _CODES.pop(code, None)
+
+
+def exchange_authorization_code(
+    request_input: TokenRequestInput,
+) -> TokenResponse:
+    """Exchange an authorization code for a bearer token."""
+    grant_type = request_input.grant_type or ""
+    if grant_type != "authorization_code":
+        raise UnsupportedGrantTypeError(grant_type=grant_type)
+
+    resource = request_input.resource or ""
+    if not resource:
+        raise InvalidRequestError(description="Missing resource")
+
+    code = request_input.code or ""
+    client_id = request_input.client_id or ""
+    redirect_uri = request_input.redirect_uri or ""
+    verifier = request_input.code_verifier
+
+    _prune_codes()
+    code_obj = _CODES.get(code)
+    if not code_obj or code_obj.used:
+        raise InvalidGrantError(description="Unknown or used code")
+
+    settings = get_settings()
+    if _auth_code_expired(
+        code_obj, now=int(time.time()), ttl_s=settings.oauth_code_ttl_s
+    ):
+        raise InvalidGrantError(description="Expired code")
+    if code_obj.client_id != client_id or code_obj.redirect_uri != redirect_uri:
+        raise InvalidGrantError(description="Client or redirect mismatch")
+    if normalize_resource(resource) != normalize_resource(code_obj.resource):
+        raise InvalidGrantError(description="Resource mismatch")
+    if not _verify_pkce(code_obj, verifier):
+        raise InvalidGrantError(description="PKCE verification failed")
+
+    code_obj.used = True
+    credential = issue_access_token(
+        client_id=client_id, scope=code_obj.scope, resource=code_obj.resource
+    )
+    audit("oauth_token_issued", client_id=client_id, resource=code_obj.resource)
+    expires_in = (
+        settings.oauth_access_token_ttl_s
+        if settings.oauth_access_token_ttl_s > 0
+        else None
+    )
+    return TokenResponse(
+        access_token=credential,
+        token_type="Bearer",
+        scope=code_obj.scope,
+        expires_in=expires_in,
+    )

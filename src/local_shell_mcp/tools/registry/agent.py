@@ -7,6 +7,7 @@ from ...agent_bridge.models import AgentCapabilityRegistry
 from ...agent_bridge.service import build_agent_registry_from_settings
 from ...agent_bridge.tools import register_agent_bridge_dynamic_tools
 from ...config.settings import Settings
+from ...oauth.core.scopes import SUPPORTED_OAUTH_SCOPES
 from ...ops.agent import (
     activate_agent_skill_execute,
     agent_config_status_execute,
@@ -30,6 +31,7 @@ from ...schemas.result_models.agent import (
     ListAgentMcpToolsOutput,
     ListAgentSkillsOutput,
 )
+from ...server.mcp.metadata import oauth_security_meta
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
 
@@ -134,14 +136,13 @@ def register_agent_bridge_dynamic_mcp(
 ) -> None:
     """Register dynamic MCP tools for this tool group."""
     settings = context.settings
-    oauth_security_meta = context.oauth_security_meta
     registry = build_agent_registry_from_settings(
         settings, AgentMcpClientManager
     )
     register_agent_bridge_dynamic_tools(
         mcp,
         registry,
-        oauth_security_meta,
+        oauth_security_meta(SUPPORTED_OAUTH_SCOPES),
         settings.agent_mcp_probe_timeout_s,
         None if settings.agent_dynamic_mcp_tools else False,
         None if settings.agent_dynamic_skill_tools else False,

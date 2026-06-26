@@ -12,4 +12,3 @@ class VersionInfoOutput(BaseModel):
     )
     python: str = Field(description="Python runtime version.")
     platform: str = Field(description="Platform descriptor for this process.")
-    executable: str = Field(description="Python executable path.")

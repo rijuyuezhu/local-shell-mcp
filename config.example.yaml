@@ -20,11 +20,12 @@ state_dir: "/workspace/.local-shell-mcp"
 # Authentication mode. Do not expose public services with none.
 # Choices: none, oauth.
 auth_mode: "oauth"
-# Allow localhost requests without bearer authentication.
-auth_bypass_localhost: true
+# Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through
+# proxies or shared hosts.
+auth_bypass_localhost: false
 # Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset,
-# request-aware routes derive it from forwarded/Host headers, and non-request generated links fall
-# back to the bind host and port.
+# URLs fall back to the bind host and port; configure this before exposing the service behind a proxy
+# or public hostname.
 base_url: null
 # Override URL for OAuth issuer metadata; usually derived from base_url.
 oauth_issuer: null
@@ -36,6 +37,19 @@ oauth_admin_pin: null
 oauth_access_token_ttl_s: 3600
 # OAuth authorization-code lifetime in seconds. The authorization must be done within this time.
 oauth_code_ttl_s: 300
+# Dynamic OAuth client registration lifetime in seconds. Set to 0 to keep clients until process exit
+# or capacity pruning.
+oauth_client_ttl_s: 86400
+# Maximum dynamic OAuth clients kept in memory. Set to 0 to disable this capacity limit.
+oauth_max_dynamic_clients: 256
+# Maximum JSON body size accepted by dynamic OAuth client registration.
+oauth_registration_max_body_bytes: 16384
+# Maximum redirect URIs accepted in one dynamic OAuth client registration.
+oauth_registration_max_redirect_uris: 10
+# Maximum length of each dynamic OAuth client redirect URI.
+oauth_registration_max_redirect_uri_chars: 2048
+# Maximum length of a dynamic OAuth client display name.
+oauth_registration_max_client_name_chars: 200
 
 # Safety and resource limits.
 # Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This

@@ -1,17 +1,24 @@
+import json
 import time
 
 import pytest
+from fastapi.testclient import TestClient as FastAPITestClient
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.ops.downloads import (
     create_file_link_execute,
+    download_token_fingerprint,
     list_file_links_execute,
     revoke_file_link_execute,
 )
+from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
-from local_shell_mcp.server.shared.downloads import download_routes
+from local_shell_mcp.server.shared.downloads import (
+    _token_fingerprint,
+    download_routes,
+)
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 
@@ -151,3 +158,54 @@ async def test_file_link_tools_are_hidden_in_stdio(tmp_path, monkeypatch):
         "list_file_links",
         "revoke_file_link",
     }.isdisjoint(names)
+
+
+def test_download_token_fingerprint_does_not_expose_token():
+    token = "secret-download-token"
+
+    fingerprint = _token_fingerprint(token)
+
+    assert token not in fingerprint
+    assert len(fingerprint) == 16
+    assert fingerprint == _token_fingerprint(token)
+
+
+def test_download_tokens_are_redacted_from_audit_logs(tmp_path, monkeypatch):
+    _reset(tmp_path, monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    clear_settings_cache()
+    (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
+
+    client = FastAPITestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    link = client.post(
+        "/tools/file_link/create",
+        json={"session_id": session["session_id"], "path": "hello.txt"},
+    ).json()
+    token = link["token"]
+    assert token
+    assert (
+        client.post(
+            "/tools/file_link/revoke",
+            json={"session_id": session["session_id"], "token": token},
+        ).status_code
+        == 200
+    )
+
+    log_text = get_settings().audit_log_path.read_text(encoding="utf-8")
+    records = [json.loads(line) for line in log_text.splitlines() if line]
+
+    assert token not in log_text
+    assert link["url"] not in log_text
+    assert "/download/<redacted>" in log_text
+    assert download_token_fingerprint(token) in log_text
+    assert any(
+        record.get("event") == "download_link_created"
+        and record.get("token_sha256") == download_token_fingerprint(token)
+        for record in records
+    )
+    assert any(
+        record.get("event") == "download_link_revoked"
+        and record.get("token_sha256") == download_token_fingerprint(token)
+        for record in records
+    )
