@@ -7,6 +7,26 @@ import * as vscode from 'vscode';
 let output: vscode.OutputChannel;
 let serverProcess: cp.ChildProcessWithoutNullStreams | undefined;
 
+function stopProcessTree(proc: cp.ChildProcessWithoutNullStreams): Promise<void> {
+  return new Promise((resolve) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      resolve();
+      return;
+    }
+    if (process.platform === 'win32' && proc.pid) {
+      cp.execFile('taskkill', ['/PID', String(proc.pid), '/T', '/F'], (error) => {
+        if (error) {
+          proc.kill();
+        }
+        resolve();
+      });
+      return;
+    }
+    proc.kill();
+    resolve();
+  });
+}
+
 interface ExtensionConfig {
   executablePath: string;
   host: string;
@@ -194,7 +214,7 @@ async function stopServer(): Promise<void> {
   }
   const proc = serverProcess;
   serverProcess = undefined;
-  proc.kill();
+  await stopProcessTree(proc);
   vscode.window.showInformationMessage('local-shell-mcp stop requested.');
 }
 
@@ -271,7 +291,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   if (serverProcess) {
-    serverProcess.kill();
+    void stopProcessTree(serverProcess);
     serverProcess = undefined;
   }
 }
