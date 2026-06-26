@@ -74,6 +74,18 @@ class Settings(BaseSettings):
     """Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed."""
     oauth_code_ttl_s: int = 300
     """OAuth authorization-code lifetime in seconds. The authorization must be done within this time."""
+    oauth_client_ttl_s: int = 86400
+    """Dynamic OAuth client registration lifetime in seconds. Set to 0 to keep clients until process exit or capacity pruning."""
+    oauth_max_dynamic_clients: int = 256
+    """Maximum dynamic OAuth clients kept in memory. Set to 0 to disable this capacity limit."""
+    oauth_registration_max_body_bytes: int = 16384
+    """Maximum JSON body size accepted by dynamic OAuth client registration."""
+    oauth_registration_max_redirect_uris: int = 10
+    """Maximum redirect URIs accepted in one dynamic OAuth client registration."""
+    oauth_registration_max_redirect_uri_chars: int = 2048
+    """Maximum length of each dynamic OAuth client redirect URI."""
+    oauth_registration_max_client_name_chars: int = 200
+    """Maximum length of a dynamic OAuth client display name."""
 
     # Safety and resource limits.
     allow_full_control: bool = False

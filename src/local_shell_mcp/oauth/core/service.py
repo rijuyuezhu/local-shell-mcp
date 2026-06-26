@@ -20,6 +20,7 @@ from authlib.oauth2.rfc7636.challenge import (
 )
 
 from ...audit import audit
+from ...config.settings import get_settings
 from ..protocol.adapters import LocalOAuthClient
 from ..protocol.token_codec import issue_access_token
 from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
@@ -33,6 +34,7 @@ from .urls import issuer_url, normalize_resource, resource_url
 
 LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
+CLIENT_ID_GENERATION_ATTEMPTS = 8
 REGISTRATION_REDIRECT_ERROR = (
     "redirect_uris must be https, loopback http, or custom private-use URIs"
 )
@@ -200,6 +202,33 @@ def _is_allowed_redirect_uri(uri: str) -> bool:
     return _is_private_use_redirect_scheme(scheme, parsed.netloc)
 
 
+def _new_client_id() -> str:
+    """Generate a dynamic client id without overwriting an existing client."""
+    for _ in range(CLIENT_ID_GENERATION_ATTEMPTS):
+        client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
+        if client_id not in _CLIENTS:
+            return client_id
+    raise InvalidRequestError(description="Unable to allocate unique client_id")
+
+
+def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
+    """Return whether a dynamic client registration is past its configured TTL."""
+    return ttl_s > 0 and now - client.created_at > ttl_s
+
+
+def _prune_clients(*, now: int | None = None) -> None:
+    """Remove expired dynamic client registrations from the in-memory store."""
+    settings = get_settings()
+    if settings.oauth_client_ttl_s <= 0:
+        return
+    current_time = int(time.time()) if now is None else now
+    for client_id, client in list(_CLIENTS.items()):
+        if _client_expired(
+            client, now=current_time, ttl_s=settings.oauth_client_ttl_s
+        ):
+            _CLIENTS.pop(client_id, None)
+
+
 def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
     """Validate dynamic client registration policy and persist a local client."""
     if not request.redirect_uris:
@@ -210,7 +239,15 @@ def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
     if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
         raise InvalidRequestError(description=REGISTRATION_REDIRECT_ERROR)
 
-    client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
+    _prune_clients()
+    settings = get_settings()
+    max_clients = settings.oauth_max_dynamic_clients
+    if max_clients > 0 and len(_CLIENTS) >= max_clients:
+        raise InvalidRequestError(
+            description="Too many registered OAuth clients"
+        )
+
+    client_id = _new_client_id()
     client = OAuthClient(
         client_id=client_id,
         redirect_uris=redirect_uris,
@@ -241,6 +278,7 @@ def validate_authorization_request(
     if normalized_resource != resource_url():
         _raise_invalid("resource does not match this MCP server")
 
+    _prune_clients()
     client_record = _CLIENTS.get(client_id)
     if client_record is None:
         _raise_invalid("Unknown client_id")
@@ -324,8 +362,6 @@ def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
 
 def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
     """Remove used or expired authorization codes from the in-memory store."""
-    from ...config.settings import get_settings
-
     settings = get_settings()
     current_time = int(time.time()) if now is None else now
     for code, code_obj in list(_CODES.items()):
@@ -341,8 +377,6 @@ def exchange_authorization_code(
     request_input: TokenRequestInput,
 ) -> TokenResponse:
     """Exchange an authorization code for a bearer token."""
-    from ...config.settings import get_settings
-
     grant_type = request_input.grant_type or ""
     if grant_type != "authorization_code":
         raise UnsupportedGrantTypeError(grant_type=grant_type)

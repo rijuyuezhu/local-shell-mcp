@@ -4,12 +4,14 @@ HTTP routes use this module to extract JSON, query, and form data into typed
 ``oauth.core`` input models before calling service-layer operations.
 """
 
+import json
 from collections.abc import Mapping
 
 from authlib.oauth2.rfc6749.errors import InvalidRequestError
 from starlette.datastructures import FormData, QueryParams
 from starlette.requests import Request
 
+from ...config.settings import get_settings
 from ..core.requests import (
     AuthorizationRequestInput,
     RegistrationRequest,
@@ -77,8 +79,33 @@ async def parse_authorization_form(
 
 async def parse_registration_request(request: Request) -> RegistrationRequest:
     """Parse dynamic client registration JSON into a typed service input."""
+    settings = get_settings()
+    max_body_bytes = settings.oauth_registration_max_body_bytes
+    content_length = request.headers.get("content-length")
+    if max_body_bytes > 0 and content_length:
+        try:
+            if int(content_length) > max_body_bytes:
+                raise InvalidRequestError(
+                    description=(
+                        "Registration payload must be at most "
+                        f"{max_body_bytes} bytes"
+                    )
+                )
+        except ValueError:
+            pass
+
     try:
-        body = await request.json()
+        body_bytes = await request.body()
+        if max_body_bytes > 0 and len(body_bytes) > max_body_bytes:
+            raise InvalidRequestError(
+                description=(
+                    "Registration payload must be at most "
+                    f"{max_body_bytes} bytes"
+                )
+            )
+        body = json.loads(body_bytes) if body_bytes else {}
+    except InvalidRequestError:
+        raise
     except Exception:
         body = {}
     if not isinstance(body, dict):
@@ -91,6 +118,11 @@ async def parse_registration_request(request: Request) -> RegistrationRequest:
         raise InvalidRequestError(
             description="redirect_uris must be a non-empty list"
         )
+    max_redirect_uris = settings.oauth_registration_max_redirect_uris
+    if max_redirect_uris > 0 and len(raw_redirect_uris) > max_redirect_uris:
+        raise InvalidRequestError(
+            description=f"redirect_uris supports at most {max_redirect_uris} entries"
+        )
     redirect_uris = tuple(
         value.strip()
         for value in raw_redirect_uris
@@ -100,9 +132,31 @@ async def parse_registration_request(request: Request) -> RegistrationRequest:
         raise InvalidRequestError(
             description="redirect_uris must contain non-empty strings"
         )
+    max_redirect_uri_chars = settings.oauth_registration_max_redirect_uri_chars
+    if max_redirect_uri_chars > 0 and any(
+        len(value) > max_redirect_uri_chars for value in redirect_uris
+    ):
+        raise InvalidRequestError(
+            description=(
+                "redirect_uris entries must be at most "
+                f"{max_redirect_uri_chars} characters"
+            )
+        )
 
     raw_client_name = body.get("client_name")
     client_name = raw_client_name if isinstance(raw_client_name, str) else None
+    max_client_name_chars = settings.oauth_registration_max_client_name_chars
+    if (
+        max_client_name_chars > 0
+        and client_name is not None
+        and len(client_name) > max_client_name_chars
+    ):
+        raise InvalidRequestError(
+            description=(
+                "client_name must be at most "
+                f"{max_client_name_chars} characters"
+            )
+        )
     return RegistrationRequest(
         redirect_uris=redirect_uris,
         client_name=client_name,

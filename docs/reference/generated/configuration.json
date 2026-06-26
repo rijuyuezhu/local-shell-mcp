@@ -348,6 +348,126 @@
             "code": "300"
           },
           "OAuth authorization-code lifetime in seconds. The authorization must be done within this time."
+        ],
+        [
+          {
+            "code": "oauth_client_ttl_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-client-ttl-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S"
+          },
+          "integer",
+          {
+            "code": "86400"
+          },
+          "Dynamic OAuth client registration lifetime in seconds. Set to 0 to keep clients until process exit or capacity pruning."
+        ],
+        [
+          {
+            "code": "oauth_max_dynamic_clients"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-max-dynamic-clients"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS"
+          },
+          "integer",
+          {
+            "code": "256"
+          },
+          "Maximum dynamic OAuth clients kept in memory. Set to 0 to disable this capacity limit."
+        ],
+        [
+          {
+            "code": "oauth_registration_max_body_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-registration-max-body-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_BODY_BYTES"
+          },
+          "integer",
+          {
+            "code": "16384"
+          },
+          "Maximum JSON body size accepted by dynamic OAuth client registration."
+        ],
+        [
+          {
+            "code": "oauth_registration_max_redirect_uris"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-registration-max-redirect-uris"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URIS"
+          },
+          "integer",
+          {
+            "code": "10"
+          },
+          "Maximum redirect URIs accepted in one dynamic OAuth client registration."
+        ],
+        [
+          {
+            "code": "oauth_registration_max_redirect_uri_chars"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-registration-max-redirect-uri-chars"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS"
+          },
+          "integer",
+          {
+            "code": "2048"
+          },
+          "Maximum length of each dynamic OAuth client redirect URI."
+        ],
+        [
+          {
+            "code": "oauth_registration_max_client_name_chars"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-registration-max-client-name-chars"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS"
+          },
+          "integer",
+          {
+            "code": "200"
+          },
+          "Maximum length of a dynamic OAuth client display name."
         ]
       ]
     },
@@ -1492,6 +1612,84 @@
       "description": "OAuth authorization-code lifetime in seconds. The authorization must be done within this time.",
       "env": "LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S",
       "name": "oauth_code_ttl_s",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-client-ttl-s",
+      "default": 86400,
+      "default_display": "86400",
+      "description": "Dynamic OAuth client registration lifetime in seconds. Set to 0 to keep clients until process exit or capacity pruning.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S",
+      "name": "oauth_client_ttl_s",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-max-dynamic-clients",
+      "default": 256,
+      "default_display": "256",
+      "description": "Maximum dynamic OAuth clients kept in memory. Set to 0 to disable this capacity limit.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS",
+      "name": "oauth_max_dynamic_clients",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-registration-max-body-bytes",
+      "default": 16384,
+      "default_display": "16384",
+      "description": "Maximum JSON body size accepted by dynamic OAuth client registration.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_BODY_BYTES",
+      "name": "oauth_registration_max_body_bytes",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-registration-max-redirect-uris",
+      "default": 10,
+      "default_display": "10",
+      "description": "Maximum redirect URIs accepted in one dynamic OAuth client registration.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URIS",
+      "name": "oauth_registration_max_redirect_uris",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-registration-max-redirect-uri-chars",
+      "default": 2048,
+      "default_display": "2048",
+      "description": "Maximum length of each dynamic OAuth client redirect URI.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS",
+      "name": "oauth_registration_max_redirect_uri_chars",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-registration-max-client-name-chars",
+      "default": 200,
+      "default_display": "200",
+      "description": "Maximum length of a dynamic OAuth client display name.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS",
+      "name": "oauth_registration_max_client_name_chars",
       "nullable": false,
       "section": "Authentication and OAuth",
       "type": "integer",

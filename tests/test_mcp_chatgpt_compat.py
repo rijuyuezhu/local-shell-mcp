@@ -12,9 +12,14 @@ from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES, AuthCode
+from local_shell_mcp.oauth.core.models import (
+    _CLIENTS,
+    _CODES,
+    AuthCode,
+    OAuthClient,
+)
 from local_shell_mcp.oauth.core.scopes import supported_scopes
-from local_shell_mcp.oauth.core.service import _prune_codes
+from local_shell_mcp.oauth.core.service import _prune_clients, _prune_codes
 from local_shell_mcp.oauth.core.urls import resource_url
 from local_shell_mcp.oauth.http.authorization import _authorize_form
 from local_shell_mcp.oauth.http.responses import oauth_redirect
@@ -723,6 +728,149 @@ def test_oauth_registration_rejects_unsafe_redirect_uris(tmp_path, monkeypatch):
         json={"redirect_uris": ["com.example.app:/oauth2redirect"]},
     )
     assert private_use.status_code == 201
+
+
+def test_oauth_registration_enforces_size_limits(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_BODY_BYTES", "1000"
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URIS", "1"
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_REDIRECT_URI_CHARS", "40"
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS", "8"
+    )
+    clear_settings_cache()
+    _CLIENTS.clear()
+
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
+
+    too_many_redirects = client.post(
+        "/oauth/register",
+        json={
+            "redirect_uris": [
+                "https://client.example/callback-1",
+                "https://client.example/callback-2",
+            ]
+        },
+    )
+    assert too_many_redirects.status_code == 400
+    assert "at most 1 entries" in too_many_redirects.json()["error_description"]
+
+    long_redirect = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["https://client.example/" + "x" * 80]},
+    )
+    assert long_redirect.status_code == 400
+    assert "at most 40 characters" in long_redirect.json()["error_description"]
+
+    long_client_name = client.post(
+        "/oauth/register",
+        json={
+            "redirect_uris": ["https://client.example/callback"],
+            "client_name": "client-name-is-too-long",
+        },
+    )
+    assert long_client_name.status_code == 400
+    assert (
+        "client_name must be at most 8"
+        in long_client_name.json()["error_description"]
+    )
+
+    too_large_body = client.post(
+        "/oauth/register",
+        content=json.dumps(
+            {
+                "redirect_uris": ["https://client.example/callback"],
+                "client_name": "x" * 2000,
+            }
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert too_large_body.status_code == 400
+    assert "at most 1000 bytes" in too_large_body.json()["error_description"]
+
+
+def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
+    clear_settings_cache()
+    _CLIENTS.clear()
+
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
+    first = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["https://client.example/callback-1"]},
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["https://client.example/callback-2"]},
+    )
+    assert second.status_code == 400
+    assert second.json() == {
+        "error": "invalid_request",
+        "error_description": "Too many registered OAuth clients",
+    }
+
+
+def test_prunes_stale_oauth_clients(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "10")
+    clear_settings_cache()
+    _CLIENTS.clear()
+    _CLIENTS["active"] = OAuthClient(
+        client_id="active",
+        redirect_uris=["https://client.example/active"],
+        created_at=100,
+    )
+    _CLIENTS["old"] = OAuthClient(
+        client_id="old",
+        redirect_uris=["https://client.example/old"],
+        created_at=80,
+    )
+
+    _prune_clients(now=100)
+
+    assert set(_CLIENTS) == {"active"}
+
+
+def test_oauth_registration_allows_new_client_after_ttl_prune(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "1")
+    clear_settings_cache()
+    _CLIENTS.clear()
+    _CLIENTS["old"] = OAuthClient(
+        client_id="old",
+        redirect_uris=["https://client.example/old"],
+        created_at=0,
+    )
+
+    client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
+    response = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["https://client.example/callback"]},
+    )
+
+    assert response.status_code == 201
+    assert "old" not in _CLIENTS
 
 
 def test_oauth_authorize_requires_registered_client_and_redirect(

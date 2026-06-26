@@ -158,6 +158,36 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Authentication and OAuth",
         metavar="SECONDS",
     ),
+    SettingSpec(
+        "oauth_client_ttl_s",
+        "Authentication and OAuth",
+        metavar="SECONDS",
+    ),
+    SettingSpec(
+        "oauth_max_dynamic_clients",
+        "Authentication and OAuth",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "oauth_registration_max_body_bytes",
+        "Authentication and OAuth",
+        metavar="BYTES",
+    ),
+    SettingSpec(
+        "oauth_registration_max_redirect_uris",
+        "Authentication and OAuth",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "oauth_registration_max_redirect_uri_chars",
+        "Authentication and OAuth",
+        metavar="CHARS",
+    ),
+    SettingSpec(
+        "oauth_registration_max_client_name_chars",
+        "Authentication and OAuth",
+        metavar="CHARS",
+    ),
     SettingSpec("allow_full_control", "Safety and resource limits"),
     SettingSpec("allow_network", "Safety and resource limits"),
     SettingSpec("relaxed_client_tool_hints", "Safety and resource limits"),

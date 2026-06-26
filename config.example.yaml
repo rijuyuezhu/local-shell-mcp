@@ -37,6 +37,19 @@ oauth_admin_pin: null
 oauth_access_token_ttl_s: 3600
 # OAuth authorization-code lifetime in seconds. The authorization must be done within this time.
 oauth_code_ttl_s: 300
+# Dynamic OAuth client registration lifetime in seconds. Set to 0 to keep clients until process exit
+# or capacity pruning.
+oauth_client_ttl_s: 86400
+# Maximum dynamic OAuth clients kept in memory. Set to 0 to disable this capacity limit.
+oauth_max_dynamic_clients: 256
+# Maximum JSON body size accepted by dynamic OAuth client registration.
+oauth_registration_max_body_bytes: 16384
+# Maximum redirect URIs accepted in one dynamic OAuth client registration.
+oauth_registration_max_redirect_uris: 10
+# Maximum length of each dynamic OAuth client redirect URI.
+oauth_registration_max_redirect_uri_chars: 2048
+# Maximum length of a dynamic OAuth client display name.
+oauth_registration_max_client_name_chars: 200
 
 # Safety and resource limits.
 # Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This
