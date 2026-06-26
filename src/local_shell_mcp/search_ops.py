@@ -11,7 +11,7 @@ from .shell_ops import run_shell
 
 async def grep(query: str, cwd: str = ".", glob: str | None = None, regex: bool = True, case_sensitive: bool = True, max_results: int | None = None) -> dict:
     settings = get_settings()
-    max_results = max_results or settings.max_grep_results
+    max_results = max(1, min(max_results or settings.max_grep_results, settings.max_grep_results))
     args = [settings.rg_bin, "--json", "--line-number", "--column"]
     if not regex:
         args.append("--fixed-strings")
@@ -20,7 +20,20 @@ async def grep(query: str, cwd: str = ".", glob: str | None = None, regex: bool 
     if glob:
         args.extend(["--glob", glob])
     args.extend(["--", query])
-    cmd = " ".join(shlex.quote(x) for x in args)
+    rg_cmd = " ".join(shlex.quote(x) for x in args)
+    filter_code = (
+        "import sys\n"
+        "limit=int(sys.argv[1])\n"
+        "count=0\n"
+        "for line in sys.stdin:\n"
+        "    if '\"type\":\"match\"' not in line:\n"
+        "        continue\n"
+        "    sys.stdout.write(line)\n"
+        "    count += 1\n"
+        "    if count >= limit:\n"
+        "        break\n"
+    )
+    cmd = f"{rg_cmd} | {shlex.quote(settings.python_bin)} -c {shlex.quote(filter_code)} {max_results}"
     result = await run_shell(cmd, cwd=cwd, timeout_s=60, max_output_bytes=1_000_000)
     matches = []
     for line in result.stdout.splitlines():

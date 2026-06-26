@@ -93,3 +93,20 @@ async def test_grep_accepts_query_starting_with_dash(tmp_path, monkeypatch):
     assert result["ok"] is True
     assert result["count"] == 1
     assert result["matches"][0]["path"].endswith("dash.txt")
+
+
+@pytest.mark.asyncio
+async def test_grep_returns_first_matches_when_output_is_large(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_GREP_RESULTS", "3")
+    get_settings.cache_clear()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    lines = "".join(f"needle {idx}\n" for idx in range(20))
+    (tmp_path / "many.txt").write_text(lines, encoding="utf-8")
+
+    result = await grep("needle", cwd=".", regex=False, max_results=3)
+
+    assert result["ok"] is True
+    assert result["truncated"] is True
+    assert [item["line"] for item in result["matches"]] == [1, 2, 3]
