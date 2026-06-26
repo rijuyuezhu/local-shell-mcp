@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 import subprocess
 import time
@@ -13,6 +12,7 @@ from typing import Any
 from .audit import audit
 from .fs_ops import relative_display, resolve_path
 from .settings import get_settings
+from .shell_environment import subprocess_env
 
 CONPTY_BUFFER_BYTES = 1_000_000
 CONPTY_READ_CHARS = 65536
@@ -66,17 +66,6 @@ def _session_name(name: str | None = None) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "-", base)[:64]
 
 
-def _subprocess_env() -> dict[str, str]:
-    settings = get_settings()
-    blocked = set(settings.shell_env_blocklist)
-    prefixes = tuple(settings.shell_env_blocked_prefixes)
-    return {
-        key: value
-        for key, value in os.environ.items()
-        if key not in blocked and not key.startswith(prefixes)
-    }
-
-
 def _shell_program_name(shell: str) -> str:
     return Path(shell).name.lower()
 
@@ -109,7 +98,7 @@ def _spawn_pty(argv: list[str], cwd: Path) -> Any:
         raise RuntimeError("pywinpty is not available")
     assert winpty is not None
     spawn = winpty.PtyProcess.spawn
-    env = _subprocess_env()
+    env = subprocess_env()
     try:
         return spawn(argv, cwd=str(cwd), env=env)
     except TypeError:

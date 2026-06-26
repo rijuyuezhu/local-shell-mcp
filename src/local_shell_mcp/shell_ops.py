@@ -16,6 +16,7 @@ from .audit import audit
 from .fs_ops import relative_display, resolve_path
 from .models import CommandResult
 from .settings import get_settings
+from .shell_environment import subprocess_env
 
 PUBLIC_RUN_SHELL_DEFAULT_TIMEOUT_S = 10
 PUBLIC_RUN_SHELL_TIMEOUT_CAP_S = 120
@@ -105,17 +106,6 @@ def _command_semaphore() -> asyncio.Semaphore:
     return _COMMAND_SEMAPHORE
 
 
-def _subprocess_env() -> dict[str, str]:
-    settings = get_settings()
-    blocked = set(settings.shell_env_blocklist)
-    prefixes = tuple(settings.shell_env_blocked_prefixes)
-    return {
-        key: value
-        for key, value in os.environ.items()
-        if key not in blocked and not key.startswith(prefixes)
-    }
-
-
 def _shell_program_name(shell: str) -> str:
     return Path(shell).name.lower()
 
@@ -151,7 +141,7 @@ async def _spawn_process(command: str, cwd: str) -> asyncio.subprocess.Process:
     return await asyncio.create_subprocess_exec(
         *_shell_command_args(command),
         cwd=cwd,
-        env=_subprocess_env(),
+        env=subprocess_env(),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=(sys.platform != "win32"),
@@ -354,7 +344,7 @@ async def _native_start_shell(cwd: str = ".", name: str | None = None, command: 
     proc = await asyncio.create_subprocess_exec(
         *_persistent_shell_args(command),
         cwd=str(resolved_cwd),
-        env=_subprocess_env(),
+        env=subprocess_env(),
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
