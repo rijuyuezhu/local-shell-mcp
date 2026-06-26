@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shlex
+import subprocess
 import uuid
 from contextlib import suppress
 from typing import Any
@@ -358,6 +359,31 @@ def _read_many_files_sync(
     return {"files": files, "total_content_bytes": total_content_bytes}
 
 
+def _secret_scan_candidates(base: Any, glob: str | None = None) -> list[Any]:
+    settings = get_settings()
+    args = [settings.rg_bin, "--files", "--hidden", "--glob", "!.git/**"]
+    ignore_file = base / ".gitignore"
+    if ignore_file.is_file():
+        args.extend(["--ignore-file", str(ignore_file)])
+    if glob:
+        args.extend(["--glob", glob])
+    try:
+        result = subprocess.run(args, cwd=str(base), text=True, capture_output=True, timeout=30, check=False)
+    except Exception:
+        result = None
+    if result is not None and result.returncode in {0, 1}:
+        return [base / line for line in result.stdout.splitlines() if line.strip()]
+
+    candidates = []
+    for path in base.rglob("*"):
+        if ".git" in path.parts or not path.is_file():
+            continue
+        if glob and not path.match(glob):
+            continue
+        candidates.append(path)
+    return candidates
+
+
 def _secret_scan_sync(cwd: str = ".", glob: str | None = None, max_results: int = 200) -> dict:
     import re
 
@@ -366,10 +392,8 @@ def _secret_scan_sync(cwd: str = ".", glob: str | None = None, max_results: int 
     base = resolve_path(cwd, must_exist=True)
     findings = []
     truncated_files = 0
-    for path in base.rglob("*"):
-        if ".git" in path.parts or not path.is_file():
-            continue
-        if glob and not path.match(glob):
+    for path in _secret_scan_candidates(base, glob):
+        if not path.is_file():
             continue
         try:
             data = read_text(str(path))
