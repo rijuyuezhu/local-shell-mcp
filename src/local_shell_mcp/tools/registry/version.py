@@ -18,6 +18,7 @@ local_tool = VersionToolRegistry.get_tool_decorator()
 @local_tool(
     http_method="GET",
     http_path="/tools/version",
+    annotations="read_only",
     oauth_scopes=("shell:read",),
 )
 async def version() -> VersionInfoOutput:

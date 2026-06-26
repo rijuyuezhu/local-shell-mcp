@@ -2236,6 +2236,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Find files by glob pattern inside an explicit agent/workspace session when you know filename patterns and need matching paths, not file contents. Use glob_search for path discovery by pattern; use tree_view for directory shape; use search for content matches with edit-grounding metadata. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max glob results: 5000.",
       "inputSchema": {
         "properties": {
@@ -3238,6 +3244,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "List tokenized file download links created by this session.",
       "inputSchema": {
         "properties": {
@@ -3400,6 +3412,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "List files and directories under a session workdir path for quick inspection. Relative paths resolve inside the explicit agent/workspace session. The result reports whether entries were truncated by the requested limit or server cap. Current max directory entries: 5000.",
       "inputSchema": {
         "properties": {
@@ -3527,6 +3545,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "List active persistent shells created by bash(pty=true). Use this when you need the shell_id before reading, sending input, or killing a manually managed shell. The returned shell_id values are persistent-shell handles, not agent/workspace session_id values. Async bash jobs are not listed here; use job(session_id, list_jobs=true) to inspect bash(async_=true) background jobs.",
       "inputSchema": {
         "properties": {},
@@ -3622,6 +3646,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Read files or list directories inside an explicit agent/workspace session with optional selector suffixes in the path. Use this for normal code context when you know the path, especially before hashline_edit. Use search for content discovery across files, tree_view/list_files/glob_search for path discovery, and connector fetch only when consuming an id from workspace_search. Put ranges in the path selector and preserve the hashline output for edits: `[path#snapshot_id]` plus `line:text` rows can be copied directly into hashline_edit. Use edit_lines only when you already have exact structured path/start/end/replacement data. Supported selectors: path:50, path:50-80, path:50+20, path:5-16,960-973, path:raw, path:50-80:raw, and path:5-16,960-973:raw. For comma-separated ranges, ranges must be ordered and non-overlapping; open-ended ranges are only allowed as the final range. Current per-file read cap: 512000 bytes.",
       "inputSchema": {
         "properties": {
@@ -3964,6 +3994,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Read recent output from a persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use after send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs from bash(async_=true), use job(poll=[...]) because it works from job_id and refreshes job status. lines defaults to 200 and controls how many recent terminal lines are returned; increase it only when needed for context.",
       "inputSchema": {
         "properties": {
@@ -4033,6 +4069,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Read the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start. Use this when resuming or checking multi-step work in the current session before deciding what to do next. Todos are session-scoped: items from one session are not shared with another local or remote session, and shell_id/job_id values are not valid here. For changing the list, use write_todos with the complete replacement list.",
       "inputSchema": {
         "properties": {
@@ -4836,6 +4878,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Scan text files under an explicit agent/workspace session for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: 200.",
       "inputSchema": {
         "properties": {
@@ -5450,6 +5498,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Return a compact directory tree inside an explicit agent/workspace session for high-level project orientation before targeted file reads. Use tree_view when you need structure, directories, and broad layout; use glob_search when you already know filename patterns; use search when you need content matches. Pass the session_id returned by session_start. cwd defaults to the session workdir; any relative cwd override resolves inside that session workdir. Remote sessions dispatch to the paired worker session. Current max tree entries: 5000.",
       "inputSchema": {
         "properties": {
@@ -5602,6 +5656,12 @@
       }
     },
     {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
       "description": "Return package and runtime version information.",
       "inputSchema": {
         "properties": {},

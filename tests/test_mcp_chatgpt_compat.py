@@ -584,6 +584,41 @@ async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints
 
 
 @pytest.mark.asyncio
+async def test_read_only_tools_are_annotated(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
+
+    read_only_tool_names = {
+        "fetch",
+        "glob_search",
+        "list_file_links",
+        "list_files",
+        "list_persistent_shells",
+        "read",
+        "read_persistent_shell_output",
+        "read_todos",
+        "search",
+        "secret_scan",
+        "tree_view",
+        "version",
+        "workspace_search",
+    }
+    for name in read_only_tool_names:
+        annotations = tools[name].annotations
+        assert annotations is not None, name
+        assert annotations.readOnlyHint is True, name
+        assert annotations.destructiveHint is False, name
+        assert annotations.idempotentHint is True, name
+        assert annotations.openWorldHint is False, name
+
+    assert tools["write_file"].annotations is None
+    assert tools["write_todos"].annotations is None
+
+
+@pytest.mark.asyncio
 async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
     tmp_path, monkeypatch
 ):

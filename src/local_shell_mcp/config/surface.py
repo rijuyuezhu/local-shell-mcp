@@ -189,7 +189,6 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         metavar="CHARS",
     ),
     SettingSpec("allow_full_control", "Safety and resource limits"),
-    SettingSpec("allow_network", "Safety and resource limits"),
     SettingSpec("relaxed_client_tool_hints", "Safety and resource limits"),
     SettingSpec(
         "tool_timeout_s", "Safety and resource limits", metavar="SECONDS"

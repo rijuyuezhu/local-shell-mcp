@@ -79,7 +79,11 @@ class TransferToolRegistry(DeclarativeToolRegistry):
 local_tool = TransferToolRegistry.get_tool_decorator()
 
 
-@local_tool(http_method="POST", http_path="/tools/transfer_stat")
+@local_tool(
+    http_method="POST",
+    http_path="/tools/transfer_stat",
+    annotations="read_only",
+)
 async def transfer_stat(
     path: TransferPathArg, sha256: TransferSha256EnabledArg = True
 ) -> TransferStatOutput:
@@ -87,7 +91,11 @@ async def transfer_stat(
     return await asyncio.to_thread(transfer_stat_sync, path, sha256)
 
 
-@local_tool(http_method="POST", http_path="/tools/transfer_read_chunk")
+@local_tool(
+    http_method="POST",
+    http_path="/tools/transfer_read_chunk",
+    annotations="read_only",
+)
 async def transfer_read_chunk(
     path: TransferPathArg,
     offset: TransferOffsetArg = 0,

@@ -33,6 +33,16 @@ DOCKER_ENTRYPOINT_SPECS: tuple[tuple[str, str, str], ...] = (
         "Root directory for persisted credentials. The Docker Compose example stores it in the local-shell-mcp-credentials volume.",
     ),
     (
+        "DOCKER_AGENT_UID",
+        "",
+        "Optional UID for the agent user at container startup. Leave empty to auto-detect the mounted workspace owner; set explicitly to override.",
+    ),
+    (
+        "DOCKER_AGENT_GID",
+        "",
+        "Optional GID for the agent user at container startup. Leave empty to auto-detect the mounted workspace owner; set explicitly to override.",
+    ),
+    (
         "DOCKER_CHOWN_WORKSPACE",
         "true",
         "chown the mounted workspace to the agent user before starting the server.",

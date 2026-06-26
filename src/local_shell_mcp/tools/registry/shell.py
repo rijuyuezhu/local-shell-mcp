@@ -142,6 +142,7 @@ async def send_persistent_shell_input(
 @local_tool(
     http_method="POST",
     http_path="/tools/read_persistent_shell_output",
+    annotations="read_only",
     oauth_scopes=("shell:read",),
 )
 async def read_persistent_shell_output(
@@ -166,6 +167,7 @@ async def kill_persistent_shell(
 @local_tool(
     http_method="GET",
     http_path="/tools/list_persistent_shells",
+    annotations="read_only",
     oauth_scopes=("shell:read",),
 )
 async def list_persistent_shells() -> ListPersistentShellsOutput:

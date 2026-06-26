@@ -105,6 +105,19 @@ def test_directory_pack_and_unpack_preserves_nested_files(
     assert not (root / pack.archive_path).exists()
 
 
+def test_directory_pack_rejects_symlink_members(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    (root / "src").mkdir()
+    (root / "target.txt").write_text("target", encoding="utf-8")
+    try:
+        (root / "src" / "link.txt").symlink_to(root / "target.txt")
+    except OSError as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+    with pytest.raises(ValueError, match="symlink"):
+        transfer_pack_dir("src")
+
+
 def test_unpack_rejects_archive_path_traversal(tmp_path, monkeypatch):
     root = _workspace(tmp_path, monkeypatch)
     archive = root / "bad.tar"

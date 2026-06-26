@@ -73,6 +73,7 @@ async def create_file_link(
 @local_tool(
     http_method="GET",
     http_path="/tools/file_link/list",
+    annotations="read_only",
     oauth_scopes=("shell:read", "file:share"),
     enabled=_download_tools_enabled,
 )

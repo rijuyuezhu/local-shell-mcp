@@ -11,12 +11,67 @@ run_as_root="$(lower "${DOCKER_RUN_AS_ROOT:-false}")"
 persist_credentials="$(lower "${DOCKER_PERSISTENT_CREDENTIALS:-true}")"
 credentials_dir="${DOCKER_CREDENTIALS_DIR:-/persist/credentials}"
 chown_workspace="$(lower "${DOCKER_CHOWN_WORKSPACE:-true}")"
+agent_uid="${DOCKER_AGENT_UID:-}"
+agent_gid="${DOCKER_AGENT_GID:-}"
 
 is_truthy() {
   case "$1" in
     true|1|yes|on) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+valid_id() {
+  case "$1" in
+    ""|*[!0-9]*) return 1 ;;
+    *) [ "$1" -gt 0 ] ;;
+  esac
+}
+
+detect_path_id() {
+  local format="$1"
+  local path="$2"
+  local value
+  value="$(stat -c "$format" "$path" 2>/dev/null || true)"
+  if valid_id "$value"; then
+    printf '%s' "$value"
+  fi
+}
+
+configure_agent_identity() {
+  if [ "$(id -u)" != "0" ]; then
+    return 0
+  fi
+
+  if [ -z "$agent_uid" ]; then
+    agent_uid="$(detect_path_id %u "$workspace")"
+  fi
+  if [ -z "$agent_gid" ]; then
+    agent_gid="$(detect_path_id %g "$workspace")"
+  fi
+  if [ -z "$agent_uid" ]; then
+    agent_uid="1000"
+  fi
+  if [ -z "$agent_gid" ]; then
+    agent_gid="$agent_uid"
+  fi
+
+  if ! valid_id "$agent_uid" || ! valid_id "$agent_gid"; then
+    echo "Invalid DOCKER_AGENT_UID/DOCKER_AGENT_GID: uid=$agent_uid gid=$agent_gid" >&2
+    exit 1
+  fi
+
+  if getent group agent >/dev/null 2>&1; then
+    groupmod -o -g "$agent_gid" agent
+  else
+    groupadd -o -g "$agent_gid" agent
+  fi
+
+  if id agent >/dev/null 2>&1; then
+    usermod -o -u "$agent_uid" -g "$agent_gid" -d /home/agent agent
+  else
+    useradd -m -o -u "$agent_uid" -g "$agent_gid" -d /home/agent agent
+  fi
 }
 
 prepare_parent() {
@@ -122,14 +177,15 @@ setup_persistent_credentials() {
 }
 
 if [ "$(id -u)" = "0" ]; then
-  mkdir -p "$workspace" "$workspace/.local-shell-mcp" "$credentials_dir"
+  mkdir -p "$workspace" "$workspace/.local-shell-mcp" "$credentials_dir" /home/agent
+  configure_agent_identity
   if is_truthy "$run_as_root"; then
     setup_persistent_credentials root /root
     exec "$@"
   fi
   setup_persistent_credentials agent /home/agent
   if is_truthy "$chown_workspace"; then
-    chown -R agent:agent "$workspace"
+    chown -R agent:agent "$workspace" /home/agent "$credentials_dir" 2>/dev/null || true
   fi
   exec runuser -u agent -- "$@"
 fi

@@ -64,7 +64,7 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 
 `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` is an explicit full-control mode. It disables built-in command and path denylists and adds auto-approval hints for command-capable tools.
 
-In the Docker image, the server still normally runs as the `agent` user after entrypoint setup; that user has passwordless `sudo` for commands that intentionally need root. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
+In the Docker image, the entrypoint normally creates a non-root `agent` user at container startup. By default, its UID/GID are detected from the mounted `/workspace` owner so bind-mounted files stay writable by the host user. Set `DOCKER_AGENT_UID` or `DOCKER_AGENT_GID` only to override that detection. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
 
 ## Tokenized file download links
 
