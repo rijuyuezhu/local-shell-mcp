@@ -22,6 +22,7 @@ local_tool = TodoToolRegistry.get_tool_decorator()
 @local_tool(
     http_method="GET",
     http_path="/tools/todo",
+    annotations="read_only",
     oauth_scopes=("shell:read",),
 )
 async def read_todos(session_id: SessionIdArg) -> ReadTodosOutput:

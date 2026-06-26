@@ -4,7 +4,7 @@ import asyncio
 import fnmatch
 import json
 import re
-import shlex
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -19,7 +19,6 @@ from ..schemas.result_models.search import (
 )
 from ..tool_session.store import get_tool_session_store, resolve_session_path
 from .files import read_file_execute
-from .shell import run_shell
 from .utils.path import missing_path_context, relative_display, resolve_path
 from .utils.remote_session import call_remote_session_tool
 
@@ -383,8 +382,14 @@ async def grep_search_execute(
 ) -> GrepSearchOutput:
     """Run ripgrep with workspace path resolution and return structured match records."""
     settings = get_settings()
-    max_results = max_results or settings.max_grep_results
+    max_results = max(
+        1,
+        min(
+            max_results or settings.max_grep_results, settings.max_grep_results
+        ),
+    )
     skip = max(0, skip)
+    base = resolve_path(cwd, must_exist=True)
     args = [settings.rg_bin, "--json", "--line-number", "--column"]
     if not gitignore:
         args.append("--no-ignore")
@@ -398,105 +403,166 @@ async def grep_search_execute(
     if glob:
         args.extend(["--glob", glob])
     args.extend(["--", query, *path_args])
-    cmd = " ".join(shlex.quote(x) for x in args)
-    result = await run_shell(
-        cmd, cwd=cwd, timeout_s=60, max_output_bytes=1_000_000
-    )
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            cwd=str(base),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        return GrepSearchOutput(
+            ok=False,
+            matches=[],
+            displayed_lines=[],
+            count=0,
+            displayed_count=0,
+            context_radius=0,
+            skipped=skip,
+            truncated=False,
+            stderr=f"{settings.rg_bin}: {exc}",
+            numbered_content="",
+        )
     matches: list[GrepMatch] = []
     raw_matches: list[_RawSearchMatch] = []
     matched_seen = 0
-    for line in result.stdout.splitlines():
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(obj, dict):
-            continue
-        record = cast(dict[str, Any], obj)
-        if record.get("type") != "match":
-            continue
-        data = record.get("data", {})
-        if not isinstance(data, dict):
-            continue
-        match_data = cast(dict[str, Any], data)
-        raw_submatches = match_data.get("submatches")
-        submatches: list[Any] = (
-            cast(list[Any], raw_submatches)
-            if isinstance(raw_submatches, list)
-            else []
-        )
-        first: dict[str, Any] = {}
-        if submatches and isinstance(submatches[0], dict):
-            first = cast(dict[str, Any], submatches[0])
-        first_start = first.get("start")
-        raw_path_data = match_data.get("path")
-        raw_line_data = match_data.get("lines")
-        path_data = (
-            cast(dict[str, Any], raw_path_data)
-            if isinstance(raw_path_data, dict)
-            else {}
-        )
-        line_data = (
-            cast(dict[str, Any], raw_line_data)
-            if isinstance(raw_line_data, dict)
-            else {}
-        )
-        path_text = path_data.get("text")
-        line_number = match_data.get("line_number")
-        read_path = _search_match_path(cwd, path_text)
-        if read_path is not None:
-            try:
-                resolved_match_path = str(
-                    resolve_path(read_path, must_exist=True)
+    stopped_early = False
+    timed_out = False
+    stderr_bytes = b""
+
+    async def read_stderr() -> bytes:
+        if proc.stderr is None:
+            return b""
+        return await proc.stderr.read(settings.max_output_bytes + 1)
+
+    stderr_task = asyncio.create_task(read_stderr())
+    try:
+        if proc.stdout is not None:
+            while True:
+                try:
+                    line = await asyncio.wait_for(
+                        proc.stdout.readline(), timeout=60
+                    )
+                except TimeoutError:
+                    timed_out = True
+                    proc.terminate()
+                    break
+                if not line:
+                    break
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                record = cast(dict[str, Any], obj)
+                if record.get("type") != "match":
+                    continue
+                data = record.get("data", {})
+                if not isinstance(data, dict):
+                    continue
+                match_data = cast(dict[str, Any], data)
+                raw_submatches = match_data.get("submatches")
+                submatches: list[Any] = (
+                    cast(list[Any], raw_submatches)
+                    if isinstance(raw_submatches, list)
+                    else []
                 )
-            except OSError, ValueError:
-                resolved_match_path = None
-        else:
-            resolved_match_path = None
-        scoped_ranges = (
-            line_scopes.get(resolved_match_path)
-            if resolved_match_path is not None
-            else None
-        )
-        if scoped_ranges is not None and not _line_in_ranges(
-            line_number if isinstance(line_number, int) else None,
-            scoped_ranges,
-        ):
-            continue
-        line_text = line_data.get("text", "")
-        if matched_seen < skip:
-            matched_seen += 1
-            continue
-        match = GrepMatch(
-            path=path_text,
-            line=line_number,
-            column=first_start + 1 if isinstance(first_start, int) else None,
-            text=str(line_text).rstrip("\n"),
-        )
-        grounded_match = _ground_match_line(match, cwd, session_id)
-        matches.append(grounded_match)
-        raw_matches.append(
-            _RawSearchMatch(
-                match=grounded_match,
-                scoped_ranges=scoped_ranges,
+                first: dict[str, Any] = {}
+                if submatches and isinstance(submatches[0], dict):
+                    first = cast(dict[str, Any], submatches[0])
+                first_start = first.get("start")
+                raw_path_data = match_data.get("path")
+                raw_line_data = match_data.get("lines")
+                path_data = (
+                    cast(dict[str, Any], raw_path_data)
+                    if isinstance(raw_path_data, dict)
+                    else {}
+                )
+                line_data = (
+                    cast(dict[str, Any], raw_line_data)
+                    if isinstance(raw_line_data, dict)
+                    else {}
+                )
+                path_text = path_data.get("text")
+                line_number = match_data.get("line_number")
+                read_path = _search_match_path(cwd, path_text)
+                if read_path is not None:
+                    try:
+                        resolved_match_path = str(
+                            resolve_path(read_path, must_exist=True)
+                        )
+                    except OSError, ValueError:
+                        resolved_match_path = None
+                else:
+                    resolved_match_path = None
+                scoped_ranges = (
+                    line_scopes.get(resolved_match_path)
+                    if resolved_match_path is not None
+                    else None
+                )
+                if scoped_ranges is not None and not _line_in_ranges(
+                    line_number if isinstance(line_number, int) else None,
+                    scoped_ranges,
+                ):
+                    continue
+                line_text = line_data.get("text", "")
+                if matched_seen < skip:
+                    matched_seen += 1
+                    continue
+                match = GrepMatch(
+                    path=path_text,
+                    line=line_number,
+                    column=first_start + 1
+                    if isinstance(first_start, int)
+                    else None,
+                    text=str(line_text).rstrip("\n"),
+                )
+                grounded_match = _ground_match_line(match, cwd, session_id)
+                matches.append(grounded_match)
+                raw_matches.append(
+                    _RawSearchMatch(
+                        match=grounded_match,
+                        scoped_ranges=scoped_ranges,
+                    )
+                )
+                matched_seen += 1
+                if len(matches) >= max_results:
+                    stopped_early = True
+                    proc.terminate()
+                    break
+        with suppress(TimeoutError):
+            await asyncio.wait_for(
+                proc.wait(), timeout=2 if stopped_early else 60
             )
-        )
-        matched_seen += 1
-        if len(matches) >= max_results:
-            break
+    finally:
+        if not stderr_task.done():
+            stderr_task.cancel()
+        with suppress(Exception):
+            stderr_bytes = await stderr_task
+        if proc.returncode is None:
+            with suppress(ProcessLookupError):
+                proc.kill()
+            with suppress(Exception):
+                await proc.wait()
+
+    stderr_truncated = len(stderr_bytes) > settings.max_output_bytes
+    if stderr_truncated:
+        stderr_bytes = stderr_bytes[: settings.max_output_bytes]
     displayed_lines, numbered_content = _grep_display_output(
         raw_matches, cwd, session_id, _SEARCH_CONTEXT_RADIUS
     )
     return GrepSearchOutput(
-        ok=result.exit_code in {0, 1},
+        ok=(not timed_out) and (stopped_early or proc.returncode in {0, 1}),
         matches=matches,
         displayed_lines=displayed_lines,
         count=len(matches),
         displayed_count=len(displayed_lines),
         context_radius=_SEARCH_CONTEXT_RADIUS if matches else 0,
         skipped=skip,
-        truncated=len(matches) >= max_results or result.truncated,
-        stderr=result.stderr,
+        truncated=stopped_early or stderr_truncated,
+        stderr=stderr_bytes.decode(errors="replace"),
         numbered_content=numbered_content,
     )
 

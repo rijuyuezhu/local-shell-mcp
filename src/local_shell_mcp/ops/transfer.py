@@ -215,6 +215,17 @@ def transfer_abort_write(
     )
 
 
+def _raise_if_directory_contains_symlink(src: Path) -> None:
+    """Reject directory packs that would include symlink archive members."""
+    if src.is_symlink():
+        raise ValueError(f"refusing to pack symlink: {relative_display(src)}")
+    for child in src.rglob("*"):
+        if child.is_symlink():
+            raise ValueError(
+                f"refusing to pack directory containing symlink: {relative_display(child)}"
+            )
+
+
 def transfer_alloc_temp_path(
     suffix: str = ".bin",
 ) -> TransferAllocTempPathOutput:
@@ -236,6 +247,7 @@ def transfer_pack_dir(
     src = resolve_path(path, must_exist=True)
     if not src.is_dir():
         raise NotADirectoryError(str(src))
+    _raise_if_directory_contains_symlink(src)
     suffix = ".tar.gz" if compression == "gz" else ".tar"
     mode = "w:gz" if compression == "gz" else "w"
     archive = temp_dir() / f"transfer-pack-{uuid.uuid4().hex}{suffix}"

@@ -254,7 +254,7 @@ async def exercise_filesystem_and_search_tools(
 
     scan_file = workspace / "notes" / "token.txt"
     scan_file.write_text(
-        "password = 'local-only-test-value'\n",
+        "password = 'realistic-live-value-123'\n",
         encoding="utf-8",
     )
     scan_result = await client.call_tool(

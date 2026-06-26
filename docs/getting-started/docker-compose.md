@@ -1,8 +1,8 @@
 # Docker Compose
 
-Docker Compose runs the model-controlled tools inside a container. Use it when you want a more disposable execution environment and your host can run the published `linux/amd64` image.
+Docker Compose runs the model-controlled tools inside a container. Use it when you want a more disposable execution environment or want container-level separation from the host.
 
-The current Docker release workflow publishes `linux/amd64`. On non-x64 hosts, prefer the local source/binary path or build a local image yourself.
+The published Docker image is an Ubuntu 26.04 runtime image with Python and project dependencies installed by `uv`. Release images are published for `linux/amd64` and `linux/arm64` and are combined into a multi-arch manifest.
 
 ## Create `.env`
 
@@ -21,6 +21,8 @@ CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 ```
 
 Docker Compose passes `.env` into the container with `env_file:`. The Cloudflare sidecar also reads the tunnel token from the same file.
+
+Leave `DOCKER_AGENT_UID` and `DOCKER_AGENT_GID` empty for the default Compose flow. On startup, the Docker entrypoint creates the `agent` user from the owner of the mounted `/workspace` directory. Set those variables only when you need to override the detected host UID/GID.
 
 ## Start
 
@@ -50,11 +52,25 @@ curl -i http://127.0.0.1:8765/healthz
 
 ## Workspace permissions
 
-If the container cannot write `/workspace/.local-shell-mcp`, fix host ownership:
+By default, the entrypoint detects the owner of the mounted `/workspace` directory and creates the runtime `agent` user with that UID/GID. For the standard setup, this means the files created by the container match the host user that created `./workspaces/default/agent/workspace`.
+
+If the container cannot write `/workspace/.local-shell-mcp`, first check the host-side owner:
 
 ```bash
-sudo mkdir -p workspaces/default/.local-shell-mcp
-sudo chown -R 10001:10001 workspaces/default
+mkdir -p workspaces/default/agent/workspace
+stat -c '%u:%g %n' workspaces/default/agent/workspace
+```
+
+Then either fix the host ownership or override the runtime agent identity in `.env`:
+
+```env
+DOCKER_AGENT_UID=1000
+DOCKER_AGENT_GID=1000
+```
+
+Restart after changing ownership or `.env`:
+
+```bash
 docker compose restart local-shell-mcp
 ```
 

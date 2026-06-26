@@ -79,10 +79,8 @@ def test_setting_spec_properties_cover_current_setting_shapes():
     assert SPECS_BY_NAME["base_url"].argparse_type is str
 
     assert SPECS_BY_NAME["mode"].choices == ("mcp", "http", "both", "stdio")
-    assert SPECS_BY_NAME["allow_network"].choices == ("true", "false")
     assert SPECS_BY_NAME["host"].choices is None
 
-    assert SPECS_BY_NAME["allow_network"].is_bool
     assert not SPECS_BY_NAME["base_url"].is_bool
     assert SPECS_BY_NAME["base_url"].is_nullable
     assert not SPECS_BY_NAME["command_denylist"].is_nullable

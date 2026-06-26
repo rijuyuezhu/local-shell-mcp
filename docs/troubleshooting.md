@@ -44,11 +44,16 @@ Then check the tunnel or reverse proxy:
 
 ## Container cannot write state
 
-If the container cannot write `/workspace/.local-shell-mcp`, fix ownership:
+If the container cannot write `/workspace/.local-shell-mcp`, check the host owner of the mounted workspace:
 
 ```bash
-sudo mkdir -p workspaces/default/.local-shell-mcp
-sudo chown -R 10001:10001 workspaces/default
+mkdir -p workspaces/default/agent/workspace
+stat -c '%u:%g %n' workspaces/default/agent/workspace
+```
+
+The Docker entrypoint normally creates the runtime `agent` user from that owner. If the owner is not the host user you expect, fix the host-side ownership or set `DOCKER_AGENT_UID` and `DOCKER_AGENT_GID` in `.env` to override detection, then restart:
+
+```bash
 docker compose restart local-shell-mcp
 ```
 
@@ -90,4 +95,4 @@ Every routed MCP or REST debug tool call should produce a `tool_call_start` and 
 
 ## Release binary lacks system tools
 
-The standalone binary includes the Python server and default OAuth dependencies. It does not bundle host tools such as Git, tmux, shells, compilers, or LibreOffice. Docker images include a broader toolchain.
+The standalone binary includes the Python server and default OAuth dependencies. It does not bundle host tools such as Git, tmux, shells, compilers, or LibreOffice; those come from the host system. The Docker image includes a minimal Ubuntu runtime with core tools such as Git, SSH client, ripgrep, and tmux, while Python dependencies are installed with `uv`.

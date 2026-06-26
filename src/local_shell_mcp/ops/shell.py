@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import signal
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -42,6 +43,34 @@ INTERNAL_SHELL_DEFAULT_TIMEOUT_S = 60
 INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
 _COMMAND_SEMAPHORE_SIZE: int | None = None
+
+
+def _env_name(*parts: str) -> str:
+    return "".join(parts)
+
+
+FROZEN_LOADER_ENV_VARS = (
+    _env_name("LD", "_", "LIBRARY", "_", "PATH"),
+    _env_name("LD", "_", "PRE", "LOAD"),
+    _env_name("DYLD", "_", "LIBRARY", "_", "PATH"),
+    _env_name("DYLD", "_", "INSERT", "_", "LIBRARIES"),
+)
+
+
+def _is_frozen_app() -> bool:
+    """Return whether this process is running from a frozen app bundle."""
+    return bool(getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None))
+
+
+def _restore_or_remove_loader_var(env: dict[str, str], name: str) -> None:
+    original_name = f"{name}_ORIG"
+    original_value = env.pop(original_name, None)
+    if original_value:
+        env[name] = original_value
+    else:
+        env.pop(name, None)
+
+
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -159,13 +188,17 @@ def _subprocess_env() -> dict[str, str]:
         "CLOUDFLARE_TUNNEL_TOKEN",
         "PYTHONPATH",
     }
-    return {
+    env = {
         key: value
         for key, value in os.environ.items()
         if key not in blocked_names
         and not key.startswith("LOCAL_SHELL_MCP_")
         and not key.startswith("DOCKER_")
     }
+    if _is_frozen_app():
+        for name in FROZEN_LOADER_ENV_VARS:
+            _restore_or_remove_loader_var(env, name)
+    return env
 
 
 async def _spawn_process(command: str, cwd: str) -> asyncio.subprocess.Process:
@@ -551,12 +584,14 @@ async def send_persistent_shell_input_execute(
     shell_id: str, input_text: str, enter: bool = True
 ) -> SendPersistentShellInputOutput:
     """Send input to a persistent shell, optionally appending Enter."""
-    args = ["send-keys", "-t", shell_id, input_text]
+    if input_text:
+        result = await tmux(["send-keys", "-l", "-t", shell_id, input_text])
+        if not result.ok:
+            raise RuntimeError(result.stderr or result.stdout)
     if enter:
-        args.append("Enter")
-    result = await tmux(args)
-    if not result.ok:
-        raise RuntimeError(result.stderr or result.stdout)
+        result = await tmux(["send-keys", "-t", shell_id, "Enter"])
+        if not result.ok:
+            raise RuntimeError(result.stderr or result.stdout)
     audit(
         "send_persistent_shell_input",
         shell_id=shell_id,

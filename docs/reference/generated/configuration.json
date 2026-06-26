@@ -16,6 +16,16 @@
       "env": "DOCKER_CREDENTIALS_DIR"
     },
     {
+      "default": "",
+      "description": "Optional UID for the agent user at container startup. Leave empty to auto-detect the mounted workspace owner; set explicitly to override.",
+      "env": "DOCKER_AGENT_UID"
+    },
+    {
+      "default": "",
+      "description": "Optional GID for the agent user at container startup. Leave empty to auto-detect the mounted workspace owner; set explicitly to override.",
+      "env": "DOCKER_AGENT_GID"
+    },
+    {
       "default": "true",
       "description": "chown the mounted workspace to the agent user before starting the server.",
       "env": "DOCKER_CHOWN_WORKSPACE"
@@ -502,26 +512,6 @@
             "code": "false"
           },
           "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints."
-        ],
-        [
-          {
-            "code": "allow_network"
-          },
-          {
-            "lines": [
-              {
-                "code": "--allow-network"
-              }
-            ]
-          },
-          {
-            "code": "LOCAL_SHELL_MCP_ALLOW_NETWORK"
-          },
-          "true | false",
-          {
-            "code": "true"
-          },
-          "Allow network-capable operations."
         ],
         [
           {
@@ -1406,6 +1396,24 @@
         ],
         [
           {
+            "code": "DOCKER_AGENT_UID"
+          },
+          {
+            "code": "unset"
+          },
+          "Optional UID for the agent user at container startup. Leave empty to auto-detect the mounted workspace owner; set explicitly to override."
+        ],
+        [
+          {
+            "code": "DOCKER_AGENT_GID"
+          },
+          {
+            "code": "unset"
+          },
+          "Optional GID for the agent user at container startup. Leave empty to auto-detect the mounted workspace owner; set explicitly to override."
+        ],
+        [
+          {
             "code": "DOCKER_CHOWN_WORKSPACE"
           },
           {
@@ -1706,22 +1714,6 @@
       "description": "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints.",
       "env": "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL",
       "name": "allow_full_control",
-      "nullable": false,
-      "section": "Safety and resource limits",
-      "type": "true | false",
-      "unset_cli": null
-    },
-    {
-      "choices": [
-        "true",
-        "false"
-      ],
-      "cli": "--allow-network",
-      "default": true,
-      "default_display": "true",
-      "description": "Allow network-capable operations.",
-      "env": "LOCAL_SHELL_MCP_ALLOW_NETWORK",
-      "name": "allow_network",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "true | false",

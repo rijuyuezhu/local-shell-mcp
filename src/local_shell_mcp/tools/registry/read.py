@@ -27,6 +27,7 @@ def _read_description(context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/read",
     description=_read_description,
+    annotations="read_only",
     oauth_scopes=("shell:read",),
 )
 async def read(

@@ -94,6 +94,43 @@ async def test_grep_accepts_query_starting_with_dash(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_grep_returns_leading_matches_when_output_is_large(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_GREP_RESULTS", "3")
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    lines = "".join(f"needle {idx:04d} {'x' * 120}\n" for idx in range(5000))
+    (tmp_path / "many.txt").write_text(lines, encoding="utf-8")
+
+    result = await grep_search_execute(
+        "needle", cwd=".", regex=False, max_results=3
+    )
+
+    assert result.ok is True
+    assert result.truncated is True
+    assert [match.line for match in result.matches] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_grep_returns_structured_error_when_rg_is_missing(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RG_BIN", "missing-rg-for-test")
+    clear_settings_cache()
+    (tmp_path / "app.py").write_text("needle\n", encoding="utf-8")
+
+    result = await grep_search_execute("needle", cwd=".", regex=False)
+
+    assert result.ok is False
+    assert result.count == 0
+    assert "missing-rg-for-test" in result.stderr
+
+
+@pytest.mark.asyncio
 async def test_glob_finds_matching_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()

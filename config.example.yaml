@@ -55,8 +55,6 @@ oauth_registration_max_client_name_chars: 200
 # Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This
 # enforces relaxed_client_tool_hints.
 allow_full_control: false
-# Allow network-capable operations.
-allow_network: true
 # Advertise lower-risk MCP client hints for tools so that clients can run them with fewer
 # confirmations.
 relaxed_client_tool_hints: false

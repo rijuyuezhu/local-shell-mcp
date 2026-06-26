@@ -13,7 +13,7 @@ Most users should start with the local service path:
 
 See [Quickstart](getting-started/quickstart.md) for the complete flow.
 
-Docker Compose is still supported, but the published Docker image is currently `linux/amd64`. Use it when you specifically want the model-controlled tools inside a container and your host can run the x64 image.
+Docker Compose is still supported. Published Docker images support `linux/amd64` and `linux/arm64`; use Compose when you specifically want the model-controlled tools inside a container.
 
 ## What you get
 

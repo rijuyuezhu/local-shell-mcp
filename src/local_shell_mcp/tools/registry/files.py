@@ -66,6 +66,7 @@ def _hashline_edit_description(context: McpToolContext) -> str:
     http_method="POST",
     http_path="/tools/list_files",
     description=_list_files_description,
+    annotations="read_only",
     oauth_scopes=("shell:read",),
 )
 async def list_files(

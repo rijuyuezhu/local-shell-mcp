@@ -44,7 +44,7 @@ local-shell-mcp --mode mcp
 
 ## Docker Compose
 
-Use Docker Compose when you want the tool runtime inside a container and your host can run the published `linux/amd64` image:
+Use Docker Compose when you want the tool runtime inside a container. Published Docker images support `linux/amd64` and `linux/arm64`:
 
 ```bash
 cp .env.example .env
@@ -65,7 +65,7 @@ docker run --rm -it \
   rijuyuezhu/local-shell-mcp:latest
 ```
 
-You need a separate tunnel process when running Docker without the Compose sidecar.
+You need a separate tunnel process when running Docker without the Compose sidecar. If you mount a host workspace directly, the entrypoint creates the runtime `agent` user from the mounted `/workspace` owner unless `DOCKER_AGENT_UID` or `DOCKER_AGENT_GID` is set.
 
 ## VS Code
 

@@ -1,4 +1,5 @@
 import asyncio
+import sys
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +8,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.shell import (
+    _subprocess_env,
     clamp_timeout,
     run_shell,
     run_shell_command_timeout,
@@ -277,7 +279,10 @@ async def test_send_shell_invokes_tmux_promptly(monkeypatch):
         "sent_bytes": 7,
         "enter": True,
     }
-    assert calls == [(["send-keys", "-t", "shell-1", "echo ok", "Enter"], 10)]
+    assert calls == [
+        (["send-keys", "-l", "-t", "shell-1", "echo ok"], 10),
+        (["send-keys", "-t", "shell-1", "Enter"], 10),
+    ]
 
 
 @pytest.mark.asyncio
@@ -306,3 +311,43 @@ async def test_run_shell_command_filters_server_environment(
 
     assert result.ok
     assert result.stdout == ""
+
+
+def test_frozen_subprocess_env_restores_loader_environment(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/bundled")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib")
+    monkeypatch.setenv("LD_PRELOAD", "/tmp/bundled/libpreload.so")
+    monkeypatch.setenv("DYLD_LIBRARY_PATH", "/tmp/bundled")
+    monkeypatch.setenv("DYLD_LIBRARY_PATH_ORIG", "/opt/homebrew/lib")
+    monkeypatch.setenv("DYLD_INSERT_LIBRARIES", "/tmp/bundled/libinject.dylib")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", "/tmp/bundled", raising=False)
+    clear_settings_cache()
+
+    env = _subprocess_env()
+
+    assert env["LD_LIBRARY_PATH"] == "/usr/lib"
+    assert "LD_LIBRARY_PATH_ORIG" not in env
+    assert "LD_PRELOAD" not in env
+    assert env["DYLD_LIBRARY_PATH"] == "/opt/homebrew/lib"
+    assert "DYLD_LIBRARY_PATH_ORIG" not in env
+    assert "DYLD_INSERT_LIBRARIES" not in env
+
+
+def test_non_frozen_subprocess_env_preserves_loader_environment(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/custom/lib")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/original/lib")
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+    clear_settings_cache()
+
+    env = _subprocess_env()
+
+    assert env["LD_LIBRARY_PATH"] == "/custom/lib"
+    assert env["LD_LIBRARY_PATH_ORIG"] == "/original/lib"

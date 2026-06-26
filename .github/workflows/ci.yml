@@ -2,9 +2,18 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   pre-commit:
@@ -56,8 +65,71 @@ jobs:
       - run: uv sync --locked --group dev
       - run: uv run pytest -q
 
-  vscode-extension:
+  package-smoke:
+    name: Package smoke
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv build --out-dir dist
+      - name: Install wheel in a clean virtualenv
+        run: |
+          python -m venv /tmp/local-shell-mcp-wheel-venv
+          /tmp/local-shell-mcp-wheel-venv/bin/python -m pip install --upgrade pip
+          /tmp/local-shell-mcp-wheel-venv/bin/python -m pip install dist/*.whl
+          /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp --version
+          /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp version
+
+  compose-smoke:
+    name: Docker Compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config
+
+  dockerfile-check:
+    name: Dockerfile check (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Check Dockerfile without building image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          call: check
+
+  release-matrix:
+    name: Release matrix check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: python scripts/check-release-matrix.py
+
+  vscode-extension:
+    name: VS Code extension (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
