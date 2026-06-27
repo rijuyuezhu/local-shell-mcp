@@ -67,4 +67,4 @@ def write_todos_execute(
             f"Refusing to write {encoded_bytes} todo bytes; max is {settings.max_todo_bytes}"
         )
     _todo_path(session_id).write_text(encoded, encoding="utf-8")
-    return WriteTodosOutput.model_validate(payload)
+    return WriteTodosOutput(**payload)

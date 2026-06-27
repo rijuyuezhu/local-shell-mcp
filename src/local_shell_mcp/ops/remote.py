@@ -139,12 +139,8 @@ async def remote_worker_tool_execute(
     )
     if result.get("ok", False):
         data = result.get("data")
-        return RemoteWorkerToolOutput.model_validate(
-            cast(dict[str, Any], data)
-            if isinstance(data, dict)
-            else {"result": data}
-        )
-    return RemoteWorkerToolOutput.model_validate(result)
+        return RemoteWorkerToolOutput(**_json_dict(data))
+    return RemoteWorkerToolOutput(**result)
 
 
 async def remote_copy_file_execute(

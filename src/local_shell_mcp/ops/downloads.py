@@ -18,7 +18,6 @@ from ..schemas.result_models.downloads import (
     RevokeFileLinkOutput,
 )
 from ..tool_session.store import get_tool_session_store, resolve_session_path
-from ..utils.serialization import to_jsonable
 from .utils.path import relative_display, resolve_path
 
 DOWNLOAD_PREFIX = "/download"
@@ -206,8 +205,8 @@ def create_file_link_execute(
         token_sha256=download_token_fingerprint(token),
         expires_at=link["expires_at"],
     )
-    return CreateFileLinkOutput.model_validate(
-        to_jsonable(download_link_summary(token, link))
+    return CreateFileLinkOutput(
+        **download_link_summary(token, link).model_dump()
     )
 
 

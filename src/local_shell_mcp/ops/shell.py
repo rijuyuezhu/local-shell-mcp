@@ -384,7 +384,7 @@ async def run_shell_command_execute(
         run_shell_command_timeout(timeout_s),
         max_output_bytes,
     )
-    return RunShellCommandOutput.model_validate(result.model_dump())
+    return RunShellCommandOutput(**result.model_dump())
 
 
 def _command_with_env(command: str, env: dict[str, str] | None) -> str:

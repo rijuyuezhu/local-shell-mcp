@@ -382,7 +382,7 @@ async def test_remote_manager_persists_workers_and_resumes(
     invite = await manager.create_invite(name="worker-a")
     registered = await manager.register_worker(
         {
-            "invite": invite["code"],
+            "invite": invite.code,
             "workdir": str(tmp_path),
             "capabilities": ["shell"],
             "info": {"hostname": "remote-host"},
@@ -391,9 +391,9 @@ async def test_remote_manager_persists_workers_and_resumes(
 
     reloaded = RemoteManager()
     inventory = reloaded.list_machines()
-    assert inventory["counts"] == {"online": 0, "offline": 1, "total": 1}
-    assert inventory["machines"][0]["name"] == "worker-a"
-    assert inventory["machines"][0]["queue_depth"] == 0
+    assert inventory.counts == {"online": 0, "offline": 1, "total": 1}
+    assert inventory.machines[0].name == "worker-a"
+    assert inventory.machines[0].queue_depth == 0
 
     resumed = await reloaded.resume_worker(
         registered["token"],
@@ -401,7 +401,7 @@ async def test_remote_manager_persists_workers_and_resumes(
     )
     assert resumed["name"] == "worker-a"
     assert resumed["token"] == registered["token"]
-    assert reloaded.list_machines()["counts"] == {
+    assert reloaded.list_machines().counts == {
         "online": 1,
         "offline": 0,
         "total": 1,
@@ -436,11 +436,11 @@ async def test_remote_manager_list_machines_reports_counts_and_details(
 
     result = manager.list_machines()
 
-    assert result["counts"] == {"online": 1, "offline": 1, "total": 2}
-    assert [machine["name"] for machine in result["machines"]] == [
+    assert result.counts == {"online": 1, "offline": 1, "total": 2}
+    assert [machine.name for machine in result.machines] == [
         "recent-worker",
         "stale-worker",
     ]
-    assert result["machines"][0]["last_seen_age_s"] == 5
-    assert result["machines"][0]["queue_depth"] == 1
-    assert result["machines"][0]["offline_after_s"] == 60
+    assert result.machines[0].last_seen_age_s == 5
+    assert result.machines[0].queue_depth == 1
+    assert result.machines[0].offline_after_s == 60
