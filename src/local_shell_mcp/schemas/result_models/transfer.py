@@ -97,6 +97,13 @@ class TransferAllocTempPathOutput(BaseModel):
     )
 
 
+class TransferDeleteTempPathOutput(BaseModel):
+    """Result of removing a transfer scratch file."""
+
+    path: str = Field(description="Transfer scratch path targeted for cleanup.")
+    deleted: bool = Field(description="Whether the scratch file was deleted.")
+
+
 class TransferPackDirOutput(BaseModel):
     """Archive created from a directory for transfer."""
 

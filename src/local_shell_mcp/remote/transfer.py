@@ -284,8 +284,8 @@ async def _remote_cleanup_file(machine: str, path: str) -> None:
     with suppress(Exception, asyncio.CancelledError):
         await _remote_transfer_data(
             machine,
-            "delete_file_or_dir",
-            {"path": path, "recursive": False},
+            "transfer_delete_temp_path",
+            {"path": path},
         )
 
 

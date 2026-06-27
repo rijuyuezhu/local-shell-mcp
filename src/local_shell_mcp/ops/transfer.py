@@ -13,6 +13,7 @@ from ..schemas.result_models.transfer import (
     TransferAbortWriteOutput,
     TransferAllocTempPathOutput,
     TransferBeginWriteOutput,
+    TransferDeleteTempPathOutput,
     TransferFinishWriteOutput,
     TransferPackDirOutput,
     TransferReadChunkOutput,
@@ -20,7 +21,8 @@ from ..schemas.result_models.transfer import (
     TransferUnpackArchiveOutput,
     TransferWriteChunkOutput,
 )
-from .utils.path import relative_display, resolve_path, temp_dir
+from ..tool_session.store import get_tool_session_store, resolve_session_path
+from .utils.path import relative_display, resolve_path, temp_dir, workspace_root
 
 DEFAULT_TRANSFER_CHUNK_BYTES = 1024 * 1024
 MAX_TRANSFER_CHUNK_BYTES = 4 * 1024 * 1024
@@ -50,9 +52,46 @@ def _sha256_file(
     return digest.hexdigest()
 
 
-def transfer_stat(path: str, sha256: bool = True) -> TransferStatOutput:
-    """Return transfer metadata for one workspace path."""
-    p = resolve_path(path, must_exist=True)
+def _resolve_temp_path(path: str | Path, *, must_exist: bool = False) -> Path:
+    """Resolve a transfer scratch path under the configured temp directory."""
+    raw = Path(os.path.expandvars(os.path.expanduser(str(path))))
+    if not raw.is_absolute():
+        raw = workspace_root() / raw
+    resolved = raw.resolve(strict=False)
+    base = temp_dir().resolve()
+    try:
+        resolved.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(f"Path is not a transfer temp path: {path}") from exc
+    if must_exist and not resolved.exists():
+        raise FileNotFoundError(str(resolved))
+    return resolved
+
+
+def _resolve_transfer_path(
+    path: str | Path,
+    *,
+    must_exist: bool = False,
+    session_id: str | None = None,
+    allow_temp: bool = True,
+) -> Path:
+    """Resolve a user/session path, also allowing transfer scratch paths for internals."""
+    if session_id is not None:
+        session = get_tool_session_store().touch_session(session_id)
+        return resolve_session_path(session, path, must_exist=must_exist)
+    try:
+        return resolve_path(path, must_exist=must_exist)
+    except ValueError:
+        if allow_temp:
+            return _resolve_temp_path(path, must_exist=must_exist)
+        raise
+
+
+def transfer_stat(
+    path: str, sha256: bool = True, *, session_id: str | None = None
+) -> TransferStatOutput:
+    """Return transfer metadata for one workspace or session path."""
+    p = _resolve_transfer_path(path, must_exist=True, session_id=session_id)
     stat = p.stat()
     if p.is_file():
         return TransferStatOutput(
@@ -78,10 +117,14 @@ def transfer_stat(path: str, sha256: bool = True) -> TransferStatOutput:
 
 
 def transfer_read_chunk(
-    path: str, offset: int = 0, chunk_size: int | None = None
+    path: str,
+    offset: int = 0,
+    chunk_size: int | None = None,
+    *,
+    session_id: str | None = None,
 ) -> TransferReadChunkOutput:
     """Read one bounded binary chunk and encode it for transport."""
-    p = resolve_path(path, must_exist=True)
+    p = _resolve_transfer_path(path, must_exist=True, session_id=session_id)
     if not p.is_file():
         raise IsADirectoryError(str(p))
     size = p.stat().st_size
@@ -112,10 +155,14 @@ def _transfer_temp_path(dst: Path, transfer_id: str) -> Path:
 
 
 def transfer_begin_write(
-    path: str, overwrite: bool = True, expected_bytes: int | None = None
+    path: str,
+    overwrite: bool = True,
+    expected_bytes: int | None = None,
+    *,
+    session_id: str | None = None,
 ) -> TransferBeginWriteOutput:
     """Create an atomic temporary destination for a chunked write."""
-    dst = resolve_path(path)
+    dst = _resolve_transfer_path(path, session_id=session_id)
     if dst.exists() and dst.is_dir():
         raise IsADirectoryError(str(dst))
     if dst.exists() and not overwrite:
@@ -142,9 +189,11 @@ def transfer_write_chunk(
     offset: int,
     data_b64: str,
     expected_sha256: str | None = None,
+    *,
+    session_id: str | None = None,
 ) -> TransferWriteChunkOutput:
     """Write one validated base64 chunk into an active transfer file."""
-    dst = resolve_path(path)
+    dst = _resolve_transfer_path(path, session_id=session_id)
     tmp = _transfer_temp_path(dst, transfer_id)
     if not tmp.exists():
         raise FileNotFoundError(str(tmp))
@@ -175,9 +224,11 @@ def transfer_finish_write(
     transfer_id: str,
     expected_bytes: int | None = None,
     expected_sha256: str | None = None,
+    *,
+    session_id: str | None = None,
 ) -> TransferFinishWriteOutput:
     """Validate and atomically publish a completed chunked write."""
-    dst = resolve_path(path)
+    dst = _resolve_transfer_path(path, session_id=session_id)
     tmp = _transfer_temp_path(dst, transfer_id)
     if not tmp.exists():
         raise FileNotFoundError(str(tmp))
@@ -199,10 +250,10 @@ def transfer_finish_write(
 
 
 def transfer_abort_write(
-    path: str, transfer_id: str
+    path: str, transfer_id: str, *, session_id: str | None = None
 ) -> TransferAbortWriteOutput:
     """Abort an active chunked write and remove its temporary file."""
-    dst = resolve_path(path)
+    dst = _resolve_transfer_path(path, session_id=session_id)
     tmp = _transfer_temp_path(dst, transfer_id)
     deleted = False
     if tmp.exists():
@@ -227,9 +278,10 @@ def _raise_if_directory_contains_symlink(src: Path) -> None:
 
 
 def transfer_alloc_temp_path(
-    suffix: str = ".bin",
+    suffix: str = ".bin", *, session_id: str | None = None
 ) -> TransferAllocTempPathOutput:
     """Allocate a safe temporary workspace path for transfer scratch data."""
+    _ = session_id
     safe_suffix = (
         suffix
         if suffix.startswith(".") and "/" not in suffix and "\\" not in suffix
@@ -240,11 +292,25 @@ def transfer_alloc_temp_path(
     return TransferAllocTempPathOutput(path=relative_display(path))
 
 
+def transfer_delete_temp_path(path: str) -> TransferDeleteTempPathOutput:
+    """Delete a transfer scratch file under the configured temp directory."""
+    p = _resolve_temp_path(path, must_exist=False)
+    deleted = False
+    if p.exists():
+        if p.is_dir():
+            raise IsADirectoryError(str(p))
+        p.unlink()
+        deleted = True
+    return TransferDeleteTempPathOutput(
+        path=relative_display(p), deleted=deleted
+    )
+
+
 def transfer_pack_dir(
-    path: str, compression: str = "gz"
+    path: str, compression: str = "gz", *, session_id: str | None = None
 ) -> TransferPackDirOutput:
     """Pack a directory into a temporary tar archive for transfer."""
-    src = resolve_path(path, must_exist=True)
+    src = _resolve_transfer_path(path, must_exist=True, session_id=session_id)
     if not src.is_dir():
         raise NotADirectoryError(str(src))
     _raise_if_directory_contains_symlink(src)
@@ -290,12 +356,16 @@ def transfer_unpack_archive(
     dst_path: str,
     overwrite: bool = True,
     cleanup_archive: bool = True,
+    *,
+    session_id: str | None = None,
 ) -> TransferUnpackArchiveOutput:
-    """Safely unpack a transfer archive into a workspace destination."""
-    archive = resolve_path(archive_path, must_exist=True)
+    """Safely unpack a transfer archive into a workspace or session destination."""
+    archive = _resolve_transfer_path(
+        archive_path, must_exist=True, session_id=None
+    )
     if not archive.is_file():
         raise FileNotFoundError(str(archive))
-    dst = resolve_path(dst_path)
+    dst = _resolve_transfer_path(dst_path, session_id=session_id)
     if dst.exists():
         if dst.is_file():
             if not overwrite:

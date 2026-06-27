@@ -2,9 +2,14 @@
 
 import subprocess
 from pathlib import Path
+from typing import Literal
 
 from ..ops.utils.path import relative_display, workspace_root
-from ..schemas.result_models.session import GitSessionInfo, SessionStartOutput
+from ..schemas.result_models.session import (
+    GitSessionInfo,
+    SessionCopyOutput,
+    SessionStartOutput,
+)
 from ..tool_session.store import AgentSession, get_tool_session_store
 from .utils.remote_session import start_worker_session
 
@@ -139,3 +144,26 @@ def session_change_cwd_execute(
         session_id, workdir
     )
     return _session_output(session)
+
+
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: Literal["auto", "file", "dir"] = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+) -> SessionCopyOutput:
+    """Copy a file or directory between two explicit sessions."""
+    from .utils.session_copy import session_copy_execute as execute
+
+    return await execute(
+        src_session_id,
+        src_path,
+        dst_session_id,
+        dst_path,
+        kind,
+        overwrite,
+        chunk_size,
+    )

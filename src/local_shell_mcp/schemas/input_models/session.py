@@ -39,3 +39,36 @@ SessionLabelArg = Annotated[
         description="Optional human-readable label for this agent session.",
     ),
 ]
+
+
+SessionCopyPathArg = Annotated[
+    str,
+    Field(
+        description="Path to copy, resolved inside the corresponding source or destination session workdir."
+    ),
+]
+SessionCopyKindArg = Annotated[
+    Literal["auto", "file", "dir"],
+    Field(
+        description="What to copy. Use auto to infer file or directory from the source path."
+    ),
+]
+SessionCopyOverwriteArg = Annotated[
+    bool,
+    Field(description="Whether an existing destination may be replaced."),
+]
+SessionCopyChunkSizeArg = Annotated[
+    int | None,
+    Field(
+        description="Optional chunk size in bytes for binary transfer. Omit to use the server default."
+    ),
+]
+OptionalSessionIdArg = Annotated[
+    str | None,
+    Field(
+        min_length=8,
+        max_length=8,
+        pattern=r"^[A-Za-z0-9]{8}$",
+        description="Optional explicit agent/workspace session_id used by internal transfer primitives.",
+    ),
+]

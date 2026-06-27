@@ -2,15 +2,26 @@
 
 import asyncio
 
-from ...ops.session import session_change_cwd_execute, session_start_execute
+from ...ops.session import (
+    session_change_cwd_execute,
+    session_copy_execute,
+    session_start_execute,
+)
 from ...schemas.input_models.session import (
+    SessionCopyChunkSizeArg,
+    SessionCopyKindArg,
+    SessionCopyOverwriteArg,
+    SessionCopyPathArg,
     SessionIdArg,
     SessionLabelArg,
     SessionMachineArg,
     SessionTargetArg,
     SessionWorkdirArg,
 )
-from ...schemas.result_models.session import SessionStartOutput
+from ...schemas.result_models.session import (
+    SessionCopyOutput,
+    SessionStartOutput,
+)
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
 
@@ -31,6 +42,10 @@ def _session_start_description(_context: McpToolContext) -> str:
 
 def _session_change_cwd_description(_context: McpToolContext) -> str:
     return """Change an existing local agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed orientation metadata including instruction file paths. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits."""
+
+
+def _session_copy_description(_context: McpToolContext) -> str:
+    return """Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Use this when moving artifacts across sessions instead of exposing raw transfer primitives or legacy remote pull/push tools. The response includes the selected route and whether the sessions share a target, session id, or remote machine."""
 
 
 @session_tool(
@@ -62,4 +77,31 @@ async def session_change_cwd(
     """Change an explicit agent/workspace session workdir."""
     return await asyncio.to_thread(
         session_change_cwd_execute, session_id, workdir
+    )
+
+
+@session_tool(
+    http_method="POST",
+    http_path="/tools/session_copy",
+    description=_session_copy_description,
+    oauth_scopes=("shell:read", "shell:write"),
+)
+async def session_copy(
+    src_session_id: SessionIdArg,
+    src_path: SessionCopyPathArg,
+    dst_session_id: SessionIdArg,
+    dst_path: SessionCopyPathArg,
+    kind: SessionCopyKindArg = "auto",
+    overwrite: SessionCopyOverwriteArg = True,
+    chunk_size: SessionCopyChunkSizeArg = None,
+) -> SessionCopyOutput:
+    """Copy a file or directory between two explicit sessions."""
+    return await session_copy_execute(
+        src_session_id,
+        src_path,
+        dst_session_id,
+        dst_path,
+        kind,
+        overwrite,
+        chunk_size,
     )
