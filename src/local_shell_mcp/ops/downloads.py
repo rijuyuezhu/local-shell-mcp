@@ -327,8 +327,3 @@ def claim_download(
             write_download_store_locked(store)
 
     return path, link
-
-
-create_download_link = create_file_link_execute
-list_download_links = list_file_links_execute
-revoke_download_link = revoke_file_link_execute

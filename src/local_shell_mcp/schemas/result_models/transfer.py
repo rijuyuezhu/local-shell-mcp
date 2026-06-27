@@ -1,8 +1,6 @@
 """Typed structured outputs for transfer tools."""
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class TransferStatOutput(BaseModel):
@@ -128,16 +126,4 @@ class TransferUnpackArchiveOutput(BaseModel):
     )
     archive_deleted: bool = Field(
         description="Whether the source archive was deleted after unpacking."
-    )
-
-
-class TransferGenericOutput(BaseModel):
-    """Fallback transfer output for dynamically shaped transfer helpers."""
-
-    model_config = ConfigDict(extra="allow")
-    """Allow dynamically shaped transfer output fields."""
-
-    root: dict[str, Any] | None = Field(
-        default=None,
-        description="Generic transfer result payload, when present.",
     )

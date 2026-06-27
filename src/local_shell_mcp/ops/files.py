@@ -626,62 +626,6 @@ def _path_for_hashline_operation(
     return path
 
 
-def _current_hashline_texts(
-    path: str,
-    start_line: int,
-    end_line: int,
-    session_id: str | None,
-) -> list[str]:
-    """Read current line text for hashline validation or insertion anchoring."""
-    store = get_tool_session_store()
-    session = (
-        store.touch_session(session_id) if session_id is not None else None
-    )
-    p = (
-        resolve_session_path(session, path, must_exist=True)
-        if session is not None
-        else resolve_path(path, must_exist=True)
-    )
-    lines = p.read_text(encoding="utf-8").splitlines()
-    if start_line < 1:
-        raise ValueError("line numbers must be >= 1")
-    if end_line > len(lines):
-        raise ValueError(
-            f"line {end_line} is beyond file line count {len(lines)}"
-        )
-    return lines[start_line - 1 : end_line]
-
-
-def _validate_hashline_expected_lines(
-    path: str, expected_lines: Sequence[ReadLine], session_id: str | None
-) -> None:
-    """Reject direct hashline edits when copied old text no longer matches."""
-    if not expected_lines:
-        return
-    current = _current_hashline_texts(
-        path, expected_lines[0].line, expected_lines[-1].line, session_id
-    )
-    expected = [line.text for line in expected_lines]
-    if current != expected:
-        raise ValueError(
-            "hashline old text does not match current file; re-read before editing"
-        )
-
-
-def _hashline_insert_replacement(
-    path: str, operation: _ParsedHashlineInsert, session_id: str | None
-) -> str:
-    """Build a replacement range for an insert anchored on a visible line."""
-    anchor_text = _current_hashline_texts(
-        path, operation.anchor_line, operation.anchor_line, session_id
-    )[0]
-    if operation.insert_after:
-        lines = (anchor_text, *operation.inserted_lines)
-    else:
-        lines = (*operation.inserted_lines, anchor_text)
-    return _hashline_replacement_text(lines)
-
-
 def _validate_snapshot_for_edit(
     *,
     path: str,

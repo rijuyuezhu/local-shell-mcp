@@ -151,18 +151,6 @@ def tool_timeout_s() -> float:
     return max(0.001, get_settings().tool_timeout_s)
 
 
-def clamp_output(
-    stdout: str, stderr: str, max_output_bytes: int | None = None
-) -> tuple[str, str, bool]:
-    """Trim stdout and stderr to a shared byte budget while reporting which streams were truncated."""
-    limit = _effective_output_limit(max_output_bytes)
-    encoded_len = len(stdout.encode()) + len(stderr.encode())
-    if encoded_len <= limit:
-        return stdout, stderr, False
-    half = max(1, limit // 2)
-    return stdout[-half:], stderr[-half:], True
-
-
 def _effective_output_limit(max_output_bytes: int | None = None) -> int:
     """Resolve the output byte limit requested by a caller against server-wide maximums."""
     settings = get_settings()
