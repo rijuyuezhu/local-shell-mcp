@@ -21,7 +21,7 @@ class JobToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
 
-local_tool = JobToolRegistry.get_tool_decorator()
+job_tool = JobToolRegistry.get_tool_decorator()
 
 
 def _job_description(_context: object) -> str:
@@ -32,7 +32,7 @@ Results for `bash(async_=true)` are tracked by job id under the same session_id.
 Pass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call."""
 
 
-@local_tool(
+@job_tool(
     http_method="POST",
     http_path="/tools/job",
     description=_job_description,

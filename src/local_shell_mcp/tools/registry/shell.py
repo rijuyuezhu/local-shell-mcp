@@ -44,7 +44,7 @@ class ShellToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
 
-local_tool = ShellToolRegistry.get_tool_decorator()
+shell_tool = ShellToolRegistry.get_tool_decorator()
 
 
 def _bash_description(context: McpToolContext) -> str:
@@ -54,7 +54,7 @@ def _bash_description(context: McpToolContext) -> str:
 Default mode is bounded and returns captured stdout/stderr. Use run_python_code instead of bash when you want to execute an ad hoc Python snippet without manually writing a script file. Set async_=true for long-running non-interactive work; this returns a job_id owned by the same session_id and must be managed with the job companion. Set pty=true only for local-session interactive programs, REPLs, servers, or commands that need later input; this returns a shell_id for persistent-shell companion tools and is not available for remote sessions. Do not use shell_id with job, and do not use session_id with persistent-shell companion tools. If both async_ and pty are true, PTY mode is used for local sessions. Use env for multiline, quote-heavy, or caller-provided values instead of embedding them directly in the command. Current bounded command timeout default/cap: {settings.run_shell_default_timeout_s}/{settings.run_shell_max_timeout_s} seconds."""
 
 
-@local_tool(
+@shell_tool(
     http_method="POST",
     http_path="/tools/bash",
     description=_bash_description,
@@ -93,7 +93,7 @@ def _run_python_code_description(context: McpToolContext) -> str:
 cwd defaults to the session workdir; any cwd override resolves inside that session workdir. Default mode is bounded and returns captured stdout/stderr under result. Set async_=true for a non-interactive background job owned by the same session_id and managed with job. Set pty=true only for local-session Python processes that need an interactive terminal, returning shell_id for persistent-shell companion tools; PTY mode is not available for remote sessions. Current bounded command timeout default/cap: {settings.run_shell_default_timeout_s}/{settings.run_shell_max_timeout_s} seconds."""
 
 
-@local_tool(
+@shell_tool(
     http_method="POST",
     http_path="/tools/run_python_code",
     description=_run_python_code_description,
@@ -125,7 +125,7 @@ async def run_python_code(
     )
 
 
-@local_tool(
+@shell_tool(
     http_method="POST",
     http_path="/tools/send_persistent_shell_input",
     oauth_scopes=("shell:read", "shell:execute"),
@@ -139,7 +139,7 @@ async def send_persistent_shell_input(
     )
 
 
-@local_tool(
+@shell_tool(
     http_method="POST",
     http_path="/tools/read_persistent_shell_output",
     annotations="read_only",
@@ -152,7 +152,7 @@ async def read_persistent_shell_output(
     return await read_persistent_shell_output_execute(shell_id, lines)
 
 
-@local_tool(
+@shell_tool(
     http_method="POST",
     http_path="/tools/kill_persistent_shell",
     oauth_scopes=("shell:read", "shell:execute"),
@@ -164,7 +164,7 @@ async def kill_persistent_shell(
     return await kill_persistent_shell_execute(shell_id)
 
 
-@local_tool(
+@shell_tool(
     http_method="GET",
     http_path="/tools/list_persistent_shells",
     annotations="read_only",

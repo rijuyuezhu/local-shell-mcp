@@ -16,10 +16,10 @@ class TodoToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
 
-local_tool = TodoToolRegistry.get_tool_decorator()
+todo_tool = TodoToolRegistry.get_tool_decorator()
 
 
-@local_tool(
+@todo_tool(
     http_method="GET",
     http_path="/tools/todo",
     annotations="read_only",
@@ -30,7 +30,7 @@ async def read_todos(session_id: SessionIdArg) -> ReadTodosOutput:
     return await asyncio.to_thread(read_todos_execute, session_id)
 
 
-@local_tool(
+@todo_tool(
     http_method="POST",
     http_path="/tools/todo",
     oauth_scopes=("shell:read", "shell:write"),

@@ -60,10 +60,10 @@ class AgentBridgeToolRegistry(DeclarativeToolRegistry):
         register_agent_bridge_dynamic_mcp(mcp, context)
 
 
-local_tool = AgentBridgeToolRegistry.get_tool_decorator()
+agent_bridge_tool = AgentBridgeToolRegistry.get_tool_decorator()
 
 
-@local_tool(
+@agent_bridge_tool(
     http_method="GET",
     http_path="/tools/agent_config_status",
     enabled=_agent_bridge_enabled,
@@ -73,7 +73,7 @@ async def agent_config_status() -> AgentConfigStatusOutput:
     return agent_config_status_execute(_agent_registry())
 
 
-@local_tool(
+@agent_bridge_tool(
     http_method="GET",
     http_path="/tools/list_agent_skills",
     enabled=_agent_bridge_enabled,
@@ -83,7 +83,7 @@ async def list_agent_skills() -> ListAgentSkillsOutput:
     return list_agent_skills_execute(_agent_registry())
 
 
-@local_tool(
+@agent_bridge_tool(
     http_method="POST",
     http_path="/tools/activate_agent_skill",
     enabled=_agent_bridge_enabled,
@@ -95,7 +95,7 @@ async def activate_agent_skill(
     return activate_agent_skill_execute(name, _agent_registry())
 
 
-@local_tool(
+@agent_bridge_tool(
     http_method="GET",
     http_path="/tools/list_agent_mcp_servers",
     enabled=_agent_bridge_enabled,
@@ -105,7 +105,7 @@ async def list_agent_mcp_servers() -> ListAgentMcpServersOutput:
     return list_agent_mcp_servers_execute(_agent_registry())
 
 
-@local_tool(
+@agent_bridge_tool(
     http_method="POST",
     http_path="/tools/list_agent_mcp_tools",
     enabled=_agent_bridge_enabled,
@@ -117,7 +117,7 @@ async def list_agent_mcp_tools(
     return list_agent_mcp_tools_execute(server, _agent_registry())
 
 
-@local_tool(
+@agent_bridge_tool(
     http_method="POST",
     http_path="/tools/call_agent_mcp_tool",
     enabled=_agent_bridge_enabled,

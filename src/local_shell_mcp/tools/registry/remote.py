@@ -52,7 +52,7 @@ class RemoteToolRegistry(DeclarativeToolRegistry):
         super().register_mcp(mcp, context)
 
 
-local_tool = RemoteToolRegistry.get_tool_decorator()
+remote_tool = RemoteToolRegistry.get_tool_decorator()
 
 
 def _remote_admin_description(context: McpToolContext) -> str:
@@ -62,7 +62,7 @@ def _remote_admin_description(context: McpToolContext) -> str:
 Do not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s={settings.remote_invite_ttl_s} seconds when omitted."""
 
 
-@local_tool(
+@remote_tool(
     http_method="POST",
     http_path="/tools/remote_admin",
     description=_remote_admin_description,
