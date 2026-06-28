@@ -402,7 +402,8 @@ async def grep_search_execute(
         args.extend(["--glob", glob_arg])
     if glob:
         args.extend(["--glob", glob])
-    args.extend(["--", query, *path_args])
+    search_paths = path_args or ["."]
+    args.extend(["--", query, *search_paths])
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -523,7 +524,7 @@ async def grep_search_execute(
                 matches.append(grounded_match)
                 raw_matches.append(
                     _RawSearchMatch(
-                        match=grounded_match,
+                        match=match,
                         scoped_ranges=scoped_ranges,
                     )
                 )
@@ -539,12 +540,12 @@ async def grep_search_execute(
     finally:
         if not stderr_task.done():
             stderr_task.cancel()
-        with suppress(Exception):
+        with suppress(Exception, asyncio.CancelledError):
             stderr_bytes = await stderr_task
         if proc.returncode is None:
             with suppress(ProcessLookupError):
                 proc.kill()
-            with suppress(Exception):
+            with suppress(Exception, asyncio.CancelledError):
                 await proc.wait()
 
     stderr_truncated = len(stderr_bytes) > settings.max_output_bytes

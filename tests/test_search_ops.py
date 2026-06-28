@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 
 import pytest
@@ -131,6 +132,50 @@ async def test_grep_returns_structured_error_when_rg_is_missing(
 
 
 @pytest.mark.asyncio
+async def test_grep_search_suppresses_cancelled_stderr_reader(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    class FakeStdout:
+        async def readline(self) -> bytes:
+            return b""
+
+    class FakeStderr:
+        async def read(self, limit: int) -> bytes:
+            await asyncio.Event().wait()
+            return b""
+
+    class FakeProc:
+        stdout = FakeStdout()
+        stderr = FakeStderr()
+        returncode = 0
+
+        async def wait(self) -> int:
+            return 0
+
+        def terminate(self) -> None:
+            raise AssertionError("terminate should not be needed")
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be needed")
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return FakeProc()
+
+    monkeypatch.setattr(
+        asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+
+    result = await grep_search_execute("needle", cwd=".", regex=False)
+
+    assert result.ok is True
+    assert result.count == 0
+    assert result.stderr == ""
+
+
+@pytest.mark.asyncio
 async def test_glob_finds_matching_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
@@ -168,6 +213,44 @@ async def test_tree_and_glob_resolve_relative_to_session_workdir(
     assert "src/" in tree.entries
     assert "outer.txt" not in tree.entries
     assert glob.paths == ["project/src/app.py"]
+
+
+@pytest.mark.asyncio
+async def test_search_display_lines_resolve_from_session_workdir(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    if not shutil.which(get_settings().rg_bin):
+        pytest.skip("missing rg")
+    (tmp_path / "outer.txt").write_text("needle outside", encoding="utf-8")
+    (tmp_path / "project" / "src").mkdir(parents=True)
+    (tmp_path / "project" / "src" / "app.py").write_text(
+        "alpha\nneedle here\ngamma\n", encoding="utf-8"
+    )
+
+    store = get_tool_session_store()
+    store.clear()
+    session_id = store.create_session(workdir="project").session_id
+
+    result = await search_execute(
+        "needle", paths="src", regex=False, session_id=session_id
+    )
+
+    assert result.ok is True
+    assert result.count == 1
+    assert result.matches[0].path == "project/src/app.py"
+    assert result.matches[0].numbered_line is not None
+    assert result.matches[0].numbered_line.startswith("[project/src/app.py#")
+    assert result.displayed_count == 3
+    assert [line.line for line in result.displayed_lines] == [1, 2, 3]
+    assert [line.kind for line in result.displayed_lines] == [
+        "context",
+        "match",
+        "context",
+    ]
+    assert result.numbered_content.startswith("[project/src/app.py#")
+    assert "needle outside" not in result.numbered_content
 
 
 @pytest.mark.asyncio

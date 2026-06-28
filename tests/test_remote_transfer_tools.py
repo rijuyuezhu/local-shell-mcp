@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import pytest
@@ -138,3 +139,38 @@ async def test_remote_copy_dir_packs_transfers_and_unpacks(
     assert (
         root / "dst-machine" / "run-copy" / "nested" / "result.txt"
     ).read_text(encoding="utf-8") == "ok"
+
+
+@pytest.mark.asyncio
+async def test_remote_copy_local_file_aborts_remote_write_on_cancellation(
+    tmp_path, monkeypatch
+):
+    root = _workspace(tmp_path, monkeypatch)
+    (root / "source.txt").write_text("payload", encoding="utf-8")
+    aborted: list[dict[str, Any]] = []
+
+    async def fake_remote_transfer_data(
+        machine: str,
+        tool: str,
+        args: dict[str, Any],
+        timeout_s: int | None = None,
+    ) -> dict[str, Any]:
+        if tool == "transfer_begin_write":
+            return {"transfer_id": "transfer-1"}
+        if tool == "transfer_write_chunk":
+            raise asyncio.CancelledError()
+        if tool == "transfer_abort_write":
+            aborted.append(args)
+            return {}
+        raise AssertionError(f"unexpected remote transfer tool: {tool}")
+
+    monkeypatch.setattr(
+        remote_transfer, "_remote_transfer_data", fake_remote_transfer_data
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await remote_transfer.copy_local_file_to_remote(
+            "source.txt", "dst", "dest.txt", True, 128
+        )
+
+    assert aborted == [{"path": "dest.txt", "transfer_id": "transfer-1"}]
