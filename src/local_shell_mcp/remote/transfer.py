@@ -117,8 +117,8 @@ async def copy_local_file_to_remote(
                 "expected_sha256": stat.get("sha256"),
             },
         )
-    except Exception:
-        with suppress(Exception):
+    except Exception, asyncio.CancelledError:
+        with suppress(Exception, asyncio.CancelledError):
             await _remote_transfer_data(
                 dst_machine,
                 "transfer_abort_write",
@@ -183,8 +183,8 @@ async def copy_remote_file_to_local(
             stat["size"],
             stat.get("sha256"),
         )
-    except Exception:
-        with suppress(Exception):
+    except Exception, asyncio.CancelledError:
+        with suppress(Exception, asyncio.CancelledError):
             await asyncio.to_thread(
                 transfer_abort_write, destination_path, transfer_id
             )
@@ -260,8 +260,8 @@ async def copy_remote_file_to_remote(
                 "expected_sha256": stat.get("sha256"),
             },
         )
-    except Exception:
-        with suppress(Exception):
+    except Exception, asyncio.CancelledError:
+        with suppress(Exception, asyncio.CancelledError):
             await _remote_transfer_data(
                 dst_machine,
                 "transfer_abort_write",
@@ -281,7 +281,7 @@ async def copy_remote_file_to_remote(
 
 
 async def _remote_cleanup_file(machine: str, path: str) -> None:
-    with suppress(Exception):
+    with suppress(Exception, asyncio.CancelledError):
         await _remote_transfer_data(
             machine,
             "delete_file_or_dir",
