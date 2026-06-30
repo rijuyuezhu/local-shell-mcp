@@ -333,7 +333,7 @@ def test_worker_identity_round_trips_and_filters_by_server_name(
 def test_worker_cli_keyboard_interrupt_exits_cleanly():
     code = """
 from argparse import Namespace
-from local_shell_mcp.remote import worker
+from local_shell_mcp.remote_worker import worker
 
 
 def fake_asyncio_run(coro):

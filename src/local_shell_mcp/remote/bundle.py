@@ -44,7 +44,6 @@ _WORKER_BUNDLE_EXCLUDE_PATTERNS = (
     "**/__pycache__/**",
     "**/*.pyc",
     "**/*.pyo",
-    "remote/worker.py",
 )
 
 
