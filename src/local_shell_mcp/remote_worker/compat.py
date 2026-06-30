@@ -39,7 +39,11 @@ def _jsonable(value: Any, *, exclude_none: bool = False) -> Any:
         return str(value)
     if isinstance(value, enum.Enum):
         return _jsonable(value.value, exclude_none=exclude_none)
-    if hasattr(value, "model_dump") and callable(value.model_dump):
+    if (
+        not isinstance(value, type)
+        and hasattr(value, "model_dump")
+        and callable(value.model_dump)
+    ):
         return value.model_dump(mode="json", exclude_none=exclude_none)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return _jsonable(dataclasses.asdict(value), exclude_none=exclude_none)
@@ -63,6 +67,7 @@ def _all_annotations(cls: type[Any]) -> dict[str, Any]:
     for base in reversed(cls.__mro__):
         annotations.update(getattr(base, "__annotations__", {}))
     annotations.pop("model_config", None)
+    annotations.pop("model_fields", None)
     return annotations
 
 
@@ -165,6 +170,16 @@ class _BaseModel:
             for key, value in self.__dict__.items()
             if not (exclude_none and value is None)
         }
+
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Any:
+        data = dict(self.__dict__)
+        if update:
+            data.update(update)
+        copied = type(self).__new__(type(self))
+        copied.__dict__.update(data)
+        return copied
 
     @classmethod
     def model_validate(cls, value: Any) -> Any:

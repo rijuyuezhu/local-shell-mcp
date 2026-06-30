@@ -60,6 +60,61 @@ def test_execute_worker_tool_imports_registry_lazily(monkeypatch):
     assert seen_mcp_import is False
 
 
+def test_worker_session_start_result_serializes_with_dependency_shim(tmp_path):
+    script = """
+import asyncio
+import json
+import os
+
+from local_shell_mcp.remote_worker.compat import install
+
+install()
+
+from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.remote_worker import worker
+
+
+async def main():
+    workdir = os.environ["REMOTE_WORKDIR"]
+    worker._configure_worker_runtime_env(workdir)
+    clear_settings_cache()
+    result = await worker.execute_worker_tool(
+        "session_start",
+        {"workdir": workdir, "target": "local", "machine": None, "label": None},
+    )
+    data = worker.to_jsonable(result)
+    assert data["target"] == "local"
+    assert data["workdir"] == workdir
+    assert "model_fields" not in data
+    assert data["git"]["is_repo"] is False
+    assert "model_fields" not in data["git"]
+    print(json.dumps(data, sort_keys=True))
+
+
+asyncio.run(main())
+"""
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHONPATH": "src",
+            "REMOTE_WORKDIR": str(tmp_path),
+            "LOCAL_SHELL_MCP_WORKSPACE_ROOT": "/workspace",
+            "LOCAL_SHELL_MCP_STATE_DIR": "/workspace/.local-shell-mcp",
+            "LOCAL_SHELL_MCP_WORKER_STATE_DIR": str(tmp_path / ".worker-state"),
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=".",
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert '"session_id"' in result.stdout
+
+
 class _FakeResponse:
     def __init__(self, body: bytes, status: int = 200):
         self.body = body

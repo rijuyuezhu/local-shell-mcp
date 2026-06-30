@@ -126,8 +126,7 @@ def start_worker_process(
         [
             sys.executable,
             "-m",
-            "local_shell_mcp.main",
-            "worker",
+            "local_shell_mcp.remote_worker",
             "--server",
             base_url,
             "--invite",
