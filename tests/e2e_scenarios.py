@@ -14,6 +14,7 @@ CORE_TOOL_NAMES = {
     "job",
     "session_start",
     "session_change_cwd",
+    "session_copy",
     "search",
     "workspace_search",
     "fetch",
@@ -269,6 +270,56 @@ async def exercise_filesystem_and_search_tools(
         {"session_id": session_id, "path": "notes/token.txt"},
     )
     assert not scan_file.exists()
+
+
+async def exercise_session_copy_tool(
+    client: ToolClient, workspace: Path
+) -> None:
+    src_dir = workspace / "copy-src"
+    dst_dir = workspace / "copy-dst"
+    src_dir.mkdir()
+    dst_dir.mkdir()
+    payload = b"session-copy-e2e-" * 300
+    (src_dir / "artifact.bin").write_bytes(payload)
+    (src_dir / "tree" / "nested").mkdir(parents=True)
+    (src_dir / "tree" / "nested" / "note.txt").write_text(
+        "copied tree", encoding="utf-8"
+    )
+
+    src = await client.call_tool("session_start", {"workdir": "copy-src"})
+    dst = await client.call_tool("session_start", {"workdir": "copy-dst"})
+
+    file_copy = await client.call_tool(
+        "session_copy",
+        {
+            "src_session_id": src["session_id"],
+            "src_path": "artifact.bin",
+            "dst_session_id": dst["session_id"],
+            "dst_path": "artifact-copy.bin",
+            "kind": "file",
+            "chunk_size": 64,
+        },
+    )
+    assert file_copy["kind"] == "file"
+    assert file_copy["relation"]["route"] == "local_to_local"
+    assert file_copy["chunks"] > 1
+    assert (dst_dir / "artifact-copy.bin").read_bytes() == payload
+
+    dir_copy = await client.call_tool(
+        "session_copy",
+        {
+            "src_session_id": src["session_id"],
+            "src_path": "tree",
+            "dst_session_id": dst["session_id"],
+            "dst_path": "tree-copy",
+            "kind": "dir",
+        },
+    )
+    assert dir_copy["kind"] == "dir"
+    assert dir_copy["entries"] >= 1
+    assert (dst_dir / "tree-copy" / "nested" / "note.txt").read_text(
+        encoding="utf-8"
+    ) == "copied tree"
 
 
 async def exercise_workspace_connector_tools(client: ToolClient) -> None:

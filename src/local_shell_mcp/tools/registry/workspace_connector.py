@@ -37,10 +37,10 @@ class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
 
-local_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
+workspace_connector_tool = WorkspaceConnectorToolRegistry.get_tool_decorator()
 
 
-@local_tool(
+@workspace_connector_tool(
     http_method="POST",
     http_path="/tools/workspace_search",
     mcp_security_profile="connector_compatible",
@@ -53,7 +53,7 @@ async def workspace_search(query: ConnectorSearchQueryArg) -> SearchOutput:
     return await search_execute(query)
 
 
-@local_tool(
+@workspace_connector_tool(
     http_method="POST",
     http_path="/tools/fetch",
     mcp_security_profile="connector_compatible",

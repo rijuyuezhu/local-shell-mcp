@@ -33,7 +33,7 @@ class DownloadToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
 
-local_tool = DownloadToolRegistry.get_tool_decorator()
+download_tool = DownloadToolRegistry.get_tool_decorator()
 
 
 def _download_tools_enabled(settings: Settings) -> bool:
@@ -45,7 +45,7 @@ def _create_file_link_description(context: McpToolContext) -> str:
     return f"""Create a temporary tokenized HTTP download URL for one existing regular file in a local agent/workspace session. Use this when a user needs to download or open an artifact through a browser. The response includes a sensitive token and URL. Current TTL default/cap: {settings.file_download_default_ttl_s}/{settings.file_download_max_ttl_s} seconds. Current file-size cap: {settings.file_download_max_file_bytes} bytes, with 0 meaning no configured cap."""
 
 
-@local_tool(
+@download_tool(
     http_method="POST",
     http_path="/tools/file_link/create",
     description=_create_file_link_description,
@@ -70,7 +70,7 @@ async def create_file_link(
     )
 
 
-@local_tool(
+@download_tool(
     http_method="GET",
     http_path="/tools/file_link/list",
     annotations="read_only",
@@ -87,7 +87,7 @@ async def list_file_links(
     )
 
 
-@local_tool(
+@download_tool(
     http_method="POST",
     http_path="/tools/file_link/revoke",
     oauth_scopes=("shell:read", "file:share"),

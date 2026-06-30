@@ -39,7 +39,7 @@ class FileToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
 
-local_tool = FileToolRegistry.get_tool_decorator()
+file_tool = FileToolRegistry.get_tool_decorator()
 
 
 def _list_files_description(context: McpToolContext) -> str:
@@ -62,7 +62,7 @@ def _hashline_edit_description(context: McpToolContext) -> str:
     return f"""Default model-facing edit tool for existing UTF-8 files. Copy the `[path#snapshot_id]` header and relevant `line:text` rows from the latest read/search output; never invent snapshot ids/tags. Then provide the final new content as `+text` rows. Supported hunk forms: copied rows followed by `+replacement` rows; copied rows with no `+` rows to delete; `SWAP start[-end]:` followed by `+replacement` rows; and `INSERT [BEFORE|AFTER] line:` followed by `+inserted` rows. To apply multiple non-overlapping hunks, separate hunk bodies with a blank line under the same header or repeat a `[path#snapshot_id]` header for another section or file. Body rows are final content only: use `+` for blank lines, preserve indentation after `+`, and do not write `-old` rows or bare context lines. Keep hunks tight. Line numbers refer to the original displayed snapshot; stale files, wrong paths, overlapping hunks, or unseen ranges are rejected. After every edit, use the returned fresh hunk contexts or run read/search again before the next edit. Current write cap: {settings.max_file_write_bytes} bytes."""
 
 
-@local_tool(
+@file_tool(
     http_method="POST",
     http_path="/tools/list_files",
     description=_list_files_description,
@@ -81,7 +81,7 @@ async def list_files(
     )
 
 
-@local_tool(
+@file_tool(
     http_method="POST",
     http_path="/tools/write_file",
     description=_write_file_description,
@@ -99,7 +99,7 @@ async def write_file(
     )
 
 
-@local_tool(
+@file_tool(
     http_method="POST",
     http_path="/tools/edit_lines",
     description=_edit_lines_description,
@@ -124,7 +124,7 @@ async def edit_lines(
     )
 
 
-@local_tool(
+@file_tool(
     http_method="POST",
     http_path="/tools/hashline_edit",
     description=_hashline_edit_description,
@@ -138,7 +138,7 @@ async def hashline_edit(
     return await hashline_edit_dispatch_execute(input, session_id)
 
 
-@local_tool(
+@file_tool(
     http_method="POST",
     http_path="/tools/delete",
     oauth_scopes=("shell:read", "shell:write"),

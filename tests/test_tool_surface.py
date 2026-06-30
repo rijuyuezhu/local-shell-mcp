@@ -12,7 +12,7 @@ from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_NAMES,
     REMOTE_WORKER_TOOL_SPECS,
 )
-from local_shell_mcp.remote.worker import WORKER_TOOL_NAMES
+from local_shell_mcp.remote_worker.worker import WORKER_TOOL_NAMES
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tools.contracts import (
@@ -40,6 +40,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "fetch",
     "session_start",
     "session_change_cwd",
+    "session_copy",
     "version",
     "run_python_code",
     "send_persistent_shell_input",
@@ -140,12 +141,16 @@ async def test_model_facing_tools_require_session_id_by_default(
 
     assert sessionless_allowlist <= set(tools)
 
-    unexpected_sessionless = {
-        name
-        for name, tool in tools.items()
-        if "session_id" not in set(tool.inputSchema.get("required", []))
-        and name not in sessionless_allowlist
-    }
+    unexpected_sessionless = set()
+    for name, tool in tools.items():
+        required = set(tool.inputSchema.get("required", []))
+        has_single_session = "session_id" in required
+        has_copy_sessions = {"src_session_id", "dst_session_id"} <= required
+        if (
+            not (has_single_session or has_copy_sessions)
+            and name not in sessionless_allowlist
+        ):
+            unexpected_sessionless.add(name)
 
     assert unexpected_sessionless == set()
     for name in sessionless_allowlist:

@@ -1,4 +1,5 @@
 import builtins
+import os
 import subprocess
 import sys
 import urllib.error
@@ -13,7 +14,7 @@ def test_remote_worker_entrypoint_import_is_dependency_light():
     script = """
 import builtins
 
-blocked = {"fastapi", "httpx", "mcp", "starlette", "uvicorn"}
+blocked = {"fastapi", "httpx", "mcp", "starlette", "uvicorn", "pydantic", "pydantic_settings", "yaml", "pathspec"}
 real_import = builtins.__import__
 
 
@@ -25,7 +26,7 @@ def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
 
 builtins.__import__ = guarded_import
 import local_shell_mcp.remote_worker
-from local_shell_mcp.remote.worker import worker_capabilities, worker_info
+from local_shell_mcp.remote_worker.worker import worker_capabilities, worker_info
 
 assert "shell" in worker_capabilities()
 assert worker_info(".")["workdir"] == "."
@@ -42,7 +43,7 @@ assert worker_info(".")["workdir"] == "."
 
 
 def test_execute_worker_tool_imports_registry_lazily(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     real_import = builtins.__import__
     seen_mcp_import = False
@@ -75,7 +76,7 @@ class _FakeResponse:
 
 
 def test_worker_post_json_posts_json_and_returns_object(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
     captured: dict[str, object] = {}
@@ -110,7 +111,7 @@ def test_worker_post_json_posts_json_and_returns_object(monkeypatch):
 
 
 def test_worker_post_json_rejects_non_object_response(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -128,7 +129,7 @@ def test_worker_post_json_rejects_non_object_response(monkeypatch):
 
 
 def test_worker_post_json_includes_http_error_detail(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -153,7 +154,7 @@ def test_worker_post_json_includes_http_error_detail(monkeypatch):
 
 
 def test_worker_post_json_wraps_url_errors(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -171,7 +172,7 @@ def test_worker_post_json_wraps_url_errors(monkeypatch):
 
 
 def test_worker_post_json_uses_curl_when_available(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     captured: dict[str, object] = {}
 
@@ -206,7 +207,7 @@ def test_worker_post_json_uses_curl_when_available(monkeypatch):
 
 
 def test_worker_retry_delay_is_capped():
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     assert [worker._worker_retry_delay(i) for i in range(7)] == [
         1.0,
@@ -223,7 +224,7 @@ def test_worker_retry_delay_is_capped():
 async def test_worker_post_json_forever_retries_until_success(
     monkeypatch, capsys
 ):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     calls = []
     sleeps = []
@@ -257,10 +258,51 @@ async def test_worker_post_json_forever_retries_until_success(
     )
 
 
+def test_worker_runtime_env_replaces_default_workspace_paths(
+    tmp_path, monkeypatch
+):
+    import local_shell_mcp.remote_worker.worker as worker
+
+    workdir = tmp_path / "remote-workdir"
+    worker_state = tmp_path / "worker-state"
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", "/workspace")
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_STATE_DIR", "/workspace/.local-shell-mcp"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(worker_state))
+
+    worker._configure_worker_runtime_env(str(workdir))
+
+    assert os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] == str(workdir)
+    assert os.environ["LOCAL_SHELL_MCP_STATE_DIR"] == str(
+        worker_state / "runtime"
+    )
+    assert os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] == "true"
+
+
+def test_worker_runtime_env_preserves_explicit_custom_paths(
+    tmp_path, monkeypatch
+):
+    import local_shell_mcp.remote_worker.worker as worker
+
+    custom_workspace = tmp_path / "custom-workspace"
+    custom_state = tmp_path / "custom-state"
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(custom_workspace))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(custom_state))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
+
+    worker._configure_worker_runtime_env(str(tmp_path / "remote-workdir"))
+
+    assert os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] == str(custom_workspace)
+    assert os.environ["LOCAL_SHELL_MCP_STATE_DIR"] == str(custom_state)
+    assert os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] == "true"
+
+
 def test_worker_identity_round_trips_and_filters_by_server_name(
     tmp_path, monkeypatch
 ):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
 
@@ -291,7 +333,7 @@ def test_worker_identity_round_trips_and_filters_by_server_name(
 def test_worker_cli_keyboard_interrupt_exits_cleanly():
     code = """
 from argparse import Namespace
-from local_shell_mcp.remote import worker
+from local_shell_mcp.remote_worker import worker
 
 
 def fake_asyncio_run(coro):
@@ -340,7 +382,7 @@ async def test_remote_manager_persists_workers_and_resumes(
     invite = await manager.create_invite(name="worker-a")
     registered = await manager.register_worker(
         {
-            "invite": invite["code"],
+            "invite": invite.code,
             "workdir": str(tmp_path),
             "capabilities": ["shell"],
             "info": {"hostname": "remote-host"},
@@ -349,9 +391,9 @@ async def test_remote_manager_persists_workers_and_resumes(
 
     reloaded = RemoteManager()
     inventory = reloaded.list_machines()
-    assert inventory["counts"] == {"online": 0, "offline": 1, "total": 1}
-    assert inventory["machines"][0]["name"] == "worker-a"
-    assert inventory["machines"][0]["queue_depth"] == 0
+    assert inventory.counts == {"online": 0, "offline": 1, "total": 1}
+    assert inventory.machines[0].name == "worker-a"
+    assert inventory.machines[0].queue_depth == 0
 
     resumed = await reloaded.resume_worker(
         registered["token"],
@@ -359,7 +401,7 @@ async def test_remote_manager_persists_workers_and_resumes(
     )
     assert resumed["name"] == "worker-a"
     assert resumed["token"] == registered["token"]
-    assert reloaded.list_machines()["counts"] == {
+    assert reloaded.list_machines().counts == {
         "online": 1,
         "offline": 0,
         "total": 1,
@@ -394,11 +436,11 @@ async def test_remote_manager_list_machines_reports_counts_and_details(
 
     result = manager.list_machines()
 
-    assert result["counts"] == {"online": 1, "offline": 1, "total": 2}
-    assert [machine["name"] for machine in result["machines"]] == [
+    assert result.counts == {"online": 1, "offline": 1, "total": 2}
+    assert [machine.name for machine in result.machines] == [
         "recent-worker",
         "stale-worker",
     ]
-    assert result["machines"][0]["last_seen_age_s"] == 5
-    assert result["machines"][0]["queue_depth"] == 1
-    assert result["machines"][0]["offline_after_s"] == 60
+    assert result.machines[0].last_seen_age_s == 5
+    assert result.machines[0].queue_depth == 1
+    assert result.machines[0].offline_after_s == 60

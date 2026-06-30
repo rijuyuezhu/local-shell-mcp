@@ -62,3 +62,85 @@ class SessionStartOutput(BaseModel):
     message: str = Field(
         description="Short model-facing instruction for using this session."
     )
+
+
+class SessionCopyEndpoint(BaseModel):
+    """One endpoint in a session-to-session copy."""
+
+    session_id: str = Field(
+        description="Agent/workspace session id for this endpoint."
+    )
+    target: Literal["local", "remote"] = Field(
+        description="Execution target bound to this endpoint session."
+    )
+    machine: str | None = Field(
+        default=None, description="Remote worker machine for remote sessions."
+    )
+    workdir: str = Field(
+        description="Session workdir used for path resolution."
+    )
+    path: str = Field(
+        description="Caller-provided path inside the session workdir."
+    )
+    resolved_path: str | None = Field(
+        default=None,
+        description="Resolved path reported by the underlying transfer primitive.",
+    )
+
+
+class SessionCopyRelation(BaseModel):
+    """Relationship between the source and destination sessions."""
+
+    route: Literal[
+        "local_to_local",
+        "local_to_remote",
+        "remote_to_local",
+        "remote_to_remote_same_machine",
+        "remote_to_remote_different_machines",
+    ] = Field(
+        description="Transfer route selected from the two session targets."
+    )
+    same_session: bool = Field(
+        description="Whether source and destination are the same agent session."
+    )
+    same_target: bool = Field(
+        description="Whether source and destination have the same target type."
+    )
+    same_machine: bool = Field(
+        description="Whether both endpoints are remote sessions on the same worker machine."
+    )
+
+
+class SessionCopyOutput(BaseModel):
+    """Result of copying a file or directory between two sessions."""
+
+    kind: Literal["file", "dir"] = Field(
+        description="Resolved copied object kind."
+    )
+    source: SessionCopyEndpoint = Field(description="Source copy endpoint.")
+    destination: SessionCopyEndpoint = Field(
+        description="Destination copy endpoint."
+    )
+    relation: SessionCopyRelation = Field(
+        description="Analyzed relationship between the two sessions."
+    )
+    bytes: int | None = Field(
+        default=None, description="Number of file bytes copied for file copies."
+    )
+    sha256: str | None = Field(
+        default=None,
+        description="SHA-256 digest for file copies, when available.",
+    )
+    archive_bytes: int | None = Field(
+        default=None, description="Transfer archive size for directory copies."
+    )
+    archive_sha256: str | None = Field(
+        default=None,
+        description="Transfer archive digest for directory copies.",
+    )
+    chunks: int = Field(description="Number of transfer chunks exchanged.")
+    chunk_size: int = Field(description="Chunk size used for binary transfer.")
+    entries: int | None = Field(
+        default=None,
+        description="Number of directory entries unpacked for directory copies.",
+    )

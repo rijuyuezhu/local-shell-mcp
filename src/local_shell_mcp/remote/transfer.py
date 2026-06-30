@@ -125,8 +125,8 @@ async def copy_local_file_to_remote(
                 {"path": dst_path, "transfer_id": transfer_id},
             )
         raise
-    return RemoteCopyFileOutput.model_validate(
-        {
+    return RemoteCopyFileOutput(
+        **{
             "source": {"machine": "controller", "path": stat["path"]},
             "destination": {"machine": dst_machine, "path": finish["path"]},
             "bytes": stat["size"],
@@ -189,8 +189,8 @@ async def copy_remote_file_to_local(
                 transfer_abort_write, destination_path, transfer_id
             )
         raise
-    return RemoteCopyFileOutput.model_validate(
-        {
+    return RemoteCopyFileOutput(
+        **{
             "source": {"machine": src_machine, "path": stat["path"]},
             "destination": {"machine": "controller", "path": finish["path"]},
             "bytes": stat["size"],
@@ -268,8 +268,8 @@ async def copy_remote_file_to_remote(
                 {"path": dst_path, "transfer_id": transfer_id},
             )
         raise
-    return RemoteCopyFileOutput.model_validate(
-        {
+    return RemoteCopyFileOutput(
+        **{
             "source": {"machine": src_machine, "path": stat["path"]},
             "destination": {"machine": dst_machine, "path": finish["path"]},
             "bytes": stat["size"],
@@ -284,8 +284,8 @@ async def _remote_cleanup_file(machine: str, path: str) -> None:
     with suppress(Exception, asyncio.CancelledError):
         await _remote_transfer_data(
             machine,
-            "delete_file_or_dir",
-            {"path": path, "recursive": False},
+            "transfer_delete_temp_path",
+            {"path": path},
         )
 
 
@@ -330,8 +330,8 @@ async def copy_remote_dir_to_remote(
         raise
     finally:
         await _remote_cleanup_file(src_machine, pack.get("archive_path", ""))
-    return RemoteCopyDirOutput.model_validate(
-        {
+    return RemoteCopyDirOutput(
+        **{
             "source": {"machine": src_machine, "path": pack["path"]},
             "destination": {"machine": dst_machine, "path": unpack["path"]},
             "archive_bytes": pack["bytes"],
@@ -369,8 +369,8 @@ async def copy_remote_dir_to_local(
         )
     finally:
         await _remote_cleanup_file(src_machine, pack.get("archive_path", ""))
-    return RemoteCopyDirOutput.model_validate(
-        {
+    return RemoteCopyDirOutput(
+        **{
             "source": {"machine": src_machine, "path": pack["path"]},
             "destination": {"machine": "controller", "path": unpack["path"]},
             "archive_bytes": pack["bytes"],
@@ -417,8 +417,8 @@ async def copy_local_dir_to_remote(
     finally:
         with suppress(Exception):
             delete_file_or_dir_execute(pack.get("archive_path", ""), False)
-    return RemoteCopyDirOutput.model_validate(
-        {
+    return RemoteCopyDirOutput(
+        **{
             "source": {"machine": "controller", "path": pack["path"]},
             "destination": {"machine": dst_machine, "path": unpack["path"]},
             "archive_bytes": pack["bytes"],

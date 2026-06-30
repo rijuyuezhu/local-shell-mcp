@@ -223,13 +223,12 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "__REMOTE_WORKER_BUNDLE_PATH__" not in join_script
         assert f"SERVER={base_url}" in join_script
         assert 'BUNDLE_URL="$SERVER/remote/worker-bundle.tgz"' in join_script
-        assert (
-            'export PYTHONPATH="$TMPDIR:$TMPDIR/vendor:${PYTHONPATH:-}"'
-            in join_script
-        )
+        assert 'export PYTHONPATH="$TMPDIR:${PYTHONPATH:-}"' in join_script
+        assert "python_supports_worker" in join_script
+        assert "python install 3.14" in join_script
         assert "Downloading worker bundle" in join_script
         assert "curl -fL --progress-bar" in join_script
-        assert "python3 -m local_shell_mcp.remote_worker" in join_script
+        assert "-m local_shell_mcp.remote_worker" in join_script
         assert "python3 -m local_shell_mcp.main worker" not in join_script
 
         async with httpx.AsyncClient(timeout=20) as http_client:
@@ -241,8 +240,12 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         bundle_path.write_bytes(bundle_response.content)
         with tarfile.open(bundle_path) as bundle:
             names = bundle.getnames()
-            assert "local_shell_mcp/remote/join_worker.sh" in names
-            assert "local_shell_mcp/" + "remote" + "_worker.py" in names
+            assert "local_shell_mcp/remote_worker/__main__.py" in names
+            assert "local_shell_mcp/remote_worker/worker.py" in names
+            assert "local_shell_mcp/remote_worker/compat.py" in names
+            assert "local_shell_mcp/remote/join_worker.sh" not in names
+            assert not any(name.startswith("vendor/") for name in names)
+            assert all(name.endswith(".py") for name in names)
 
         worker = start_worker_process(
             base_url, invite["code"], machine, remote_workspace

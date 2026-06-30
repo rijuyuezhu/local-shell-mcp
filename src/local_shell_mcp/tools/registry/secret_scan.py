@@ -19,7 +19,7 @@ class SecretScanToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
 
-local_tool = SecretScanToolRegistry.get_tool_decorator()
+secret_scan_tool = SecretScanToolRegistry.get_tool_decorator()
 
 
 def _secret_scan_description(context: McpToolContext) -> str:
@@ -27,7 +27,7 @@ def _secret_scan_description(context: McpToolContext) -> str:
     return f"""Scan text files under an explicit agent/workspace session for common secret-like strings before commit, push, release, or sharing logs. Results are heuristic and do not prove the workspace is secret-free. Current max findings: {settings.max_grep_results}."""
 
 
-@local_tool(
+@secret_scan_tool(
     http_method="POST",
     http_path="/tools/secret_scan",
     description=_secret_scan_description,

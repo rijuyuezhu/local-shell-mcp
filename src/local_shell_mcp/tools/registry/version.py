@@ -12,10 +12,10 @@ class VersionToolRegistry(DeclarativeToolRegistry):
     """Registry group name used for tool-surface organization."""
 
 
-local_tool = VersionToolRegistry.get_tool_decorator()
+version_tool = VersionToolRegistry.get_tool_decorator()
 
 
-@local_tool(
+@version_tool(
     http_method="GET",
     http_path="/tools/version",
     annotations="read_only",

@@ -14,6 +14,12 @@ from typing import Any
 
 from ..audit import audit
 from ..config.settings import get_settings
+from ..schemas.result_models.remote import (
+    RemoteInviteOutput,
+    RemoteListMachinesOutput,
+    RemoteRenameMachineOutput,
+    RemoteRevokeMachineOutput,
+)
 from .constants import REMOTE_JOIN_PATH, REMOTE_WORKER_REGISTRY_FILE_NAME
 from .responses import _ok
 
@@ -157,7 +163,7 @@ class RemoteManager:
         name: str | None = None,
         workdir: str | None = None,
         ttl_s: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> RemoteInviteOutput:
         """Create a time-limited registration invitation and return the command used by a worker."""
         settings = get_settings()
         ttl = max(60, min(ttl_s or settings.remote_invite_ttl_s, 24 * 3600))
@@ -173,15 +179,15 @@ class RemoteManager:
             command += f" --name {shlex.quote(name)}"
         if workdir:
             command += f" --workdir {shlex.quote(workdir)}"
-        return {
-            "code": code,
-            "name": name,
-            "workdir": workdir,
-            "expires_at": invite.expires_at,
-            "ttl_s": ttl,
-            "join_url": self._join_url(),
-            "command": command,
-        }
+        return RemoteInviteOutput(
+            code=code,
+            name=name,
+            workdir=workdir,
+            expires_at=invite.expires_at,
+            ttl_s=ttl,
+            join_url=self._join_url(),
+            command=command,
+        )
 
     async def register_worker(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Validate an invite token and attach a newly started worker to the manager."""
@@ -329,7 +335,7 @@ class RemoteManager:
             )
         return _ok(result.get("data"))
 
-    def list_machines(self) -> dict[str, Any]:
+    def list_machines(self) -> RemoteListMachinesOutput:
         """Return worker inventory and heartbeat-derived status for remote management tools."""
         self._load_registry_unlocked()
         now = _utc()
@@ -364,9 +370,11 @@ class RemoteManager:
                 }
             )
         rows.sort(key=lambda item: (item["status"] != "online", item["name"]))
-        return {"machines": rows, "counts": {**counts, "total": len(rows)}}
+        return RemoteListMachinesOutput(
+            machines=rows, counts={**counts, "total": len(rows)}
+        )
 
-    def revoke(self, machine: str) -> dict[str, Any]:
+    def revoke(self, machine: str) -> RemoteRevokeMachineOutput:
         """Remove a registered worker and invalidate its polling token."""
         self._load_registry_unlocked()
         worker = self.workers.pop(machine, None)
@@ -374,9 +382,9 @@ class RemoteManager:
             raise ValueError(f"unknown remote machine: {machine}")
         self.tokens.pop(worker.token, None)
         self._save_registry_unlocked()
-        return {"machine": machine, "revoked": True}
+        return RemoteRevokeMachineOutput(machine=machine, revoked=True)
 
-    def rename(self, machine: str, new_name: str) -> dict[str, Any]:
+    def rename(self, machine: str, new_name: str) -> RemoteRenameMachineOutput:
         """Rename a registered worker while preserving its token and job state."""
         self._load_registry_unlocked()
         new_name = new_name.strip()
@@ -391,7 +399,7 @@ class RemoteManager:
         self.workers[new_name] = worker
         self.tokens[worker.token] = new_name
         self._save_registry_unlocked()
-        return {"old_name": machine, "new_name": new_name}
+        return RemoteRenameMachineOutput(old_name=machine, new_name=new_name)
 
     def _worker_by_token(self, token: str) -> RemoteWorker:
         """Resolve a bearer token to the worker currently authorized to poll or submit results."""

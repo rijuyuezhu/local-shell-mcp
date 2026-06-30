@@ -131,8 +131,8 @@ def _refresh_job_status(
 
 def _public_job(job: dict[str, Any]) -> JobInfo:
     """Return typed public metadata for one stored tracked-job row."""
-    return JobInfo.model_validate(
-        {
+    return JobInfo(
+        **{
             "job_id": job.get("job_id"),
             "name": job.get("name"),
             "status": job.get("status"),
@@ -209,7 +209,7 @@ async def job_start_execute(
         cwd=str(resolved_cwd),
         command=command,
     )
-    return JobStartOutput.model_validate(_public_job(job).model_dump())
+    return JobStartOutput(**_public_job(job).model_dump())
 
 
 async def job_list_execute(
@@ -347,7 +347,7 @@ async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
         shell_id=shell_data["shell_id"],
         attempts=attempts,
     )
-    return JobRetryOutput.model_validate(_public_job(job).model_dump())
+    return JobRetryOutput(**_public_job(job).model_dump())
 
 
 async def job_execute(

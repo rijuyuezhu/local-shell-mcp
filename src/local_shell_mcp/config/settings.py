@@ -8,17 +8,11 @@ import yaml
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from ..utils.serialization import to_jsonable
-
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
 AUDIT_LOG_STATE_DIR_NAME = "audit_log"
 AGENT_CONFIG_STATE_DIR_NAME = "agent_config"
 ENV_PREFIX = "LOCAL_SHELL_MCP_"
-
-SENSITIVE_SETTING_KEYS = {
-    "oauth_admin_pin",
-}
 
 
 def _split_csv(value: str | list[str] | None) -> list[str]:
@@ -324,17 +318,3 @@ def clear_settings_cache() -> None:
     """Clear cached settings. Intended for tests and CLI reconfiguration."""
     global _configured_settings
     _configured_settings = None
-
-
-def safe_settings_dump(settings: Settings | None = None) -> dict[str, Any]:
-    """Return settings for diagnostics without exposing credentials or auth secrets."""
-
-    data = to_jsonable(settings or get_settings())
-    for key in SENSITIVE_SETTING_KEYS:
-        if key in data:
-            value = data[key]
-            if value in (None, "", []):
-                data[key] = value
-            else:
-                data[key] = "<redacted>"
-    return data

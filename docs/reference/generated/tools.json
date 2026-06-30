@@ -1,11 +1,11 @@
 {
-  "count": 34,
+  "count": 35,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "34"
+          "code": "35"
         },
         "."
       ],
@@ -789,6 +789,65 @@
             ]
           },
           "Change an existing local agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed orientation metadata including instruction file paths. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits."
+        ],
+        [
+          {
+            "code": "session_copy"
+          },
+          {
+            "items": [
+              {
+                "description": "Optional chunk size in bytes for binary transfer. Omit to use the server default.",
+                "head": {
+                  "code": "chunk_size"
+                },
+                "note": "(integer / null, optional)"
+              },
+              {
+                "description": "Path to copy, resolved inside the corresponding source or destination session workdir.",
+                "head": {
+                  "code": "dst_path"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "dst_session_id"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "What to copy. Use auto to infer file or directory from the source path.",
+                "head": {
+                  "code": "kind"
+                },
+                "note": "(auto / file / dir, optional)"
+              },
+              {
+                "description": "Whether an existing destination may be replaced.",
+                "head": {
+                  "code": "overwrite"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Path to copy, resolved inside the corresponding source or destination session workdir.",
+                "head": {
+                  "code": "src_path"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "src_session_id"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Use this when moving artifacts across sessions instead of exposing raw transfer primitives or legacy remote pull/push tools. The response includes the selected route and whether the sessions share a target, session id, or remote machine."
         ],
         [
           {
@@ -5264,6 +5323,305 @@
           "message"
         ],
         "title": "SessionStartOutput",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Use this when moving artifacts across sessions instead of exposing raw transfer primitives or legacy remote pull/push tools. The response includes the selected route and whether the sessions share a target, session id, or remote machine.",
+      "inputSchema": {
+        "properties": {
+          "chunk_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional chunk size in bytes for binary transfer. Omit to use the server default.",
+            "title": "Chunk Size"
+          },
+          "dst_path": {
+            "description": "Path to copy, resolved inside the corresponding source or destination session workdir.",
+            "title": "Dst Path",
+            "type": "string"
+          },
+          "dst_session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Dst Session Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "auto",
+            "description": "What to copy. Use auto to infer file or directory from the source path.",
+            "enum": [
+              "auto",
+              "file",
+              "dir"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "overwrite": {
+            "default": true,
+            "description": "Whether an existing destination may be replaced.",
+            "title": "Overwrite",
+            "type": "boolean"
+          },
+          "src_path": {
+            "description": "Path to copy, resolved inside the corresponding source or destination session workdir.",
+            "title": "Src Path",
+            "type": "string"
+          },
+          "src_session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Src Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "src_session_id",
+          "src_path",
+          "dst_session_id",
+          "dst_path"
+        ],
+        "title": "session_copyArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read",
+              "shell:write"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "session_copy",
+      "outputSchema": {
+        "$defs": {
+          "SessionCopyEndpoint": {
+            "description": "One endpoint in a session-to-session copy.",
+            "properties": {
+              "machine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Remote worker machine for remote sessions.",
+                "title": "Machine"
+              },
+              "path": {
+                "description": "Caller-provided path inside the session workdir.",
+                "title": "Path",
+                "type": "string"
+              },
+              "resolved_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Resolved path reported by the underlying transfer primitive.",
+                "title": "Resolved Path"
+              },
+              "session_id": {
+                "description": "Agent/workspace session id for this endpoint.",
+                "title": "Session Id",
+                "type": "string"
+              },
+              "target": {
+                "description": "Execution target bound to this endpoint session.",
+                "enum": [
+                  "local",
+                  "remote"
+                ],
+                "title": "Target",
+                "type": "string"
+              },
+              "workdir": {
+                "description": "Session workdir used for path resolution.",
+                "title": "Workdir",
+                "type": "string"
+              }
+            },
+            "required": [
+              "session_id",
+              "target",
+              "workdir",
+              "path"
+            ],
+            "title": "SessionCopyEndpoint",
+            "type": "object"
+          },
+          "SessionCopyRelation": {
+            "description": "Relationship between the source and destination sessions.",
+            "properties": {
+              "route": {
+                "description": "Transfer route selected from the two session targets.",
+                "enum": [
+                  "local_to_local",
+                  "local_to_remote",
+                  "remote_to_local",
+                  "remote_to_remote_same_machine",
+                  "remote_to_remote_different_machines"
+                ],
+                "title": "Route",
+                "type": "string"
+              },
+              "same_machine": {
+                "description": "Whether both endpoints are remote sessions on the same worker machine.",
+                "title": "Same Machine",
+                "type": "boolean"
+              },
+              "same_session": {
+                "description": "Whether source and destination are the same agent session.",
+                "title": "Same Session",
+                "type": "boolean"
+              },
+              "same_target": {
+                "description": "Whether source and destination have the same target type.",
+                "title": "Same Target",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "route",
+              "same_session",
+              "same_target",
+              "same_machine"
+            ],
+            "title": "SessionCopyRelation",
+            "type": "object"
+          }
+        },
+        "description": "Result of copying a file or directory between two sessions.",
+        "properties": {
+          "archive_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Transfer archive size for directory copies.",
+            "title": "Archive Bytes"
+          },
+          "archive_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Transfer archive digest for directory copies.",
+            "title": "Archive Sha256"
+          },
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Number of file bytes copied for file copies.",
+            "title": "Bytes"
+          },
+          "chunk_size": {
+            "description": "Chunk size used for binary transfer.",
+            "title": "Chunk Size",
+            "type": "integer"
+          },
+          "chunks": {
+            "description": "Number of transfer chunks exchanged.",
+            "title": "Chunks",
+            "type": "integer"
+          },
+          "destination": {
+            "$ref": "#/$defs/SessionCopyEndpoint",
+            "description": "Destination copy endpoint."
+          },
+          "entries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Number of directory entries unpacked for directory copies.",
+            "title": "Entries"
+          },
+          "kind": {
+            "description": "Resolved copied object kind.",
+            "enum": [
+              "file",
+              "dir"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "relation": {
+            "$ref": "#/$defs/SessionCopyRelation",
+            "description": "Analyzed relationship between the two sessions."
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "SHA-256 digest for file copies, when available.",
+            "title": "Sha256"
+          },
+          "source": {
+            "$ref": "#/$defs/SessionCopyEndpoint",
+            "description": "Source copy endpoint."
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "destination",
+          "relation",
+          "chunks",
+          "chunk_size"
+        ],
+        "title": "SessionCopyOutput",
         "type": "object"
       }
     },
