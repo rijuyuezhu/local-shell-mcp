@@ -4,7 +4,7 @@ import argparse
 
 from .config.settings import configure_settings, load_settings
 from .config.surface import cli_overrides_from_args, register_setting_cli_args
-from .remote.worker import add_worker_cli_args, run_worker_from_args
+from .remote_worker.worker import add_worker_cli_args, run_worker_from_args
 from .server.http.app import run_http
 from .server.mcp.app import run_mcp
 from .version import format_version_info

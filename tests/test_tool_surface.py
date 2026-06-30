@@ -12,7 +12,7 @@ from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_NAMES,
     REMOTE_WORKER_TOOL_SPECS,
 )
-from local_shell_mcp.remote.worker import WORKER_TOOL_NAMES
+from local_shell_mcp.remote_worker.worker import WORKER_TOOL_NAMES
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tools.contracts import (

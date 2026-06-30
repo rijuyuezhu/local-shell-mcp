@@ -14,7 +14,7 @@ def test_remote_worker_entrypoint_import_is_dependency_light():
     script = """
 import builtins
 
-blocked = {"fastapi", "httpx", "mcp", "starlette", "uvicorn"}
+blocked = {"fastapi", "httpx", "mcp", "starlette", "uvicorn", "pydantic", "pydantic_settings", "yaml", "pathspec"}
 real_import = builtins.__import__
 
 
@@ -26,7 +26,7 @@ def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
 
 builtins.__import__ = guarded_import
 import local_shell_mcp.remote_worker
-from local_shell_mcp.remote.worker import worker_capabilities, worker_info
+from local_shell_mcp.remote_worker.worker import worker_capabilities, worker_info
 
 assert "shell" in worker_capabilities()
 assert worker_info(".")["workdir"] == "."
@@ -43,7 +43,7 @@ assert worker_info(".")["workdir"] == "."
 
 
 def test_execute_worker_tool_imports_registry_lazily(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     real_import = builtins.__import__
     seen_mcp_import = False
@@ -76,7 +76,7 @@ class _FakeResponse:
 
 
 def test_worker_post_json_posts_json_and_returns_object(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
     captured: dict[str, object] = {}
@@ -111,7 +111,7 @@ def test_worker_post_json_posts_json_and_returns_object(monkeypatch):
 
 
 def test_worker_post_json_rejects_non_object_response(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -129,7 +129,7 @@ def test_worker_post_json_rejects_non_object_response(monkeypatch):
 
 
 def test_worker_post_json_includes_http_error_detail(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -154,7 +154,7 @@ def test_worker_post_json_includes_http_error_detail(monkeypatch):
 
 
 def test_worker_post_json_wraps_url_errors(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setattr(worker.shutil, "which", lambda name: None)
 
@@ -172,7 +172,7 @@ def test_worker_post_json_wraps_url_errors(monkeypatch):
 
 
 def test_worker_post_json_uses_curl_when_available(monkeypatch):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     captured: dict[str, object] = {}
 
@@ -207,7 +207,7 @@ def test_worker_post_json_uses_curl_when_available(monkeypatch):
 
 
 def test_worker_retry_delay_is_capped():
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     assert [worker._worker_retry_delay(i) for i in range(7)] == [
         1.0,
@@ -224,7 +224,7 @@ def test_worker_retry_delay_is_capped():
 async def test_worker_post_json_forever_retries_until_success(
     monkeypatch, capsys
 ):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     calls = []
     sleeps = []
@@ -261,7 +261,7 @@ async def test_worker_post_json_forever_retries_until_success(
 def test_worker_runtime_env_replaces_default_workspace_paths(
     tmp_path, monkeypatch
 ):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     workdir = tmp_path / "remote-workdir"
     worker_state = tmp_path / "worker-state"
@@ -284,7 +284,7 @@ def test_worker_runtime_env_replaces_default_workspace_paths(
 def test_worker_runtime_env_preserves_explicit_custom_paths(
     tmp_path, monkeypatch
 ):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     custom_workspace = tmp_path / "custom-workspace"
     custom_state = tmp_path / "custom-state"
@@ -302,7 +302,7 @@ def test_worker_runtime_env_preserves_explicit_custom_paths(
 def test_worker_identity_round_trips_and_filters_by_server_name(
     tmp_path, monkeypatch
 ):
-    import local_shell_mcp.remote.worker as worker
+    import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
 
