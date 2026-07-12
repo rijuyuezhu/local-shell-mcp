@@ -23,6 +23,7 @@ from ...audit import audit
 from ...config.settings import get_settings
 from ..protocol.adapters import LocalOAuthClient
 from ..protocol.token_codec import issue_access_token
+from .client_store import load_persisted_clients, persist_clients
 from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
 from .requests import (
     AuthorizationRequestInput,
@@ -219,16 +220,31 @@ def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
 
 
 def _prune_clients(*, now: int | None = None) -> None:
-    """Remove expired dynamic client registrations from the in-memory store."""
+    """Remove expired dynamic client registrations from memory and disk."""
     settings = get_settings()
     if settings.oauth_client_ttl_s <= 0:
         return
     current_time = int(time.time()) if now is None else now
+    removed: dict[str, OAuthClient] = {}
     for client_id, client in list(_CLIENTS.items()):
         if _client_expired(
             client, now=current_time, ttl_s=settings.oauth_client_ttl_s
         ):
-            _CLIENTS.pop(client_id, None)
+            removed[client_id] = _CLIENTS.pop(client_id)
+    if not removed:
+        return
+    try:
+        persist_clients()
+    except OSError:
+        _CLIENTS.update(removed)
+        raise
+
+
+def initialize_dynamic_clients() -> int:
+    """Load persisted clients and apply the configured expiration policy."""
+    loaded = load_persisted_clients()
+    _prune_clients()
+    return loaded
 
 
 def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
@@ -256,6 +272,11 @@ def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
         client_name=request.client_name,
     )
     _CLIENTS[client_id] = client
+    try:
+        persist_clients()
+    except OSError:
+        _CLIENTS.pop(client_id, None)
+        raise
     audit(
         "oauth_client_registered",
         client_id=client_id,

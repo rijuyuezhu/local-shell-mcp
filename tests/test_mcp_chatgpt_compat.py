@@ -12,6 +12,7 @@ from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.oauth.core.client_store import client_store_path
 from local_shell_mcp.oauth.core.models import (
     _CLIENTS,
     _CODES,
@@ -834,6 +835,37 @@ def test_oauth_registration_enforces_size_limits(tmp_path, monkeypatch):
     )
     assert too_large_body.status_code == 400
     assert "at most 1000 bytes" in too_large_body.json()["error_description"]
+
+def test_oauth_dynamic_clients_persist_across_app_rebuild(tmp_path, monkeypatch):
+    state_dir = tmp_path / ".state"
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
+    )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "0")
+    clear_settings_cache()
+    _CLIENTS.clear()
+
+    first_app = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
+    registration = first_app.post(
+        "/oauth/register",
+        json={
+            "redirect_uris": ["https://client.example/callback"],
+            "client_name": "Persistent client",
+        },
+    )
+    assert registration.status_code == 201
+    client_id = registration.json()["client_id"]
+    assert client_store_path().exists()
+
+    _CLIENTS.clear()
+    TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
+
+    assert _CLIENTS[client_id].redirect_uris == [
+        "https://client.example/callback"
+    ]
+    assert _CLIENTS[client_id].client_name == "Persistent client"
 
 
 def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
