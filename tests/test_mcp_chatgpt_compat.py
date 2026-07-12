@@ -836,7 +836,10 @@ def test_oauth_registration_enforces_size_limits(tmp_path, monkeypatch):
     assert too_large_body.status_code == 400
     assert "at most 1000 bytes" in too_large_body.json()["error_description"]
 
-def test_oauth_dynamic_clients_persist_across_app_rebuild(tmp_path, monkeypatch):
+
+def test_oauth_dynamic_clients_persist_across_app_rebuild(
+    tmp_path, monkeypatch
+):
     state_dir = tmp_path / ".state"
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))

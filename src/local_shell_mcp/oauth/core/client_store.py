@@ -53,8 +53,13 @@ def load_persisted_clients() -> int:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Unable to read OAuth client registry: {path}") from exc
-    if not isinstance(payload, dict) or payload.get("version") != CLIENT_STORE_VERSION:
+        raise RuntimeError(
+            f"Unable to read OAuth client registry: {path}"
+        ) from exc
+    if (
+        not isinstance(payload, dict)
+        or payload.get("version") != CLIENT_STORE_VERSION
+    ):
         raise RuntimeError(f"Unsupported OAuth client registry format: {path}")
     records = payload.get("clients")
     if not isinstance(records, list):
@@ -65,7 +70,9 @@ def load_persisted_clients() -> int:
         try:
             client = _decode_client(raw)
         except ValueError as exc:
-            raise RuntimeError(f"Invalid OAuth client registry contents: {path}") from exc
+            raise RuntimeError(
+                f"Invalid OAuth client registry contents: {path}"
+            ) from exc
         current = _CLIENTS.get(client.client_id)
         if current is None or current.created_at <= client.created_at:
             _CLIENTS[client.client_id] = client
