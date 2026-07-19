@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from ..config.settings import Settings, get_settings
@@ -23,7 +24,7 @@ from .redaction import (
     redact_mapping,
 )
 from .registry import build_agent_registry
-from .skills import activate_skill
+from .skills import activate_skill, read_agent_skill_file
 
 type AgentMcpClientManagerFactory = Callable[[float], Any]
 
@@ -40,6 +41,11 @@ def build_agent_registry_from_settings(
         active_settings.agent_mcp_probe_timeout_s,
         None if active_settings.agent_dynamic_mcp_tools else False,
         None if active_settings.agent_dynamic_skill_tools else False,
+        max_skills=active_settings.max_skills,
+        max_skill_related_files=active_settings.max_skill_related_files,
+        max_skill_scan_entries=active_settings.max_skill_scan_entries,
+        max_skill_path_bytes=active_settings.max_skill_path_bytes,
+        max_skill_entry_bytes=active_settings.max_file_read_bytes,
     )
 
 
@@ -134,14 +140,43 @@ def list_agent_skills_payload(
 
 
 def activate_agent_skill_payload(
-    registry: AgentCapabilityRegistry, name: str
+    registry: AgentCapabilityRegistry,
+    name: str,
+    *,
+    max_entry_bytes: int | None = None,
 ) -> ActivateAgentSkillOutput:
     """Load one discovered agent skill payload by name."""
     skill = registry.skills.get(name)
     if skill is None:
         raise ValueError(f"Unknown agent skill: {name}")
+    kwargs = (
+        {"max_entry_bytes": max_entry_bytes}
+        if max_entry_bytes is not None
+        else {}
+    )
     return ActivateAgentSkillOutput(
-        **activate_skill(registry.config_dir, skill)
+        **activate_skill(registry.config_dir, skill, **kwargs)
+    )
+
+
+def read_agent_skill_file_payload(
+    registry: AgentCapabilityRegistry,
+    name: str,
+    path: str,
+    *,
+    max_file_bytes: int | None = None,
+) -> dict[str, Any]:
+    """Read one bounded related file from a discovered agent skill."""
+    skill = registry.skills.get(name)
+    if skill is None:
+        raise ValueError(f"Unknown agent skill: {name}")
+    entry = Path(skill.entry_path)
+    directory = entry.parent.parent.as_posix()
+    kwargs = (
+        {"max_file_bytes": max_file_bytes} if max_file_bytes is not None else {}
+    )
+    return read_agent_skill_file(
+        registry.config_dir, name, path, directory, **kwargs
     )
 
 

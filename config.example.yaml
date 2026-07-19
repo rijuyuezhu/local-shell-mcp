@@ -69,6 +69,14 @@ run_shell_max_timeout_s: 60
 max_output_bytes: 200000
 # Per-file read limit in bytes.
 max_file_read_bytes: 512000
+# Maximum number of discovered Skills across all configured sources.
+max_skills: 256
+# Maximum related files returned for one Skill.
+max_skill_related_files: 1000
+# Maximum filesystem entries inspected during one Skill registry scan.
+max_skill_scan_entries: 5000
+# Maximum UTF-8 bytes used by returned related Skill paths.
+max_skill_path_bytes: 200000
 # Per-file write/edit limit in bytes.
 max_file_write_bytes: 5000000
 # Maximum grep result count.

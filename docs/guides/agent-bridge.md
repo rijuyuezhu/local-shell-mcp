@@ -100,6 +100,7 @@ When dynamic skill tools are enabled, a skill such as `paper-writer` can also ap
 | `agent_config_status` | Show config path, manifest status, discovered skill count, MCP server status, dynamic-tool flags, and redacted errors. |
 | `list_agent_skills` | List discovered skills without loading their content. |
 | `activate_agent_skill` | Load one skill by exact name. |
+| `read_agent_skill_file` | Read one bounded related text file returned by `activate_agent_skill`. |
 | `list_agent_mcp_servers` | List configured upstream MCP servers and availability. |
 | `list_agent_mcp_tools` | List tools exposed by one or all configured upstream MCP servers. |
 | `call_agent_mcp_tool` | Call a tool from a configured upstream MCP server. |

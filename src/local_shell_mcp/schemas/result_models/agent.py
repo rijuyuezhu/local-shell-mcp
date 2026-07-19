@@ -50,7 +50,19 @@ class ActivateAgentSkillOutput(BaseModel):
     content: str = Field(
         description="Markdown instruction content for the skill."
     )
-    related_files: list[str] = Field(description="Related skill file paths.")
+    bytes: int = Field(description="Original SKILL.md byte count.")
+    related_files: list[str] = Field(
+        description="Paths relative to the skill directory, excluding SKILL.md."
+    )
+
+
+class ReadAgentSkillFileOutput(BaseModel):
+    """One bounded related text file from an agent skill."""
+
+    name: str = Field(description="Selected skill name.")
+    path: str = Field(description="Path relative to the skill directory.")
+    content: str = Field(description="Normalized UTF-8 text content.")
+    bytes: int = Field(description="Original file byte count.")
 
 
 class ListAgentMcpServersOutput(RootModel[dict[str, Any]]):

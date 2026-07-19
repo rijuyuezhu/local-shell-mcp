@@ -97,22 +97,22 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 80 | 2026-07-07 | `0232135` | ci: simplify release assets | **Pending** | Pending functional review and fork-specific port decision. |
 | 81 | 2026-07-07 | `0aa9d66` | chore: update version metadata | **Pending** | Pending functional review and fork-specific port decision. |
 | 82 | 2026-07-07 | `71b9605` | ci: simplify Docker release notes | **Pending** | Pending functional review and fork-specific port decision. |
-| 83 | 2026-07-13 | `3820950` | skills: add fixed list and load tools | **Pending** | Pending functional review and fork-specific port decision. |
-| 84 | 2026-07-13 | `ddb1ea6` | skills: remove dynamic tool registration plumbing | **Pending** | Pending functional review and fork-specific port decision. |
-| 85 | 2026-07-13 | `a63f32c` | docs: document fixed Skills workflow | **Pending** | Pending functional review and fork-specific port decision. |
+| 83 | 2026-07-13 | `3820950` | skills: add fixed list and load tools | **Implemented (adapted)** | The fork already had fixed `list_agent_skills`/`activate_agent_skill` tools; this batch keeps those names and adds bounded `read_agent_skill_file` rather than adopting upstream tool names. |
+| 84 | 2026-07-13 | `ddb1ea6` | skills: remove dynamic tool registration plumbing | **Not adopted** | The fork intentionally retains dynamic Skill and MCP bridge tools; session-local capabilities will use fixed session-aware tools instead of changing the global dynamic tool surface. |
+| 85 | 2026-07-13 | `a63f32c` | docs: document fixed Skills workflow | **Implemented (adapted)** | Agent Bridge documentation now describes the fork-specific fixed Skill workflow and related-file reader while preserving dynamic tools. |
 | 86 | 2026-07-13 | `fd210be` | chore: bump version to 2.9.0 | **Pending** | Pending functional review and fork-specific port decision. |
 | 87 | 2026-07-13 | `386b0e8` | fix: derive state paths correctly on Windows | **Pending** | Pending functional review and fork-specific port decision. |
 | 88 | 2026-07-13 | `384f84b` | fix: derive agent paths from custom state directory | **Pending** | Pending functional review and fork-specific port decision. |
-| 89 | 2026-07-13 | `0be1eff` | fix: expose readable Skill resource paths | **Pending** | Pending functional review and fork-specific port decision. |
-| 90 | 2026-07-13 | `971eb1e` | fix: validate Skill names and REST inputs | **Pending** | Pending functional review and fork-specific port decision. |
-| 91 | 2026-07-13 | `2ee0188` | fix: bound and directly load Skill files | **Pending** | Pending functional review and fork-specific port decision. |
-| 92 | 2026-07-13 | `1fa8d4a` | fix: parse Skill descriptions consistently | **Pending** | Pending functional review and fork-specific port decision. |
-| 93 | 2026-07-13 | `d74bbee` | fix: harden Skill registry edge cases | **Pending** | Pending functional review and fork-specific port decision. |
-| 94 | 2026-07-13 | `356a1af` | docs: document hardened Skill workflow | **Pending** | Pending functional review and fork-specific port decision. |
+| 89 | 2026-07-13 | `0be1eff` | fix: expose readable Skill resource paths | **Implemented (adapted)** | Related files are exposed as canonical paths relative to the Skill directory, with VCS/cache metadata excluded. |
+| 90 | 2026-07-13 | `971eb1e` | fix: validate Skill names and REST inputs | **Implemented (adapted)** | Skill names and related-file paths receive strict portable validation through the fork's existing declarative HTTP/MCP schemas. |
+| 91 | 2026-07-13 | `2ee0188` | fix: bound and directly load Skill files | **Implemented (adapted)** | Skill discovery, activation, and related-file reads are bounded by registered fork settings and do not read every Skill body during listing. |
+| 92 | 2026-07-13 | `1fa8d4a` | fix: parse Skill descriptions consistently | **Implemented** | YAML/TOML front matter and Markdown fallback descriptions are parsed consistently with bounded output. |
+| 93 | 2026-07-13 | `d74bbee` | fix: harden Skill registry edge cases | **Implemented (adapted)** | The existing Agent Bridge scanner now has bounded traversal, regular-file checks, warning caps, VCS/cache exclusions, and path containment checks. |
+| 94 | 2026-07-13 | `356a1af` | docs: document hardened Skill workflow | **Implemented (adapted)** | The hardened workflow is documented using the fork's existing Agent Bridge names and architecture. |
 | 95 | 2026-07-13 | `3904578` | chore: bump version to 2.9.1 | **Pending** | Pending functional review and fork-specific port decision. |
-| 96 | 2026-07-13 | `ac2b08d` | fix: close remaining Skill path and scan gaps | **Pending** | Pending functional review and fork-specific port decision. |
+| 96 | 2026-07-13 | `ac2b08d` | fix: close remaining Skill path and scan gaps | **Implemented (adapted)** | Remaining path, scan-budget, symlink, and file-size edge cases are covered in the fork scanner and tests. |
 | 97 | 2026-07-13 | `de1897a` | test: limit invalid-byte filename case to Linux | **Pending** | Pending functional review and fork-specific port decision. |
-| 98 | 2026-07-13 | `63d9064` | fix: normalize Skill text across platforms | **Pending** | Pending functional review and fork-specific port decision. |
+| 98 | 2026-07-13 | `63d9064` | fix: normalize Skill text across platforms | **Implemented** | Skill text reads normalize CRLF and CR line endings while preserving the original byte count. |
 | 99 | 2026-07-13 | `78c5b05` | feat(ui): add shared human interface backend | **Pending** | Pending functional review and fork-specific port decision. |
 | 100 | 2026-07-13 | `70b2e7b` | feat(ui): add shared OpenTUI and web terminal client | **Pending** | Pending functional review and fork-specific port decision. |
 | 101 | 2026-07-13 | `01315ea` | feat(ui): secure native and browser interface sessions | **Pending** | Pending functional review and fork-specific port decision. |
@@ -184,14 +184,14 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 167 | 2026-07-14 | `d869478` | Synchronize remote worker registry | **Pending** | Pending functional review and fork-specific port decision. |
 | 168 | 2026-07-14 | `99f5af3` | Harden transfer and ConPTY cleanup | **Pending** | Pending functional review and fork-specific port decision. |
 | 169 | 2026-07-14 | `1bfaba5` | fix: allow shell timeout cleanup before watchdog | **Pending** | Pending functional review and fork-specific port decision. |
-| 170 | 2026-07-14 | `eac80f6` | Remove unused dynamic agent bridge | **Pending** | Pending functional review and fork-specific port decision. |
+| 170 | 2026-07-14 | `eac80f6` | Remove unused dynamic agent bridge | **Not adopted** | The fork's dynamic Agent Bridge is active, tested, and part of its product direction, so upstream removal is intentionally not ported. |
 | 171 | 2026-07-14 | `bbd5c67` | Fix Windows cleanup regressions | **Pending** | Pending functional review and fork-specific port decision. |
 | 172 | 2026-07-14 | `d3bd5be` | Bundle tmux for Linux persistent shells | **Pending** | Pending functional review and fork-specific port decision. |
 | 173 | 2026-07-14 | `a59fce6` | Fix bundled tmux tests on Windows | **Pending** | Pending functional review and fork-specific port decision. |
 | 174 | 2026-07-15 | `a512008` | security: harden MCP sessions and remote results | **Pending** | Pending functional review and fork-specific port decision. |
 | 175 | 2026-07-15 | `0b043d7` | fix: serialize job and shell lifecycle transitions | **Pending** | Pending functional review and fork-specific port decision. |
 | 176 | 2026-07-15 | `7f9daf1` | fix: handle remote paths and file action types | **Pending** | Pending functional review and fork-specific port decision. |
-| 177 | 2026-07-15 | `2f7bb3b` | guide agents through fixed skill tools | **Pending** | Pending functional review and fork-specific port decision. |
+| 177 | 2026-07-15 | `2f7bb3b` | guide agents through fixed skill tools | **Implemented (adapted)** | Tool descriptions guide callers through `list_agent_skills`, `activate_agent_skill`, then `read_agent_skill_file`; dynamic bridge compatibility remains available. |
 | 178 | 2026-07-15 | `af2503e` | fix: submit native Windows shell commands with CRLF | **Pending** | Pending functional review and fork-specific port decision. |
 | 179 | 2026-07-15 | `e768b27` | fix(ci): authenticate OAuth MCP probes before connecting | **Pending** | Pending functional review and fork-specific port decision. |
 | 180 | 2026-07-15 | `479138e` | fix: harden local execution and interfaces | **Pending** | Pending functional review and fork-specific port decision. |
@@ -211,7 +211,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 194 | 2026-07-15 | `fbc3a91` | fix: preserve explicit fallback settings updates | **Pending** | Pending functional review and fork-specific port decision. |
 | 195 | 2026-07-15 | `c3ef371` | test: cover persistent runtime recovery paths | **Pending** | Pending functional review and fork-specific port decision. |
 | 196 | 2026-07-15 | `8a2a92a` | test: cover core API auth and Human UI branches | **Pending** | Pending functional review and fork-specific port decision. |
-| 197 | 2026-07-15 | `ef9771f` | test: cover tool surface storage and skill safety | **Pending** | Pending functional review and fork-specific port decision. |
+| 197 | 2026-07-15 | `ef9771f` | test: cover tool surface storage and skill safety | **Implemented (adapted)** | Unit coverage now exercises Skill safety and bounds, and an integration test installs the pinned real `LeonardNJU/code-humanizer` repository through Git before using the HTTP tool surface. |
 | 198 | 2026-07-15 | `3fbc891` | test: add real remote worker end-to-end coverage | **Pending** | Pending functional review and fork-specific port decision. |
 | 199 | 2026-07-15 | `574515d` | test: cover UI clients and extension process lifecycle | **Pending** | Pending functional review and fork-specific port decision. |
 | 200 | 2026-07-15 | `b4e7fdc` | ci: enforce near-complete coverage and binary smoke builds | **Pending** | Pending functional review and fork-specific port decision. |
@@ -317,14 +317,14 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 300 | 2026-07-17 | `1278272` | Merge pull request #29 from fwerkor/release/v3.0.3 | **Pending** | Pending functional review and fork-specific port decision. |
 | 301 | 2026-07-17 | `ad1a6d5` | fix(ui): render image previews in files pane | **Pending** | Pending functional review and fork-specific port decision. |
 | 302 | 2026-07-18 | `41407b8` | fix: keep runtime version in sync with releases | **Pending** | Pending functional review and fork-specific port decision. |
-| 303 | 2026-07-17 | `7ad4d84` | feat(skills): support multiple registry sources | **Pending** | Pending functional review and fork-specific port decision. |
-| 304 | 2026-07-17 | `e3206a0` | fix(skills): validate rooted paths portably | **Pending** | Pending functional review and fork-specific port decision. |
+| 303 | 2026-07-17 | `7ad4d84` | feat(skills): support multiple registry sources | **Split follow-up** | A global project/managed/global registry is not ported directly. Session workdir and remote-worker scoped Skill/MCP lookup needs a fork-specific design on top of explicit sessions. |
+| 304 | 2026-07-17 | `e3206a0` | fix(skills): validate rooted paths portably | **Implemented (adapted)** | Portable rooted/name/path validation is implemented without adopting upstream's multi-source registry API. |
 | 305 | 2026-07-18 | `4c61d21` | fix(ui): correct image preview supersampling dimensions | **Pending** | Pending functional review and fork-specific port decision. |
 | 306 | 2026-07-18 | `8bc1d9a` | test(ui): verify image preview cell mapping | **Pending** | Pending functional review and fork-specific port decision. |
 | 307 | 2026-07-18 | `6666332` | Merge pull request #30 from fwerkor/fix/files-image-preview | **Pending** | Pending functional review and fork-specific port decision. |
-| 308 | 2026-07-18 | `42e0480` | Merge branch 'main' into feat/multi-source-skills | **Pending** | Pending functional review and fork-specific port decision. |
+| 308 | 2026-07-18 | `42e0480` | Merge branch 'main' into feat/multi-source-skills | **Superseded by reviewed commits** | Merge-only commit; functional decisions are recorded on the underlying Skill commits. |
 | 309 | 2026-07-18 | `3746dbd` | Merge branch 'main' into fix/version-consistency | **Pending** | Pending functional review and fork-specific port decision. |
-| 310 | 2026-07-18 | `1ab1b83` | Merge pull request #32 from fwerkor/feat/multi-source-skills | **Pending** | Pending functional review and fork-specific port decision. |
+| 310 | 2026-07-18 | `1ab1b83` | Merge pull request #32 from fwerkor/feat/multi-source-skills | **Superseded by reviewed commits** | Merge-only commit; multi-source behavior remains a session-scoped follow-up while portable validation was adapted. |
 | 311 | 2026-07-18 | `e808149` | Merge branch 'main' into fix/version-consistency | **Pending** | Pending functional review and fork-specific port decision. |
 | 312 | 2026-07-18 | `1834f9c` | test: avoid hard-coded CLI version assertions | **Pending** | Pending functional review and fork-specific port decision. |
 | 313 | 2026-07-18 | `bc706c4` | Merge branch 'main' into fix/version-consistency-ci | **Pending** | Pending functional review and fork-specific port decision. |

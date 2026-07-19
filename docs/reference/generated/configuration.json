@@ -635,6 +635,86 @@
         ],
         [
           {
+            "code": "max_skills"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-skills"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SKILLS"
+          },
+          "integer",
+          {
+            "code": "256"
+          },
+          "Maximum number of discovered Skills across all configured sources."
+        ],
+        [
+          {
+            "code": "max_skill_related_files"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-skill-related-files"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SKILL_RELATED_FILES"
+          },
+          "integer",
+          {
+            "code": "1000"
+          },
+          "Maximum related files returned for one Skill."
+        ],
+        [
+          {
+            "code": "max_skill_scan_entries"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-skill-scan-entries"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SKILL_SCAN_ENTRIES"
+          },
+          "integer",
+          {
+            "code": "5000"
+          },
+          "Maximum filesystem entries inspected during one Skill registry scan."
+        ],
+        [
+          {
+            "code": "max_skill_path_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-skill-path-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SKILL_PATH_BYTES"
+          },
+          "integer",
+          {
+            "code": "200000"
+          },
+          "Maximum UTF-8 bytes used by returned related Skill paths."
+        ],
+        [
+          {
             "code": "max_file_write_bytes"
           },
           {
@@ -1795,6 +1875,58 @@
       "description": "Per-file read limit in bytes.",
       "env": "LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES",
       "name": "max_file_read_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-skills",
+      "default": 256,
+      "default_display": "256",
+      "description": "Maximum number of discovered Skills across all configured sources.",
+      "env": "LOCAL_SHELL_MCP_MAX_SKILLS",
+      "name": "max_skills",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-skill-related-files",
+      "default": 1000,
+      "default_display": "1000",
+      "description": "Maximum related files returned for one Skill.",
+      "env": "LOCAL_SHELL_MCP_MAX_SKILL_RELATED_FILES",
+      "name": "max_skill_related_files",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-skill-scan-entries",
+      "default": 5000,
+      "default_display": "5000",
+      "description": "Maximum filesystem entries inspected during one Skill registry scan.",
+      "env": "LOCAL_SHELL_MCP_MAX_SKILL_SCAN_ENTRIES",
+      "name": "max_skill_scan_entries",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-skill-path-bytes",
+      "default": 200000,
+      "default_display": "200000",
+      "description": "Maximum UTF-8 bytes used by returned related Skill paths.",
+      "env": "LOCAL_SHELL_MCP_MAX_SKILL_PATH_BYTES",
+      "name": "max_skill_path_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

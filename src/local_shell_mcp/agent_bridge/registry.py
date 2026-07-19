@@ -16,7 +16,14 @@ from .models import (
     SkillScanResult,
 )
 from .redaction import redact_configured_value_tree
-from .skills import scan_agent_skills
+from .skills import (
+    DEFAULT_MAX_ENTRY_BYTES,
+    DEFAULT_MAX_PATH_BYTES,
+    DEFAULT_MAX_RELATED_FILES,
+    DEFAULT_MAX_SCAN_ENTRIES,
+    DEFAULT_MAX_SKILLS,
+    scan_agent_skills,
+)
 from .state import load_agent_manifest
 
 
@@ -84,6 +91,12 @@ def build_agent_registry(
     probe_timeout_s: float = 5,
     dynamic_mcp_tools: bool | None = None,
     dynamic_skill_tools: bool | None = None,
+    *,
+    max_skills: int = DEFAULT_MAX_SKILLS,
+    max_skill_related_files: int = DEFAULT_MAX_RELATED_FILES,
+    max_skill_scan_entries: int = DEFAULT_MAX_SCAN_ENTRIES,
+    max_skill_path_bytes: int = DEFAULT_MAX_PATH_BYTES,
+    max_skill_entry_bytes: int = DEFAULT_MAX_ENTRY_BYTES,
 ) -> AgentCapabilityRegistry:
     """Build a complete bridge registry by loading config, scanning skills, probing MCP servers, and assigning dynamic names."""
     config_root = Path(config_dir)
@@ -95,13 +108,19 @@ def build_agent_registry(
         client_manager = AgentMcpClientManager(call_timeout_s=probe_timeout)
 
     skill_scan = SkillScanResult()
+    if manifest.status != "invalid_config" and manifest.data.skills.enabled:
+        skill_scan = scan_agent_skills(
+            config_root,
+            manifest.data.skills.directory,
+            max_skills=max_skills,
+            max_related_files=max_skill_related_files,
+            max_scan_entries=max_skill_scan_entries,
+            max_path_bytes=max_skill_path_bytes,
+            max_entry_bytes=max_skill_entry_bytes,
+        )
+
     mcp_servers: dict[str, AgentMcpServerRecord] = {}
     if manifest.status == "loaded":
-        if manifest.data.skills.enabled:
-            skill_scan = scan_agent_skills(
-                config_root, manifest.data.skills.directory
-            )
-
         for name, server in manifest.data.mcp_servers.items():
             if not server.enabled:
                 mcp_servers[name] = AgentMcpServerRecord(

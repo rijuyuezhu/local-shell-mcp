@@ -209,6 +209,22 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "max_file_read_bytes", "Safety and resource limits", metavar="BYTES"
     ),
+    SettingSpec("max_skills", "Safety and resource limits", metavar="COUNT"),
+    SettingSpec(
+        "max_skill_related_files",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "max_skill_scan_entries",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "max_skill_path_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
     SettingSpec(
         "max_file_write_bytes", "Safety and resource limits", metavar="BYTES"
     ),

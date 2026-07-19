@@ -7,6 +7,15 @@ from pydantic import Field
 AgentSkillNameArg = Annotated[
     str, Field(description="Exact skill name returned by list_agent_skills.")
 ]
+AgentSkillFilePathArg = Annotated[
+    str,
+    Field(
+        description=(
+            "Canonical POSIX path relative to the selected skill directory. "
+            "Use one of activate_agent_skill.related_files."
+        )
+    ),
+]
 AgentServerArg = Annotated[
     str,
     Field(description="Exact configured agent MCP server name."),

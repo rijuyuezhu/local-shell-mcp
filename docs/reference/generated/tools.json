@@ -1,11 +1,11 @@
 {
-  "count": 35,
+  "count": 36,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "35"
+          "code": "36"
         },
         "."
       ],
@@ -106,6 +106,30 @@
           },
           "none",
           "List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them."
+        ],
+        [
+          {
+            "code": "read_agent_skill_file"
+          },
+          {
+            "items": [
+              {
+                "description": "Exact skill name returned by list_agent_skills.",
+                "head": {
+                  "code": "name"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Canonical POSIX path relative to the selected skill directory. Use one of activate_agent_skill.related_files.",
+                "head": {
+                  "code": "path"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "Read a bounded related text file from an agent skill. Call activate_agent_skill first and pass one of its related_files paths."
         ]
       ]
     },
@@ -1295,6 +1319,11 @@
       "outputSchema": {
         "description": "Loaded agent skill instructions.",
         "properties": {
+          "bytes": {
+            "description": "Original SKILL.md byte count.",
+            "title": "Bytes",
+            "type": "integer"
+          },
           "content": {
             "description": "Markdown instruction content for the skill.",
             "title": "Content",
@@ -1316,7 +1345,7 @@
             "type": "string"
           },
           "related_files": {
-            "description": "Related skill file paths.",
+            "description": "Paths relative to the skill directory, excluding SKILL.md.",
             "items": {
               "type": "string"
             },
@@ -1329,6 +1358,7 @@
           "entry_path",
           "description",
           "content",
+          "bytes",
           "related_files"
         ],
         "title": "ActivateAgentSkillOutput",
@@ -4049,6 +4079,84 @@
           "content"
         ],
         "title": "ReadOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read a bounded related text file from an agent skill. Call activate_agent_skill first and pass one of its related_files paths.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "Exact skill name returned by list_agent_skills.",
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "Canonical POSIX path relative to the selected skill directory. Use one of activate_agent_skill.related_files.",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "read_agent_skill_fileArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read",
+              "shell:write",
+              "shell:execute",
+              "git:write",
+              "file:share",
+              "remote:use"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "read_agent_skill_file",
+      "outputSchema": {
+        "description": "One bounded related text file from an agent skill.",
+        "properties": {
+          "bytes": {
+            "description": "Original file byte count.",
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "content": {
+            "description": "Normalized UTF-8 text content.",
+            "title": "Content",
+            "type": "string"
+          },
+          "name": {
+            "description": "Selected skill name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path relative to the skill directory.",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "content",
+          "bytes"
+        ],
+        "title": "ReadAgentSkillFileOutput",
         "type": "object"
       }
     },

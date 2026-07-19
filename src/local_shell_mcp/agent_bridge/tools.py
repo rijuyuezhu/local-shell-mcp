@@ -30,6 +30,7 @@ class AgentBridgeToolReloader:
         probe_timeout_s: float,
         dynamic_mcp_tools: bool | None,
         dynamic_skill_tools: bool | None,
+        skill_limits: dict[str, int] | None = None,
     ) -> None:
         self.mcp = mcp
         self.registry = registry
@@ -37,6 +38,7 @@ class AgentBridgeToolReloader:
         self.probe_timeout_s = probe_timeout_s
         self.dynamic_mcp_tools = dynamic_mcp_tools
         self.dynamic_skill_tools = dynamic_skill_tools
+        self.skill_limits = dict(skill_limits or {})
         self._dynamic_tool_names: set[str] = set()
         self._fingerprint = agent_config_fingerprint(registry.config_dir)
         self._lock = threading.RLock()
@@ -62,6 +64,7 @@ class AgentBridgeToolReloader:
                 self.probe_timeout_s,
                 self.dynamic_mcp_tools,
                 self.dynamic_skill_tools,
+                **self.skill_limits,
             )
             self._fingerprint = fingerprint
             self.register_dynamic_tools()
@@ -170,6 +173,7 @@ def register_agent_bridge_dynamic_tools(
     probe_timeout_s: float = 5,
     dynamic_mcp_tools: bool | None = None,
     dynamic_skill_tools: bool | None = None,
+    skill_limits: dict[str, int] | None = None,
 ) -> None:
     """Register dynamic bridge tools and install config-reload hooks."""
     reloader = AgentBridgeToolReloader(
@@ -179,6 +183,7 @@ def register_agent_bridge_dynamic_tools(
         probe_timeout_s,
         dynamic_mcp_tools,
         dynamic_skill_tools,
+        skill_limits,
     )
     reloader.register_dynamic_tools()
     _install_agent_bridge_reload_hooks(mcp, reloader)

@@ -103,6 +103,7 @@ async def test_fixed_bridge_tools_exist_with_missing_config(
     assert "agent_config_status" in tools
     assert "list_agent_skills" in tools
     assert "activate_agent_skill" in tools
+    assert "read_agent_skill_file" in tools
     assert "list_agent_mcp_servers" in tools
     assert "list_agent_mcp_tools" in tools
     assert "call_agent_mcp_tool" in tools

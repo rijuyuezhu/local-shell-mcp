@@ -97,6 +97,14 @@ class Settings(BaseSettings):
     """Command output limit in bytes."""
     max_file_read_bytes: int = 512_000
     """Per-file read limit in bytes."""
+    max_skills: int = 256
+    """Maximum number of discovered Skills across all configured sources."""
+    max_skill_related_files: int = 1_000
+    """Maximum related files returned for one Skill."""
+    max_skill_scan_entries: int = 5_000
+    """Maximum filesystem entries inspected during one Skill registry scan."""
+    max_skill_path_bytes: int = 200_000
+    """Maximum UTF-8 bytes used by returned related Skill paths."""
     max_file_write_bytes: int = 5_000_000
     """Per-file write/edit limit in bytes."""
     max_grep_results: int = 200

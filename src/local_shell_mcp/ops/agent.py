@@ -10,7 +10,9 @@ from ..agent_bridge.service import (
     list_agent_mcp_servers_payload,
     list_agent_mcp_tools_payload,
     list_agent_skills_payload,
+    read_agent_skill_file_payload,
 )
+from ..config.settings import get_settings
 from ..schemas.result_models.agent import (
     ActivateAgentSkillOutput,
     AgentConfigStatusOutput,
@@ -18,6 +20,7 @@ from ..schemas.result_models.agent import (
     ListAgentMcpServersOutput,
     ListAgentMcpToolsOutput,
     ListAgentSkillsOutput,
+    ReadAgentSkillFileOutput,
 )
 
 
@@ -53,6 +56,23 @@ def activate_agent_skill_execute(
 ) -> ActivateAgentSkillOutput:
     """Load one discovered agent skill by exact name."""
     return activate_agent_skill_payload(_registry_or_default(registry), name)
+
+
+def read_agent_skill_file_execute(
+    name: str,
+    path: str,
+    registry: AgentCapabilityRegistry | None = None,
+) -> ReadAgentSkillFileOutput:
+    """Read one bounded related file from a discovered skill."""
+    settings = get_settings()
+    return ReadAgentSkillFileOutput(
+        **read_agent_skill_file_payload(
+            _registry_or_default(registry),
+            name,
+            path,
+            max_file_bytes=settings.max_file_read_bytes,
+        )
+    )
 
 
 def list_agent_mcp_servers_execute(

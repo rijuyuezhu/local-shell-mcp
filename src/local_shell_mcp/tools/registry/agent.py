@@ -15,10 +15,12 @@ from ...ops.agent import (
     list_agent_mcp_servers_execute,
     list_agent_mcp_tools_execute,
     list_agent_skills_execute,
+    read_agent_skill_file_execute,
 )
 from ...schemas.input_models.agent import (
     AgentServerArg,
     AgentServerFilterArg,
+    AgentSkillFilePathArg,
     AgentSkillNameArg,
     AgentToolArg,
     AgentToolArgsArg,
@@ -30,6 +32,7 @@ from ...schemas.result_models.agent import (
     ListAgentMcpServersOutput,
     ListAgentMcpToolsOutput,
     ListAgentSkillsOutput,
+    ReadAgentSkillFileOutput,
 )
 from ...server.mcp.metadata import oauth_security_meta
 from ..contracts import McpToolContext
@@ -96,6 +99,19 @@ async def activate_agent_skill(
 
 
 @agent_bridge_tool(
+    http_method="POST",
+    http_path="/tools/read_agent_skill_file",
+    enabled=_agent_bridge_enabled,
+    annotations="read_only",
+)
+async def read_agent_skill_file(
+    name: AgentSkillNameArg, path: AgentSkillFilePathArg
+) -> ReadAgentSkillFileOutput:
+    """Read a bounded related text file from an agent skill. Call activate_agent_skill first and pass one of its related_files paths."""
+    return read_agent_skill_file_execute(name, path, _agent_registry())
+
+
+@agent_bridge_tool(
     http_method="GET",
     http_path="/tools/list_agent_mcp_servers",
     enabled=_agent_bridge_enabled,
@@ -146,4 +162,11 @@ def register_agent_bridge_dynamic_mcp(
         settings.agent_mcp_probe_timeout_s,
         None if settings.agent_dynamic_mcp_tools else False,
         None if settings.agent_dynamic_skill_tools else False,
+        {
+            "max_skills": settings.max_skills,
+            "max_skill_related_files": settings.max_skill_related_files,
+            "max_skill_scan_entries": settings.max_skill_scan_entries,
+            "max_skill_path_bytes": settings.max_skill_path_bytes,
+            "max_skill_entry_bytes": settings.max_file_read_bytes,
+        },
     )
