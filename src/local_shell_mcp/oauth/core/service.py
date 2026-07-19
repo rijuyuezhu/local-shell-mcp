@@ -23,7 +23,7 @@ from ...audit import audit
 from ...config.settings import get_settings
 from ..protocol.adapters import LocalOAuthClient
 from ..protocol.token_codec import issue_access_token
-from .client_store import load_persisted_clients, persist_clients
+from .client_store import load_persisted_clients, persist_approved_clients
 from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
 from .requests import (
     AuthorizationRequestInput,
@@ -215,40 +215,36 @@ def _new_client_id() -> str:
 
 
 def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
-    """Return whether a dynamic client registration is past its configured TTL."""
-    return ttl_s > 0 and now - client.created_at > ttl_s
+    """Return whether an unapproved client registration is past its TTL."""
+    return (
+        client.approved_at is None
+        and ttl_s > 0
+        and now - client.created_at > ttl_s
+    )
 
 
 def _prune_clients(*, now: int | None = None) -> None:
-    """Remove expired dynamic client registrations from memory and disk."""
+    """Remove expired, unapproved client registrations from memory."""
     settings = get_settings()
     if settings.oauth_client_ttl_s <= 0:
         return
     current_time = int(time.time()) if now is None else now
-    removed: dict[str, OAuthClient] = {}
     for client_id, client in list(_CLIENTS.items()):
         if _client_expired(
             client, now=current_time, ttl_s=settings.oauth_client_ttl_s
         ):
-            removed[client_id] = _CLIENTS.pop(client_id)
-    if not removed:
-        return
-    try:
-        persist_clients()
-    except OSError:
-        _CLIENTS.update(removed)
-        raise
+            _CLIENTS.pop(client_id, None)
 
 
 def initialize_dynamic_clients() -> int:
-    """Load persisted clients and apply the configured expiration policy."""
+    """Load approved clients and prune stale pending registrations."""
     loaded = load_persisted_clients()
     _prune_clients()
     return loaded
 
 
 def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
-    """Validate dynamic client registration policy and persist a local client."""
+    """Validate and retain a pending dynamic client registration."""
     if not request.redirect_uris:
         raise InvalidRequestError(
             description="redirect_uris must be a non-empty list"
@@ -260,9 +256,12 @@ def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
     _prune_clients()
     settings = get_settings()
     max_clients = settings.oauth_max_dynamic_clients
-    if max_clients > 0 and len(_CLIENTS) >= max_clients:
+    pending_clients = sum(
+        client.approved_at is None for client in _CLIENTS.values()
+    )
+    if max_clients > 0 and pending_clients >= max_clients:
         raise InvalidRequestError(
-            description="Too many registered OAuth clients"
+            description="Too many pending OAuth client registrations"
         )
 
     client_id = _new_client_id()
@@ -272,11 +271,6 @@ def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
         client_name=request.client_name,
     )
     _CLIENTS[client_id] = client
-    try:
-        persist_clients()
-    except OSError:
-        _CLIENTS.pop(client_id, None)
-        raise
     audit(
         "oauth_client_registered",
         client_id=client_id,
@@ -335,10 +329,32 @@ def validate_authorization_request(
     )
 
 
+def _approve_client(client_id: str, *, now: int | None = None) -> OAuthClient:
+    """Persist a client after the local user approves its first authorization."""
+    client = _CLIENTS.get(client_id)
+    if client is None:
+        raise RuntimeError("Approved OAuth client is no longer registered")
+    if client.approved_at is not None:
+        return client
+
+    client.approved_at = max(
+        client.created_at,
+        int(time.time()) if now is None else now,
+    )
+    try:
+        persist_approved_clients()
+    except OSError:
+        client.approved_at = None
+        raise
+    audit("oauth_client_approved", client_id=client_id)
+    return client
+
+
 def issue_authorization_response(
     request: AuthorizationRequest,
 ) -> AuthorizationResponse:
-    """Issue and store a one-time authorization code for a validated request."""
+    """Approve the client, then issue and store a one-time authorization code."""
+    _approve_client(request.client_id)
     code = secrets.token_urlsafe(32)
     auth_code = AuthCode(
         code=code,

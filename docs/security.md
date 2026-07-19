@@ -54,8 +54,9 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 
 ### Known limits
 
-- Dynamic client registrations are persisted in the configured state directory. Authorization codes remain in-memory and are invalidated by process restart.
-- Dynamic client registration is intentionally permissive to support MCP client onboarding. Approval happens at the local authorization form and optional admin PIN, not at registration time.
+- Pending dynamic client registrations remain in memory and expire according to `oauth_client_ttl_s`. A client is persisted in the configured state directory only after the local user approves its first authorization.
+- Approved client registrations do not use the pending-registration TTL and survive service restarts. Authorization codes remain in memory and are invalidated by process restart.
+- Dynamic client registration is intentionally permissive to support MCP client onboarding. Persistence happens only after approval at the local authorization form with the configured admin PIN.
 - The authorization server and resource server are co-hosted. This implementation does not fetch third-party authorization-server metadata and does not pass inbound MCP bearer tokens to upstream APIs.
 - Bearer tokens are not proof-of-possession tokens. Anyone who obtains a valid token can use it until expiry.
 - Metadata is unsigned. Clients should use HTTPS and validate the metadata resource value and issuer before trusting it.

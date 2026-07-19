@@ -1,4 +1,4 @@
-"""Persistent storage for dynamically registered OAuth clients."""
+"""Persistent storage for locally approved OAuth clients."""
 
 import json
 import os
@@ -27,6 +27,7 @@ def _decode_client(raw: object) -> OAuthClient:
     redirect_uris = data.get("redirect_uris")
     client_name = data.get("client_name")
     created_at = data.get("created_at")
+    approved_at = data.get("approved_at")
     if not isinstance(client_id, str) or not client_id:
         raise ValueError("OAuth client record has an invalid client_id")
     if not isinstance(redirect_uris, list) or not all(
@@ -37,16 +38,19 @@ def _decode_client(raw: object) -> OAuthClient:
         raise ValueError("OAuth client record has an invalid client_name")
     if not isinstance(created_at, int):
         raise ValueError("OAuth client record has an invalid created_at")
+    if not isinstance(approved_at, int) or approved_at < created_at:
+        raise ValueError("OAuth client record has an invalid approved_at")
     return OAuthClient(
         client_id=client_id,
         redirect_uris=redirect_uris,
         client_name=client_name,
         created_at=created_at,
+        approved_at=approved_at,
     )
 
 
 def load_persisted_clients() -> int:
-    """Merge persisted dynamic clients into the active in-memory registry."""
+    """Merge persisted approved clients into the active in-memory registry."""
     path = client_store_path()
     if not path.exists():
         return 0
@@ -80,13 +84,18 @@ def load_persisted_clients() -> int:
     return loaded
 
 
-def persist_clients() -> None:
-    """Atomically write the active dynamic client registry to disk."""
+def persist_approved_clients() -> None:
+    """Atomically write locally approved clients to disk."""
     path = client_store_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    approved_clients = (
+        _CLIENTS[key]
+        for key in sorted(_CLIENTS)
+        if _CLIENTS[key].approved_at is not None
+    )
     payload = {
         "version": CLIENT_STORE_VERSION,
-        "clients": [asdict(_CLIENTS[key]) for key in sorted(_CLIENTS)],
+        "clients": [asdict(client) for client in approved_clients],
     }
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:

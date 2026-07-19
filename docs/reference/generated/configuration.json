@@ -377,7 +377,7 @@
           {
             "code": "86400"
           },
-          "Dynamic OAuth client registration lifetime in seconds. Registrations are persisted in the state directory; set to 0 to disable time-based expiration."
+          "Pending OAuth client registration lifetime in seconds. Approved clients are persisted without this TTL; set to 0 to disable pending expiration."
         ],
         [
           {
@@ -397,7 +397,7 @@
           {
             "code": "256"
           },
-          "Maximum persisted dynamic OAuth clients. Set to 0 to disable this capacity limit."
+          "Maximum pending OAuth client registrations kept in memory. Approved clients do not count; set to 0 to disable this capacity limit."
         ],
         [
           {
@@ -1630,7 +1630,7 @@
       "cli": "--oauth-client-ttl-s",
       "default": 86400,
       "default_display": "86400",
-      "description": "Dynamic OAuth client registration lifetime in seconds. Registrations are persisted in the state directory; set to 0 to disable time-based expiration.",
+      "description": "Pending OAuth client registration lifetime in seconds. Approved clients are persisted without this TTL; set to 0 to disable pending expiration.",
       "env": "LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S",
       "name": "oauth_client_ttl_s",
       "nullable": false,
@@ -1643,7 +1643,7 @@
       "cli": "--oauth-max-dynamic-clients",
       "default": 256,
       "default_display": "256",
-      "description": "Maximum persisted dynamic OAuth clients. Set to 0 to disable this capacity limit.",
+      "description": "Maximum pending OAuth client registrations kept in memory. Approved clients do not count; set to 0 to disable this capacity limit.",
       "env": "LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS",
       "name": "oauth_max_dynamic_clients",
       "nullable": false,

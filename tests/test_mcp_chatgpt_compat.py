@@ -12,6 +12,7 @@ from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.oauth.core import service as oauth_service
 from local_shell_mcp.oauth.core.client_store import client_store_path
 from local_shell_mcp.oauth.core.models import (
     _CLIENTS,
@@ -837,7 +838,7 @@ def test_oauth_registration_enforces_size_limits(tmp_path, monkeypatch):
     assert "at most 1000 bytes" in too_large_body.json()["error_description"]
 
 
-def test_oauth_dynamic_clients_persist_across_app_rebuild(
+def test_oauth_approved_clients_persist_across_app_rebuild(
     tmp_path, monkeypatch
 ):
     state_dir = tmp_path / ".state"
@@ -846,7 +847,7 @@ def test_oauth_dynamic_clients_persist_across_app_rebuild(
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_BASE_URL", "https://local-shell-mcp.example.com"
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
     clear_settings_cache()
     _CLIENTS.clear()
 
@@ -860,7 +861,31 @@ def test_oauth_dynamic_clients_persist_across_app_rebuild(
     )
     assert registration.status_code == 201
     client_id = registration.json()["client_id"]
-    assert client_store_path().exists()
+    assert not client_store_path().exists()
+
+    verifier = "p" * 64
+    approval = first_app.post(
+        "/oauth/authorize",
+        data={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": "https://client.example/callback",
+            "resource": "https://local-shell-mcp.example.com/mcp",
+            "code_challenge": _s256_challenge(verifier),
+            "code_challenge_method": "S256",
+            "pin": "1234",
+        },
+        follow_redirects=False,
+    )
+    assert approval.status_code == 302
+
+    store_path = client_store_path()
+    assert store_path.exists()
+    assert store_path.stat().st_mode & 0o777 == 0o600
+    stored = json.loads(store_path.read_text())
+    assert [client["client_id"] for client in stored["clients"]] == [client_id]
+    assert stored["clients"][0]["approved_at"] is not None
+    approved_at = _CLIENTS[client_id].approved_at
 
     _CLIENTS.clear()
     TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
@@ -869,6 +894,49 @@ def test_oauth_dynamic_clients_persist_across_app_rebuild(
         "https://client.example/callback"
     ]
     assert _CLIENTS[client_id].client_name == "Persistent client"
+    assert _CLIENTS[client_id].approved_at == approved_at
+
+
+def test_oauth_client_approval_rolls_back_when_persistence_fails(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    _CLIENTS.clear()
+    _CLIENTS["pending"] = OAuthClient(
+        client_id="pending",
+        redirect_uris=["https://client.example/callback"],
+        created_at=10,
+    )
+
+    def fail_persistence() -> None:
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(
+        oauth_service, "persist_approved_clients", fail_persistence
+    )
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        oauth_service._approve_client("pending", now=20)
+
+    assert _CLIENTS["pending"].approved_at is None
+    assert not client_store_path().exists()
+
+
+def test_oauth_invalid_client_store_fails_closed(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    _CLIENTS.clear()
+    store_path = client_store_path()
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    store_path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError, match="Unable to read OAuth client registry"
+    ):
+        _add_public_routes_to_mcp_http_app(Starlette())
 
 
 def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
@@ -887,15 +955,23 @@ def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
     )
     assert first.status_code == 201
 
+    blocked = client.post(
+        "/oauth/register",
+        json={"redirect_uris": ["https://client.example/callback-2"]},
+    )
+    assert blocked.status_code == 400
+    assert blocked.json() == {
+        "error": "invalid_request",
+        "error_description": "Too many pending OAuth client registrations",
+    }
+
+    first_client_id = first.json()["client_id"]
+    _CLIENTS[first_client_id].approved_at = int(time.time())
     second = client.post(
         "/oauth/register",
         json={"redirect_uris": ["https://client.example/callback-2"]},
     )
-    assert second.status_code == 400
-    assert second.json() == {
-        "error": "invalid_request",
-        "error_description": "Too many registered OAuth clients",
-    }
+    assert second.status_code == 201
 
 
 def test_prunes_stale_oauth_clients(tmp_path, monkeypatch):
@@ -913,10 +989,16 @@ def test_prunes_stale_oauth_clients(tmp_path, monkeypatch):
         redirect_uris=["https://client.example/old"],
         created_at=80,
     )
+    _CLIENTS["approved-old"] = OAuthClient(
+        client_id="approved-old",
+        redirect_uris=["https://client.example/approved"],
+        created_at=0,
+        approved_at=1,
+    )
 
     _prune_clients(now=100)
 
-    assert set(_CLIENTS) == {"active"}
+    assert set(_CLIENTS) == {"active", "approved-old"}
 
 
 def test_oauth_registration_allows_new_client_after_ttl_prune(
