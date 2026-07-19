@@ -3836,6 +3836,19 @@
                 "description": "File size in bytes, or null for directories and other entries.",
                 "title": "Size"
               },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Raw symlink target for link entries, otherwise omitted.",
+                "title": "Target"
+              },
               "type": {
                 "description": "Entry type: file, dir, or other.",
                 "title": "Type",
@@ -4057,6 +4070,19 @@
                 "default": null,
                 "description": "File size in bytes, or null for directories and other entries.",
                 "title": "Size"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Raw symlink target for link entries, otherwise omitted.",
+                "title": "Target"
               },
               "type": {
                 "description": "Entry type: file, dir, or other.",

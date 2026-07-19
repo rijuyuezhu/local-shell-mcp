@@ -117,12 +117,14 @@ def resolve_path(
 
 
 def relative_display(path: Path) -> str:
-    """Render paths relative to the workspace when possible while preserving absolute paths outside it."""
+    """Render a lexical path relative to the workspace without following its final symlink."""
     root = workspace_root()
+    candidate = path if path.is_absolute() else root / path
+    lexical = Path(os.path.abspath(candidate))
     try:
-        return str(path.resolve().relative_to(root))
+        return str(lexical.relative_to(root))
     except ValueError:
-        return str(path)
+        return str(lexical)
 
 
 def missing_path_context(

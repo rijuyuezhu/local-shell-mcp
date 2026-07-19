@@ -1,9 +1,12 @@
 """Provide workspace-aware UTF-8 file operations with path containment and bounded output."""
 
 import codecs
+import contextlib
 import difflib
+import os
 import re
 import shutil
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,8 +33,30 @@ from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
 )
+from ..utils.path_locks import path_lock, path_locks
 from .utils.path import relative_display, resolve_path, workspace_root
 from .utils.remote_session import call_remote_session_tool
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Atomically replace one user text file while preserving its existing mode."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    previous_mode = path.stat().st_mode & 0o777 if path.exists() else None
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if previous_mode is not None:
+            temporary.chmod(previous_mode)
+        os.replace(temporary, path)
+    finally:
+        with contextlib.suppress(OSError):
+            temporary.unlink(missing_ok=True)
 
 
 def list_files_execute(
@@ -69,18 +94,30 @@ def list_files_execute(
             truncated = True
             break
         try:
-            stat = item.stat()
+            stat = item.lstat()
+            is_link = item.is_symlink()
         except OSError:
             continue
         entry_type = (
-            "dir" if item.is_dir() else "file" if item.is_file() else "other"
+            "link"
+            if is_link
+            else "dir"
+            if item.is_dir()
+            else "file"
+            if item.is_file()
+            else "other"
         )
+        target = None
+        if is_link:
+            with contextlib.suppress(OSError):
+                target = os.readlink(item)
         filelist.append(
             EntryInfo(
                 path=relative_display(item),
                 type=entry_type,
-                size=stat.st_size if item.is_file() else None,
+                size=stat.st_size if entry_type in {"file", "link"} else None,
                 modified=stat.st_mtime,
+                target=target,
             )
         )
     return ListFilesOutput(
@@ -330,11 +367,12 @@ def write_file_execute(
         if session is not None
         else resolve_path(path)
     )
-    if p.exists() and not overwrite:
-        raise FileExistsError(str(p))
-    p.parent.mkdir(parents=True, exist_ok=True)
-    created = not p.exists()
-    p.write_text(content, encoding="utf-8")
+    with path_lock(p):
+        exists = p.exists()
+        if exists and not overwrite:
+            raise FileExistsError(str(p))
+        created = not exists
+        _atomic_write_text(p, content)
     return WriteFileOutput(
         path=relative_display(p), bytes=len(data), created=created
     )
@@ -665,27 +703,29 @@ def edit_file_execute(
     """Replace exact text in a validated text file and report how many occurrences changed."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
-    if p.stat().st_size > settings.max_file_write_bytes:
-        raise ValueError(
-            f"Refusing to edit {p.stat().st_size} bytes; max is {settings.max_file_write_bytes}"
+    with path_lock(p):
+        size = p.stat().st_size
+        if size > settings.max_file_write_bytes:
+            raise ValueError(
+                f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+            )
+        text = p.read_text(encoding="utf-8")
+        count = text.count(old)
+        if count == 0:
+            raise ValueError("old text not found")
+        if not replace_all and count > 1:
+            raise ValueError(
+                f"old text occurs {count} times; set replace_all=true or provide more context"
+            )
+        updated = (
+            text.replace(old, new) if replace_all else text.replace(old, new, 1)
         )
-    text = p.read_text(encoding="utf-8")
-    count = text.count(old)
-    if count == 0:
-        raise ValueError("old text not found")
-    if not replace_all and count > 1:
-        raise ValueError(
-            f"old text occurs {count} times; set replace_all=true or provide more context"
-        )
-    updated = (
-        text.replace(old, new) if replace_all else text.replace(old, new, 1)
-    )
-    updated_bytes = len(updated.encode("utf-8"))
-    if updated_bytes > settings.max_file_write_bytes:
-        raise ValueError(
-            f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
-        )
-    p.write_text(updated, encoding="utf-8")
+        updated_bytes = len(updated.encode("utf-8"))
+        if updated_bytes > settings.max_file_write_bytes:
+            raise ValueError(
+                f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+            )
+        _atomic_write_text(p, updated)
     return EditFileOutput(
         path=relative_display(p), replacements=count if replace_all else 1
     )
@@ -850,8 +890,7 @@ def _apply_hashline_file_hunks(
             tofile=snapshot.relative_path,
         )
     )
-    with snapshot.path_obj.open("w", encoding="utf-8", newline="") as handle:
-        handle.write(updated)
+    _atomic_write_text(snapshot.path_obj, updated)
     return tuple(updated_lines), diff
 
 
@@ -905,11 +944,34 @@ def _hashline_hunk_contexts(
     ]
 
 
-def hashline_edit_execute(
-    input_text: str, session_id: str | None = None
+def _hashline_operation_paths(
+    operations: Sequence[_ParsedHashlineOperation],
+    session_id: str | None,
+) -> list[Path]:
+    """Resolve hashline targets before acquiring their shared mutation locks."""
+    store = get_tool_session_store()
+    session = (
+        store.touch_session(session_id) if session_id is not None else None
+    )
+    paths: list[Path] = []
+    for operation in operations:
+        path_arg = _path_for_hashline_operation(
+            operation.path, operation.snapshot_id, session_id
+        )
+        resolved = (
+            resolve_session_path(session, path_arg, must_exist=True)
+            if session is not None
+            else resolve_path(path_arg, must_exist=True)
+        )
+        paths.append(resolved)
+    return paths
+
+
+def _hashline_edit_locked(
+    operations: Sequence[_ParsedHashlineOperation],
+    session_id: str | None,
 ) -> HashlineEditOutput:
-    """Apply one or more compact hashline edits against original line numbers."""
-    operations = parse_hashline_edit_input(input_text)
+    """Validate and apply hashline operations while all target locks are held."""
     snapshots: dict[Path, _HashlineFileSnapshot] = {}
     prepared_hunks = [
         _prepare_hashline_hunk(
@@ -963,6 +1025,15 @@ def hashline_edit_execute(
     )
 
 
+def hashline_edit_execute(
+    input_text: str, session_id: str | None = None
+) -> HashlineEditOutput:
+    """Apply one or more compact hashline edits against original line numbers."""
+    operations = parse_hashline_edit_input(input_text)
+    with path_locks(_hashline_operation_paths(operations, session_id)):
+        return _hashline_edit_locked(operations, session_id)
+
+
 def edit_lines_execute(
     path: str,
     start_line: int,
@@ -987,70 +1058,75 @@ def edit_lines_execute(
         if session is not None
         else resolve_path(path, must_exist=True)
     )
-    size = p.stat().st_size
-    if size > settings.max_file_write_bytes:
-        raise ValueError(
-            f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+    with path_lock(p):
+        size = p.stat().st_size
+        if size > settings.max_file_write_bytes:
+            raise ValueError(
+                f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+            )
+
+        relative_path = relative_display(p)
+        current_sha256 = file_sha256(p)
+        _validate_snapshot_for_edit(
+            path=relative_path,
+            current_sha256=current_sha256,
+            start_line=start_line,
+            end_line=end_line,
+            snapshot_id=snapshot_id,
+            session_id=session_id,
         )
 
-    relative_path = relative_display(p)
-    current_sha256 = file_sha256(p)
-    _validate_snapshot_for_edit(
-        path=relative_path,
-        current_sha256=current_sha256,
-        start_line=start_line,
-        end_line=end_line,
-        snapshot_id=snapshot_id,
-        session_id=session_id,
-    )
+        original = p.read_text(encoding="utf-8")
+        original_lines = original.splitlines(keepends=True)
+        total_lines = len(original_lines)
+        if end_line > total_lines:
+            raise ValueError(
+                f"end_line {end_line} is beyond file line count {total_lines}"
+            )
 
-    original = p.read_text(encoding="utf-8")
-    original_lines = original.splitlines(keepends=True)
-    total_lines = len(original_lines)
-    if end_line > total_lines:
-        raise ValueError(
-            f"end_line {end_line} is beyond file line count {total_lines}"
+        selected = original_lines[start_line - 1 : end_line]
+        replacement_lines = _replacement_lines(
+            replacement,
+            newline=_newline_for_text(original),
+            selected_had_trailing_newline=bool(
+                selected and selected[-1].endswith(("\n", "\r"))
+            ),
+            has_following_lines=end_line < total_lines,
         )
-
-    selected = original_lines[start_line - 1 : end_line]
-    replacement_lines = _replacement_lines(
-        replacement,
-        newline=_newline_for_text(original),
-        selected_had_trailing_newline=bool(
-            selected and selected[-1].endswith(("\n", "\r"))
-        ),
-        has_following_lines=end_line < total_lines,
-    )
-    updated_lines = (
-        original_lines[: start_line - 1]
-        + replacement_lines
-        + original_lines[end_line:]
-    )
-    updated = "".join(updated_lines)
-    updated_bytes = len(updated.encode("utf-8"))
-    if updated_bytes > settings.max_file_write_bytes:
-        raise ValueError(
-            f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+        updated_lines = (
+            original_lines[: start_line - 1]
+            + replacement_lines
+            + original_lines[end_line:]
         )
+        updated = "".join(updated_lines)
+        updated_bytes = len(updated.encode("utf-8"))
+        if updated_bytes > settings.max_file_write_bytes:
+            raise ValueError(
+                f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+            )
 
-    diff = "".join(
-        difflib.unified_diff(
-            original.splitlines(keepends=True),
-            updated.splitlines(keepends=True),
-            fromfile=relative_path,
-            tofile=relative_path,
+        diff = "".join(
+            difflib.unified_diff(
+                original.splitlines(keepends=True),
+                updated.splitlines(keepends=True),
+                fromfile=relative_path,
+                tofile=relative_path,
+            )
         )
-    )
-    with p.open("w", encoding="utf-8", newline="") as handle:
-        handle.write(updated)
+        _atomic_write_text(p, updated)
 
-    replacement_line_count = len(replacement_lines)
-    context_start = max(1, start_line - 3)
-    context_end = min(
-        len(updated_lines),
-        max(start_line, start_line + max(replacement_line_count, 1) + 3),
-    )
-    context = read_file_execute(str(p), context_start, context_end, session_id)
+        replacement_line_count = len(replacement_lines)
+        context_start = max(1, start_line - 3)
+        context_end = min(
+            len(updated_lines),
+            max(
+                start_line,
+                start_line + max(replacement_line_count, 1) + 3,
+            ),
+        )
+        context = read_file_execute(
+            str(p), context_start, context_end, session_id
+        )
     return EditLinesOutput(
         path=relative_path,
         start_line=start_line,
@@ -1116,57 +1192,71 @@ def multi_edit_file_execute(
     """Apply a sequence of exact-text replacements and write the file only after all edits validate."""
     settings = get_settings()
     p = resolve_path(path, must_exist=True)
-    if p.stat().st_size > settings.max_file_write_bytes:
-        raise ValueError(
-            f"Refusing to edit {p.stat().st_size} bytes; max is {settings.max_file_write_bytes}"
-        )
-    text = p.read_text(encoding="utf-8")
-    total = 0
-    for edit in edits:
-        old = str(edit["old"])
-        new = str(edit["new"])
-        replace_all = bool(edit.get("replace_all", False))
-        count = text.count(old)
-        if count == 0:
-            raise ValueError(f"old text not found: {old[:80]!r}")
-        if not replace_all and count > 1:
-            raise ValueError(f"old text occurs {count} times: {old[:80]!r}")
-        text = (
-            text.replace(old, new) if replace_all else text.replace(old, new, 1)
-        )
-        total += count if replace_all else 1
-    updated_bytes = len(text.encode("utf-8"))
-    if updated_bytes > settings.max_file_write_bytes:
-        raise ValueError(
-            f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
-        )
-    p.write_text(text, encoding="utf-8")
+    with path_lock(p):
+        size = p.stat().st_size
+        if size > settings.max_file_write_bytes:
+            raise ValueError(
+                f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+            )
+        text = p.read_text(encoding="utf-8")
+        total = 0
+        for edit in edits:
+            old = str(edit["old"])
+            new = str(edit["new"])
+            replace_all = bool(edit.get("replace_all", False))
+            count = text.count(old)
+            if count == 0:
+                raise ValueError(f"old text not found: {old[:80]!r}")
+            if not replace_all and count > 1:
+                raise ValueError(f"old text occurs {count} times: {old[:80]!r}")
+            text = (
+                text.replace(old, new)
+                if replace_all
+                else text.replace(old, new, 1)
+            )
+            total += count if replace_all else 1
+        updated_bytes = len(text.encode("utf-8"))
+        if updated_bytes > settings.max_file_write_bytes:
+            raise ValueError(
+                f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+            )
+        _atomic_write_text(p, text)
     return MultiEditFileOutput(path=relative_display(p), replacements=total)
 
 
 def delete_file_or_dir_execute(
     path: str, recursive: bool = False, session_id: str | None = None
 ) -> DeleteFileOrDirOutput:
-    """Delete a file or directory after enforcing recursive-directory semantics."""
+    """Delete a file, symlink, or directory without following the final symlink."""
     session = (
         get_tool_session_store().touch_session(session_id)
         if session_id is not None
         else None
     )
     p = (
-        resolve_session_path(session, path, must_exist=True)
-        if session is not None
-        else resolve_path(path, must_exist=True)
-    )
-    if p.is_dir():
-        if not recursive:
-            raise IsADirectoryError("Set recursive=true to delete a directory")
-        shutil.rmtree(p)
-        return DeleteFileOrDirOutput(
-            path=relative_display(p), deleted="directory"
+        resolve_session_path(
+            session, path, must_exist=True, follow_final_symlink=False
         )
-    p.unlink()
-    return DeleteFileOrDirOutput(path=relative_display(p), deleted="file")
+        if session is not None
+        else resolve_path(path, must_exist=True, follow_final_symlink=False)
+    )
+    with path_lock(p):
+        if not os.path.lexists(p):
+            raise FileNotFoundError(str(p))
+        if p.is_symlink():
+            p.unlink()
+            deleted = "link"
+        elif p.is_dir():
+            if not recursive:
+                raise IsADirectoryError(
+                    "Set recursive=true to delete a directory"
+                )
+            shutil.rmtree(p)
+            deleted = "directory"
+        else:
+            p.unlink()
+            deleted = "file"
+    return DeleteFileOrDirOutput(path=relative_display(p), deleted=deleted)
 
 
 async def delete_file_or_dir_dispatch_execute(
