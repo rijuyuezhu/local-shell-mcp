@@ -6,6 +6,7 @@ from starlette.routing import BaseRoute
 
 from ... import __version__
 from ...config.settings import Settings, get_settings
+from ...oauth.core.security import validate_public_oauth_configuration
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
 from ..shared.public_routes import public_http_routes
@@ -67,5 +68,6 @@ def build_http_app() -> FastAPI:
 def run_http() -> None:
     """Run the REST HTTP server."""
     settings = get_settings()
+    validate_public_oauth_configuration(settings)
     app = build_http_app()
     uvicorn.run(app, host=settings.host, port=settings.port)

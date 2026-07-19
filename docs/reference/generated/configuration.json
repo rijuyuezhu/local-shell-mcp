@@ -317,7 +317,7 @@
           {
             "code": "unset"
           },
-          "Admin PIN required to approve OAuth authorization."
+          "Admin PIN required to approve OAuth authorization. Public OAuth URLs require a non-placeholder value of at least 8 characters."
         ],
         [
           {
@@ -1851,7 +1851,7 @@
       "cli": "--oauth-admin-pin",
       "default": null,
       "default_display": "unset",
-      "description": "Admin PIN required to approve OAuth authorization.",
+      "description": "Admin PIN required to approve OAuth authorization. Public OAuth URLs require a non-placeholder value of at least 8 characters.",
       "env": "LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN",
       "name": "oauth_admin_pin",
       "nullable": true,

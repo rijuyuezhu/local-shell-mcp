@@ -10,6 +10,7 @@ from starlette.applications import Starlette
 from starlette.routing import BaseRoute, Mount
 
 from ...config.settings import get_settings
+from ...oauth.core.security import validate_public_oauth_configuration
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
 from ...remote.http import remote_routes
@@ -99,6 +100,8 @@ def build_mcp_http_app(mcp: FastMCP) -> Starlette:
 def run_mcp() -> None:
     """Start the configured MCP server, over stdio or HTTP."""
     settings = get_settings()
+    if settings.mode != "stdio":
+        validate_public_oauth_configuration(settings)
     mcp = build_mcp()
 
     if settings.mode == "stdio":

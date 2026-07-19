@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     oauth_resource: str | None = None
     """Override URL for OAuth resource metadata; usually derived from base_url plus /mcp."""
     oauth_admin_pin: str | None = None
-    """Admin PIN required to approve OAuth authorization."""
+    """Admin PIN required to approve OAuth authorization. Public OAuth URLs require a non-placeholder value of at least 8 characters."""
     oauth_access_token_ttl_s: int = 3600
     """Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed."""
     oauth_code_ttl_s: int = 300
