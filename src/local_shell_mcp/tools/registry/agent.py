@@ -70,6 +70,7 @@ agent_bridge_tool = AgentBridgeToolRegistry.get_tool_decorator()
     http_method="GET",
     http_path="/tools/agent_config_status",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def agent_config_status() -> AgentConfigStatusOutput:
     """Return agent bridge configuration status, discovered skills, configured MCP servers, and load errors."""
@@ -80,6 +81,7 @@ async def agent_config_status() -> AgentConfigStatusOutput:
     http_method="GET",
     http_path="/tools/list_agent_skills",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def list_agent_skills() -> ListAgentSkillsOutput:
     """List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them."""
@@ -90,6 +92,7 @@ async def list_agent_skills() -> ListAgentSkillsOutput:
     http_method="POST",
     http_path="/tools/activate_agent_skill",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def activate_agent_skill(
     name: AgentSkillNameArg,
@@ -115,6 +118,7 @@ async def read_agent_skill_file(
     http_method="GET",
     http_path="/tools/list_agent_mcp_servers",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def list_agent_mcp_servers() -> ListAgentMcpServersOutput:
     """List configured agent MCP servers. Use to find exact server names and connection status before listing or calling bridged MCP tools."""
@@ -125,6 +129,7 @@ async def list_agent_mcp_servers() -> ListAgentMcpServersOutput:
     http_method="POST",
     http_path="/tools/list_agent_mcp_tools",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def list_agent_mcp_tools(
     server: AgentServerFilterArg = None,

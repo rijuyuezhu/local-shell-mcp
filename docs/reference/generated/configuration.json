@@ -531,7 +531,7 @@
           {
             "code": "false"
           },
-          "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints."
+          "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP safety annotations remain conservative in this mode."
         ],
         [
           {
@@ -551,7 +551,7 @@
           {
             "code": "false"
           },
-          "Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations."
+          "Deprecated compatibility flag. MCP safety annotations remain semantic and mode-independent."
         ],
         [
           {
@@ -1984,7 +1984,7 @@
       "cli": "--allow-full-control",
       "default": false,
       "default_display": "false",
-      "description": "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints.",
+      "description": "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP safety annotations remain conservative in this mode.",
       "env": "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL",
       "name": "allow_full_control",
       "nullable": false,
@@ -2000,7 +2000,7 @@
       "cli": "--relaxed-client-tool-hints",
       "default": false,
       "default_display": "false",
-      "description": "Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations.",
+      "description": "Deprecated compatibility flag. MCP safety annotations remain semantic and mode-independent.",
       "env": "LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS",
       "name": "relaxed_client_tool_hints",
       "nullable": false,

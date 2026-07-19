@@ -85,10 +85,10 @@ class Settings(BaseSettings):
 
     # Safety and resource limits.
     allow_full_control: bool = False
-    """Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints."""
+    """Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP safety annotations remain conservative in this mode."""
     """Allow network-capable operations."""
     relaxed_client_tool_hints: bool = False
-    """Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations."""
+    """Deprecated compatibility flag. MCP safety annotations remain semantic and mode-independent."""
     tool_timeout_s: float = 60
     """MCP/HTTP tool watchdog timeout in seconds."""
     run_shell_default_timeout_s: int = 10

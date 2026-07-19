@@ -71,7 +71,7 @@ When OAuth authentication is enabled, protected MCP and REST routes authenticate
 
 ## Full-control mode
 
-`LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` is an explicit full-control mode. It disables built-in command and path denylists and adds auto-approval hints for command-capable tools.
+`LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` is an explicit full-control mode. It disables built-in command and path denylists, but MCP safety annotations remain conservative and continue to identify destructive or open-world tools. `LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS` is retained only as a deprecated compatibility setting and no longer weakens those annotations.
 
 In the Docker image, the entrypoint normally creates a non-root `agent` user at container startup. By default, its UID/GID are detected from the mounted `/workspace` owner so bind-mounted files stay writable by the host user. Set `DOCKER_AGENT_UID` or `DOCKER_AGENT_GID` only to override that detection. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
 

@@ -19,7 +19,7 @@ from ...tools.discovery import discover_tool_registries
 from ..shared.public_routes import public_http_routes
 from ..shared.request_limits import install_request_body_limit
 from .instructions import SERVER_INSTRUCTIONS
-from .metadata import install_full_container_auto_approval_hints
+from .metadata import install_tool_safety_annotations
 from .transport_security import transport_security_settings
 from .watchdogs import install_mcp_tool_watchdogs
 
@@ -48,7 +48,7 @@ def build_mcp() -> FastMCP:
     )
     for registry in discover_tool_registries():
         registry.register_mcp(mcp, context)
-    install_full_container_auto_approval_hints(mcp)
+    install_tool_safety_annotations(mcp)
     install_mcp_tool_watchdogs(mcp)
     return mcp
 

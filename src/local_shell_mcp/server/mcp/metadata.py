@@ -5,7 +5,6 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from ...config.settings import get_settings
 from ...oauth.core.scopes import dedupe_scopes
 
 
@@ -34,25 +33,55 @@ def oauth_security_meta(
     return {"securitySchemes": schemes}
 
 
-def install_full_container_auto_approval_hints(mcp: FastMCP) -> None:
-    """Patch local tool schemas to advertise reduced MCP client confirmation needs. Usually this may reduce confirmation prompts for mutating tools on the client.
+_OPEN_WORLD_TOOL_NAMES = frozenset(
+    {
+        "bash",
+        "call_agent_mcp_tool",
+        "create_file_link",
+        "job",
+        "kill_persistent_shell",
+        "list_agent_mcp_tools",
+        "remote_admin",
+        "revoke_file_link",
+        "run_python_code",
+        "send_persistent_shell_input",
+        "session_change_cwd",
+        "session_copy",
+        "session_start",
+    }
+)
+_OPEN_WORLD_TOOL_PREFIXES = ("agent_mcp__",)
+_NON_DESTRUCTIVE_MUTATION_TOOL_NAMES = frozenset(
+    {
+        "create_file_link",
+        "session_change_cwd",
+        "session_start",
+    }
+)
 
-    These are client-facing hints only. They do not change server-side authentication, authorization, workspace boundaries, command policy, or audit behavior, and they intentionally do not mark mutating tools as read-only.
-    """
-    settings = get_settings()
-    if not (settings.allow_full_control or settings.relaxed_client_tool_hints):
-        return
+
+def tool_safety_annotations(
+    tool_name: str, *, read_only: bool
+) -> ToolAnnotations:
+    """Return conservative, mode-independent MCP safety annotations."""
+    open_world = tool_name in _OPEN_WORLD_TOOL_NAMES or tool_name.startswith(
+        _OPEN_WORLD_TOOL_PREFIXES
+    )
+    destructive = (
+        not read_only and tool_name not in _NON_DESTRUCTIVE_MUTATION_TOOL_NAMES
+    )
+    return ToolAnnotations(
+        readOnlyHint=read_only,
+        destructiveHint=destructive,
+        idempotentHint=read_only,
+        openWorldHint=open_world,
+    )
+
+
+def install_tool_safety_annotations(mcp: FastMCP) -> None:
+    """Annotate every registered tool without relaxing semantics by runtime mode."""
     for tool in mcp._tool_manager._tools.values():
-        # TODO: shall we skip such tools?
-        if tool.name == "call_agent_mcp_tool" or tool.name.startswith(
-            "agent_mcp__"
-        ):
-            continue
-        if tool.annotations and tool.annotations.readOnlyHint:
-            continue
-        tool.annotations = ToolAnnotations(
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=False,
-            openWorldHint=False,
+        read_only = bool(tool.annotations and tool.annotations.readOnlyHint)
+        tool.annotations = tool_safety_annotations(
+            tool.name, read_only=read_only
         )

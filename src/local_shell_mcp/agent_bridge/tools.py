@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any
 
+from ..server.mcp.metadata import tool_safety_annotations
 from .models import AgentCapabilityRegistry
 from .registry import build_agent_registry
 from .service import (
@@ -82,6 +83,9 @@ class AgentBridgeToolReloader:
                 make_skill_handler(self, record.skill_name),
                 name=dynamic_name,
                 description=description,
+                annotations=tool_safety_annotations(
+                    dynamic_name, read_only=True
+                ),
                 meta=self.meta,
             )
             self._dynamic_tool_names.add(dynamic_name)
@@ -107,6 +111,9 @@ class AgentBridgeToolReloader:
                 make_mcp_handler(self, record.server_name, record.tool_name),
                 name=dynamic_name,
                 description=description,
+                annotations=tool_safety_annotations(
+                    dynamic_name, read_only=False
+                ),
                 meta=self.meta,
             )
             self._dynamic_tool_names.add(dynamic_name)

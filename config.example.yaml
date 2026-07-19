@@ -57,11 +57,10 @@ oauth_registration_max_redirect_uri_chars: 2048
 oauth_registration_max_client_name_chars: 200
 
 # Safety and resource limits.
-# Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This
-# enforces relaxed_client_tool_hints.
+# Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP
+# safety annotations remain conservative in this mode.
 allow_full_control: false
-# Advertise lower-risk MCP client hints for tools so that clients can run them with fewer
-# confirmations.
+# Deprecated compatibility flag. MCP safety annotations remain semantic and mode-independent.
 relaxed_client_tool_hints: false
 # MCP/HTTP tool watchdog timeout in seconds.
 tool_timeout_s: 60
