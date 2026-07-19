@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import re
 import shlex
 import subprocess
@@ -31,6 +30,11 @@ from ..tool_session.store import (
     UnknownAgentSessionError,
     get_tool_session_store,
     resolve_session_path,
+)
+from ..utils.private_files import (
+    atomic_write_private_text,
+    private_file_lock,
+    write_private_text,
 )
 from .shell import (
     _subprocess_env,
@@ -84,36 +88,6 @@ def _job_runtime_dir() -> Path:
 
 def _empty_store() -> dict[str, Any]:
     return {"version": JOB_STORE_VERSION, "jobs": []}
-
-
-def _lock_store_file(handle: BinaryIO) -> None:
-    """Acquire an exclusive one-byte file lock on every supported platform."""
-    handle.seek(0, os.SEEK_END)
-    if handle.tell() == 0:
-        handle.write(b"\0")
-        handle.flush()
-    handle.seek(0)
-    if os.name == "nt":
-        import msvcrt
-
-        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-    else:
-        import fcntl
-
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-
-
-def _unlock_store_file(handle: BinaryIO) -> None:
-    """Release the cross-platform tracked-job file lock."""
-    handle.seek(0)
-    if os.name == "nt":
-        import msvcrt
-
-        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-    else:
-        import fcntl
-
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _load_store_file(path: Path) -> dict[str, Any]:
@@ -179,29 +153,6 @@ def _load_store() -> dict[str, Any]:
     ) from main_error
 
 
-def _private_write_text(path: Path, content: str) -> None:
-    """Write one private UTF-8 runtime file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
-
-
-def _private_write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Atomically write one private JSON runtime file."""
-    temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        _private_write_text(
-            temporary,
-            json.dumps(payload, sort_keys=True, separators=(",", ":")),
-        )
-        os.replace(temporary, path)
-        with contextlib.suppress(OSError):
-            path.chmod(0o600)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
 def _attempt_paths(job_id: str, attempt: int) -> dict[str, Path]:
     """Return private command, log, and status paths for one job attempt."""
     stem = f"{job_id}-attempt-{attempt}"
@@ -263,38 +214,18 @@ def _save_store(store: dict[str, Any]) -> None:
     store["version"] = JOB_STORE_VERSION
     path = _job_store_path()
     backup_path = _job_store_backup_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(store, indent=2, sort_keys=True)
-    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
-    backup_tmp_path = backup_path.with_name(
-        f"{backup_path.name}.{uuid.uuid4().hex}.tmp"
-    )
-    try:
-        for temporary in (tmp_path, backup_tmp_path):
-            _private_write_text(temporary, payload)
-        os.replace(tmp_path, path)
-        os.replace(backup_tmp_path, backup_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
-        backup_tmp_path.unlink(missing_ok=True)
+    atomic_write_private_text(path, payload)
+    atomic_write_private_text(backup_path, payload)
 
 
 @contextlib.contextmanager
 def _store_transaction() -> Generator[dict[str, Any]]:
     """Serialize one complete job-store read/modify/write transaction."""
-    with _JOB_STORE_THREAD_LOCK:
-        lock_path = _job_store_lock_path()
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+b") as handle:
-            with contextlib.suppress(OSError):
-                lock_path.chmod(0o600)
-            _lock_store_file(handle)
-            try:
-                store = _load_store()
-                yield store
-                _save_store(store)
-            finally:
-                _unlock_store_file(handle)
+    with _JOB_STORE_THREAD_LOCK, private_file_lock(_job_store_lock_path()):
+        store = _load_store()
+        yield store
+        _save_store(store)
 
 
 def _new_job_id() -> str:
@@ -369,7 +300,7 @@ def _prepare_attempt(
     """Validate and materialize one durable attempt before starting its shell."""
     check_command_policy(command)
     paths = _attempt_paths(job_id, attempt)
-    _private_write_text(paths["command"], command)
+    write_private_text(paths["command"], command)
     paths["log"].unlink(missing_ok=True)
     paths["status"].unlink(missing_ok=True)
     argv = _runner_argv(paths, cwd)
@@ -1234,15 +1165,19 @@ def run_job_runner_from_args(args: Any) -> None:
         error = f"{type(exc).__name__}: {exc}"
     finally:
         completed_at = _utc()
-        _private_write_json(
+        atomic_write_private_text(
             status_path,
-            {
-                "exit_code": exit_code,
-                "completed_at": completed_at,
-                "error": error,
-                "log_truncated": log_truncated,
-                "output_bytes": output_bytes,
-            },
+            json.dumps(
+                {
+                    "exit_code": exit_code,
+                    "completed_at": completed_at,
+                    "error": error,
+                    "log_truncated": log_truncated,
+                    "output_bytes": output_bytes,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
         )
 
     if error is not None:

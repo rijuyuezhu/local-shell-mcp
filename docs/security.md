@@ -81,9 +81,9 @@ Operational guidance:
 
 ## Audit log handling
 
-Audit records are intentionally complete and may include tool inputs, tool outputs, file contents, command output, OAuth claims, bearer-token-derived authentication context, and other sensitive values visible to the server.
+Audit records preserve non-sensitive tool inputs, outputs, nested errors, file contents, and command output within the configured per-event budget. Credential-like keys and free-form text are redacted on a best-effort basis, tokenized download URLs are masked, and oversized events become marked previews. Unknown secret formats and sensitive application data can still remain.
 
-Treat `/workspace/.local-shell-mcp/audit_log/audit.jsonl` as sensitive session state, not as a sanitized telemetry stream. Keep it in the controlled workspace/state directory, rely on the configured size cap for short-term retention, and avoid uploading it to third-party log aggregation unless that system is trusted for the same secrets.
+Treat `/workspace/.local-shell-mcp/audit_log/audit.jsonl` as sensitive session state, not as a sanitized telemetry stream. Keep it in the controlled workspace/state directory, rely on `max_audit_event_bytes` and `max_audit_log_bytes` for short-term retention, and avoid uploading it to third-party log aggregation unless that system is trusted for the same secrets.
 
 ## Threats considered
 

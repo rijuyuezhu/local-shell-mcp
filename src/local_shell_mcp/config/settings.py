@@ -130,7 +130,9 @@ class Settings(BaseSettings):
     max_todo_bytes: int = 1_000_000
     """Todo-list total byte limit."""
     max_audit_log_bytes: int = 20_000_000
-    """Audit-log threshold in bytes. If exceeded, the log is rotated."""
+    """Maximum active audit JSONL bytes before atomic recent-record retention."""
+    max_audit_event_bytes: int = 1_000_000
+    """Maximum encoded bytes retained for one audit event before preview truncation."""
     max_tmp_files: int = 500
     """Temporary-file count limit. When exceeded, old files are deleted."""
     max_tmp_bytes: int = 50_000_000

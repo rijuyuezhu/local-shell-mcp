@@ -971,7 +971,27 @@
           {
             "code": "20000000"
           },
-          "Audit-log threshold in bytes. If exceeded, the log is rotated."
+          "Maximum active audit JSONL bytes before atomic recent-record retention."
+        ],
+        [
+          {
+            "code": "max_audit_event_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-audit-event-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES"
+          },
+          "integer",
+          {
+            "code": "1000000"
+          },
+          "Maximum encoded bytes retained for one audit event before preview truncation."
         ],
         [
           {
@@ -2173,9 +2193,22 @@
       "cli": "--max-audit-log-bytes",
       "default": 20000000,
       "default_display": "20000000",
-      "description": "Audit-log threshold in bytes. If exceeded, the log is rotated.",
+      "description": "Maximum active audit JSONL bytes before atomic recent-record retention.",
       "env": "LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES",
       "name": "max_audit_log_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-audit-event-bytes",
+      "default": 1000000,
+      "default_display": "1000000",
+      "description": "Maximum encoded bytes retained for one audit event before preview truncation.",
+      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES",
+      "name": "max_audit_event_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

@@ -10,12 +10,15 @@ By default, the audit log is stored at:
 /workspace/.local-shell-mcp/audit_log/audit.jsonl
 ```
 
-The path is derived from `LOCAL_SHELL_MCP_STATE_DIR`; only the size limit is configurable:
+The path is derived from `LOCAL_SHELL_MCP_STATE_DIR`. The total log and per-event budgets are configurable:
 
 ```env
 LOCAL_SHELL_MCP_STATE_DIR=/workspace/.local-shell-mcp
 LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES=20000000
+LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES=1000000
 ```
+
+Append and retention are serialized across threads and processes. When the total budget is exceeded, recent retention units are atomically preserved; completed `tool_call_start`/`tool_call_end` pairs sharing a `call_id` are kept together.
 
 ## Watch activity
 
@@ -34,12 +37,12 @@ Every normal routed MCP or REST debug tool call produces a start/end pair linked
 {"ts": 1710000000.1, "event": "tool_call_end", "call_id": "...", "transport": "mcp", "tool": "read", "ok": true, "duration_ms": 12, "output": {"kind": "file", "path": "README.md", "content": "[README.md#snap1]\n1:# Project\n2:Intro", "numbered_content": "[README.md#snap1]\n1:# Project\n2:Intro", "file": {"path": "README.md", "bytes": 123, "bytes_read": 123, "total_lines": 2, "start_line": 1, "end_line": 2, "line_count": 2}, "session_id": "Ab12Cd34", "snapshot_id": "snap1", "seen_ranges": [{"start": 1, "end": 2}], "truncated": false}}
 ```
 
-Failures and timeouts are also linked by `call_id`.
+Failures and timeouts are also linked by `call_id`. Every event has a unique `id`. If an encoded event exceeds `max_audit_event_bytes`, identity fields are retained and the payload is replaced or reduced with a `$local_shell_mcp_audit_truncated` marker. Binary values are represented by byte count and SHA-256 rather than raw bytes.
 
 Other event families may appear alongside routed tool calls, including `bash`, `job`, `send_persistent_shell_input`, `read_persistent_shell_output`, `kill_persistent_shell`, `auth_ok`, `oauth_*`, `tool_error`, `tool_timeout`, and `remote_worker_registered`.
 
 ## Sensitive data warning
 
-Audit records intentionally store complete tool inputs and outputs, including file contents, command output, authentication claims, and other sensitive values visible to the server. Treat the audit log as sensitive session state, not as sanitized telemetry.
+Within the per-event budget, the audit log preserves non-sensitive tool inputs, outputs, nested failures, file contents, and command output. Credential-like mapping keys, command-line flags, bearer tokens, configured OAuth approval PIN values, and tokenized download URLs are redacted on a best-effort basis. Irreversible identifiers such as `token_sha256` remain available for correlation.
 
-Keep it in the configured state directory, rely on size limits for short-term retention, and avoid copying it to less trusted systems.
+Best-effort redaction is not a proof that a log contains no secrets: unknown secret formats and sensitive application data may remain. Treat the audit log as sensitive session state, not as sanitized telemetry. Keep it in the configured state directory, rely on size limits for short-term retention, and avoid copying it to less trusted systems.

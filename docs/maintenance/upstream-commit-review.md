@@ -136,7 +136,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 119 | 2026-07-13 | `35ebcdb` | fix(ui): isolate mount paths and disabled remotes | **Pending** | Pending functional review and fork-specific port decision. |
 | 120 | 2026-07-13 | `6a29ddf` | fix(ui): discard stale polling responses | **Pending** | Pending functional review and fork-specific port decision. |
 | 121 | 2026-07-13 | `f564761` | fix(auth): require strong public OAuth approval credentials | **Pending** | Pending functional review and fork-specific port decision. |
-| 122 | 2026-07-13 | `d3050aa` | fix(audit): serialize trimming and appends | **Pending** | Pending functional review and fork-specific port decision. |
+| 122 | 2026-07-13 | `d3050aa` | fix(audit): serialize trimming and appends | **Implemented (adapted)** | Audit append and retention are serialized with a process-wide lock plus a cross-process lock file; replacement is atomic and both log and lock remain private. |
 | 123 | 2026-07-13 | `bfc08df` | fix(remotes): bound invites and validate node identities | **Pending** | Pending functional review and fork-specific port decision. |
 | 124 | 2026-07-13 | `69bb316` | fix(ui): make editor saves atomic and conflict-safe | **Pending** | Pending functional review and fork-specific port decision. |
 | 125 | 2026-07-13 | `5d0a5c6` | test(auth): use S256 PKCE in the MCP endpoint probe | **Pending** | Pending functional review and fork-specific port decision. |
@@ -149,13 +149,13 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 132 | 2026-07-14 | `edae303` | fix(release): remove rejected OAuth placeholders | **Pending** | Pending functional review and fork-specific port decision. |
 | 133 | 2026-07-14 | `f7fd688` | fix(ci): eliminate error annotations | **Pending** | Pending functional review and fork-specific port decision. |
 | 134 | 2026-07-14 | `d172ecc` | fix(ci): drain grep subprocess cleanup | **Pending** | Pending functional review and fork-specific port decision. |
-| 135 | 2026-07-14 | `8379169` | fix: harden auth downloads and audit logging | **Pending** | Pending functional review and fork-specific port decision. |
+| 135 | 2026-07-14 | `8379169` | fix: harden auth downloads and audit logging | **Partial** | The audit serialization and redaction portions are adapted. Authentication, file-share, and Human UI changes in this mixed commit are reviewed in their own functional batches. |
 | 136 | 2026-07-14 | `867330f` | fix: make remote transfers transactional | **Pending** | Pending functional review and fork-specific port decision. |
 | 137 | 2026-07-14 | `1bdb837` | fix: isolate human UI state by machine | **Pending** | Pending functional review and fork-specific port decision. |
 | 138 | 2026-07-14 | `51879f9` | fix: persist long-running job results | **Implemented (adapted)** | Tracked jobs now use a private internal runner that durably records combined output, exit code, completion time, and errors; output remains pollable after process exit and restart. |
 | 139 | 2026-07-14 | `17ed1e9` | fix: correct MCP safety annotations | **Pending** | Pending functional review and fork-specific port decision. |
 | 140 | 2026-07-14 | `c2acf69` | fix: share shell output budget across streams | **Pending** | Pending functional review and fork-specific port decision. |
-| 141 | 2026-07-14 | `212a4cb` | fix: sanitize all audit event fields | **Pending** | Pending functional review and fork-specific port decision. |
+| 141 | 2026-07-14 | `212a4cb` | fix: sanitize all audit event fields | **Implemented (adapted)** | All `audit()` fields now pass through one recursive redaction and portability boundary, including direct shell, OAuth, download, job, and remote events. |
 | 142 | 2026-07-14 | `55ff945` | fix: bound path lock resource usage | **Pending** | Pending functional review and fork-specific port decision. |
 | 143 | 2026-07-14 | `403e9bb` | docs: document job and transfer limits | **Implemented (adapted)** | Fork documentation and generated configuration describe `max_job_log_bytes` and `max_jobs`, including durable polling and active-job retention semantics. |
 | 144 | 2026-07-14 | `afb53ed` | fix: validate remote worker server URLs | **Pending** | Pending functional review and fork-specific port decision. |
@@ -299,8 +299,8 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 282 | 2026-07-17 | `75cbf95` | Fix job store migration and startup durability | **Implemented (adapted)** | Store v1 migration, primary/backup recovery, pre-launch reservation, durable starting state, startup rollback, and interrupted-start recovery are implemented in the fork job service. |
 | 283 | 2026-07-17 | `0447f96` | Cover job startup failure paths | **Implemented (adapted)** | Tests verify shell-launch failure is persisted as a terminal failed job and interrupted starts recover only when a matching shell remains active. |
 | 284 | 2026-07-17 | `7b7e7c9` | Merge pull request #24 from fwerkor/fix/job-store-migration | **Superseded by reviewed commits** | Merge-only commit; migration, startup durability, and failure-path decisions are recorded on the underlying job commits. |
-| 285 | 2026-07-17 | `605f0c2` | fix(audit): preserve tool inputs without redaction | **Pending** | Pending functional review and fork-specific port decision. |
-| 286 | 2026-07-17 | `e3fe41b` | Merge pull request #25 from fwerkor/fix/audit-no-redaction | **Pending** | Pending functional review and fork-specific port decision. |
+| 285 | 2026-07-17 | `605f0c2` | fix(audit): preserve tool inputs without redaction | **Not adopted** | The fork intentionally keeps best-effort credential redaction. Non-sensitive inputs remain complete within the event budget, but raw tokens, approval PINs, authorization headers, and download URLs are not retained. |
+| 286 | 2026-07-17 | `e3fe41b` | Merge pull request #25 from fwerkor/fix/audit-no-redaction | **Superseded by reviewed commits** | Merge-only commit for the upstream no-redaction direction, which the fork intentionally does not adopt. |
 | 287 | 2026-07-17 | `005b98f` | Fix WebUI mouse and terminal shortcuts | **Pending** | Pending functional review and fork-specific port decision. |
 | 288 | 2026-07-17 | `e82a76b` | Cover human UI mouse interactions | **Pending** | Pending functional review and fork-specific port decision. |
 | 289 | 2026-07-17 | `77ab1e2` | Rebuild WebUI assets with CI Bun | **Pending** | Pending functional review and fork-specific port decision. |
@@ -310,9 +310,9 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 293 | 2026-07-17 | `65a09c6` | fix: recycle idle MCP sessions sooner | **Pending** | Pending functional review and fork-specific port decision. |
 | 294 | 2026-07-17 | `b4f495d` | fix: recycle MCP sessions after three minutes | **Pending** | Pending functional review and fork-specific port decision. |
 | 295 | 2026-07-17 | `a3defb6` | Merge pull request #28 from fwerkor/fix/mcp-session-retention | **Pending** | Pending functional review and fork-specific port decision. |
-| 296 | 2026-07-17 | `347db8e` | fix(ui): consolidate audit tool calls | **Pending** | Pending functional review and fork-specific port decision. |
-| 297 | 2026-07-17 | `f9940b0` | test: cover audit call consolidation | **Pending** | Pending functional review and fork-specific port decision. |
-| 298 | 2026-07-17 | `287cd61` | Merge pull request #27 from fwerkor/fix/audit-ui-consolidation | **Pending** | Pending functional review and fork-specific port decision. |
+| 296 | 2026-07-17 | `347db8e` | fix(ui): consolidate audit tool calls | **Split follow-up** | Audit-call consolidation and its query model are coupled to the deferred Human UI. Backend retention keeps explicit start/end pairs. |
+| 297 | 2026-07-17 | `f9940b0` | test: cover audit call consolidation | **Split follow-up** | These tests target the deferred Human UI audit aggregation rather than the fork JSONL writer. |
+| 298 | 2026-07-17 | `287cd61` | Merge pull request #27 from fwerkor/fix/audit-ui-consolidation | **Superseded by reviewed commits** | Merge-only commit for the deferred Human UI audit consolidation. |
 | 299 | 2026-07-17 | `27e6d35` | chore: bump version to 3.0.3 | **Pending** | Pending functional review and fork-specific port decision. |
 | 300 | 2026-07-17 | `1278272` | Merge pull request #29 from fwerkor/release/v3.0.3 | **Pending** | Pending functional review and fork-specific port decision. |
 | 301 | 2026-07-17 | `ad1a6d5` | fix(ui): render image previews in files pane | **Split follow-up** | This is a Human UI files-pane preview feature, not the MCP-native viewer. It remains grouped with the later WebUI/TUI migration. |
@@ -336,7 +336,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 319 | 2026-07-18 | `2176586` | Merge pull request #35 from fwerkor/revert/pr33-for-original-contributor | **Pending** | Pending functional review and fork-specific port decision. |
 | 320 | 2026-07-18 | `7d60caa` | fix(release): ship standalone UI as one executable | **Pending** | Pending functional review and fork-specific port decision. |
 | 321 | 2026-07-18 | `3ad2a58` | fix(oauth): reuse matching public clients | **Pending** | Pending functional review and fork-specific port decision. |
-| 322 | 2026-07-18 | `3ae1338` | fix(audit): preserve complete call payloads | **Pending** | Pending functional review and fork-specific port decision. |
+| 322 | 2026-07-18 | `3ae1338` | fix(audit): preserve complete call payloads | **Implemented (adapted)** | Non-sensitive call inputs, outputs, and nested errors are retained inline up to `max_audit_event_bytes`; oversized payloads become explicitly marked bounded previews instead of unbounded records. |
 | 323 | 2026-07-18 | `07f4885` | fix(ui): keep Escape available in fullscreen | **Pending** | Pending functional review and fork-specific port decision. |
 | 324 | 2026-07-18 | `c9b6de9` | Merge pull request #37 from fwerkor/fix/embed-opentui-runtime | **Pending** | Pending functional review and fork-specific port decision. |
 | 325 | 2026-07-18 | `dc4b0b1` | Merge branch 'main' into fix/webui-oauth-client-reuse | **Pending** | Pending functional review and fork-specific port decision. |
@@ -344,11 +344,11 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 327 | 2026-07-18 | `b6e84c8` | Merge branch 'main' into fix/webui-fullscreen-escape | **Pending** | Pending functional review and fork-specific port decision. |
 | 328 | 2026-07-18 | `ab3d9c9` | Merge branch 'main' into fix/audit-full-payloads | **Pending** | Pending functional review and fork-specific port decision. |
 | 329 | 2026-07-18 | `5d7e11d` | fix(ui): make terminal output scrollable | **Pending** | Pending functional review and fork-specific port decision. |
-| 330 | 2026-07-18 | `013661c` | fix(audit): harden external payload retention | **Pending** | Pending functional review and fork-specific port decision. |
-| 331 | 2026-07-18 | `3438a32` | test(audit): make permission assertion portable | **Pending** | Pending functional review and fork-specific port decision. |
+| 330 | 2026-07-18 | `013661c` | fix(audit): harden external payload retention | **Partial** | Portable values, binary summaries, event byte limits, atomic retention, and private permissions are implemented. The upstream gzip payload side store is deferred because the fork has no audit-detail UI or query API that consumes it. |
+| 331 | 2026-07-18 | `3438a32` | test(audit): make permission assertion portable | **Implemented (adapted)** | Permission assertions are platform-aware, while POSIX tests verify both the JSONL log and lock file use mode `0600`. |
 | 332 | 2026-07-18 | `3db979b` | fix(ui): support mouse wheel navigation | **Pending** | Pending functional review and fork-specific port decision. |
 | 333 | 2026-07-18 | `fc61348` | fix(ui): stop file preview reload loop | **Pending** | Pending functional review and fork-specific port decision. |
-| 334 | 2026-07-18 | `88646d5` | test(audit): cover detail validation paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 334 | 2026-07-18 | `88646d5` | test(audit): cover detail validation paths | **Implemented (adapted)** | Tests cover cycles, binary values, non-finite floats, unsupported objects, nested errors, oversized events, irreversible fingerprints, and secret redaction. |
 | 335 | 2026-07-18 | `d3bc56b` | feat(ui): make footer shortcuts clickable | **Pending** | Pending functional review and fork-specific port decision. |
 | 336 | 2026-07-18 | `d8976a1` | cleanup(ui): remove Yazi packaging and references | **Pending** | Pending functional review and fork-specific port decision. |
 | 337 | 2026-07-18 | `dc8cad0` | Merge pull request #43 from fwerkor/fix/file-preview-reload | **Pending** | Pending functional review and fork-specific port decision. |
@@ -362,12 +362,12 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 345 | 2026-07-18 | `aa16c7a` | Merge remote-tracking branch 'origin/main' into fix/terminal-output-scrolling | **Pending** | Pending functional review and fork-specific port decision. |
 | 346 | 2026-07-18 | `b0fef20` | Merge remote-tracking branch 'origin/main' into fix/webui-mouse-wheel | **Pending** | Pending functional review and fork-specific port decision. |
 | 347 | 2026-07-18 | `763aa28` | test(ui): assert raw mode state directly | **Pending** | Pending functional review and fork-specific port decision. |
-| 348 | 2026-07-18 | `16cb4c6` | fix(audit): keep payloads portable and calls paired | **Pending** | Pending functional review and fork-specific port decision. |
+| 348 | 2026-07-18 | `16cb4c6` | fix(audit): keep payloads portable and calls paired | **Implemented (adapted)** | Audit values are converted to portable JSON and retention groups tool-call start/end rows by `call_id`, preserving completed pairs without adopting the upstream external payload store. |
 | 349 | 2026-07-18 | `e0bcdbf` | feat(ui): add mouse navigation to files | **Pending** | Pending functional review and fork-specific port decision. |
 | 350 | 2026-07-18 | `85e11a7` | fix(ui): preserve terminal history viewport | **Pending** | Pending functional review and fork-specific port decision. |
 | 351 | 2026-07-18 | `d45d379` | fix(ui): require completed file clicks | **Pending** | Pending functional review and fork-specific port decision. |
-| 352 | 2026-07-18 | `65bd9b3` | test(audit): cover retention edge paths | **Pending** | Pending functional review and fork-specific port decision. |
-| 353 | 2026-07-18 | `4ce23cc` | fix(audit): collapse tool call lifecycle rows | **Pending** | Pending functional review and fork-specific port decision. |
+| 352 | 2026-07-18 | `65bd9b3` | test(audit): cover retention edge paths | **Implemented (adapted)** | Retention tests cover bounded log size, completed pair integrity, concurrent writers, and atomic private replacement. |
+| 353 | 2026-07-18 | `4ce23cc` | fix(audit): collapse tool call lifecycle rows | **Not adopted** | Collapsing start/end rows into one lifecycle record is a Human UI optimization. The fork keeps explicit paired events, which are simpler for JSONL streaming and existing consumers. |
 | 354 | 2026-07-18 | `8af939a` | Merge pull request #47 from fwerkor/feat/files-mouse-navigation | **Pending** | Pending functional review and fork-specific port decision. |
 | 355 | 2026-07-18 | `7936891` | feat(ui): show remote LSM versions | **Pending** | Pending functional review and fork-specific port decision. |
 | 356 | 2026-07-18 | `a9f1b94` | fix(ui): freeze terminal history while scrolled | **Pending** | Pending functional review and fork-specific port decision. |
@@ -394,13 +394,13 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 377 | 2026-07-18 | `623918f` | test(ui): avoid double-clicking during smoke retries | **Pending** | Pending functional review and fork-specific port decision. |
 | 378 | 2026-07-18 | `7e1e5c8` | Merge pull request #51 from fwerkor/fix/image-preview-layout | **Pending** | Pending functional review and fork-specific port decision. |
 | 379 | 2026-07-18 | `924872d` | Merge pull request #50 from fwerkor/fix/webui-fluid-size | **Pending** | Pending functional review and fork-specific port decision. |
-| 380 | 2026-07-18 | `7efbe6d` | fix(audit): address payload retention and scope reviews | **Pending** | Pending functional review and fork-specific port decision. |
+| 380 | 2026-07-18 | `7efbe6d` | fix(audit): address payload retention and scope reviews | **Partial** | Payload size, retention, portability, and redaction scope are hardened. External detail files and audit-detail authorization remain deferred until a fork-native audit query/UI surface exists. |
 | 381 | 2026-07-18 | `f9b54bd` | fix(ui): preserve zero-valued extended ANSI colors | **Pending** | Pending functional review and fork-specific port decision. |
 | 382 | 2026-07-18 | `59531e8` | Merge remote-tracking branch 'origin/main' into fix/mobile-webui-repaint | **Pending** | Pending functional review and fork-specific port decision. |
 | 383 | 2026-07-18 | `56c2b14` | Merge remote-tracking branch 'origin/main' into fix/remove-webui-ctrlq | **Pending** | Pending functional review and fork-specific port decision. |
-| 384 | 2026-07-18 | `5e02d8c` | Merge pull request #40 from fwerkor/fix/audit-full-payloads | **Pending** | Pending functional review and fork-specific port decision. |
+| 384 | 2026-07-18 | `5e02d8c` | Merge pull request #40 from fwerkor/fix/audit-full-payloads | **Partial** | Portable bounded backend payload retention is implemented; full external payload retrieval and Human UI expansion remain deferred. |
 | 385 | 2026-07-18 | `2fec2b3` | Merge pull request #42 from fwerkor/fix/terminal-output-scrolling | **Pending** | Pending functional review and fork-specific port decision. |
-| 386 | 2026-07-18 | `c6b2e21` | fix(audit): preserve nested failures when collapsing calls | **Pending** | Pending functional review and fork-specific port decision. |
+| 386 | 2026-07-18 | `c6b2e21` | fix(audit): preserve nested failures when collapsing calls | **Implemented (equivalent behavior)** | Nested failure structures are retained directly in `tool_call_end.error`; no collapse step exists that could discard child causes. |
 | 387 | 2026-07-18 | `c9347ea` | Merge remote-tracking branch 'origin/main' into fix/audit-call-aggregation | **Pending** | Pending functional review and fork-specific port decision. |
 | 388 | 2026-07-18 | `6c4d7b5` | Merge remote-tracking branch 'origin/main' into fix/webui-fullscreen-escape | **Pending** | Pending functional review and fork-specific port decision. |
 | 389 | 2026-07-18 | `2684f30` | Merge remote-tracking branch 'origin/main' into fix/webui-mouse-wheel | **Pending** | Pending functional review and fork-specific port decision. |
@@ -409,7 +409,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 392 | 2026-07-18 | `00f563f` | chore(ui): rebuild embedded assets with CI Bun version | **Pending** | Pending functional review and fork-specific port decision. |
 | 393 | 2026-07-18 | `2e8952f` | chore(ui): rebuild embedded assets with CI Bun version | **Pending** | Pending functional review and fork-specific port decision. |
 | 394 | 2026-07-18 | `a1d59c4` | fix(dashboard): handle missing telemetry and degraded sources | **Pending** | Pending functional review and fork-specific port decision. |
-| 395 | 2026-07-18 | `7c52e0b` | fix(audit): retain semantic child event details | **Pending** | Pending functional review and fork-specific port decision. |
+| 395 | 2026-07-18 | `7c52e0b` | fix(audit): retain semantic child event details | **Implemented (equivalent behavior)** | Semantic child events remain independent JSONL records rather than being absorbed into a UI aggregation model. |
 | 396 | 2026-07-18 | `342d81a` | Merge pull request #41 from fwerkor/fix/webui-fullscreen-escape | **Pending** | Pending functional review and fork-specific port decision. |
 | 397 | 2026-07-18 | `e5c9aab` | Merge remote-tracking branch 'origin/main' into fix/webui-mouse-wheel | **Pending** | Pending functional review and fork-specific port decision. |
 | 398 | 2026-07-18 | `169c108` | Merge remote-tracking branch 'origin/fix/webui-mouse-wheel' into fix/remove-webui-ctrlq | **Pending** | Pending functional review and fork-specific port decision. |
@@ -420,7 +420,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 403 | 2026-07-18 | `ed7136b` | Merge pull request #44 from fwerkor/fix/webui-mouse-wheel | **Pending** | Pending functional review and fork-specific port decision. |
 | 404 | 2026-07-18 | `5035536` | Merge pull request #39 from fwerkor/fix/remove-webui-ctrlq | **Pending** | Pending functional review and fork-specific port decision. |
 | 405 | 2026-07-18 | `e17e9d7` | Merge pull request #36 from fwerkor/fix/mobile-webui-repaint | **Pending** | Pending functional review and fork-specific port decision. |
-| 406 | 2026-07-18 | `ab97555` | Merge pull request #49 from fwerkor/fix/audit-call-aggregation | **Pending** | Pending functional review and fork-specific port decision. |
+| 406 | 2026-07-18 | `ab97555` | Merge pull request #49 from fwerkor/fix/audit-call-aggregation | **Split follow-up** | The merge completes upstream audit-call aggregation for its Human UI. The fork intentionally retains paired JSONL events until its own UI design is ported. |
 | 407 | 2026-07-18 | `d80dae9` | Merge remote-tracking branch 'origin/main' into fix/webui-hide-scrollbar | **Pending** | Pending functional review and fork-specific port decision. |
 | 408 | 2026-07-18 | `14053a1` | fix(ui): clear terminal commands after submit | **Pending** | Pending functional review and fork-specific port decision. |
 | 409 | 2026-07-18 | `c753f9c` | Merge pull request #55 from fwerkor/fix/webui-hide-scrollbar | **Pending** | Pending functional review and fork-specific port decision. |

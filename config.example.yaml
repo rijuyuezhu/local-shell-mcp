@@ -101,8 +101,10 @@ max_read_many_total_bytes: 5000000
 max_todos: 1000
 # Todo-list total byte limit.
 max_todo_bytes: 1000000
-# Audit-log threshold in bytes. If exceeded, the log is rotated.
+# Maximum active audit JSONL bytes before atomic recent-record retention.
 max_audit_log_bytes: 20000000
+# Maximum encoded bytes retained for one audit event before preview truncation.
+max_audit_event_bytes: 1000000
 # Temporary-file count limit. When exceeded, old files are deleted.
 max_tmp_files: 500
 # Temporary-file byte limit. When exceeded, old files are deleted.
