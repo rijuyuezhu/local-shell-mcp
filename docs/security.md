@@ -61,6 +61,14 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 - Bearer tokens are not proof-of-possession tokens. Anyone who obtains a valid token can use it until expiry.
 - Metadata is unsigned. Clients should use HTTPS and validate the metadata resource value and issuer before trusting it.
 
+## Inbound HTTP request limits
+
+All HTTP-mode applications apply `max_http_request_bytes` before REST, MCP, OAuth, download, or remote-worker route parsing. The default is 16,000,000 bytes; set it to `0` only when another trusted front end enforces an equivalent or stricter limit. The middleware rejects oversized requests with HTTP 413 and a stable JSON error before buffering more than the configured budget.
+
+Both declared and observed sizes are enforced. A `Content-Length` above the limit is rejected without reading the body, while chunked requests, missing lengths, invalid lengths, and misleading smaller lengths are counted from actual ASGI body messages. Accepted bodies are replayed with identical bytes to downstream form, JSON, FastAPI, and MCP parsers. Once buffered request messages are consumed, receive calls continue to the live connection so streaming responses and MCP disconnect handling remain intact.
+
+When OAuth authentication is enabled, protected MCP and REST routes authenticate before the body limiter reads an unauthenticated request. Public OAuth bootstrap and remote enrollment routes remain subject to the shared limit. Dynamic OAuth client registration also retains its stricter `oauth_registration_max_body_bytes` limit. Rejections are audited with method, path, declared/observed sizes, and the configured limit, but never with body contents; audit failure does not prevent the 413 response.
+
 ## Full-control mode
 
 `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` is an explicit full-control mode. It disables built-in command and path denylists and adds auto-approval hints for command-capable tools.

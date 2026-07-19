@@ -955,6 +955,26 @@
         ],
         [
           {
+            "code": "max_http_request_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-http-request-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_HTTP_REQUEST_BYTES"
+          },
+          "integer",
+          {
+            "code": "16000000"
+          },
+          "Maximum inbound HTTP request-body bytes; 0 disables the shared limit."
+        ],
+        [
+          {
             "code": "max_audit_log_bytes"
           },
           {
@@ -2223,6 +2243,19 @@
       "description": "Todo-list total byte limit.",
       "env": "LOCAL_SHELL_MCP_MAX_TODO_BYTES",
       "name": "max_todo_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-http-request-bytes",
+      "default": 16000000,
+      "default_display": "16000000",
+      "description": "Maximum inbound HTTP request-body bytes; 0 disables the shared limit.",
+      "env": "LOCAL_SHELL_MCP_MAX_HTTP_REQUEST_BYTES",
+      "name": "max_http_request_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

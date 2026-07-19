@@ -260,6 +260,11 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "max_todo_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(
+        "max_http_request_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
+    SettingSpec(
         "max_audit_log_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(

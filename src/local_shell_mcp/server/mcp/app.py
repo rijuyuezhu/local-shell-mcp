@@ -16,6 +16,7 @@ from ...remote.http import remote_routes
 from ...tools.contracts import McpToolContext
 from ...tools.discovery import discover_tool_registries
 from ..shared.public_routes import public_http_routes
+from ..shared.request_limits import install_request_body_limit
 from .instructions import SERVER_INSTRUCTIONS
 from .metadata import install_full_container_auto_approval_hints
 from .transport_security import transport_security_settings
@@ -78,6 +79,7 @@ def _build_authenticated_mcp_http_app(mcp_app: Starlette) -> Starlette:
     """Add OAuth protection around the MCP HTTP app when auth is enabled."""
     settings = get_settings()
     app, public_routes = _add_public_routes_to_mcp_http_app(mcp_app)
+    install_request_body_limit(app, max_bytes=settings.max_http_request_bytes)
     if settings.auth_mode != "none":
         app.add_middleware(AuthMiddleware, public_routes=public_routes)
     return app

@@ -9,6 +9,7 @@ from ...config.settings import Settings, get_settings
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
 from ..shared.public_routes import public_http_routes
+from ..shared.request_limits import install_request_body_limit
 from .errors import install_error_handlers
 from .tool_routes import (
     install_tool_cache_control_middleware,
@@ -56,6 +57,7 @@ def build_http_app() -> FastAPI:
     install_tools_timeout_middleware(app)
     public_routes = _install_public_routes(app, settings)
     register_http_tool_routes(app)
+    install_request_body_limit(app, max_bytes=settings.max_http_request_bytes)
     if settings.auth_mode != "none":
         app.add_middleware(AuthMiddleware, public_routes=public_routes)
     install_tool_cache_control_middleware(app)

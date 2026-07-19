@@ -129,6 +129,8 @@ class Settings(BaseSettings):
     """Todo-list item limit."""
     max_todo_bytes: int = 1_000_000
     """Todo-list total byte limit."""
+    max_http_request_bytes: int = 16_000_000
+    """Maximum inbound HTTP request-body bytes; 0 disables the shared limit."""
     max_audit_log_bytes: int = 20_000_000
     """Maximum active audit JSONL bytes before atomic recent-record retention."""
     max_audit_event_bytes: int = 1_000_000
