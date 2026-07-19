@@ -21,6 +21,7 @@ from local_shell_mcp.ops.shell import (
 from local_shell_mcp.schemas.result_models.shell import CommandResult
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from tests.helpers import mcp_structured
 
@@ -108,7 +109,7 @@ def test_rest_shell_timeout_returns_partial_output_after_cleanup(
     clear_settings_cache()
 
     client = TestClient(build_http_app())
-    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    session_id = get_tool_session_store().create_session(workdir=".").session_id
     command = _python_shell_command(
         'import sys, time; print("partial-out", flush=True); '
         'print("partial-err", file=sys.stderr, flush=True); time.sleep(5)'
@@ -116,7 +117,7 @@ def test_rest_shell_timeout_returns_partial_output_after_cleanup(
     response = client.post(
         "/tools/bash",
         json={
-            "session_id": session["session_id"],
+            "session_id": session_id,
             "command": command,
             "timeout_s": 1,
         },
