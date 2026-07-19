@@ -1,4 +1,5 @@
 import asyncio
+import shlex
 import sys
 
 import pytest
@@ -8,6 +9,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.shell import (
+    _shared_tail_bytes,
     _subprocess_env,
     clamp_timeout,
     run_shell,
@@ -21,6 +23,10 @@ from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_structured
+
+
+def _python_shell_command(source: str) -> str:
+    return f"{shlex.quote(sys.executable)} -c {shlex.quote(source)}"
 
 
 @pytest.mark.asyncio
@@ -229,14 +235,71 @@ async def test_run_shell_command_streams_and_bounds_large_output(
     clear_settings_cache()
 
     result = await run_shell(
-        "python3 -c 'import sys; sys.stdout.write(\"x\" * 200000)'",
+        _python_shell_command('import sys; sys.stdout.write("x" * 200000)'),
         timeout_s=5,
         max_output_bytes=1000,
     )
 
     assert result.ok is True
     assert result.truncated is True
-    assert len(result.stdout.encode()) <= 500
+    assert len(result.stdout.encode()) == 1000
+    assert result.stderr == ""
+
+
+def test_shared_tail_bytes_uses_idle_stream_capacity_and_preserves_tails():
+    stdout, stderr, truncated = _shared_tail_bytes(
+        b"prefix-" + b"o" * 900,
+        b"e" * 300,
+        1000,
+    )
+
+    assert truncated is True
+    assert len(stdout) == 700
+    assert len(stderr) == 300
+    assert stdout == b"o" * 700
+    assert stderr == b"e" * 300
+
+
+@pytest.mark.asyncio
+async def test_run_shell_uses_unused_stderr_budget_for_stdout(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    result = await run_shell(
+        _python_shell_command('import sys; sys.stdout.write("x" * 1500)'),
+        timeout_s=5,
+        max_output_bytes=2000,
+    )
+
+    assert result.ok is True
+    assert result.truncated is False
+    assert len(result.stdout.encode()) == 1500
+    assert result.stderr == ""
+
+
+@pytest.mark.asyncio
+async def test_run_shell_shares_total_budget_between_streams(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    result = await run_shell(
+        _python_shell_command(
+            'import sys; sys.stdout.write("o" * 900); '
+            'sys.stderr.write("e" * 900)'
+        ),
+        timeout_s=5,
+        max_output_bytes=1000,
+    )
+
+    assert result.ok is True
+    assert result.truncated is True
+    assert len(result.stdout.encode()) == 500
+    assert len(result.stderr.encode()) == 500
+    assert len(result.stdout.encode()) + len(result.stderr.encode()) == 1000
 
 
 @pytest.mark.asyncio

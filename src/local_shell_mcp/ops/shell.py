@@ -101,6 +101,31 @@ class TailBuffer:
         return self.total_bytes > len(self.data)
 
 
+def _shared_tail_bytes(
+    stdout: bytes, stderr: bytes, limit: int
+) -> tuple[bytes, bytes, bool]:
+    """Fit two stream tails into one byte budget without wasting idle-stream capacity."""
+    total = len(stdout) + len(stderr)
+    if total <= limit:
+        return stdout, stderr, False
+
+    stdout_keep = min(len(stdout), limit // 2)
+    stderr_keep = min(len(stderr), limit // 2)
+    remaining = limit - stdout_keep - stderr_keep
+    if remaining > 0:
+        stdout_extra = min(remaining, len(stdout) - stdout_keep)
+        stdout_keep += stdout_extra
+        remaining -= stdout_extra
+    if remaining > 0:
+        stderr_keep += min(remaining, len(stderr) - stderr_keep)
+
+    return (
+        stdout[-stdout_keep:] if stdout_keep else b"",
+        stderr[-stderr_keep:] if stderr_keep else b"",
+        True,
+    )
+
+
 def check_command_policy(command: str) -> None:
     """Reject shell commands matching configured denylist entries before execution."""
     settings = get_settings()
@@ -280,9 +305,8 @@ async def run_shell(
     timed_out = False
     termination_error = ""
     output_limit = _effective_output_limit(max_output_bytes)
-    per_stream_limit = max(1, output_limit // 2)
-    stdout_tail = TailBuffer(per_stream_limit, bytearray())
-    stderr_tail = TailBuffer(per_stream_limit, bytearray())
+    stdout_tail = TailBuffer(output_limit, bytearray())
+    stderr_tail = TailBuffer(output_limit, bytearray())
     reader_tasks: list[asyncio.Task[None]] = []
 
     async def spawn_and_wait() -> None:
@@ -330,11 +354,14 @@ async def run_shell(
     if termination_error:
         stderr_tail.append(termination_error.encode())
 
-    stdout_b = bytes(stdout_tail.data)
-    stderr_b = bytes(stderr_tail.data)
+    stdout_b, stderr_b, total_truncated = _shared_tail_bytes(
+        bytes(stdout_tail.data), bytes(stderr_tail.data), output_limit
+    )
     stdout = stdout_b.decode(errors="replace")
     stderr = stderr_b.decode(errors="replace")
-    truncated = stdout_tail.truncated or stderr_tail.truncated
+    truncated = (
+        stdout_tail.truncated or stderr_tail.truncated or total_truncated
+    )
     duration_ms = int((time.time() - start) * 1000)
     result = CommandResult(
         ok=(proc is not None and proc.returncode == 0 and not timed_out),
