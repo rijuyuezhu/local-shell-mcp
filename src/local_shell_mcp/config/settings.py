@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     """Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed."""
     oauth_code_ttl_s: int = 300
     """OAuth authorization-code lifetime in seconds. The authorization must be done within this time."""
+    oauth_max_pending_codes: int = 2048
+    """Maximum unused, unexpired OAuth authorization codes kept in memory; set to 0 to disable this capacity limit."""
     oauth_client_ttl_s: int = 86400
     """Pending OAuth client registration lifetime in seconds. Approved clients are persisted without this TTL; set to 0 to disable pending expiration."""
     oauth_max_dynamic_clients: int = 256

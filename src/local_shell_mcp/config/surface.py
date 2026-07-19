@@ -159,6 +159,11 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         metavar="SECONDS",
     ),
     SettingSpec(
+        "oauth_max_pending_codes",
+        "Authentication and OAuth",
+        metavar="COUNT",
+    ),
+    SettingSpec(
         "oauth_client_ttl_s",
         "Authentication and OAuth",
         metavar="SECONDS",

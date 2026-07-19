@@ -1,8 +1,10 @@
 """Authlib-backed OAuth service operations."""
 
+import contextlib
 import secrets
 import time
 from dataclasses import dataclass
+from threading import RLock
 from typing import NoReturn
 from urllib.parse import urlparse
 
@@ -15,7 +17,6 @@ from authlib.oauth2.rfc6749.errors import (
 from authlib.oauth2.rfc7636.challenge import (
     CODE_CHALLENGE_PATTERN,
     CODE_VERIFIER_PATTERN,
-    compare_plain_code_challenge,
     compare_s256_code_challenge,
 )
 
@@ -36,6 +37,23 @@ from .urls import issuer_url, normalize_resource, resource_url
 LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
 CLIENT_ID_GENERATION_ATTEMPTS = 8
+AUTHORIZATION_CODE_GENERATION_ATTEMPTS = 8
+PENDING_CODE_CAPACITY_ERROR = (
+    "Too many pending authorization requests; try again later"
+)
+_AUTH_CODE_LOCK = RLock()
+
+
+class OAuthStateCapacityError(OAuth2Error):
+    """Reject OAuth state creation when configured in-memory capacity is full."""
+
+    error = "temporarily_unavailable"
+    """OAuth error code returned for temporary in-memory capacity exhaustion."""
+
+    status_code = 503
+    """HTTP status used when the error is emitted as a JSON OAuth response."""
+
+
 REGISTRATION_REDIRECT_ERROR = (
     "redirect_uris must be https, loopback http, or custom private-use URIs"
 )
@@ -314,11 +332,13 @@ def validate_authorization_request(
     challenge = request_params.get("code_challenge")
     if not challenge:
         _raise_invalid("Missing code_challenge")
-    if not CODE_CHALLENGE_PATTERN.match(challenge):
+    if not CODE_CHALLENGE_PATTERN.fullmatch(challenge):
         _raise_invalid("Invalid code_challenge")
     method = request_params.get("code_challenge_method")
-    if method and method not in {"S256", "plain"}:
-        _raise_invalid("Unsupported code_challenge_method")
+    if not method:
+        _raise_invalid("Missing code_challenge_method")
+    if method != "S256":
+        _raise_invalid("Only code_challenge_method=S256 is supported")
 
     return AuthorizationRequest(
         client=client,
@@ -350,28 +370,57 @@ def _approve_client(client_id: str, *, now: int | None = None) -> OAuthClient:
     return client
 
 
+def _ensure_pending_code_capacity() -> None:
+    """Reject new codes without evicting valid pending authorization state."""
+    max_codes = get_settings().oauth_max_pending_codes
+    pending_codes = len(_CODES)
+    if max_codes <= 0 or pending_codes < max_codes:
+        return
+    with contextlib.suppress(Exception):
+        audit(
+            "oauth_code_capacity_exhausted",
+            pending_codes=pending_codes,
+            max_pending_codes=max_codes,
+        )
+    raise OAuthStateCapacityError(description=PENDING_CODE_CAPACITY_ERROR)
+
+
+def _new_authorization_code() -> str:
+    """Generate an authorization code without overwriting live state."""
+    for _ in range(AUTHORIZATION_CODE_GENERATION_ATTEMPTS):
+        code = secrets.token_urlsafe(32)
+        if code not in _CODES:
+            return code
+    raise InvalidRequestError(
+        description="Unable to allocate authorization code"
+    )
+
+
 def issue_authorization_response(
     request: AuthorizationRequest,
 ) -> AuthorizationResponse:
-    """Approve the client, then issue and store a one-time authorization code."""
-    _approve_client(request.client_id)
-    code = secrets.token_urlsafe(32)
-    auth_code = AuthCode(
-        code=code,
-        client_id=request.client_id,
-        redirect_uri=request.redirect_uri,
-        scope=request.scope,
-        resource=request.resource,
-        code_challenge=request.input.code_challenge,
-        code_challenge_method=request.input.code_challenge_method,
-    )
-    _CODES[code] = auth_code
+    """Atomically reserve capacity, approve the client, and store a one-time code."""
+    with _AUTH_CODE_LOCK:
+        _prune_codes()
+        _ensure_pending_code_capacity()
+        code = _new_authorization_code()
+        auth_code = AuthCode(
+            code=code,
+            client_id=request.client_id,
+            redirect_uri=request.redirect_uri,
+            scope=request.scope,
+            resource=request.resource,
+            code_challenge=request.input.code_challenge,
+            code_challenge_method=request.input.code_challenge_method,
+        )
+        _approve_client(request.client_id)
+        _CODES[code] = auth_code
+
     audit(
         "oauth_code_issued",
         client_id=auth_code.client_id,
         resource=auth_code.resource,
     )
-
     query = {"code": code, "iss": issuer_url()}
     if request.state:
         query["state"] = request.state
@@ -383,15 +432,15 @@ def issue_authorization_response(
 
 
 def _verify_pkce(code_obj: AuthCode, verifier: str | None) -> bool:
-    """Validate PKCE using Authlib's RFC7636 challenge helpers."""
-    if not code_obj.code_challenge:
-        return verifier is None
-    if not verifier or not CODE_VERIFIER_PATTERN.match(verifier):
+    """Validate an S256-only PKCE verifier against stored authorization state."""
+    challenge = code_obj.code_challenge
+    if code_obj.code_challenge_method != "S256" or not challenge:
         return False
-    method = code_obj.code_challenge_method or "plain"
-    if method == "S256":
-        return compare_s256_code_challenge(verifier, code_obj.code_challenge)
-    return compare_plain_code_challenge(verifier, code_obj.code_challenge)
+    if not CODE_CHALLENGE_PATTERN.fullmatch(challenge):
+        return False
+    if not verifier or not CODE_VERIFIER_PATTERN.fullmatch(verifier):
+        return False
+    return compare_s256_code_challenge(verifier, challenge)
 
 
 def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
@@ -401,15 +450,16 @@ def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
 
 def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
     """Remove used or expired authorization codes from the in-memory store."""
-    settings = get_settings()
-    current_time = int(time.time()) if now is None else now
-    for code, code_obj in list(_CODES.items()):
-        if code == keep:
-            continue
-        if code_obj.used or _auth_code_expired(
-            code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
-        ):
-            _CODES.pop(code, None)
+    with _AUTH_CODE_LOCK:
+        settings = get_settings()
+        current_time = int(time.time()) if now is None else now
+        for code, code_obj in list(_CODES.items()):
+            if code == keep:
+                continue
+            if code_obj.used or _auth_code_expired(
+                code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
+            ):
+                _CODES.pop(code, None)
 
 
 def exchange_authorization_code(
@@ -429,24 +479,31 @@ def exchange_authorization_code(
     redirect_uri = request_input.redirect_uri or ""
     verifier = request_input.code_verifier
 
-    _prune_codes()
-    code_obj = _CODES.get(code)
-    if not code_obj or code_obj.used:
-        raise InvalidGrantError(description="Unknown or used code")
-
     settings = get_settings()
-    if _auth_code_expired(
-        code_obj, now=int(time.time()), ttl_s=settings.oauth_code_ttl_s
-    ):
-        raise InvalidGrantError(description="Expired code")
-    if code_obj.client_id != client_id or code_obj.redirect_uri != redirect_uri:
-        raise InvalidGrantError(description="Client or redirect mismatch")
-    if normalize_resource(resource) != normalize_resource(code_obj.resource):
-        raise InvalidGrantError(description="Resource mismatch")
-    if not _verify_pkce(code_obj, verifier):
-        raise InvalidGrantError(description="PKCE verification failed")
+    with _AUTH_CODE_LOCK:
+        _prune_codes()
+        code_obj = _CODES.get(code)
+        if not code_obj or code_obj.used:
+            raise InvalidGrantError(description="Unknown or used code")
 
-    code_obj.used = True
+        if _auth_code_expired(
+            code_obj, now=int(time.time()), ttl_s=settings.oauth_code_ttl_s
+        ):
+            raise InvalidGrantError(description="Expired code")
+        if (
+            code_obj.client_id != client_id
+            or code_obj.redirect_uri != redirect_uri
+        ):
+            raise InvalidGrantError(description="Client or redirect mismatch")
+        if normalize_resource(resource) != normalize_resource(
+            code_obj.resource
+        ):
+            raise InvalidGrantError(description="Resource mismatch")
+        if not _verify_pkce(code_obj, verifier):
+            raise InvalidGrantError(description="PKCE verification failed")
+
+        code_obj.used = True
+        _CODES.pop(code, None)
     credential = issue_access_token(
         client_id=client_id, scope=code_obj.scope, resource=code_obj.resource
     )

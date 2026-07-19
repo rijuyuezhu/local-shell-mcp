@@ -37,6 +37,9 @@ oauth_admin_pin: null
 oauth_access_token_ttl_s: 3600
 # OAuth authorization-code lifetime in seconds. The authorization must be done within this time.
 oauth_code_ttl_s: 300
+# Maximum unused, unexpired OAuth authorization codes kept in memory; set to 0 to disable this
+# capacity limit.
+oauth_max_pending_codes: 2048
 # Pending OAuth client registration lifetime in seconds. Approved clients are persisted without this
 # TTL; set to 0 to disable pending expiration.
 oauth_client_ttl_s: 86400
