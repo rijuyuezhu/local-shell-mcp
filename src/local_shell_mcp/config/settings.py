@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     """Authentication mode. Do not expose public services with none."""
     auth_bypass_localhost: bool = False
     """Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through proxies or shared hosts."""
+    mcp_session_idle_timeout_s: int = 180
+    """Idle timeout for stateful Streamable HTTP MCP sessions in seconds."""
+    mcp_max_sessions: int = 1024
+    """Maximum concurrent stateful Streamable HTTP MCP sessions."""
     base_url: str | None = None
     """Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset, URLs fall back to the bind host and port; configure this before exposing the service behind a proxy or public hostname."""
     oauth_issuer: str | None = None

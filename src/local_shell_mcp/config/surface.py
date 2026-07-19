@@ -140,6 +140,16 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("state_dir", "Paths and state", metavar="PATH"),
     SettingSpec("auth_mode", "Authentication and OAuth"),
     SettingSpec("auth_bypass_localhost", "Authentication and OAuth"),
+    SettingSpec(
+        "mcp_session_idle_timeout_s",
+        "Authentication and OAuth",
+        metavar="SECONDS",
+    ),
+    SettingSpec(
+        "mcp_max_sessions",
+        "Authentication and OAuth",
+        metavar="COUNT",
+    ),
     SettingSpec("base_url", "Authentication and OAuth", metavar="URL"),
     SettingSpec("oauth_issuer", "Authentication and OAuth", metavar="URL"),
     SettingSpec(

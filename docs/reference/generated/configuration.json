@@ -229,6 +229,46 @@
         ],
         [
           {
+            "code": "mcp_session_idle_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--mcp-session-idle-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "180"
+          },
+          "Idle timeout for stateful Streamable HTTP MCP sessions in seconds."
+        ],
+        [
+          {
+            "code": "mcp_max_sessions"
+          },
+          {
+            "lines": [
+              {
+                "code": "--mcp-max-sessions"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MCP_MAX_SESSIONS"
+          },
+          "integer",
+          {
+            "code": "1024"
+          },
+          "Maximum concurrent stateful Streamable HTTP MCP sessions."
+        ],
+        [
+          {
             "code": "base_url"
           },
           {
@@ -1805,6 +1845,32 @@
       "nullable": false,
       "section": "Authentication and OAuth",
       "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--mcp-session-idle-timeout-s",
+      "default": 180,
+      "default_display": "180",
+      "description": "Idle timeout for stateful Streamable HTTP MCP sessions in seconds.",
+      "env": "LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S",
+      "name": "mcp_session_idle_timeout_s",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--mcp-max-sessions",
+      "default": 1024,
+      "default_display": "1024",
+      "description": "Maximum concurrent stateful Streamable HTTP MCP sessions.",
+      "env": "LOCAL_SHELL_MCP_MCP_MAX_SESSIONS",
+      "name": "mcp_max_sessions",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
       "unset_cli": null
     },
     {

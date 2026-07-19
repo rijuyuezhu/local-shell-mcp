@@ -20,6 +20,7 @@ from ..shared.public_routes import public_http_routes
 from ..shared.request_limits import install_request_body_limit
 from .instructions import SERVER_INSTRUCTIONS
 from .metadata import install_tool_safety_annotations
+from .session_limits import McpSessionLimitMiddleware
 from .transport_security import transport_security_settings
 from .watchdogs import install_mcp_tool_watchdogs
 
@@ -76,10 +77,24 @@ def _add_public_routes_to_mcp_http_app(
     return Starlette(routes=routes, lifespan=lifespan), public_routes
 
 
-def _build_authenticated_mcp_http_app(mcp_app: Starlette) -> Starlette:
-    """Add OAuth protection around the MCP HTTP app when auth is enabled."""
+def _build_authenticated_mcp_http_app(
+    mcp_app: Starlette,
+    *,
+    session_manager: object | None = None,
+    mcp_path: str = "/mcp",
+) -> Starlette:
+    """Add resource limits and OAuth protection around the MCP HTTP app."""
     settings = get_settings()
     app, public_routes = _add_public_routes_to_mcp_http_app(mcp_app)
+    if session_manager is not None and not bool(
+        getattr(session_manager, "stateless", False)
+    ):
+        app.add_middleware(
+            McpSessionLimitMiddleware,
+            session_manager=session_manager,
+            max_sessions=settings.mcp_max_sessions,
+            mcp_path=mcp_path,
+        )
     install_request_body_limit(app, max_bytes=settings.max_http_request_bytes)
     if settings.auth_mode != "none":
         app.add_middleware(AuthMiddleware, public_routes=public_routes)
@@ -88,10 +103,24 @@ def _build_authenticated_mcp_http_app(mcp_app: Starlette) -> Starlette:
 
 def build_mcp_http_app(mcp: FastMCP) -> Starlette:
     """Use the MCP SDK's HTTP app and add local public routes/auth."""
-    for attr in ("streamable_http_app", "sse_app"):
-        if hasattr(mcp, attr):
-            inner: Starlette = getattr(mcp, attr)()
-            return _build_authenticated_mcp_http_app(inner)
+    if hasattr(mcp, "streamable_http_app"):
+        inner: Starlette = mcp.streamable_http_app()
+        session_manager = getattr(mcp, "_session_manager", None)
+        if session_manager is not None and not bool(
+            getattr(session_manager, "stateless", False)
+        ):
+            session_manager.session_idle_timeout = max(
+                1, get_settings().mcp_session_idle_timeout_s
+            )
+        mcp_settings = getattr(mcp, "settings", None)
+        return _build_authenticated_mcp_http_app(
+            inner,
+            session_manager=session_manager,
+            mcp_path=str(getattr(mcp_settings, "streamable_http_path", "/mcp")),
+        )
+    if hasattr(mcp, "sse_app"):
+        inner = mcp.sse_app()
+        return _build_authenticated_mcp_http_app(inner)
     raise RuntimeError(
         "MCP HTTP ASGI app not available since both streamable_http_app and sse_app are not available"
     )

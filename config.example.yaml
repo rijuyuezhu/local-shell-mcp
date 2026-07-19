@@ -23,6 +23,10 @@ auth_mode: "oauth"
 # Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through
 # proxies or shared hosts.
 auth_bypass_localhost: false
+# Idle timeout for stateful Streamable HTTP MCP sessions in seconds.
+mcp_session_idle_timeout_s: 180
+# Maximum concurrent stateful Streamable HTTP MCP sessions.
+mcp_max_sessions: 1024
 # Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset,
 # URLs fall back to the bind host and port; configure this before exposing the service behind a proxy
 # or public hostname.
