@@ -2,6 +2,7 @@
 
 from starlette.routing import Route
 
+from ..core.service import initialize_dynamic_clients
 from .authorization import authorize_get, authorize_post
 from .metadata import protected_resource_endpoint, server_metadata_endpoint
 from .registration import register_client
@@ -10,6 +11,7 @@ from .tokens import token_endpoint
 
 def oauth_public_routes() -> list[Route]:
     """Return public OAuth discovery, registration, authorization, and token routes."""
+    initialize_dynamic_clients()
     return [
         Route(
             "/.well-known/oauth-protected-resource",

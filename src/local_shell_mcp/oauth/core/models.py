@@ -16,6 +16,8 @@ class OAuthClient:
     """Optional human-readable client name supplied during registration."""
     created_at: int = field(default_factory=lambda: int(time.time()))
     """Unix timestamp when the client registration was created."""
+    approved_at: int | None = None
+    """Unix timestamp when the local user first approved this client."""
 
 
 @dataclass

@@ -10,7 +10,7 @@ from .responses import oauth_error, oauth_json
 
 
 async def register_client(request: Request) -> JSONResponse:
-    """Accept dynamic client registration and persist the issued client identifier."""
+    """Accept a pending dynamic client registration."""
     try:
         registration_request = await parse_registration_request(request)
         client = register_dynamic_client(registration_request)
