@@ -8,9 +8,10 @@ Remote workers let the control server run normal session-bound code work on anot
 2. The server returns a one-time shell command containing an invite code.
 3. You paste that command on the remote machine.
 4. The remote machine downloads a worker bundle from the control server, starts the worker, registers once, then long-polls for jobs.
-5. The MCP client uses `remote_admin(action="list", args={})` to discover the registered machine name, then `session_start(target="remote", machine=..., workdir=...)` to start remote work.
+5. The worker persists its identity locally and resumes the same registration after restart. While a long tool call runs, it sends heartbeats independently of job execution.
+6. The MCP client uses `remote_admin(action="list", args={})` to discover the registered machine name, then `session_start(target="remote", machine=..., workdir=...)` to start remote work.
 
-Remote worker enrollment routes are public so the worker can join. Treat invite commands as sensitive and short-lived.
+Remote worker enrollment routes are public so the worker can join. Treat invite commands as sensitive and short-lived. The control server persists worker registrations in `state_dir/remote-workers.json` with a backup copy; unreadable primary state is recovered from the backup, while two invalid copies make remote management fail instead of silently forgetting trusted workers.
 
 ## Requirements
 
@@ -111,7 +112,8 @@ This removes the worker from the control server. Reconnect it with a new invite 
 |---|---:|---|
 | `LOCAL_SHELL_MCP_REMOTE_ENABLED` | `true` | Enable remote worker routes and MCP tools |
 | `LOCAL_SHELL_MCP_REMOTE_INVITE_TTL_S` | `600` | Default one-time invite lifetime |
-| `LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S` | `25` | Long-poll heartbeat timeout |
+| `LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S` | `25` | Long-poll timeout; also contributes to worker online/offline detection |
 | `LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S` | `3600` | Control-side remote job result timeout |
+| `LOCAL_SHELL_MCP_REMOTE_MAX_PENDING_JOBS` | `64` | Maximum queued or in-flight jobs per worker; timed-out jobs do not consume this capacity |
 
 Disable remote mode with `--remote-enabled false` or `LOCAL_SHELL_MCP_REMOTE_ENABLED=false`.

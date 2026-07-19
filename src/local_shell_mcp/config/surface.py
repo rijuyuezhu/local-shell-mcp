@@ -296,6 +296,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("remote_invite_ttl_s", "Remote workers", metavar="SECONDS"),
     SettingSpec("remote_poll_timeout_s", "Remote workers", metavar="SECONDS"),
     SettingSpec("remote_job_timeout_s", "Remote workers", metavar="SECONDS"),
+    SettingSpec("remote_max_pending_jobs", "Remote workers", metavar="COUNT"),
     SettingSpec("agent_bridge_enabled", "Agent capability bridge"),
     SettingSpec(
         "agent_mcp_probe_timeout_s",

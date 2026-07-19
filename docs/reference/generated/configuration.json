@@ -1266,6 +1266,26 @@
             "code": "3600"
           },
           "Control-side remote job result timeout in seconds."
+        ],
+        [
+          {
+            "code": "remote_max_pending_jobs"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-max-pending-jobs"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_MAX_PENDING_JOBS"
+          },
+          "integer",
+          {
+            "code": "64"
+          },
+          "Maximum queued or in-flight remote jobs allowed per worker."
         ]
       ]
     },
@@ -2342,6 +2362,19 @@
       "description": "Control-side remote job result timeout in seconds.",
       "env": "LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S",
       "name": "remote_job_timeout_s",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-max-pending-jobs",
+      "default": 64,
+      "default_display": "64",
+      "description": "Maximum queued or in-flight remote jobs allowed per worker.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_MAX_PENDING_JOBS",
+      "name": "remote_max_pending_jobs",
       "nullable": false,
       "section": "Remote workers",
       "type": "integer",

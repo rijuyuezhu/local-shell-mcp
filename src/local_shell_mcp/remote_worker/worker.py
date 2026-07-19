@@ -9,8 +9,11 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,6 +23,18 @@ from ..remote.constants import (
 )
 from ..remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
 from .compat import _jsonable as to_jsonable
+
+
+class WorkerHttpError(RuntimeError):
+    """HTTP response error with a status code usable by retry policy."""
+
+    def __init__(self, url: str, status_code: int, detail: str) -> None:
+        self.url = url
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(
+            f"worker HTTP POST {url} failed with {status_code}: {detail}"
+        )
 
 
 def _handled_remote_exception(exc: Exception) -> dict[str, Any]:
@@ -45,9 +60,7 @@ def _parse_worker_http_json(
     """Validate one worker HTTP response and return its JSON object body."""
     if not 200 <= status_code < 300:
         detail = response_body.strip() or "<empty response body>"
-        raise RuntimeError(
-            f"worker HTTP POST {url} failed with {status_code}: {detail}"
-        )
+        raise WorkerHttpError(url, status_code, detail)
     try:
         decoded = json.loads(response_body)
     except json.JSONDecodeError as exc:
@@ -137,6 +150,9 @@ def _worker_post_json(
     timeout: float | None = None,
 ) -> dict[str, Any]:
     """POST a JSON worker request using curl when available or urllib otherwise."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("worker server URL must use absolute HTTP(S)")
     body = json.dumps(payload).encode("utf-8")
     request_headers = headers or {}
     if shutil.which("curl"):
@@ -165,6 +181,13 @@ def _worker_log_retry(operation: str, exc: Exception, delay_s: float) -> None:
     )
 
 
+def _worker_error_is_retryable(exc: Exception) -> bool:
+    """Return whether a failed worker request should be retried."""
+    if isinstance(exc, WorkerHttpError):
+        return exc.status_code in {408, 425, 429} or exc.status_code >= 500
+    return not isinstance(exc, ValueError)
+
+
 async def _worker_post_json_forever(
     url: str,
     payload: dict[str, Any],
@@ -180,6 +203,8 @@ async def _worker_post_json_forever(
                 _worker_post_json, url, payload, headers, timeout
             )
         except Exception as exc:
+            if not _worker_error_is_retryable(exc):
+                raise
             delay_s = _worker_retry_delay(attempt)
             attempt += 1
             _worker_log_retry(operation, exc, delay_s)
@@ -252,7 +277,7 @@ def _write_worker_identity(data: dict[str, Any]) -> None:
     """Persist a worker identity atomically with owner-only permissions where possible."""
     path = _worker_identity_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     tmp_path.write_text(
         json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
     )
@@ -269,10 +294,11 @@ def _delete_worker_identity() -> None:
 
 def _worker_identity_rejected(exc: Exception) -> bool:
     """Return whether a resume failure means the persisted identity is invalid."""
+    if isinstance(exc, WorkerHttpError) and exc.status_code == 401:
+        return True
     message = str(exc).lower()
     return (
-        "failed with 401" in message
-        or "invalid worker identity" in message
+        "invalid worker identity" in message
         or "identity is no longer valid" in message
     )
 
@@ -299,10 +325,50 @@ async def _worker_resume_or_none(
                 )
                 _delete_worker_identity()
                 return None
+            if not _worker_error_is_retryable(exc):
+                raise
             delay_s = _worker_retry_delay(attempt)
             attempt += 1
             _worker_log_retry("resume", exc, delay_s)
             await asyncio.sleep(delay_s)
+
+
+async def _execute_worker_job_with_heartbeat(
+    job: dict[str, Any],
+    server: str,
+    headers: dict[str, str],
+    heartbeat_interval_s: float,
+) -> Any:
+    """Execute one job while independently refreshing control-side liveness."""
+    task = asyncio.create_task(
+        execute_worker_tool(job["tool"], dict(job.get("args") or {}))
+    )
+
+    async def heartbeat_loop() -> None:
+        interval = max(0.01, heartbeat_interval_s)
+        while not task.done():
+            await asyncio.sleep(interval)
+            if task.done():
+                return
+            try:
+                await asyncio.to_thread(
+                    _worker_post_json,
+                    f"{server}{REMOTE_API_PREFIX}/heartbeat",
+                    {},
+                    headers,
+                    30,
+                )
+            except Exception as exc:
+                if not _worker_error_is_retryable(exc):
+                    return
+                _worker_log_retry("heartbeat", exc, interval)
+
+    heartbeat = asyncio.create_task(heartbeat_loop())
+    try:
+        return await task
+    finally:
+        heartbeat.cancel()
+        await asyncio.gather(heartbeat, return_exceptions=True)
 
 
 def worker_capabilities() -> list[str]:
@@ -381,6 +447,7 @@ async def run_worker(
             raise RuntimeError(body.get("message") or body)
         data = body["data"]
         machine_name = data["name"]
+    heartbeat_interval_s = float(data.get("heartbeat_interval_s") or 15)
     _write_worker_identity(
         {
             "server": server,
@@ -407,9 +474,25 @@ async def run_worker(
         job = payload.get("job") if isinstance(payload, dict) else None
         if not job:
             continue
+        expires_at = float(job.get("expires_at") or 0)
+        if expires_at and expires_at < time.time():
+            out = {
+                "job_id": job.get("id"),
+                "ok": False,
+                "error": "TimeoutError",
+                "message": "remote job expired before execution",
+            }
+            await _worker_post_json_forever(
+                f"{server}{REMOTE_API_PREFIX}/result",
+                out,
+                headers,
+                30,
+                "submit result",
+            )
+            continue
         try:
-            result = await execute_worker_tool(
-                job["tool"], dict(job.get("args") or {})
+            result = await _execute_worker_job_with_heartbeat(
+                job, server, headers, heartbeat_interval_s
             )
             out = {"job_id": job["id"], "ok": True, "data": to_jsonable(result)}
         except Exception as exc:
@@ -447,6 +530,9 @@ def run_worker_from_args(args: argparse.Namespace) -> None:
     except KeyboardInterrupt:
         print("\nStatus: disconnected by user.", file=sys.stderr, flush=True)
         raise SystemExit(130) from None
+    except Exception as exc:
+        print(f"Status: connection failed: {exc}", file=sys.stderr, flush=True)
+        raise SystemExit(1) from None
 
 
 def run_worker_cli(argv: list[str] | None = None) -> None:

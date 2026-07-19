@@ -76,6 +76,16 @@ async def poll_endpoint(request: Request) -> JSONResponse:
         return _error(str(exc), type(exc).__name__, 401)
 
 
+async def heartbeat_endpoint(request: Request) -> JSONResponse:
+    """Refresh worker liveness while a long-running job is executing."""
+    try:
+        return JSONResponse(
+            _ok(await remote_manager().heartbeat(_bearer_token(request)))
+        )
+    except Exception as exc:
+        return _error(str(exc), type(exc).__name__, 401)
+
+
 async def result_endpoint(request: Request) -> JSONResponse:
     """Accept the authenticated worker's result for its current job."""
     try:
@@ -100,5 +110,10 @@ def remote_routes() -> list[Route]:
         ),
         Route(f"{REMOTE_API_PREFIX}/resume", resume_endpoint, methods=["POST"]),
         Route(f"{REMOTE_API_PREFIX}/poll", poll_endpoint, methods=["POST"]),
+        Route(
+            f"{REMOTE_API_PREFIX}/heartbeat",
+            heartbeat_endpoint,
+            methods=["POST"],
+        ),
         Route(f"{REMOTE_API_PREFIX}/result", result_endpoint, methods=["POST"]),
     ]

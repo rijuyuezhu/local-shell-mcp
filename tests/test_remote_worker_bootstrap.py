@@ -1,4 +1,6 @@
+import asyncio
 import builtins
+import json
 import os
 import subprocess
 import sys
@@ -12,7 +14,9 @@ import pytest
 
 def test_remote_worker_entrypoint_import_is_dependency_light():
     script = """
+import asyncio
 import builtins
+import json
 
 blocked = {"fastapi", "httpx", "mcp", "starlette", "uvicorn", "pydantic", "pydantic_settings", "yaml", "pathspec"}
 real_import = builtins.__import__
@@ -499,3 +503,244 @@ async def test_remote_manager_list_machines_reports_counts_and_details(
     assert result.machines[0].last_seen_age_s == 5
     assert result.machines[0].queue_depth == 1
     assert result.machines[0].offline_after_s == 60
+
+
+def _configure_remote_state(tmp_path, monkeypatch, **overrides):
+    from local_shell_mcp.config.settings import clear_settings_cache
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    for name, value in overrides.items():
+        monkeypatch.setenv(f"LOCAL_SHELL_MCP_{name.upper()}", str(value))
+    clear_settings_cache()
+
+
+def test_worker_post_rejects_non_http_server_url(monkeypatch):
+    import local_shell_mcp.remote_worker.worker as worker
+
+    monkeypatch.setattr(worker.shutil, "which", lambda _name: None)
+
+    with pytest.raises(ValueError, match="absolute HTTP"):
+        worker._worker_post_json("file:///tmp/control", {})
+
+
+@pytest.mark.asyncio
+async def test_worker_post_forever_stops_on_permanent_http_error(monkeypatch):
+    import local_shell_mcp.remote_worker.worker as worker
+
+    calls = 0
+
+    def reject(url, payload, headers=None, timeout=None):
+        nonlocal calls
+        calls += 1
+        raise worker.WorkerHttpError(url, 400, "invalid registration")
+
+    async def unexpected_sleep(_delay):
+        raise AssertionError("permanent HTTP errors must not be retried")
+
+    monkeypatch.setattr(worker, "_worker_post_json", reject)
+    monkeypatch.setattr(worker.asyncio, "sleep", unexpected_sleep)
+
+    with pytest.raises(worker.WorkerHttpError) as error:
+        await worker._worker_post_json_forever(
+            "https://example.test/remote/register", {}, operation="register"
+        )
+
+    assert error.value.status_code == 400
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_post_forever_retries_transient_http_error(monkeypatch):
+    import local_shell_mcp.remote_worker.worker as worker
+
+    calls = 0
+    sleeps = []
+
+    def post(url, payload, headers=None, timeout=None):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise worker.WorkerHttpError(url, 503, "temporarily unavailable")
+        return {"ok": True}
+
+    async def record_sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr(worker, "_worker_post_json", post)
+    monkeypatch.setattr(worker.asyncio, "sleep", record_sleep)
+
+    result = await worker._worker_post_json_forever(
+        "https://example.test/remote/poll", {}, operation="poll"
+    )
+
+    assert result == {"ok": True}
+    assert calls == 2
+    assert sleeps == [1.0]
+
+
+@pytest.mark.asyncio
+async def test_long_worker_job_sends_heartbeats(monkeypatch):
+    import local_shell_mcp.remote_worker.worker as worker
+
+    heartbeat_urls = []
+
+    async def slow_tool(tool, args):
+        assert tool == "bash"
+        assert args == {"command": "sleep"}
+        await asyncio.sleep(0.04)
+        return {"done": True}
+
+    def post(url, payload, headers=None, timeout=None):
+        heartbeat_urls.append(url)
+        return {"ok": True}
+
+    monkeypatch.setattr(worker, "execute_worker_tool", slow_tool)
+    monkeypatch.setattr(worker, "_worker_post_json", post)
+
+    result = await worker._execute_worker_job_with_heartbeat(
+        {"tool": "bash", "args": {"command": "sleep"}},
+        "https://example.test",
+        {"Authorization": "Bearer token"},
+        0.01,
+    )
+
+    assert result == {"done": True}
+    assert heartbeat_urls
+    assert set(heartbeat_urls) == {"https://example.test/remote/heartbeat"}
+
+
+@pytest.mark.asyncio
+async def test_remote_registry_recovers_from_backup(tmp_path, monkeypatch):
+    from local_shell_mcp.remote.manager import RemoteManager
+
+    _configure_remote_state(tmp_path, monkeypatch)
+    manager = RemoteManager()
+    invite = await manager.create_invite(name="backup-worker")
+    registered = await manager.register_worker(
+        {"invite": invite.code, "workdir": str(tmp_path)}
+    )
+    manager._registry_path().write_text("{broken", encoding="utf-8")
+
+    recovered = RemoteManager()
+    inventory = recovered.list_machines()
+
+    assert inventory.counts == {"online": 0, "offline": 1, "total": 1}
+    assert inventory.machines[0].name == "backup-worker"
+    assert (
+        json.loads(recovered._registry_path().read_text(encoding="utf-8"))[
+            "workers"
+        ][0]["access"]
+        == registered["token"]
+    )
+
+
+def test_remote_registry_refuses_silent_reset_when_both_copies_are_corrupt(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.remote.manager import RemoteManager
+
+    _configure_remote_state(tmp_path, monkeypatch)
+    manager = RemoteManager()
+    manager._registry_path().parent.mkdir(parents=True, exist_ok=True)
+    manager._registry_path().write_text("{broken", encoding="utf-8")
+    manager._registry_backup_path().write_text("[]", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="refusing to reset"):
+        manager.list_machines()
+
+
+@pytest.mark.asyncio
+async def test_remote_queue_limit_counts_inflight_jobs(tmp_path, monkeypatch):
+    from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
+
+    _configure_remote_state(tmp_path, monkeypatch, remote_max_pending_jobs=1)
+    manager = RemoteManager()
+    manager._load_registry_unlocked()
+    worker = RemoteWorker(name="worker", token="token", last_seen=_utc())
+    manager.workers[worker.name] = worker
+    manager.tokens[worker.token] = worker.name
+
+    first = asyncio.create_task(
+        manager.call("worker", "read", {"path": "a"}, timeout_s=10)
+    )
+    while worker.queue.qsize() == 0:
+        await asyncio.sleep(0)
+
+    with pytest.raises(RuntimeError, match="queue is full"):
+        await manager.call("worker", "read", {"path": "b"}, timeout_s=10)
+
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    assert manager.pending == {}
+    assert manager.pending_machines == {}
+
+    second = asyncio.create_task(
+        manager.call("worker", "read", {"path": "c"}, timeout_s=10)
+    )
+    while not manager.pending:
+        await asyncio.sleep(0)
+    second.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await second
+
+
+@pytest.mark.asyncio
+async def test_remote_poll_skips_cancelled_job_and_delivers_next(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
+
+    _configure_remote_state(tmp_path, monkeypatch)
+    manager = RemoteManager()
+    manager._load_registry_unlocked()
+    worker = RemoteWorker(name="worker", token="token", last_seen=_utc())
+    manager.workers[worker.name] = worker
+    manager.tokens[worker.token] = worker.name
+    manager.cancelled_jobs["cancelled"] = _utc()
+    worker.queue.put_nowait({"id": "cancelled", "tool": "read", "args": {}})
+    worker.queue.put_nowait({"id": "next", "tool": "read", "args": {}})
+
+    result = await manager.poll("token")
+
+    assert result["job"]["id"] == "next"
+    assert "cancelled" not in manager.cancelled_jobs
+
+
+@pytest.mark.asyncio
+async def test_remote_result_is_rejected_from_wrong_worker(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
+
+    _configure_remote_state(tmp_path, monkeypatch)
+    manager = RemoteManager()
+    manager._load_registry_unlocked()
+    worker_a = RemoteWorker(name="a", token="token-a", last_seen=_utc())
+    worker_b = RemoteWorker(name="b", token="token-b", last_seen=_utc())
+    manager.workers = {"a": worker_a, "b": worker_b}
+    manager.tokens = {"token-a": "a", "token-b": "b"}
+    future = asyncio.get_running_loop().create_future()
+    manager.pending["job"] = future
+    manager.pending_machines["job"] = "a"
+
+    with pytest.raises(PermissionError, match="another worker"):
+        await manager.submit_result(
+            "token-b", {"job_id": "job", "ok": True, "data": {}}
+        )
+
+    assert not future.done()
+    future.cancel()
+
+
+def test_remote_machine_names_are_portably_validated(tmp_path, monkeypatch):
+    from local_shell_mcp.remote.manager import RemoteManager
+
+    _configure_remote_state(tmp_path, monkeypatch)
+    manager = RemoteManager()
+
+    with pytest.raises(ValueError, match="unsupported characters"):
+        manager.rename("missing", "bad/name")
+    with pytest.raises(ValueError, match="128 characters"):
+        manager.rename("missing", "x" * 129)

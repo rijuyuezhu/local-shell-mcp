@@ -151,6 +151,8 @@ remote_invite_ttl_s: 600
 remote_poll_timeout_s: 25
 # Control-side remote job result timeout in seconds.
 remote_job_timeout_s: 3600
+# Maximum queued or in-flight remote jobs allowed per worker.
+remote_max_pending_jobs: 64
 
 # Agent capability bridge.
 # Enable agent capability bridge tools.

@@ -183,6 +183,8 @@ class Settings(BaseSettings):
     """Remote worker long-poll heartbeat timeout in seconds."""
     remote_job_timeout_s: int = 3600
     """Control-side remote job result timeout in seconds."""
+    remote_max_pending_jobs: int = 64
+    """Maximum queued or in-flight remote jobs allowed per worker."""
 
     # Agent capability bridge.
     agent_bridge_enabled: bool = True

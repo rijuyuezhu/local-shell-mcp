@@ -167,7 +167,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 150 | 2026-07-14 | `d5a81b7` | fix(jobs): serialize state and bound retention | **Implemented (adapted)** | The fork serializes job-store transactions with thread and cross-process locks, atomically writes primary and backup stores, and bounds logs and retained terminal jobs without pruning active jobs. |
 | 151 | 2026-07-14 | `2319219` | fix(settings): isolate persisted secret reads | **Pending** | Pending functional review and fork-specific port decision. |
 | 152 | 2026-07-14 | `557ca1b` | fix(io): preserve PTY input and dedupe lock shards | **Pending** | Pending functional review and fork-specific port decision. |
-| 153 | 2026-07-14 | `99b0c1a` | fix(remote): fail permanent errors and keep jobs online | **Pending** | Pending functional review and fork-specific port decision. |
+| 153 | 2026-07-14 | `99b0c1a` | fix(remote): fail permanent errors and keep jobs online | **Implemented (adapted)** | Worker HTTP failures now distinguish transient statuses from permanent client errors, and long-running tool execution sends independent heartbeats so the control server does not mark an active worker offline. |
 | 154 | 2026-07-14 | `311f0f1` | fix(transfer): prune temporary artifacts | **Pending** | Pending functional review and fork-specific port decision. |
 | 155 | 2026-07-14 | `fca3071` | fix(ui): retry PTY writes under backpressure | **Pending** | Pending functional review and fork-specific port decision. |
 | 156 | 2026-07-14 | `4cf053e` | fix(lifecycle): close cleanup edge cases | **Pending** | Pending functional review and fork-specific port decision. |
@@ -181,7 +181,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 164 | 2026-07-14 | `5f8404e` | test(transfer): cover streamed remote copies | **Pending** | Pending functional review and fork-specific port decision. |
 | 165 | 2026-07-14 | `6e90650` | Fix interrupted remote downloads | **Pending** | Pending functional review and fork-specific port decision. |
 | 166 | 2026-07-14 | `e08d27e` | Harden persistent job recovery | **Implemented (adapted)** | Job metadata recovers from a valid backup, refuses silent reset when both copies are corrupt, migrates supported legacy stores, and reconciles interrupted lifecycle states. |
-| 167 | 2026-07-14 | `d869478` | Synchronize remote worker registry | **Pending** | Pending functional review and fork-specific port decision. |
+| 167 | 2026-07-14 | `d869478` | Synchronize remote worker registry | **Implemented (adapted)** | The fork serializes registry, token, queue, pending-job, rename, revoke, heartbeat, and result state behind one manager lock, with per-job worker ownership checks. |
 | 168 | 2026-07-14 | `99f5af3` | Harden transfer and ConPTY cleanup | **Pending** | Pending functional review and fork-specific port decision. |
 | 169 | 2026-07-14 | `1bfaba5` | fix: allow shell timeout cleanup before watchdog | **Pending** | Pending functional review and fork-specific port decision. |
 | 170 | 2026-07-14 | `eac80f6` | Remove unused dynamic agent bridge | **Not adopted** | The fork's dynamic Agent Bridge is active, tested, and part of its product direction, so upstream removal is intentionally not ported. |
@@ -195,7 +195,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 178 | 2026-07-15 | `af2503e` | fix: submit native Windows shell commands with CRLF | **Pending** | Pending functional review and fork-specific port decision. |
 | 179 | 2026-07-15 | `e768b27` | fix(ci): authenticate OAuth MCP probes before connecting | **Pending** | Pending functional review and fork-specific port decision. |
 | 180 | 2026-07-15 | `479138e` | fix: harden local execution and interfaces | **Pending** | Pending functional review and fork-specific port decision. |
-| 181 | 2026-07-15 | `33a30ae` | fix: make remote operations transactional | **Pending** | Pending functional review and fork-specific port decision. |
+| 181 | 2026-07-15 | `33a30ae` | fix: make remote operations transactional | **Implemented (adapted)** | Remote calls reserve capacity and ownership transactionally, clean pending state on timeout or cancellation, skip cancelled queued jobs, reject cross-worker results, and bound in-flight jobs per worker. |
 | 182 | 2026-07-15 | `ae68cd8` | test: cover comprehensive bug audit regressions | **Pending** | Pending functional review and fork-specific port decision. |
 | 183 | 2026-07-15 | `69f9b27` | fix: pass job environment policy explicitly | **Implemented (adapted)** | The runner uses the fork's existing centralized `_subprocess_env` policy, and its parent persistent shell is launched with the same filtered environment, avoiding a second configurable policy surface. |
 | 184 | 2026-07-15 | `64d2e52` | fix: encode job policy arguments for powershell | **Implemented (adapted)** | Runner arguments are shell-neutrally structured and PowerShell-quoted as individual argv values, so no JSON policy payload needs shell-specific encoding in the fork. |
@@ -219,11 +219,11 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 202 | 2026-07-15 | `aca8ae8` | test: use platform-specific TUI sidecar name | **Pending** | Pending functional review and fork-specific port decision. |
 | 203 | 2026-07-15 | `c649f27` | ci: avoid duplicate feature branch matrices | **Pending** | Pending functional review and fork-specific port decision. |
 | 204 | 2026-07-15 | `119975a` | Merge pull request #9 from fwerkor/test/near-complete-coverage | **Pending** | Pending functional review and fork-specific port decision. |
-| 205 | 2026-07-16 | `6ab0d2a` | feat: persist and manage remote workers | **Pending** | Pending functional review and fork-specific port decision. |
-| 206 | 2026-07-16 | `44b3692` | fix: harden persisted worker lifecycle | **Pending** | Pending functional review and fork-specific port decision. |
+| 205 | 2026-07-16 | `6ab0d2a` | feat: persist and manage remote workers | **Partial** | Worker registration, identity persistence, resume, rename, revoke, inventory, and primary/backup control-side state are implemented. Upstream systemd/launchd service installation and management are intentionally deferred to a separate fork-specific lifecycle design. |
+| 206 | 2026-07-16 | `44b3692` | fix: harden persisted worker lifecycle | **Partial** | Persisted identity, worker runtime environment setup, strict registry recovery, clean CLI failure handling, and restart resume are hardened. User-service install/start/stop/update behavior remains a separate follow-up. |
 | 207 | 2026-07-16 | `21571b4` | test: handle JSON-escaped Windows paths | **Pending** | Pending functional review and fork-specific port decision. |
-| 208 | 2026-07-16 | `2051a53` | fix(worker): secure connect and prepare runtime on start | **Pending** | Pending functional review and fork-specific port decision. |
-| 209 | 2026-07-16 | `789520b` | Merge pull request #11 from fwerkor/fix/remote-worker-persist-lifecycle | **Pending** | Pending functional review and fork-specific port decision. |
+| 208 | 2026-07-16 | `2051a53` | fix(worker): secure connect and prepare runtime on start | **Partial** | Worker server URLs are restricted to absolute HTTP(S), runtime paths are prepared before normal settings load, and credentials stay in the persisted identity rather than result payloads. Upstream launcher installation/re-exec service workflow is not adopted in this batch. |
+| 209 | 2026-07-16 | `789520b` | Merge pull request #11 from fwerkor/fix/remote-worker-persist-lifecycle | **Superseded by reviewed commits** | Merge-only commit; persistence, runtime preparation, and service-lifecycle decisions are recorded on the underlying remote-worker commits. |
 | 210 | 2026-07-16 | `f837152` | fix: harden compact tool contracts | **Pending** | Pending functional review and fork-specific port decision. |
 | 211 | 2026-07-16 | `b918d18` | docs: align examples with compact tools | **Pending** | Pending functional review and fork-specific port decision. |
 | 212 | 2026-07-16 | `2aa1a31` | Merge pull request #13 from fwerkor/fix/compact-tool-contracts | **Pending** | Pending functional review and fork-specific port decision. |
