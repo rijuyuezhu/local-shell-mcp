@@ -39,6 +39,14 @@ from .utils.temp_file import write_temp_text_file
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2
 READER_DRAIN_TIMEOUT_S = 2
+TOOL_WATCHDOG_SCHEDULING_MARGIN_S = 1
+SHELL_TIMEOUT_CLEANUP_GRACE_S = (
+    GRACEFUL_TERMINATION_TIMEOUT_S
+    + KILL_TERMINATION_TIMEOUT_S
+    + READER_DRAIN_TIMEOUT_S
+    + TOOL_WATCHDOG_SCHEDULING_MARGIN_S
+)
+SHELL_TIMEOUT_CLEANUP_TOOL_NAMES = frozenset({"bash", "run_python_code"})
 INTERNAL_SHELL_DEFAULT_TIMEOUT_S = 60
 INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
@@ -171,9 +179,16 @@ def run_shell_command_timeout(timeout_s: int | None) -> int:
     return max(1, min(timeout_s or default, cap))
 
 
-def tool_timeout_s() -> float:
-    """Return the MCP/HTTP tool watchdog timeout in seconds."""
-    return max(0.001, get_settings().tool_timeout_s)
+def tool_timeout_s(tool_name: str | None = None) -> float:
+    """Return the effective MCP/HTTP watchdog timeout for one tool."""
+    settings = get_settings()
+    configured = max(0.001, settings.tool_timeout_s)
+    if tool_name not in SHELL_TIMEOUT_CLEANUP_TOOL_NAMES:
+        return configured
+    cleanup_safe_shell_timeout = (
+        max(1, settings.run_shell_max_timeout_s) + SHELL_TIMEOUT_CLEANUP_GRACE_S
+    )
+    return max(configured, float(cleanup_safe_shell_timeout))
 
 
 def _effective_output_limit(max_output_bytes: int | None = None) -> int:

@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     relaxed_client_tool_hints: bool = False
     """Deprecated compatibility flag. MCP safety annotations remain semantic and mode-independent."""
     tool_timeout_s: float = 60
-    """MCP/HTTP tool watchdog timeout in seconds."""
+    """Base MCP/HTTP tool watchdog timeout in seconds. Shell execution tools receive additional bounded cleanup time beyond run_shell_max_timeout_s."""
     run_shell_default_timeout_s: int = 10
     """Default timeout for bounded shell command calls in seconds."""
     run_shell_max_timeout_s: int = 60

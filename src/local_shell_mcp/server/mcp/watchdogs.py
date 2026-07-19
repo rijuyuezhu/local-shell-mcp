@@ -61,19 +61,20 @@ def _mcp_tool_audit_watchdog_wrapper(
             tool=tool_name,
             input=_mcp_tool_input(args, kwargs),
         )
+        timeout_s = tool_timeout_s(tool_name)
         try:
             result = await asyncio.wait_for(
-                original(*args, **kwargs), timeout=tool_timeout_s()
+                original(*args, **kwargs), timeout=timeout_s
             )
         except TimeoutError:
             exc = PublicToolTimeoutError(
-                f"{tool_name} exceeded {tool_timeout_s()} second tool timeout"
+                f"{tool_name} exceeded {timeout_s} second tool timeout"
             )
             duration_ms = int((time.time() - start) * 1000)
             audit(
                 "tool_timeout",
                 tool=tool_name,
-                timeout_s=tool_timeout_s(),
+                timeout_s=timeout_s,
             )
             if mcp_error_handler is not None:
                 payload = mcp_error_handler(exc, args, kwargs)

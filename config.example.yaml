@@ -62,7 +62,8 @@ oauth_registration_max_client_name_chars: 200
 allow_full_control: false
 # Deprecated compatibility flag. MCP safety annotations remain semantic and mode-independent.
 relaxed_client_tool_hints: false
-# MCP/HTTP tool watchdog timeout in seconds.
+# Base MCP/HTTP tool watchdog timeout in seconds. Shell execution tools receive additional bounded
+# cleanup time beyond run_shell_max_timeout_s.
 tool_timeout_s: 60
 # Default timeout for bounded shell command calls in seconds.
 run_shell_default_timeout_s: 10

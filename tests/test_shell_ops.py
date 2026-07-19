@@ -9,19 +9,19 @@ from mcp.server.fastmcp.exceptions import ToolError
 import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.shell import (
+    SHELL_TIMEOUT_CLEANUP_GRACE_S,
     _shared_tail_bytes,
     _subprocess_env,
     clamp_timeout,
     run_shell,
     run_shell_command_timeout,
     send_persistent_shell_input_execute,
+    tool_timeout_s,
 )
 from local_shell_mcp.schemas.result_models.shell import CommandResult
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
-from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import files as fs_tools_module
-from local_shell_mcp.tools.registry import shell as shell_tools_module
 from tests.helpers import mcp_structured
 
 
@@ -50,32 +50,83 @@ async def test_bash_rejects_timeout_above_public_cap(tmp_path, monkeypatch):
         )
 
 
-@pytest.mark.asyncio
-async def test_mcp_tool_watchdog_returns_handled_timeout(tmp_path, monkeypatch):
+def test_shell_tool_watchdog_reserves_cleanup_budget(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "1")
     clear_settings_cache()
 
-    async def hanging_bash_execute(*args, **kwargs):
-        await asyncio.sleep(5)
+    assert SHELL_TIMEOUT_CLEANUP_GRACE_S == 10
+    assert tool_timeout_s("list_files") == 0.01
+    assert tool_timeout_s("bash") == 11
+    assert tool_timeout_s("run_python_code") == 11
 
-    monkeypatch.setattr(
-        shell_tools_module,
-        "bash_execute",
-        hanging_bash_execute,
+
+@pytest.mark.asyncio
+async def test_mcp_shell_timeout_returns_partial_output_after_cleanup(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "1")
+    clear_settings_cache()
+
+    mcp = build_mcp()
+    session = mcp_structured(
+        await mcp.call_tool("session_start", {"workdir": "."})
+    )
+    command = _python_shell_command(
+        'import sys, time; print("partial-out", flush=True); '
+        'print("partial-err", file=sys.stderr, flush=True); time.sleep(5)'
     )
 
-    session_id = get_tool_session_store().create_session(workdir=".").session_id
-    mcp = build_mcp()
-
-    with pytest.raises(
-        ToolError,
-        match="bash exceeded 0.01 second tool timeout",
-    ):
+    payload = mcp_structured(
         await mcp.call_tool(
             "bash",
-            {"session_id": session_id, "command": "echo ok"},
+            {
+                "session_id": session["session_id"],
+                "command": command,
+                "timeout_s": 1,
+            },
         )
+    )
+    result = payload["result"]
+
+    assert payload["mode"] == "command"
+    assert result["timed_out"] is True
+    assert "partial-out" in result["stdout"]
+    assert "partial-err" in result["stderr"]
+
+
+def test_rest_shell_timeout_returns_partial_output_after_cleanup(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "1")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    command = _python_shell_command(
+        'import sys, time; print("partial-out", flush=True); '
+        'print("partial-err", file=sys.stderr, flush=True); time.sleep(5)'
+    )
+    response = client.post(
+        "/tools/bash",
+        json={
+            "session_id": session["session_id"],
+            "command": command,
+            "timeout_s": 1,
+        },
+    )
+    result = response.json()["result"]
+
+    assert response.status_code == 200
+    assert result["timed_out"] is True
+    assert "partial-out" in result["stdout"]
+    assert "partial-err" in result["stderr"]
 
 
 def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
@@ -92,7 +143,7 @@ def test_rest_tool_watchdog_returns_timeout(tmp_path, monkeypatch):
     )
 
     response = TestClient(build_http_app()).post(
-        "/tools/bash", json={"command": "echo ok"}
+        "/tools/list_files", json={"path": "."}
     )
 
     assert response.status_code == 504

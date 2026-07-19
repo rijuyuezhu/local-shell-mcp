@@ -44,16 +44,16 @@ def install_tools_timeout_middleware(app: FastAPI) -> None:
     ) -> Response:
         if not request.url.path.startswith("/tools/"):
             return await call_next(request)
+        tool_name = request.url.path.removeprefix("/tools/").split("/", 1)[0]
+        timeout_s = tool_timeout_s(tool_name)
         try:
-            return await asyncio.wait_for(
-                call_next(request), timeout=tool_timeout_s()
-            )
+            return await asyncio.wait_for(call_next(request), timeout=timeout_s)
         except TimeoutError:
             return JSONResponse(
                 status_code=504,
                 content={
                     "error": "tool_timeout",
-                    "message": f"{request.url.path} exceeded {tool_timeout_s()} second tool timeout",
+                    "message": f"{request.url.path} exceeded {timeout_s} second tool timeout",
                 },
             )
 
