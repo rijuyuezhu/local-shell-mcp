@@ -93,7 +93,7 @@ Example prompt:
 Use local-shell-mcp on remote machine gpu1. Inspect /home/me/project, run git status, then run the test command you find in the project docs. Report results before editing files.
 ```
 
-Use `bash(session_id=..., async_=true)` for long-running non-interactive remote jobs. Manage the returned `job_id` with `job(session_id=..., ...)`. Prefer bounded non-interactive commands for remote work.
+Use `bash(session_id=..., async_=true)` for long-running non-interactive remote jobs. Manage the returned `job_id` with `job(session_id=..., ...)`. Job metadata, terminal status, and bounded output are persisted by the remote worker, so later polls use the same remote session even after completion. Prefer bounded non-interactive commands for remote work.
 
 ## Revoke a worker
 

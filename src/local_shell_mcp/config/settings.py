@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     """Maximum timeout accepted by bounded shell command calls in seconds."""
     max_output_bytes: int = 200_000
     """Command output limit in bytes."""
+    max_job_log_bytes: int = 10_000_000
+    """Maximum retained output bytes for one tracked background-job attempt."""
+    max_jobs: int = 1_000
+    """Maximum retained tracked-job records; active jobs are never pruned."""
     max_file_read_bytes: int = 512_000
     """Per-file read limit in bytes."""
     max_skills: int = 256

@@ -483,14 +483,12 @@ async def test_job_tool_schema_descriptions_explain_bash_companion(
     description = companion.description or ""
     assert "bash" in description
     assert "Starting work belongs" in description
+    assert "after completion and server restart" in description
 
     lines_schema = companion.inputSchema["properties"]["lines"]
     assert lines_schema["minimum"] == 1
     assert lines_schema["maximum"] == 5000
-    assert (
-        "Output is available only while the background job can still be inspected"
-        in lines_schema["description"]
-    )
+    assert "Output is retained after completion" in lines_schema["description"]
     assert "session_id" in companion.inputSchema["required"]
     assert (
         "Tracked bash"
@@ -500,7 +498,12 @@ async def test_job_tool_schema_descriptions_explain_bash_companion(
     output_schema = _output_schema(companion)
     assert output_schema["title"] == "JobOutput"
     assert output_schema["$defs"]["JobStatus"]["enum"] == [
+        "starting",
         "running",
+        "stopping",
+        "retrying",
+        "succeeded",
+        "failed",
         "exited",
         "stopped",
         "lost",

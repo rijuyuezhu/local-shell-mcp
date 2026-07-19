@@ -191,6 +191,55 @@ def test_main_dispatches_to_argparse_handler(monkeypatch):
     assert calls == [("stdio", True)]
 
 
+def test_private_job_runner_is_hidden_and_dispatches_directly(monkeypatch):
+    public_help = cli._build_parser().format_help()
+    calls = []
+
+    def run_job_runner(args):
+        calls.append(
+            (
+                args.command_file,
+                args.log_file,
+                args.status_file,
+                args.cwd,
+                args.shell,
+                args.max_log_bytes,
+            )
+        )
+
+    monkeypatch.setattr(cli, "run_job_runner_from_args", run_job_runner)
+
+    assert "job-runner" not in public_help
+    cli.main(
+        [
+            "job-runner",
+            "--command-file",
+            "command.txt",
+            "--log-file",
+            "job.log",
+            "--status-file",
+            "status.json",
+            "--cwd",
+            "/tmp/work",
+            "--shell",
+            "/bin/sh",
+            "--max-log-bytes",
+            "1234",
+        ]
+    )
+
+    assert calls == [
+        (
+            "command.txt",
+            "job.log",
+            "status.json",
+            "/tmp/work",
+            "/bin/sh",
+            1234,
+        )
+    ]
+
+
 def test_server_overrides_include_only_explicit_values():
     args = cli._build_parser().parse_args(
         ["--mode", "stdio", "--remote-enabled", "false"]

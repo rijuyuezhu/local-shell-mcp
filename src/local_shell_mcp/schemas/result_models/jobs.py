@@ -4,7 +4,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-type JobStatus = Literal["running", "exited", "stopped", "lost", "unknown"]
+type JobStatus = Literal[
+    "starting",
+    "running",
+    "stopping",
+    "retrying",
+    "succeeded",
+    "failed",
+    "exited",
+    "stopped",
+    "lost",
+    "unknown",
+]
 
 
 class JobInfo(BaseModel):
@@ -17,7 +28,7 @@ class JobInfo(BaseModel):
         description="Human-readable job name, or the generated job_id when no name was provided."
     )
     status: JobStatus = Field(
-        description="Tracked job status: running while the background command can still be inspected; exited when it disappears naturally; stopped when cancelled; lost when output/control cannot be inspected."
+        description="Durable tracked-job lifecycle state, including transitional, successful, failed, stopped, and recovery states."
     )
     command: str = Field(
         description="Original shell command used to start the job. The retry action reuses this command."
@@ -34,8 +45,29 @@ class JobInfo(BaseModel):
     updated_at: float = Field(
         description="Unix timestamp when the tracked job record was last updated."
     )
-    last_started_at: float = Field(
-        description="Unix timestamp when the current or most recent attempt was started."
+    last_started_at: float | None = Field(
+        default=None,
+        description="Unix timestamp when the current or most recent attempt was started.",
+    )
+    completed_at: float | None = Field(
+        default=None,
+        description="Unix timestamp when the current attempt reached a terminal state.",
+    )
+    exit_code: int | None = Field(
+        default=None,
+        description="Durably recorded process exit code when the runner completed.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Lifecycle or runner error associated with the current attempt.",
+    )
+    log_truncated: bool = Field(
+        default=False,
+        description="Whether older output was discarded to enforce max_job_log_bytes.",
+    )
+    output_bytes: int = Field(
+        default=0,
+        description="Total process-output bytes observed before durable tail truncation.",
     )
     attempts: int = Field(
         description="Number of times this tracked job has been started, including retries."
@@ -69,7 +101,7 @@ class JobTailOutput(BaseModel):
     )
     output: str = Field(
         default="",
-        description="Recent output captured for the tracked job. Full job logs are not persisted separately.",
+        description="Recent output from the durable per-attempt job log, including after process exit.",
     )
     message: str | None = Field(
         default=None,

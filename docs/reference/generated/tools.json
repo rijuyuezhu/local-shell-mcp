@@ -457,14 +457,14 @@
                 "note": "(array / null, optional)"
               },
               {
-                "description": "Whether to include terminal jobs with exited, stopped, or lost status. Set false to show only active jobs.",
+                "description": "Whether to include terminal jobs such as succeeded, failed, stopped, or lost. Set false to show only active jobs.",
                 "head": {
                   "code": "include_finished"
                 },
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Number of recent terminal lines to capture for a tracked job. Output is available only while the background job can still be inspected.",
+                "description": "Number of recent terminal lines to capture for a tracked job. Output is retained after completion within the configured durable log limit.",
                 "head": {
                   "code": "lines"
                 },
@@ -500,7 +500,7 @@
               }
             ]
           },
-          "Inspect, read output from, stop, or retry async bash jobs owned by an explicit agent session.\n\nResults for `bash(async_=true)` are tracked by job id under the same session_id. Reach for this companion tool only when you need to intervene: list running work in the session, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call."
+          "Inspect, read durable output from, stop, or retry async bash jobs owned by an explicit agent session.\n\nResults for `bash(async_=true)` are tracked by job id under the same session_id. Exit status and bounded output remain available after completion and server restart. Reach for this companion tool only when you need to intervene: list work in the session, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call."
         ]
       ]
     },
@@ -2742,7 +2742,7 @@
       }
     },
     {
-      "description": "Inspect, read output from, stop, or retry async bash jobs owned by an explicit agent session.\n\nResults for `bash(async_=true)` are tracked by job id under the same session_id. Reach for this companion tool only when you need to intervene: list running work in the session, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call.",
+      "description": "Inspect, read durable output from, stop, or retry async bash jobs owned by an explicit agent session.\n\nResults for `bash(async_=true)` are tracked by job id under the same session_id. Exit status and bounded output remain available after completion and server restart. Reach for this companion tool only when you need to intervene: list work in the session, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call.",
       "inputSchema": {
         "properties": {
           "cancel": {
@@ -2763,13 +2763,13 @@
           },
           "include_finished": {
             "default": true,
-            "description": "Whether to include terminal jobs with exited, stopped, or lost status. Set false to show only active jobs.",
+            "description": "Whether to include terminal jobs such as succeeded, failed, stopped, or lost. Set false to show only active jobs.",
             "title": "Include Finished",
             "type": "boolean"
           },
           "lines": {
             "default": 200,
-            "description": "Number of recent terminal lines to capture for a tracked job. Output is available only while the background job can still be inspected.",
+            "description": "Number of recent terminal lines to capture for a tracked job. Output is retained after completion within the configured durable log limit.",
             "maximum": 5000,
             "minimum": 1,
             "title": "Lines",
@@ -2855,6 +2855,19 @@
                 "title": "Command",
                 "type": "string"
               },
+              "completed_at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Unix timestamp when the current attempt reached a terminal state.",
+                "title": "Completed At"
+              },
               "created_at": {
                 "description": "Unix timestamp when the tracked job record was created.",
                 "title": "Created At",
@@ -2865,20 +2878,66 @@
                 "title": "Cwd",
                 "type": "string"
               },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Lifecycle or runner error associated with the current attempt.",
+                "title": "Error"
+              },
+              "exit_code": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Durably recorded process exit code when the runner completed.",
+                "title": "Exit Code"
+              },
               "job_id": {
                 "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session.",
                 "title": "Job Id",
                 "type": "string"
               },
               "last_started_at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
                 "description": "Unix timestamp when the current or most recent attempt was started.",
-                "title": "Last Started At",
-                "type": "number"
+                "title": "Last Started At"
+              },
+              "log_truncated": {
+                "default": false,
+                "description": "Whether older output was discarded to enforce max_job_log_bytes.",
+                "title": "Log Truncated",
+                "type": "boolean"
               },
               "name": {
                 "description": "Human-readable job name, or the generated job_id when no name was provided.",
                 "title": "Name",
                 "type": "string"
+              },
+              "output_bytes": {
+                "default": 0,
+                "description": "Total process-output bytes observed before durable tail truncation.",
+                "title": "Output Bytes",
+                "type": "integer"
               },
               "session_id": {
                 "description": "Agent/workspace session_id that owns this tracked job.",
@@ -2887,7 +2946,7 @@
               },
               "status": {
                 "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the background command can still be inspected; exited when it disappears naturally; stopped when cancelled; lost when output/control cannot be inspected."
+                "description": "Durable tracked-job lifecycle state, including transitional, successful, failed, stopped, and recovery states."
               },
               "updated_at": {
                 "description": "Unix timestamp when the tracked job record was last updated.",
@@ -2904,7 +2963,6 @@
               "session_id",
               "created_at",
               "updated_at",
-              "last_started_at",
               "attempts"
             ],
             "title": "JobInfo",
@@ -2923,6 +2981,19 @@
                 "title": "Command",
                 "type": "string"
               },
+              "completed_at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Unix timestamp when the current attempt reached a terminal state.",
+                "title": "Completed At"
+              },
               "created_at": {
                 "description": "Unix timestamp when the tracked job record was created.",
                 "title": "Created At",
@@ -2933,20 +3004,66 @@
                 "title": "Cwd",
                 "type": "string"
               },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Lifecycle or runner error associated with the current attempt.",
+                "title": "Error"
+              },
+              "exit_code": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Durably recorded process exit code when the runner completed.",
+                "title": "Exit Code"
+              },
               "job_id": {
                 "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session.",
                 "title": "Job Id",
                 "type": "string"
               },
               "last_started_at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
                 "description": "Unix timestamp when the current or most recent attempt was started.",
-                "title": "Last Started At",
-                "type": "number"
+                "title": "Last Started At"
+              },
+              "log_truncated": {
+                "default": false,
+                "description": "Whether older output was discarded to enforce max_job_log_bytes.",
+                "title": "Log Truncated",
+                "type": "boolean"
               },
               "name": {
                 "description": "Human-readable job name, or the generated job_id when no name was provided.",
                 "title": "Name",
                 "type": "string"
+              },
+              "output_bytes": {
+                "default": 0,
+                "description": "Total process-output bytes observed before durable tail truncation.",
+                "title": "Output Bytes",
+                "type": "integer"
               },
               "session_id": {
                 "description": "Agent/workspace session_id that owns this tracked job.",
@@ -2955,7 +3072,7 @@
               },
               "status": {
                 "$ref": "#/$defs/JobStatus",
-                "description": "Tracked job status: running while the background command can still be inspected; exited when it disappears naturally; stopped when cancelled; lost when output/control cannot be inspected."
+                "description": "Durable tracked-job lifecycle state, including transitional, successful, failed, stopped, and recovery states."
               },
               "updated_at": {
                 "description": "Unix timestamp when the tracked job record was last updated.",
@@ -2972,7 +3089,6 @@
               "session_id",
               "created_at",
               "updated_at",
-              "last_started_at",
               "attempts"
             ],
             "title": "JobRetryOutput",
@@ -2980,7 +3096,12 @@
           },
           "JobStatus": {
             "enum": [
+              "starting",
               "running",
+              "stopping",
+              "retrying",
+              "succeeded",
+              "failed",
               "exited",
               "stopped",
               "lost",
@@ -3036,7 +3157,7 @@
               },
               "output": {
                 "default": "",
-                "description": "Recent output captured for the tracked job. Full job logs are not persisted separately.",
+                "description": "Recent output from the durable per-attempt job log, including after process exit.",
                 "title": "Output",
                 "type": "string"
               }

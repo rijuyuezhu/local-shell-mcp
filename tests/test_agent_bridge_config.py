@@ -42,15 +42,25 @@ def test_workspace_root_does_not_rewrite_default_state_paths(
     assert settings.agent_mcp_probe_timeout_s == 5
 
 
-def test_agent_config_dir_is_derived_from_state_dir(monkeypatch, tmp_path):
-    config_dir = tmp_path / ".local-shell-mcp" / AGENT_CONFIG_STATE_DIR_NAME
+def test_dependent_state_paths_are_derived_from_custom_state_dir(
+    monkeypatch, tmp_path
+):
+    state_dir = tmp_path / "custom-state"
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
     clear_settings_cache()
 
-    assert get_settings().agent_config_dir == config_dir.resolve()
+    settings = get_settings()
+    assert (
+        settings.agent_config_dir
+        == (state_dir / AGENT_CONFIG_STATE_DIR_NAME).resolve()
+    )
+    assert (
+        settings.audit_log_path
+        == (state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl").resolve()
+    )
 
 
 def test_load_agent_manifest_missing_config(tmp_path):

@@ -35,7 +35,7 @@ JobIdArg = Annotated[
 IncludeFinishedArg = Annotated[
     bool,
     Field(
-        description="Whether to include terminal jobs with exited, stopped, or lost status. Set false to show only active jobs."
+        description="Whether to include terminal jobs such as succeeded, failed, stopped, or lost. Set false to show only active jobs."
     ),
 ]
 JobTailLinesArg = Annotated[
@@ -43,7 +43,7 @@ JobTailLinesArg = Annotated[
     Field(
         ge=1,
         le=5000,
-        description="Number of recent terminal lines to capture for a tracked job. Output is available only while the background job can still be inspected.",
+        description="Number of recent terminal lines to capture for a tracked job. Output is retained after completion within the configured durable log limit.",
     ),
 ]
 

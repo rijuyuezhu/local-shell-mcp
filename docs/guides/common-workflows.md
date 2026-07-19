@@ -48,7 +48,9 @@ Use local-shell-mcp to show git status, summarize the diff, and run secret_scan 
 
 ## Work with long-running commands
 
-Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive work owned by that session, and manage it with `job(session_id=...)`. Set `pty=true` for dev servers, REPLs, and interactive processes:
+Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive work owned by that session, and manage it with `job(session_id=...)`. Tracked jobs persist their exit status and bounded output under `state_dir`, so `job(poll=[...])` continues to work after the command exits or the server restarts. `max_job_log_bytes` limits retained output per attempt, while `max_jobs` bounds retained terminal records without pruning active jobs.
+
+Set `pty=true` for dev servers, REPLs, and interactive processes:
 
 ```text
 Use local-shell-mcp. Start a session for this project. Then run bash with pty=true using that agent session_id. Use the returned shell_id to read output and tell me the local URL.

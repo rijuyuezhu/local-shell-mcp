@@ -1,9 +1,11 @@
 """Provide command-line entry points for MCP and HTTP server, and remote-worker."""
 
 import argparse
+import sys
 
 from .config.settings import configure_settings, load_settings
 from .config.surface import cli_overrides_from_args, register_setting_cli_args
+from .ops.jobs import run_job_runner_from_args
 from .remote_worker.worker import add_worker_cli_args, run_worker_from_args
 from .server.http.app import run_http
 from .server.mcp.app import run_mcp
@@ -49,6 +51,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     add_worker_cli_args(worker)
     worker.set_defaults(handler=run_worker_from_args)
+
+    return parser
+
+
+def _build_job_runner_parser() -> argparse.ArgumentParser:
+    """Build the private parser used only by durable tracked-job attempts."""
+    parser = argparse.ArgumentParser(prog="local-shell-mcp job-runner")
+    parser.add_argument("--command-file", required=True)
+    parser.add_argument("--log-file", required=True)
+    parser.add_argument("--status-file", required=True)
+    parser.add_argument("--cwd", required=True)
+    parser.add_argument("--shell", required=True)
+    parser.add_argument("--max-log-bytes", type=int, required=True)
     return parser
 
 
@@ -75,8 +90,13 @@ def _run_server_from_args(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Parse CLI arguments and dispatch to server or worker mode."""
-    args = _build_parser().parse_args(argv)
+    """Parse CLI arguments and dispatch to public or private runtime modes."""
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "job-runner":
+        args = _build_job_runner_parser().parse_args(arguments[1:])
+        run_job_runner_from_args(args)
+        return
+    args = _build_parser().parse_args(arguments)
     args.handler(args)
 
 

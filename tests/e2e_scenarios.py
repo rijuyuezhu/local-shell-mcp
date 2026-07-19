@@ -499,6 +499,47 @@ async def exercise_session_bound_job_tools(
             "job", {"session_id": first_session, "cancel": [job_id]}
         )
 
+    completed = await client.call_tool(
+        "bash",
+        {
+            "session_id": first_session,
+            "command": "python -u -c \"print('persisted-job-output', flush=True)\"",
+            "async_": True,
+            "name": "completed-job-e2e",
+        },
+    )
+    completed_job_id = completed["result"]["job_id"]
+    completed_poll = None
+    for _ in range(40):
+        completed_poll = await client.call_tool(
+            "job",
+            {
+                "session_id": first_session,
+                "poll": [completed_job_id],
+                "lines": 20,
+            },
+        )
+        completed_output = completed_poll["outputs"][0]
+        if completed_output["job"]["status"] in {"succeeded", "failed"}:
+            break
+        await asyncio.sleep(0.25)
+    assert completed_poll is not None
+    completed_output = completed_poll["outputs"][0]
+    assert completed_output["job"]["status"] == "succeeded"
+    assert completed_output["job"]["exit_code"] == 0
+    assert "persisted-job-output" in completed_output["output"]
+
+    repeated_poll = await client.call_tool(
+        "job",
+        {
+            "session_id": first_session,
+            "poll": [completed_job_id],
+            "lines": 20,
+        },
+    )
+    assert repeated_poll["outputs"][0]["job"]["status"] == "succeeded"
+    assert "persisted-job-output" in repeated_poll["outputs"][0]["output"]
+
 
 async def exercise_interactive_shell_tools(client: ToolClient) -> None:
     if shutil.which("tmux") is None:

@@ -615,6 +615,46 @@
         ],
         [
           {
+            "code": "max_job_log_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-job-log-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_JOB_LOG_BYTES"
+          },
+          "integer",
+          {
+            "code": "10000000"
+          },
+          "Maximum retained output bytes for one tracked background-job attempt."
+        ],
+        [
+          {
+            "code": "max_jobs"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-jobs"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_JOBS"
+          },
+          "integer",
+          {
+            "code": "1000"
+          },
+          "Maximum retained tracked-job records; active jobs are never pruned."
+        ],
+        [
+          {
             "code": "max_file_read_bytes"
           },
           {
@@ -1862,6 +1902,32 @@
       "description": "Command output limit in bytes.",
       "env": "LOCAL_SHELL_MCP_MAX_OUTPUT_BYTES",
       "name": "max_output_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-job-log-bytes",
+      "default": 10000000,
+      "default_display": "10000000",
+      "description": "Maximum retained output bytes for one tracked background-job attempt.",
+      "env": "LOCAL_SHELL_MCP_MAX_JOB_LOG_BYTES",
+      "name": "max_job_log_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-jobs",
+      "default": 1000,
+      "default_display": "1000",
+      "description": "Maximum retained tracked-job records; active jobs are never pruned.",
+      "env": "LOCAL_SHELL_MCP_MAX_JOBS",
+      "name": "max_jobs",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

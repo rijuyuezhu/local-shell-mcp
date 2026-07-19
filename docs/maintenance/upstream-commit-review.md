@@ -101,8 +101,8 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 84 | 2026-07-13 | `ddb1ea6` | skills: remove dynamic tool registration plumbing | **Not adopted** | The fork intentionally retains dynamic Skill and MCP bridge tools; session-local capabilities will use fixed session-aware tools instead of changing the global dynamic tool surface. |
 | 85 | 2026-07-13 | `a63f32c` | docs: document fixed Skills workflow | **Implemented (adapted)** | Agent Bridge documentation now describes the fork-specific fixed Skill workflow and related-file reader while preserving dynamic tools. |
 | 86 | 2026-07-13 | `fd210be` | chore: bump version to 2.9.0 | **Pending** | Pending functional review and fork-specific port decision. |
-| 87 | 2026-07-13 | `386b0e8` | fix: derive state paths correctly on Windows | **Pending** | Pending functional review and fork-specific port decision. |
-| 88 | 2026-07-13 | `384f84b` | fix: derive agent paths from custom state directory | **Pending** | Pending functional review and fork-specific port decision. |
+| 87 | 2026-07-13 | `386b0e8` | fix: derive state paths correctly on Windows | **Implemented (adapted)** | The fork derives `audit_log_path` and `agent_config_dir` from normalized `state_dir` properties instead of synchronizing independent defaults; custom-state regression coverage includes both dependent paths. |
+| 88 | 2026-07-13 | `384f84b` | fix: derive agent paths from custom state directory | **Implemented (adapted)** | A custom `state_dir` already drives the fork's Agent Bridge config and audit paths through dynamic properties, with regression coverage. |
 | 89 | 2026-07-13 | `0be1eff` | fix: expose readable Skill resource paths | **Implemented (adapted)** | Related files are exposed as canonical paths relative to the Skill directory, with VCS/cache metadata excluded. |
 | 90 | 2026-07-13 | `971eb1e` | fix: validate Skill names and REST inputs | **Implemented (adapted)** | Skill names and related-file paths receive strict portable validation through the fork's existing declarative HTTP/MCP schemas. |
 | 91 | 2026-07-13 | `2ee0188` | fix: bound and directly load Skill files | **Implemented (adapted)** | Skill discovery, activation, and related-file reads are bounded by registered fork settings and do not read every Skill body during listing. |
@@ -152,19 +152,19 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 135 | 2026-07-14 | `8379169` | fix: harden auth downloads and audit logging | **Pending** | Pending functional review and fork-specific port decision. |
 | 136 | 2026-07-14 | `867330f` | fix: make remote transfers transactional | **Pending** | Pending functional review and fork-specific port decision. |
 | 137 | 2026-07-14 | `1bdb837` | fix: isolate human UI state by machine | **Pending** | Pending functional review and fork-specific port decision. |
-| 138 | 2026-07-14 | `51879f9` | fix: persist long-running job results | **Pending** | Pending functional review and fork-specific port decision. |
+| 138 | 2026-07-14 | `51879f9` | fix: persist long-running job results | **Implemented (adapted)** | Tracked jobs now use a private internal runner that durably records combined output, exit code, completion time, and errors; output remains pollable after process exit and restart. |
 | 139 | 2026-07-14 | `17ed1e9` | fix: correct MCP safety annotations | **Pending** | Pending functional review and fork-specific port decision. |
 | 140 | 2026-07-14 | `c2acf69` | fix: share shell output budget across streams | **Pending** | Pending functional review and fork-specific port decision. |
 | 141 | 2026-07-14 | `212a4cb` | fix: sanitize all audit event fields | **Pending** | Pending functional review and fork-specific port decision. |
 | 142 | 2026-07-14 | `55ff945` | fix: bound path lock resource usage | **Pending** | Pending functional review and fork-specific port decision. |
-| 143 | 2026-07-14 | `403e9bb` | docs: document job and transfer limits | **Pending** | Pending functional review and fork-specific port decision. |
+| 143 | 2026-07-14 | `403e9bb` | docs: document job and transfer limits | **Implemented (adapted)** | Fork documentation and generated configuration describe `max_job_log_bytes` and `max_jobs`, including durable polling and active-job retention semantics. |
 | 144 | 2026-07-14 | `afb53ed` | fix: validate remote worker server URLs | **Pending** | Pending functional review and fork-specific port decision. |
 | 145 | 2026-07-14 | `20f3861` | Merge pull request #4 from fwerkor/fix/deep-audit-bugs | **Pending** | Pending functional review and fork-specific port decision. |
 | 146 | 2026-07-14 | `e106ed4` | fix(ui): normalize invalid token path errors on Windows | **Pending** | Pending functional review and fork-specific port decision. |
-| 147 | 2026-07-14 | `d5c7cbb` | fix(jobs): invoke runner correctly from PowerShell | **Pending** | Pending functional review and fork-specific port decision. |
+| 147 | 2026-07-14 | `d5c7cbb` | fix(jobs): invoke runner correctly from PowerShell | **Implemented (adapted)** | Internal runner argv is quoted per POSIX shell, cmd.exe, or PowerShell, including apostrophes and paths containing spaces; unit coverage locks down PowerShell quoting. |
 | 148 | 2026-07-14 | `971688b` | Merge pull request #5 from fwerkor/fix/windows-ci-regressions | **Pending** | Pending functional review and fork-specific port decision. |
 | 149 | 2026-07-14 | `41512fb` | fix(security): harden OAuth assets and file shares | **Pending** | Pending functional review and fork-specific port decision. |
-| 150 | 2026-07-14 | `d5a81b7` | fix(jobs): serialize state and bound retention | **Pending** | Pending functional review and fork-specific port decision. |
+| 150 | 2026-07-14 | `d5a81b7` | fix(jobs): serialize state and bound retention | **Implemented (adapted)** | The fork serializes job-store transactions with thread and cross-process locks, atomically writes primary and backup stores, and bounds logs and retained terminal jobs without pruning active jobs. |
 | 151 | 2026-07-14 | `2319219` | fix(settings): isolate persisted secret reads | **Pending** | Pending functional review and fork-specific port decision. |
 | 152 | 2026-07-14 | `557ca1b` | fix(io): preserve PTY input and dedupe lock shards | **Pending** | Pending functional review and fork-specific port decision. |
 | 153 | 2026-07-14 | `99b0c1a` | fix(remote): fail permanent errors and keep jobs online | **Pending** | Pending functional review and fork-specific port decision. |
@@ -180,7 +180,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 163 | 2026-07-14 | `74d90e3` | fix(transfer): stream remote files over HTTP | **Pending** | Pending functional review and fork-specific port decision. |
 | 164 | 2026-07-14 | `5f8404e` | test(transfer): cover streamed remote copies | **Pending** | Pending functional review and fork-specific port decision. |
 | 165 | 2026-07-14 | `6e90650` | Fix interrupted remote downloads | **Pending** | Pending functional review and fork-specific port decision. |
-| 166 | 2026-07-14 | `e08d27e` | Harden persistent job recovery | **Pending** | Pending functional review and fork-specific port decision. |
+| 166 | 2026-07-14 | `e08d27e` | Harden persistent job recovery | **Implemented (adapted)** | Job metadata recovers from a valid backup, refuses silent reset when both copies are corrupt, migrates supported legacy stores, and reconciles interrupted lifecycle states. |
 | 167 | 2026-07-14 | `d869478` | Synchronize remote worker registry | **Pending** | Pending functional review and fork-specific port decision. |
 | 168 | 2026-07-14 | `99f5af3` | Harden transfer and ConPTY cleanup | **Pending** | Pending functional review and fork-specific port decision. |
 | 169 | 2026-07-14 | `1bfaba5` | fix: allow shell timeout cleanup before watchdog | **Pending** | Pending functional review and fork-specific port decision. |
@@ -189,7 +189,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 172 | 2026-07-14 | `d3bd5be` | Bundle tmux for Linux persistent shells | **Pending** | Pending functional review and fork-specific port decision. |
 | 173 | 2026-07-14 | `a59fce6` | Fix bundled tmux tests on Windows | **Pending** | Pending functional review and fork-specific port decision. |
 | 174 | 2026-07-15 | `a512008` | security: harden MCP sessions and remote results | **Pending** | Pending functional review and fork-specific port decision. |
-| 175 | 2026-07-15 | `0b043d7` | fix: serialize job and shell lifecycle transitions | **Pending** | Pending functional review and fork-specific port decision. |
+| 175 | 2026-07-15 | `0b043d7` | fix: serialize job and shell lifecycle transitions | **Implemented (adapted)** | Start, stop, and retry use persisted transitional states plus operation ids, with rollback and stale-transition recovery around the fork's explicit session and shell APIs. |
 | 176 | 2026-07-15 | `7f9daf1` | fix: handle remote paths and file action types | **Pending** | Pending functional review and fork-specific port decision. |
 | 177 | 2026-07-15 | `2f7bb3b` | guide agents through fixed skill tools | **Implemented (adapted)** | Tool descriptions guide callers through `list_agent_skills`, `activate_agent_skill`, then `read_agent_skill_file`; dynamic bridge compatibility remains available. |
 | 178 | 2026-07-15 | `af2503e` | fix: submit native Windows shell commands with CRLF | **Pending** | Pending functional review and fork-specific port decision. |
@@ -197,8 +197,8 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 180 | 2026-07-15 | `479138e` | fix: harden local execution and interfaces | **Pending** | Pending functional review and fork-specific port decision. |
 | 181 | 2026-07-15 | `33a30ae` | fix: make remote operations transactional | **Pending** | Pending functional review and fork-specific port decision. |
 | 182 | 2026-07-15 | `ae68cd8` | test: cover comprehensive bug audit regressions | **Pending** | Pending functional review and fork-specific port decision. |
-| 183 | 2026-07-15 | `69f9b27` | fix: pass job environment policy explicitly | **Pending** | Pending functional review and fork-specific port decision. |
-| 184 | 2026-07-15 | `64d2e52` | fix: encode job policy arguments for powershell | **Pending** | Pending functional review and fork-specific port decision. |
+| 183 | 2026-07-15 | `69f9b27` | fix: pass job environment policy explicitly | **Implemented (adapted)** | The runner uses the fork's existing centralized `_subprocess_env` policy, and its parent persistent shell is launched with the same filtered environment, avoiding a second configurable policy surface. |
+| 184 | 2026-07-15 | `64d2e52` | fix: encode job policy arguments for powershell | **Implemented (adapted)** | Runner arguments are shell-neutrally structured and PowerShell-quoted as individual argv values, so no JSON policy payload needs shell-specific encoding in the fork. |
 | 185 | 2026-07-15 | `892e829` | Merge pull request #7 from fwerkor/fix/comprehensive-bug-audit | **Pending** | Pending functional review and fork-specific port decision. |
 | 186 | 2026-07-15 | `9f317eb` | refactor: unify local and remote tool execution | **Pending** | Pending functional review and fork-specific port decision. |
 | 187 | 2026-07-15 | `dff7644` | chore: align auth and clients with compact tools | **Pending** | Pending functional review and fork-specific port decision. |
@@ -209,7 +209,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 192 | 2026-07-15 | `a04892e` | Merge pull request #8 from fwerkor/refactor/compact-tool-surface | **Pending** | Pending functional review and fork-specific port decision. |
 | 193 | 2026-07-15 | `77c5de9` | ci: enforce combined coverage and reclaim Docker disk | **Pending** | Pending functional review and fork-specific port decision. |
 | 194 | 2026-07-15 | `fbc3a91` | fix: preserve explicit fallback settings updates | **Pending** | Pending functional review and fork-specific port decision. |
-| 195 | 2026-07-15 | `c3ef371` | test: cover persistent runtime recovery paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 195 | 2026-07-15 | `c3ef371` | test: cover persistent runtime recovery paths | **Implemented (adapted)** | Unit tests cover store recovery, migration, retention, completed output, failed starts, and interrupted start/retry transitions; stdio, HTTP, MCP, and remote-worker E2E paths exercise the durable job flow. |
 | 196 | 2026-07-15 | `8a2a92a` | test: cover core API auth and Human UI branches | **Pending** | Pending functional review and fork-specific port decision. |
 | 197 | 2026-07-15 | `ef9771f` | test: cover tool surface storage and skill safety | **Implemented (adapted)** | Unit coverage now exercises Skill safety and bounds, and an integration test installs the pinned real `LeonardNJU/code-humanizer` repository through Git before using the HTTP tool surface. |
 | 198 | 2026-07-15 | `3fbc891` | test: add real remote worker end-to-end coverage | **Pending** | Pending functional review and fork-specific port decision. |
@@ -296,9 +296,9 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 279 | 2026-07-17 | `205a299` | Merge pull request #22 from fwerkor/fix/embedded-ui-runtime | **Pending** | Pending functional review and fork-specific port decision. |
 | 280 | 2026-07-17 | `a33453b` | Update pyproject.toml | **Pending** | Pending functional review and fork-specific port decision. |
 | 281 | 2026-07-17 | `ca2c402` | Merge pull request #23 from fwerkor/fwerkor-patch-1 | **Pending** | Pending functional review and fork-specific port decision. |
-| 282 | 2026-07-17 | `75cbf95` | Fix job store migration and startup durability | **Pending** | Pending functional review and fork-specific port decision. |
-| 283 | 2026-07-17 | `0447f96` | Cover job startup failure paths | **Pending** | Pending functional review and fork-specific port decision. |
-| 284 | 2026-07-17 | `7b7e7c9` | Merge pull request #24 from fwerkor/fix/job-store-migration | **Pending** | Pending functional review and fork-specific port decision. |
+| 282 | 2026-07-17 | `75cbf95` | Fix job store migration and startup durability | **Implemented (adapted)** | Store v1 migration, primary/backup recovery, pre-launch reservation, durable starting state, startup rollback, and interrupted-start recovery are implemented in the fork job service. |
+| 283 | 2026-07-17 | `0447f96` | Cover job startup failure paths | **Implemented (adapted)** | Tests verify shell-launch failure is persisted as a terminal failed job and interrupted starts recover only when a matching shell remains active. |
+| 284 | 2026-07-17 | `7b7e7c9` | Merge pull request #24 from fwerkor/fix/job-store-migration | **Superseded by reviewed commits** | Merge-only commit; migration, startup durability, and failure-path decisions are recorded on the underlying job commits. |
 | 285 | 2026-07-17 | `605f0c2` | fix(audit): preserve tool inputs without redaction | **Pending** | Pending functional review and fork-specific port decision. |
 | 286 | 2026-07-17 | `e3fe41b` | Merge pull request #25 from fwerkor/fix/audit-no-redaction | **Pending** | Pending functional review and fork-specific port decision. |
 | 287 | 2026-07-17 | `005b98f` | Fix WebUI mouse and terminal shortcuts | **Pending** | Pending functional review and fork-specific port decision. |

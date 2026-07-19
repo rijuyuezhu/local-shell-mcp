@@ -67,6 +67,10 @@ run_shell_default_timeout_s: 10
 run_shell_max_timeout_s: 60
 # Command output limit in bytes.
 max_output_bytes: 200000
+# Maximum retained output bytes for one tracked background-job attempt.
+max_job_log_bytes: 10000000
+# Maximum retained tracked-job records; active jobs are never pruned.
+max_jobs: 1000
 # Per-file read limit in bytes.
 max_file_read_bytes: 512000
 # Maximum number of discovered Skills across all configured sources.
