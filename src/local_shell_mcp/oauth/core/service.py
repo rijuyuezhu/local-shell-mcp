@@ -42,6 +42,7 @@ PENDING_CODE_CAPACITY_ERROR = (
     "Too many pending authorization requests; try again later"
 )
 _AUTH_CODE_LOCK = RLock()
+_OAUTH_CLIENT_LOCK = RLock()
 
 
 class OAuthStateCapacityError(OAuth2Error):
@@ -152,6 +153,17 @@ class TokenResponse:
     """Token lifetime in seconds, if configured."""
 
 
+@dataclass(frozen=True)
+class DynamicClientRegistration:
+    """Result of a dynamic public-client registration request."""
+
+    client: OAuthClient
+    """Newly created or previously matching public client."""
+
+    reused: bool
+    """Whether the request reused an existing registration."""
+
+
 def oauth_error_message(exc: OAuth2Error) -> str:
     """Return a user-facing message for local approval UI errors."""
     return str(exc.description or exc.error or "invalid_request")
@@ -171,9 +183,10 @@ def authorization_form_context(
     )
     client_name = auth_request.client_name if auth_request else "Unknown client"
     if auth_request is None and request_input.client_id:
-        client_record = _CLIENTS.get(request_input.client_id)
-        if client_record and client_record.client_name:
-            client_name = client_record.client_name
+        with _OAUTH_CLIENT_LOCK:
+            client_record = _CLIENTS.get(request_input.client_id)
+            if client_record and client_record.client_name:
+                client_name = client_record.client_name
     return AuthorizationFormContext(
         params=form_params,
         client_id=client_id,
@@ -224,12 +237,44 @@ def _is_allowed_redirect_uri(uri: str) -> bool:
 
 
 def _new_client_id() -> str:
-    """Generate a dynamic client id without overwriting an existing client."""
+    """Generate a unique client id while the client registry lock is held."""
     for _ in range(CLIENT_ID_GENERATION_ATTEMPTS):
         client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
         if client_id not in _CLIENTS:
             return client_id
     raise InvalidRequestError(description="Unable to allocate unique client_id")
+
+
+def _registration_key(
+    client_name: str | None,
+    redirect_uris: list[str],
+) -> tuple[str | None, tuple[str, ...]]:
+    """Return the stable identity for idempotent public-client registration."""
+    return client_name, tuple(sorted(set(redirect_uris)))
+
+
+def _matching_registered_client_locked(
+    client_name: str | None,
+    redirect_uris: list[str],
+) -> OAuthClient | None:
+    """Choose the preferred matching client while the registry lock is held."""
+    requested = _registration_key(client_name, redirect_uris)
+    matches = [
+        client
+        for client in _CLIENTS.values()
+        if _registration_key(client.client_name, client.redirect_uris)
+        == requested
+    ]
+    if not matches:
+        return None
+    return min(
+        matches,
+        key=lambda client: (
+            client.approved_at is None,
+            client.created_at,
+            client.client_id,
+        ),
+    )
 
 
 def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
@@ -243,26 +288,30 @@ def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
 
 def _prune_clients(*, now: int | None = None) -> None:
     """Remove expired, unapproved client registrations from memory."""
-    settings = get_settings()
-    if settings.oauth_client_ttl_s <= 0:
-        return
-    current_time = int(time.time()) if now is None else now
-    for client_id, client in list(_CLIENTS.items()):
-        if _client_expired(
-            client, now=current_time, ttl_s=settings.oauth_client_ttl_s
-        ):
-            _CLIENTS.pop(client_id, None)
+    with _OAUTH_CLIENT_LOCK:
+        settings = get_settings()
+        if settings.oauth_client_ttl_s <= 0:
+            return
+        current_time = int(time.time()) if now is None else now
+        for client_id, client in list(_CLIENTS.items()):
+            if _client_expired(
+                client, now=current_time, ttl_s=settings.oauth_client_ttl_s
+            ):
+                _CLIENTS.pop(client_id, None)
 
 
 def initialize_dynamic_clients() -> int:
     """Load approved clients and prune stale pending registrations."""
-    loaded = load_persisted_clients()
-    _prune_clients()
-    return loaded
+    with _OAUTH_CLIENT_LOCK:
+        loaded = load_persisted_clients()
+        _prune_clients()
+        return loaded
 
 
-def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
-    """Validate and retain a pending dynamic client registration."""
+def register_dynamic_client(
+    request: RegistrationRequest,
+) -> DynamicClientRegistration:
+    """Create or reuse one matching dynamic public-client registration."""
     if not request.redirect_uris:
         raise InvalidRequestError(
             description="redirect_uris must be a non-empty list"
@@ -271,30 +320,54 @@ def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
     if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
         raise InvalidRequestError(description=REGISTRATION_REDIRECT_ERROR)
 
-    _prune_clients()
-    settings = get_settings()
-    max_clients = settings.oauth_max_dynamic_clients
-    pending_clients = sum(
-        client.approved_at is None for client in _CLIENTS.values()
-    )
-    if max_clients > 0 and pending_clients >= max_clients:
-        raise InvalidRequestError(
-            description="Too many pending OAuth client registrations"
+    with _OAUTH_CLIENT_LOCK:
+        _prune_clients()
+        existing = _matching_registered_client_locked(
+            request.client_name, redirect_uris
         )
+        if existing is not None:
+            registration = DynamicClientRegistration(
+                client=existing,
+                reused=True,
+            )
+        else:
+            settings = get_settings()
+            max_clients = settings.oauth_max_dynamic_clients
+            pending_clients = sum(
+                client.approved_at is None for client in _CLIENTS.values()
+            )
+            if max_clients > 0 and pending_clients >= max_clients:
+                raise InvalidRequestError(
+                    description="Too many pending OAuth client registrations"
+                )
 
-    client_id = _new_client_id()
-    client = OAuthClient(
-        client_id=client_id,
-        redirect_uris=redirect_uris,
-        client_name=request.client_name,
-    )
-    _CLIENTS[client_id] = client
-    audit(
-        "oauth_client_registered",
-        client_id=client_id,
-        redirect_uris=redirect_uris,
-    )
-    return client
+            client_id = _new_client_id()
+            client = OAuthClient(
+                client_id=client_id,
+                redirect_uris=redirect_uris,
+                client_name=request.client_name,
+            )
+            _CLIENTS[client_id] = client
+            registration = DynamicClientRegistration(
+                client=client,
+                reused=False,
+            )
+
+    client = registration.client
+    if registration.reused:
+        audit(
+            "oauth_client_reused",
+            client_id=client.client_id,
+            approved=client.approved_at is not None,
+            redirect_uri_count=len(set(client.redirect_uris)),
+        )
+    else:
+        audit(
+            "oauth_client_registered",
+            client_id=client.client_id,
+            redirect_uris=client.redirect_uris,
+        )
+    return registration
 
 
 def validate_authorization_request(
@@ -313,8 +386,9 @@ def validate_authorization_request(
     if normalized_resource != resource_url():
         _raise_invalid("resource does not match this MCP server")
 
-    _prune_clients()
-    client_record = _CLIENTS.get(client_id)
+    with _OAUTH_CLIENT_LOCK:
+        _prune_clients()
+        client_record = _CLIENTS.get(client_id)
     if client_record is None:
         _raise_invalid("Unknown client_id")
     client = LocalOAuthClient(client_record)
@@ -351,23 +425,24 @@ def validate_authorization_request(
 
 def _approve_client(client_id: str, *, now: int | None = None) -> OAuthClient:
     """Persist a client after the local user approves its first authorization."""
-    client = _CLIENTS.get(client_id)
-    if client is None:
-        raise RuntimeError("Approved OAuth client is no longer registered")
-    if client.approved_at is not None:
-        return client
+    with _OAUTH_CLIENT_LOCK:
+        client = _CLIENTS.get(client_id)
+        if client is None:
+            raise RuntimeError("Approved OAuth client is no longer registered")
+        if client.approved_at is not None:
+            return client
 
-    client.approved_at = max(
-        client.created_at,
-        int(time.time()) if now is None else now,
-    )
-    try:
-        persist_approved_clients()
-    except OSError:
-        client.approved_at = None
-        raise
-    audit("oauth_client_approved", client_id=client_id)
-    return client
+        client.approved_at = max(
+            client.created_at,
+            int(time.time()) if now is None else now,
+        )
+        try:
+            persist_approved_clients()
+        except OSError:
+            client.approved_at = None
+            raise
+        audit("oauth_client_approved", client_id=client_id)
+        return client
 
 
 def _ensure_pending_code_capacity() -> None:
