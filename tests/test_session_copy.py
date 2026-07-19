@@ -1,3 +1,6 @@
+import asyncio
+import base64
+import hashlib
 from typing import Any
 
 import pytest
@@ -120,6 +123,7 @@ async def test_session_copy_local_directory_packs_unpacks_and_cleans_temp(
     assert result.relation.route == "local_to_local"
     assert result.entries is not None and result.entries >= 2
     assert result.archive_bytes is not None and result.archive_bytes > 0
+    assert result.cleanup_errors == []
     assert (root / "dst" / "tree-copy" / "nested" / "note.txt").read_text(
         encoding="utf-8"
     ) == "hello"
@@ -370,3 +374,204 @@ async def test_session_copy_remote_directory_to_local(tmp_path, monkeypatch):
     assert (root / "dst" / "tree-copy" / "nested" / "note.txt").read_text(
         encoding="utf-8"
     ) == "remote-dir"
+
+
+@pytest.mark.asyncio
+async def test_session_copy_aborts_destination_write_on_cancellation(
+    tmp_path, monkeypatch
+):
+    _root, store = _workspace(tmp_path, monkeypatch)
+    src = store.create_session(workdir=".")
+    dst = store.create_session(workdir=".")
+    aborted: list[dict[str, Any]] = []
+
+    async def fake_transfer(_endpoint, tool, args, *, session_bound=True):
+        _ = session_bound
+        if tool == "transfer_stat":
+            return {
+                "path": "source.bin",
+                "type": "file",
+                "size": 3,
+                "modified": 0.0,
+                "sha256": hashlib.sha256(b"abc").hexdigest(),
+            }
+        if tool == "transfer_begin_write":
+            return {"transfer_id": "transfer-1"}
+        if tool == "transfer_read_chunk":
+            raise asyncio.CancelledError()
+        if tool == "transfer_abort_write":
+            aborted.append(dict(args))
+            return {"deleted": True}
+        raise AssertionError(f"unexpected tool: {tool}")
+
+    monkeypatch.setattr(
+        session_copy_ops, "_endpoint_transfer_data", fake_transfer
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await session_copy_execute(
+            src.session_id,
+            "source.bin",
+            dst.session_id,
+            "dest.bin",
+            kind="file",
+        )
+
+    assert aborted == [{"path": "dest.bin", "transfer_id": "transfer-1"}]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_directory_copy_cleans_both_archive_sides(
+    tmp_path, monkeypatch
+):
+    _root, store = _workspace(tmp_path, monkeypatch)
+    src = store.create_session(workdir=".")
+    dst = store.create_session(workdir=".")
+    aborted: list[dict[str, Any]] = []
+    deleted: list[str] = []
+
+    async def fake_transfer(_endpoint, tool, args, *, session_bound=True):
+        _ = session_bound
+        if tool == "transfer_stat" and args["path"] == "tree":
+            return {
+                "path": "tree",
+                "type": "dir",
+                "size": None,
+                "modified": 0.0,
+                "sha256": None,
+            }
+        if tool == "transfer_pack_dir":
+            return {
+                "path": "tree",
+                "archive_path": "source.tar.gz",
+                "bytes": 1,
+                "sha256": hashlib.sha256(b"x").hexdigest(),
+                "compression": "gz",
+            }
+        if tool == "transfer_alloc_temp_path":
+            return {"path": "destination.tar.gz"}
+        if tool == "transfer_stat" and args["path"] == "source.tar.gz":
+            return {
+                "path": "source.tar.gz",
+                "type": "file",
+                "size": 1,
+                "modified": 0.0,
+                "sha256": hashlib.sha256(b"x").hexdigest(),
+            }
+        if tool == "transfer_begin_write":
+            return {"transfer_id": "transfer-2"}
+        if tool == "transfer_read_chunk":
+            raise asyncio.CancelledError()
+        if tool == "transfer_abort_write":
+            aborted.append(dict(args))
+            return {"deleted": True}
+        if tool == "transfer_delete_temp_path":
+            deleted.append(str(args["path"]))
+            return {"deleted": True}
+        raise AssertionError(f"unexpected tool: {tool}")
+
+    monkeypatch.setattr(
+        session_copy_ops, "_endpoint_transfer_data", fake_transfer
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await session_copy_execute(
+            src.session_id,
+            "tree",
+            dst.session_id,
+            "tree-copy",
+            kind="dir",
+        )
+
+    assert aborted == [
+        {"path": "destination.tar.gz", "transfer_id": "transfer-2"}
+    ]
+    assert set(deleted) == {"source.tar.gz", "destination.tar.gz"}
+
+
+@pytest.mark.asyncio
+async def test_directory_copy_surfaces_post_commit_cleanup_errors(
+    tmp_path, monkeypatch
+):
+    _root, store = _workspace(tmp_path, monkeypatch)
+    src = store.create_session(workdir=".")
+    dst = store.create_session(workdir=".")
+    payload = b"x"
+    digest = hashlib.sha256(payload).hexdigest()
+
+    async def fake_transfer(_endpoint, tool, args, *, session_bound=True):
+        _ = session_bound
+        if tool == "transfer_stat" and args["path"] == "tree":
+            return {
+                "path": "tree",
+                "type": "dir",
+                "size": None,
+                "modified": 0.0,
+                "sha256": None,
+            }
+        if tool == "transfer_pack_dir":
+            return {
+                "path": "tree",
+                "archive_path": "source.tar.gz",
+                "bytes": 1,
+                "sha256": digest,
+                "compression": "gz",
+            }
+        if tool == "transfer_alloc_temp_path":
+            return {"path": "destination.tar.gz"}
+        if tool == "transfer_stat":
+            return {
+                "path": "source.tar.gz",
+                "type": "file",
+                "size": 1,
+                "modified": 0.0,
+                "sha256": digest,
+            }
+        if tool == "transfer_begin_write":
+            return {"transfer_id": "transfer-3"}
+        if tool == "transfer_read_chunk":
+            return {
+                "path": "source.tar.gz",
+                "offset": 0,
+                "bytes": 1,
+                "size": 1,
+                "eof": True,
+                "sha256": digest,
+                "data_b64": base64.b64encode(payload).decode("ascii"),
+            }
+        if tool == "transfer_write_chunk":
+            return {"bytes": 1}
+        if tool == "transfer_finish_write":
+            return {
+                "path": "destination.tar.gz",
+                "bytes": 1,
+                "sha256": digest,
+                "completed": True,
+            }
+        if tool == "transfer_unpack_archive":
+            return {
+                "path": "tree-copy",
+                "archive_path": "destination.tar.gz",
+                "entries": 1,
+                "completed": True,
+                "archive_deleted": False,
+                "backup_deleted": False,
+                "cleanup_errors": ["backup cleanup failed"],
+            }
+        if tool == "transfer_delete_temp_path":
+            return {"deleted": True}
+        raise AssertionError(f"unexpected tool: {tool}")
+
+    monkeypatch.setattr(
+        session_copy_ops, "_endpoint_transfer_data", fake_transfer
+    )
+
+    result = await session_copy_execute(
+        src.session_id,
+        "tree",
+        dst.session_id,
+        "tree-copy",
+        kind="dir",
+    )
+
+    assert result.cleanup_errors == ["backup cleanup failed"]

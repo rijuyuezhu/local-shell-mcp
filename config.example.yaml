@@ -109,6 +109,10 @@ max_audit_event_bytes: 1000000
 max_tmp_files: 500
 # Temporary-file byte limit. When exceeded, old files are deleted.
 max_tmp_bytes: 50000000
+# Maximum entries accepted from one transferred archive.
+max_transfer_archive_entries: 100000
+# Maximum declared regular-file bytes accepted while unpacking an archive.
+max_transfer_unpacked_bytes: 10000000000
 # Concurrent command limit.
 max_concurrent_commands: 4
 # Persistent shell limit.

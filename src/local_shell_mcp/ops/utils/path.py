@@ -1,6 +1,7 @@
 """Workspace path, temporary-file, and text-size helpers."""
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,8 +20,8 @@ def temp_dir() -> Path:
     return path
 
 
-def prune_temp_dir() -> None:
-    """Remove old temporary files once count or byte limits are exceeded."""
+def prune_temp_dir(*, minimum_age_s: float = 0.0) -> None:
+    """Remove over-budget temporary files once they reach a minimum age."""
     settings = get_settings()
     path = temp_dir()
     try:
@@ -38,12 +39,15 @@ def prune_temp_dir() -> None:
 
     entries.sort(reverse=True)
     total_bytes = 0
-    for index, (_, size, item) in enumerate(entries):
+    now = time.time()
+    for index, (modified, size, item) in enumerate(entries):
         total_bytes += size
         if (
             index < settings.max_tmp_files
             and total_bytes <= settings.max_tmp_bytes
         ):
+            continue
+        if now - modified < max(0.0, minimum_age_s):
             continue
         try:
             item.unlink()
@@ -69,8 +73,9 @@ def resolve_path(
     *,
     must_exist: bool = False,
     allow_missing_parent: bool = True,
+    follow_final_symlink: bool = True,
 ) -> Path:
-    """Resolve a path, optionally restricting it to workspace_root.
+    """Resolve a path, optionally preserving the final directory entry.
 
     In normal mode, absolute paths outside workspace are rejected. In full-control mode,
     any absolute path inside the container is allowed.
@@ -80,12 +85,19 @@ def resolve_path(
     raw = Path(os.path.expandvars(os.path.expanduser(str(path))))
     if not raw.is_absolute():
         raw = root / raw
-    if settings.allow_full_control:
-        resolved = Path(os.path.abspath(raw))
+    if follow_final_symlink:
+        resolved = (
+            Path(os.path.abspath(raw))
+            if settings.allow_full_control
+            else raw.resolve(strict=False)
+        )
     else:
-        resolved = raw.resolve(strict=False)
+        resolved_parent = raw.parent.resolve(strict=False)
+        resolved = resolved_parent / raw.name if raw.name else resolved_parent
+    if not settings.allow_full_control:
+        boundary = resolved if follow_final_symlink else resolved.parent
         try:
-            resolved.relative_to(root)
+            boundary.relative_to(root)
         except ValueError as exc:
             raise ValueError(f"Path escapes workspace: {path}") from exc
 
@@ -94,7 +106,10 @@ def resolve_path(
         if denied and denied.lower() in lower:
             raise PermissionError(f"Path is denylisted: {path}")
 
-    if must_exist and not resolved.exists():
+    exists = (
+        resolved.exists() if follow_final_symlink else os.path.lexists(resolved)
+    )
+    if must_exist and not exists:
         raise FileNotFoundError(str(resolved))
     if not allow_missing_parent and not resolved.parent.exists():
         raise FileNotFoundError(str(resolved.parent))

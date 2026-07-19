@@ -5927,6 +5927,14 @@
             "title": "Chunks",
             "type": "integer"
           },
+          "cleanup_errors": {
+            "description": "Non-fatal cleanup errors after a successful copy commit.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Cleanup Errors",
+            "type": "array"
+          },
           "destination": {
             "$ref": "#/$defs/SessionCopyEndpoint",
             "description": "Destination copy endpoint."

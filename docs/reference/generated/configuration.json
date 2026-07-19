@@ -1035,6 +1035,46 @@
         ],
         [
           {
+            "code": "max_transfer_archive_entries"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-transfer-archive-entries"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TRANSFER_ARCHIVE_ENTRIES"
+          },
+          "integer",
+          {
+            "code": "100000"
+          },
+          "Maximum entries accepted from one transferred archive."
+        ],
+        [
+          {
+            "code": "max_transfer_unpacked_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-transfer-unpacked-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TRANSFER_UNPACKED_BYTES"
+          },
+          "integer",
+          {
+            "code": "10000000000"
+          },
+          "Maximum declared regular-file bytes accepted while unpacking an archive."
+        ],
+        [
+          {
             "code": "max_concurrent_commands"
           },
           {
@@ -2235,6 +2275,32 @@
       "description": "Temporary-file byte limit. When exceeded, old files are deleted.",
       "env": "LOCAL_SHELL_MCP_MAX_TMP_BYTES",
       "name": "max_tmp_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-transfer-archive-entries",
+      "default": 100000,
+      "default_display": "100000",
+      "description": "Maximum entries accepted from one transferred archive.",
+      "env": "LOCAL_SHELL_MCP_MAX_TRANSFER_ARCHIVE_ENTRIES",
+      "name": "max_transfer_archive_entries",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-transfer-unpacked-bytes",
+      "default": 10000000000,
+      "default_display": "10000000000",
+      "description": "Maximum declared regular-file bytes accepted while unpacking an archive.",
+      "env": "LOCAL_SHELL_MCP_MAX_TRANSFER_UNPACKED_BYTES",
+      "name": "max_transfer_unpacked_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

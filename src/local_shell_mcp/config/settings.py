@@ -137,6 +137,10 @@ class Settings(BaseSettings):
     """Temporary-file count limit. When exceeded, old files are deleted."""
     max_tmp_bytes: int = 50_000_000
     """Temporary-file byte limit. When exceeded, old files are deleted."""
+    max_transfer_archive_entries: int = 100_000
+    """Maximum entries accepted from one transferred archive."""
+    max_transfer_unpacked_bytes: int = 10_000_000_000
+    """Maximum declared regular-file bytes accepted while unpacking an archive."""
     max_concurrent_commands: int = 4
     """Concurrent command limit."""
     max_tmux_sessions: int = 16

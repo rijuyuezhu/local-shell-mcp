@@ -134,3 +134,10 @@ class TransferUnpackArchiveOutput(BaseModel):
     archive_deleted: bool = Field(
         description="Whether the source archive was deleted after unpacking."
     )
+    backup_deleted: bool = Field(
+        description="Whether the replaced destination backup was removed."
+    )
+    cleanup_errors: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal cleanup errors after the destination was committed.",
+    )

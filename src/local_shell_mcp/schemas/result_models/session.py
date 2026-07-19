@@ -144,3 +144,7 @@ class SessionCopyOutput(BaseModel):
         default=None,
         description="Number of directory entries unpacked for directory copies.",
     )
+    cleanup_errors: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal cleanup errors after a successful copy commit.",
+    )

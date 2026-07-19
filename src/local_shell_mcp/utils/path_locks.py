@@ -1,0 +1,85 @@
+"""Bounded thread/process locks for filesystem mutation paths."""
+
+from __future__ import annotations
+
+import contextlib
+import hashlib
+import threading
+from collections.abc import Generator, Iterable
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+
+from ..config.settings import get_settings
+from .private_files import private_file_lock
+
+
+@dataclass
+class _ThreadPathLock:
+    """One ref-counted in-process path lock."""
+
+    lock: threading.RLock
+    """Reentrant lock serializing one normalized path."""
+
+    users: int = 0
+    """Current holders and waiters referencing this registry entry."""
+
+
+_PATH_LOCKS_GUARD = threading.Lock()
+_PATH_LOCKS: dict[str, _ThreadPathLock] = {}
+
+
+def _thread_lock_for(path: Path) -> tuple[str, _ThreadPathLock]:
+    key = str(path)
+    with _PATH_LOCKS_GUARD:
+        entry = _PATH_LOCKS.get(key)
+        if entry is None:
+            entry = _ThreadPathLock(threading.RLock())
+            _PATH_LOCKS[key] = entry
+        entry.users += 1
+        return key, entry
+
+
+def _release_thread_lock(key: str, entry: _ThreadPathLock) -> None:
+    with _PATH_LOCKS_GUARD:
+        entry.users -= 1
+        if entry.users <= 0 and _PATH_LOCKS.get(key) is entry:
+            _PATH_LOCKS.pop(key, None)
+
+
+def _lock_shard_path(path: Path) -> Path:
+    directory = get_settings().state_dir / "locks"
+    directory.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        directory.chmod(0o700)
+    digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()
+    return directory / f"shard-{digest[:2]}.lock"
+
+
+@contextmanager
+def path_locks(paths: Iterable[Path]) -> Generator[None]:
+    """Serialize mutations for normalized paths across threads and processes."""
+    unique = sorted({str(path): path for path in paths}.values(), key=str)
+    entries: list[tuple[str, _ThreadPathLock]] = []
+    try:
+        for path in unique:
+            entries.append(_thread_lock_for(path))
+        with ExitStack() as stack:
+            for _key, entry in entries:
+                stack.enter_context(entry.lock)
+            shards = sorted(
+                {_lock_shard_path(path) for path in unique}, key=str
+            )
+            for shard in shards:
+                stack.enter_context(private_file_lock(shard))
+            yield
+    finally:
+        for key, entry in reversed(entries):
+            _release_thread_lock(key, entry)
+
+
+@contextmanager
+def path_lock(path: Path) -> Generator[None]:
+    """Serialize one mutation through the shared multi-path lock implementation."""
+    with path_locks([path]):
+        yield

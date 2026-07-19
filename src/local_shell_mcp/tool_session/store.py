@@ -256,6 +256,7 @@ def resolve_session_path(
     *,
     must_exist: bool = False,
     allow_missing_parent: bool = True,
+    follow_final_symlink: bool = True,
 ) -> Path:
     """Resolve a path relative to a local session workdir and enforce containment."""
     if session.target != "local":
@@ -267,9 +268,11 @@ def resolve_session_path(
         candidate,
         must_exist=must_exist,
         allow_missing_parent=allow_missing_parent,
+        follow_final_symlink=follow_final_symlink,
     )
+    boundary = resolved if follow_final_symlink else resolved.parent
     try:
-        resolved.relative_to(workdir)
+        boundary.relative_to(workdir)
     except ValueError as exc:
         raise ValueError(f"Path escapes session workdir: {path}") from exc
     return resolved

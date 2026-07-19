@@ -268,6 +268,16 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("max_tmp_files", "Safety and resource limits", metavar="COUNT"),
     SettingSpec("max_tmp_bytes", "Safety and resource limits", metavar="BYTES"),
     SettingSpec(
+        "max_transfer_archive_entries",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "max_transfer_unpacked_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
+    SettingSpec(
         "max_concurrent_commands", "Safety and resource limits", metavar="COUNT"
     ),
     SettingSpec(

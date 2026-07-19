@@ -196,19 +196,45 @@ async def _endpoint_transfer_data(
     raise ValueError(f"unsupported transfer tool: {tool}")
 
 
+async def _run_cleanup(operation: Any) -> None:
+    """Finish one best-effort cleanup even when the caller is cancelled."""
+    task = asyncio.create_task(operation)
+    try:
+        await asyncio.shield(task)
+    except BaseException:
+        with contextlib.suppress(BaseException):
+            await task
+
+
 async def _cleanup_temp(endpoint: _Endpoint, path: str | None) -> None:
     if not path:
         return
-    try:
-        await _endpoint_transfer_data(
+    await _run_cleanup(
+        _endpoint_transfer_data(
             endpoint,
             "transfer_delete_temp_path",
             {"path": path},
             session_bound=False,
         )
-    except Exception:
-        # Temp cleanup should not hide the primary copy failure/result.
-        return
+    )
+
+
+async def _abort_transfer(
+    endpoint: _Endpoint,
+    path: str,
+    transfer_id: str,
+    *,
+    session_bound: bool,
+) -> None:
+    """Best-effort abort one destination write without hiding its primary failure."""
+    await _run_cleanup(
+        _endpoint_transfer_data(
+            endpoint,
+            "transfer_abort_write",
+            {"path": path, "transfer_id": transfer_id},
+            session_bound=session_bound,
+        )
+    )
 
 
 def _copy_route(src: AgentSession, dst: AgentSession) -> SessionCopyRoute:
@@ -279,16 +305,33 @@ async def _copy_file(
     transfer_id = str(begin["transfer_id"])
     chunks = 0
     offset = 0
+    source_size = int(stat["size"])
     try:
-        while offset < int(stat["size"]):
+        while offset < source_size:
             chunk = await _endpoint_transfer_data(
                 src,
                 "transfer_read_chunk",
                 {"path": src_path, "offset": offset, "chunk_size": chunk_bytes},
                 session_bound=src_session_bound,
             )
-            if int(chunk["bytes"]) == 0:
-                break
+            chunk_offset = int(chunk["offset"])
+            chunk_size_received = int(chunk["bytes"])
+            chunk_source_size = int(chunk["size"])
+            if chunk_offset != offset:
+                raise RuntimeError(
+                    f"source chunk offset mismatch: expected {offset}, got {chunk_offset}"
+                )
+            if chunk_source_size != source_size:
+                raise RuntimeError(
+                    "source size changed during transfer: "
+                    f"expected {source_size}, got {chunk_source_size}"
+                )
+            if chunk_size_received <= 0:
+                raise RuntimeError("source transfer ended before completion")
+            next_offset = offset + chunk_size_received
+            eof = bool(chunk.get("eof", False))
+            if eof != (next_offset >= source_size):
+                raise RuntimeError("source transfer EOF marker is inconsistent")
             await _endpoint_transfer_data(
                 dst,
                 "transfer_write_chunk",
@@ -301,7 +344,7 @@ async def _copy_file(
                 },
                 session_bound=dst_session_bound,
             )
-            offset += int(chunk["bytes"])
+            offset = next_offset
             chunks += 1
         finish = await _endpoint_transfer_data(
             dst,
@@ -309,19 +352,18 @@ async def _copy_file(
             {
                 "path": dst_path,
                 "transfer_id": transfer_id,
-                "expected_bytes": stat["size"],
+                "expected_bytes": source_size,
                 "expected_sha256": stat.get("sha256"),
             },
             session_bound=dst_session_bound,
         )
-    except Exception:
-        with contextlib.suppress(Exception):
-            await _endpoint_transfer_data(
-                dst,
-                "transfer_abort_write",
-                {"path": dst_path, "transfer_id": transfer_id},
-                session_bound=dst_session_bound,
-            )
+    except BaseException:
+        await _abort_transfer(
+            dst,
+            dst_path,
+            transfer_id,
+            session_bound=dst_session_bound,
+        )
         raise
     return {
         "source_path": stat["path"],
@@ -342,18 +384,20 @@ async def _copy_dir(
     overwrite: bool,
     chunk_size: int | None,
 ) -> dict[str, Any]:
-    pack = await _endpoint_transfer_data(
-        src,
-        "transfer_pack_dir",
-        {"path": src_path, "compression": "gz"},
-    )
-    dst_archive = await _endpoint_transfer_data(
-        dst,
-        "transfer_alloc_temp_path",
-        {"suffix": ".tar.gz"},
-        session_bound=False,
-    )
+    pack: dict[str, Any] = {}
+    dst_archive: dict[str, Any] = {}
     try:
+        pack = await _endpoint_transfer_data(
+            src,
+            "transfer_pack_dir",
+            {"path": src_path, "compression": "gz"},
+        )
+        dst_archive = await _endpoint_transfer_data(
+            dst,
+            "transfer_alloc_temp_path",
+            {"suffix": ".tar.gz"},
+            session_bound=False,
+        )
         copy_result = await _copy_file(
             src,
             pack["archive_path"],
@@ -374,10 +418,8 @@ async def _copy_dir(
                 "cleanup_archive": True,
             },
         )
-    except Exception:
-        await _cleanup_temp(dst, dst_archive.get("path"))
-        raise
     finally:
+        await _cleanup_temp(dst, dst_archive.get("path"))
         await _cleanup_temp(src, pack.get("archive_path"))
     return {
         "source_path": pack["path"],
@@ -386,6 +428,7 @@ async def _copy_dir(
         "archive_sha256": pack["sha256"],
         "chunks": copy_result["chunks"],
         "entries": unpack["entries"],
+        "cleanup_errors": list(unpack.get("cleanup_errors") or []),
     }
 
 
@@ -455,4 +498,5 @@ async def session_copy_execute(
         chunks=int(metrics.get("chunks", 0)),
         chunk_size=normalize_chunk_size(chunk_size),
         entries=metrics.get("entries"),
+        cleanup_errors=list(metrics.get("cleanup_errors") or []),
     )

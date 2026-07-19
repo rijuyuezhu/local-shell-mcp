@@ -64,6 +64,16 @@ Use local-shell-mcp. Start a session for the project, create a file link for art
 
 Set `inline=true` only when in-browser rendering is necessary, such as previewing an image or PDF. Inline responses are sandboxed, but the snapshot and URL must still be treated as sensitive until expiry or revocation.
 
+## Copy files or directories between sessions
+
+Start both source and destination sessions, then use `session_copy` with their explicit IDs. This works across local workspaces, local-to-remote, remote-to-local, and different remote workers:
+
+```text
+Use local-shell-mcp. Start one session for the source workspace and one for the destination workspace. Copy artifacts/checkpoint.bin between them with session_copy, keep overwrite=false, and verify the destination hash after completion.
+```
+
+For directories, `session_copy` validates and extracts into staging before replacing the destination. A cancellation aborts the active file write and cleans both archive scratch paths. Use `kind="file"` or `kind="dir"` when auto-detection would be ambiguous.
+
 ## Work with long-running commands
 
 Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive work owned by that session, and manage it with `job(session_id=...)`. Tracked jobs persist their exit status and bounded output under `state_dir`, so `job(poll=[...])` continues to work after the command exits or the server restarts. `max_job_log_bytes` limits retained output per attempt, while `max_jobs` bounds retained terminal records without pruning active jobs.
