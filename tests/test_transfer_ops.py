@@ -238,8 +238,13 @@ def test_replaced_transfer_temp_is_rejected(tmp_path, monkeypatch):
     root = _workspace(tmp_path, monkeypatch)
     begin = transfer_begin_write("dest.bin", expected_bytes=3)
     temporary = root / begin.temp_path
+    alias = temporary.with_name(temporary.name + ".alias")
+    try:
+        os.link(temporary, alias)
+    except OSError as exc:
+        pytest.skip(f"hard links are unavailable: {exc}")
     temporary.unlink()
-    temporary.write_bytes(b"bad")
+    os.replace(alias, temporary)
 
     with pytest.raises(ValueError, match="identity changed"):
         _write_payload("dest.bin", begin.transfer_id, 0, b"new")

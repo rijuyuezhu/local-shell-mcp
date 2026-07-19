@@ -290,9 +290,19 @@ def _validate_transfer_identity(
     file_stat = os.fstat(handle.fileno())
     if not stat.S_ISREG(file_stat.st_mode):
         raise ValueError("transfer temporary path is not a regular file")
-    if int(metadata.get("temporary_device", -1)) != int(
-        file_stat.st_dev
-    ) or int(metadata.get("temporary_inode", -1)) != int(file_stat.st_ino):
+    expected_identity = (
+        int(metadata.get("temporary_device", -1)),
+        int(metadata.get("temporary_inode", -1)),
+        int(metadata.get("temporary_ctime_ns", -1)),
+        int(metadata.get("temporary_mtime_ns", -1)),
+    )
+    actual_identity = (
+        int(file_stat.st_dev),
+        int(file_stat.st_ino),
+        int(file_stat.st_ctime_ns),
+        int(file_stat.st_mtime_ns),
+    )
+    if expected_identity != actual_identity:
         raise ValueError("transfer temporary file identity changed")
     return file_stat
 
@@ -367,6 +377,8 @@ def transfer_begin_write(
                     "created_at": time.time(),
                     "temporary_device": int(temporary_stat.st_dev),
                     "temporary_inode": int(temporary_stat.st_ino),
+                    "temporary_ctime_ns": int(temporary_stat.st_ctime_ns),
+                    "temporary_mtime_ns": int(temporary_stat.st_mtime_ns),
                 },
             )
         except Exception:
@@ -432,6 +444,9 @@ def transfer_write_chunk(
             handle.seek(start)
             handle.write(data)
             handle.flush()
+            updated_stat = os.fstat(handle.fileno())
+            metadata["temporary_ctime_ns"] = int(updated_stat.st_ctime_ns)
+            metadata["temporary_mtime_ns"] = int(updated_stat.st_mtime_ns)
         _write_transfer_metadata(temporary, metadata)
     return TransferWriteChunkOutput(
         path=relative_display(destination),
@@ -497,9 +512,17 @@ def transfer_finish_write(
             if expected_sha256 and digest != expected_sha256:
                 raise ValueError("file sha256 mismatch")
         current_stat = os.lstat(temporary)
-        if int(current_stat.st_dev) != int(temporary_stat.st_dev) or int(
-            current_stat.st_ino
-        ) != int(temporary_stat.st_ino):
+        if (
+            int(current_stat.st_dev),
+            int(current_stat.st_ino),
+            int(current_stat.st_ctime_ns),
+            int(current_stat.st_mtime_ns),
+        ) != (
+            int(temporary_stat.st_dev),
+            int(temporary_stat.st_ino),
+            int(temporary_stat.st_ctime_ns),
+            int(temporary_stat.st_mtime_ns),
+        ):
             raise ValueError("transfer temporary file identity changed")
         if not bool(metadata.get("overwrite", True)) and os.path.lexists(
             destination
