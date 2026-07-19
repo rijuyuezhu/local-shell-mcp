@@ -149,7 +149,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 132 | 2026-07-14 | `edae303` | fix(release): remove rejected OAuth placeholders | **Pending** | Pending functional review and fork-specific port decision. |
 | 133 | 2026-07-14 | `f7fd688` | fix(ci): eliminate error annotations | **Pending** | Pending functional review and fork-specific port decision. |
 | 134 | 2026-07-14 | `d172ecc` | fix(ci): drain grep subprocess cleanup | **Pending** | Pending functional review and fork-specific port decision. |
-| 135 | 2026-07-14 | `8379169` | fix: harden auth downloads and audit logging | **Partial** | The audit serialization and redaction portions are adapted. Authentication, file-share, and Human UI changes in this mixed commit are reviewed in their own functional batches. |
+| 135 | 2026-07-14 | `8379169` | fix: harden auth downloads and audit logging | **Partial** | Audit serialization and file-share hardening are adapted: immutable private snapshots, no-follow/identity checks, token fingerprints, safe filenames, streaming from an already-open handle, and private durable state. Authentication, search, and Human UI portions remain separate reviews. |
 | 136 | 2026-07-14 | `867330f` | fix: make remote transfers transactional | **Pending** | Pending functional review and fork-specific port decision. |
 | 137 | 2026-07-14 | `1bdb837` | fix: isolate human UI state by machine | **Pending** | Pending functional review and fork-specific port decision. |
 | 138 | 2026-07-14 | `51879f9` | fix: persist long-running job results | **Implemented (adapted)** | Tracked jobs now use a private internal runner that durably records combined output, exit code, completion time, and errors; output remains pollable after process exit and restart. |
@@ -163,7 +163,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 146 | 2026-07-14 | `e106ed4` | fix(ui): normalize invalid token path errors on Windows | **Pending** | Pending functional review and fork-specific port decision. |
 | 147 | 2026-07-14 | `d5c7cbb` | fix(jobs): invoke runner correctly from PowerShell | **Implemented (adapted)** | Internal runner argv is quoted per POSIX shell, cmd.exe, or PowerShell, including apostrophes and paths containing spaces; unit coverage locks down PowerShell quoting. |
 | 148 | 2026-07-14 | `971688b` | Merge pull request #5 from fwerkor/fix/windows-ci-regressions | **Pending** | Pending functional review and fork-specific port decision. |
-| 149 | 2026-07-14 | `41512fb` | fix(security): harden OAuth assets and file shares | **Pending** | Pending functional review and fork-specific port decision. |
+| 149 | 2026-07-14 | `41512fb` | fix(security): harden OAuth assets and file shares | **Partial** | The file-share security portion is implemented more strictly with creation-time snapshots, primary/backup transactional state, cross-process locking, digest verification, orphan cleanup, and local/remote session support. OAuth asset and Human UI changes remain separate. |
 | 150 | 2026-07-14 | `d5a81b7` | fix(jobs): serialize state and bound retention | **Implemented (adapted)** | The fork serializes job-store transactions with thread and cross-process locks, atomically writes primary and backup stores, and bounds logs and retained terminal jobs without pruning active jobs. |
 | 151 | 2026-07-14 | `2319219` | fix(settings): isolate persisted secret reads | **Pending** | Pending functional review and fork-specific port decision. |
 | 152 | 2026-07-14 | `557ca1b` | fix(io): preserve PTY input and dedupe lock shards | **Pending** | Pending functional review and fork-specific port decision. |
@@ -182,7 +182,7 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 165 | 2026-07-14 | `6e90650` | Fix interrupted remote downloads | **Pending** | Pending functional review and fork-specific port decision. |
 | 166 | 2026-07-14 | `e08d27e` | Harden persistent job recovery | **Implemented (adapted)** | Job metadata recovers from a valid backup, refuses silent reset when both copies are corrupt, migrates supported legacy stores, and reconciles interrupted lifecycle states. |
 | 167 | 2026-07-14 | `d869478` | Synchronize remote worker registry | **Implemented (adapted)** | The fork serializes registry, token, queue, pending-job, rename, revoke, heartbeat, and result state behind one manager lock, with per-job worker ownership checks. |
-| 168 | 2026-07-14 | `99f5af3` | Harden transfer and ConPTY cleanup | **Pending** | Pending functional review and fork-specific port decision. |
+| 168 | 2026-07-14 | `99f5af3` | Harden transfer and ConPTY cleanup | **Partial** | Download cleanup and interrupted-staging handling are adapted, including bounded snapshots and post-stream deletion. General transfer and ConPTY changes remain pending in their own functional reviews. |
 | 169 | 2026-07-14 | `1bfaba5` | fix: allow shell timeout cleanup before watchdog | **Pending** | Pending functional review and fork-specific port decision. |
 | 170 | 2026-07-14 | `eac80f6` | Remove unused dynamic agent bridge | **Not adopted** | The fork's dynamic Agent Bridge is active, tested, and part of its product direction, so upstream removal is intentionally not ported. |
 | 171 | 2026-07-14 | `bbd5c67` | Fix Windows cleanup regressions | **Pending** | Pending functional review and fork-specific port decision. |
@@ -253,12 +253,12 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 236 | 2026-07-17 | `6ac77bc` | fix(ui): remove shortcut labels from top navigation | **Pending** | Pending functional review and fork-specific port decision. |
 | 237 | 2026-07-17 | `4cb27aa` | test(ui): update smoke labels for simplified navigation | **Pending** | Pending functional review and fork-specific port decision. |
 | 238 | 2026-07-17 | `4342afc` | Merge pull request #17 from fwerkor/ui/tui-color-polish | **Pending** | Pending functional review and fork-specific port decision. |
-| 239 | 2026-07-17 | `bf94284` | feat(downloads): support inline file links | **Pending** | Pending functional review and fork-specific port decision. |
+| 239 | 2026-07-17 | `bf94284` | feat(downloads): support inline file links | **Implemented (adapted)** | `create_file_link(..., inline=true)` now opts into inline browser rendering while attachment remains the default. Links are explicit-session, immutable snapshots and support both local and remote sources. |
 | 240 | 2026-07-17 | `458917d` | test(windows): allow slower native shell startup | **Pending** | Pending functional review and fork-specific port decision. |
-| 241 | 2026-07-17 | `bb39e83` | fix(downloads): sandbox inline responses | **Pending** | Pending functional review and fork-specific port decision. |
+| 241 | 2026-07-17 | `bb39e83` | fix(downloads): sandbox inline responses | **Implemented (adapted)** | Inline responses add `Content-Security-Policy: sandbox`; all snapshot responses add `nosniff`, `no-referrer`, private no-store caching, safe content disposition, and streaming from a validated open file descriptor. |
 | 242 | 2026-07-17 | `b835b2c` | chore(release): bump version to 3.0.1 | **Pending** | Pending functional review and fork-specific port decision. |
-| 243 | 2026-07-17 | `31d2b7b` | fix(downloads): infer MIME from display filename | **Pending** | Pending functional review and fork-specific port decision. |
-| 244 | 2026-07-17 | `c684296` | Merge pull request #18 from fwerkor/feat/inline-file-links | **Pending** | Pending functional review and fork-specific port decision. |
+| 243 | 2026-07-17 | `31d2b7b` | fix(downloads): infer MIME from display filename | **Implemented (adapted)** | MIME inference uses the original source filename first, then the optional browser display filename, and finally `application/octet-stream`. |
+| 244 | 2026-07-17 | `c684296` | Merge pull request #18 from fwerkor/feat/inline-file-links | **Superseded by reviewed commits** | Merge-only commit; inline disposition, sandboxing, and MIME behavior are recorded on the underlying commits. |
 | 245 | 2026-07-17 | `2e028d1` | docs(config): keep one canonical example | **Pending** | Pending functional review and fork-specific port decision. |
 | 246 | 2026-07-17 | `834fee5` | fix(compose): forward canonical env settings | **Pending** | Pending functional review and fork-specific port decision. |
 | 247 | 2026-07-17 | `a15c78d` | Merge pull request #19 from fwerkor/chore/single-config-example | **Pending** | Pending functional review and fork-specific port decision. |

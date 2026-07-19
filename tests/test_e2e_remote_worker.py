@@ -35,6 +35,7 @@ REMOTE_TOOL_NAMES = {
     "bash",
     "job",
     "view_image",
+    "create_file_link",
 }
 
 
@@ -299,6 +300,40 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 "mime_type": "image/png",
                 "bytes": len(png),
             }
+
+            remote_download_source = (
+                remote_workspace / "remote" / "download-snapshot.txt"
+            )
+            remote_download_source.write_text(
+                "remote creation-time snapshot", encoding="utf-8"
+            )
+            remote_link = await client.call_tool(
+                "create_file_link",
+                {
+                    "session_id": first_class_session_id,
+                    "path": "remote/download-snapshot.txt",
+                    "inline": True,
+                },
+            )
+            assert remote_link["target"] == "remote"
+            assert remote_link["machine"] == machine
+            assert remote_link["inline"] is True
+            remote_download_source.write_text(
+                "changed after link creation", encoding="utf-8"
+            )
+            async with httpx.AsyncClient() as download_client:
+                download_response = await download_client.get(
+                    remote_link["url"]
+                )
+            assert download_response.status_code == 200
+            assert download_response.text == "remote creation-time snapshot"
+            assert (
+                download_response.headers["content-security-policy"]
+                == "sandbox"
+            )
+            assert (
+                download_response.headers["x-content-type-options"] == "nosniff"
+            )
 
             first_class_read = await client.call_tool(
                 "read",

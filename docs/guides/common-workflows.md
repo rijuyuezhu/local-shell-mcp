@@ -54,6 +54,16 @@ Use `view_image(session_id=..., path=...)` for PNG, JPEG, GIF, and WebP files in
 Use local-shell-mcp. Start a session for this project, then view artifacts/plot.png with view_image using that session_id and explain the visual result.
 ```
 
+## Share an artifact through a browser link
+
+Use `create_file_link` only after starting an explicit local or remote session. The returned URL is a bearer secret and serves an immutable creation-time snapshot, so later edits to the source do not change what the URL returns. Browser download is the default:
+
+```text
+Use local-shell-mcp. Start a session for the project, create a file link for artifacts/report.pdf with max_downloads=1, and show me the URL without exposing the token anywhere else.
+```
+
+Set `inline=true` only when in-browser rendering is necessary, such as previewing an image or PDF. Inline responses are sandboxed, but the snapshot and URL must still be treated as sensitive until expiry or revocation.
+
 ## Work with long-running commands
 
 Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive work owned by that session, and manage it with `job(session_id=...)`. Tracked jobs persist their exit status and bounded output under `state_dir`, so `job(poll=[...])` continues to work after the command exits or the server restarts. `max_job_log_bytes` limits retained output per attempt, while `max_jobs` bounds retained terminal records without pruning active jobs.

@@ -157,6 +157,13 @@
                 "note": "(string / null, optional)"
               },
               {
+                "description": "Whether the browser should render the snapshot inline instead of downloading it as an attachment. Defaults to false.",
+                "head": {
+                  "code": "inline"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
                 "description": "Optional maximum number of downloads. Use 0 for unlimited; omit to use the configured default.",
                 "head": {
                   "code": "max_downloads"
@@ -186,7 +193,7 @@
               }
             ]
           },
-          "Create a temporary tokenized HTTP download URL for one existing regular file in a local agent/workspace session. Use this when a user needs to download or open an artifact through a browser. The response includes a sensitive token and URL. Current TTL default/cap: 3600/604800 seconds. Current file-size cap: 0 bytes, with 0 meaning no configured cap."
+          "Create a temporary tokenized HTTP URL for an immutable creation-time snapshot of one existing regular file in a local or remote agent session. By default the browser downloads it as an attachment; set inline=true only when browser rendering is desired. The response includes a sensitive token and URL. Current TTL default/cap: 3600/604800 seconds. Current file-size cap: 0 bytes, with 0 meaning no configured cap."
         ],
         [
           {
@@ -1709,7 +1716,7 @@
       }
     },
     {
-      "description": "Create a temporary tokenized HTTP download URL for one existing regular file in a local agent/workspace session. Use this when a user needs to download or open an artifact through a browser. The response includes a sensitive token and URL. Current TTL default/cap: 3600/604800 seconds. Current file-size cap: 0 bytes, with 0 meaning no configured cap.",
+      "description": "Create a temporary tokenized HTTP URL for an immutable creation-time snapshot of one existing regular file in a local or remote agent session. By default the browser downloads it as an attachment; set inline=true only when browser rendering is desired. The response includes a sensitive token and URL. Current TTL default/cap: 3600/604800 seconds. Current file-size cap: 0 bytes, with 0 meaning no configured cap.",
       "inputSchema": {
         "properties": {
           "filename": {
@@ -1724,6 +1731,12 @@
             "default": null,
             "description": "Optional browser download filename. Path components are stripped.",
             "title": "Filename"
+          },
+          "inline": {
+            "default": false,
+            "description": "Whether the browser should render the snapshot inline instead of downloading it as an attachment. Defaults to false.",
+            "title": "Inline",
+            "type": "boolean"
           },
           "max_downloads": {
             "anyOf": [
@@ -1796,7 +1809,7 @@
                 "type": "null"
               }
             ],
-            "description": "Source file size in bytes.",
+            "description": "Creation-time snapshot size in bytes.",
             "title": "Bytes"
           },
           "created_at": {
@@ -1837,13 +1850,42 @@
                 "type": "null"
               }
             ],
-            "description": "Browser download filename.",
+            "description": "Browser response filename.",
             "title": "Filename"
+          },
+          "inline": {
+            "description": "Whether the browser response uses inline disposition.",
+            "title": "Inline",
+            "type": "boolean"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Remote worker machine for remote snapshots, otherwise null.",
+            "title": "Machine"
           },
           "max_downloads": {
             "description": "Maximum allowed downloads, or 0 for unlimited.",
             "title": "Max Downloads",
             "type": "integer"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stored MIME type for the browser response.",
+            "title": "Media Type"
           },
           "path": {
             "anyOf": [
@@ -1856,6 +1898,15 @@
             ],
             "description": "Workspace-relative source file path.",
             "title": "Path"
+          },
+          "target": {
+            "description": "Session target from which the snapshot was created.",
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Target",
+            "type": "string"
           },
           "token": {
             "description": "Sensitive token identifying the download link.",
@@ -1878,12 +1929,16 @@
           "url",
           "path",
           "filename",
+          "inline",
+          "media_type",
           "bytes",
           "created_at",
           "expires_at",
           "ttl_remaining_s",
           "downloads",
-          "max_downloads"
+          "max_downloads",
+          "target",
+          "machine"
         ],
         "title": "CreateFileLinkOutput",
         "type": "object"
@@ -3546,7 +3601,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Source file size in bytes.",
+                "description": "Creation-time snapshot size in bytes.",
                 "title": "Bytes"
               },
               "created_at": {
@@ -3587,13 +3642,42 @@
                     "type": "null"
                   }
                 ],
-                "description": "Browser download filename.",
+                "description": "Browser response filename.",
                 "title": "Filename"
+              },
+              "inline": {
+                "description": "Whether the browser response uses inline disposition.",
+                "title": "Inline",
+                "type": "boolean"
+              },
+              "machine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Remote worker machine for remote snapshots, otherwise null.",
+                "title": "Machine"
               },
               "max_downloads": {
                 "description": "Maximum allowed downloads, or 0 for unlimited.",
                 "title": "Max Downloads",
                 "type": "integer"
+              },
+              "media_type": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Stored MIME type for the browser response.",
+                "title": "Media Type"
               },
               "path": {
                 "anyOf": [
@@ -3606,6 +3690,15 @@
                 ],
                 "description": "Workspace-relative source file path.",
                 "title": "Path"
+              },
+              "target": {
+                "description": "Session target from which the snapshot was created.",
+                "enum": [
+                  "local",
+                  "remote"
+                ],
+                "title": "Target",
+                "type": "string"
               },
               "token": {
                 "description": "Sensitive token identifying the download link.",
@@ -3628,12 +3721,16 @@
               "url",
               "path",
               "filename",
+              "inline",
+              "media_type",
               "bytes",
               "created_at",
               "expires_at",
               "ttl_remaining_s",
               "downloads",
-              "max_downloads"
+              "max_downloads",
+              "target",
+              "machine"
             ],
             "title": "FileLinkSummary",
             "type": "object"

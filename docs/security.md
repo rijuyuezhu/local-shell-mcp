@@ -69,13 +69,21 @@ In the Docker image, the entrypoint normally creates a non-root `agent` user at 
 
 ## Tokenized file download links
 
-`create_file_link` creates public `/download/{token}` URLs for regular files under the workspace. Creating, listing, and revoking links remain protected tool operations; only the generated download URL is public. Treat generated URLs as bearer secrets: anyone with the URL can download the file until the link expires, is revoked, reaches its configured download-count limit, or the target file disappears.
+`create_file_link` creates a public `/download/{token}` URL for an immutable creation-time snapshot of one regular file in an explicit local or remote session. Creating, listing, and revoking links remain protected tool operations; only the generated URL is public. Remote files are copied to the control server through the validated transfer-chunk protocol before the link is registered. Changing, deleting, or replacing the original local or remote file does not retarget an existing link.
+
+Snapshots, primary/backup metadata, and the cross-process lock are stored privately under `state_dir`. Snapshot identity, size, and SHA-256 are checked before serving. Expired, revoked, exhausted, malformed, orphaned, and stale interrupted-transfer artifacts are removed. A corrupt primary store is recovered from its backup; if both copies are invalid, the service refuses to silently reset link state.
+
+Browser responses use `attachment` disposition by default. Set `inline=true` only when browser rendering is needed. Inline responses add `Content-Security-Policy: sandbox`; all responses add `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: private, no-store`. MIME type is inferred from the original source filename first and the optional display filename second. These controls reduce browser risk but do not make untrusted active content harmless outside the sandboxed response.
+
+Treat generated URLs as bearer secrets: anyone with the URL can read the snapshot until the link expires, is revoked, or reaches its configured download-count limit.
 
 Operational guidance:
 
 - Set `LOCAL_SHELL_MCP_BASE_URL` for public deployments so generated links use the externally reachable HTTPS origin.
 - Use short TTLs for sensitive artifacts and prefer `max_downloads=1` for one-time handoff.
-- Set `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES` if large artifact downloads could exhaust bandwidth or storage-backed response capacity.
+- Keep `inline=false` unless the user explicitly needs in-browser rendering.
+- Set `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES` to bound both local copies and remote transfers.
+- Keep `state_dir` private because it contains the snapshot bytes as well as link metadata.
 - Disable the feature with `LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED=false` when public artifact URLs are not needed.
 - Remember that audit logs record link creation, revocation, and serving events, but the tokenized URL itself should still be treated as sensitive until expiry.
 
