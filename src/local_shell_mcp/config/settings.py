@@ -101,6 +101,8 @@ class Settings(BaseSettings):
     """Maximum retained tracked-job records; active jobs are never pruned."""
     max_file_read_bytes: int = 512_000
     """Per-file read limit in bytes."""
+    max_view_image_bytes: int = 20 * 1024 * 1024
+    """Maximum raw bytes accepted by the native MCP image viewer."""
     max_skills: int = 256
     """Maximum number of discovered Skills across all configured sources."""
     max_skill_related_files: int = 1_000

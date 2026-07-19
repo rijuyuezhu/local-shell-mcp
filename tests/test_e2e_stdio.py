@@ -30,3 +30,34 @@ async def test_stdio_process_exercises_core_tool_categories(tmp_path):
         await exercise_session_bound_job_tools(client, workspace)
         await exercise_interactive_shell_tools(client)
         await exercise_todo_tools(client)
+
+
+@pytest.mark.asyncio
+async def test_stdio_process_returns_native_image_content(tmp_path):
+    import base64
+
+    from mcp.types import ImageContent
+
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lP7LAAAAAElFTkSuQmCC"
+    )
+    async with stdio_tool_client(tmp_path) as (client, workspace):
+        (workspace / "pixel.png").write_bytes(png)
+        session = await client.call_tool("session_start", {"workdir": "."})
+
+        result = await client.call_tool_result(
+            "view_image",
+            {"session_id": session["session_id"], "path": "pixel.png"},
+        )
+
+        assert result.isError is False
+        assert isinstance(result.content[0], ImageContent)
+        assert base64.b64decode(result.content[0].data) == png
+        assert result.structuredContent == {
+            "session_id": session["session_id"],
+            "target": "local",
+            "machine": None,
+            "path": "pixel.png",
+            "mime_type": "image/png",
+            "bytes": len(png),
+        }

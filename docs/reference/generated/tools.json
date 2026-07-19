@@ -1,11 +1,11 @@
 {
-  "count": 36,
+  "count": 37,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "36"
+          "code": "37"
         },
         "."
       ],
@@ -430,6 +430,42 @@
             ]
           },
           "Write a complete UTF-8 file inside an explicit agent/workspace session. Use only for new files or intentional whole-file replacement; do not use it for partial edits. For ordinary edits to existing files, use hashline_edit from copied read/search rows instead of rewriting the file. Use edit_lines only when you already have exact structured path/start/end/replacement data. Use bash only when a command-driven transformation is clearer. Current write cap: 5000000 bytes."
+        ]
+      ]
+    },
+    {
+      "body": "Register session-bound native image viewing.",
+      "headers": [
+        "Tool",
+        "Parameters",
+        "Description"
+      ],
+      "heading": "Image",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "view_image"
+          },
+          {
+            "items": [
+              {
+                "description": "PNG, JPEG, GIF, or WebP path relative to the explicit session workdir. Use view_image instead of read for visual inspection.",
+                "head": {
+                  "code": "path"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "View a PNG, JPEG, GIF, or WebP file as native MCP image content. The path resolves inside the explicit local or remote session workdir; use this instead of read when visual inspection is needed."
         ]
       ]
     },
@@ -6297,6 +6333,105 @@
           "platform"
         ],
         "title": "VersionInfoOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "View a PNG, JPEG, GIF, or WebP file as native MCP image content. The path resolves inside the explicit local or remote session workdir; use this instead of read when visual inspection is needed.",
+      "inputSchema": {
+        "properties": {
+          "path": {
+            "description": "PNG, JPEG, GIF, or WebP path relative to the explicit session workdir. Use view_image instead of read for visual inspection.",
+            "title": "Path",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "path"
+        ],
+        "title": "view_imageArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "view_image",
+      "outputSchema": {
+        "description": "Metadata accompanying one native MCP image result.",
+        "properties": {
+          "bytes": {
+            "description": "Original image byte count.",
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Remote worker name when target is remote.",
+            "title": "Machine"
+          },
+          "mime_type": {
+            "description": "Detected image MIME type from file magic.",
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "path": {
+            "description": "Resolved display path inside the session workdir.",
+            "title": "Path",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "Control-server agent session id.",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "target": {
+            "description": "Whether the image came from the control workspace or a remote worker.",
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "target",
+          "path",
+          "mime_type",
+          "bytes"
+        ],
+        "title": "ViewImageOutput",
         "type": "object"
       }
     },

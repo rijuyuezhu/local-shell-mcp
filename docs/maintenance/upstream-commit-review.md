@@ -227,8 +227,8 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 210 | 2026-07-16 | `f837152` | fix: harden compact tool contracts | **Pending** | Pending functional review and fork-specific port decision. |
 | 211 | 2026-07-16 | `b918d18` | docs: align examples with compact tools | **Pending** | Pending functional review and fork-specific port decision. |
 | 212 | 2026-07-16 | `2aa1a31` | Merge pull request #13 from fwerkor/fix/compact-tool-contracts | **Pending** | Pending functional review and fork-specific port decision. |
-| 213 | 2026-07-16 | `cd7d96f` | feat: add native image viewing tool | **Pending** | Pending functional review and fork-specific port decision. |
-| 214 | 2026-07-16 | `d592468` | Merge pull request #15 from fwerkor/feat/view-image | **Pending** | Pending functional review and fork-specific port decision. |
+| 213 | 2026-07-16 | `cd7d96f` | feat: add native image viewing tool | **Implemented (adapted)** | Added MCP-only `view_image(session_id, path)` with native `ImageContent`, explicit local/remote session dispatch, format magic checks, a 20 MiB bound, and validated remote transfer chunks instead of upstream's optional machine parameter. |
+| 214 | 2026-07-16 | `d592468` | Merge pull request #15 from fwerkor/feat/view-image | **Superseded by reviewed commits** | Merge-only commit; the native image-viewing decision is recorded on the underlying feature commit. |
 | 215 | 2026-07-16 | `b4f87e2` | deslop: remove tool wrapper boilerplate (#6) | **Pending** | Pending functional review and fork-specific port decision. |
 | 216 | 2026-07-16 | `7395ea3` | deslop: share success envelopes (#1) | **Pending** | Pending functional review and fork-specific port decision. |
 | 217 | 2026-07-16 | `aa3bc2b` | ci: use 90 percent module coverage floor | **Pending** | Pending functional review and fork-specific port decision. |
@@ -315,13 +315,13 @@ The rows below cover every commit currently reachable from `upstream/main` after
 | 298 | 2026-07-17 | `287cd61` | Merge pull request #27 from fwerkor/fix/audit-ui-consolidation | **Pending** | Pending functional review and fork-specific port decision. |
 | 299 | 2026-07-17 | `27e6d35` | chore: bump version to 3.0.3 | **Pending** | Pending functional review and fork-specific port decision. |
 | 300 | 2026-07-17 | `1278272` | Merge pull request #29 from fwerkor/release/v3.0.3 | **Pending** | Pending functional review and fork-specific port decision. |
-| 301 | 2026-07-17 | `ad1a6d5` | fix(ui): render image previews in files pane | **Pending** | Pending functional review and fork-specific port decision. |
+| 301 | 2026-07-17 | `ad1a6d5` | fix(ui): render image previews in files pane | **Split follow-up** | This is a Human UI files-pane preview feature, not the MCP-native viewer. It remains grouped with the later WebUI/TUI migration. |
 | 302 | 2026-07-18 | `41407b8` | fix: keep runtime version in sync with releases | **Pending** | Pending functional review and fork-specific port decision. |
 | 303 | 2026-07-17 | `7ad4d84` | feat(skills): support multiple registry sources | **Split follow-up** | A global project/managed/global registry is not ported directly. Session workdir and remote-worker scoped Skill/MCP lookup needs a fork-specific design on top of explicit sessions. |
 | 304 | 2026-07-17 | `e3206a0` | fix(skills): validate rooted paths portably | **Implemented (adapted)** | Portable rooted/name/path validation is implemented without adopting upstream's multi-source registry API. |
-| 305 | 2026-07-18 | `4c61d21` | fix(ui): correct image preview supersampling dimensions | **Pending** | Pending functional review and fork-specific port decision. |
-| 306 | 2026-07-18 | `8bc1d9a` | test(ui): verify image preview cell mapping | **Pending** | Pending functional review and fork-specific port decision. |
-| 307 | 2026-07-18 | `6666332` | Merge pull request #30 from fwerkor/fix/files-image-preview | **Pending** | Pending functional review and fork-specific port decision. |
+| 305 | 2026-07-18 | `4c61d21` | fix(ui): correct image preview supersampling dimensions | **Split follow-up** | Supersampling dimensions belong to the deferred Human UI image-preview implementation. |
+| 306 | 2026-07-18 | `8bc1d9a` | test(ui): verify image preview cell mapping | **Split follow-up** | UI cell-mapping tests become relevant only when the fork ports the Human UI files-pane preview. |
+| 307 | 2026-07-18 | `6666332` | Merge pull request #30 from fwerkor/fix/files-image-preview | **Superseded by reviewed commits** | Merge-only commit for the deferred Human UI preview fixes; underlying commits remain explicit follow-ups. |
 | 308 | 2026-07-18 | `42e0480` | Merge branch 'main' into feat/multi-source-skills | **Superseded by reviewed commits** | Merge-only commit; functional decisions are recorded on the underlying Skill commits. |
 | 309 | 2026-07-18 | `3746dbd` | Merge branch 'main' into fix/version-consistency | **Pending** | Pending functional review and fork-specific port decision. |
 | 310 | 2026-07-18 | `1ab1b83` | Merge pull request #32 from fwerkor/feat/multi-source-skills | **Superseded by reviewed commits** | Merge-only commit; multi-source behavior remains a session-scoped follow-up while portable validation was adapted. |

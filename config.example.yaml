@@ -73,6 +73,8 @@ max_job_log_bytes: 10000000
 max_jobs: 1000
 # Per-file read limit in bytes.
 max_file_read_bytes: 512000
+# Maximum raw bytes accepted by the native MCP image viewer.
+max_view_image_bytes: 20971520
 # Maximum number of discovered Skills across all configured sources.
 max_skills: 256
 # Maximum related files returned for one Skill.

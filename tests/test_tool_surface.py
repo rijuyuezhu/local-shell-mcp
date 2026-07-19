@@ -61,6 +61,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "read_todos",
     "write_todos",
     "job",
+    "view_image",
 }
 
 
@@ -722,7 +723,7 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
             if spec.expose_http
         }
 
-        assert route_tool_names == mcp_tool_names
+        assert route_tool_names == mcp_tool_names - {"view_image"}
         assert handler_tool_names == mcp_tool_names | internal_worker_handlers
     finally:
         local_tool_handlers.cache_clear()

@@ -675,6 +675,26 @@
         ],
         [
           {
+            "code": "max_view_image_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-view-image-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES"
+          },
+          "integer",
+          {
+            "code": "20971520"
+          },
+          "Maximum raw bytes accepted by the native MCP image viewer."
+        ],
+        [
+          {
             "code": "max_skills"
           },
           {
@@ -1961,6 +1981,19 @@
       "description": "Per-file read limit in bytes.",
       "env": "LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES",
       "name": "max_file_read_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-view-image-bytes",
+      "default": 20971520,
+      "default_display": "20971520",
+      "description": "Maximum raw bytes accepted by the native MCP image viewer.",
+      "env": "LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES",
+      "name": "max_view_image_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

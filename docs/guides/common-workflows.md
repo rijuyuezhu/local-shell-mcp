@@ -46,6 +46,14 @@ Use local-shell-mcp to show git status, summarize the diff, and run secret_scan 
 
 `secret_scan` is heuristic. It does not prove the workspace is secret-free, but it is a useful final precaution before sharing a diff.
 
+## Inspect images natively
+
+Use `view_image(session_id=..., path=...)` for PNG, JPEG, GIF, and WebP files inside an explicit local or remote session. The tool is MCP-only because it returns native image content rather than embedding large base64 payloads in the REST surface. Images are bounded by `max_view_image_bytes` (20 MiB by default); remote images are read through the existing validated transfer-chunk protocol.
+
+```text
+Use local-shell-mcp. Start a session for this project, then view artifacts/plot.png with view_image using that session_id and explain the visual result.
+```
+
 ## Work with long-running commands
 
 Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive work owned by that session, and manage it with `job(session_id=...)`. Tracked jobs persist their exit status and bounded output under `state_dir`, so `job(poll=[...])` continues to work after the command exits or the server restarts. `max_job_log_bytes` limits retained output per attempt, while `max_jobs` bounds retained terminal records without pruning active jobs.

@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 import subprocess
 import sys
@@ -10,6 +11,7 @@ from typing import Any
 
 import httpx
 import pytest
+from mcp.types import ImageContent
 
 from tests.e2e_helpers import (
     PROJECT_ROOT,
@@ -32,6 +34,7 @@ REMOTE_TOOL_NAMES = {
     "edit_lines",
     "bash",
     "job",
+    "view_image",
 }
 
 
@@ -259,6 +262,10 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 encoding="utf-8",
             )
             assert not (control_workspace / "remote" / "demo.txt").exists()
+            png = base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lP7LAAAAAElFTkSuQmCC"
+            )
+            (remote_workspace / "remote" / "pixel.png").write_bytes(png)
 
             first_class_session = await client.call_tool(
                 "session_start",
@@ -273,6 +280,25 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert first_class_session["target"] == "remote"
             assert first_class_session["machine"] == machine
             assert "worker_session_id" not in first_class_session
+
+            image_result = await client.call_tool_result(
+                "view_image",
+                {
+                    "session_id": first_class_session_id,
+                    "path": "remote/pixel.png",
+                },
+            )
+            assert image_result.isError is False
+            assert isinstance(image_result.content[0], ImageContent)
+            assert base64.b64decode(image_result.content[0].data) == png
+            assert image_result.structuredContent == {
+                "session_id": first_class_session_id,
+                "target": "remote",
+                "machine": machine,
+                "path": "remote/pixel.png",
+                "mime_type": "image/png",
+                "bytes": len(png),
+            }
 
             first_class_read = await client.call_tool(
                 "read",
