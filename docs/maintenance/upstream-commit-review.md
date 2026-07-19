@@ -2,7 +2,7 @@
 
 This file tracks every upstream commit after the fork point used by Wenrui Huang's first fork-side commit. The review is functional: a commit is covered when the current fork provides the same user-visible behavior or maintenance outcome, even if the implementation lives in different modules or uses a different architecture.
 
-Status values: **Implemented** means the fork covers the upstream behavior; **Implemented (adapted)** means the fork covers it through a different design; **Partial** means the main goal is covered with known differences; **Not adopted** means the fork intentionally does not carry that upstream direction or the commit only applies to obsolete upstream structure; **Recommended** means the upstream change should still be imported; **Split follow-up** means the idea is useful but needs a fork-specific design rather than a direct port.
+Status values: **Implemented** means the fork covers the upstream behavior; **Implemented (adapted)** means the fork covers it through a different design; **Partial** means the main goal is covered with known differences; **Not adopted** means the fork intentionally does not carry that upstream direction or the commit only applies to obsolete upstream structure; **Recommended** means the upstream change should still be imported; **Split follow-up** means the idea is useful but needs a fork-specific design rather than a direct port; **Pending** means the commit has been inventoried for the current migration branch but its fork-specific implementation decision is not complete yet.
 
 | # | Date | Upstream commit | Subject | Fork status | Current fork handling |
 |---:|---|---|---|---|---|
@@ -83,3 +83,347 @@ Status values: **Implemented** means the fork covers the upstream behavior; **Im
 | 75 | 2026-06-26 | `f4dfdae` | search: avoid shell-specific grep pipeline | **Implemented (adapted)** | Search uses direct `rg` subprocess execution and keeps fork-specific grounding metadata, selectors, pagination, and structured missing-ripgrep errors. |
 | 76 | 2026-06-26 | `95bce13` | chore: bump version to 2.7.4 | **Not adopted** | Upstream 2.x version bumps are superseded by the fork's 3.x version line. |
 | 77 | 2026-06-26 | `e1f2dc0` | fix frozen shell loader environment | **Implemented (adapted)** | Shell subprocess environment filtering now restores original loader variables for frozen app bundles and removes bundled loader values when no original exists. |
+
+<!-- upstream-port-placeholder: e1f2dc0..upstream/main -->
+
+## Current upstream migration inventory
+
+The rows below cover every commit currently reachable from `upstream/main` after the shared fork point `e1f2dc0`. They are intentionally initialized as placeholders on the feature-port branch and must be updated as each functional batch is reviewed, adapted, validated, or intentionally rejected.
+
+| # | Date | Upstream commit | Subject | Fork status | Current fork handling |
+|---:|---|---|---|---|---|
+| 78 | 2026-07-07 | `ade54ef` | docs: improve Chinese translations | **Pending** | Pending functional review and fork-specific port decision. |
+| 79 | 2026-07-07 | `0be3f73` | ci: publish Docker images to GHCR | **Pending** | Pending functional review and fork-specific port decision. |
+| 80 | 2026-07-07 | `0232135` | ci: simplify release assets | **Pending** | Pending functional review and fork-specific port decision. |
+| 81 | 2026-07-07 | `0aa9d66` | chore: update version metadata | **Pending** | Pending functional review and fork-specific port decision. |
+| 82 | 2026-07-07 | `71b9605` | ci: simplify Docker release notes | **Pending** | Pending functional review and fork-specific port decision. |
+| 83 | 2026-07-13 | `3820950` | skills: add fixed list and load tools | **Pending** | Pending functional review and fork-specific port decision. |
+| 84 | 2026-07-13 | `ddb1ea6` | skills: remove dynamic tool registration plumbing | **Pending** | Pending functional review and fork-specific port decision. |
+| 85 | 2026-07-13 | `a63f32c` | docs: document fixed Skills workflow | **Pending** | Pending functional review and fork-specific port decision. |
+| 86 | 2026-07-13 | `fd210be` | chore: bump version to 2.9.0 | **Pending** | Pending functional review and fork-specific port decision. |
+| 87 | 2026-07-13 | `386b0e8` | fix: derive state paths correctly on Windows | **Pending** | Pending functional review and fork-specific port decision. |
+| 88 | 2026-07-13 | `384f84b` | fix: derive agent paths from custom state directory | **Pending** | Pending functional review and fork-specific port decision. |
+| 89 | 2026-07-13 | `0be1eff` | fix: expose readable Skill resource paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 90 | 2026-07-13 | `971eb1e` | fix: validate Skill names and REST inputs | **Pending** | Pending functional review and fork-specific port decision. |
+| 91 | 2026-07-13 | `2ee0188` | fix: bound and directly load Skill files | **Pending** | Pending functional review and fork-specific port decision. |
+| 92 | 2026-07-13 | `1fa8d4a` | fix: parse Skill descriptions consistently | **Pending** | Pending functional review and fork-specific port decision. |
+| 93 | 2026-07-13 | `d74bbee` | fix: harden Skill registry edge cases | **Pending** | Pending functional review and fork-specific port decision. |
+| 94 | 2026-07-13 | `356a1af` | docs: document hardened Skill workflow | **Pending** | Pending functional review and fork-specific port decision. |
+| 95 | 2026-07-13 | `3904578` | chore: bump version to 2.9.1 | **Pending** | Pending functional review and fork-specific port decision. |
+| 96 | 2026-07-13 | `ac2b08d` | fix: close remaining Skill path and scan gaps | **Pending** | Pending functional review and fork-specific port decision. |
+| 97 | 2026-07-13 | `de1897a` | test: limit invalid-byte filename case to Linux | **Pending** | Pending functional review and fork-specific port decision. |
+| 98 | 2026-07-13 | `63d9064` | fix: normalize Skill text across platforms | **Pending** | Pending functional review and fork-specific port decision. |
+| 99 | 2026-07-13 | `78c5b05` | feat(ui): add shared human interface backend | **Pending** | Pending functional review and fork-specific port decision. |
+| 100 | 2026-07-13 | `70b2e7b` | feat(ui): add shared OpenTUI and web terminal client | **Pending** | Pending functional review and fork-specific port decision. |
+| 101 | 2026-07-13 | `01315ea` | feat(ui): secure native and browser interface sessions | **Pending** | Pending functional review and fork-specific port decision. |
+| 102 | 2026-07-13 | `c715917` | build(ui): package OpenTUI sidecars and Yazi | **Pending** | Pending functional review and fork-specific port decision. |
+| 103 | 2026-07-13 | `aed3c3a` | docs(ui): document the human interface | **Pending** | Pending functional review and fork-specific port decision. |
+| 104 | 2026-07-13 | `e3c429a` | test(ui): add OAuth browser end-to-end coverage | **Pending** | Pending functional review and fork-specific port decision. |
+| 105 | 2026-07-13 | `b670769` | chore(release): prepare v3.0.0 | **Pending** | Pending functional review and fork-specific port decision. |
+| 106 | 2026-07-13 | `fd66537` | fix(ui): harden the Windows ConPTY bridge | **Pending** | Pending functional review and fork-specific port decision. |
+| 107 | 2026-07-13 | `2fb1ff4` | test(ui): validate PTY bridges on every platform | **Pending** | Pending functional review and fork-specific port decision. |
+| 108 | 2026-07-13 | `8d3055d` | fix(build): scope Playwright Docker argument globally | **Pending** | Pending functional review and fork-specific port decision. |
+| 109 | 2026-07-13 | `b368873` | docs(ui): translate the human-interface nav label | **Pending** | Pending functional review and fork-specific port decision. |
+| 110 | 2026-07-13 | `4ac8693` | fix(ui): require OAuth on browser WebSockets | **Pending** | Pending functional review and fork-specific port decision. |
+| 111 | 2026-07-13 | `8e40343` | fix(ui): make file management lossless and workspace-safe | **Pending** | Pending functional review and fork-specific port decision. |
+| 112 | 2026-07-13 | `221715d` | fix(ui): make raw terminal input exclusive and ordered | **Pending** | Pending functional review and fork-specific port decision. |
+| 113 | 2026-07-13 | `97258f8` | fix(ui): bound terminal requests and session cleanup | **Pending** | Pending functional review and fork-specific port decision. |
+| 114 | 2026-07-13 | `080f68a` | fix(ui): preserve Windows TUI command paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 115 | 2026-07-13 | `a13b302` | fix(build): install Docker Python deps in a venv | **Pending** | Pending functional review and fork-specific port decision. |
+| 116 | 2026-07-13 | `98369c6` | fix(auth): bound dynamic OAuth state and require S256 | **Pending** | Pending functional review and fork-specific port decision. |
+| 117 | 2026-07-13 | `9c45ae1` | fix(ui): stabilize responsive state and fatal disconnects | **Pending** | Pending functional review and fork-specific port decision. |
+| 118 | 2026-07-13 | `bf0c5c9` | fix(ui): prevent stale todo overwrites | **Pending** | Pending functional review and fork-specific port decision. |
+| 119 | 2026-07-13 | `35ebcdb` | fix(ui): isolate mount paths and disabled remotes | **Pending** | Pending functional review and fork-specific port decision. |
+| 120 | 2026-07-13 | `6a29ddf` | fix(ui): discard stale polling responses | **Pending** | Pending functional review and fork-specific port decision. |
+| 121 | 2026-07-13 | `f564761` | fix(auth): require strong public OAuth approval credentials | **Pending** | Pending functional review and fork-specific port decision. |
+| 122 | 2026-07-13 | `d3050aa` | fix(audit): serialize trimming and appends | **Pending** | Pending functional review and fork-specific port decision. |
+| 123 | 2026-07-13 | `bfc08df` | fix(remotes): bound invites and validate node identities | **Pending** | Pending functional review and fork-specific port decision. |
+| 124 | 2026-07-13 | `69bb316` | fix(ui): make editor saves atomic and conflict-safe | **Pending** | Pending functional review and fork-specific port decision. |
+| 125 | 2026-07-13 | `5d0a5c6` | test(auth): use S256 PKCE in the MCP endpoint probe | **Pending** | Pending functional review and fork-specific port decision. |
+| 126 | 2026-07-14 | `4a4b9d2` | fix(ui): reserve F8 for raw terminal mode | **Pending** | Pending functional review and fork-specific port decision. |
+| 127 | 2026-07-14 | `d810037` | test(ui): make editor checks portable on Windows | **Pending** | Pending functional review and fork-specific port decision. |
+| 128 | 2026-07-14 | `c593612` | fix(auth): enforce scopes and confine native UI token | **Pending** | Pending functional review and fork-specific port decision. |
+| 129 | 2026-07-14 | `f416d2b` | fix(files): preserve symlinks and serialize writes | **Pending** | Pending functional review and fork-specific port decision. |
+| 130 | 2026-07-14 | `7a3cda8` | fix(ui): bound remote work and unblock event loop | **Pending** | Pending functional review and fork-specific port decision. |
+| 131 | 2026-07-14 | `e769485` | fix(ui): serialize state and isolate interactions | **Pending** | Pending functional review and fork-specific port decision. |
+| 132 | 2026-07-14 | `edae303` | fix(release): remove rejected OAuth placeholders | **Pending** | Pending functional review and fork-specific port decision. |
+| 133 | 2026-07-14 | `f7fd688` | fix(ci): eliminate error annotations | **Pending** | Pending functional review and fork-specific port decision. |
+| 134 | 2026-07-14 | `d172ecc` | fix(ci): drain grep subprocess cleanup | **Pending** | Pending functional review and fork-specific port decision. |
+| 135 | 2026-07-14 | `8379169` | fix: harden auth downloads and audit logging | **Pending** | Pending functional review and fork-specific port decision. |
+| 136 | 2026-07-14 | `867330f` | fix: make remote transfers transactional | **Pending** | Pending functional review and fork-specific port decision. |
+| 137 | 2026-07-14 | `1bdb837` | fix: isolate human UI state by machine | **Pending** | Pending functional review and fork-specific port decision. |
+| 138 | 2026-07-14 | `51879f9` | fix: persist long-running job results | **Pending** | Pending functional review and fork-specific port decision. |
+| 139 | 2026-07-14 | `17ed1e9` | fix: correct MCP safety annotations | **Pending** | Pending functional review and fork-specific port decision. |
+| 140 | 2026-07-14 | `c2acf69` | fix: share shell output budget across streams | **Pending** | Pending functional review and fork-specific port decision. |
+| 141 | 2026-07-14 | `212a4cb` | fix: sanitize all audit event fields | **Pending** | Pending functional review and fork-specific port decision. |
+| 142 | 2026-07-14 | `55ff945` | fix: bound path lock resource usage | **Pending** | Pending functional review and fork-specific port decision. |
+| 143 | 2026-07-14 | `403e9bb` | docs: document job and transfer limits | **Pending** | Pending functional review and fork-specific port decision. |
+| 144 | 2026-07-14 | `afb53ed` | fix: validate remote worker server URLs | **Pending** | Pending functional review and fork-specific port decision. |
+| 145 | 2026-07-14 | `20f3861` | Merge pull request #4 from fwerkor/fix/deep-audit-bugs | **Pending** | Pending functional review and fork-specific port decision. |
+| 146 | 2026-07-14 | `e106ed4` | fix(ui): normalize invalid token path errors on Windows | **Pending** | Pending functional review and fork-specific port decision. |
+| 147 | 2026-07-14 | `d5c7cbb` | fix(jobs): invoke runner correctly from PowerShell | **Pending** | Pending functional review and fork-specific port decision. |
+| 148 | 2026-07-14 | `971688b` | Merge pull request #5 from fwerkor/fix/windows-ci-regressions | **Pending** | Pending functional review and fork-specific port decision. |
+| 149 | 2026-07-14 | `41512fb` | fix(security): harden OAuth assets and file shares | **Pending** | Pending functional review and fork-specific port decision. |
+| 150 | 2026-07-14 | `d5a81b7` | fix(jobs): serialize state and bound retention | **Pending** | Pending functional review and fork-specific port decision. |
+| 151 | 2026-07-14 | `2319219` | fix(settings): isolate persisted secret reads | **Pending** | Pending functional review and fork-specific port decision. |
+| 152 | 2026-07-14 | `557ca1b` | fix(io): preserve PTY input and dedupe lock shards | **Pending** | Pending functional review and fork-specific port decision. |
+| 153 | 2026-07-14 | `99b0c1a` | fix(remote): fail permanent errors and keep jobs online | **Pending** | Pending functional review and fork-specific port decision. |
+| 154 | 2026-07-14 | `311f0f1` | fix(transfer): prune temporary artifacts | **Pending** | Pending functional review and fork-specific port decision. |
+| 155 | 2026-07-14 | `fca3071` | fix(ui): retry PTY writes under backpressure | **Pending** | Pending functional review and fork-specific port decision. |
+| 156 | 2026-07-14 | `4cf053e` | fix(lifecycle): close cleanup edge cases | **Pending** | Pending functional review and fork-specific port decision. |
+| 157 | 2026-07-14 | `81be9b1` | test(oauth): use a strong compatibility key | **Pending** | Pending functional review and fork-specific port decision. |
+| 158 | 2026-07-14 | `3deee21` | chore(vscode): update vulnerable packaging dependencies | **Pending** | Pending functional review and fork-specific port decision. |
+| 159 | 2026-07-14 | `7864dff` | fix(ui): accept queued ConPTY writes | **Pending** | Pending functional review and fork-specific port decision. |
+| 160 | 2026-07-14 | `21170ea` | fix(vscode): await process tree shutdown | **Pending** | Pending functional review and fork-specific port decision. |
+| 161 | 2026-07-14 | `f26d826` | fix(http): bound inbound request bodies | **Pending** | Pending functional review and fork-specific port decision. |
+| 162 | 2026-07-14 | `579fc2e` | Merge pull request #6 from fwerkor/fix/deep-audit-followups | **Pending** | Pending functional review and fork-specific port decision. |
+| 163 | 2026-07-14 | `74d90e3` | fix(transfer): stream remote files over HTTP | **Pending** | Pending functional review and fork-specific port decision. |
+| 164 | 2026-07-14 | `5f8404e` | test(transfer): cover streamed remote copies | **Pending** | Pending functional review and fork-specific port decision. |
+| 165 | 2026-07-14 | `6e90650` | Fix interrupted remote downloads | **Pending** | Pending functional review and fork-specific port decision. |
+| 166 | 2026-07-14 | `e08d27e` | Harden persistent job recovery | **Pending** | Pending functional review and fork-specific port decision. |
+| 167 | 2026-07-14 | `d869478` | Synchronize remote worker registry | **Pending** | Pending functional review and fork-specific port decision. |
+| 168 | 2026-07-14 | `99f5af3` | Harden transfer and ConPTY cleanup | **Pending** | Pending functional review and fork-specific port decision. |
+| 169 | 2026-07-14 | `1bfaba5` | fix: allow shell timeout cleanup before watchdog | **Pending** | Pending functional review and fork-specific port decision. |
+| 170 | 2026-07-14 | `eac80f6` | Remove unused dynamic agent bridge | **Pending** | Pending functional review and fork-specific port decision. |
+| 171 | 2026-07-14 | `bbd5c67` | Fix Windows cleanup regressions | **Pending** | Pending functional review and fork-specific port decision. |
+| 172 | 2026-07-14 | `d3bd5be` | Bundle tmux for Linux persistent shells | **Pending** | Pending functional review and fork-specific port decision. |
+| 173 | 2026-07-14 | `a59fce6` | Fix bundled tmux tests on Windows | **Pending** | Pending functional review and fork-specific port decision. |
+| 174 | 2026-07-15 | `a512008` | security: harden MCP sessions and remote results | **Pending** | Pending functional review and fork-specific port decision. |
+| 175 | 2026-07-15 | `0b043d7` | fix: serialize job and shell lifecycle transitions | **Pending** | Pending functional review and fork-specific port decision. |
+| 176 | 2026-07-15 | `7f9daf1` | fix: handle remote paths and file action types | **Pending** | Pending functional review and fork-specific port decision. |
+| 177 | 2026-07-15 | `2f7bb3b` | guide agents through fixed skill tools | **Pending** | Pending functional review and fork-specific port decision. |
+| 178 | 2026-07-15 | `af2503e` | fix: submit native Windows shell commands with CRLF | **Pending** | Pending functional review and fork-specific port decision. |
+| 179 | 2026-07-15 | `e768b27` | fix(ci): authenticate OAuth MCP probes before connecting | **Pending** | Pending functional review and fork-specific port decision. |
+| 180 | 2026-07-15 | `479138e` | fix: harden local execution and interfaces | **Pending** | Pending functional review and fork-specific port decision. |
+| 181 | 2026-07-15 | `33a30ae` | fix: make remote operations transactional | **Pending** | Pending functional review and fork-specific port decision. |
+| 182 | 2026-07-15 | `ae68cd8` | test: cover comprehensive bug audit regressions | **Pending** | Pending functional review and fork-specific port decision. |
+| 183 | 2026-07-15 | `69f9b27` | fix: pass job environment policy explicitly | **Pending** | Pending functional review and fork-specific port decision. |
+| 184 | 2026-07-15 | `64d2e52` | fix: encode job policy arguments for powershell | **Pending** | Pending functional review and fork-specific port decision. |
+| 185 | 2026-07-15 | `892e829` | Merge pull request #7 from fwerkor/fix/comprehensive-bug-audit | **Pending** | Pending functional review and fork-specific port decision. |
+| 186 | 2026-07-15 | `9f317eb` | refactor: unify local and remote tool execution | **Pending** | Pending functional review and fork-specific port decision. |
+| 187 | 2026-07-15 | `dff7644` | chore: align auth and clients with compact tools | **Pending** | Pending functional review and fork-specific port decision. |
+| 188 | 2026-07-15 | `47fe235` | test: lock down the compact tool contract | **Pending** | Pending functional review and fork-specific port decision. |
+| 189 | 2026-07-15 | `f0abf5c` | docs: generate tool reference from schemas | **Pending** | Pending functional review and fork-specific port decision. |
+| 190 | 2026-07-15 | `2952132` | docs: update compact tool workflows | **Pending** | Pending functional review and fork-specific port decision. |
+| 191 | 2026-07-15 | `06448ae` | docs: remove obsolete tool names from localized pages | **Pending** | Pending functional review and fork-specific port decision. |
+| 192 | 2026-07-15 | `a04892e` | Merge pull request #8 from fwerkor/refactor/compact-tool-surface | **Pending** | Pending functional review and fork-specific port decision. |
+| 193 | 2026-07-15 | `77c5de9` | ci: enforce combined coverage and reclaim Docker disk | **Pending** | Pending functional review and fork-specific port decision. |
+| 194 | 2026-07-15 | `fbc3a91` | fix: preserve explicit fallback settings updates | **Pending** | Pending functional review and fork-specific port decision. |
+| 195 | 2026-07-15 | `c3ef371` | test: cover persistent runtime recovery paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 196 | 2026-07-15 | `8a2a92a` | test: cover core API auth and Human UI branches | **Pending** | Pending functional review and fork-specific port decision. |
+| 197 | 2026-07-15 | `ef9771f` | test: cover tool surface storage and skill safety | **Pending** | Pending functional review and fork-specific port decision. |
+| 198 | 2026-07-15 | `3fbc891` | test: add real remote worker end-to-end coverage | **Pending** | Pending functional review and fork-specific port decision. |
+| 199 | 2026-07-15 | `574515d` | test: cover UI clients and extension process lifecycle | **Pending** | Pending functional review and fork-specific port decision. |
+| 200 | 2026-07-15 | `b4e7fdc` | ci: enforce near-complete coverage and binary smoke builds | **Pending** | Pending functional review and fork-specific port decision. |
+| 201 | 2026-07-15 | `06eb86e` | test: make expanded coverage suite cross-platform | **Pending** | Pending functional review and fork-specific port decision. |
+| 202 | 2026-07-15 | `aca8ae8` | test: use platform-specific TUI sidecar name | **Pending** | Pending functional review and fork-specific port decision. |
+| 203 | 2026-07-15 | `c649f27` | ci: avoid duplicate feature branch matrices | **Pending** | Pending functional review and fork-specific port decision. |
+| 204 | 2026-07-15 | `119975a` | Merge pull request #9 from fwerkor/test/near-complete-coverage | **Pending** | Pending functional review and fork-specific port decision. |
+| 205 | 2026-07-16 | `6ab0d2a` | feat: persist and manage remote workers | **Pending** | Pending functional review and fork-specific port decision. |
+| 206 | 2026-07-16 | `44b3692` | fix: harden persisted worker lifecycle | **Pending** | Pending functional review and fork-specific port decision. |
+| 207 | 2026-07-16 | `21571b4` | test: handle JSON-escaped Windows paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 208 | 2026-07-16 | `2051a53` | fix(worker): secure connect and prepare runtime on start | **Pending** | Pending functional review and fork-specific port decision. |
+| 209 | 2026-07-16 | `789520b` | Merge pull request #11 from fwerkor/fix/remote-worker-persist-lifecycle | **Pending** | Pending functional review and fork-specific port decision. |
+| 210 | 2026-07-16 | `f837152` | fix: harden compact tool contracts | **Pending** | Pending functional review and fork-specific port decision. |
+| 211 | 2026-07-16 | `b918d18` | docs: align examples with compact tools | **Pending** | Pending functional review and fork-specific port decision. |
+| 212 | 2026-07-16 | `2aa1a31` | Merge pull request #13 from fwerkor/fix/compact-tool-contracts | **Pending** | Pending functional review and fork-specific port decision. |
+| 213 | 2026-07-16 | `cd7d96f` | feat: add native image viewing tool | **Pending** | Pending functional review and fork-specific port decision. |
+| 214 | 2026-07-16 | `d592468` | Merge pull request #15 from fwerkor/feat/view-image | **Pending** | Pending functional review and fork-specific port decision. |
+| 215 | 2026-07-16 | `b4f87e2` | deslop: remove tool wrapper boilerplate (#6) | **Pending** | Pending functional review and fork-specific port decision. |
+| 216 | 2026-07-16 | `7395ea3` | deslop: share success envelopes (#1) | **Pending** | Pending functional review and fork-specific port decision. |
+| 217 | 2026-07-16 | `aa3bc2b` | ci: use 90 percent module coverage floor | **Pending** | Pending functional review and fork-specific port decision. |
+| 218 | 2026-07-16 | `0a7c983` | deslop: simplify conpty tail trimming (#6) | **Pending** | Pending functional review and fork-specific port decision. |
+| 219 | 2026-07-16 | `ee0e77d` | deslop: share transfer chunk writes (#1) — 2 instances | **Pending** | Pending functional review and fork-specific port decision. |
+| 220 | 2026-07-16 | `31eea53` | deslop: remove runtime import indirection (#9) — 4 instances | **Pending** | Pending functional review and fork-specific port decision. |
+| 221 | 2026-07-16 | `d702368` | deslop: split MCP registration by domain (#6) — 11 groups | **Pending** | Pending functional review and fork-specific port decision. |
+| 222 | 2026-07-16 | `c49c3b1` | deslop: split remote worker dispatch (#6) — 7 domains | **Pending** | Pending functional review and fork-specific port decision. |
+| 223 | 2026-07-16 | `7f02ae2` | deslop: split REST route assembly (#6) — 9 groups | **Pending** | Pending functional review and fork-specific port decision. |
+| 224 | 2026-07-16 | `eba3f7b` | deslop: remove thread pass-through wrappers (#6) — 3 instances | **Pending** | Pending functional review and fork-specific port decision. |
+| 225 | 2026-07-16 | `a25fc49` | deslop: centralize shell argument policy (#1) — 2 implementations | **Pending** | Pending functional review and fork-specific port decision. |
+| 226 | 2026-07-16 | `f547e5d` | deslop: share packed directory transfer (#1) — 2 implementations | **Pending** | Pending functional review and fork-specific port decision. |
+| 227 | 2026-07-16 | `94111d8` | deslop: remove image thread wrapper calls (#6) — 4 instances | **Pending** | Pending functional review and fork-specific port decision. |
+| 228 | 2026-07-16 | `193a849` | Merge pull request #14 from fwerkor/refactor/code-humanizer | **Pending** | Pending functional review and fork-specific port decision. |
+| 229 | 2026-07-17 | `e4bfdec` | Polish OAuth authorization page | **Pending** | Pending functional review and fork-specific port decision. |
+| 230 | 2026-07-17 | `41ea83f` | fix: make OpenTUI usable on narrow screens | **Pending** | Pending functional review and fork-specific port decision. |
+| 231 | 2026-07-17 | `250cb4f` | fix: add mobile WebUI terminal controls | **Pending** | Pending functional review and fork-specific port decision. |
+| 232 | 2026-07-17 | `7f6c146` | fix: preserve compact nav at 47 columns | **Pending** | Pending functional review and fork-specific port decision. |
+| 233 | 2026-07-17 | `d7643f7` | Merge pull request #16 from fwerkor/ui/oauth-page-polish | **Pending** | Pending functional review and fork-specific port decision. |
+| 234 | 2026-07-17 | `426c013` | feat(ui): add distinct TUI screen themes | **Pending** | Pending functional review and fork-specific port decision. |
+| 235 | 2026-07-17 | `f4e3966` | style(ui): align WebUI terminal palette | **Pending** | Pending functional review and fork-specific port decision. |
+| 236 | 2026-07-17 | `6ac77bc` | fix(ui): remove shortcut labels from top navigation | **Pending** | Pending functional review and fork-specific port decision. |
+| 237 | 2026-07-17 | `4cb27aa` | test(ui): update smoke labels for simplified navigation | **Pending** | Pending functional review and fork-specific port decision. |
+| 238 | 2026-07-17 | `4342afc` | Merge pull request #17 from fwerkor/ui/tui-color-polish | **Pending** | Pending functional review and fork-specific port decision. |
+| 239 | 2026-07-17 | `bf94284` | feat(downloads): support inline file links | **Pending** | Pending functional review and fork-specific port decision. |
+| 240 | 2026-07-17 | `458917d` | test(windows): allow slower native shell startup | **Pending** | Pending functional review and fork-specific port decision. |
+| 241 | 2026-07-17 | `bb39e83` | fix(downloads): sandbox inline responses | **Pending** | Pending functional review and fork-specific port decision. |
+| 242 | 2026-07-17 | `b835b2c` | chore(release): bump version to 3.0.1 | **Pending** | Pending functional review and fork-specific port decision. |
+| 243 | 2026-07-17 | `31d2b7b` | fix(downloads): infer MIME from display filename | **Pending** | Pending functional review and fork-specific port decision. |
+| 244 | 2026-07-17 | `c684296` | Merge pull request #18 from fwerkor/feat/inline-file-links | **Pending** | Pending functional review and fork-specific port decision. |
+| 245 | 2026-07-17 | `2e028d1` | docs(config): keep one canonical example | **Pending** | Pending functional review and fork-specific port decision. |
+| 246 | 2026-07-17 | `834fee5` | fix(compose): forward canonical env settings | **Pending** | Pending functional review and fork-specific port decision. |
+| 247 | 2026-07-17 | `a15c78d` | Merge pull request #19 from fwerkor/chore/single-config-example | **Pending** | Pending functional review and fork-specific port decision. |
+| 248 | 2026-07-17 | `3f89325` | feat(webui): render inline terminal images | **Pending** | Pending functional review and fork-specific port decision. |
+| 249 | 2026-07-17 | `2d49704` | feat(ui): advertise inline image protocols | **Pending** | Pending functional review and fork-specific port decision. |
+| 250 | 2026-07-17 | `ad7d89a` | fix(webui): align image addon with xterm 5.5 | **Pending** | Pending functional review and fork-specific port decision. |
+| 251 | 2026-07-17 | `eff6e65` | Merge pull request #20 from fwerkor/feat/webui-inline-images | **Pending** | Pending functional review and fork-specific port decision. |
+| 252 | 2026-07-17 | `054bcc5` | fix(oauth): allow 8-character admin PINs | **Pending** | Pending functional review and fork-specific port decision. |
+| 253 | 2026-07-17 | `5b174b7` | fix(auth): persist OAuth clients and grant full access | **Pending** | Pending functional review and fork-specific port decision. |
+| 254 | 2026-07-17 | `a86f367` | fix(auth): preserve scoped tokens and bound registrations | **Pending** | Pending functional review and fork-specific port decision. |
+| 255 | 2026-07-17 | `9137843` | Merge pull request #21 from fwerkor/fix/oauth-pin-min-length-8 | **Pending** | Pending functional review and fork-specific port decision. |
+| 256 | 2026-07-17 | `d5f9b73` | build(ui): stage OpenTUI for standalone embedding | **Pending** | Pending functional review and fork-specific port decision. |
+| 257 | 2026-07-17 | `b6c8618` | fix(binary): activate embedded OpenTUI runtime | **Pending** | Pending functional review and fork-specific port decision. |
+| 258 | 2026-07-17 | `d29d2cb` | chore(ui): ignore staged native runtime | **Pending** | Pending functional review and fork-specific port decision. |
+| 259 | 2026-07-17 | `35ca8b7` | fix(docker): wire and verify bundled human UI runtime | **Pending** | Pending functional review and fork-specific port decision. |
+| 260 | 2026-07-17 | `88fce86` | test(ui): add standalone and Docker runtime smoke | **Pending** | Pending functional review and fork-specific port decision. |
+| 261 | 2026-07-17 | `d032e8f` | ci(ui): verify standalone and Docker UI runtimes | **Pending** | Pending functional review and fork-specific port decision. |
+| 262 | 2026-07-17 | `8e4ef5a` | fix(binary): embed compressed TUI payload | **Pending** | Pending functional review and fork-specific port decision. |
+| 263 | 2026-07-17 | `a3abb41` | fix(binary): unpack embedded TUI at startup | **Pending** | Pending functional review and fork-specific port decision. |
+| 264 | 2026-07-17 | `c628d9c` | ci(ui): retain PyInstaller failure logs | **Pending** | Pending functional review and fork-specific port decision. |
+| 265 | 2026-07-17 | `029fa6f` | docs(ui): describe embedded standalone and Docker runtimes | **Pending** | Pending functional review and fork-specific port decision. |
+| 266 | 2026-07-17 | `b0d8547` | ci(ui): report temporary macOS build diagnostics | **Pending** | Pending functional review and fork-specific port decision. |
+| 267 | 2026-07-17 | `0f21efd` | ci(ui): capture standalone runtime diagnostics | **Pending** | Pending functional review and fork-specific port decision. |
+| 268 | 2026-07-17 | `10347a6` | ci(ui): expose failure summaries through artifacts | **Pending** | Pending functional review and fork-specific port decision. |
+| 269 | 2026-07-17 | `05039a1` | ci(ui): add temporary cross-platform diagnostics | **Pending** | Pending functional review and fork-specific port decision. |
+| 270 | 2026-07-17 | `00f27f4` | test(ui): terminate Windows one-file process trees reliably | **Pending** | Pending functional review and fork-specific port decision. |
+| 271 | 2026-07-17 | `7d44444` | ci(ui): keep final cross-platform runtime coverage | **Pending** | Pending functional review and fork-specific port decision. |
+| 272 | 2026-07-17 | `1109c4e` | ci(ui): remove temporary diagnostic workflow | **Pending** | Pending functional review and fork-specific port decision. |
+| 273 | 2026-07-17 | `d0d7319` | ci: apply cross-workflow Bash compatibility patch | **Pending** | Pending functional review and fork-specific port decision. |
+| 274 | 2026-07-17 | `41ada78` | ci: run one-time Bash compatibility patch on PR | **Pending** | Pending functional review and fork-specific port decision. |
+| 275 | 2026-07-17 | `b1bc388` | ci: make one-time Bash patch line-based | **Pending** | Pending functional review and fork-specific port decision. |
+| 276 | 2026-07-17 | `ce71216` | ci: export Bash-compatible workflow patches | **Pending** | Pending functional review and fork-specific port decision. |
+| 277 | 2026-07-17 | `786ddf4` | fix(ui): quote embedded TUI command paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 278 | 2026-07-17 | `75ed15e` | fix(ci): support macOS Bash 3.2 in binary builds | **Pending** | Pending functional review and fork-specific port decision. |
+| 279 | 2026-07-17 | `205a299` | Merge pull request #22 from fwerkor/fix/embedded-ui-runtime | **Pending** | Pending functional review and fork-specific port decision. |
+| 280 | 2026-07-17 | `a33453b` | Update pyproject.toml | **Pending** | Pending functional review and fork-specific port decision. |
+| 281 | 2026-07-17 | `ca2c402` | Merge pull request #23 from fwerkor/fwerkor-patch-1 | **Pending** | Pending functional review and fork-specific port decision. |
+| 282 | 2026-07-17 | `75cbf95` | Fix job store migration and startup durability | **Pending** | Pending functional review and fork-specific port decision. |
+| 283 | 2026-07-17 | `0447f96` | Cover job startup failure paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 284 | 2026-07-17 | `7b7e7c9` | Merge pull request #24 from fwerkor/fix/job-store-migration | **Pending** | Pending functional review and fork-specific port decision. |
+| 285 | 2026-07-17 | `605f0c2` | fix(audit): preserve tool inputs without redaction | **Pending** | Pending functional review and fork-specific port decision. |
+| 286 | 2026-07-17 | `e3fe41b` | Merge pull request #25 from fwerkor/fix/audit-no-redaction | **Pending** | Pending functional review and fork-specific port decision. |
+| 287 | 2026-07-17 | `005b98f` | Fix WebUI mouse and terminal shortcuts | **Pending** | Pending functional review and fork-specific port decision. |
+| 288 | 2026-07-17 | `e82a76b` | Cover human UI mouse interactions | **Pending** | Pending functional review and fork-specific port decision. |
+| 289 | 2026-07-17 | `77ab1e2` | Rebuild WebUI assets with CI Bun | **Pending** | Pending functional review and fork-specific port decision. |
+| 290 | 2026-07-17 | `e2d5ac6` | Stabilize terminal creation browser smoke | **Pending** | Pending functional review and fork-specific port decision. |
+| 291 | 2026-07-17 | `584cfa6` | ci: remove redundant UI runtime workflow | **Pending** | Pending functional review and fork-specific port decision. |
+| 292 | 2026-07-17 | `eee29f3` | Merge pull request #26 from fwerkor/fix/webui-tui-input | **Pending** | Pending functional review and fork-specific port decision. |
+| 293 | 2026-07-17 | `65a09c6` | fix: recycle idle MCP sessions sooner | **Pending** | Pending functional review and fork-specific port decision. |
+| 294 | 2026-07-17 | `b4f495d` | fix: recycle MCP sessions after three minutes | **Pending** | Pending functional review and fork-specific port decision. |
+| 295 | 2026-07-17 | `a3defb6` | Merge pull request #28 from fwerkor/fix/mcp-session-retention | **Pending** | Pending functional review and fork-specific port decision. |
+| 296 | 2026-07-17 | `347db8e` | fix(ui): consolidate audit tool calls | **Pending** | Pending functional review and fork-specific port decision. |
+| 297 | 2026-07-17 | `f9940b0` | test: cover audit call consolidation | **Pending** | Pending functional review and fork-specific port decision. |
+| 298 | 2026-07-17 | `287cd61` | Merge pull request #27 from fwerkor/fix/audit-ui-consolidation | **Pending** | Pending functional review and fork-specific port decision. |
+| 299 | 2026-07-17 | `27e6d35` | chore: bump version to 3.0.3 | **Pending** | Pending functional review and fork-specific port decision. |
+| 300 | 2026-07-17 | `1278272` | Merge pull request #29 from fwerkor/release/v3.0.3 | **Pending** | Pending functional review and fork-specific port decision. |
+| 301 | 2026-07-17 | `ad1a6d5` | fix(ui): render image previews in files pane | **Pending** | Pending functional review and fork-specific port decision. |
+| 302 | 2026-07-18 | `41407b8` | fix: keep runtime version in sync with releases | **Pending** | Pending functional review and fork-specific port decision. |
+| 303 | 2026-07-17 | `7ad4d84` | feat(skills): support multiple registry sources | **Pending** | Pending functional review and fork-specific port decision. |
+| 304 | 2026-07-17 | `e3206a0` | fix(skills): validate rooted paths portably | **Pending** | Pending functional review and fork-specific port decision. |
+| 305 | 2026-07-18 | `4c61d21` | fix(ui): correct image preview supersampling dimensions | **Pending** | Pending functional review and fork-specific port decision. |
+| 306 | 2026-07-18 | `8bc1d9a` | test(ui): verify image preview cell mapping | **Pending** | Pending functional review and fork-specific port decision. |
+| 307 | 2026-07-18 | `6666332` | Merge pull request #30 from fwerkor/fix/files-image-preview | **Pending** | Pending functional review and fork-specific port decision. |
+| 308 | 2026-07-18 | `42e0480` | Merge branch 'main' into feat/multi-source-skills | **Pending** | Pending functional review and fork-specific port decision. |
+| 309 | 2026-07-18 | `3746dbd` | Merge branch 'main' into fix/version-consistency | **Pending** | Pending functional review and fork-specific port decision. |
+| 310 | 2026-07-18 | `1ab1b83` | Merge pull request #32 from fwerkor/feat/multi-source-skills | **Pending** | Pending functional review and fork-specific port decision. |
+| 311 | 2026-07-18 | `e808149` | Merge branch 'main' into fix/version-consistency | **Pending** | Pending functional review and fork-specific port decision. |
+| 312 | 2026-07-18 | `1834f9c` | test: avoid hard-coded CLI version assertions | **Pending** | Pending functional review and fork-specific port decision. |
+| 313 | 2026-07-18 | `bc706c4` | Merge branch 'main' into fix/version-consistency-ci | **Pending** | Pending functional review and fork-specific port decision. |
+| 314 | 2026-07-18 | `9c1f323` | Merge pull request #33 from fwerkor/fix/version-consistency-ci | **Pending** | Pending functional review and fork-specific port decision. |
+| 315 | 2026-07-18 | `cf6b4e5` | chore: bump version to 3.0.4 | **Pending** | Pending functional review and fork-specific port decision. |
+| 316 | 2026-07-18 | `01c37f2` | Merge pull request #34 from fwerkor/release/v3.0.4 | **Pending** | Pending functional review and fork-specific port decision. |
+| 317 | 2026-07-18 | `46d3cde` | revert: restore original PR #31 contribution path | **Pending** | Pending functional review and fork-specific port decision. |
+| 318 | 2026-07-18 | `e4f4ae5` | fix: keep version-agnostic CLI assertion during revert | **Pending** | Pending functional review and fork-specific port decision. |
+| 319 | 2026-07-18 | `2176586` | Merge pull request #35 from fwerkor/revert/pr33-for-original-contributor | **Pending** | Pending functional review and fork-specific port decision. |
+| 320 | 2026-07-18 | `7d60caa` | fix(release): ship standalone UI as one executable | **Pending** | Pending functional review and fork-specific port decision. |
+| 321 | 2026-07-18 | `3ad2a58` | fix(oauth): reuse matching public clients | **Pending** | Pending functional review and fork-specific port decision. |
+| 322 | 2026-07-18 | `3ae1338` | fix(audit): preserve complete call payloads | **Pending** | Pending functional review and fork-specific port decision. |
+| 323 | 2026-07-18 | `07f4885` | fix(ui): keep Escape available in fullscreen | **Pending** | Pending functional review and fork-specific port decision. |
+| 324 | 2026-07-18 | `c9b6de9` | Merge pull request #37 from fwerkor/fix/embed-opentui-runtime | **Pending** | Pending functional review and fork-specific port decision. |
+| 325 | 2026-07-18 | `dc4b0b1` | Merge branch 'main' into fix/webui-oauth-client-reuse | **Pending** | Pending functional review and fork-specific port decision. |
+| 326 | 2026-07-18 | `1c4e1ee` | Merge pull request #38 from fwerkor/fix/webui-oauth-client-reuse | **Pending** | Pending functional review and fork-specific port decision. |
+| 327 | 2026-07-18 | `b6e84c8` | Merge branch 'main' into fix/webui-fullscreen-escape | **Pending** | Pending functional review and fork-specific port decision. |
+| 328 | 2026-07-18 | `ab3d9c9` | Merge branch 'main' into fix/audit-full-payloads | **Pending** | Pending functional review and fork-specific port decision. |
+| 329 | 2026-07-18 | `5d7e11d` | fix(ui): make terminal output scrollable | **Pending** | Pending functional review and fork-specific port decision. |
+| 330 | 2026-07-18 | `013661c` | fix(audit): harden external payload retention | **Pending** | Pending functional review and fork-specific port decision. |
+| 331 | 2026-07-18 | `3438a32` | test(audit): make permission assertion portable | **Pending** | Pending functional review and fork-specific port decision. |
+| 332 | 2026-07-18 | `3db979b` | fix(ui): support mouse wheel navigation | **Pending** | Pending functional review and fork-specific port decision. |
+| 333 | 2026-07-18 | `fc61348` | fix(ui): stop file preview reload loop | **Pending** | Pending functional review and fork-specific port decision. |
+| 334 | 2026-07-18 | `88646d5` | test(audit): cover detail validation paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 335 | 2026-07-18 | `d3bc56b` | feat(ui): make footer shortcuts clickable | **Pending** | Pending functional review and fork-specific port decision. |
+| 336 | 2026-07-18 | `d8976a1` | cleanup(ui): remove Yazi packaging and references | **Pending** | Pending functional review and fork-specific port decision. |
+| 337 | 2026-07-18 | `dc8cad0` | Merge pull request #43 from fwerkor/fix/file-preview-reload | **Pending** | Pending functional review and fork-specific port decision. |
+| 338 | 2026-07-18 | `527a18b` | Merge branch 'main' into cleanup/remove-yazi | **Pending** | Pending functional review and fork-specific port decision. |
+| 339 | 2026-07-18 | `902f447` | Merge pull request #45 from fwerkor/cleanup/remove-yazi | **Pending** | Pending functional review and fork-specific port decision. |
+| 340 | 2026-07-18 | `4c25a66` | Merge branch 'main' into feat/clickable-footer-shortcuts | **Pending** | Pending functional review and fork-specific port decision. |
+| 341 | 2026-07-18 | `08dfbc6` | Merge pull request #46 from fwerkor/feat/clickable-footer-shortcuts | **Pending** | Pending functional review and fork-specific port decision. |
+| 342 | 2026-07-18 | `781da0d` | Merge remote-tracking branch 'origin/main' into fix/audit-full-payloads | **Pending** | Pending functional review and fork-specific port decision. |
+| 343 | 2026-07-18 | `4815a5e` | fix(ui): decouple fullscreen resize from keyboard lock | **Pending** | Pending functional review and fork-specific port decision. |
+| 344 | 2026-07-18 | `f289f07` | Merge remote-tracking branch 'origin/main' into fix/webui-fullscreen-escape | **Pending** | Pending functional review and fork-specific port decision. |
+| 345 | 2026-07-18 | `aa16c7a` | Merge remote-tracking branch 'origin/main' into fix/terminal-output-scrolling | **Pending** | Pending functional review and fork-specific port decision. |
+| 346 | 2026-07-18 | `b0fef20` | Merge remote-tracking branch 'origin/main' into fix/webui-mouse-wheel | **Pending** | Pending functional review and fork-specific port decision. |
+| 347 | 2026-07-18 | `763aa28` | test(ui): assert raw mode state directly | **Pending** | Pending functional review and fork-specific port decision. |
+| 348 | 2026-07-18 | `16cb4c6` | fix(audit): keep payloads portable and calls paired | **Pending** | Pending functional review and fork-specific port decision. |
+| 349 | 2026-07-18 | `e0bcdbf` | feat(ui): add mouse navigation to files | **Pending** | Pending functional review and fork-specific port decision. |
+| 350 | 2026-07-18 | `85e11a7` | fix(ui): preserve terminal history viewport | **Pending** | Pending functional review and fork-specific port decision. |
+| 351 | 2026-07-18 | `d45d379` | fix(ui): require completed file clicks | **Pending** | Pending functional review and fork-specific port decision. |
+| 352 | 2026-07-18 | `65bd9b3` | test(audit): cover retention edge paths | **Pending** | Pending functional review and fork-specific port decision. |
+| 353 | 2026-07-18 | `4ce23cc` | fix(audit): collapse tool call lifecycle rows | **Pending** | Pending functional review and fork-specific port decision. |
+| 354 | 2026-07-18 | `8af939a` | Merge pull request #47 from fwerkor/feat/files-mouse-navigation | **Pending** | Pending functional review and fork-specific port decision. |
+| 355 | 2026-07-18 | `7936891` | feat(ui): show remote LSM versions | **Pending** | Pending functional review and fork-specific port decision. |
+| 356 | 2026-07-18 | `a9f1b94` | fix(ui): freeze terminal history while scrolled | **Pending** | Pending functional review and fork-specific port decision. |
+| 357 | 2026-07-18 | `45ce451` | fix(ui): preserve image preview proportions | **Pending** | Pending functional review and fork-specific port decision. |
+| 358 | 2026-07-18 | `d35f1b0` | fix(ui): let WebUI use large viewports | **Pending** | Pending functional review and fork-specific port decision. |
+| 359 | 2026-07-18 | `94b537b` | Merge pull request #48 from fwerkor/feat/remotes-lsm-version | **Pending** | Pending functional review and fork-specific port decision. |
+| 360 | 2026-07-18 | `7fef85d` | Merge branch 'main' into fix/image-preview-layout | **Pending** | Pending functional review and fork-specific port decision. |
+| 361 | 2026-07-18 | `0067171` | Merge branch 'main' into fix/webui-fluid-size | **Pending** | Pending functional review and fork-specific port decision. |
+| 362 | 2026-07-18 | `59d9445` | feat(ui): add responsive system dashboard | **Pending** | Pending functional review and fork-specific port decision. |
+| 363 | 2026-07-18 | `9d8eaa7` | chore: prepare PR 31 compatibility merge | **Pending** | Pending functional review and fork-specific port decision. |
+| 364 | 2026-07-18 | `4e292c9` | chore: bump version to 3.0.5 | **Pending** | Pending functional review and fork-specific port decision. |
+| 365 | 2026-07-18 | `6436d23` | Merge pull request #53 from fwerkor/chore/pr31-compat | **Pending** | Pending functional review and fork-specific port decision. |
+| 366 | 2026-07-18 | `ce01734` | Merge pull request #31 from LeonardNJU/fix/version-consistency | **Pending** | Pending functional review and fork-specific port decision. |
+| 367 | 2026-07-18 | `1a98ac4` | Merge pull request #54 from fwerkor/chore/version-3.0.5 | **Pending** | Pending functional review and fork-specific port decision. |
+| 368 | 2026-07-18 | `a9db53f` | fix(ui): improve mobile WebUI interaction | **Pending** | Pending functional review and fork-specific port decision. |
+| 369 | 2026-07-18 | `4384a6e` | fix(ui): harden touch input mode switching | **Pending** | Pending functional review and fork-specific port decision. |
+| 370 | 2026-07-18 | `d155eac` | fix(ui): preserve soft keyboard across shortcut taps | **Pending** | Pending functional review and fork-specific port decision. |
+| 371 | 2026-07-18 | `e30df0f` | fix(ui): guard first touch shortcut after mouse input | **Pending** | Pending functional review and fork-specific port decision. |
+| 372 | 2026-07-18 | `b1cdbe2` | fix(ui): replace Ctrl+Q with Alt+Q | **Pending** | Pending functional review and fork-specific port decision. |
+| 373 | 2026-07-18 | `c7c8919` | chore(ui): refresh embedded WebUI assets | **Pending** | Pending functional review and fork-specific port decision. |
+| 374 | 2026-07-18 | `9fb2e89` | fix(ui): make Alt+Q exit reliable | **Pending** | Pending functional review and fork-specific port decision. |
+| 375 | 2026-07-18 | `52d04d9` | fix(ui): confirm WebUI exits from the server | **Pending** | Pending functional review and fork-specific port decision. |
+| 376 | 2026-07-18 | `6533324` | fix(ui): reconnect after abnormal TUI exits | **Pending** | Pending functional review and fork-specific port decision. |
+| 377 | 2026-07-18 | `623918f` | test(ui): avoid double-clicking during smoke retries | **Pending** | Pending functional review and fork-specific port decision. |
+| 378 | 2026-07-18 | `7e1e5c8` | Merge pull request #51 from fwerkor/fix/image-preview-layout | **Pending** | Pending functional review and fork-specific port decision. |
+| 379 | 2026-07-18 | `924872d` | Merge pull request #50 from fwerkor/fix/webui-fluid-size | **Pending** | Pending functional review and fork-specific port decision. |
+| 380 | 2026-07-18 | `7efbe6d` | fix(audit): address payload retention and scope reviews | **Pending** | Pending functional review and fork-specific port decision. |
+| 381 | 2026-07-18 | `f9b54bd` | fix(ui): preserve zero-valued extended ANSI colors | **Pending** | Pending functional review and fork-specific port decision. |
+| 382 | 2026-07-18 | `59531e8` | Merge remote-tracking branch 'origin/main' into fix/mobile-webui-repaint | **Pending** | Pending functional review and fork-specific port decision. |
+| 383 | 2026-07-18 | `56c2b14` | Merge remote-tracking branch 'origin/main' into fix/remove-webui-ctrlq | **Pending** | Pending functional review and fork-specific port decision. |
+| 384 | 2026-07-18 | `5e02d8c` | Merge pull request #40 from fwerkor/fix/audit-full-payloads | **Pending** | Pending functional review and fork-specific port decision. |
+| 385 | 2026-07-18 | `2fec2b3` | Merge pull request #42 from fwerkor/fix/terminal-output-scrolling | **Pending** | Pending functional review and fork-specific port decision. |
+| 386 | 2026-07-18 | `c6b2e21` | fix(audit): preserve nested failures when collapsing calls | **Pending** | Pending functional review and fork-specific port decision. |
+| 387 | 2026-07-18 | `c9347ea` | Merge remote-tracking branch 'origin/main' into fix/audit-call-aggregation | **Pending** | Pending functional review and fork-specific port decision. |
+| 388 | 2026-07-18 | `6c4d7b5` | Merge remote-tracking branch 'origin/main' into fix/webui-fullscreen-escape | **Pending** | Pending functional review and fork-specific port decision. |
+| 389 | 2026-07-18 | `2684f30` | Merge remote-tracking branch 'origin/main' into fix/webui-mouse-wheel | **Pending** | Pending functional review and fork-specific port decision. |
+| 390 | 2026-07-18 | `3c0bb5f` | chore(ui): rebuild embedded assets with CI Bun version | **Pending** | Pending functional review and fork-specific port decision. |
+| 391 | 2026-07-18 | `bc8cf52` | chore(ui): rebuild embedded assets with CI Bun version | **Pending** | Pending functional review and fork-specific port decision. |
+| 392 | 2026-07-18 | `00f563f` | chore(ui): rebuild embedded assets with CI Bun version | **Pending** | Pending functional review and fork-specific port decision. |
+| 393 | 2026-07-18 | `2e8952f` | chore(ui): rebuild embedded assets with CI Bun version | **Pending** | Pending functional review and fork-specific port decision. |
+| 394 | 2026-07-18 | `a1d59c4` | fix(dashboard): handle missing telemetry and degraded sources | **Pending** | Pending functional review and fork-specific port decision. |
+| 395 | 2026-07-18 | `7c52e0b` | fix(audit): retain semantic child event details | **Pending** | Pending functional review and fork-specific port decision. |
+| 396 | 2026-07-18 | `342d81a` | Merge pull request #41 from fwerkor/fix/webui-fullscreen-escape | **Pending** | Pending functional review and fork-specific port decision. |
+| 397 | 2026-07-18 | `e5c9aab` | Merge remote-tracking branch 'origin/main' into fix/webui-mouse-wheel | **Pending** | Pending functional review and fork-specific port decision. |
+| 398 | 2026-07-18 | `169c108` | Merge remote-tracking branch 'origin/fix/webui-mouse-wheel' into fix/remove-webui-ctrlq | **Pending** | Pending functional review and fork-specific port decision. |
+| 399 | 2026-07-18 | `de7a74c` | Merge remote-tracking branch 'origin/fix/remove-webui-ctrlq' into fix/mobile-webui-repaint | **Pending** | Pending functional review and fork-specific port decision. |
+| 400 | 2026-07-18 | `24c1a3e` | Merge remote-tracking branch 'origin/fix/mobile-webui-repaint' into fix/audit-call-aggregation | **Pending** | Pending functional review and fork-specific port decision. |
+| 401 | 2026-07-18 | `eafe358` | Merge remote-tracking branch 'origin/fix/audit-call-aggregation' into feat/dashboard | **Pending** | Pending functional review and fork-specific port decision. |
+| 402 | 2026-07-18 | `1dca0c0` | Hide redundant WebUI terminal scrollbar | **Pending** | Pending functional review and fork-specific port decision. |
+| 403 | 2026-07-18 | `ed7136b` | Merge pull request #44 from fwerkor/fix/webui-mouse-wheel | **Pending** | Pending functional review and fork-specific port decision. |
+| 404 | 2026-07-18 | `5035536` | Merge pull request #39 from fwerkor/fix/remove-webui-ctrlq | **Pending** | Pending functional review and fork-specific port decision. |
+| 405 | 2026-07-18 | `e17e9d7` | Merge pull request #36 from fwerkor/fix/mobile-webui-repaint | **Pending** | Pending functional review and fork-specific port decision. |
+| 406 | 2026-07-18 | `ab97555` | Merge pull request #49 from fwerkor/fix/audit-call-aggregation | **Pending** | Pending functional review and fork-specific port decision. |
+| 407 | 2026-07-18 | `d80dae9` | Merge remote-tracking branch 'origin/main' into fix/webui-hide-scrollbar | **Pending** | Pending functional review and fork-specific port decision. |
+| 408 | 2026-07-18 | `14053a1` | fix(ui): clear terminal commands after submit | **Pending** | Pending functional review and fork-specific port decision. |
+| 409 | 2026-07-18 | `c753f9c` | Merge pull request #55 from fwerkor/fix/webui-hide-scrollbar | **Pending** | Pending functional review and fork-specific port decision. |
+| 410 | 2026-07-18 | `71d2383` | Merge pull request #52 from fwerkor/feat/dashboard | **Pending** | Pending functional review and fork-specific port decision. |
+| 411 | 2026-07-18 | `d9f006f` | chore: bump version to 3.0.6 | **Pending** | Pending functional review and fork-specific port decision. |
+| 412 | 2026-07-18 | `e5410ae` | Merge pull request #56 from fwerkor/release/v3.0.6 | **Pending** | Pending functional review and fork-specific port decision. |
