@@ -76,6 +76,7 @@ class LocalToolDecoratorFactory(Protocol):
         description: ToolDescription | None = None,
         mcp_error_handler: McpErrorHandler | None = None,
         enabled: ToolEnabled = ...,
+        timeout_cancellable: bool = True,
     ) -> Callable[[ToolFunc], ToolDefinition]: ...
 
 
@@ -144,6 +145,8 @@ class ToolDefinition:
     """Optional MCP exception-to-result conversion used for tool errors and timeouts."""
     enabled: ToolEnabled = _always_enabled
     """Predicate controlling whether the tool is exposed for current settings."""
+    timeout_cancellable: bool = True
+    """Whether the REST watchdog may cancel this tool on timeout."""
 
     @property
     def signature(self) -> inspect.Signature:
@@ -158,7 +161,12 @@ class ToolDefinition:
         """Return the HTTP route for this tool, if it has one."""
         if self.http_method is None or self.http_path is None:
             return None
-        return HttpToolRoute(self.http_method, self.http_path, self.name)
+        return HttpToolRoute(
+            self.http_method,
+            self.http_path,
+            self.name,
+            timeout_cancellable=self.timeout_cancellable,
+        )
 
     def required_oauth_scopes(self) -> tuple[str, ...]:
         """Return server-enforced OAuth scopes for this tool."""
@@ -274,6 +282,7 @@ class DeclarativeToolRegistry(ToolRegistry):
             description: ToolDescription | None = None,
             mcp_error_handler: McpErrorHandler | None = None,
             enabled: ToolEnabled = _always_enabled,
+            timeout_cancellable: bool = True,
         ) -> Callable[[ToolFunc], ToolDefinition]:
             def decorator(func: ToolFunc) -> ToolDefinition:
                 return cls.register_tool(
@@ -288,6 +297,7 @@ class DeclarativeToolRegistry(ToolRegistry):
                         description=description,
                         mcp_error_handler=mcp_error_handler,
                         enabled=enabled,
+                        timeout_cancellable=timeout_cancellable,
                     )
                 )
 

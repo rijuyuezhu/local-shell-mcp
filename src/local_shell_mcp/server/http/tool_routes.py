@@ -37,12 +37,20 @@ def install_tool_cache_control_middleware(app: FastAPI) -> None:
 
 def install_tools_timeout_middleware(app: FastAPI) -> None:
     """Install the tool timeout middleware for REST tool routes."""
+    non_cancellable_routes = frozenset(
+        (route.method, route.path)
+        for registry in discover_tool_registries()
+        for route in registry.http_routes()
+        if not route.timeout_cancellable
+    )
 
     @app.middleware("http")
     async def tools_timeout_middleware(
         request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
         if not request.url.path.startswith("/tools/"):
+            return await call_next(request)
+        if (request.method.upper(), request.url.path) in non_cancellable_routes:
             return await call_next(request)
         tool_name = request.url.path.removeprefix("/tools/").split("/", 1)[0]
         timeout_s = tool_timeout_s(tool_name)

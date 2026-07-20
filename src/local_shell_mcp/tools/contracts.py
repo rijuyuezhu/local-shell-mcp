@@ -24,6 +24,8 @@ class HttpToolRoute:
     """Absolute REST path registered on the FastAPI app."""
     tool_name: str
     """Local tool name dispatched by this route."""
+    timeout_cancellable: bool = True
+    """Whether the REST watchdog may cancel this invocation on timeout."""
 
 
 @dataclass(frozen=True)

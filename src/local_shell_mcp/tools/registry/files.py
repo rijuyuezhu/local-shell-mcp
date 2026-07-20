@@ -86,6 +86,7 @@ async def list_files(
     http_path="/tools/write_file",
     description=_write_file_description,
     oauth_scopes=("shell:read", "shell:write"),
+    timeout_cancellable=False,
 )
 async def write_file(
     session_id: SessionIdArg,
@@ -104,6 +105,7 @@ async def write_file(
     http_path="/tools/edit_lines",
     description=_edit_lines_description,
     oauth_scopes=("shell:read", "shell:write"),
+    timeout_cancellable=False,
 )
 async def edit_lines(
     path: FilePathArg,
@@ -129,6 +131,7 @@ async def edit_lines(
     http_path="/tools/hashline_edit",
     description=_hashline_edit_description,
     oauth_scopes=("shell:read", "shell:write"),
+    timeout_cancellable=False,
 )
 async def hashline_edit(
     session_id: SessionIdArg,
@@ -142,6 +145,7 @@ async def hashline_edit(
     http_method="POST",
     http_path="/tools/delete",
     oauth_scopes=("shell:read", "shell:write"),
+    timeout_cancellable=False,
 )
 async def delete_file_or_dir(
     session_id: SessionIdArg, path: FilePathArg, recursive: RecursiveArg = False

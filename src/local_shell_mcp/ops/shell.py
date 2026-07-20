@@ -137,8 +137,9 @@ def _shared_tail_bytes(
 def check_command_policy(command: str) -> None:
     """Reject shell commands matching configured denylist entries before execution."""
     settings = get_settings()
+    normalized = command.casefold()
     for denied in settings.command_denylist:
-        if denied and denied in command:
+        if denied and denied.casefold() in normalized:
             raise PermissionError(
                 f"Command contains denylisted fragment: {denied!r}"
             )
@@ -562,7 +563,8 @@ async def run_python_code_execute(
 def _tmux_session_name(name: str | None = None) -> str:
     """Normalize user-facing shell names into the tmux naming scheme used by the server."""
     base = name or f"mcp-{uuid.uuid4().hex[:8]}"
-    return re.sub(r"[^A-Za-z0-9_.-]", "-", base)[:64]
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "-", base.strip())[:64].strip(".-")
+    return cleaned or f"mcp-{uuid.uuid4().hex[:8]}"
 
 
 async def tmux(args: list[str], timeout_s: int = 10) -> CommandResult:

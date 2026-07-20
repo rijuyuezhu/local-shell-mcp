@@ -34,6 +34,7 @@ async def read_todos(session_id: SessionIdArg) -> ReadTodosOutput:
     http_method="POST",
     http_path="/tools/todo",
     oauth_scopes=("shell:read", "shell:write"),
+    timeout_cancellable=False,
 )
 async def write_todos(
     session_id: SessionIdArg, todos: TodosArg

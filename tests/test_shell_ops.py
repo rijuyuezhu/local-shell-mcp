@@ -12,6 +12,8 @@ from local_shell_mcp.ops.shell import (
     SHELL_TIMEOUT_CLEANUP_GRACE_S,
     _shared_tail_bytes,
     _subprocess_env,
+    _tmux_session_name,
+    check_command_policy,
     clamp_timeout,
     run_shell,
     run_shell_command_timeout,
@@ -28,6 +30,22 @@ from tests.helpers import mcp_structured
 
 def _python_shell_command(source: str) -> str:
     return f"{shlex.quote(sys.executable)} -c {shlex.quote(source)}"
+
+
+def test_command_denylist_matching_is_case_insensitive(monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_COMMAND_DENYLIST", "RM -RF")
+    clear_settings_cache()
+
+    with pytest.raises(PermissionError, match="denylisted fragment"):
+        check_command_policy("rm -rf /tmp/example")
+
+
+def test_tmux_session_name_strips_invalid_edges_and_has_safe_fallback():
+    assert _tmux_session_name("  ..example shell--  ") == "example-shell"
+
+    fallback = _tmux_session_name("..--")
+    assert fallback.startswith("mcp-")
+    assert len(fallback) <= 64
 
 
 @pytest.mark.asyncio
@@ -176,6 +194,46 @@ def test_rest_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
 
     assert response.status_code == 504
     assert response.json()["error"] == "tool_timeout"
+
+
+def test_rest_tool_watchdog_preserves_file_and_todo_mutations(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
+    clear_settings_cache()
+
+    async def delayed_call_http_tool(tool_name, args):
+        await asyncio.sleep(0.05)
+        return {"tool": tool_name}
+
+    monkeypatch.setattr(
+        http_tool_routes_module, "call_http_tool", delayed_call_http_tool
+    )
+    client = TestClient(build_http_app())
+
+    write_response = client.post("/tools/write_file", json={})
+    todo_write_response = client.post("/tools/todo", json={})
+    todo_read_response = client.get("/tools/todo")
+
+    assert write_response.status_code == 200
+    assert write_response.json() == {"tool": "write_file"}
+    assert todo_write_response.status_code == 200
+    assert todo_write_response.json() == {"tool": "write_todos"}
+    assert todo_read_response.status_code == 504
+    assert todo_read_response.json()["error"] == "tool_timeout"
+
+
+def test_rest_readyz_does_not_expose_workspace_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
 
 
 @pytest.mark.asyncio
