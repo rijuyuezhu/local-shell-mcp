@@ -1,6 +1,7 @@
 """Runtime settings. It provides configuration for the local shell MCP server."""
 
 import os
+import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -47,6 +48,10 @@ def normalize_ui_path(value: str) -> str:
     if not parts or any(part in {".", ".."} for part in parts):
         raise ValueError(
             "ui_path must identify a non-root path without dot segments"
+        )
+    if any(not re.fullmatch(r"[A-Za-z0-9._~-]+", part) for part in parts):
+        raise ValueError(
+            "ui_path segments may contain only URL-safe ASCII characters"
         )
     normalized = "/" + "/".join(parts)
     for reserved in _RESERVED_UI_PATHS:

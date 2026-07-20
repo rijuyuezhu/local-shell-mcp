@@ -30,7 +30,16 @@ def test_ui_path_normalization_and_reserved_paths():
     assert Settings(ui_path="/console/").ui_path == "/console"
     assert Settings(ui_path="//human//ui//").ui_path == "/human/ui"
 
-    for value in ("ui", "/", "/../ui", "/api", "/api/custom", "/ui?x=1"):
+    for value in (
+        "ui",
+        "/",
+        "/../ui",
+        "/api",
+        "/api/custom",
+        "/ui?x=1",
+        '/ui"><script>',
+        "/控制台",
+    ):
         with pytest.raises(ValidationError):
             Settings(ui_path=value)
 
