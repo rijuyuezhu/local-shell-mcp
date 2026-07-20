@@ -221,6 +221,20 @@ async def _transfer_stat(args: dict[str, Any]) -> Any:
     )
 
 
+async def _transfer_copy_file(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.transfer import transfer_copy_file
+
+    return await asyncio.to_thread(
+        transfer_copy_file,
+        str(args["source_path"]),
+        str(args["destination_path"]),
+        bool(args.get("overwrite", True)),
+        args.get("chunk_size"),
+        source_session_id=args.get("source_session_id"),
+        destination_session_id=args.get("destination_session_id"),
+    )
+
+
 async def _transfer_read_chunk(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.transfer import transfer_read_chunk
 
@@ -343,6 +357,7 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "search": _search,
     "secret_scan": _secret_scan,
     "transfer_stat": _transfer_stat,
+    "transfer_copy_file": _transfer_copy_file,
     "transfer_read_chunk": _transfer_read_chunk,
     "transfer_begin_write": _transfer_begin_write,
     "transfer_write_chunk": _transfer_write_chunk,

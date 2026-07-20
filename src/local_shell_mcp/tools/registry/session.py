@@ -45,7 +45,7 @@ def _session_change_cwd_description(_context: McpToolContext) -> str:
 
 
 def _session_copy_description(_context: McpToolContext) -> str:
-    return """Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Use this when moving artifacts across sessions instead of exposing raw transfer primitives or legacy remote pull/push tools. The response includes the selected route and whether the sessions share a target, session id, or remote machine."""
+    return """Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Same-worker remote copies stream raw bounded chunks inside that worker; other routes use the authenticated, checksummed control-plane transfer. Use this when moving artifacts across sessions instead of exposing raw transfer primitives or legacy remote pull/push tools. The response includes the selected route and whether the sessions share a target, session id, or remote machine."""
 
 
 @session_tool(

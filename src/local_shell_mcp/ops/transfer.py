@@ -22,6 +22,7 @@ from ..schemas.result_models.transfer import (
     TransferAbortWriteOutput,
     TransferAllocTempPathOutput,
     TransferBeginWriteOutput,
+    TransferCopyFileOutput,
     TransferDeleteTempPathOutput,
     TransferFinishWriteOutput,
     TransferPackDirOutput,
@@ -281,6 +282,121 @@ def _open_private_transfer_file(path: Path) -> BinaryIO:
     flags |= int(getattr(os, "O_BINARY", 0))
     descriptor = os.open(path, flags, 0o600)
     return os.fdopen(descriptor, "wb")
+
+
+def _open_transfer_source(path: Path) -> BinaryIO:
+    flags = os.O_RDONLY
+    flags |= int(getattr(os, "O_BINARY", 0))
+    flags |= int(getattr(os, "O_NOFOLLOW", 0))
+    descriptor = os.open(path, flags)
+    try:
+        source_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(source_stat.st_mode):
+            raise ValueError("transfer source path is not a regular file")
+        return os.fdopen(descriptor, "rb")
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _stable_source_identity(source_stat: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(source_stat.st_dev),
+        int(source_stat.st_ino),
+        int(source_stat.st_size),
+        int(source_stat.st_ctime_ns),
+        int(source_stat.st_mtime_ns),
+    )
+
+
+def transfer_copy_file(
+    source_path: str,
+    destination_path: str,
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    *,
+    source_session_id: str | None = None,
+    destination_session_id: str | None = None,
+) -> TransferCopyFileOutput:
+    """Stream a file within one worker and atomically publish the destination."""
+    source = _resolve_transfer_path(
+        source_path,
+        must_exist=True,
+        session_id=source_session_id,
+    )
+    destination = _resolve_transfer_destination(
+        destination_path,
+        session_id=destination_session_id,
+    )
+    limit = normalize_chunk_size(chunk_size)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    with path_locks([source, destination]):
+        if source == destination:
+            if not overwrite:
+                raise FileExistsError(str(destination))
+            source_stat = source.stat()
+            if not stat.S_ISREG(source_stat.st_mode):
+                raise ValueError("transfer source path is not a regular file")
+            size = int(source_stat.st_size)
+            return TransferCopyFileOutput(
+                source_path=relative_display(source),
+                path=relative_display(destination),
+                bytes=size,
+                sha256=_sha256_file(source, limit),
+                chunks=0 if size == 0 else (size + limit - 1) // limit,
+                chunk_size=limit,
+                completed=True,
+            )
+
+        exists = os.path.lexists(destination)
+        if exists and destination.is_dir() and not destination.is_symlink():
+            raise IsADirectoryError(str(destination))
+        if exists and not overwrite:
+            raise FileExistsError(str(destination))
+
+        temporary = _transfer_temp_path(destination, uuid.uuid4().hex)
+        digest = hashlib.sha256()
+        copied = 0
+        chunks = 0
+        try:
+            with _open_transfer_source(source) as source_handle:
+                initial_source_stat = os.fstat(source_handle.fileno())
+                with _open_private_transfer_file(
+                    temporary
+                ) as destination_handle:
+                    while chunk := source_handle.read(limit):
+                        destination_handle.write(chunk)
+                        digest.update(chunk)
+                        copied += len(chunk)
+                        chunks += 1
+                    destination_handle.flush()
+                    os.fsync(destination_handle.fileno())
+                final_source_stat = os.fstat(source_handle.fileno())
+
+            if _stable_source_identity(
+                initial_source_stat
+            ) != _stable_source_identity(final_source_stat):
+                raise ValueError("transfer source file changed during copy")
+            if copied != int(initial_source_stat.st_size):
+                raise ValueError(
+                    f"size mismatch: expected {initial_source_stat.st_size}, got {copied}"
+                )
+            if not overwrite and os.path.lexists(destination):
+                raise FileExistsError(str(destination))
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    return TransferCopyFileOutput(
+        source_path=relative_display(source),
+        path=relative_display(destination),
+        bytes=copied,
+        sha256=digest.hexdigest(),
+        chunks=chunks,
+        chunk_size=limit,
+        completed=True,
+    )
 
 
 def _validate_transfer_identity(

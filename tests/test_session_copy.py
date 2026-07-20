@@ -306,7 +306,7 @@ async def test_session_copy_remote_to_remote_same_machine_reports_relation(
     tmp_path, monkeypatch
 ):
     root, store = _workspace(tmp_path, monkeypatch)
-    _install_fake_remote(monkeypatch)
+    calls = _install_fake_remote(monkeypatch)
     (root / "worker" / "src").mkdir(parents=True)
     (root / "worker" / "dst").mkdir()
     (root / "worker" / "src" / "payload.txt").write_text(
@@ -336,9 +336,59 @@ async def test_session_copy_remote_to_remote_same_machine_reports_relation(
 
     assert result.relation.route == "remote_to_remote_same_machine"
     assert result.relation.same_machine is True
+    transfer_tools = [tool for _, tool, _ in calls]
+    assert "transfer_copy_file" in transfer_tools
+    assert "transfer_read_chunk" not in transfer_tools
+    assert "transfer_write_chunk" not in transfer_tools
     assert (root / "worker" / "dst" / "payload.txt").read_text(
         encoding="utf-8"
     ) == "same-machine"
+
+
+@pytest.mark.asyncio
+async def test_session_copy_remote_directory_same_machine_streams_archive_locally(
+    tmp_path, monkeypatch
+):
+    root, store = _workspace(tmp_path, monkeypatch)
+    calls = _install_fake_remote(monkeypatch)
+    (root / "worker" / "src" / "tree" / "nested").mkdir(parents=True)
+    (root / "worker" / "dst").mkdir(parents=True)
+    (root / "worker" / "src" / "tree" / "nested" / "note.txt").write_text(
+        "same-worker-dir", encoding="utf-8"
+    )
+    worker_src = store.create_session(workdir="worker/src")
+    worker_dst = store.create_session(workdir="worker/dst")
+    remote_src = store.create_session(
+        target="remote",
+        workdir="/remote/src",
+        machine="worker-a",
+        worker_session_id=worker_src.session_id,
+    )
+    remote_dst = store.create_session(
+        target="remote",
+        workdir="/remote/dst",
+        machine="worker-a",
+        worker_session_id=worker_dst.session_id,
+    )
+
+    result = await session_copy_execute(
+        remote_src.session_id,
+        "tree",
+        remote_dst.session_id,
+        "tree-copy",
+        kind="dir",
+        chunk_size=128,
+    )
+
+    transfer_tools = [tool for _, tool, _ in calls]
+    assert result.relation.route == "remote_to_remote_same_machine"
+    assert result.entries is not None and result.entries >= 1
+    assert "transfer_copy_file" in transfer_tools
+    assert "transfer_read_chunk" not in transfer_tools
+    assert "transfer_write_chunk" not in transfer_tools
+    assert (
+        root / "worker" / "dst" / "tree-copy" / "nested" / "note.txt"
+    ).read_text(encoding="utf-8") == "same-worker-dir"
 
 
 @pytest.mark.asyncio

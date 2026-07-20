@@ -10,6 +10,7 @@ from local_shell_mcp.ops.transfer import (
     transfer_abort_write,
     transfer_alloc_temp_path,
     transfer_begin_write,
+    transfer_copy_file,
     transfer_finish_write,
     transfer_pack_dir,
     transfer_read_chunk,
@@ -29,6 +30,15 @@ async def fake_remote_worker_call(
     try:
         if tool == "transfer_stat":
             data = transfer_stat(args["path"], args.get("sha256", True))
+        elif tool == "transfer_copy_file":
+            data = transfer_copy_file(
+                args["source_path"],
+                args["destination_path"],
+                args.get("overwrite", True),
+                args.get("chunk_size"),
+                source_session_id=args.get("source_session_id"),
+                destination_session_id=args.get("destination_session_id"),
+            )
         elif tool == "transfer_read_chunk":
             data = transfer_read_chunk(
                 args["path"], args.get("offset", 0), args.get("chunk_size")
@@ -113,6 +123,69 @@ async def test_remote_copy_file_streams_between_workers(tmp_path, monkeypatch):
     assert result.chunks > 1
     assert result.bytes == len(data)
     assert (root / "dst-machine" / "payload.bin").read_bytes() == data
+
+
+def test_transfer_copy_file_streams_raw_bytes_atomically(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    payload = bytes(range(256)) * 32
+    (root / "source.bin").write_bytes(payload)
+    (root / "destination.bin").write_bytes(b"old")
+
+    with pytest.raises(FileExistsError):
+        transfer_copy_file(
+            "source.bin", "destination.bin", overwrite=False, chunk_size=257
+        )
+    assert (root / "destination.bin").read_bytes() == b"old"
+
+    result = transfer_copy_file(
+        "source.bin", "destination.bin", overwrite=True, chunk_size=257
+    )
+
+    assert result.bytes == len(payload)
+    assert result.chunks > 1
+    assert result.sha256 == transfer_stat("source.bin").sha256
+    assert (root / "destination.bin").read_bytes() == payload
+    assert not list(
+        root.glob(".destination.bin.local-shell-mcp-transfer-*.tmp")
+    )
+
+
+@pytest.mark.asyncio
+async def test_remote_copy_file_same_worker_uses_raw_fast_path(
+    tmp_path, monkeypatch
+):
+    root = _workspace(tmp_path, monkeypatch)
+    (root / "src").mkdir()
+    (root / "dst").mkdir()
+    payload = b"same-worker" * 1024
+    (root / "src" / "payload.bin").write_bytes(payload)
+    calls: list[str] = []
+
+    async def recording_call(
+        machine: str,
+        tool: str,
+        args: dict[str, Any],
+        timeout_s: int | None = None,
+    ) -> dict[str, Any]:
+        calls.append(tool)
+        return await fake_remote_worker_call(machine, tool, args, timeout_s)
+
+    monkeypatch.setattr(
+        remote_transfer, "call_remote_worker_tool", recording_call
+    )
+    result = await remote_transfer.copy_remote_file_to_remote(
+        "worker-a",
+        "src/payload.bin",
+        "worker-a",
+        "dst/payload.bin",
+        True,
+        257,
+    )
+
+    assert calls == ["transfer_copy_file"]
+    assert result.bytes == len(payload)
+    assert result.chunks > 1
+    assert (root / "dst" / "payload.bin").read_bytes() == payload
 
 
 @pytest.mark.asyncio

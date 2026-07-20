@@ -13,6 +13,9 @@ from ...ops.transfer import (
     transfer_begin_write as transfer_begin_write_sync,
 )
 from ...ops.transfer import (
+    transfer_copy_file as transfer_copy_file_sync,
+)
+from ...ops.transfer import (
     transfer_delete_temp_path as transfer_delete_temp_path_sync,
 )
 from ...ops.transfer import (
@@ -54,6 +57,7 @@ from ...schemas.result_models.transfer import (
     TransferAbortWriteOutput,
     TransferAllocTempPathOutput,
     TransferBeginWriteOutput,
+    TransferCopyFileOutput,
     TransferDeleteTempPathOutput,
     TransferFinishWriteOutput,
     TransferPackDirOutput,
@@ -97,6 +101,27 @@ async def transfer_stat(
     """Return transfer metadata for a file or directory."""
     return await asyncio.to_thread(
         transfer_stat_sync, path, sha256, session_id=session_id
+    )
+
+
+@transfer_tool(http_method="POST", http_path="/tools/transfer_copy_file")
+async def transfer_copy_file(
+    source_path: TransferPathArg,
+    destination_path: TransferDestinationPathArg,
+    overwrite: TransferOverwriteArg = True,
+    chunk_size: TransferChunkSizeArg = None,
+    source_session_id: OptionalSessionIdArg = None,
+    destination_session_id: OptionalSessionIdArg = None,
+) -> TransferCopyFileOutput:
+    """Stream a file between two paths on the same worker."""
+    return await asyncio.to_thread(
+        transfer_copy_file_sync,
+        source_path,
+        destination_path,
+        overwrite,
+        chunk_size,
+        source_session_id=source_session_id,
+        destination_session_id=destination_session_id,
     )
 
 

@@ -46,6 +46,7 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "bash", None),
     RemoteWorkerToolSpec("", "job", None),
     RemoteWorkerToolSpec("", "transfer_stat", None),
+    RemoteWorkerToolSpec("", "transfer_copy_file", None),
     RemoteWorkerToolSpec("", "transfer_read_chunk", None),
     RemoteWorkerToolSpec("", "transfer_begin_write", None),
     RemoteWorkerToolSpec("", "transfer_write_chunk", None),

@@ -19,6 +19,24 @@ class TransferStatOutput(BaseModel):
     )
 
 
+class TransferCopyFileOutput(BaseModel):
+    """Result of a worker-local raw streaming file copy."""
+
+    source_path: str = Field(
+        description="Resolved source path that was copied."
+    )
+    path: str = Field(
+        description="Resolved destination path that was published."
+    )
+    bytes: int = Field(description="Number of raw bytes copied.")
+    sha256: str = Field(description="SHA-256 digest of the copied contents.")
+    chunks: int = Field(description="Number of bounded raw chunks copied.")
+    chunk_size: int = Field(description="Maximum raw chunk size in bytes.")
+    completed: bool = Field(
+        description="Whether the destination was atomically published."
+    )
+
+
 class TransferReadChunkOutput(BaseModel):
     """Base64-encoded chunk read from a file."""
 

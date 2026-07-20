@@ -284,6 +284,47 @@ async def _copy_file(
     dst_session_bound: bool = True,
 ) -> dict[str, Any]:
     chunk_bytes = normalize_chunk_size(chunk_size)
+    same_remote_worker = (
+        src.session.target == "remote"
+        and dst.session.target == "remote"
+        and src.session.machine == dst.session.machine
+    )
+    if same_remote_worker:
+        source_session_id = (
+            src.session.worker_session_id if src_session_bound else None
+        )
+        destination_session_id = (
+            dst.session.worker_session_id if dst_session_bound else None
+        )
+        if src_session_bound and not source_session_id:
+            raise RuntimeError(
+                "remote source session is missing worker_session_id"
+            )
+        if dst_session_bound and not destination_session_id:
+            raise RuntimeError(
+                "remote destination session is missing worker_session_id"
+            )
+        copied = await _remote_raw_transfer_data(
+            src,
+            "transfer_copy_file",
+            {
+                "source_path": src_path,
+                "destination_path": dst_path,
+                "overwrite": overwrite,
+                "chunk_size": chunk_bytes,
+                "source_session_id": source_session_id,
+                "destination_session_id": destination_session_id,
+            },
+        )
+        return {
+            "source_path": copied["source_path"],
+            "destination_path": copied["path"],
+            "bytes": copied["bytes"],
+            "sha256": copied["sha256"],
+            "chunks": copied["chunks"],
+            "chunk_size": copied["chunk_size"],
+        }
+
     stat = await _endpoint_transfer_data(
         src,
         "transfer_stat",
