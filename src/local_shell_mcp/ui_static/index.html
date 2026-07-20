@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>local-shell-mcp Human UI</title>
+  <link rel="stylesheet" href="__LSM_UI_PATH__/assets/web.css">
+</head>
+<body data-lsm-config="__LSM_UI_CONFIG_JSON__">
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Human Interface</p>
+        <h1>local-shell-mcp</h1>
+        <p class="subtitle">A shared control surface for local and remote coding environments.</p>
+      </div>
+      <div class="actions">
+        <span id="connection-state" class="status status-idle">Connecting</span>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <section id="auth-panel" class="panel auth-panel" hidden>
+      <div>
+        <h2>Authentication required</h2>
+        <p>Paste an OAuth access token. It is kept in this browser tab only.</p>
+      </div>
+      <form id="auth-form">
+        <label for="access-token">Access token</label>
+        <div class="token-row">
+          <input id="access-token" name="access-token" type="password" autocomplete="off" spellcheck="false">
+          <button type="submit">Connect</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="metric-grid" aria-label="Service summary">
+      <article class="metric">
+        <span>Version</span>
+        <strong id="version">—</strong>
+      </article>
+      <article class="metric">
+        <span>Machines</span>
+        <strong id="machine-total">—</strong>
+      </article>
+      <article class="metric">
+        <span>Online</span>
+        <strong id="machine-online">—</strong>
+      </article>
+      <article class="metric">
+        <span>Authentication</span>
+        <strong id="auth-mode">—</strong>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Targets</p>
+          <h2>Machines</h2>
+        </div>
+        <p id="last-updated" class="muted">Not loaded</p>
+      </div>
+      <div id="machine-list" class="machine-list" aria-live="polite">
+        <div class="empty-state">Loading machine inventory…</div>
+      </div>
+    </section>
+
+    <section class="panel roadmap">
+      <div>
+        <p class="eyebrow">Migration status</p>
+        <h2>Human UI foundation active</h2>
+      </div>
+      <p>Machine inventory and authenticated browser sessions are available. Terminals, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI client will be connected in subsequent migration slices.</p>
+    </section>
+  </main>
+  <script src="__LSM_UI_PATH__/assets/web.js" defer></script>
+</body>
+</html>

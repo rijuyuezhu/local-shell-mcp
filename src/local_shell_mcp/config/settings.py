@@ -13,6 +13,18 @@ DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
 AUDIT_LOG_STATE_DIR_NAME = "audit_log"
 AGENT_CONFIG_STATE_DIR_NAME = "agent_config"
 ENV_PREFIX = "LOCAL_SHELL_MCP_"
+_RESERVED_UI_PATHS = (
+    "/api",
+    "/downloads",
+    "/healthz",
+    "/mcp",
+    "/oauth",
+    "/openapi.json",
+    "/readyz",
+    "/redoc",
+    "/remote",
+    "/docs",
+)
 
 
 def _split_csv(value: str | list[str] | None) -> list[str]:
@@ -22,6 +34,27 @@ def _split_csv(value: str | list[str] | None) -> list[str]:
     if isinstance(value, list):
         return value
     return [x.strip() for x in value.split(",") if x.strip()]
+
+
+def normalize_ui_path(value: str) -> str:
+    """Normalize and validate the browser UI mount path."""
+    raw = str(value or "").strip()
+    if not raw.startswith("/"):
+        raise ValueError("ui_path must start with '/'")
+    if any(character in raw for character in ("?", "#", "\\")):
+        raise ValueError("ui_path must be a plain URL path")
+    parts = [part for part in raw.split("/") if part]
+    if not parts or any(part in {".", ".."} for part in parts):
+        raise ValueError(
+            "ui_path must identify a non-root path without dot segments"
+        )
+    normalized = "/" + "/".join(parts)
+    for reserved in _RESERVED_UI_PATHS:
+        if normalized == reserved or normalized.startswith(reserved + "/"):
+            raise ValueError(
+                f"ui_path conflicts with reserved service path: {reserved}"
+            )
+    return normalized
 
 
 class Settings(BaseSettings):
@@ -44,6 +77,12 @@ class Settings(BaseSettings):
     """Bind host for HTTP/MCP transports."""
     port: int = 8765
     """Bind port for HTTP/MCP transports."""
+
+    # Human interface.
+    ui_enabled: bool = True
+    """Mount the browser Human UI and its authenticated API on the HTTP server."""
+    ui_path: str = "/ui"
+    """Non-root URL path where the browser Human UI is mounted."""
 
     # Paths and state.
     workspace_root: Path = DEFAULT_WORKSPACE_ROOT
@@ -256,6 +295,12 @@ class Settings(BaseSettings):
         """Expand user and environment variables for path settings before validation."""
         expanded = os.path.expandvars(os.path.expanduser(str(value)))
         return Path(os.path.abspath(expanded))
+
+    @field_validator("ui_path", mode="before")
+    @classmethod
+    def validate_ui_path(cls, value: str) -> str:
+        """Reject root, traversal, and service-reserved Human UI paths."""
+        return normalize_ui_path(value)
 
     @field_validator("command_denylist", "path_denylist", mode="before")
     @classmethod

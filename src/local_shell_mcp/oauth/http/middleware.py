@@ -7,6 +7,11 @@ from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ...ui_security import (
+    has_valid_ui_local_token,
+    is_loopback_connection,
+    is_ui_api_path,
+)
 from ..core.context import bind_oauth_claims, reset_oauth_claims
 from .auth import verify_request
 
@@ -44,8 +49,16 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
+        request = Request(scope, receive)
+        if (
+            is_ui_api_path(str(scope.get("path") or ""))
+            and is_loopback_connection(request)
+            and has_valid_ui_local_token(request)
+        ):
+            await self.app(scope, receive, send)
+            return
+
         try:
-            request = Request(scope, receive)
             claims = verify_request(request)
         except HTTPException as exc:
             response = JSONResponse(

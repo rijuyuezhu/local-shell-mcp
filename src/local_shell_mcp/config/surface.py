@@ -15,6 +15,7 @@ from .settings import ENV_PREFIX, Settings
 
 type SectionName = Literal[
     "Server",
+    "Human interface",
     "Paths and state",
     "Authentication and OAuth",
     "Safety and resource limits",
@@ -136,6 +137,8 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("mode", "Server"),
     SettingSpec("host", "Server", metavar="HOST"),
     SettingSpec("port", "Server", metavar="PORT"),
+    SettingSpec("ui_enabled", "Human interface"),
+    SettingSpec("ui_path", "Human interface", metavar="PATH"),
     SettingSpec("workspace_root", "Paths and state", metavar="PATH"),
     SettingSpec("state_dir", "Paths and state", metavar="PATH"),
     SettingSpec("auth_mode", "Authentication and OAuth"),

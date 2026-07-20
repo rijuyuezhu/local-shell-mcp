@@ -10,6 +10,12 @@ host: "0.0.0.0"
 # Bind port for HTTP/MCP transports.
 port: 8765
 
+# Human interface.
+# Mount the browser Human UI and its authenticated API on the HTTP server.
+ui_enabled: true
+# Non-root URL path where the browser Human UI is mounted.
+ui_path: "/ui"
+
 # Paths and state.
 # Root directory for workspace.
 workspace_root: "/workspace"

@@ -39,6 +39,7 @@
   ],
   "section_order": [
     "Server",
+    "Human interface",
     "Paths and state",
     "Authentication and OAuth",
     "Safety and resource limits",
@@ -118,6 +119,60 @@
             "code": "8765"
           },
           "Bind port for HTTP/MCP transports."
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Human interface",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "ui_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Mount the browser Human UI and its authenticated API on the HTTP server."
+        ],
+        [
+          {
+            "code": "ui_path"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-path"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_PATH"
+          },
+          "string",
+          {
+            "code": "/ui"
+          },
+          "Non-root URL path where the browser Human UI is mounted."
         ]
       ]
     },
@@ -1787,6 +1842,35 @@
       "nullable": false,
       "section": "Server",
       "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--ui-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Mount the browser Human UI and its authenticated API on the HTTP server.",
+      "env": "LOCAL_SHELL_MCP_UI_ENABLED",
+      "name": "ui_enabled",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--ui-path",
+      "default": "/ui",
+      "default_display": "/ui",
+      "description": "Non-root URL path where the browser Human UI is mounted.",
+      "env": "LOCAL_SHELL_MCP_UI_PATH",
+      "name": "ui_path",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "string",
       "unset_cli": null
     },
     {

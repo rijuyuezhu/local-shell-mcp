@@ -66,6 +66,7 @@ nav:
       - VS Code: getting-started/vscode.md
   - Guides:
       - Common workflows: guides/common-workflows.md
+      - Human interface: guides/human-interface.md
       - Remote workers: guides/remote-workers.md
       - Agent capability bridge: guides/agent-bridge.md
       - Audit log: guides/audit-log.md
