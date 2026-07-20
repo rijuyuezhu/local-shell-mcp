@@ -139,6 +139,16 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("port", "Server", metavar="PORT"),
     SettingSpec("ui_enabled", "Human interface"),
     SettingSpec("ui_path", "Human interface", metavar="PATH"),
+    SettingSpec(
+        "ui_terminal_idle_timeout_s",
+        "Human interface",
+        metavar="SECONDS",
+    ),
+    SettingSpec(
+        "ui_terminal_max_connections",
+        "Human interface",
+        metavar="COUNT",
+    ),
     SettingSpec("workspace_root", "Paths and state", metavar="PATH"),
     SettingSpec("state_dir", "Paths and state", metavar="PATH"),
     SettingSpec("auth_mode", "Authentication and OAuth"),

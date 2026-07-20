@@ -15,7 +15,7 @@ from starlette.responses import (
     JSONResponse,
     Response,
 )
-from starlette.routing import BaseRoute, Route
+from starlette.routing import BaseRoute, Route, WebSocketRoute
 
 from ...config.settings import Settings, get_settings
 from ...oauth.core.scopes import default_scope
@@ -23,6 +23,12 @@ from ...oauth.core.urls import issuer_url, resource_url
 from ...remote.manager import remote_manager
 from ...ui_security import UI_API_PREFIX
 from ...version import version_info
+from .ui_terminals import (
+    api_terminal_action,
+    api_terminal_read,
+    api_terminals,
+    ui_terminal_websocket,
+)
 
 
 def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
@@ -155,7 +161,8 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                 "features": {
                     "dashboard": True,
                     "machines": True,
-                    "terminals": False,
+                    "terminals": True,
+                    "terminal_websocket": True,
                     "files": False,
                     "todos": False,
                     "audit": False,
@@ -185,7 +192,21 @@ def human_ui_routes(
         Route(ui_path + "/assets/{path:path}", ui_asset, methods=["GET"]),
     ]
     protected_routes: list[BaseRoute] = [
+        WebSocketRoute(
+            ui_path + "/ws/terminals/{shell_id}", ui_terminal_websocket
+        ),
         Route(UI_API_PREFIX + "/bootstrap", api_bootstrap, methods=["GET"]),
         Route(UI_API_PREFIX + "/machines", api_machines, methods=["GET"]),
+        Route(UI_API_PREFIX + "/terminals", api_terminals, methods=["GET"]),
+        Route(
+            UI_API_PREFIX + "/terminals/read",
+            api_terminal_read,
+            methods=["GET"],
+        ),
+        Route(
+            UI_API_PREFIX + "/terminals/{action}",
+            api_terminal_action,
+            methods=["POST"],
+        ),
     ]
     return [*public_routes, *protected_routes], public_routes

@@ -173,6 +173,46 @@
             "code": "/ui"
           },
           "Non-root URL path where the browser Human UI is mounted."
+        ],
+        [
+          {
+            "code": "ui_terminal_idle_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-terminal-idle-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "3600"
+          },
+          "Idle timeout for authenticated Human UI terminal WebSockets; 0 disables idle expiry."
+        ],
+        [
+          {
+            "code": "ui_terminal_max_connections"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-terminal-max-connections"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_TERMINAL_MAX_CONNECTIONS"
+          },
+          "integer",
+          {
+            "code": "8"
+          },
+          "Maximum concurrent Human UI terminal WebSocket connections."
         ]
       ]
     },
@@ -1871,6 +1911,32 @@
       "nullable": false,
       "section": "Human interface",
       "type": "string",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--ui-terminal-idle-timeout-s",
+      "default": 3600,
+      "default_display": "3600",
+      "description": "Idle timeout for authenticated Human UI terminal WebSockets; 0 disables idle expiry.",
+      "env": "LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S",
+      "name": "ui_terminal_idle_timeout_s",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--ui-terminal-max-connections",
+      "default": 8,
+      "default_display": "8",
+      "description": "Maximum concurrent Human UI terminal WebSocket connections.",
+      "env": "LOCAL_SHELL_MCP_UI_TERMINAL_MAX_CONNECTIONS",
+      "name": "ui_terminal_max_connections",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "integer",
       "unset_cli": null
     },
     {

@@ -311,6 +311,107 @@ h2 {
   line-height: 1.65;
 }
 
+.terminal-heading,
+.terminal-actions,
+.terminal-start-form,
+.terminal-console-header,
+.terminal-input-form {
+  display: flex;
+  align-items: center;
+}
+
+.terminal-heading,
+.terminal-console-header {
+  justify-content: space-between;
+}
+
+.terminal-actions,
+.terminal-start-form,
+.terminal-input-form {
+  gap: 0.65rem;
+}
+
+.terminal-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.terminal-start-form input,
+.terminal-input-form input {
+  min-width: 0;
+  border: 1px solid rgba(137, 186, 207, 0.28);
+  border-radius: 0.65rem;
+  color: #f4f8fc;
+  background: rgba(2, 10, 16, 0.72);
+  padding: 0.7rem 0.8rem;
+}
+
+.terminal-layout {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.28fr) minmax(0, 1fr);
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.terminal-list {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  max-height: 30rem;
+  overflow: auto;
+}
+
+.terminal-session {
+  width: 100%;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-session[aria-current="true"] {
+  border-color: rgba(105, 199, 232, 0.72);
+  background: rgba(39, 102, 126, 0.92);
+}
+
+.terminal-console {
+  min-width: 0;
+  border: 1px solid rgba(151, 184, 202, 0.12);
+  border-radius: 0.8rem;
+  background: rgba(2, 8, 13, 0.86);
+  padding: 0.85rem;
+}
+
+.terminal-console-header {
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+#terminal-output {
+  min-height: 22rem;
+  max-height: 36rem;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid rgba(151, 184, 202, 0.1);
+  border-radius: 0.55rem;
+  color: #d8f4e6;
+  background: #03080c;
+  padding: 0.9rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.terminal-input-form {
+  margin-top: 0.65rem;
+}
+
+.terminal-input-form input {
+  flex: 1;
+}
+
 @media (max-width: 780px) {
   .shell {
     width: min(100% - 1rem, 44rem);
@@ -324,8 +425,22 @@ h2 {
     display: block;
   }
 
-  .actions {
+  .actions,
+  .terminal-actions {
     margin-top: 1rem;
+  }
+
+  .terminal-actions {
+    justify-content: flex-start;
+  }
+
+  .terminal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .terminal-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
   }
 
   .metric-grid,
@@ -345,8 +460,14 @@ h2 {
     grid-template-columns: 1fr;
   }
 
-  .token-row {
+  .token-row,
+  .terminal-start-form,
+  .terminal-input-form {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .terminal-list {
+    grid-template-columns: 1fr;
   }
 }

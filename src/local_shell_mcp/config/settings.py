@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     """Mount the browser Human UI and its authenticated API on the HTTP server."""
     ui_path: str = "/ui"
     """Non-root URL path where the browser Human UI is mounted."""
+    ui_terminal_idle_timeout_s: int = 3600
+    """Idle timeout for authenticated Human UI terminal WebSockets; 0 disables idle expiry."""
+    ui_terminal_max_connections: int = 8
+    """Maximum concurrent Human UI terminal WebSocket connections."""
 
     # Paths and state.
     workspace_root: Path = DEFAULT_WORKSPACE_ROOT
@@ -306,6 +310,24 @@ class Settings(BaseSettings):
     def validate_ui_path(cls, value: str) -> str:
         """Reject root, traversal, and service-reserved Human UI paths."""
         return normalize_ui_path(value)
+
+    @field_validator("ui_terminal_idle_timeout_s")
+    @classmethod
+    def validate_ui_terminal_idle_timeout(cls, value: int) -> int:
+        """Reject negative Human UI terminal idle timeouts."""
+        if value < 0:
+            raise ValueError("ui_terminal_idle_timeout_s must be non-negative")
+        return value
+
+    @field_validator("ui_terminal_max_connections")
+    @classmethod
+    def validate_ui_terminal_max_connections(cls, value: int) -> int:
+        """Bound concurrent Human UI terminal WebSocket connections."""
+        if not 1 <= value <= 128:
+            raise ValueError(
+                "ui_terminal_max_connections must be between 1 and 128"
+            )
+        return value
 
     @field_validator("command_denylist", "path_denylist", mode="before")
     @classmethod

@@ -10,6 +10,10 @@
   const pendingMaxAgeMs = 10 * 60 * 1000;
   const encoder = new TextEncoder();
   let accessToken = sessionStorage.getItem(tokenStorageKey) || "";
+  let terminalSocket = null;
+  let selectedShellId = "";
+  let terminalSessions = [];
+  let terminalGeneration = 0;
 
   const elements = {
     authDetail: document.getElementById("auth-detail"),
@@ -24,6 +28,15 @@
     oauthLogin: document.getElementById("oauth-login"),
     refresh: document.getElementById("refresh"),
     signOut: document.getElementById("sign-out"),
+    terminalInput: document.getElementById("terminal-input"),
+    terminalInputForm: document.getElementById("terminal-input-form"),
+    terminalKill: document.getElementById("terminal-kill"),
+    terminalList: document.getElementById("terminal-list"),
+    terminalName: document.getElementById("terminal-name"),
+    terminalOutput: document.getElementById("terminal-output"),
+    terminalStartForm: document.getElementById("terminal-start-form"),
+    terminalState: document.getElementById("terminal-state"),
+    terminalTitle: document.getElementById("terminal-title"),
     tokenInput: document.getElementById("access-token"),
     version: document.getElementById("version"),
   };
@@ -71,10 +84,11 @@
     }
   }
 
-  async function request(path) {
-    const headers = { Accept: "application/json" };
+  async function request(path, options = {}) {
+    const headers = { Accept: "application/json", ...(options.headers || {}) };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     const response = await fetch(`${apiPrefix}${path}`, {
+      ...options,
       headers,
       cache: "no-store",
       credentials: "same-origin",
@@ -323,6 +337,149 @@
     article.append(header, workdir, meta);
     return article;
   }
+  function terminalSocketProtocols() {
+    const protocols = ["lsm-ui-terminal"];
+    if (accessToken) protocols.push(`bearer.${base64Url(encoder.encode(accessToken))}`);
+    return protocols;
+  }
+
+  function terminalSize() {
+    const bounds = elements.terminalOutput.getBoundingClientRect();
+    const cols = Math.max(20, Math.min(300, Math.floor(bounds.width / 8.2)));
+    const rows = Math.max(3, Math.min(120, Math.floor(bounds.height / 19)));
+    return { cols, rows };
+  }
+
+  function setTerminalControls(enabled) {
+    elements.terminalInput.disabled = !enabled;
+    elements.terminalInputForm.querySelector("button").disabled = !enabled;
+    elements.terminalKill.disabled = !selectedShellId;
+  }
+
+  function closeTerminalSocket() {
+    terminalGeneration += 1;
+    const socket = terminalSocket;
+    terminalSocket = null;
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Client changed terminal");
+    elements.terminalState.textContent = selectedShellId ? "Disconnected" : "No session";
+    setTerminalControls(false);
+  }
+
+  function renderTerminalList(payload) {
+    terminalSessions = Array.isArray(payload && payload.shells) ? payload.shells : [];
+    if (selectedShellId && !terminalSessions.some((item) => item.shell_id === selectedShellId)) {
+      closeTerminalSocket();
+      selectedShellId = "";
+      elements.terminalTitle.textContent = "No terminal selected";
+      elements.terminalState.textContent = "No session";
+      elements.terminalOutput.textContent = "Select or create a terminal session.";
+    }
+
+    elements.terminalList.replaceChildren();
+    if (!terminalSessions.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No persistent terminals are running.";
+      elements.terminalList.append(empty);
+      setTerminalControls(false);
+      return;
+    }
+
+    for (const session of terminalSessions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "terminal-session";
+      button.textContent = text(session.shell_id, "unnamed");
+      button.title = text(session.shell_id, "unnamed");
+      button.setAttribute("aria-current", session.shell_id === selectedShellId ? "true" : "false");
+      button.addEventListener("click", () => connectTerminal(session.shell_id));
+      elements.terminalList.append(button);
+    }
+    elements.terminalKill.disabled = !selectedShellId;
+  }
+
+  function terminalWebSocketUrl(shellId) {
+    const url = new URL(`${uiPath}/ws/terminals/${encodeURIComponent(shellId)}`, location.href);
+    url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    url.searchParams.set("lines", "1000");
+    return url;
+  }
+
+  function sendTerminalResize() {
+    if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) return;
+    terminalSocket.send(JSON.stringify({ type: "resize", ...terminalSize() }));
+  }
+
+  function connectTerminal(shellId) {
+    if (!shellId || (shellId === selectedShellId && terminalSocket?.readyState === WebSocket.OPEN)) return;
+    closeTerminalSocket();
+    selectedShellId = shellId;
+    const generation = terminalGeneration;
+    elements.terminalTitle.textContent = shellId;
+    elements.terminalState.textContent = "Connecting";
+    elements.terminalOutput.textContent = "Connecting to terminal…";
+    renderTerminalList({ shells: terminalSessions });
+
+    const socket = new WebSocket(terminalWebSocketUrl(shellId), terminalSocketProtocols());
+    terminalSocket = socket;
+    socket.addEventListener("open", () => {
+      if (generation !== terminalGeneration || socket !== terminalSocket) return;
+      elements.terminalState.textContent = "Connected";
+      setTerminalControls(true);
+      sendTerminalResize();
+      elements.terminalInput.focus();
+    });
+    socket.addEventListener("message", (event) => {
+      if (generation !== terminalGeneration || socket !== terminalSocket) return;
+      let message;
+      try {
+        message = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+      if (message.type === "snapshot") {
+        const pinned = elements.terminalOutput.scrollTop + elements.terminalOutput.clientHeight >= elements.terminalOutput.scrollHeight - 24;
+        elements.terminalOutput.textContent = text(message.output, "");
+        if (pinned) elements.terminalOutput.scrollTop = elements.terminalOutput.scrollHeight;
+      } else if (message.type === "exit") {
+        elements.terminalState.textContent = "Exited";
+        elements.terminalOutput.textContent = text(message.message, "Terminal session exited.");
+        setTerminalControls(false);
+        void refreshTerminals();
+      }
+    });
+    socket.addEventListener("close", (event) => {
+      if (generation !== terminalGeneration || socket !== terminalSocket) return;
+      terminalSocket = null;
+      setTerminalControls(false);
+      if (event.code === 4401 || event.code === 4403) {
+        clearAccessToken();
+        showAuthentication("Authentication required", event.reason || "Terminal authorization failed.");
+      } else {
+        elements.terminalState.textContent = event.reason || "Disconnected";
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (generation === terminalGeneration && socket === terminalSocket) {
+        elements.terminalState.textContent = "Connection error";
+      }
+    });
+  }
+
+  async function refreshTerminals() {
+    const payload = await request("/terminals");
+    renderTerminalList(payload);
+    return payload;
+  }
+
+  async function terminalAction(action, body) {
+    return request(`/terminals/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
 
   function render(data) {
     const counts = data.counts || {};
@@ -351,8 +508,16 @@
     elements.refresh.disabled = true;
     try {
       render(await request("/bootstrap"));
+      try {
+        await refreshTerminals();
+      } catch (error) {
+        if (error.authenticationRequired) throw error;
+        elements.terminalState.textContent = "Terminal list unavailable";
+        elements.terminalOutput.textContent = error instanceof Error ? error.message : String(error);
+      }
     } catch (error) {
       if (error.authenticationRequired) {
+        closeTerminalSocket();
         clearAccessToken();
         showAuthentication("Authentication required");
       } else {
@@ -384,25 +549,78 @@
 
   elements.authForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    closeTerminalSocket();
     accessToken = elements.tokenInput.value.trim();
     if (accessToken) sessionStorage.setItem(tokenStorageKey, accessToken);
     else sessionStorage.removeItem(tokenStorageKey);
     void load();
   });
 
+  elements.terminalStartForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = elements.terminalStartForm.querySelector("button");
+    button.disabled = true;
+    try {
+      const name = elements.terminalName.value.trim();
+      const result = await terminalAction("start", { cwd: ".", name: name || null });
+      elements.terminalName.value = "";
+      await refreshTerminals();
+      connectTerminal(result.shell_id);
+    } catch (error) {
+      elements.terminalState.textContent = "Unable to start terminal";
+      elements.terminalOutput.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  elements.terminalInputForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const value = elements.terminalInput.value;
+    if (!value || !terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) return;
+    terminalSocket.send(JSON.stringify({ type: "input", data: value, enter: true }));
+    elements.terminalInput.value = "";
+  });
+
+  elements.terminalKill.addEventListener("click", async () => {
+    if (!selectedShellId) return;
+    const shellId = selectedShellId;
+    elements.terminalKill.disabled = true;
+    try {
+      await terminalAction("kill", { shell_id: shellId });
+      closeTerminalSocket();
+      selectedShellId = "";
+      elements.terminalTitle.textContent = "No terminal selected";
+      elements.terminalState.textContent = "No session";
+      elements.terminalOutput.textContent = `Terminal ${shellId} was terminated.`;
+      await refreshTerminals();
+    } catch (error) {
+      elements.terminalState.textContent = "Unable to kill terminal";
+      elements.terminalOutput.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      elements.terminalKill.disabled = !selectedShellId;
+    }
+  });
+
   elements.oauthLogin.addEventListener("click", () => void startOAuth());
   elements.refresh.addEventListener("click", () => void load());
   elements.signOut.addEventListener("click", () => {
+    closeTerminalSocket();
     clearAccessToken();
     sessionStorage.removeItem(pendingStorageKey);
     elements.tokenInput.value = "";
     showAuthentication("Signed out", "The browser token was removed from this tab.");
   });
 
+  window.addEventListener("resize", () => window.requestAnimationFrame(sendTerminalResize));
+  window.addEventListener("beforeunload", closeTerminalSocket);
   elements.oauthLogin.hidden = !oauthAvailable();
   elements.authMode.textContent = text(config.authMode);
   void boot();
   window.setInterval(() => {
+    if (terminalSocket?.readyState === WebSocket.OPEN) {
+      terminalSocket.send(JSON.stringify({ type: "ping" }));
+    }
     if (config.authMode !== "oauth" || accessToken) void load();
   }, 30000);
 })();

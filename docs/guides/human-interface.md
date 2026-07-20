@@ -20,11 +20,12 @@ The current migration slice provides:
 - runtime and package version information;
 - local and remote machine inventory;
 - automatic browser OAuth Authorization Code flow with PKCE S256;
-- OAuth-protected Human UI APIs;
+- authenticated local tmux terminal listing, creation, input, resize, snapshots, and termination;
+- OAuth-protected Human UI APIs and terminal WebSockets;
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Terminal, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Remote-worker terminals, rich xterm-compatible rendering, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -53,13 +54,31 @@ The file is created with mode `0600`. This token bypasses OAuth only when both c
 1. the request targets `/api/ui`;
 2. the transport peer itself is a loopback address.
 
-Forwarded headers are ignored, so a reverse proxy connected over loopback does not grant this bypass to remote users.
+Forwarded headers are ignored, so a reverse proxy connected over loopback does not grant this bypass to remote users. Browser terminal WebSockets never accept the private loopback token: in OAuth mode they require a valid bearer token with both `shell:read` and `shell:execute` scopes.
+
+## Terminals
+
+The **Terminals** panel manages the same tmux-backed persistent shells exposed by the MCP shell tools. A browser can create a shell, select an existing shell, submit commands, resize the tmux window, and terminate a selected shell. The server streams bounded `capture-pane` snapshots every 250 ms only when output changes.
+
+The browser sends ordered JSON controls over:
+
+```text
+<ui_path>/ws/terminals/<shell_id>
+```
+
+The OAuth access token is transported as a base64url-encoded WebSocket subprotocol credential; the server accepts only the non-secret `lsm-ui-terminal` subprotocol, so the bearer credential is not echoed back. Missing authentication closes with code `4401`, missing shell scopes with `4403`, invalid controls with `4400`, missing shells with `4404`, idle connections with `4408`, and connection-capacity exhaustion with `4429`.
+
+Terminal input and resize controls are processed in receive order. Individual messages are limited to 64 KiB, snapshots are limited to 5,000 lines, dimensions reuse the persistent-shell bounds, and each browser sends a heartbeat every 30 seconds. Closing or reloading the browser disconnects the WebSocket but deliberately leaves the tmux shell running; use **Kill selected** when the shell itself should terminate.
+
+The current renderer displays normalized full-pane text snapshots rather than a raw PTY byte stream. Interactive command workflows work now, while alternate-screen applications, exact ANSI styling, mouse protocols, and remote-machine terminals remain queued with the xterm/OpenTUI migration.
 
 ## Configuration
 
 ```yaml
 ui_enabled: true
 ui_path: /ui
+ui_terminal_idle_timeout_s: 3600
+ui_terminal_max_connections: 8
 ```
 
 Equivalent environment variables are:
@@ -67,9 +86,11 @@ Equivalent environment variables are:
 ```bash
 LOCAL_SHELL_MCP_UI_ENABLED=true
 LOCAL_SHELL_MCP_UI_PATH=/ui
+LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S=3600
+LOCAL_SHELL_MCP_UI_TERMINAL_MAX_CONNECTIONS=8
 ```
 
-`ui_path` must be a non-root URL path. Paths reserved by the MCP, OAuth, remote-worker, download, health, documentation, and Human UI API surfaces are rejected.
+`ui_path` must be a non-root URL path. Paths reserved by the MCP, OAuth, remote-worker, download, health, documentation, and Human UI API surfaces are rejected. Set `ui_terminal_idle_timeout_s` to `0` to disable idle expiry; negative values are rejected. `ui_terminal_max_connections` must be between `1` and `128`.
 
 Disable the browser surface completely with:
 
@@ -79,7 +100,7 @@ LOCAL_SHELL_MCP_UI_ENABLED=false
 
 ## Security notes
 
-Do not run `auth_mode: none` on a public or shared network. The Human UI can display and eventually mutate shell, filesystem, remote-worker, and task state, so it inherits the same deployment trust requirements as the REST and MCP surfaces.
+Do not run `auth_mode: none` on a public or shared network. The Human UI can create shells and execute arbitrary terminal input with the server account's permissions, so it inherits the same deployment trust requirements as the REST and MCP surfaces.
 
 Automatic OAuth sign-in requires a secure browser context for Web Crypto. HTTPS and localhost satisfy this requirement in supported browsers. The browser refuses to start PKCE when secure randomness or SHA-256 Web Crypto is unavailable.
 

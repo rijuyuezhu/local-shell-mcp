@@ -74,12 +74,44 @@
       </div>
     </section>
 
+    <section id="terminal-panel" class="panel terminal-panel">
+      <div class="section-heading terminal-heading">
+        <div>
+          <p class="eyebrow">Local tmux</p>
+          <h2>Terminals</h2>
+        </div>
+        <div class="terminal-actions">
+          <form id="terminal-start-form" class="terminal-start-form">
+            <input id="terminal-name" name="terminal-name" type="text" maxlength="64" placeholder="Optional shell name" autocomplete="off" spellcheck="false">
+            <button type="submit">New terminal</button>
+          </form>
+          <button id="terminal-kill" type="button" disabled>Kill selected</button>
+        </div>
+      </div>
+      <div class="terminal-layout">
+        <nav id="terminal-list" class="terminal-list" aria-label="Persistent terminals">
+          <div class="empty-state">Loading terminal sessions…</div>
+        </nav>
+        <div class="terminal-console">
+          <div class="terminal-console-header">
+            <strong id="terminal-title">No terminal selected</strong>
+            <span id="terminal-state" class="muted">Disconnected</span>
+          </div>
+          <pre id="terminal-output" tabindex="0" aria-live="polite">Select or create a terminal session.</pre>
+          <form id="terminal-input-form" class="terminal-input-form">
+            <input id="terminal-input" name="terminal-input" type="text" placeholder="Type a command and press Enter" autocomplete="off" spellcheck="false" disabled>
+            <button type="submit" disabled>Send</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
     <section class="panel roadmap">
       <div>
         <p class="eyebrow">Migration status</p>
         <h2>Human UI foundation active</h2>
       </div>
-      <p>Machine inventory and automatic OAuth PKCE browser sessions are available. Terminals, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI client will be connected in subsequent migration slices.</p>
+      <p>Machine inventory, automatic OAuth PKCE, and persistent local tmux terminals are available. Rich terminal emulation, remote terminals, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI client remain in subsequent migration slices.</p>
     </section>
   </main>
   <script src="__LSM_UI_PATH__/assets/web.js" defer></script>

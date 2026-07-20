@@ -233,7 +233,8 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
         "features": {
             "dashboard": True,
             "machines": True,
-            "terminals": False,
+            "terminals": True,
+            "terminal_websocket": True,
             "files": False,
             "todos": False,
             "audit": False,
