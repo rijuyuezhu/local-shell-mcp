@@ -17,6 +17,7 @@
       </div>
       <div class="actions">
         <span id="connection-state" class="status status-idle">Connecting</span>
+        <button id="sign-out" type="button" hidden>Sign out</button>
         <button id="refresh" type="button">Refresh</button>
       </div>
     </header>
@@ -24,15 +25,21 @@
     <section id="auth-panel" class="panel auth-panel" hidden>
       <div>
         <h2>Authentication required</h2>
-        <p>Paste an OAuth access token. It is kept in this browser tab only.</p>
+        <p id="auth-detail">Sign in through the local-shell-mcp OAuth approval page.</p>
       </div>
-      <form id="auth-form">
-        <label for="access-token">Access token</label>
-        <div class="token-row">
-          <input id="access-token" name="access-token" type="password" autocomplete="off" spellcheck="false">
-          <button type="submit">Connect</button>
-        </div>
-      </form>
+      <div class="auth-controls">
+        <button id="oauth-login" class="primary-action" type="button">Sign in with OAuth</button>
+        <details class="manual-token">
+          <summary>Use an existing access token</summary>
+          <form id="auth-form">
+            <label for="access-token">Access token</label>
+            <div class="token-row">
+              <input id="access-token" name="access-token" type="password" autocomplete="off" spellcheck="false">
+              <button type="submit">Connect</button>
+            </div>
+          </form>
+        </details>
+      </div>
     </section>
 
     <section class="metric-grid" aria-label="Service summary">
@@ -72,7 +79,7 @@
         <p class="eyebrow">Migration status</p>
         <h2>Human UI foundation active</h2>
       </div>
-      <p>Machine inventory and authenticated browser sessions are available. Terminals, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI client will be connected in subsequent migration slices.</p>
+      <p>Machine inventory and automatic OAuth PKCE browser sessions are available. Terminals, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI client will be connected in subsequent migration slices.</p>
     </section>
   </main>
   <script src="__LSM_UI_PATH__/assets/web.js" defer></script>

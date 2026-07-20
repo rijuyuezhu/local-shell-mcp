@@ -19,6 +19,7 @@ The current migration slice provides:
 - a packaged responsive browser shell;
 - runtime and package version information;
 - local and remote machine inventory;
+- automatic browser OAuth Authorization Code flow with PKCE S256;
 - OAuth-protected Human UI APIs;
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
@@ -29,7 +30,17 @@ Terminal, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI execu
 
 The HTML, CSS, and JavaScript shell is public so a browser can load the authentication experience. Human UI API routes under `/api/ui` follow the normal server authentication mode.
 
-With `auth_mode: oauth`, paste a valid OAuth access token into the browser form. The browser stores it only in `sessionStorage`, so closing the tab removes it.
+With `auth_mode: oauth`, select **Sign in with OAuth**. The browser:
+
+1. dynamically registers the exact `<origin><ui_path>/callback` redirect URI;
+2. creates a cryptographically random PKCE verifier and OAuth `state` value;
+3. requests approval using `code_challenge_method=S256` and the server-advertised scope and resource;
+4. verifies both `state` and the authorization response `iss` value;
+5. exchanges the code while including the resource required by the fork OAuth server.
+
+The access token, pending verifier, and state are stored only in the current tab's `sessionStorage`. Pending authorization state expires after ten minutes. **Sign out** removes the browser token immediately, and closing the tab removes all tab-scoped OAuth state. The expandable manual-token form remains available for troubleshooting and existing tokens.
+
+The OAuth approval page still requires the configured admin PIN. Configure `base_url` to the externally reachable origin before using the UI through a reverse proxy or public hostname, so issuer and resource validation match the browser-visible deployment.
 
 Native clients use a separate private token stored at:
 
@@ -70,4 +81,6 @@ LOCAL_SHELL_MCP_UI_ENABLED=false
 
 Do not run `auth_mode: none` on a public or shared network. The Human UI can display and eventually mutate shell, filesystem, remote-worker, and task state, so it inherits the same deployment trust requirements as the REST and MCP surfaces.
 
-The browser shell sets a restrictive Content Security Policy, disallows framing, avoids inline scripts, and serves assets with MIME sniffing disabled.
+Automatic OAuth sign-in requires a secure browser context for Web Crypto. HTTPS and localhost satisfy this requirement in supported browsers. The browser refuses to start PKCE when secure randomness or SHA-256 Web Crypto is unavailable.
+
+The browser shell sets a restrictive Content Security Policy, disallows framing, avoids inline scripts, validates callback issuer and state values, and serves assets with MIME sniffing disabled.

@@ -18,6 +18,8 @@ from starlette.responses import (
 from starlette.routing import BaseRoute, Route
 
 from ...config.settings import Settings, get_settings
+from ...oauth.core.scopes import default_scope
+from ...oauth.core.urls import issuer_url, resource_url
 from ...remote.manager import remote_manager
 from ...ui_security import UI_API_PREFIX
 from ...version import version_info
@@ -42,12 +44,23 @@ def _ui_index_html(settings: Settings) -> str:
             "<title>local-shell-mcp Human UI</title></head>"
             "<body><h1>Human UI assets are not installed</h1></body></html>"
         )
+    oauth = None
+    if settings.auth_mode == "oauth":
+        oauth = {
+            "issuer": issuer_url(),
+            "resource": resource_url(),
+            "scope": default_scope(),
+            "registrationEndpoint": "/oauth/register",
+            "authorizationEndpoint": "/oauth/authorize",
+            "tokenEndpoint": "/oauth/token",
+        }
     config = html.escape(
         json.dumps(
             {
                 "uiPath": settings.ui_path,
                 "apiPrefix": UI_API_PREFIX,
                 "authMode": settings.auth_mode,
+                "oauth": oauth,
             },
             separators=(",", ":"),
         ),
@@ -168,6 +181,7 @@ def human_ui_routes(
     public_routes: list[BaseRoute] = [
         Route(ui_path, ui_index, methods=["GET"]),
         Route(ui_path + "/", ui_index, methods=["GET"]),
+        Route(ui_path + "/callback", ui_index, methods=["GET"]),
         Route(ui_path + "/assets/{path:path}", ui_asset, methods=["GET"]),
     ]
     protected_routes: list[BaseRoute] = [

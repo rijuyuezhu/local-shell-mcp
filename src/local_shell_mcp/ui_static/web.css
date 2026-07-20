@@ -36,6 +36,22 @@ button:hover {
   background: rgba(39, 102, 126, 0.78);
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+button.primary-action {
+  width: 100%;
+  border-color: rgba(105, 199, 232, 0.55);
+  background: rgba(31, 112, 143, 0.82);
+  font-weight: 700;
+}
+
+button.primary-action:hover {
+  background: rgba(40, 137, 172, 0.9);
+}
+
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid #69c7e8;
@@ -193,6 +209,26 @@ h2 {
   color: #98aabb;
 }
 
+.auth-controls {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.manual-token {
+  border-top: 1px solid rgba(151, 184, 202, 0.14);
+  padding-top: 0.7rem;
+}
+
+.manual-token summary {
+  color: #9fb4c5;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.manual-token form {
+  margin-top: 0.8rem;
+}
+
 .auth-panel label {
   display: block;
   margin-bottom: 0.45rem;
@@ -297,7 +333,7 @@ h2 {
     grid-template-columns: 1fr 1fr;
   }
 
-  .auth-panel form,
+  .auth-controls,
   .roadmap p {
     margin-top: 1rem;
   }

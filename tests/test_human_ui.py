@@ -1,4 +1,10 @@
+import base64
+import hashlib
+import html
+import json
+import re
 import stat
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -6,11 +12,23 @@ from pydantic import ValidationError
 
 import local_shell_mcp.server.http.human_ui as human_ui_module
 from local_shell_mcp.config.settings import Settings, clear_settings_cache
+from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.ui_security import (
     UI_LOCAL_TOKEN_HEADER,
     get_or_create_ui_local_token,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_human_ui_state():
+    _CLIENTS.clear()
+    _CODES.clear()
+    clear_settings_cache()
+    yield
+    _CLIENTS.clear()
+    _CODES.clear()
+    clear_settings_cache()
 
 
 def _configure_ui(monkeypatch, tmp_path, *, auth_mode="none", **values):
@@ -54,13 +72,122 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "__LSM_UI_PATH__" not in index.text
     assert index.headers["cache-control"] == "no-store"
     assert "frame-ancestors 'none'" in index.headers["content-security-policy"]
+    assert client.get("/ui/callback?code=example").status_code == 200
 
     script = client.get("/ui/assets/web.js")
     assert script.status_code == 200
     assert script.headers["x-content-type-options"] == "nosniff"
+    assert 'code_challenge_method", "S256"' in script.text
+    assert "crypto.subtle.digest" in script.text
+    assert 'resource: String(oauth.resource || "")' in script.text
+    assert "pending.redirectUri === callbackUrl()" in script.text
+    assert "OAuth issuer verification failed" in script.text
 
     protected = client.get("/api/ui/bootstrap")
     assert protected.status_code == 401
+
+
+def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
+    monkeypatch, tmp_path
+):
+    base_url = "https://local-shell-mcp.example"
+    admin_pin = "12345678"
+    _CLIENTS.clear()
+    _CODES.clear()
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        base_url=base_url,
+        oauth_admin_pin=admin_pin,
+    )
+    client = TestClient(
+        build_http_app(),
+        base_url=base_url,
+        client=("203.0.113.10", 50000),
+    )
+
+    index = client.get("/ui")
+    match = re.search(r'data-lsm-config="([^"]+)"', index.text)
+    assert match is not None
+    runtime = json.loads(html.unescape(match.group(1)))
+    assert runtime["oauth"] == {
+        "issuer": base_url,
+        "resource": f"{base_url}/mcp",
+        "scope": (
+            "shell:read shell:write shell:execute git:write "
+            "file:share remote:use"
+        ),
+        "registrationEndpoint": "/oauth/register",
+        "authorizationEndpoint": "/oauth/authorize",
+        "tokenEndpoint": "/oauth/token",
+    }
+
+    callback = f"{base_url}/ui/callback"
+    registration = client.post(
+        "/oauth/register",
+        json={
+            "client_name": "local-shell-mcp WebUI",
+            "redirect_uris": [callback],
+        },
+    )
+    assert registration.status_code == 201
+    client_id = registration.json()["client_id"]
+
+    verifier = "browser-pkce-verifier-" + "x" * 48
+    challenge = (
+        base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode("ascii")).digest()
+        )
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+    state = "browser-oauth-state"
+    authorization = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": callback,
+        "scope": runtime["oauth"]["scope"],
+        "resource": runtime["oauth"]["resource"],
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "state": state,
+    }
+    approval_page = client.get("/oauth/authorize", params=authorization)
+    assert approval_page.status_code == 200
+    assert ">Approve<" in approval_page.text
+
+    approved = client.post(
+        "/oauth/authorize",
+        data={**authorization, "pin": admin_pin},
+        follow_redirects=False,
+    )
+    assert approved.status_code == 302
+    redirect = urlparse(approved.headers["location"])
+    query = parse_qs(redirect.query)
+    assert f"{redirect.scheme}://{redirect.netloc}{redirect.path}" == callback
+    assert query["state"] == [state]
+    assert query["iss"] == [runtime["oauth"]["issuer"]]
+    assert client.get(approved.headers["location"]).status_code == 200
+
+    exchange = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": query["code"][0],
+            "client_id": client_id,
+            "redirect_uri": callback,
+            "resource": runtime["oauth"]["resource"],
+            "code_verifier": verifier,
+        },
+    )
+    assert exchange.status_code == 200
+    token = exchange.json()["access_token"]
+    bootstrap = client.get(
+        "/api/ui/bootstrap", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["data"]["machines"][0]["name"] == "local"
 
 
 def test_local_ui_token_bypasses_oauth_only_on_loopback(monkeypatch, tmp_path):
@@ -93,6 +220,10 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
     index = client.get("/control")
     assert index.status_code == 200
     assert 'href="/control/assets/web.css"' in index.text
+    match = re.search(r'data-lsm-config="([^"]+)"', index.text)
+    assert match is not None
+    runtime = json.loads(html.unescape(match.group(1)))
+    assert runtime["oauth"] is None
 
     payload = client.get("/api/ui/bootstrap").json()["data"]
     assert payload["ui"] == {
