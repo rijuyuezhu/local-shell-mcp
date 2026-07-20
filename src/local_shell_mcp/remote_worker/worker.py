@@ -371,6 +371,50 @@ async def _execute_worker_job_with_heartbeat(
         await asyncio.gather(heartbeat, return_exceptions=True)
 
 
+async def _submit_worker_result_with_heartbeat(
+    result: dict[str, Any],
+    server: str,
+    headers: dict[str, str],
+    heartbeat_interval_s: float,
+) -> dict[str, Any]:
+    """Retry one result submission while preserving worker liveness."""
+    submission = asyncio.create_task(
+        _worker_post_json_forever(
+            f"{server}{REMOTE_API_PREFIX}/result",
+            result,
+            headers,
+            30,
+            "submit result",
+        )
+    )
+
+    async def heartbeat_loop() -> None:
+        interval = max(0.01, heartbeat_interval_s)
+        while not submission.done():
+            await asyncio.sleep(interval)
+            if submission.done():
+                return
+            try:
+                await asyncio.to_thread(
+                    _worker_post_json,
+                    f"{server}{REMOTE_API_PREFIX}/heartbeat",
+                    {},
+                    headers,
+                    30,
+                )
+            except Exception as exc:
+                if not _worker_error_is_retryable(exc):
+                    return
+                _worker_log_retry("heartbeat", exc, interval)
+
+    heartbeat = asyncio.create_task(heartbeat_loop())
+    try:
+        return await submission
+    finally:
+        heartbeat.cancel()
+        await asyncio.gather(heartbeat, return_exceptions=True)
+
+
 def worker_capabilities() -> list[str]:
     """List tool categories available in the worker environment."""
     return [
@@ -482,12 +526,11 @@ async def run_worker(
                 "error": "TimeoutError",
                 "message": "remote job expired before execution",
             }
-            await _worker_post_json_forever(
-                f"{server}{REMOTE_API_PREFIX}/result",
+            await _submit_worker_result_with_heartbeat(
                 out,
+                server,
                 headers,
-                30,
-                "submit result",
+                heartbeat_interval_s,
             )
             continue
         try:
@@ -497,12 +540,11 @@ async def run_worker(
             out = {"job_id": job["id"], "ok": True, "data": to_jsonable(result)}
         except Exception as exc:
             out = {"job_id": job.get("id"), **_handled_remote_exception(exc)}
-        await _worker_post_json_forever(
-            f"{server}{REMOTE_API_PREFIX}/result",
+        await _submit_worker_result_with_heartbeat(
             out,
+            server,
             headers,
-            30,
-            "submit result",
+            heartbeat_interval_s,
         )
 
 
