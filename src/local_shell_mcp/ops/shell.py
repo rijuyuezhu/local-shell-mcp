@@ -18,6 +18,7 @@ from ..schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     ReadPersistentShellOutput,
+    ResizePersistentShellOutput,
     RunPythonCodeOutput,
     RunShellCommandOutput,
     SendPersistentShellInputOutput,
@@ -49,6 +50,10 @@ SHELL_TIMEOUT_CLEANUP_GRACE_S = (
 SHELL_TIMEOUT_CLEANUP_TOOL_NAMES = frozenset({"bash", "run_python_code"})
 INTERNAL_SHELL_DEFAULT_TIMEOUT_S = 60
 INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
+PERSISTENT_SHELL_MIN_COLUMNS = 20
+PERSISTENT_SHELL_MAX_COLUMNS = 1600
+PERSISTENT_SHELL_MIN_ROWS = 3
+PERSISTENT_SHELL_MAX_ROWS = 500
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
 _COMMAND_SEMAPHORE_SIZE: int | None = None
 
@@ -634,6 +639,60 @@ async def send_persistent_shell_input_execute(
         shell_id=shell_id,
         sent_bytes=len(input_text.encode()),
         enter=enter,
+    )
+
+
+def _validate_persistent_shell_size(cols: int, rows: int) -> tuple[int, int]:
+    columns = int(cols)
+    lines = int(rows)
+    if (
+        not PERSISTENT_SHELL_MIN_COLUMNS
+        <= columns
+        <= PERSISTENT_SHELL_MAX_COLUMNS
+    ):
+        raise ValueError(
+            f"cols must be between {PERSISTENT_SHELL_MIN_COLUMNS} and "
+            f"{PERSISTENT_SHELL_MAX_COLUMNS}"
+        )
+    if not PERSISTENT_SHELL_MIN_ROWS <= lines <= PERSISTENT_SHELL_MAX_ROWS:
+        raise ValueError(
+            f"rows must be between {PERSISTENT_SHELL_MIN_ROWS} and "
+            f"{PERSISTENT_SHELL_MAX_ROWS}"
+        )
+    return columns, lines
+
+
+async def resize_persistent_shell_execute(
+    shell_id: str, cols: int, rows: int
+) -> ResizePersistentShellOutput:
+    """Resize one tmux-backed persistent shell window."""
+    columns, lines = _validate_persistent_shell_size(cols, rows)
+    result = await tmux(
+        [
+            "resize-window",
+            "-t",
+            shell_id,
+            "-x",
+            str(columns),
+            "-y",
+            str(lines),
+        ]
+    )
+    if not result.ok:
+        raise RuntimeError(result.stderr or result.stdout)
+    audit(
+        "resize_persistent_shell",
+        shell_id=shell_id,
+        cols=columns,
+        rows=lines,
+        backend="tmux",
+    )
+    return ResizePersistentShellOutput(
+        shell_id=shell_id,
+        cols=columns,
+        rows=lines,
+        resized=True,
+        backend="tmux",
     )
 
 

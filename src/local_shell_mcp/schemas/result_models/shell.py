@@ -113,6 +113,22 @@ class SendPersistentShellInputOutput(BaseModel):
     )
 
 
+class ResizePersistentShellOutput(BaseModel):
+    """Result of resizing a persistent terminal."""
+
+    shell_id: str = Field(description="Persistent shell that was resized.")
+    cols: int = Field(
+        description="Applied terminal width in character columns."
+    )
+    rows: int = Field(description="Applied terminal height in character rows.")
+    resized: bool = Field(
+        description="Whether the backend applied the requested size."
+    )
+    backend: Literal["tmux", "conpty", "native"] = Field(
+        description="Persistent-terminal backend that handled the resize request."
+    )
+
+
 class ReadPersistentShellOutput(BaseModel):
     """Recent output captured from a persistent shell."""
 

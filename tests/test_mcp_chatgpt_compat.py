@@ -295,6 +295,7 @@ async def test_persistent_shell_tools_use_shell_id_not_session_id(
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
     companion_names = [
         "send_persistent_shell_input",
+        "resize_persistent_shell",
         "read_persistent_shell_output",
         "kill_persistent_shell",
     ]
@@ -629,6 +630,13 @@ async def test_tool_safety_annotations_are_mode_independent(
     )
     _assert_tool_annotations(
         tools["create_file_link"],
+        read_only=False,
+        destructive=False,
+        idempotent=False,
+        open_world=True,
+    )
+    _assert_tool_annotations(
+        tools["resize_persistent_shell"],
         read_only=False,
         destructive=False,
         idempotent=False,

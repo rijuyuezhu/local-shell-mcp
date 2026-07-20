@@ -64,6 +64,36 @@ def test_execute_worker_tool_imports_registry_lazily(monkeypatch):
     assert seen_mcp_import is False
 
 
+@pytest.mark.asyncio
+async def test_worker_dispatches_persistent_shell_resize(monkeypatch):
+    from local_shell_mcp.ops import shell as shell_ops
+    from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
+
+    calls = []
+
+    async def fake_resize(shell_id: str, cols: int, rows: int):
+        calls.append((shell_id, cols, rows))
+        return {
+            "shell_id": shell_id,
+            "cols": cols,
+            "rows": rows,
+            "resized": True,
+            "backend": "tmux",
+        }
+
+    monkeypatch.setattr(
+        shell_ops, "resize_persistent_shell_execute", fake_resize
+    )
+
+    result = await execute_worker_tool(
+        "resize_persistent_shell",
+        {"shell_id": "shell-1", "cols": 132, "rows": 38},
+    )
+
+    assert result["resized"] is True
+    assert calls == [("shell-1", 132, 38)]
+
+
 def test_worker_session_start_result_serializes_with_dependency_shim(tmp_path):
     script = """
 import asyncio

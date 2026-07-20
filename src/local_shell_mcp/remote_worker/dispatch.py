@@ -68,6 +68,14 @@ async def _send_persistent_shell_input(args: dict[str, Any]) -> Any:
     )
 
 
+async def _resize_persistent_shell(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.shell import resize_persistent_shell_execute
+
+    return await resize_persistent_shell_execute(
+        str(args["shell_id"]), int(args["cols"]), int(args["rows"])
+    )
+
+
 async def _read_persistent_shell_output(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import read_persistent_shell_output_execute
 
@@ -342,6 +350,7 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "bash": _bash,
     "run_python_code": _run_python_code,
     "send_persistent_shell_input": _send_persistent_shell_input,
+    "resize_persistent_shell": _resize_persistent_shell,
     "read_persistent_shell_output": _read_persistent_shell_output,
     "kill_persistent_shell": _kill_persistent_shell,
     "list_persistent_shells": _list_persistent_shells,

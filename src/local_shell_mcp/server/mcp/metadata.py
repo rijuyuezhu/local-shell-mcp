@@ -42,6 +42,7 @@ _OPEN_WORLD_TOOL_NAMES = frozenset(
         "kill_persistent_shell",
         "list_agent_mcp_tools",
         "remote_admin",
+        "resize_persistent_shell",
         "revoke_file_link",
         "run_python_code",
         "send_persistent_shell_input",
@@ -54,6 +55,7 @@ _OPEN_WORLD_TOOL_PREFIXES = ("agent_mcp__",)
 _NON_DESTRUCTIVE_MUTATION_TOOL_NAMES = frozenset(
     {
         "create_file_link",
+        "resize_persistent_shell",
         "session_change_cwd",
         "session_start",
     }

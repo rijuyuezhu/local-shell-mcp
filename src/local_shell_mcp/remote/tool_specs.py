@@ -26,6 +26,7 @@ class RemoteWorkerToolSpec:
 
 REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "send_persistent_shell_input", None),
+    RemoteWorkerToolSpec("", "resize_persistent_shell", None),
     RemoteWorkerToolSpec("", "read_persistent_shell_output", None),
     RemoteWorkerToolSpec("", "kill_persistent_shell", None),
     RemoteWorkerToolSpec("", "list_persistent_shells", None),

@@ -212,6 +212,7 @@ REST_ROUTES: dict[str, tuple[str, str]] = {
         "POST",
         "/tools/send_persistent_shell_input",
     ),
+    "resize_persistent_shell": ("POST", "/tools/resize_persistent_shell"),
     "read_persistent_shell_output": (
         "POST",
         "/tools/read_persistent_shell_output",

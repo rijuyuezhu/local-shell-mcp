@@ -1,11 +1,11 @@
 {
-  "count": 37,
+  "count": 38,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "37"
+          "code": "38"
         },
         "."
       ],
@@ -1093,6 +1093,37 @@
             ]
           },
           "Read recent output from a persistent shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Use after send_persistent_shell_input to inspect an interactive or manually managed shell without blocking. For tracked non-interactive jobs from bash(async_=true), use job(poll=[...]) because it works from job_id and refreshes job status. lines defaults to 200 and controls how many recent terminal lines are returned; increase it only when needed for context."
+        ],
+        [
+          {
+            "code": "resize_persistent_shell"
+          },
+          {
+            "items": [
+              {
+                "description": "Persistent terminal width in character columns (20-1600).",
+                "head": {
+                  "code": "cols"
+                },
+                "note": "(integer, required)"
+              },
+              {
+                "description": "Persistent terminal height in character rows (3-500).",
+                "head": {
+                  "code": "rows"
+                },
+                "note": "(integer, required)"
+              },
+              {
+                "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id.",
+                "head": {
+                  "code": "shell_id"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "Resize a persistent PTY shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Supply the visible terminal width and height so terminal UIs and interactive full-screen programs can track the client viewport."
         ],
         [
           {
@@ -4762,6 +4793,101 @@
           "data"
         ],
         "title": "RemoteAdminOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Resize a persistent PTY shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Supply the visible terminal width and height so terminal UIs and interactive full-screen programs can track the client viewport.",
+      "inputSchema": {
+        "properties": {
+          "cols": {
+            "description": "Persistent terminal width in character columns (20-1600).",
+            "maximum": 1600,
+            "minimum": 20,
+            "title": "Cols",
+            "type": "integer"
+          },
+          "rows": {
+            "description": "Persistent terminal height in character rows (3-500).",
+            "maximum": 500,
+            "minimum": 3,
+            "title": "Rows",
+            "type": "integer"
+          },
+          "shell_id": {
+            "description": "Persistent shell_id returned by bash(pty=true) or list_persistent_shells. This is not the agent/workspace session_id.",
+            "title": "Shell Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shell_id",
+          "cols",
+          "rows"
+        ],
+        "title": "resize_persistent_shellArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read",
+              "shell:execute"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "resize_persistent_shell",
+      "outputSchema": {
+        "description": "Result of resizing a persistent terminal.",
+        "properties": {
+          "backend": {
+            "description": "Persistent-terminal backend that handled the resize request.",
+            "enum": [
+              "tmux",
+              "conpty",
+              "native"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "cols": {
+            "description": "Applied terminal width in character columns.",
+            "title": "Cols",
+            "type": "integer"
+          },
+          "resized": {
+            "description": "Whether the backend applied the requested size.",
+            "title": "Resized",
+            "type": "boolean"
+          },
+          "rows": {
+            "description": "Applied terminal height in character rows.",
+            "title": "Rows",
+            "type": "integer"
+          },
+          "shell_id": {
+            "description": "Persistent shell that was resized.",
+            "title": "Shell Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shell_id",
+          "cols",
+          "rows",
+          "resized",
+          "backend"
+        ],
+        "title": "ResizePersistentShellOutput",
         "type": "object"
       }
     },

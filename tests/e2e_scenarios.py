@@ -34,6 +34,7 @@ CORE_TOOL_NAMES = {
 
 INTERACTIVE_SHELL_TOOL_NAMES = {
     "send_persistent_shell_input",
+    "resize_persistent_shell",
     "read_persistent_shell_output",
     "kill_persistent_shell",
 }
