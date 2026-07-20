@@ -14,6 +14,12 @@
   let selectedShellId = "";
   let terminalSessions = [];
   let terminalGeneration = 0;
+  let filePath = ".";
+  let fileParentPath = ".";
+  let fileEntries = [];
+  let selectedFilePath = "";
+  let filePreviewGeneration = 0;
+  let fileEditorPath = "";
 
   const elements = {
     authDetail: document.getElementById("auth-detail"),
@@ -21,6 +27,23 @@
     authMode: document.getElementById("auth-mode"),
     authPanel: document.getElementById("auth-panel"),
     connectionState: document.getElementById("connection-state"),
+    fileDelete: document.getElementById("file-delete"),
+    fileEdit: document.getElementById("file-edit"),
+    fileEditor: document.getElementById("file-editor"),
+    fileEditorCancel: document.getElementById("file-editor-cancel"),
+    fileEditorForm: document.getElementById("file-editor-form"),
+    fileList: document.getElementById("file-list"),
+    fileNew: document.getElementById("file-new"),
+    fileOpen: document.getElementById("file-open"),
+    filePath: document.getElementById("file-path"),
+    filePathForm: document.getElementById("file-path-form"),
+    filePreviewBody: document.getElementById("file-preview-body"),
+    filePreviewMeta: document.getElementById("file-preview-meta"),
+    filePreviewTitle: document.getElementById("file-preview-title"),
+    fileRefresh: document.getElementById("file-refresh"),
+    fileShowHidden: document.getElementById("file-show-hidden"),
+    fileState: document.getElementById("file-state"),
+    fileUp: document.getElementById("file-up"),
     lastUpdated: document.getElementById("last-updated"),
     machineList: document.getElementById("machine-list"),
     machineOnline: document.getElementById("machine-online"),
@@ -481,6 +504,314 @@
   }
 
 
+  function formatFileBytes(value) {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) return "size unavailable";
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ["KiB", "MiB", "GiB"];
+    let size = bytes / 1024;
+    let unit = units[0];
+    for (let index = 1; index < units.length && size >= 1024; index += 1) {
+      size /= 1024;
+      unit = units[index];
+    }
+    return `${size.toFixed(size >= 10 ? 1 : 2)} ${unit}`;
+  }
+
+  function fileQuery(path, value) {
+    const query = new URLSearchParams({ path: value });
+    return `${path}?${query.toString()}`;
+  }
+
+  function fileAction(action, body) {
+    return request(`/files/${encodeURIComponent(action)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function joinFilePath(parent, name) {
+    const child = String(name || "").replace(/^[\\/]+/, "");
+    if (!parent || parent === ".") return child;
+    return `${String(parent).replace(/[\\/]+$/, "")}/${child}`;
+  }
+
+  function currentFileEntry() {
+    return fileEntries.find((entry) => entry.path === selectedFilePath) || null;
+  }
+
+  function clearFileEditor() {
+    fileEditorPath = "";
+    elements.fileEditor.value = "";
+    elements.fileEditorForm.hidden = true;
+    elements.filePreviewBody.hidden = false;
+  }
+
+  function setFileControls() {
+    const entry = currentFileEntry();
+    elements.fileOpen.disabled = !entry || entry.type !== "dir";
+    elements.fileEdit.disabled = !entry || entry.type !== "file";
+    elements.fileDelete.disabled = !entry;
+    elements.fileUp.disabled = filePath === fileParentPath;
+  }
+
+  function showFilePreviewMessage(title, detail) {
+    elements.filePreviewTitle.textContent = title;
+    elements.filePreviewMeta.textContent = detail || "";
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = detail || title;
+    elements.filePreviewBody.replaceChildren(empty);
+  }
+
+  function fileEntryLabel(entry) {
+    const icon = entry.type === "dir" ? "▰" : entry.type === "link" ? "↗" : "·";
+    return `${icon} ${text(entry.name, entry.path)}`;
+  }
+
+  function visibleFileEntries() {
+    return fileEntries.filter((entry) => elements.fileShowHidden.checked || !entry.hidden);
+  }
+
+  function renderFileList() {
+    const visible = visibleFileEntries();
+    if (selectedFilePath && !visible.some((entry) => entry.path === selectedFilePath)) {
+      selectedFilePath = "";
+      filePreviewGeneration += 1;
+      clearFileEditor();
+      showFilePreviewMessage("No file selected", "Select a file or directory.");
+    }
+
+    elements.fileList.replaceChildren();
+    if (!visible.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = fileEntries.length ? "Hidden entries are not shown." : "This directory is empty.";
+      elements.fileList.append(empty);
+      setFileControls();
+      return;
+    }
+
+    for (const entry of visible) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "file-entry";
+      button.setAttribute("aria-current", entry.path === selectedFilePath ? "true" : "false");
+      button.title = entry.path;
+
+      const label = document.createElement("span");
+      label.className = "file-entry-name";
+      label.textContent = fileEntryLabel(entry);
+      const detail = document.createElement("span");
+      detail.className = "file-entry-detail";
+      detail.textContent = entry.type === "dir" ? "dir" : entry.type === "link" ? "link" : formatFileBytes(entry.size);
+      button.append(label, detail);
+      button.addEventListener("click", () => selectFile(entry));
+      button.addEventListener("dblclick", () => {
+        if (entry.type === "dir") void navigateFiles(entry.path);
+      });
+      elements.fileList.append(button);
+    }
+    setFileControls();
+  }
+
+  function renderDirectoryPreview(payload) {
+    const list = document.createElement("div");
+    list.className = "file-preview-directory";
+    const entries = (Array.isArray(payload.entries) ? payload.entries : []).filter(
+      (entry) => elements.fileShowHidden.checked || !entry.hidden,
+    );
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "Directory is empty.";
+      list.append(empty);
+      return list;
+    }
+    for (const entry of entries.slice(0, 100)) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "file-preview-entry";
+      button.textContent = fileEntryLabel(entry);
+      button.title = entry.path;
+      button.addEventListener("click", () => {
+        void navigateFiles(payload.path, entry.path);
+      });
+      list.append(button);
+    }
+    return list;
+  }
+
+  function renderFilePreview(payload, entry) {
+    clearFileEditor();
+    elements.filePreviewTitle.textContent = text(entry.name, entry.path);
+    const metadata = [payload.kind, payload.media_type, payload.bytes === undefined ? "" : formatFileBytes(payload.bytes)]
+      .filter(Boolean)
+      .join(" · ");
+    elements.filePreviewMeta.textContent = metadata;
+
+    if (payload.kind === "directory") {
+      elements.filePreviewMeta.textContent = `${payload.count || 0} entries${payload.is_truncated ? " · truncated" : ""}`;
+      elements.filePreviewBody.replaceChildren(renderDirectoryPreview(payload));
+      return;
+    }
+    if (payload.kind === "image") {
+      if (!payload.inline || !payload.data_base64) {
+        showFilePreviewMessage(text(entry.name, entry.path), text(payload.message, "Image preview unavailable."));
+        return;
+      }
+      const image = document.createElement("img");
+      image.className = "file-preview-image";
+      image.alt = text(entry.name, "Workspace image");
+      image.src = `data:${payload.media_type};base64,${payload.data_base64}`;
+      elements.filePreviewBody.replaceChildren(image);
+      return;
+    }
+
+    const pre = document.createElement("pre");
+    pre.className = "file-preview-text";
+    if (payload.kind === "binary") {
+      const hex = String(payload.preview || "");
+      pre.textContent = (hex.match(/.{1,32}/g) || []).join("\n") || "No preview bytes.";
+      elements.filePreviewMeta.textContent = `${formatFileBytes(payload.bytes)} · ${payload.preview_bytes || 0} preview bytes · hex`;
+    } else {
+      pre.textContent = text(payload.content, "");
+      if (payload.preview_truncated) elements.filePreviewMeta.textContent += " · preview truncated";
+    }
+    elements.filePreviewBody.replaceChildren(pre);
+  }
+
+  async function previewFile(entry) {
+    const generation = ++filePreviewGeneration;
+    clearFileEditor();
+    elements.filePreviewTitle.textContent = text(entry.name, entry.path);
+    elements.filePreviewMeta.textContent = "Loading preview…";
+    showFilePreviewMessage(text(entry.name, entry.path), "Loading preview…");
+    try {
+      const payload = await request(fileQuery("/files/preview", entry.path));
+      if (generation !== filePreviewGeneration || selectedFilePath !== entry.path) return;
+      renderFilePreview(payload, entry);
+    } catch (error) {
+      if (generation !== filePreviewGeneration || selectedFilePath !== entry.path) return;
+      elements.fileState.textContent = "Preview unavailable";
+      showFilePreviewMessage(text(entry.name, entry.path), error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function selectFile(entry) {
+    selectedFilePath = entry.path;
+    renderFileList();
+    void previewFile(entry);
+  }
+
+  async function refreshFiles({ previewSelection = false } = {}) {
+    elements.fileRefresh.disabled = true;
+    elements.fileState.textContent = `Loading ${filePath}`;
+    try {
+      const payload = await request(fileQuery("/files", filePath));
+      filePath = text(payload.path, ".");
+      fileParentPath = text(payload.parent, filePath);
+      fileEntries = Array.isArray(payload.entries) ? payload.entries : [];
+      elements.filePath.value = filePath;
+      const selected = currentFileEntry();
+      if (!selected) {
+        selectedFilePath = "";
+        filePreviewGeneration += 1;
+        clearFileEditor();
+        showFilePreviewMessage("No file selected", "Select a file or directory.");
+      }
+      renderFileList();
+      if (selected && previewSelection) void previewFile(selected);
+      elements.fileState.textContent = `${filePath} · ${fileEntries.length} entries${payload.is_truncated ? " · truncated" : ""}`;
+      return payload;
+    } finally {
+      elements.fileRefresh.disabled = false;
+    }
+  }
+
+  async function navigateFiles(path, selection = "") {
+    filePath = path || ".";
+    selectedFilePath = selection;
+    filePreviewGeneration += 1;
+    clearFileEditor();
+    showFilePreviewMessage("Loading directory", filePath);
+    try {
+      await refreshFiles({ previewSelection: Boolean(selection) });
+    } catch (error) {
+      elements.fileState.textContent = "Directory unavailable";
+      showFilePreviewMessage("Unable to open directory", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function openSelectedFile() {
+    const entry = currentFileEntry();
+    if (entry?.type === "dir") void navigateFiles(entry.path);
+  }
+
+  async function openFileEditor() {
+    const entry = currentFileEntry();
+    if (!entry || entry.type !== "file") return;
+    const generation = ++filePreviewGeneration;
+    elements.fileEdit.disabled = true;
+    elements.fileState.textContent = `Opening ${entry.path}`;
+    try {
+      const payload = await request(fileQuery("/files/content", entry.path));
+      if (generation !== filePreviewGeneration || selectedFilePath !== entry.path) return;
+      fileEditorPath = entry.path;
+      elements.fileEditor.value = text(payload.content, "");
+      elements.filePreviewBody.hidden = true;
+      elements.fileEditorForm.hidden = false;
+      elements.filePreviewTitle.textContent = `Edit · ${text(entry.name, entry.path)}`;
+      elements.filePreviewMeta.textContent = `${formatFileBytes(payload.bytes)} · complete text`;
+      elements.fileState.textContent = "Editing";
+      elements.fileEditor.focus();
+    } catch (error) {
+      if (generation !== filePreviewGeneration || selectedFilePath !== entry.path) return;
+      elements.fileState.textContent = "Editor unavailable";
+      showFilePreviewMessage(text(entry.name, entry.path), error instanceof Error ? error.message : String(error));
+    } finally {
+      setFileControls();
+    }
+  }
+
+  async function createFile() {
+    const name = globalThis.prompt("New file name or relative path:");
+    if (name === null || !name.trim()) return;
+    const path = joinFilePath(filePath, name.trim());
+    elements.fileNew.disabled = true;
+    try {
+      await fileAction("write", { path, content: "", overwrite: false });
+      selectedFilePath = path;
+      await refreshFiles({ previewSelection: true });
+      await openFileEditor();
+    } catch (error) {
+      elements.fileState.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      elements.fileNew.disabled = false;
+    }
+  }
+
+  async function deleteSelectedFile() {
+    const entry = currentFileEntry();
+    if (!entry) return;
+    const detail = entry.type === "dir" ? " and all of its contents" : "";
+    if (!globalThis.confirm(`Delete ${entry.path}${detail}?`)) return;
+    elements.fileDelete.disabled = true;
+    try {
+      await fileAction("delete", { path: entry.path, recursive: entry.type === "dir" });
+      selectedFilePath = "";
+      filePreviewGeneration += 1;
+      clearFileEditor();
+      await refreshFiles();
+      elements.fileState.textContent = `Deleted ${entry.path}`;
+    } catch (error) {
+      elements.fileState.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      setFileControls();
+    }
+  }
+
   function render(data) {
     const counts = data.counts || {};
     const machines = Array.isArray(data.machines) ? data.machines : [];
@@ -515,9 +846,18 @@
         elements.terminalState.textContent = "Terminal list unavailable";
         elements.terminalOutput.textContent = error instanceof Error ? error.message : String(error);
       }
+      try {
+        await refreshFiles();
+      } catch (error) {
+        if (error.authenticationRequired) throw error;
+        elements.fileState.textContent = "File list unavailable";
+        showFilePreviewMessage("Files unavailable", error instanceof Error ? error.message : String(error));
+      }
     } catch (error) {
       if (error.authenticationRequired) {
         closeTerminalSocket();
+        filePreviewGeneration += 1;
+        clearFileEditor();
         clearAccessToken();
         showAuthentication("Authentication required");
       } else {
@@ -602,10 +942,67 @@
     }
   });
 
+  elements.filePathForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void navigateFiles(elements.filePath.value.trim() || ".");
+  });
+  elements.fileUp.addEventListener("click", () => void navigateFiles(fileParentPath));
+  elements.fileRefresh.addEventListener("click", () => void refreshFiles());
+  elements.fileShowHidden.addEventListener("change", () => {
+    const entry = currentFileEntry();
+    renderFileList();
+    if (entry?.type === "dir" && selectedFilePath === entry.path) {
+      void previewFile(entry);
+    }
+  });
+  elements.fileNew.addEventListener("click", () => void createFile());
+  elements.fileOpen.addEventListener("click", openSelectedFile);
+  elements.fileEdit.addEventListener("click", () => void openFileEditor());
+  elements.fileDelete.addEventListener("click", () => void deleteSelectedFile());
+  elements.fileEditorCancel.addEventListener("click", () => {
+    const entry = currentFileEntry();
+    filePreviewGeneration += 1;
+    clearFileEditor();
+    elements.fileState.textContent = filePath;
+    if (entry) void previewFile(entry);
+    else showFilePreviewMessage("No file selected", "Select a file or directory.");
+  });
+  elements.fileEditorForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!fileEditorPath) return;
+    const path = fileEditorPath;
+    const button = elements.fileEditorForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    elements.fileState.textContent = `Saving ${path}`;
+    try {
+      await fileAction("write", {
+        path,
+        content: elements.fileEditor.value,
+        overwrite: true,
+      });
+      selectedFilePath = path;
+      clearFileEditor();
+      await refreshFiles();
+      const entry = currentFileEntry();
+      if (entry) await previewFile(entry);
+      elements.fileState.textContent = `Saved ${path}`;
+    } catch (error) {
+      elements.fileState.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   elements.oauthLogin.addEventListener("click", () => void startOAuth());
   elements.refresh.addEventListener("click", () => void load());
   elements.signOut.addEventListener("click", () => {
     closeTerminalSocket();
+    filePreviewGeneration += 1;
+    clearFileEditor();
+    selectedFilePath = "";
+    fileEntries = [];
+    renderFileList();
+    elements.fileState.textContent = "Authentication required";
     clearAccessToken();
     sessionStorage.removeItem(pendingStorageKey);
     elements.tokenInput.value = "";

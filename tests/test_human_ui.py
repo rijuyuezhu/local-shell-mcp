@@ -69,6 +69,8 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     index = client.get("/ui")
     assert index.status_code == 200
     assert "Human Interface" in index.text
+    assert 'id="file-panel"' in index.text
+    assert 'id="file-editor-form"' in index.text
     assert "__LSM_UI_PATH__" not in index.text
     assert index.headers["cache-control"] == "no-store"
     assert "frame-ancestors 'none'" in index.headers["content-security-policy"]
@@ -82,6 +84,9 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'resource: String(oauth.resource || "")' in script.text
     assert "pending.redirectUri === callbackUrl()" in script.text
     assert "OAuth issuer verification failed" in script.text
+    assert "filePreviewGeneration" in script.text
+    assert "generation !== filePreviewGeneration" in script.text
+    assert 'fileQuery("/files/preview"' in script.text
 
     protected = client.get("/api/ui/bootstrap")
     assert protected.status_code == 401
@@ -235,7 +240,9 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
             "machines": True,
             "terminals": True,
             "terminal_websocket": True,
-            "files": False,
+            "files": True,
+            "file_preview": True,
+            "file_editor": True,
             "todos": False,
             "audit": False,
         },

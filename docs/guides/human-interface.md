@@ -21,11 +21,12 @@ The current migration slice provides:
 - local and remote machine inventory;
 - automatic browser OAuth Authorization Code flow with PKCE S256;
 - authenticated local tmux terminal listing, creation, input, resize, snapshots, and termination;
+- workspace-confined local file browsing, previews, text editing, creation, and deletion;
 - OAuth-protected Human UI APIs and terminal WebSockets;
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Remote-worker terminals, rich xterm-compatible rendering, Files, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Remote-worker terminals and files, rich xterm-compatible rendering, file copy/move/rename, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -71,6 +72,29 @@ The OAuth access token is transported as a base64url-encoded WebSocket subprotoc
 Terminal input and resize controls are processed in receive order. Individual messages are limited to 64 KiB, snapshots are limited to 5,000 lines, dimensions reuse the persistent-shell bounds, and each browser sends a heartbeat every 30 seconds. Closing or reloading the browser disconnects the WebSocket but deliberately leaves the tmux shell running; use **Kill selected** when the shell itself should terminate.
 
 The current renderer displays normalized full-pane text snapshots rather than a raw PTY byte stream. Interactive command workflows work now, while alternate-screen applications, exact ANSI styling, mouse protocols, and remote-machine terminals remain queued with the xterm/OpenTUI migration.
+
+## Files
+
+The **Files** panel browses the local workspace used by the server. Directory entries are sorted with directories first, hidden entries can be toggled, double-clicking or **Open** enters a directory, and the path field plus **Up** button provide direct navigation. Directory previews are themselves navigable, so selecting a child from the preview opens its containing directory and keeps that child selected.
+
+Read-only file routes require `shell:read`. Creating, replacing, or deleting files additionally requires `shell:write`. The browser surface stays confined to `workspace_root` even when the server-wide `allow_full_control` setting is enabled; that setting does not turn the Human UI into an unrestricted host filesystem browser.
+
+The built-in preview supports:
+
+- directory entries, bounded to 1,000 items;
+- UTF-8 text, bounded to the first 400 lines and the configured file-read byte limit;
+- a 256-byte hexadecimal sample for binary files;
+- inline AVIF, BMP, GIF, JPEG, PNG, and WebP images that fit the configured file-read byte limit.
+
+SVG is intentionally rendered as text instead of an inline image, preventing active SVG content from executing in the browser. Images above the byte limit produce metadata and an explanatory message rather than an oversized data URL.
+
+**Edit** loads the complete bounded UTF-8 file. Binary files and files truncated by `max_file_read_bytes` are refused rather than silently saving a partial document. Saves reuse the normal file operation path: existing modes are preserved, writes use same-directory atomic replacement and path locking, command/path restrictions remain active, and the event loop is not blocked by disk operations. **New file** uses create-only semantics, so it will not overwrite an existing path.
+
+Deletion is explicit and confirmed in the browser. The workspace root itself cannot be deleted. Deleting a symbolic link removes the selected link entry without deleting its target. Recursive deletion is requested only for selected directories.
+
+Selection and preview requests use generation guards. A slow response for an earlier selection is ignored, periodic dashboard refreshes retain the current selection without reloading its preview, and signing out invalidates pending file work.
+
+The current Files panel is local-only. Remote-worker files, copy, move, rename, richer binary viewers, and the native OpenTUI Files screen remain in the follow-up migration queue.
 
 ## Configuration
 

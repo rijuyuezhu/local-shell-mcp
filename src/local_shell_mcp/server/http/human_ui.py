@@ -23,6 +23,12 @@ from ...oauth.core.urls import issuer_url, resource_url
 from ...remote.manager import remote_manager
 from ...ui_security import UI_API_PREFIX
 from ...version import version_info
+from .ui_files import (
+    api_file_action,
+    api_file_content,
+    api_file_preview,
+    api_files,
+)
 from .ui_terminals import (
     api_terminal_action,
     api_terminal_read,
@@ -163,7 +169,9 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                     "machines": True,
                     "terminals": True,
                     "terminal_websocket": True,
-                    "files": False,
+                    "files": True,
+                    "file_preview": True,
+                    "file_editor": True,
                     "todos": False,
                     "audit": False,
                 },
@@ -197,6 +205,22 @@ def human_ui_routes(
         ),
         Route(UI_API_PREFIX + "/bootstrap", api_bootstrap, methods=["GET"]),
         Route(UI_API_PREFIX + "/machines", api_machines, methods=["GET"]),
+        Route(UI_API_PREFIX + "/files", api_files, methods=["GET"]),
+        Route(
+            UI_API_PREFIX + "/files/preview",
+            api_file_preview,
+            methods=["GET"],
+        ),
+        Route(
+            UI_API_PREFIX + "/files/content",
+            api_file_content,
+            methods=["GET"],
+        ),
+        Route(
+            UI_API_PREFIX + "/files/{action}",
+            api_file_action,
+            methods=["POST"],
+        ),
         Route(UI_API_PREFIX + "/terminals", api_terminals, methods=["GET"]),
         Route(
             UI_API_PREFIX + "/terminals/read",
