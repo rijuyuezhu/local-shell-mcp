@@ -31,6 +31,7 @@ from .ui_files import (
     api_file_preview,
     api_files,
 )
+from .ui_remotes import api_remote_action, api_remotes
 from .ui_terminals import (
     api_terminal_action,
     api_terminal_read,
@@ -174,6 +175,7 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                     "dashboard": True,
                     "remote_dashboard": True,
                     "machines": True,
+                    "remotes": True,
                     "terminals": True,
                     "remote_terminals": True,
                     "terminal_websocket": True,
@@ -221,6 +223,12 @@ def human_ui_routes(
         Route(UI_API_PREFIX + "/bootstrap", api_bootstrap, methods=["GET"]),
         Route(UI_API_PREFIX + "/dashboard", api_dashboard, methods=["GET"]),
         Route(UI_API_PREFIX + "/machines", api_machines, methods=["GET"]),
+        Route(UI_API_PREFIX + "/remotes", api_remotes, methods=["GET", "POST"]),
+        Route(
+            UI_API_PREFIX + "/remotes/{action}",
+            api_remote_action,
+            methods=["POST"],
+        ),
         Route(UI_API_PREFIX + "/files", api_files, methods=["GET"]),
         Route(
             UI_API_PREFIX + "/files/preview",

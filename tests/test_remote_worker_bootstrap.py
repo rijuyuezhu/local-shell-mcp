@@ -34,6 +34,7 @@ from local_shell_mcp.remote_worker.worker import worker_capabilities, worker_inf
 
 assert "shell" in worker_capabilities()
 assert worker_info(".")["workdir"] == "."
+assert worker_info(".")["lsm_version"]
 """
     result = subprocess.run(
         [sys.executable, "-c", script],

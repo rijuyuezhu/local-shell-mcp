@@ -1289,6 +1289,300 @@ h2 {
   line-height: 1.45;
 }
 
+.remotes-panel {
+  overflow: hidden;
+}
+
+.remotes-heading,
+.remotes-actions,
+.remote-details-header,
+.remote-detail-actions,
+.dialog-heading,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.remotes-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.remote-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.remote-metric,
+.remote-details,
+.remote-list {
+  border: 1px solid rgba(151, 184, 202, 0.12);
+  border-radius: 0.8rem;
+  background: rgba(3, 13, 20, 0.62);
+}
+
+.remote-metric {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.remote-metric span,
+.remote-capabilities > span {
+  color: #7f94a6;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.remote-metric strong {
+  color: #dce9f2;
+  font-size: 1.25rem;
+}
+
+.remotes-layout {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.9fr) minmax(0, 1.35fr);
+  gap: 0.9rem;
+  min-height: 20rem;
+}
+
+.remote-list {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  max-height: 31rem;
+  overflow: auto;
+  padding: 0.6rem;
+}
+
+.remote-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 0.65rem;
+  background: rgba(9, 25, 36, 0.48);
+  padding: 0.7rem;
+  color: inherit;
+  text-align: left;
+}
+
+.remote-row:hover,
+.remote-row:focus-visible,
+.remote-row-selected {
+  border-color: rgba(93, 181, 213, 0.5);
+  background: rgba(25, 67, 88, 0.44);
+}
+
+.remote-row-status {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: #5e7080;
+  box-shadow: 0 0 0 0.22rem rgba(94, 112, 128, 0.12);
+}
+
+.remote-row-status-online {
+  background: #61d0a6;
+  box-shadow: 0 0 0 0.22rem rgba(97, 208, 166, 0.12);
+}
+
+.remote-row-main {
+  min-width: 0;
+}
+
+.remote-row-name,
+.remote-row-meta,
+.remote-row-version {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-row-name {
+  color: #dce9f2;
+  font-weight: 700;
+}
+
+.remote-row-meta,
+.remote-row-version {
+  color: #7f94a6;
+  font-size: 0.7rem;
+}
+
+.remote-row-version {
+  max-width: 8rem;
+  color: #78bfe0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.remote-details {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.remote-details-header {
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(151, 184, 202, 0.1);
+  padding-bottom: 0.85rem;
+}
+
+.remote-details-header > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 0.3rem;
+}
+
+.remote-details-header strong,
+.remote-details-header span {
+  overflow-wrap: anywhere;
+}
+
+.remote-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1rem 0;
+}
+
+.remote-detail-grid div {
+  min-width: 0;
+}
+
+.remote-detail-grid dt {
+  color: #7f94a6;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.remote-detail-grid dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  color: #d9e7f2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.remote-capabilities {
+  display: grid;
+  gap: 0.55rem;
+  border-top: 1px solid rgba(151, 184, 202, 0.1);
+  padding-top: 0.9rem;
+}
+
+.remote-capability-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.remote-capability {
+  border: 1px solid rgba(93, 181, 213, 0.24);
+  border-radius: 999px;
+  background: rgba(25, 67, 88, 0.32);
+  padding: 0.25rem 0.5rem;
+  color: #9ccfe4;
+  font-size: 0.68rem;
+}
+
+.danger-action {
+  border-color: rgba(231, 110, 120, 0.48);
+  color: #ffadb4;
+}
+
+.danger-action:hover:not(:disabled),
+.danger-action:focus-visible:not(:disabled) {
+  border-color: #e76e78;
+  background: rgba(115, 38, 49, 0.38);
+}
+
+.remote-dialog {
+  width: min(36rem, calc(100% - 2rem));
+  border: 1px solid rgba(93, 181, 213, 0.42);
+  border-radius: 0.9rem;
+  background: #07131c;
+  padding: 1rem;
+  color: #dce9f2;
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.58);
+}
+
+.remote-dialog::backdrop {
+  background: rgba(0, 5, 9, 0.78);
+  backdrop-filter: blur(0.15rem);
+}
+
+.remote-dialog:not([open]) {
+  display: none;
+}
+
+.remote-dialog form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.remote-dialog label {
+  display: grid;
+  gap: 0.35rem;
+  color: #91a4b7;
+  font-size: 0.75rem;
+}
+
+.remote-dialog input,
+.remote-dialog select {
+  width: 100%;
+}
+
+.dialog-heading {
+  align-items: flex-start;
+}
+
+.dialog-heading h2,
+.dialog-heading p {
+  margin: 0;
+}
+
+.dialog-close {
+  min-width: 2.4rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+}
+
+.remote-invite-result-dialog[open] {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.remote-invite-command {
+  max-height: 14rem;
+  overflow: auto;
+  border: 1px solid rgba(151, 184, 202, 0.18);
+  border-radius: 0.65rem;
+  background: #020a10;
+  padding: 0.8rem;
+  color: #9bd7ed;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 1180px) {
   .dashboard-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1318,7 +1612,8 @@ h2 {
 
   .actions,
   .dashboard-actions,
-  .terminal-actions {
+  .terminal-actions,
+  .remotes-actions {
     margin-top: 1rem;
   }
 
@@ -1353,7 +1648,8 @@ h2 {
 
   .dashboard-layout,
   .file-layout,
-  .audit-layout {
+  .audit-layout,
+  .remotes-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1367,7 +1663,8 @@ h2 {
 
   .dashboard-list,
   .file-list,
-  .audit-list {
+  .audit-list,
+  .remote-list {
     max-height: 18rem;
   }
 
@@ -1382,7 +1679,8 @@ h2 {
 
   .dashboard-summary,
   .metric-grid,
-  .machine-list {
+  .machine-list,
+  .remote-summary {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -1395,7 +1693,9 @@ h2 {
 @media (max-width: 480px) {
   .dashboard-summary,
   .metric-grid,
-  .machine-list {
+  .machine-list,
+  .remote-summary,
+  .remote-detail-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1409,7 +1709,10 @@ h2 {
   .todo-actions,
   .todo-row,
   .audit-toolbar,
-  .audit-detail-header {
+  .audit-detail-header,
+  .remote-details-header,
+  .remote-detail-actions,
+  .dialog-actions {
     align-items: stretch;
     flex-direction: column;
   }

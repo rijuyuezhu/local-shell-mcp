@@ -74,6 +74,11 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="dashboard-cpu-trend"' in index.text
     assert 'id="dashboard-alerts"' in index.text
     assert 'id="dashboard-activity"' in index.text
+    assert 'id="remotes-panel"' in index.text
+    assert 'id="remote-invite-dialog"' in index.text
+    assert 'id="remote-invite-result-dialog"' in index.text
+    assert 'id="remote-rename-dialog"' in index.text
+    assert 'id="remote-revoke-dialog"' in index.text
     assert 'id="terminal-machine"' in index.text
     assert 'id="file-panel"' in index.text
     assert 'id="file-machine"' in index.text
@@ -100,6 +105,13 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "request(dashboardQueryPath())" in script.text
     assert "createElementNS" in script.text
     assert "dashboardNumber" in script.text
+    assert "remoteGeneration" in script.text
+    assert "generation !== remoteGeneration" in script.text
+    assert "startRemotePolling" in script.text
+    assert "clearRemoteInviteResult" in script.text
+    assert "navigator.clipboard.writeText(remoteInviteCommand)" in script.text
+    assert 'remoteInviteCommand = ""' in script.text
+    assert "innerHTML" not in script.text
     assert "terminalMachineStates" in script.text
     assert "requestedMachine !== terminalMachine" in script.text
     assert 'url.searchParams.set("machine", machine)' in script.text
@@ -266,6 +278,7 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
             "dashboard": True,
             "remote_dashboard": True,
             "machines": True,
+            "remotes": True,
             "terminals": True,
             "remote_terminals": True,
             "terminal_websocket": True,

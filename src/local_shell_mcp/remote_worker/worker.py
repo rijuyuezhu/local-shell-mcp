@@ -22,6 +22,7 @@ from ..remote.constants import (
     REMOTE_WORKER_IDENTITY_FILE_NAME,
 )
 from ..remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
+from ..version import version_info
 from .compat import _jsonable as to_jsonable
 
 
@@ -430,6 +431,7 @@ def worker_capabilities() -> list[str]:
 def worker_info(workdir: str) -> dict[str, Any]:
     """Return worker identity, workspace, platform, Python, and capability metadata."""
     return {
+        "lsm_version": str(version_info().get("version") or ""),
         "hostname": socket.gethostname(),
         "user": os.getenv("USER") or os.getenv("USERNAME") or "unknown",
         "cwd": os.getcwd(),

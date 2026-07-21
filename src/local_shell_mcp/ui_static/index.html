@@ -180,6 +180,94 @@
       </div>
     </section>
 
+    <section id="remotes-panel" class="panel remotes-panel">
+      <div class="section-heading remotes-heading">
+        <div>
+          <p class="eyebrow">Worker control plane</p>
+          <h2>Remotes</h2>
+        </div>
+        <div class="remotes-actions">
+          <button id="remote-invite-open" class="primary-action" type="button">New invite</button>
+          <button id="remote-refresh" type="button">Refresh</button>
+          <span id="remote-state" class="muted">Not loaded</span>
+        </div>
+      </div>
+      <div class="remote-summary" aria-live="polite">
+        <article class="remote-metric"><span>Online</span><strong id="remote-online">—</strong></article>
+        <article class="remote-metric"><span>Offline</span><strong id="remote-offline">—</strong></article>
+        <article class="remote-metric"><span>Total</span><strong id="remote-total">—</strong></article>
+        <article class="remote-metric"><span>Controller</span><strong id="remote-controller">—</strong></article>
+      </div>
+      <div class="remotes-layout">
+        <nav id="remote-list" class="remote-list" aria-label="Registered remote workers" aria-live="polite">
+          <div class="empty-state">Loading remote workers…</div>
+        </nav>
+        <article class="remote-details">
+          <div class="remote-details-header">
+            <div>
+              <strong id="remote-detail-name">No remote selected</strong>
+              <span id="remote-detail-status" class="muted">Select a worker to inspect it</span>
+            </div>
+            <div class="remote-detail-actions">
+              <button id="remote-rename-open" type="button" disabled>Rename</button>
+              <button id="remote-revoke-open" class="danger-action" type="button" disabled>Revoke</button>
+            </div>
+          </div>
+          <dl id="remote-detail-grid" class="remote-detail-grid">
+            <div><dt>LSM version</dt><dd id="remote-detail-version">—</dd></div>
+            <div><dt>Last seen</dt><dd id="remote-detail-last-seen">—</dd></div>
+            <div><dt>Workdir</dt><dd id="remote-detail-workdir">—</dd></div>
+            <div><dt>Queue</dt><dd id="remote-detail-queue">—</dd></div>
+            <div><dt>Hostname</dt><dd id="remote-detail-hostname">—</dd></div>
+            <div><dt>User</dt><dd id="remote-detail-user">—</dd></div>
+            <div><dt>Platform</dt><dd id="remote-detail-platform">—</dd></div>
+            <div><dt>Python</dt><dd id="remote-detail-python">—</dd></div>
+          </dl>
+          <div class="remote-capabilities">
+            <span>Capabilities</span>
+            <div id="remote-detail-capabilities" class="remote-capability-list"><span class="muted">—</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <dialog id="remote-invite-dialog" class="remote-dialog">
+      <form id="remote-invite-form">
+        <div class="dialog-heading"><div><p class="eyebrow">One-time enrollment</p><h2>Create remote invite</h2></div><button class="dialog-close" type="button" data-close-dialog="remote-invite-dialog" aria-label="Close">×</button></div>
+        <label>Machine name <input id="remote-invite-name" name="name" maxlength="128" autocomplete="off" spellcheck="false" placeholder="Optional"></label>
+        <label>Starting workdir <input id="remote-invite-workdir" name="workdir" maxlength="4096" autocomplete="off" spellcheck="false" placeholder="Optional"></label>
+        <label>Lifetime <select id="remote-invite-ttl" name="ttl"><option value="600">10 minutes</option><option value="1800">30 minutes</option><option value="3600">1 hour</option><option value="86400">24 hours</option></select></label>
+        <p class="muted">The returned command grants one enrollment and is not saved by this page.</p>
+        <div class="dialog-actions"><button type="button" data-close-dialog="remote-invite-dialog">Cancel</button><button class="primary-action" type="submit">Create invite</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="remote-invite-result-dialog" class="remote-dialog remote-invite-result-dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">Sensitive one-time command</p><h2>Remote invite ready</h2></div><button class="dialog-close" id="remote-invite-result-close" type="button" aria-label="Close">×</button></div>
+      <p>Run this command on the remote worker:</p>
+      <pre id="remote-invite-command" class="remote-invite-command" tabindex="0"></pre>
+      <p id="remote-invite-expiry" class="muted">—</p>
+      <div class="dialog-actions"><button id="remote-invite-copy" type="button">Copy command</button><button id="remote-invite-done" class="primary-action" type="button">Done</button></div>
+    </dialog>
+
+    <dialog id="remote-rename-dialog" class="remote-dialog">
+      <form id="remote-rename-form">
+        <div class="dialog-heading"><div><p class="eyebrow">Persistent identity</p><h2>Rename remote</h2></div><button class="dialog-close" type="button" data-close-dialog="remote-rename-dialog" aria-label="Close">×</button></div>
+        <label>New machine name <input id="remote-rename-name" name="new-name" maxlength="128" required autocomplete="off" spellcheck="false"></label>
+        <p class="muted">Pending jobs and future connections will follow the new name.</p>
+        <div class="dialog-actions"><button type="button" data-close-dialog="remote-rename-dialog">Cancel</button><button class="primary-action" type="submit">Rename</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="remote-revoke-dialog" class="remote-dialog">
+      <form id="remote-revoke-form">
+        <div class="dialog-heading"><div><p class="eyebrow">Destructive action</p><h2>Revoke remote</h2></div><button class="dialog-close" type="button" data-close-dialog="remote-revoke-dialog" aria-label="Close">×</button></div>
+        <p>Revoke <strong id="remote-revoke-name">this worker</strong>?</p>
+        <p class="muted">Its persisted worker credential will no longer reconnect, and outstanding jobs for this machine are cancelled.</p>
+        <div class="dialog-actions"><button type="button" data-close-dialog="remote-revoke-dialog">Cancel</button><button class="danger-action" type="submit">Revoke worker</button></div>
+      </form>
+    </dialog>
+
     <section id="terminal-panel" class="panel terminal-panel">
       <div class="section-heading terminal-heading">
         <div>

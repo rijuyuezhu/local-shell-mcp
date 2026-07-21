@@ -20,6 +20,7 @@ The current migration slice provides:
 - runtime and package version information;
 - local and remote machine inventory;
 - process-scoped local and remote Dashboard telemetry with degraded-source alerts;
+- OAuth-scoped remote worker inventory, one-time enrollment invitations, rename, and revocation;
 - automatic browser OAuth Authorization Code flow with PKCE S256;
 - machine-isolated local and remote tmux terminal listing, creation, input, resize, snapshots, and termination;
 - machine-aware local and remote file browsing, bounded previews, text editing, creation, and deletion;
@@ -30,7 +31,7 @@ The current migration slice provides:
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Rich xterm-compatible rendering, Remotes management, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Rich xterm-compatible rendering and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -44,7 +45,7 @@ With `auth_mode: oauth`, select **Sign in with OAuth**. The browser:
 4. verifies both `state` and the authorization response `iss` value;
 5. exchanges the code while including the resource required by the fork OAuth server.
 
-The access token, pending verifier, and state are stored only in the current tab's `sessionStorage`. Pending authorization state expires after ten minutes. **Sign out** removes the browser token immediately, and closing the tab removes all tab-scoped OAuth state. The expandable manual-token form remains available for troubleshooting and existing tokens.
+The access token, pending verifier, and state are stored only in the current tab's `sessionStorage`. Pending authorization state expires after ten minutes. **Sign out** removes the browser token immediately, and closing the tab removes all tab-scoped OAuth state. Remote enrollment commands are handled separately: the one-time command exists only in memory and the result dialog while visible, is never written to browser storage, and is cleared when the dialog closes, the user signs out, or the page unloads. The expandable manual-token form remains available for troubleshooting and existing tokens.
 
 The OAuth approval page still requires the configured admin PIN. Configure `base_url` to the externally reachable origin before using the UI through a reverse proxy or public hostname, so issuer and resource validation match the browser-visible deployment.
 
@@ -72,6 +73,18 @@ Audit contributes only tool/event names, operation categories, timestamps, statu
 The browser polls the selected machine every five seconds and retains at most sixty in-tab samples for lightweight CPU, memory, disk, and network sparklines. Machine switches and sign-out increment a generation guard so a slow response from a previously selected worker cannot overwrite the active panel. Inventory refreshes preserve an online selection and immediately fall back to local if the worker becomes unavailable. Wide layouts use separate system, alert, and activity columns; medium and narrow layouts collapse to two and one column. Long alert titles, details, and timestamps are independently bounded and wrapped so they cannot overlap adjacent rows.
 
 All Dashboard text is assigned through `textContent`; sparklines are created with explicit SVG `polyline` nodes and numeric attributes. Telemetry text is never interpreted as HTML, SVG markup, or script. The native OpenTUI Dashboard and its exact chart rendering remain deferred.
+
+## Remotes
+
+The **Remotes** panel manages the durable worker control-plane registry rather than a workspace session. Listing, creating an enrollment invitation, renaming, and revoking all require `remote:use`; these routes do not accept or create a Files/Todos `session_id`. When remote workers are disabled, the list route returns an empty inventory with `enabled=false`, while invitation, rename, and revoke requests return a conflict instead of silently enabling the feature.
+
+The inventory shows online/offline status, last-seen age and timestamp, queue depth, workdir, advertised capabilities, and a bounded allowlist of worker metadata: local-shell-mcp version, hostname, user, Python version, platform, current directory, and reported workdir. Arbitrary worker `info` keys, credentials, invite codes, registry paths, and connection tokens are never returned. The server caps the response at 1,024 workers, rejects duplicate machine identities and unsupported statuses, validates finite timestamps and non-negative queue counts, bounds every encoded text field, de-duplicates capabilities, and recomputes online/offline/total counts instead of trusting stored aggregates. Workers now advertise their local-shell-mcp version during enrollment and heartbeat registration so mixed-version fleets are visible.
+
+**New invite** creates one enrollment capability with an optional machine name, optional starting workdir, and a lifetime between 60 seconds and 24 hours. The existing manager also bounds pending invitations to 1,024 and consumes each code only once. The Human UI response deliberately omits the raw code and join URL and returns only the ready-to-run command plus its expiration. The command is displayed as inert text, is not written to browser storage or Audit, and is cleared from memory and the document when the result closes, authentication ends, or the page unloads. Clipboard access occurs only after the operator selects **Copy command**.
+
+Renaming changes the durable worker identity and refreshes every machine selector after success. Revocation removes the persisted worker registration, disconnects the current worker, invalidates its credential for future reconnects, and cancels outstanding work assigned to that machine. Both operations are explicit dialog submissions and produce metadata-only Audit events without worker secrets.
+
+The browser polls the control-plane inventory every four seconds with an independent generation guard, preserves a still-valid selected worker, and prevents a stale response from replacing newer state. Worker-provided text is assigned only through `textContent`; status styling is restricted to the fixed online/offline classes. Wide layouts use a list/detail split, while narrow screens collapse to one column and stack destructive-action controls. The native OpenTUI Remotes screen remains deferred.
 
 ## Terminals
 
