@@ -1,3 +1,4 @@
+import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from local_shell_mcp.ops import jobs as jobs_ops
 from local_shell_mcp.schemas.result_models.jobs import (
     JobInfo,
     JobListOutput,
+    JobOutput,
     JobRetryOutput,
     JobStopOutput,
     JobTailOutput,
@@ -196,7 +198,7 @@ async def test_tracked_job_lifecycle_with_backing_shells(tmp_path, monkeypatch):
     assert started.session_id == session_id
     assert started.cwd == str(tmp_path)
     assert started.attempts == 1
-    assert "backend" not in started.model_dump()
+    assert started.kind == "shell"
 
     listed = await jobs_ops.job_list_execute(session_id)
     assert listed.counts == {"running": 1}
@@ -771,3 +773,419 @@ async def test_job_start_kills_shell_when_running_state_cannot_be_committed(
 
     assert killed == ["launched-shell"]
     assert not list(jobs_ops._job_runtime_dir().iterdir())
+
+
+@pytest.mark.asyncio
+async def test_managed_job_tracks_progress_stop_retry_and_result(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    session_id = _create_session()
+    release = asyncio.Event()
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    async def handler(context, payload):
+        await context.log(f"started {payload['value']}")
+        await context.update_progress(phase="waiting", value=payload["value"])
+        await release.wait()
+        await context.log("finished")
+        return {"value": payload["value"]}
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    jobs_ops.register_managed_job_handler("test-managed-lifecycle", handler)
+
+    started = await jobs_ops.start_managed_job(
+        session_id,
+        "test-managed-lifecycle",
+        {"value": 7},
+        name="managed",
+        command="managed test",
+    )
+    assert started.kind == "managed"
+    assert started.status == "running"
+
+    tailed = None
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        tailed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+        if tailed.job.progress == {"phase": "waiting", "value": 7}:
+            break
+    assert tailed is not None
+    assert "started 7" in tailed.output
+    assert tailed.job.progress == {"phase": "waiting", "value": 7}
+
+    stopped = await jobs_ops.job_stop_execute(session_id, started.job_id)
+    assert stopped.killed is True
+    assert stopped.job.status == "stopped"
+
+    retried = await jobs_ops.job_retry_execute(session_id, started.job_id)
+    assert retried.kind == "managed"
+    assert retried.status == "running"
+    assert retried.attempts == 2
+    release.set()
+
+    current = retried
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        current = (await jobs_ops.job_list_execute(session_id)).jobs[0]
+        if current.status == "succeeded":
+            break
+    assert current.status == "succeeded"
+    assert current.result == {"value": 7}
+    assert current.progress == {"phase": "waiting", "value": 7}
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+def test_managed_job_validation_and_lost_recovery():
+    async def first_handler(context, payload):  # noqa: ARG001
+        return payload
+
+    async def second_handler(context, payload):  # noqa: ARG001
+        return payload
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        jobs_ops.register_managed_job_handler("   ", first_handler)
+    jobs_ops.register_managed_job_handler(
+        "test-managed-validation", first_handler
+    )
+    jobs_ops.register_managed_job_handler(
+        "test-managed-validation", first_handler
+    )
+    with pytest.raises(ValueError, match="already registered"):
+        jobs_ops.register_managed_job_handler(
+            "test-managed-validation", second_handler
+        )
+
+    running = jobs_ops._refresh_job_status(
+        {
+            "job_id": "job_managed_lost",
+            "kind": "managed",
+            "status": "running",
+        },
+        set(),
+        now=10.0,
+    )
+    assert running["status"] == "lost"
+    assert running["completed_at"] == 10.0
+    assert "retry it" in running["error"]
+
+    stopping = jobs_ops._refresh_job_status(
+        {
+            "job_id": "job_managed_stopping",
+            "kind": "managed",
+            "status": "stopping",
+        },
+        set(),
+        now=11.0,
+    )
+    assert stopping["status"] == "stopped"
+    assert stopping["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_remote_job_companion_merges_controller_managed_and_worker_jobs(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    store = get_tool_session_store()
+    remote_session = store.create_session(
+        target="remote",
+        workdir="/remote/project",
+        machine="worker-a",
+        worker_session_id="WORKER01",
+    )
+    release = asyncio.Event()
+    calls: list[dict] = []
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    async def handler(context, payload):
+        await context.update_progress(phase="waiting")
+        await release.wait()
+        return payload
+
+    remote_job = _job_info("job_remote", remote_session.session_id)
+
+    async def fake_remote_call(session, tool, args):
+        assert session.session_id == remote_session.session_id
+        assert tool == "job"
+        calls.append(args)
+        if args.get("list_jobs") or not any(
+            args.get(name) is not None for name in ("poll", "cancel", "retry")
+        ):
+            return JobOutput(
+                operation="list",
+                jobs=[remote_job],
+                counts={"running": 1},
+            ).model_dump(mode="json")
+        requested = args.get("poll") or []
+        return JobOutput(
+            operation="poll",
+            outputs=[
+                JobTailOutput(job=remote_job, output="remote output")
+                for item in requested
+                if item == remote_job.job_id
+            ],
+        ).model_dump(mode="json")
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(jobs_ops, "call_remote_session_tool", fake_remote_call)
+    jobs_ops.register_managed_job_handler("test-remote-managed", handler)
+    managed = await jobs_ops.start_managed_job(
+        remote_session.session_id,
+        "test-remote-managed",
+        {"source": "controller"},
+    )
+
+    listed = await jobs_ops.job_execute(remote_session.session_id)
+    assert [job.job_id for job in listed.jobs] == [
+        managed.job_id,
+        remote_job.job_id,
+    ]
+    assert listed.counts == {"running": 2}
+
+    polled = await jobs_ops.job_execute(
+        remote_session.session_id,
+        poll=[managed.job_id, remote_job.job_id],
+        lines=7,
+    )
+    assert [row.job.job_id for row in polled.outputs] == [
+        managed.job_id,
+        remote_job.job_id,
+    ]
+    assert calls[-1]["poll"] == [remote_job.job_id]
+
+    before = len(calls)
+    cancelled = await jobs_ops.job_execute(
+        remote_session.session_id, cancel=[managed.job_id]
+    )
+    assert cancelled.cancelled[0].job.status == "stopped"
+    assert len(calls) == before
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_managed_job_failure_result_bounds_and_launch_rollback(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    session_id = _create_session()
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    async def failing_handler(context, payload):  # noqa: ARG001
+        raise RuntimeError("managed failure")
+
+    async def oversized_handler(context, payload):  # noqa: ARG001
+        return {"value": "x" * (jobs_ops._MANAGED_STATE_MAX_BYTES + 1)}
+
+    async def oversized_progress_handler(context, payload):  # noqa: ARG001
+        await context.update_progress(
+            value="x" * (jobs_ops._MANAGED_STATE_MAX_BYTES + 1)
+        )
+        return payload
+
+    async def idle_handler(context, payload):  # noqa: ARG001
+        return payload
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    jobs_ops.register_managed_job_handler(
+        "test-managed-failure", failing_handler
+    )
+    failed = await jobs_ops.start_managed_job(
+        session_id, "test-managed-failure", {}
+    )
+    current = failed
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        current = (await jobs_ops.job_list_execute(session_id)).jobs[0]
+        if current.status == "failed":
+            break
+    assert current.status == "failed"
+    assert current.exit_code == 1
+    assert current.error == "RuntimeError: managed failure"
+    assert (
+        "managed failure"
+        in (await jobs_ops.job_tail_execute(session_id, failed.job_id)).output
+    )
+
+    jobs_ops.register_managed_job_handler(
+        "test-managed-oversized-result", oversized_handler
+    )
+    oversized = await jobs_ops.start_managed_job(
+        session_id, "test-managed-oversized-result", {}
+    )
+    oversized_row = oversized
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        rows = await jobs_ops.job_list_execute(session_id)
+        oversized_row = next(
+            row for row in rows.jobs if row.job_id == oversized.job_id
+        )
+        if oversized_row.status == "failed":
+            break
+    assert oversized_row.status == "failed"
+    assert "managed job result exceeds" in str(oversized_row.error)
+
+    jobs_ops.register_managed_job_handler(
+        "test-managed-oversized-progress", oversized_progress_handler
+    )
+    progress_job = await jobs_ops.start_managed_job(
+        session_id, "test-managed-oversized-progress", {}
+    )
+    progress_row = progress_job
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        rows = await jobs_ops.job_list_execute(session_id)
+        progress_row = next(
+            row for row in rows.jobs if row.job_id == progress_job.job_id
+        )
+        if progress_row.status == "failed":
+            break
+    assert progress_row.status == "failed"
+    assert "managed job progress exceeds" in str(progress_row.error)
+
+    jobs_ops.register_managed_job_handler(
+        "test-managed-payload-bound", idle_handler
+    )
+    with pytest.raises(ValueError, match="managed job payload exceeds"):
+        await jobs_ops.start_managed_job(
+            session_id,
+            "test-managed-payload-bound",
+            {"value": "x" * (jobs_ops._MANAGED_STATE_MAX_BYTES + 1)},
+        )
+    jobs_ops.register_managed_job_handler(
+        "test-managed-launch-failure", idle_handler
+    )
+
+    def fail_launch(*args, **kwargs):  # noqa: ARG001
+        raise RuntimeError("launch failed")
+
+    monkeypatch.setattr(jobs_ops, "_launch_managed_job", fail_launch)
+    before = {
+        row.job_id for row in (await jobs_ops.job_list_execute(session_id)).jobs
+    }
+    with pytest.raises(RuntimeError, match="launch failed"):
+        await jobs_ops.start_managed_job(
+            session_id, "test-managed-launch-failure", {}
+        )
+    after = {
+        row.job_id for row in (await jobs_ops.job_list_execute(session_id)).jobs
+    }
+    assert after == before
+    runtime_files = {
+        path.name
+        for path in jobs_ops._job_runtime_dir().glob("*-attempt-1.log")
+    }
+    assert runtime_files == {
+        f"{failed.job_id}-attempt-1.log",
+        f"{oversized.job_id}-attempt-1.log",
+        f"{progress_job.job_id}-attempt-1.log",
+    }
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_remote_job_list_keeps_controller_jobs_when_worker_is_offline(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    store = get_tool_session_store()
+    remote_session = store.create_session(
+        target="remote",
+        workdir="/remote/project",
+        machine="worker-a",
+        worker_session_id="WORKER01",
+    )
+    release = asyncio.Event()
+
+    async def handler(context, payload):
+        await context.update_progress(phase="waiting")
+        await release.wait()
+        return payload
+
+    async def offline(*args, **kwargs):  # noqa: ARG001
+        raise RuntimeError("worker offline")
+
+    jobs_ops.register_managed_job_handler("test-offline-managed", handler)
+    managed = await jobs_ops.start_managed_job(
+        remote_session.session_id, "test-offline-managed", {"value": 1}
+    )
+    monkeypatch.setattr(jobs_ops, "call_remote_session_tool", offline)
+
+    listed = await jobs_ops.job_execute(remote_session.session_id)
+    assert [row.job_id for row in listed.jobs] == [managed.job_id]
+    assert listed.counts == {"running": 1}
+    assert listed.message is not None and "worker offline" in listed.message
+
+    polled = await jobs_ops.job_execute(
+        remote_session.session_id, poll=[managed.job_id]
+    )
+    assert polled.outputs[0].job.job_id == managed.job_id
+    cancelled = await jobs_ops.job_execute(
+        remote_session.session_id, cancel=[managed.job_id]
+    )
+    assert cancelled.cancelled[0].job.status == "stopped"
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_managed_actions_do_not_query_shell_inventory(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    session_id = _create_session()
+    release = asyncio.Event()
+
+    async def handler(context, payload):
+        await context.update_progress(phase="waiting")
+        await release.wait()
+        return payload
+
+    jobs_ops.register_managed_job_handler("test-no-shell-inventory", handler)
+    started = await jobs_ops.start_managed_job(
+        session_id,
+        "test-no-shell-inventory",
+        {"value": 9},
+    )
+
+    async def fail_inventory():
+        raise AssertionError("managed action queried shell inventory")
+
+    monkeypatch.setattr(
+        jobs_ops, "list_persistent_shells_execute", fail_inventory
+    )
+
+    tailed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+    for _ in range(100):
+        if tailed.job.progress == {"phase": "waiting"}:
+            break
+        await asyncio.sleep(0.01)
+        tailed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+    assert tailed.job.progress == {"phase": "waiting"}
+
+    stopped = await jobs_ops.job_stop_execute(session_id, started.job_id)
+    assert stopped.job.status == "stopped"
+
+    retried = await jobs_ops.job_retry_execute(session_id, started.job_id)
+    assert retried.status == "running"
+    release.set()
+
+    completed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+    for _ in range(100):
+        if completed.job.status == "succeeded":
+            break
+        await asyncio.sleep(0.01)
+        completed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+    assert completed.job.status == "succeeded"
+    assert completed.job.result == {"value": 9}
+    jobs_ops.reset_managed_jobs_for_tests()

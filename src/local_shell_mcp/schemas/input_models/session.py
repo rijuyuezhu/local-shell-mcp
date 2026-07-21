@@ -63,6 +63,12 @@ SessionCopyChunkSizeArg = Annotated[
         description="Optional chunk size in bytes for binary transfer. Omit to use the server default."
     ),
 ]
+SessionCopyBackgroundArg = Annotated[
+    bool,
+    Field(
+        description="When true, start a managed background copy and return a job_id immediately. Use the job companion with the source session_id to poll, cancel, or retry it."
+    ),
+]
 OptionalSessionIdArg = Annotated[
     str | None,
     Field(

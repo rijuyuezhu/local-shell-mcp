@@ -8,7 +8,11 @@ import pytest
 import local_shell_mcp.ops.utils.remote_session as remote_session_utils
 import local_shell_mcp.ops.utils.session_copy as session_copy_ops
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.ops import jobs as jobs_ops
 from local_shell_mcp.ops.session import session_copy_execute
+from local_shell_mcp.schemas.result_models.shell import (
+    ListPersistentShellsOutput,
+)
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.local_handlers import (
     call_local_tool,
@@ -625,3 +629,162 @@ async def test_directory_copy_surfaces_post_commit_cleanup_errors(
     )
 
     assert result.cleanup_errors == ["backup cleanup failed"]
+
+
+@pytest.mark.asyncio
+async def test_session_copy_background_job_reports_progress_and_result(
+    tmp_path, monkeypatch
+):
+    root, store = _workspace(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    (root / "src").mkdir()
+    (root / "dst").mkdir()
+    payload = b"background-copy" * 2048
+    (root / "src" / "payload.bin").write_bytes(payload)
+    src = store.create_session(workdir="src")
+    dst = store.create_session(workdir="dst")
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    started = await session_copy_execute(
+        src.session_id,
+        "payload.bin",
+        dst.session_id,
+        "copied.bin",
+        chunk_size=1024,
+        background=True,
+    )
+    assert started.kind == "managed"
+    assert started.status == "running"
+
+    tail = None
+    for _ in range(200):
+        await asyncio.sleep(0.01)
+        tail = await jobs_ops.job_tail_execute(src.session_id, started.job_id)
+        if tail.job.status == "succeeded":
+            break
+    assert tail is not None
+    assert tail.job.status == "succeeded"
+    assert tail.job.progress is not None
+    assert tail.job.progress["phase"] == "completed"
+    assert tail.job.progress["bytes_transferred"] == len(payload)
+    assert tail.job.result is not None
+    assert tail.job.result["kind"] == "file"
+    relation = tail.job.result["relation"]
+    assert isinstance(relation, dict)
+    assert relation["route"] == "local_to_local"
+    assert "copy completed" in tail.output
+    assert (root / "dst" / "copied.bin").read_bytes() == payload
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_session_copy_background_cancel_aborts_transaction(
+    tmp_path, monkeypatch
+):
+    _root, store = _workspace(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    src = store.create_session(workdir=".")
+    dst = store.create_session(workdir=".")
+    read_started = asyncio.Event()
+    hold_read = asyncio.Event()
+    aborted: list[dict[str, Any]] = []
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    async def fake_transfer(_endpoint, tool, args, *, session_bound=True):
+        _ = session_bound
+        if tool == "transfer_stat":
+            return {
+                "path": "source.bin",
+                "type": "file",
+                "size": 3,
+                "modified": 0.0,
+                "sha256": hashlib.sha256(b"abc").hexdigest(),
+            }
+        if tool == "transfer_begin_write":
+            return {"transfer_id": "transfer-background"}
+        if tool == "transfer_read_chunk":
+            read_started.set()
+            await hold_read.wait()
+            raise AssertionError("cancelled read unexpectedly resumed")
+        if tool == "transfer_abort_write":
+            aborted.append(dict(args))
+            return {"deleted": True}
+        raise AssertionError(f"unexpected tool: {tool}")
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(
+        session_copy_ops, "_endpoint_transfer_data", fake_transfer
+    )
+    started = await session_copy_execute(
+        src.session_id,
+        "source.bin",
+        dst.session_id,
+        "dest.bin",
+        kind="file",
+        background=True,
+    )
+    await asyncio.wait_for(read_started.wait(), timeout=2)
+
+    stopped = await jobs_ops.job_stop_execute(src.session_id, started.job_id)
+    assert stopped.killed is True
+    assert stopped.job.status == "stopped"
+    assert aborted == [
+        {"path": "dest.bin", "transfer_id": "transfer-background"}
+    ]
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_session_copy_background_retry_reuses_durable_payload(
+    tmp_path, monkeypatch
+):
+    root, store = _workspace(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    (root / "src").mkdir()
+    (root / "dst").mkdir()
+    src = store.create_session(workdir="src")
+    dst = store.create_session(workdir="dst")
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    started = await session_copy_execute(
+        src.session_id,
+        "later.bin",
+        dst.session_id,
+        "copied.bin",
+        background=True,
+    )
+
+    failed = None
+    for _ in range(200):
+        await asyncio.sleep(0.01)
+        failed = (await jobs_ops.job_list_execute(src.session_id)).jobs[0]
+        if failed.status == "failed":
+            break
+    assert failed is not None
+    assert failed.status == "failed"
+    assert "FileNotFoundError" in str(failed.error)
+
+    payload = b"available-on-retry"
+    (root / "src" / "later.bin").write_bytes(payload)
+    retried = await jobs_ops.job_retry_execute(src.session_id, started.job_id)
+    assert retried.attempts == 2
+
+    completed = retried
+    for _ in range(200):
+        await asyncio.sleep(0.01)
+        completed = (await jobs_ops.job_list_execute(src.session_id)).jobs[0]
+        if completed.status == "succeeded":
+            break
+    assert completed.status == "succeeded"
+    assert completed.result is not None
+    assert completed.result["bytes"] == len(payload)
+    assert (root / "dst" / "copied.bin").read_bytes() == payload
+    jobs_ops.reset_managed_jobs_for_tests()

@@ -2,10 +2,14 @@
 
 import asyncio
 import contextlib
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import PurePath
 from typing import Any, Literal, cast
 
 from ...remote.service import call_remote_worker_tool
+from ...schemas.result_models.jobs import JobStartOutput
 from ...schemas.result_models.session import (
     SessionCopyEndpoint,
     SessionCopyOutput,
@@ -13,6 +17,11 @@ from ...schemas.result_models.session import (
 )
 from ...tool_session.store import AgentSession, get_tool_session_store
 from ...utils.serialization import to_jsonable
+from ..jobs import (
+    ManagedJobContext,
+    register_managed_job_handler,
+    start_managed_job,
+)
 from ..transfer import (
     normalize_chunk_size,
     transfer_abort_write,
@@ -36,6 +45,15 @@ SessionCopyRoute = Literal[
     "remote_to_remote_same_machine",
     "remote_to_remote_different_machines",
 ]
+SessionCopyProgress = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+async def _report_progress(
+    progress: SessionCopyProgress | None, **fields: Any
+) -> None:
+    """Publish one structured progress snapshot when a callback is configured."""
+    if progress is not None:
+        await progress(fields)
 
 
 @dataclass(frozen=True)
@@ -280,6 +298,7 @@ async def _copy_file(
     *,
     overwrite: bool,
     chunk_size: int | None,
+    progress: SessionCopyProgress | None = None,
     src_session_bound: bool = True,
     dst_session_bound: bool = True,
 ) -> dict[str, Any]:
@@ -316,6 +335,14 @@ async def _copy_file(
                 "destination_session_id": destination_session_id,
             },
         )
+        await _report_progress(
+            progress,
+            phase="transferring",
+            bytes_transferred=int(copied["bytes"]),
+            total_bytes=int(copied["bytes"]),
+            chunks=int(copied["chunks"]),
+            chunk_size=int(copied["chunk_size"]),
+        )
         return {
             "source_path": copied["source_path"],
             "destination_path": copied["path"],
@@ -333,6 +360,15 @@ async def _copy_file(
     )
     if stat.get("type") != "file":
         raise ValueError(f"source is not a file: {src_path}")
+    source_size = int(stat["size"])
+    await _report_progress(
+        progress,
+        phase="transferring",
+        bytes_transferred=0,
+        total_bytes=source_size,
+        chunks=0,
+        chunk_size=chunk_bytes,
+    )
     begin = await _endpoint_transfer_data(
         dst,
         "transfer_begin_write",
@@ -346,7 +382,6 @@ async def _copy_file(
     transfer_id = str(begin["transfer_id"])
     chunks = 0
     offset = 0
-    source_size = int(stat["size"])
     try:
         while offset < source_size:
             chunk = await _endpoint_transfer_data(
@@ -387,6 +422,14 @@ async def _copy_file(
             )
             offset = next_offset
             chunks += 1
+            await _report_progress(
+                progress,
+                phase="transferring",
+                bytes_transferred=offset,
+                total_bytes=source_size,
+                chunks=chunks,
+                chunk_size=chunk_bytes,
+            )
         finish = await _endpoint_transfer_data(
             dst,
             "transfer_finish_write",
@@ -424,7 +467,9 @@ async def _copy_dir(
     *,
     overwrite: bool,
     chunk_size: int | None,
+    progress: SessionCopyProgress | None = None,
 ) -> dict[str, Any]:
+    await _report_progress(progress, phase="packing", bytes_transferred=0)
     pack: dict[str, Any] = {}
     dst_archive: dict[str, Any] = {}
     try:
@@ -446,8 +491,17 @@ async def _copy_dir(
             dst_archive["path"],
             overwrite=True,
             chunk_size=chunk_size,
+            progress=progress,
             src_session_bound=False,
             dst_session_bound=False,
+        )
+        await _report_progress(
+            progress,
+            phase="unpacking",
+            bytes_transferred=int(pack["bytes"]),
+            total_bytes=int(pack["bytes"]),
+            chunks=int(copy_result["chunks"]),
+            chunk_size=normalize_chunk_size(chunk_size),
         )
         unpack = await _endpoint_transfer_data(
             dst,
@@ -481,6 +535,8 @@ async def session_copy_execute(
     kind: SessionCopyKind = "auto",
     overwrite: bool = True,
     chunk_size: int | None = None,
+    *,
+    progress: SessionCopyProgress | None = None,
 ) -> SessionCopyOutput:
     """Copy a file or directory between two explicit sessions."""
     store = get_tool_session_store()
@@ -488,6 +544,7 @@ async def session_copy_execute(
     dst_session = store.touch_session(dst_session_id)
     src = _Endpoint(src_session)
     dst = _Endpoint(dst_session)
+    await _report_progress(progress, phase="preparing", bytes_transferred=0)
 
     stat = await _endpoint_transfer_data(
         src, "transfer_stat", {"path": src_path, "sha256": kind != "dir"}
@@ -511,6 +568,7 @@ async def session_copy_execute(
             dst_path,
             overwrite=overwrite,
             chunk_size=chunk_size,
+            progress=progress,
         )
     else:
         metrics = await _copy_dir(
@@ -520,6 +578,7 @@ async def session_copy_execute(
             dst_path,
             overwrite=overwrite,
             chunk_size=chunk_size,
+            progress=progress,
         )
 
     source_model = _endpoint_model(src_session, src_path)
@@ -541,3 +600,107 @@ async def session_copy_execute(
         entries=metrics.get("entries"),
         cleanup_errors=list(metrics.get("cleanup_errors") or []),
     )
+
+
+SESSION_COPY_MANAGED_KIND = "session-copy"
+
+
+async def _run_session_copy_job(
+    context: ManagedJobContext, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Run one durable session-copy managed job from its stored payload."""
+    last_report_at = 0.0
+    last_phase = ""
+
+    async def report(progress: dict[str, Any]) -> None:
+        nonlocal last_phase, last_report_at
+        now = time.monotonic()
+        phase = str(progress.get("phase") or "")
+        transferred = int(progress.get("bytes_transferred") or 0)
+        total = int(progress.get("total_bytes") or 0)
+        if (
+            phase != last_phase
+            or transferred == 0
+            or (total > 0 and transferred >= total)
+            or now - last_report_at >= 0.5
+        ):
+            await context.update_progress(**progress)
+            last_phase = phase
+            last_report_at = now
+
+    src_session_id = str(payload["src_session_id"])
+    src_path = str(payload["src_path"])
+    dst_session_id = str(payload["dst_session_id"])
+    dst_path = str(payload["dst_path"])
+    kind = cast(SessionCopyKind, str(payload.get("kind") or "auto"))
+    overwrite = bool(payload.get("overwrite", True))
+    raw_chunk_size = payload.get("chunk_size")
+    chunk_size = int(raw_chunk_size) if raw_chunk_size is not None else None
+
+    await context.log(
+        f"copying {src_session_id}:{src_path} -> {dst_session_id}:{dst_path}"
+    )
+    result = await session_copy_execute(
+        src_session_id,
+        src_path,
+        dst_session_id,
+        dst_path,
+        kind,
+        overwrite,
+        chunk_size,
+        progress=report,
+    )
+    total_bytes = int(result.bytes or result.archive_bytes or 0)
+    await context.update_progress(
+        phase="completed",
+        bytes_transferred=total_bytes,
+        total_bytes=total_bytes,
+        chunks=result.chunks,
+        chunk_size=result.chunk_size,
+        kind=result.kind,
+        route=result.relation.route,
+    )
+    await context.log(
+        f"copy completed: {result.kind}, {total_bytes} bytes, {result.chunks} chunks"
+    )
+    return result.model_dump(mode="json")
+
+
+async def session_copy_job_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: SessionCopyKind = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+) -> JobStartOutput:
+    """Start a controller-managed session copy and return its tracked job."""
+    store = get_tool_session_store()
+    store.touch_session(src_session_id)
+    store.touch_session(dst_session_id)
+    normalized_chunk_size = normalize_chunk_size(chunk_size)
+    payload = {
+        "src_session_id": src_session_id,
+        "src_path": src_path,
+        "dst_session_id": dst_session_id,
+        "dst_path": dst_path,
+        "kind": kind,
+        "overwrite": overwrite,
+        "chunk_size": normalized_chunk_size,
+    }
+    destination_name = PurePath(dst_path).name or "artifact"
+    return await start_managed_job(
+        src_session_id,
+        SESSION_COPY_MANAGED_KIND,
+        payload,
+        name=f"copy-{destination_name}"[:80],
+        command=(
+            f"session_copy {src_session_id}:{src_path} -> "
+            f"{dst_session_id}:{dst_path}"
+        ),
+        cwd=".",
+    )
+
+
+register_managed_job_handler(SESSION_COPY_MANAGED_KIND, _run_session_copy_job)

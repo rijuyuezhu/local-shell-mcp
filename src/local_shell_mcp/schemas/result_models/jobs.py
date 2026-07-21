@@ -1,4 +1,4 @@
-"""Typed structured outputs for tracked bash job tools."""
+"""Typed structured outputs for tracked shell and managed job tools."""
 
 from typing import Literal
 
@@ -19,10 +19,14 @@ type JobStatus = Literal[
 
 
 class JobInfo(BaseModel):
-    """One tracked command owned by an explicit agent session."""
+    """One tracked command or managed operation owned by an explicit agent session."""
 
     job_id: str = Field(
         description="Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session."
+    )
+    kind: Literal["shell", "managed"] = Field(
+        default="shell",
+        description="Execution kind. Shell jobs use a persistent shell runner; managed jobs run a registered controller operation.",
     )
     name: str = Field(
         description="Human-readable job name, or the generated job_id when no name was provided."
@@ -31,13 +35,21 @@ class JobInfo(BaseModel):
         description="Durable tracked-job lifecycle state, including transitional, successful, failed, stopped, and recovery states."
     )
     command: str = Field(
-        description="Original shell command used to start the job. The retry action reuses this command."
+        description="Original shell command or managed-operation summary. Retry reuses the stored operation."
     )
     cwd: str = Field(
-        description="Working directory used to start the job. The retry action reuses this directory when it remains inside the owning session workdir."
+        description="Working directory or display context associated with the tracked job."
     )
     session_id: str = Field(
         description="Agent/workspace session_id that owns this tracked job."
+    )
+    progress: dict[str, object] | None = Field(
+        default=None,
+        description="Latest bounded structured progress snapshot for a managed job.",
+    )
+    result: dict[str, object] | None = Field(
+        default=None,
+        description="Bounded structured result retained after a managed job succeeds.",
     )
     created_at: float = Field(
         description="Unix timestamp when the tracked job record was created."
@@ -55,11 +67,11 @@ class JobInfo(BaseModel):
     )
     exit_code: int | None = Field(
         default=None,
-        description="Durably recorded process exit code when the runner completed.",
+        description="Durably recorded exit code for shell or managed execution when available.",
     )
     error: str | None = Field(
         default=None,
-        description="Lifecycle or runner error associated with the current attempt.",
+        description="Lifecycle, shell-runner, or managed-operation error for the current attempt.",
     )
     log_truncated: bool = Field(
         default=False,
@@ -67,7 +79,7 @@ class JobInfo(BaseModel):
     )
     output_bytes: int = Field(
         default=0,
-        description="Total process-output bytes observed before durable tail truncation.",
+        description="Total durable log bytes observed before tail truncation.",
     )
     attempts: int = Field(
         description="Number of times this tracked job has been started, including retries."
@@ -75,11 +87,11 @@ class JobInfo(BaseModel):
 
 
 class JobStartOutput(JobInfo):
-    """Tracked job record created after starting a command."""
+    """Tracked job record created after starting shell or managed work."""
 
 
 class JobRetryOutput(JobInfo):
-    """Tracked job record after restarting its original command and cwd."""
+    """Tracked job record after restarting its durable command or managed payload."""
 
 
 class JobListOutput(BaseModel):
@@ -94,7 +106,7 @@ class JobListOutput(BaseModel):
 
 
 class JobTailOutput(BaseModel):
-    """Recent terminal output for one tracked job."""
+    """Recent bounded durable output for one tracked job."""
 
     job: JobInfo = Field(
         description="Tracked job metadata after status refresh."
@@ -105,7 +117,7 @@ class JobTailOutput(BaseModel):
     )
     message: str | None = Field(
         default=None,
-        description="Diagnostic message when output is unavailable, for example after the job exits or is lost.",
+        description="Diagnostic message when output or a remote worker snapshot is unavailable.",
     )
 
 
@@ -116,12 +128,12 @@ class JobStopOutput(BaseModel):
     killed: bool = Field(description="Whether the tracked job was stopped.")
     stderr: str = Field(
         default="",
-        description="Backend stderr from the stop attempt, when reported.",
+        description="Backend stderr from a shell stop attempt; managed cancellation normally leaves this empty.",
     )
 
 
 class JobOutput(BaseModel):
-    """Unified companion result for tracked bash jobs."""
+    """Unified companion result for tracked shell and managed jobs."""
 
     operation: Literal["list", "poll", "cancel", "retry"] = Field(
         description="Job operation performed by the unified job companion tool."

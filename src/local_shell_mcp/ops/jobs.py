@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import re
@@ -11,7 +12,7 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Generator
+from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -36,6 +37,7 @@ from ..utils.private_files import (
     private_file_lock,
     write_private_text,
 )
+from ..utils.serialization import to_jsonable
 from .shell import (
     _subprocess_env,
     check_command_policy,
@@ -55,6 +57,11 @@ TERMINAL_STATUSES = {"succeeded", "failed", "exited", "stopped", "lost"}
 ACTIVE_STATUSES = {"starting", "running", "stopping", "retrying"}
 _JOB_STORE_THREAD_LOCK = threading.RLock()
 _ACTIVE_JOB_OPERATIONS: set[str] = set()
+ManagedJobHandler = Callable[
+    ["ManagedJobContext", dict[str, Any]], Awaitable[dict[str, Any] | None]
+]
+_MANAGED_JOB_HANDLERS: dict[str, ManagedJobHandler] = {}
+_MANAGED_JOB_TASKS: dict[str, asyncio.Task[None]] = {}
 
 
 def _utc() -> float:
@@ -404,6 +411,30 @@ def _refresh_job_status(
         return job
 
     updated = now or _utc()
+    if str(job.get("kind") or "shell") == "managed":
+        if any(
+            _job_operation_is_active(job, operation)
+            for operation in ("start", "stop", "retry")
+        ):
+            return job
+        task = _MANAGED_JOB_TASKS.get(str(job.get("job_id") or ""))
+        if task is not None and not task.done():
+            return job
+        _clear_job_operation(job)
+        job.update(
+            {
+                "status": "stopped" if status == "stopping" else "lost",
+                "updated_at": updated,
+                "completed_at": updated,
+                "exit_code": None,
+                "error": (
+                    None
+                    if status == "stopping"
+                    else "managed job is no longer running; retry it to resume the operation"
+                ),
+            }
+        )
+        return job
     if status == "starting" and _job_operation_is_active(job, "start"):
         return job
     if status == "retrying" and _job_operation_is_active(job, "retry"):
@@ -523,11 +554,14 @@ def _public_job(job: dict[str, Any]) -> JobInfo:
     return JobInfo.model_validate(
         {
             "job_id": str(job.get("job_id") or ""),
+            "kind": str(job.get("kind") or "shell"),
             "name": str(job.get("name") or job.get("job_id") or ""),
             "status": str(job.get("status") or "unknown"),
             "command": str(job.get("command") or ""),
             "cwd": str(job.get("cwd") or "."),
             "session_id": str(job.get("session_id") or ""),
+            "progress": job.get("progress"),
+            "result": job.get("result"),
             "created_at": float(job.get("created_at") or 0),
             "updated_at": float(job.get("updated_at") or 0),
             "last_started_at": (
@@ -598,6 +632,297 @@ def _read_log_tail(path: str | None, lines: int) -> str:
     return text
 
 
+_MANAGED_STATE_MAX_BYTES = 262_144
+
+
+def _managed_json_dict(value: Any, *, label: str) -> dict[str, Any]:
+    """Normalize and bound one managed-job payload, progress, or result object."""
+    normalized = to_jsonable(value)
+    if not isinstance(normalized, dict):
+        raise TypeError(f"managed job {label} must be a JSON object")
+    encoded = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded.encode("utf-8")) > _MANAGED_STATE_MAX_BYTES:
+        raise ValueError(
+            f"managed job {label} exceeds {_MANAGED_STATE_MAX_BYTES} bytes"
+        )
+    return normalized
+
+
+def register_managed_job_handler(kind: str, handler: ManagedJobHandler) -> None:
+    """Register one process-local managed-job handler idempotently."""
+    normalized = kind.strip()
+    if not normalized:
+        raise ValueError("managed job kind must not be empty")
+    existing = _MANAGED_JOB_HANDLERS.get(normalized)
+    if existing is not None and existing is not handler:
+        raise ValueError(
+            f"managed job handler already registered: {normalized}"
+        )
+    _MANAGED_JOB_HANDLERS[normalized] = handler
+
+
+def _append_managed_log(
+    session_id: str, job_id: str, path: str, message: str
+) -> None:
+    """Append one bounded line and update durable managed-job output metadata."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = message if message.endswith("\n") else message + "\n"
+    encoded = payload.encode("utf-8", errors="replace")
+    max_bytes = max(1, int(get_settings().max_job_log_bytes))
+    with target.open("a+b") as handle:
+        with contextlib.suppress(OSError):
+            target.chmod(0o600)
+        handle.write(encoded)
+        handle.flush()
+        truncated = _compact_log(handle, max_bytes)
+    with _store_transaction() as store:
+        job = _find_session_job(store, session_id, job_id)
+        job["output_bytes"] = int(job.get("output_bytes") or 0) + len(encoded)
+        job["log_truncated"] = bool(job.get("log_truncated")) or truncated
+        job["updated_at"] = _utc()
+
+
+def _update_managed_progress(
+    session_id: str, job_id: str, progress: dict[str, Any]
+) -> None:
+    """Persist one bounded managed-job progress snapshot while it is active."""
+    normalized = _managed_json_dict(progress, label="progress")
+    with _store_transaction() as store:
+        job = _find_session_job(store, session_id, job_id)
+        if str(job.get("status") or "") in ACTIVE_STATUSES:
+            job["progress"] = normalized
+            job["updated_at"] = _utc()
+
+
+class ManagedJobContext:
+    """Durable logging and progress interface supplied to managed-job handlers."""
+
+    def __init__(self, session_id: str, job_id: str, log_path: str) -> None:
+        self.session_id = session_id
+        self.job_id = job_id
+        self.log_path = log_path
+
+    async def log(self, message: str) -> None:
+        """Append one message to the bounded durable job log."""
+        await asyncio.to_thread(
+            _append_managed_log,
+            self.session_id,
+            self.job_id,
+            self.log_path,
+            str(message),
+        )
+
+    async def update_progress(self, **progress: Any) -> None:
+        """Replace the durable structured progress snapshot."""
+        await asyncio.to_thread(
+            _update_managed_progress,
+            self.session_id,
+            self.job_id,
+            progress,
+        )
+
+
+def _finish_managed_job(
+    session_id: str,
+    job_id: str,
+    *,
+    status: str,
+    exit_code: int | None,
+    error: str | None,
+    result: dict[str, Any] | None = None,
+) -> None:
+    """Commit one terminal managed-job state without overwriting a completed row."""
+    normalized_result = (
+        _managed_json_dict(result, label="result")
+        if result is not None
+        else None
+    )
+    with _store_transaction() as store:
+        job = _find_session_job(store, session_id, job_id)
+        if str(job.get("status") or "") not in ACTIVE_STATUSES:
+            return
+        completed = _utc()
+        job.update(
+            {
+                "status": status,
+                "updated_at": completed,
+                "completed_at": completed,
+                "exit_code": exit_code,
+                "error": error,
+            }
+        )
+        if normalized_result is not None:
+            job["result"] = normalized_result
+        _clear_job_operation(job)
+
+
+async def _run_managed_job(
+    session_id: str,
+    job_id: str,
+    kind: str,
+    payload: dict[str, Any],
+    log_path: str,
+) -> None:
+    """Run one registered managed handler and durably record its terminal state."""
+    context = ManagedJobContext(session_id, job_id, log_path)
+    handler = _MANAGED_JOB_HANDLERS[kind]
+    try:
+        result = await handler(context, dict(payload))
+    except asyncio.CancelledError:
+        with contextlib.suppress(Exception):
+            await context.log("job cancelled")
+        await asyncio.to_thread(
+            _finish_managed_job,
+            session_id,
+            job_id,
+            status="stopped",
+            exit_code=None,
+            error=None,
+        )
+        raise
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        with contextlib.suppress(Exception):
+            await context.log(error)
+        await asyncio.to_thread(
+            _finish_managed_job,
+            session_id,
+            job_id,
+            status="failed",
+            exit_code=1,
+            error=error,
+        )
+    else:
+        try:
+            await asyncio.to_thread(
+                _finish_managed_job,
+                session_id,
+                job_id,
+                status="succeeded",
+                exit_code=0,
+                error=None,
+                result=result,
+            )
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            with contextlib.suppress(Exception):
+                await context.log(error)
+            await asyncio.to_thread(
+                _finish_managed_job,
+                session_id,
+                job_id,
+                status="failed",
+                exit_code=1,
+                error=error,
+            )
+    finally:
+        current = asyncio.current_task()
+        if _MANAGED_JOB_TASKS.get(job_id) is current:
+            _MANAGED_JOB_TASKS.pop(job_id, None)
+
+
+def _launch_managed_job(
+    session_id: str,
+    job_id: str,
+    kind: str,
+    payload: dict[str, Any],
+    log_path: str,
+) -> None:
+    """Create and retain one process-local managed-job task."""
+    task = asyncio.create_task(
+        _run_managed_job(session_id, job_id, kind, payload, log_path),
+        name=f"managed-job-{job_id}",
+    )
+    _MANAGED_JOB_TASKS[job_id] = task
+
+
+async def start_managed_job(
+    session_id: str,
+    kind: str,
+    payload: dict[str, Any],
+    *,
+    name: str | None = None,
+    command: str | None = None,
+    cwd: str = ".",
+) -> JobStartOutput:
+    """Start one controller-managed task owned by an explicit agent session."""
+    get_tool_session_store().touch_session(session_id)
+    normalized_kind = kind.strip()
+    if normalized_kind not in _MANAGED_JOB_HANDLERS:
+        raise ValueError(f"unknown managed job kind: {normalized_kind}")
+    normalized_payload = _managed_json_dict(payload, label="payload")
+    job_id = _new_job_id()
+    attempt = 1
+    paths = _attempt_paths(job_id, attempt)
+    write_private_text(paths["log"], "")
+    now = _utc()
+    display_name = name or f"{normalized_kind}-{job_id}"
+    job: dict[str, Any] = {
+        "job_id": job_id,
+        "kind": "managed",
+        "managed_kind": normalized_kind,
+        "managed_payload": normalized_payload,
+        "name": display_name,
+        "status": "running",
+        "command": command or normalized_kind,
+        "cwd": cwd,
+        "session_id": session_id,
+        "shell_id": None,
+        "backend": "managed",
+        "command_path": None,
+        "log_path": str(paths["log"]),
+        "status_path": None,
+        "created_at": now,
+        "updated_at": now,
+        "last_started_at": now,
+        "completed_at": None,
+        "exit_code": None,
+        "error": None,
+        "log_truncated": False,
+        "output_bytes": 0,
+        "attempts": attempt,
+        "progress": None,
+        "result": None,
+    }
+    try:
+        with _store_transaction() as store:
+            store["jobs"].append(job)
+        _launch_managed_job(
+            session_id,
+            job_id,
+            normalized_kind,
+            normalized_payload,
+            str(paths["log"]),
+        )
+    except BaseException:
+        _remove_attempt_paths(paths)
+        with contextlib.suppress(Exception), _store_transaction() as store:
+            store["jobs"] = [
+                row
+                for row in store.get("jobs", [])
+                if row.get("job_id") != job_id
+            ]
+        raise
+    audit(
+        "job_start",
+        job_id=job_id,
+        session=session_id,
+        backend="managed",
+        kind=normalized_kind,
+    )
+    return JobStartOutput(**_public_job(job).model_dump())
+
+
+def reset_managed_jobs_for_tests(*, clear_handlers: bool = False) -> None:
+    """Cancel process-local managed tasks and optionally clear test handlers."""
+    for task in tuple(_MANAGED_JOB_TASKS.values()):
+        task.cancel()
+    _MANAGED_JOB_TASKS.clear()
+    if clear_handlers:
+        _MANAGED_JOB_HANDLERS.clear()
+
+
 async def job_start_execute(
     session_id: str,
     command: str,
@@ -614,6 +939,7 @@ async def job_start_execute(
     now = _utc()
     job: dict[str, Any] = {
         "job_id": job_id,
+        "kind": "shell",
         "name": display_name,
         "status": "starting",
         "command": command,
@@ -751,7 +1077,12 @@ async def job_tail_execute(
 ) -> JobTailOutput:
     """Read durable recent output and refresh one tracked job."""
     get_tool_session_store().touch_session(session_id)
-    active = _active_shell_ids(await list_persistent_shells_execute())
+    managed = job_id in _managed_job_id_set(session_id, [job_id])
+    active = (
+        set()
+        if managed
+        else _active_shell_ids(await list_persistent_shells_execute())
+    )
     with _store_transaction() as store:
         job = _refresh_job_status(
             _find_session_job(store, session_id, job_id), active
@@ -794,10 +1125,54 @@ async def job_tail_execute(
     return JobTailOutput(job=public, output=output, message=message)
 
 
+async def _stop_managed_job(
+    session_id: str,
+    job_id: str,
+    operation_id: str,
+) -> JobStopOutput:
+    """Cancel one active process-local managed task and retain its durable log."""
+    task = _MANAGED_JOB_TASKS.get(job_id)
+    if task is not None and not task.done():
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    with _store_transaction() as store:
+        job = _find_session_job(store, session_id, job_id)
+        if job.get("status") == "stopping" and _job_operation_matches(
+            job, operation_id
+        ):
+            completed = _utc()
+            job.update(
+                {
+                    "status": "stopped",
+                    "updated_at": completed,
+                    "completed_at": completed,
+                    "exit_code": None,
+                    "error": None,
+                }
+            )
+            _clear_job_operation(job)
+        public = _public_job(job)
+    killed = public.status == "stopped"
+    audit(
+        "job_stop",
+        job_id=job_id,
+        session=session_id,
+        backend="managed",
+        killed=killed,
+    )
+    return JobStopOutput(job=public, killed=killed, stderr="")
+
+
 async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
     """Stop one tracked command through a serialized lifecycle transition."""
     get_tool_session_store().touch_session(session_id)
-    active = _active_shell_ids(await list_persistent_shells_execute())
+    managed = job_id in _managed_job_id_set(session_id, [job_id])
+    active = (
+        set()
+        if managed
+        else _active_shell_ids(await list_persistent_shells_execute())
+    )
     operation_id = ""
     shell_id = ""
     try:
@@ -809,6 +1184,7 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
                 return JobStopOutput(
                     job=_public_job(job), killed=False, stderr=""
                 )
+            managed = str(job.get("kind") or "shell") == "managed"
             shell_id = _job_shell_id(job)
             job["status"] = "stopping"
             job["updated_at"] = _utc()
@@ -818,6 +1194,8 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
         raise
 
     try:
+        if managed:
+            return await _stop_managed_job(session_id, job_id, operation_id)
         try:
             result = await kill_persistent_shell_execute(shell_id)
         except Exception as exc:
@@ -877,9 +1255,114 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
 
 
+async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
+    """Relaunch one terminal managed operation from its durable handler payload."""
+    operation_id = ""
+    paths: dict[str, Path] | None = None
+    attempts = 0
+    try:
+        with _store_transaction() as store:
+            job = _refresh_job_status(
+                _find_session_job(store, session_id, job_id), set()
+            )
+            if job.get("status") in ACTIVE_STATUSES:
+                raise RuntimeError(f"job is still active: {job_id}")
+            kind = str(job.get("managed_kind") or "")
+            if kind not in _MANAGED_JOB_HANDLERS:
+                raise RuntimeError(
+                    f"managed job handler is unavailable: {kind}"
+                )
+            payload = _managed_json_dict(
+                job.get("managed_payload"), label="payload"
+            )
+            attempts = int(job.get("attempts") or 1) + 1
+            paths = _attempt_paths(job_id, attempts)
+            write_private_text(paths["log"], "")
+            job.update(
+                {
+                    "status": "retrying",
+                    "updated_at": _utc(),
+                    "pending_attempt": attempts,
+                    "pending_log_path": str(paths["log"]),
+                    "progress": None,
+                    "result": None,
+                    "completed_at": None,
+                    "exit_code": None,
+                    "error": None,
+                    "log_truncated": False,
+                    "output_bytes": 0,
+                }
+            )
+            operation_id = _begin_job_operation(job, "retry")
+        _launch_managed_job(
+            session_id,
+            job_id,
+            kind,
+            payload,
+            str(paths["log"]),
+        )
+        with _store_transaction() as store:
+            current = _find_session_job(store, session_id, job_id)
+            if current.get("status") == "retrying" and _job_operation_matches(
+                current, operation_id
+            ):
+                current.update(
+                    {
+                        "status": "running",
+                        "attempts": attempts,
+                        "log_path": str(paths["log"]),
+                        "updated_at": _utc(),
+                        "last_started_at": _utc(),
+                    }
+                )
+                _clear_pending_retry(current)
+                _clear_job_operation(current)
+            public = _public_job(current)
+        _remove_attempt_files(job_id, keep_attempt=attempts)
+        audit(
+            "job_retry",
+            job_id=job_id,
+            session=session_id,
+            backend="managed",
+            attempts=attempts,
+        )
+        return JobRetryOutput(**public.model_dump())
+    except BaseException as exc:
+        task = _MANAGED_JOB_TASKS.get(job_id)
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        _remove_attempt_paths(paths)
+        if operation_id:
+            with contextlib.suppress(Exception), _store_transaction() as store:
+                current = _find_session_job(store, session_id, job_id)
+                if _job_operation_matches(current, operation_id):
+                    completed = _utc()
+                    current.update(
+                        {
+                            "status": "failed",
+                            "attempts": attempts
+                            or int(current.get("attempts") or 1),
+                            "updated_at": completed,
+                            "completed_at": completed,
+                            "exit_code": None,
+                            "error": f"retry failed: {type(exc).__name__}: {exc}",
+                        }
+                    )
+                    _clear_pending_retry(current)
+                    _clear_job_operation(current)
+        raise
+    finally:
+        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+
+
 async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
     """Retry a terminal job with durable two-phase state transitions."""
     session = get_tool_session_store().touch_session(session_id)
+    managed = job_id in _managed_job_id_set(session_id, [job_id])
+    if managed:
+        return await _retry_managed_job(session_id, job_id)
     active = _active_shell_ids(await list_persistent_shells_execute())
     operation_id = ""
     try:
@@ -1015,6 +1498,76 @@ async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
 
 
+async def _managed_job_list_execute(
+    session_id: str, include_finished: bool
+) -> JobListOutput:
+    """List only controller-managed jobs owned by one explicit session."""
+    get_tool_session_store().touch_session(session_id)
+    now = _utc()
+    with _store_transaction() as store:
+        for row in store.get("jobs", []):
+            if (
+                _job_agent_session_id(row) == session_id
+                and str(row.get("kind") or "shell") == "managed"
+            ):
+                _refresh_job_status(row, set(), now)
+        _prune_store(store)
+        owned = [
+            row
+            for row in store.get("jobs", [])
+            if _job_agent_session_id(row) == session_id
+            and str(row.get("kind") or "shell") == "managed"
+        ]
+        rows = [
+            _public_job(row)
+            for row in owned
+            if include_finished or row.get("status") not in TERMINAL_STATUSES
+        ]
+        counts: dict[str, int] = {}
+        for row in owned:
+            status = str(row.get("status") or "unknown")
+            counts[status] = counts.get(status, 0) + 1
+    rows.sort(key=lambda item: item.created_at, reverse=True)
+    return JobListOutput(jobs=rows, counts=counts)
+
+
+def _managed_job_id_set(session_id: str, job_ids: list[str]) -> set[str]:
+    """Return requested identifiers owned by controller-managed jobs."""
+    requested = set(job_ids)
+    if not requested:
+        return set()
+    with _store_transaction() as store:
+        return {
+            str(row.get("job_id") or "")
+            for row in store.get("jobs", [])
+            if _job_agent_session_id(row) == session_id
+            and str(row.get("kind") or "shell") == "managed"
+            and str(row.get("job_id") or "") in requested
+        }
+
+
+def _merge_job_counts(*counts: dict[str, int]) -> dict[str, int]:
+    """Sum status counts from controller-managed and worker job stores."""
+    merged: dict[str, int] = {}
+    for source in counts:
+        for status, value in source.items():
+            merged[status] = merged.get(status, 0) + int(value)
+    return merged
+
+
+def _ordered_job_results(
+    requested: list[str],
+    local_rows: list[Any],
+    remote_rows: list[Any],
+    *,
+    job_id: Callable[[Any], str],
+) -> list[Any]:
+    """Merge local and worker action rows in caller-requested order."""
+    by_id = {job_id(row): row for row in remote_rows}
+    by_id.update({job_id(row): row for row in local_rows})
+    return [by_id[item] for item in requested if item in by_id]
+
+
 async def job_execute(
     session_id: str,
     list_jobs: bool = False,
@@ -1025,25 +1578,6 @@ async def job_execute(
     lines: int = 200,
 ) -> JobOutput:
     """Run one high-level tracked-job companion operation."""
-    try:
-        session = get_tool_session_store().touch_session(session_id)
-    except UnknownAgentSessionError:
-        session = None
-    if session is not None and session.target == "remote":
-        data = await call_remote_session_tool(
-            session,
-            "job",
-            {
-                "list_jobs": list_jobs,
-                "poll": poll,
-                "cancel": cancel,
-                "retry": retry,
-                "include_finished": include_finished,
-                "lines": lines,
-            },
-        )
-        return JobOutput.model_validate(data)
-
     selected = [poll is not None, cancel is not None, retry is not None]
     if list_jobs and any(selected):
         raise ValueError(
@@ -1052,6 +1586,121 @@ async def job_execute(
     if sum(selected) > 1:
         raise ValueError("poll, cancel, and retry are mutually exclusive")
 
+    try:
+        session = get_tool_session_store().touch_session(session_id)
+    except UnknownAgentSessionError:
+        session = None
+
+    if session is not None and session.target == "remote":
+        if list_jobs or not any(selected):
+            local = await _managed_job_list_execute(
+                session_id, include_finished
+            )
+            try:
+                remote = JobOutput.model_validate(
+                    await call_remote_session_tool(
+                        session,
+                        "job",
+                        {
+                            "list_jobs": list_jobs,
+                            "poll": None,
+                            "cancel": None,
+                            "retry": None,
+                            "include_finished": include_finished,
+                            "lines": lines,
+                        },
+                    )
+                )
+            except Exception as exc:
+                if not local.jobs:
+                    raise
+                return JobOutput(
+                    operation="list",
+                    jobs=local.jobs,
+                    counts=local.counts,
+                    message=f"Remote worker jobs unavailable: {type(exc).__name__}: {exc}",
+                )
+            jobs = [*remote.jobs, *local.jobs]
+            jobs.sort(key=lambda item: item.created_at, reverse=True)
+            return JobOutput(
+                operation="list",
+                jobs=jobs,
+                counts=_merge_job_counts(remote.counts, local.counts),
+                message=(
+                    "No tracked jobs in this session."
+                    if not jobs
+                    else "Tracked controller and worker job snapshot for this session."
+                ),
+            )
+
+        requested = list(poll or cancel or retry or [])
+        managed_ids = _managed_job_id_set(session_id, requested)
+        local_ids = [item for item in requested if item in managed_ids]
+        remote_ids = [item for item in requested if item not in managed_ids]
+        remote = JobOutput(
+            operation=(
+                "poll"
+                if poll is not None
+                else "cancel"
+                if cancel is not None
+                else "retry"
+            )
+        )
+        if remote_ids:
+            remote = JobOutput.model_validate(
+                await call_remote_session_tool(
+                    session,
+                    "job",
+                    {
+                        "poll": remote_ids if poll is not None else None,
+                        "cancel": remote_ids if cancel is not None else None,
+                        "retry": remote_ids if retry is not None else None,
+                        "include_finished": include_finished,
+                        "lines": lines,
+                    },
+                )
+            )
+
+        if poll is not None:
+            local_rows = [
+                await job_tail_execute(session_id, item, lines)
+                for item in local_ids
+            ]
+            return JobOutput(
+                operation="poll",
+                outputs=_ordered_job_results(
+                    requested,
+                    local_rows,
+                    remote.outputs,
+                    job_id=lambda row: row.job.job_id,
+                ),
+            )
+        if cancel is not None:
+            local_rows = [
+                await job_stop_execute(session_id, item) for item in local_ids
+            ]
+            return JobOutput(
+                operation="cancel",
+                cancelled=_ordered_job_results(
+                    requested,
+                    local_rows,
+                    remote.cancelled,
+                    job_id=lambda row: row.job.job_id,
+                ),
+            )
+        local_rows = [
+            await job_retry_execute(session_id, item) for item in local_ids
+        ]
+        return JobOutput(
+            operation="retry",
+            retried=_ordered_job_results(
+                requested,
+                local_rows,
+                remote.retried,
+                job_id=lambda row: row.job_id,
+            ),
+        )
+
     if list_jobs or not any(selected):
         result = await job_list_execute(session_id, include_finished)
         return JobOutput(
@@ -1059,9 +1708,9 @@ async def job_execute(
             jobs=result.jobs,
             counts=result.counts,
             message=(
-                "No tracked bash jobs in this session."
+                "No tracked jobs in this session."
                 if not result.jobs
-                else "Tracked bash job snapshot for this session."
+                else "Tracked job snapshot for this session."
             ),
         )
 

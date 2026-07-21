@@ -2,9 +2,10 @@
 
 import subprocess
 from pathlib import Path
-from typing import Literal
+from typing import Literal, overload
 
 from ..ops.utils.path import relative_display, workspace_root
+from ..schemas.result_models.jobs import JobStartOutput
 from ..schemas.result_models.session import (
     GitSessionInfo,
     SessionCopyOutput,
@@ -12,6 +13,12 @@ from ..schemas.result_models.session import (
 )
 from ..tool_session.store import AgentSession, get_tool_session_store
 from .utils.remote_session import start_worker_session
+from .utils.session_copy import (
+    session_copy_execute as _session_copy_execute,
+)
+from .utils.session_copy import (
+    session_copy_job_execute,
+)
 
 _INSTRUCTION_FILE_NAMES = (
     "AGENTS.md",
@@ -146,6 +153,7 @@ def session_change_cwd_execute(
     return _session_output(session)
 
 
+@overload
 async def session_copy_execute(
     src_session_id: str,
     src_path: str,
@@ -154,11 +162,64 @@ async def session_copy_execute(
     kind: Literal["auto", "file", "dir"] = "auto",
     overwrite: bool = True,
     chunk_size: int | None = None,
+    background: Literal[False] = False,
 ) -> SessionCopyOutput:
-    """Copy a file or directory between two explicit sessions."""
-    from .utils.session_copy import session_copy_execute as execute
+    """Return the synchronous copy result when background mode is disabled."""
+    ...
 
-    return await execute(
+
+@overload
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: Literal["auto", "file", "dir"] = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    background: Literal[True] = True,
+) -> JobStartOutput:
+    """Return a managed job when background mode is explicitly enabled."""
+    ...
+
+
+@overload
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: Literal["auto", "file", "dir"] = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    background: bool = False,
+) -> SessionCopyOutput | JobStartOutput:
+    """Return a synchronous copy or managed job for a runtime boolean flag."""
+    ...
+
+
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: Literal["auto", "file", "dir"] = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    background: bool = False,
+) -> SessionCopyOutput | JobStartOutput:
+    """Copy synchronously or start a managed background copy job."""
+    if background:
+        return await session_copy_job_execute(
+            src_session_id,
+            src_path,
+            dst_session_id,
+            dst_path,
+            kind,
+            overwrite,
+            chunk_size,
+        )
+    return await _session_copy_execute(
         src_session_id,
         src_path,
         dst_session_id,

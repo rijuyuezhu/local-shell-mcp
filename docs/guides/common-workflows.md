@@ -74,9 +74,19 @@ Use local-shell-mcp. Start one session for the source workspace and one for the 
 
 For directories, `session_copy` validates and extracts into staging before replacing the destination. A cancellation aborts the active file write and cleans both archive scratch paths. Use `kind="file"` or `kind="dir"` when auto-detection would be ambiguous.
 
+The default remains synchronous. For a long transfer, set `background=true`; the tool returns immediately with a managed `job_id` owned by `src_session_id`:
+
+```text
+Use local-shell-mcp. Copy artifacts/checkpoint.bin between these two sessions with session_copy(background=true). Poll the returned job using the source session_id, report progress, and verify the structured result when it succeeds.
+```
+
+`job(poll=[...])` exposes bounded log output plus structured phases such as `preparing`, `packing`, `transferring`, `unpacking`, and `completed`. The successful job `result` is the same structured `SessionCopyOutput` returned by synchronous mode. `job(cancel=[...])` cancels the controller task and runs the existing transactional abort cleanup. `job(retry=[...])` starts a fresh transfer attempt from the durable source/destination payload rather than reusing an old transfer capability or partially committed destination. Managed payloads, progress, and results are each capped at 256 KiB, logs remain subject to `max_job_log_bytes`, and byte progress is persisted at most twice per second except at phase boundaries and completion.
+
+Remote-session job snapshots merge shell jobs running on the worker with controller-managed copy jobs. A controller-managed copy remains inspectable and cancellable if the worker becomes temporarily unavailable. If the controller process loses a live managed task, the record becomes `lost`; retry is available while the owning sessions and source path still exist.
+
 ## Work with long-running commands
 
-Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive work owned by that session, and manage it with `job(session_id=...)`. Tracked jobs persist their exit status and bounded output under `state_dir`, so `job(poll=[...])` continues to work after the command exits or the server restarts. `max_job_log_bytes` limits retained output per attempt, while `max_jobs` bounds retained terminal records without pruning active jobs.
+Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive shell work. The same `job(session_id=...)` companion manages both shell jobs and controller-managed transfer jobs. Shell jobs persist exit status and bounded output under `state_dir`, so polling continues after command exit or server restart. Managed jobs persist their payload, progress, result, and bounded log, but their live task is process-local; a missing task is marked `lost` instead of being reported as still running. `max_job_log_bytes` limits retained output per attempt, while `max_jobs` bounds retained terminal records without pruning active jobs.
 
 Set `pty=true` for dev servers, REPLs, and interactive processes:
 
@@ -87,7 +97,7 @@ Use local-shell-mcp. Start a session for this project. Then run bash with pty=tr
 When done:
 
 ```text
-Use local-shell-mcp to list persistent shells and kill the development server shell by shell_id. For async bash jobs, use job with the same agent session to poll or cancel them.
+Use local-shell-mcp to list persistent shells and kill the development server shell by shell_id. For async bash jobs or background session copies, use job with the owning agent session to poll, cancel, or retry them.
 ```
 
 ## Debug tool behavior

@@ -1,4 +1,4 @@
-"""Typed input annotations for tracked bash job tools."""
+"""Typed input annotations for tracked shell and managed job tools."""
 
 from typing import Annotated
 
@@ -29,7 +29,7 @@ JobIdArg = Annotated[
     str,
     StringConstraints(min_length=1),
     Field(
-        description="Tracked job identifier returned by `bash(async_=true)` or `job` in the same agent session."
+        description="Tracked job identifier returned by `bash(async_=true)`, `session_copy(background=true)`, or `job` in the same agent session."
     ),
 ]
 IncludeFinishedArg = Annotated[
@@ -43,7 +43,7 @@ JobTailLinesArg = Annotated[
     Field(
         ge=1,
         le=5000,
-        description="Number of recent terminal lines to capture for a tracked job. Output is retained after completion within the configured durable log limit.",
+        description="Number of recent bounded log lines to capture for a tracked shell or managed job. Output is retained after completion within the configured durable log limit.",
     ),
 ]
 
@@ -51,27 +51,27 @@ JobTailLinesArg = Annotated[
 JobListSnapshotArg = Annotated[
     bool,
     Field(
-        description="Whether to return a snapshot of tracked bash jobs owned by this session. Omit all other job actions to list by default."
+        description="Whether to return a snapshot of tracked shell and managed jobs owned by this session. Omit all other job actions to list by default."
     ),
 ]
 JobPollIdsArg = Annotated[
     list[str] | None,
     Field(
         default=None,
-        description="Tracked bash job ids in this session whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
+        description="Tracked shell or managed job ids in this session whose latest output, structured progress, result, and status should be inspected.",
     ),
 ]
 JobCancelIdsArg = Annotated[
     list[str] | None,
     Field(
         default=None,
-        description="Tracked bash job ids in this session to stop because they are stalled, hung, or no longer needed.",
+        description="Tracked bash job ids, or controller-managed job ids, in this session to stop because they are stalled, hung, or no longer needed.",
     ),
 ]
 JobRetryIdsArg = Annotated[
     list[str] | None,
     Field(
         default=None,
-        description="Tracked bash job ids in this session to restart with their original command and working directory.",
+        description="Tracked shell or managed job ids in this session to restart from their durable command or managed payload.",
     ),
 ]

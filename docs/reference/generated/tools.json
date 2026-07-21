@@ -477,7 +477,7 @@
       ]
     },
     {
-      "body": "Register bash async job companion tools.",
+      "body": "Register tracked shell and managed job companion tools.",
       "headers": [
         "Tool",
         "Parameters",
@@ -493,7 +493,7 @@
           {
             "items": [
               {
-                "description": "Tracked bash job ids in this session to stop because they are stalled, hung, or no longer needed.",
+                "description": "Tracked bash job ids, or controller-managed job ids, in this session to stop because they are stalled, hung, or no longer needed.",
                 "head": {
                   "code": "cancel"
                 },
@@ -507,28 +507,28 @@
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Number of recent terminal lines to capture for a tracked job. Output is retained after completion within the configured durable log limit.",
+                "description": "Number of recent bounded log lines to capture for a tracked shell or managed job. Output is retained after completion within the configured durable log limit.",
                 "head": {
                   "code": "lines"
                 },
                 "note": "(integer, optional)"
               },
               {
-                "description": "Whether to return a snapshot of tracked bash jobs owned by this session. Omit all other job actions to list by default.",
+                "description": "Whether to return a snapshot of tracked shell and managed jobs owned by this session. Omit all other job actions to list by default.",
                 "head": {
                   "code": "list_jobs"
                 },
                 "note": "(boolean, optional)"
               },
               {
-                "description": "Tracked bash job ids in this session whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
+                "description": "Tracked shell or managed job ids in this session whose latest output, structured progress, result, and status should be inspected.",
                 "head": {
                   "code": "poll"
                 },
                 "note": "(array / null, optional)"
               },
               {
-                "description": "Tracked bash job ids in this session to restart with their original command and working directory.",
+                "description": "Tracked shell or managed job ids in this session to restart from their durable command or managed payload.",
                 "head": {
                   "code": "retry"
                 },
@@ -543,7 +543,7 @@
               }
             ]
           },
-          "Inspect, read durable output from, stop, or retry async bash jobs owned by an explicit agent session.\n\nResults for `bash(async_=true)` are tracked by job id under the same session_id. Exit status and bounded output remain available after completion and server restart. Reach for this companion tool only when you need to intervene: list work in the session, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call."
+          "Inspect durable output, structured progress/results, stop, or retry tracked work owned by an explicit agent session.\n\n`bash(async_=true)` creates tracked shell jobs. `session_copy(background=true)` creates controller-managed transfer jobs owned by the source session. Both return job_id values managed through this companion. Shell exit state and bounded logs remain durable after completion and server restart; managed jobs additionally retain bounded progress, durable payload, and structured result, while their live task remains process-local. If a controller-managed task disappears after process loss, it becomes `lost` and may be retried from its stored payload while the owning sessions remain available. Starting work belongs in `bash` or `session_copy`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect output, progress, result, and status; `cancel=[id]` to stop work and trigger transactional cleanup; or `retry=[id]` to restart from the original shell command or managed payload. Remote-session lists merge worker shell jobs with controller-managed jobs, and controller-managed jobs remain inspectable when the worker is offline. Do not combine actions in one call."
         ]
       ]
     },
@@ -864,6 +864,13 @@
           {
             "items": [
               {
+                "description": "When true, start a managed background copy and return a job_id immediately. Use the job companion with the source session_id to poll, cancel, or retry it.",
+                "head": {
+                  "code": "background"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
                 "description": "Optional chunk size in bytes for binary transfer. Omit to use the server default.",
                 "head": {
                   "code": "chunk_size"
@@ -914,7 +921,7 @@
               }
             ]
           },
-          "Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Same-worker remote copies stream raw bounded chunks inside that worker; other routes use the authenticated, checksummed control-plane transfer. Use this when moving artifacts across sessions instead of exposing raw transfer primitives or legacy remote pull/push tools. The response includes the selected route and whether the sessions share a target, session id, or remote machine."
+          "Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Same-worker remote copies stream raw bounded chunks inside that worker; other routes use the authenticated, checksummed control-plane transfer. By default the call waits and returns SessionCopyOutput. Set background=true for long transfers to return a managed job immediately, then use the job companion with src_session_id to poll structured progress, cancel safely, or retry from the beginning after interruption. The response includes the selected route and whether the sessions share a target, session id, or remote machine."
         ],
         [
           {
@@ -2925,7 +2932,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Inspect, read durable output from, stop, or retry async bash jobs owned by an explicit agent session.\n\nResults for `bash(async_=true)` are tracked by job id under the same session_id. Exit status and bounded output remain available after completion and server restart. Reach for this companion tool only when you need to intervene: list work in the session, inspect recent output, stop stalled work, or retry a finished command. Starting work belongs in `bash`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect recent output/status for specific jobs, `cancel=[id]` to stop jobs, or `retry=[id]` to restart jobs with their original command and working directory. Do not combine actions in one call.",
+      "description": "Inspect durable output, structured progress/results, stop, or retry tracked work owned by an explicit agent session.\n\n`bash(async_=true)` creates tracked shell jobs. `session_copy(background=true)` creates controller-managed transfer jobs owned by the source session. Both return job_id values managed through this companion. Shell exit state and bounded logs remain durable after completion and server restart; managed jobs additionally retain bounded progress, durable payload, and structured result, while their live task remains process-local. If a controller-managed task disappears after process loss, it becomes `lost` and may be retried from its stored payload while the owning sessions remain available. Starting work belongs in `bash` or `session_copy`, not `job`.\n\nPass the session_id from session_start. Call with no action, or with `list_jobs=true`, to list jobs owned by that session. Use `poll=[id]` to inspect output, progress, result, and status; `cancel=[id]` to stop work and trigger transactional cleanup; or `retry=[id]` to restart from the original shell command or managed payload. Remote-session lists merge worker shell jobs with controller-managed jobs, and controller-managed jobs remain inspectable when the worker is offline. Do not combine actions in one call.",
       "inputSchema": {
         "properties": {
           "cancel": {
@@ -2941,7 +2948,7 @@
               }
             ],
             "default": null,
-            "description": "Tracked bash job ids in this session to stop because they are stalled, hung, or no longer needed.",
+            "description": "Tracked bash job ids, or controller-managed job ids, in this session to stop because they are stalled, hung, or no longer needed.",
             "title": "Cancel"
           },
           "include_finished": {
@@ -2952,7 +2959,7 @@
           },
           "lines": {
             "default": 200,
-            "description": "Number of recent terminal lines to capture for a tracked job. Output is retained after completion within the configured durable log limit.",
+            "description": "Number of recent bounded log lines to capture for a tracked shell or managed job. Output is retained after completion within the configured durable log limit.",
             "maximum": 5000,
             "minimum": 1,
             "title": "Lines",
@@ -2960,7 +2967,7 @@
           },
           "list_jobs": {
             "default": false,
-            "description": "Whether to return a snapshot of tracked bash jobs owned by this session. Omit all other job actions to list by default.",
+            "description": "Whether to return a snapshot of tracked shell and managed jobs owned by this session. Omit all other job actions to list by default.",
             "title": "List Jobs",
             "type": "boolean"
           },
@@ -2977,7 +2984,7 @@
               }
             ],
             "default": null,
-            "description": "Tracked bash job ids in this session whose latest output/status should be inspected. Use only when you need to check specific async bash work.",
+            "description": "Tracked shell or managed job ids in this session whose latest output, structured progress, result, and status should be inspected.",
             "title": "Poll"
           },
           "retry": {
@@ -2993,7 +3000,7 @@
               }
             ],
             "default": null,
-            "description": "Tracked bash job ids in this session to restart with their original command and working directory.",
+            "description": "Tracked shell or managed job ids in this session to restart from their durable command or managed payload.",
             "title": "Retry"
           },
           "session_id": {
@@ -3026,7 +3033,7 @@
       "outputSchema": {
         "$defs": {
           "JobInfo": {
-            "description": "One tracked command owned by an explicit agent session.",
+            "description": "One tracked command or managed operation owned by an explicit agent session.",
             "properties": {
               "attempts": {
                 "description": "Number of times this tracked job has been started, including retries.",
@@ -3034,7 +3041,7 @@
                 "type": "integer"
               },
               "command": {
-                "description": "Original shell command used to start the job. The retry action reuses this command.",
+                "description": "Original shell command or managed-operation summary. Retry reuses the stored operation.",
                 "title": "Command",
                 "type": "string"
               },
@@ -3057,7 +3064,7 @@
                 "type": "number"
               },
               "cwd": {
-                "description": "Working directory used to start the job. The retry action reuses this directory when it remains inside the owning session workdir.",
+                "description": "Working directory or display context associated with the tracked job.",
                 "title": "Cwd",
                 "type": "string"
               },
@@ -3071,7 +3078,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Lifecycle or runner error associated with the current attempt.",
+                "description": "Lifecycle, shell-runner, or managed-operation error for the current attempt.",
                 "title": "Error"
               },
               "exit_code": {
@@ -3084,12 +3091,22 @@
                   }
                 ],
                 "default": null,
-                "description": "Durably recorded process exit code when the runner completed.",
+                "description": "Durably recorded exit code for shell or managed execution when available.",
                 "title": "Exit Code"
               },
               "job_id": {
                 "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session.",
                 "title": "Job Id",
+                "type": "string"
+              },
+              "kind": {
+                "default": "shell",
+                "description": "Execution kind. Shell jobs use a persistent shell runner; managed jobs run a registered controller operation.",
+                "enum": [
+                  "shell",
+                  "managed"
+                ],
+                "title": "Kind",
                 "type": "string"
               },
               "last_started_at": {
@@ -3118,9 +3135,37 @@
               },
               "output_bytes": {
                 "default": 0,
-                "description": "Total process-output bytes observed before durable tail truncation.",
+                "description": "Total durable log bytes observed before tail truncation.",
                 "title": "Output Bytes",
                 "type": "integer"
+              },
+              "progress": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest bounded structured progress snapshot for a managed job.",
+                "title": "Progress"
+              },
+              "result": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Bounded structured result retained after a managed job succeeds.",
+                "title": "Result"
               },
               "session_id": {
                 "description": "Agent/workspace session_id that owns this tracked job.",
@@ -3152,7 +3197,7 @@
             "type": "object"
           },
           "JobRetryOutput": {
-            "description": "Tracked job record after restarting its original command and cwd.",
+            "description": "Tracked job record after restarting its durable command or managed payload.",
             "properties": {
               "attempts": {
                 "description": "Number of times this tracked job has been started, including retries.",
@@ -3160,7 +3205,7 @@
                 "type": "integer"
               },
               "command": {
-                "description": "Original shell command used to start the job. The retry action reuses this command.",
+                "description": "Original shell command or managed-operation summary. Retry reuses the stored operation.",
                 "title": "Command",
                 "type": "string"
               },
@@ -3183,7 +3228,7 @@
                 "type": "number"
               },
               "cwd": {
-                "description": "Working directory used to start the job. The retry action reuses this directory when it remains inside the owning session workdir.",
+                "description": "Working directory or display context associated with the tracked job.",
                 "title": "Cwd",
                 "type": "string"
               },
@@ -3197,7 +3242,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Lifecycle or runner error associated with the current attempt.",
+                "description": "Lifecycle, shell-runner, or managed-operation error for the current attempt.",
                 "title": "Error"
               },
               "exit_code": {
@@ -3210,12 +3255,22 @@
                   }
                 ],
                 "default": null,
-                "description": "Durably recorded process exit code when the runner completed.",
+                "description": "Durably recorded exit code for shell or managed execution when available.",
                 "title": "Exit Code"
               },
               "job_id": {
                 "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session.",
                 "title": "Job Id",
+                "type": "string"
+              },
+              "kind": {
+                "default": "shell",
+                "description": "Execution kind. Shell jobs use a persistent shell runner; managed jobs run a registered controller operation.",
+                "enum": [
+                  "shell",
+                  "managed"
+                ],
+                "title": "Kind",
                 "type": "string"
               },
               "last_started_at": {
@@ -3244,9 +3299,37 @@
               },
               "output_bytes": {
                 "default": 0,
-                "description": "Total process-output bytes observed before durable tail truncation.",
+                "description": "Total durable log bytes observed before tail truncation.",
                 "title": "Output Bytes",
                 "type": "integer"
+              },
+              "progress": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest bounded structured progress snapshot for a managed job.",
+                "title": "Progress"
+              },
+              "result": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Bounded structured result retained after a managed job succeeds.",
+                "title": "Result"
               },
               "session_id": {
                 "description": "Agent/workspace session_id that owns this tracked job.",
@@ -3306,7 +3389,7 @@
               },
               "stderr": {
                 "default": "",
-                "description": "Backend stderr from the stop attempt, when reported.",
+                "description": "Backend stderr from a shell stop attempt; managed cancellation normally leaves this empty.",
                 "title": "Stderr",
                 "type": "string"
               }
@@ -3319,7 +3402,7 @@
             "type": "object"
           },
           "JobTailOutput": {
-            "description": "Recent terminal output for one tracked job.",
+            "description": "Recent bounded durable output for one tracked job.",
             "properties": {
               "job": {
                 "$ref": "#/$defs/JobInfo",
@@ -3335,7 +3418,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Diagnostic message when output is unavailable, for example after the job exits or is lost.",
+                "description": "Diagnostic message when output or a remote worker snapshot is unavailable.",
                 "title": "Message"
               },
               "output": {
@@ -3352,7 +3435,7 @@
             "type": "object"
           }
         },
-        "description": "Unified companion result for tracked bash jobs.",
+        "description": "Unified companion result for tracked shell and managed jobs.",
         "properties": {
           "cancelled": {
             "description": "Stop results returned for cancelled jobs.",
@@ -6003,9 +6086,15 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Same-worker remote copies stream raw bounded chunks inside that worker; other routes use the authenticated, checksummed control-plane transfer. Use this when moving artifacts across sessions instead of exposing raw transfer primitives or legacy remote pull/push tools. The response includes the selected route and whether the sessions share a target, session id, or remote machine.",
+      "description": "Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Same-worker remote copies stream raw bounded chunks inside that worker; other routes use the authenticated, checksummed control-plane transfer. By default the call waits and returns SessionCopyOutput. Set background=true for long transfers to return a managed job immediately, then use the job companion with src_session_id to poll structured progress, cancel safely, or retry from the beginning after interruption. The response includes the selected route and whether the sessions share a target, session id, or remote machine.",
       "inputSchema": {
         "properties": {
+          "background": {
+            "default": false,
+            "description": "When true, start a managed background copy and return a job_id immediately. Use the job companion with the source session_id to poll, cancel, or retry it.",
+            "title": "Background",
+            "type": "boolean"
+          },
           "chunk_size": {
             "anyOf": [
               {
@@ -6086,6 +6175,185 @@
       "name": "session_copy",
       "outputSchema": {
         "$defs": {
+          "JobStartOutput": {
+            "description": "Tracked job record created after starting shell or managed work.",
+            "properties": {
+              "attempts": {
+                "description": "Number of times this tracked job has been started, including retries.",
+                "title": "Attempts",
+                "type": "integer"
+              },
+              "command": {
+                "description": "Original shell command or managed-operation summary. Retry reuses the stored operation.",
+                "title": "Command",
+                "type": "string"
+              },
+              "completed_at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Unix timestamp when the current attempt reached a terminal state.",
+                "title": "Completed At"
+              },
+              "created_at": {
+                "description": "Unix timestamp when the tracked job record was created.",
+                "title": "Created At",
+                "type": "number"
+              },
+              "cwd": {
+                "description": "Working directory or display context associated with the tracked job.",
+                "title": "Cwd",
+                "type": "string"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Lifecycle, shell-runner, or managed-operation error for the current attempt.",
+                "title": "Error"
+              },
+              "exit_code": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Durably recorded exit code for shell or managed execution when available.",
+                "title": "Exit Code"
+              },
+              "job_id": {
+                "description": "Stable tracked job identifier. Use this with the `job` companion poll, cancel, or retry actions in the same session.",
+                "title": "Job Id",
+                "type": "string"
+              },
+              "kind": {
+                "default": "shell",
+                "description": "Execution kind. Shell jobs use a persistent shell runner; managed jobs run a registered controller operation.",
+                "enum": [
+                  "shell",
+                  "managed"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "last_started_at": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Unix timestamp when the current or most recent attempt was started.",
+                "title": "Last Started At"
+              },
+              "log_truncated": {
+                "default": false,
+                "description": "Whether older output was discarded to enforce max_job_log_bytes.",
+                "title": "Log Truncated",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Human-readable job name, or the generated job_id when no name was provided.",
+                "title": "Name",
+                "type": "string"
+              },
+              "output_bytes": {
+                "default": 0,
+                "description": "Total durable log bytes observed before tail truncation.",
+                "title": "Output Bytes",
+                "type": "integer"
+              },
+              "progress": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest bounded structured progress snapshot for a managed job.",
+                "title": "Progress"
+              },
+              "result": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Bounded structured result retained after a managed job succeeds.",
+                "title": "Result"
+              },
+              "session_id": {
+                "description": "Agent/workspace session_id that owns this tracked job.",
+                "title": "Session Id",
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/$defs/JobStatus",
+                "description": "Durable tracked-job lifecycle state, including transitional, successful, failed, stopped, and recovery states."
+              },
+              "updated_at": {
+                "description": "Unix timestamp when the tracked job record was last updated.",
+                "title": "Updated At",
+                "type": "number"
+              }
+            },
+            "required": [
+              "job_id",
+              "name",
+              "status",
+              "command",
+              "cwd",
+              "session_id",
+              "created_at",
+              "updated_at",
+              "attempts"
+            ],
+            "title": "JobStartOutput",
+            "type": "object"
+          },
+          "JobStatus": {
+            "enum": [
+              "starting",
+              "running",
+              "stopping",
+              "retrying",
+              "succeeded",
+              "failed",
+              "exited",
+              "stopped",
+              "lost",
+              "unknown"
+            ],
+            "type": "string"
+          },
           "SessionCopyEndpoint": {
             "description": "One endpoint in a session-to-session copy.",
             "properties": {
@@ -6149,6 +6417,125 @@
             "title": "SessionCopyEndpoint",
             "type": "object"
           },
+          "SessionCopyOutput": {
+            "description": "Result of copying a file or directory between two sessions.",
+            "properties": {
+              "archive_bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Transfer archive size for directory copies.",
+                "title": "Archive Bytes"
+              },
+              "archive_sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Transfer archive digest for directory copies.",
+                "title": "Archive Sha256"
+              },
+              "bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Number of file bytes copied for file copies.",
+                "title": "Bytes"
+              },
+              "chunk_size": {
+                "description": "Chunk size used for binary transfer.",
+                "title": "Chunk Size",
+                "type": "integer"
+              },
+              "chunks": {
+                "description": "Number of transfer chunks exchanged.",
+                "title": "Chunks",
+                "type": "integer"
+              },
+              "cleanup_errors": {
+                "description": "Non-fatal cleanup errors after a successful copy commit.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Cleanup Errors",
+                "type": "array"
+              },
+              "destination": {
+                "$ref": "#/$defs/SessionCopyEndpoint",
+                "description": "Destination copy endpoint."
+              },
+              "entries": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Number of directory entries unpacked for directory copies.",
+                "title": "Entries"
+              },
+              "kind": {
+                "description": "Resolved copied object kind.",
+                "enum": [
+                  "file",
+                  "dir"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "relation": {
+                "$ref": "#/$defs/SessionCopyRelation",
+                "description": "Analyzed relationship between the two sessions."
+              },
+              "sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "SHA-256 digest for file copies, when available.",
+                "title": "Sha256"
+              },
+              "source": {
+                "$ref": "#/$defs/SessionCopyEndpoint",
+                "description": "Source copy endpoint."
+              }
+            },
+            "required": [
+              "kind",
+              "source",
+              "destination",
+              "relation",
+              "chunks",
+              "chunk_size"
+            ],
+            "title": "SessionCopyOutput",
+            "type": "object"
+          },
           "SessionCopyRelation": {
             "description": "Relationship between the source and destination sessions.",
             "properties": {
@@ -6190,122 +6577,23 @@
             "type": "object"
           }
         },
-        "description": "Result of copying a file or directory between two sessions.",
         "properties": {
-          "archive_bytes": {
+          "result": {
             "anyOf": [
               {
-                "type": "integer"
+                "$ref": "#/$defs/SessionCopyOutput"
               },
               {
-                "type": "null"
+                "$ref": "#/$defs/JobStartOutput"
               }
             ],
-            "default": null,
-            "description": "Transfer archive size for directory copies.",
-            "title": "Archive Bytes"
-          },
-          "archive_sha256": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Transfer archive digest for directory copies.",
-            "title": "Archive Sha256"
-          },
-          "bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Number of file bytes copied for file copies.",
-            "title": "Bytes"
-          },
-          "chunk_size": {
-            "description": "Chunk size used for binary transfer.",
-            "title": "Chunk Size",
-            "type": "integer"
-          },
-          "chunks": {
-            "description": "Number of transfer chunks exchanged.",
-            "title": "Chunks",
-            "type": "integer"
-          },
-          "cleanup_errors": {
-            "description": "Non-fatal cleanup errors after a successful copy commit.",
-            "items": {
-              "type": "string"
-            },
-            "title": "Cleanup Errors",
-            "type": "array"
-          },
-          "destination": {
-            "$ref": "#/$defs/SessionCopyEndpoint",
-            "description": "Destination copy endpoint."
-          },
-          "entries": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Number of directory entries unpacked for directory copies.",
-            "title": "Entries"
-          },
-          "kind": {
-            "description": "Resolved copied object kind.",
-            "enum": [
-              "file",
-              "dir"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "relation": {
-            "$ref": "#/$defs/SessionCopyRelation",
-            "description": "Analyzed relationship between the two sessions."
-          },
-          "sha256": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "SHA-256 digest for file copies, when available.",
-            "title": "Sha256"
-          },
-          "source": {
-            "$ref": "#/$defs/SessionCopyEndpoint",
-            "description": "Source copy endpoint."
+            "title": "Result"
           }
         },
         "required": [
-          "kind",
-          "source",
-          "destination",
-          "relation",
-          "chunks",
-          "chunk_size"
+          "result"
         ],
-        "title": "SessionCopyOutput",
+        "title": "session_copyOutput",
         "type": "object"
       }
     },
