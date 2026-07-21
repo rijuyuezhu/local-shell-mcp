@@ -15,6 +15,7 @@ from local_shell_mcp.ops.shell import (
     _tmux_session_name,
     check_command_policy,
     clamp_timeout,
+    read_persistent_shell_output_execute,
     resize_persistent_shell_execute,
     run_shell,
     run_shell_command_timeout,
@@ -424,6 +425,39 @@ async def test_run_shell_command_timeout_marks_result_and_cleans_up(
 
     assert result.ok is False
     assert result.timed_out is True
+
+
+@pytest.mark.asyncio
+async def test_read_persistent_shell_preserves_ansi_only_when_requested(
+    monkeypatch,
+):
+    calls = []
+
+    async def fake_tmux(args: list[str], timeout_s: int = 10):
+        calls.append((args, timeout_s))
+        return CommandResult(
+            ok=True,
+            exit_code=0,
+            timed_out=False,
+            duration_ms=1,
+            cwd=".",
+            command="tmux",
+            stdout="\x1b[32mready\x1b[0m",
+        )
+
+    monkeypatch.setattr("local_shell_mcp.ops.shell.tmux", fake_tmux)
+
+    plain = await read_persistent_shell_output_execute("shell-1", 40)
+    colored = await read_persistent_shell_output_execute(
+        "shell-1", 40, preserve_ansi=True
+    )
+
+    assert plain.output == "\x1b[32mready\x1b[0m"
+    assert colored.output == plain.output
+    assert calls == [
+        (["capture-pane", "-p", "-t", "shell-1", "-S", "-40"], 10),
+        (["capture-pane", "-p", "-e", "-t", "shell-1", "-S", "-40"], 10),
+    ]
 
 
 @pytest.mark.asyncio

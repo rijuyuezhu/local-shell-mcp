@@ -133,8 +133,8 @@ def test_terminal_http_surface_dispatches_bounded_actions(
             backend="tmux",
         )
 
-    async def fake_read(shell_id, lines=200):
-        calls.append(("read", shell_id, lines))
+    async def fake_read(shell_id, lines=200, *, preserve_ansi=False):
+        calls.append(("read", shell_id, lines, preserve_ansi))
         return ReadPersistentShellOutput(shell_id=shell_id, output="hello")
 
     async def fake_kill(shell_id):
@@ -196,7 +196,7 @@ def test_terminal_http_surface_dispatches_bounded_actions(
         ("start", ".", "created", "/bin/sh"),
         ("send", "demo", "printf ok", False),
         ("resize", "demo", 132, 41),
-        ("read", "demo", 321),
+        ("read", "demo", 321, True),
         ("kill", "demo"),
     ]
 
@@ -347,8 +347,11 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
             shells=[PersistentShellInfo(shell_id="demo")]
         )
 
-    async def fake_read(shell_id, lines=200):
-        return ReadPersistentShellOutput(shell_id=shell_id, output="prompt$ ")
+    async def fake_read(shell_id, lines=200, *, preserve_ansi=False):
+        assert preserve_ansi is True
+        return ReadPersistentShellOutput(
+            shell_id=shell_id, output="\x1b[32mprompt$ \x1b[0m"
+        )
 
     async def fake_send(shell_id, input_text, enter=True):
         calls.append(("send", shell_id, input_text, enter))
@@ -393,7 +396,7 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
             "type": "snapshot",
             "machine": "local",
             "shell_id": "demo",
-            "output": "prompt$ ",
+            "output": "\x1b[32mprompt$ \x1b[0m",
         }
         websocket.send_json(
             {"type": "input", "data": "printf ok", "enter": True}
@@ -465,7 +468,7 @@ class _RemoteTerminalCalls:
             },
             "read_persistent_shell_output": {
                 "shell_id": args.get("shell_id"),
-                "output": "edge$ ",
+                "output": "\x1b[36medge$ \x1b[0m",
             },
             "kill_persistent_shell": {
                 "shell_id": args.get("shell_id"),
@@ -549,7 +552,7 @@ def test_remote_terminal_http_is_machine_scoped_and_sessionless(
         ],
     }
     assert started.json()["data"]["machine"] == "edge"
-    assert read.json()["data"]["output"] == "edge$ "
+    assert read.json()["data"]["output"] == "\x1b[36medge$ \x1b[0m"
     assert all(
         machine == "edge" and 1 <= timeout <= 60
         for machine, _, _, timeout in calls.calls
@@ -563,6 +566,11 @@ def test_remote_terminal_http_is_machine_scoped_and_sessionless(
         "read_persistent_shell_output",
         "kill_persistent_shell",
     ]
+    assert calls.calls[4][2] == {
+        "shell_id": "shared",
+        "lines": 50,
+        "preserve_ansi": True,
+    }
 
 
 def test_remote_terminal_requires_scope_and_handles_offline_and_malformed(
@@ -623,7 +631,7 @@ def test_remote_terminal_websocket_uses_selected_machine(monkeypatch, tmp_path):
             "type": "snapshot",
             "machine": "edge",
             "shell_id": "shared",
-            "output": "edge$ ",
+            "output": "\x1b[36medge$ \x1b[0m",
         }
         websocket.send_json(
             {"type": "input", "data": "echo edge", "enter": True}
@@ -643,6 +651,13 @@ def test_remote_terminal_websocket_uses_selected_machine(monkeypatch, tmp_path):
     assert "send_persistent_shell_input" in tools
     assert "resize_persistent_shell" in tools
     assert all("session_id" not in args for _, _, args, _ in calls.calls)
+    read_args = [
+        args
+        for _, tool, args, _ in calls.calls
+        if tool == "read_persistent_shell_output"
+    ]
+    assert read_args
+    assert all(args.get("preserve_ansi") is True for args in read_args)
 
 
 def test_remote_terminal_websocket_requires_remote_scope(monkeypatch, tmp_path):

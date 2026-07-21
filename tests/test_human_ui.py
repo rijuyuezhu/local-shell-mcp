@@ -80,6 +80,10 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="remote-rename-dialog"' in index.text
     assert 'id="remote-revoke-dialog"' in index.text
     assert 'id="terminal-machine"' in index.text
+    assert 'id="terminal-latest"' in index.text
+    assert 'id="terminal-keyboard"' in index.text
+    assert 'data-terminal-key="ctrl-c"' in index.text
+    assert "assets/terminal_renderer.js" in index.text
     assert 'id="file-panel"' in index.text
     assert 'id="file-machine"' in index.text
     assert 'id="file-editor-form"' in index.text
@@ -90,6 +94,14 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert index.headers["cache-control"] == "no-store"
     assert "frame-ancestors 'none'" in index.headers["content-security-policy"]
     assert client.get("/ui/callback?code=example").status_code == 200
+
+    renderer = client.get("/ui/assets/terminal_renderer.js")
+    assert renderer.status_code == 200
+    assert renderer.headers["x-content-type-options"] == "nosniff"
+    assert "LsmTerminalRenderer" in renderer.text
+    assert "MAX_RUNS = 10_000" in renderer.text
+    assert "createTextNode" in renderer.text
+    assert "innerHTML" not in renderer.text
 
     script = client.get("/ui/assets/web.js")
     assert script.status_code == 200
@@ -116,6 +128,11 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "requestedMachine !== terminalMachine" in script.text
     assert 'url.searchParams.set("machine", machine)' in script.text
     assert "terminalSocketMachine === terminalMachine" in script.text
+    assert "acceptTerminalSnapshot" in script.text
+    assert "terminalPendingOutput" in script.text
+    assert "terminalSpecialKeys" in script.text
+    assert "navigateTerminalHistory" in script.text
+    assert "LsmTerminalRenderer" in script.text
     assert "filePreviewGeneration" in script.text
     assert "generation !== filePreviewGeneration" in script.text
     assert "fileListGeneration" in script.text

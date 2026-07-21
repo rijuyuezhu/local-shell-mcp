@@ -22,7 +22,7 @@ The current migration slice provides:
 - process-scoped local and remote Dashboard telemetry with degraded-source alerts;
 - OAuth-scoped remote worker inventory, one-time enrollment invitations, rename, and revocation;
 - automatic browser OAuth Authorization Code flow with PKCE S256;
-- machine-isolated local and remote tmux terminal listing, creation, input, resize, snapshots, and termination;
+- machine-isolated local and remote tmux terminal listing, creation, input, resize, ANSI-aware snapshots, scroll freezing, command history, and termination;
 - machine-aware local and remote file browsing, bounded previews, text editing, creation, and deletion;
 - local workspace copy, move, and rename operations;
 - revision-guarded local and remote Todo lists with machine isolation;
@@ -31,7 +31,7 @@ The current migration slice provides:
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Rich xterm-compatible rendering and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Raw PTY streaming, xterm-grade cursor/alternate-screen emulation, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -102,9 +102,17 @@ The OAuth access token is transported as a base64url-encoded WebSocket subprotoc
 
 Terminal input and resize controls are processed in receive order. Individual messages are limited to 64 KiB, snapshots are limited to 5,000 lines and 4 MB, dimensions reuse the persistent-shell bounds, remote inventory is capped at 256 shells, and worker text fields and errors are bounded before browser delivery. Remote responses are validated against the same typed result models used locally; mismatched shell IDs, duplicate sessions, malformed dimensions, oversized output, and malformed worker payloads are rejected.
 
-Local panes are sampled every 250 ms and remote panes every 750 ms; unchanged snapshots are not resent. The browser uses separate list and socket generations, includes the selected machine in every HTTP body, query, WebSocket URL, and accepted socket message, and closes the previous socket immediately on a machine switch. Inventory refreshes preserve an online selection and fall back to local if a worker becomes unavailable. Signing out clears terminal loading state and invalidates pending list/socket work.
+The public MCP and HTTP `read_persistent_shell_output` tool continues to return the existing plain-text capture by default. The Human UI uses a private `preserve_ansi=true` worker argument and local `tmux capture-pane -e` only for its browser snapshot path. Remote workers validate that flag as a real boolean before dispatch. This keeps existing automation consumers stable while allowing local and remote browser terminals to receive the same SGR-preserving snapshot schema.
 
-Closing or reloading the browser disconnects the WebSocket but deliberately leaves the tmux shell running; use **Kill selected** when the shell itself should terminate. The current renderer displays normalized full-pane text snapshots rather than a raw PTY byte stream. Interactive command workflows work locally and remotely, while alternate-screen applications, exact ANSI styling, mouse protocols, Windows ConPTY parity, and native OpenTUI rendering remain queued with the richer terminal-client migration.
+The packaged renderer recognizes reset, bold, dim, italic, underline, inverse, hidden, strike-through, the standard and bright sixteen-color ranges, 256-color palette values, and 24-bit foreground/background RGB. Zero-valued indexed and RGB colors are preserved. Rendering never interprets terminal bytes as HTML: it tokenizes into at most 10,000 bounded runs, creates only text nodes and fixed-class `span` elements, and derives inline values only from validated color numbers. OSC—including OSC 8 hyperlinks—DCS, APC, PM, SOS, non-SGR CSI, C0/C1 controls, and unsupported escape sequences are removed. Their payloads cannot become links, markup, scripts, or arbitrary CSS.
+
+Local panes are sampled every 250 ms and remote panes every 750 ms; unchanged snapshots are not resent. While the output is at the bottom, each new snapshot replaces the pane and follows the latest line. Scrolling more than 24 pixels away freezes the rendered DOM; later events overwrite one in-memory pending snapshot and increment a bounded update count instead of accumulating history copies. **Jump to latest**—or scrolling back to the bottom—renders that newest snapshot once and resumes following. Machine changes, shell changes, authentication loss, errors, exit, and kill paths clear the frozen state.
+
+The command field keeps at most 100 consecutive-de-duplicated commands in the current tab and current terminal connection. Arrow Up and Arrow Down navigate that list while preserving the unsent draft; connecting to another shell or machine clears it, and it is never written to browser storage. The touch-friendly key bar sends only fixed Escape, Tab, Arrow Up, Arrow Down, Ctrl-C, and Ctrl-D byte sequences, and only while the current `(machine, shell_id)` WebSocket is open. Narrow layouts stack the header, expose a full-width latest-output action, and arrange those controls in three columns.
+
+The browser still uses separate list and socket generations, includes the selected machine in every HTTP body, query, WebSocket URL, and accepted socket message, and closes the previous socket immediately on a machine switch. Inventory refreshes preserve an online selection and fall back to local if a worker becomes unavailable. Signing out clears terminal loading state and invalidates pending list/socket work.
+
+Closing or reloading the browser disconnects the WebSocket but deliberately leaves the tmux shell running; use **Kill selected** when the shell itself should terminate. The renderer remains a normalized full-pane snapshot viewer rather than a raw PTY byte-stream emulator. Cursor-addressing programs, exact alternate-screen behavior, mouse protocols, arbitrary key capture, Windows ConPTY parity, xterm-grade emulation, and native OpenTUI rendering remain queued for the later transport migration.
 
 ## Files
 

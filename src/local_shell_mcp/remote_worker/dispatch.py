@@ -117,8 +117,13 @@ async def _resize_persistent_shell(args: dict[str, Any]) -> Any:
 async def _read_persistent_shell_output(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import read_persistent_shell_output_execute
 
+    preserve_ansi = args.get("preserve_ansi", False)
+    if not isinstance(preserve_ansi, bool):
+        raise ValueError("preserve_ansi must be a boolean")
     return await read_persistent_shell_output_execute(
-        str(args["shell_id"]), int(args.get("lines") or 200)
+        str(args["shell_id"]),
+        int(args.get("lines") or 200),
+        preserve_ansi=preserve_ansi,
     )
 
 

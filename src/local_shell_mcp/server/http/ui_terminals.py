@@ -492,12 +492,16 @@ async def _read_shell(
     lines: int,
 ) -> dict[str, Any]:
     if machine == "local":
-        value = await read_persistent_shell_output_execute(shell_id, lines)
+        value = await read_persistent_shell_output_execute(
+            shell_id,
+            lines,
+            preserve_ansi=True,
+        )
     else:
         value = await _remote_terminal_call(
             machine,
             "read_persistent_shell_output",
-            {"shell_id": shell_id, "lines": lines},
+            {"shell_id": shell_id, "lines": lines, "preserve_ansi": True},
         )
     return _normalize_read(machine, shell_id, lines, value)
 

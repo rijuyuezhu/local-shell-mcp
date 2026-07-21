@@ -413,21 +413,92 @@ h2 {
   margin-bottom: 0.65rem;
 }
 
+.terminal-console-title {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.terminal-latest {
+  flex: 0 0 auto;
+  padding: 0.48rem 0.68rem;
+  border-color: rgba(87, 215, 255, 0.56);
+  background: rgba(17, 78, 104, 0.88);
+}
+
+.terminal-latest[hidden] {
+  display: none;
+}
+
 #terminal-output {
+  --terminal-foreground: #d8e9f5;
+  --terminal-background: #07111f;
   min-height: 22rem;
   max-height: 36rem;
   margin: 0;
   overflow: auto;
   border: 1px solid rgba(151, 184, 202, 0.1);
   border-radius: 0.55rem;
-  color: #d8f4e6;
-  background: #03080c;
+  color: var(--terminal-foreground);
+  background: var(--terminal-background);
   padding: 0.9rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 8;
+}
+
+.terminal-run {
+  color: var(--ansi-fg, inherit);
+  background-color: var(--ansi-bg, transparent);
+}
+
+.terminal-run.ansi-bold {
+  font-weight: 700;
+}
+
+.terminal-run.ansi-dim {
+  opacity: 0.66;
+}
+
+.terminal-run.ansi-italic {
+  font-style: italic;
+}
+
+.terminal-run.ansi-underline {
+  text-decoration-line: underline;
+}
+
+.terminal-run.ansi-strike {
+  text-decoration-line: line-through;
+}
+
+.terminal-run.ansi-underline.ansi-strike {
+  text-decoration-line: underline line-through;
+}
+
+.terminal-run.ansi-inverse {
+  color: var(--ansi-bg, var(--terminal-background));
+  background-color: var(--ansi-fg, var(--terminal-foreground));
+}
+
+.terminal-run.ansi-hidden {
+  visibility: hidden;
+}
+
+.terminal-keyboard {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.terminal-keyboard button {
+  min-width: 0;
+  padding: 0.55rem 0.35rem;
+  touch-action: manipulation;
 }
 
 .terminal-input-form {
@@ -1757,5 +1828,25 @@ h2 {
 
   .terminal-list {
     grid-template-columns: 1fr;
+  }
+
+  .terminal-console-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .terminal-latest {
+    width: 100%;
+  }
+
+  .terminal-keyboard {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #terminal-output {
+    min-height: 18rem;
+    max-height: 28rem;
+    padding: 0.7rem;
+    font-size: 0.78rem;
   }
 }

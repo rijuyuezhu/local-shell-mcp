@@ -96,6 +96,47 @@ async def test_worker_dispatches_persistent_shell_resize(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_worker_dispatches_persistent_shell_read_with_ansi(monkeypatch):
+    from local_shell_mcp.ops import shell as shell_ops
+    from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
+
+    calls = []
+
+    async def fake_read(
+        shell_id: str,
+        lines: int = 200,
+        *,
+        preserve_ansi: bool = False,
+    ):
+        calls.append((shell_id, lines, preserve_ansi))
+        return {
+            "shell_id": shell_id,
+            "output": "\x1b[32mready\x1b[0m",
+        }
+
+    monkeypatch.setattr(
+        shell_ops, "read_persistent_shell_output_execute", fake_read
+    )
+
+    result = await execute_worker_tool(
+        "read_persistent_shell_output",
+        {"shell_id": "shell-1", "lines": 500, "preserve_ansi": True},
+    )
+
+    assert result == {
+        "shell_id": "shell-1",
+        "output": "\x1b[32mready\x1b[0m",
+    }
+    assert calls == [("shell-1", 500, True)]
+
+    with pytest.raises(ValueError, match="preserve_ansi must be a boolean"):
+        await execute_worker_tool(
+            "read_persistent_shell_output",
+            {"shell_id": "shell-1", "preserve_ansi": "true"},
+        )
+
+
+@pytest.mark.asyncio
 async def test_worker_dispatches_persistent_shell_start(monkeypatch):
     from local_shell_mcp.ops import shell as shell_ops
     from local_shell_mcp.remote_worker.dispatch import execute_worker_tool

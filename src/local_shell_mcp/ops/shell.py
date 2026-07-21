@@ -697,15 +697,25 @@ async def resize_persistent_shell_execute(
 
 
 async def read_persistent_shell_output_execute(
-    shell_id: str, lines: int = 200
+    shell_id: str,
+    lines: int = 200,
+    *,
+    preserve_ansi: bool = False,
 ) -> ReadPersistentShellOutput:
     """Read recent output from a persistent shell through tmux capture-pane."""
-    result = await tmux(
-        ["capture-pane", "-p", "-t", shell_id, "-S", f"-{max(1, lines)}"]
-    )
+    capture_args = ["capture-pane", "-p"]
+    if preserve_ansi:
+        capture_args.append("-e")
+    capture_args.extend(["-t", shell_id, "-S", f"-{max(1, lines)}"])
+    result = await tmux(capture_args)
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
-    audit("read_persistent_shell_output", shell_id=shell_id, lines=lines)
+    audit(
+        "read_persistent_shell_output",
+        shell_id=shell_id,
+        lines=lines,
+        preserve_ansi=preserve_ansi,
+    )
     return ReadPersistentShellOutput(shell_id=shell_id, output=result.stdout)
 
 
