@@ -307,10 +307,12 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
     index = client.get("/control")
     assert index.status_code == 200
     assert 'href="/control/assets/web.css"' in index.text
+    assert 'src="/control/assets/syntax_highlight.js"' in index.text
     match = re.search(r'data-lsm-config="([^"]+)"', index.text)
     assert match is not None
     runtime = json.loads(html.unescape(match.group(1)))
     assert runtime["oauth"] is None
+    assert runtime["wallpaper"] == "aurora"
 
     payload = client.get("/api/ui/bootstrap").json()["data"]
     assert payload["ui"] == {
@@ -327,6 +329,9 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
             "terminal_websocket": True,
             "files": True,
             "file_preview": True,
+            "syntax_highlighting": True,
+            "audit_image_preview": True,
+            "wallpaper": "aurora",
             "file_editor": True,
             "file_copy": True,
             "file_move": True,

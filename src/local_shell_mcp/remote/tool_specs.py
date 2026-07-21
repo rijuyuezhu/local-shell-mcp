@@ -55,6 +55,7 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "search", None),
     RemoteWorkerToolSpec("", "edit_lines", None),
     RemoteWorkerToolSpec("", "hashline_edit", None),
+    RemoteWorkerToolSpec("", "apply_patch", None),
     RemoteWorkerToolSpec("", "bash", None),
     RemoteWorkerToolSpec("", "job", None),
     RemoteWorkerToolSpec("", "transfer_stat", None),

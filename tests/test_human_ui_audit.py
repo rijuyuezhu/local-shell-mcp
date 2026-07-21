@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 
@@ -418,6 +419,81 @@ def test_audit_api_validates_bounds_and_unknown_details(monkeypatch, tmp_path):
     assert missing.status_code == 404
 
 
+def test_audit_detail_sanitizes_and_previews_view_image(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lP7LAAAAAElFTkSuQmCC"
+    )
+    audit(
+        "tool_call_start",
+        call_id="local-image",
+        tool="view_image",
+        transport="http",
+        input={"path": "pixel.png"},
+    )
+    audit(
+        "tool_call_end",
+        call_id="local-image",
+        tool="view_image",
+        transport="http",
+        ok=True,
+        output={
+            "content": [
+                {
+                    "type": "image",
+                    "data": base64.b64encode(png).decode("ascii"),
+                    "mimeType": "image/png",
+                }
+            ],
+            "structuredContent": {"path": "pixel.png"},
+        },
+    )
+
+    response = client.get(
+        "/api/ui/audit/detail", params={"id": "call:local-image"}
+    )
+
+    assert response.status_code == 200
+    entry = response.json()["data"]["entry"]
+    assert "data" not in entry["output"]["content"][0]
+    assert entry["output"]["content"][0]["bytes"] == len(png)
+    assert entry["image_preview"] == {
+        "kind": "image",
+        "path": "pixel.png",
+        "bytes": len(png),
+        "mime_type": "image/png",
+        "data_base64": base64.b64encode(png).decode("ascii"),
+    }
+
+
+def test_audit_detail_rejects_invalid_inline_image(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    audit(
+        "tool_call_start",
+        call_id="invalid-image",
+        tool="view_image",
+        transport="http",
+    )
+    audit(
+        "tool_call_end",
+        call_id="invalid-image",
+        tool="view_image",
+        transport="http",
+        ok=False,
+        output={"content": [{"type": "image", "data": "not-base64"}]},
+    )
+
+    response = client.get(
+        "/api/ui/audit/detail", params={"id": "call:invalid-image"}
+    )
+
+    assert response.status_code == 200
+    entry = response.json()["data"]["entry"]
+    assert "data" not in entry["output"]["content"][0]
+    assert "image_preview" not in entry
+    assert entry["image_preview_error"]
+
+
 def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     static_root = (
         Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui_static"
@@ -431,7 +507,9 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     assert "auditGeneration" in script
     assert "auditDetailGeneration" in script
     assert "URLSearchParams" in script
-    assert "elements.auditDetailBody.textContent = JSON.stringify" in script
+    assert "renderAuditDetail(entry)" in script
+    assert "elements.auditDetailBody.innerHTML" not in script
+    assert "audit-image-preview" in script
     assert (
         "session_id"
         not in script[

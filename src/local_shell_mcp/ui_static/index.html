@@ -482,7 +482,7 @@
             <strong id="audit-detail-title">No record selected</strong>
             <span id="audit-detail-meta" class="muted">Select an Audit record</span>
           </div>
-          <pre id="audit-detail-body" tabindex="0">Select an Audit record.</pre>
+          <div id="audit-detail-body" class="audit-detail-body" tabindex="0">Select an Audit record.</div>
         </article>
       </div>
     </section>
@@ -492,11 +492,12 @@
         <p class="eyebrow">Migration status</p>
         <h2>Human UI foundation active</h2>
       </div>
-      <p>Machine inventory, OAuth PKCE, Dashboard telemetry, Remotes management, xterm-grade local and remote tmux PTY streaming with snapshot fallback, command history, mobile terminal keys, workspace-safe local and remote Files, revision-guarded Todos, and filtered Audit records are available. Remote Files copy, move, and rename remain local-only. Windows ConPTY parity and the native OpenTUI client remain in subsequent migration slices.</p>
+      <p>Machine inventory, OAuth PKCE, Dashboard telemetry, Remotes management, xterm-grade local and remote tmux PTY streaming with snapshot fallback, command history, mobile terminal keys, workspace-safe local and remote Files, revision-guarded Todos, and filtered Audit records are available. Remote Files copy, move, and rename remain local-only. The packaged browser-native Human UI is the canonical cross-platform interface; it requires no Bun, Yazi, or sidecar runtime.</p>
     </section>
   </main>
   <script src="__LSM_UI_PATH__/assets/xterm_bundle.js" defer></script>
   <script src="__LSM_UI_PATH__/assets/terminal_renderer.js" defer></script>
+  <script src="__LSM_UI_PATH__/assets/syntax_highlight.js" defer></script>
   <script src="__LSM_UI_PATH__/assets/web.js" defer></script>
 </body>
 </html>

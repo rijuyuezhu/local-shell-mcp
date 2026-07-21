@@ -258,6 +258,16 @@ async def _hashline_edit(args: dict[str, Any]) -> Any:
     )
 
 
+async def _apply_patch(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.patch import apply_patch_dispatch_execute
+
+    return await apply_patch_dispatch_execute(
+        str(args["patch"]),
+        str(args.get("cwd") or "."),
+        str(args["session_id"]),
+    )
+
+
 async def _delete_file_or_dir(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.files import delete_file_or_dir_dispatch_execute
 
@@ -475,6 +485,7 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "write_file": _write_file,
     "edit_lines": _edit_lines,
     "hashline_edit": _hashline_edit,
+    "apply_patch": _apply_patch,
     "delete_file_or_dir": _delete_file_or_dir,
     "read": _read,
     "tree_view": _tree_view,

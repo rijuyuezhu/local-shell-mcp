@@ -149,6 +149,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "Human interface",
         metavar="COUNT",
     ),
+    SettingSpec("ui_wallpaper", "Human interface", metavar="MODE"),
     SettingSpec("workspace_root", "Paths and state", metavar="PATH"),
     SettingSpec("state_dir", "Paths and state", metavar="PATH"),
     SettingSpec("auth_mode", "Authentication and OAuth"),
@@ -360,6 +361,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("shell_executable", "Tool executables", metavar="PATH"),
     SettingSpec("tmux_bin", "Tool executables", metavar="PATH"),
     SettingSpec("rg_bin", "Tool executables", metavar="PATH"),
+    SettingSpec("git_bin", "Tool executables", metavar="PATH"),
     SettingSpec("python_bin", "Tool executables", metavar="PATH"),
 )
 

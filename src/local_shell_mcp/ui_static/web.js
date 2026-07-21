@@ -5,6 +5,10 @@
   const uiPath = String(config.uiPath || "/ui").replace(/\/$/, "");
   const apiPrefix = String(config.apiPrefix || "/api/ui").replace(/\/$/, "");
   const oauth = config.oauth && typeof config.oauth === "object" ? config.oauth : null;
+  const wallpaper = ["aurora", "grid", "none"].includes(String(config.wallpaper || ""))
+    ? String(config.wallpaper)
+    : "aurora";
+  document.body.dataset.wallpaper = wallpaper;
   const tokenStorageKey = "local-shell-mcp-ui-access-token";
   const pendingStorageKey = "local-shell-mcp-ui-oauth-pending";
   const pendingMaxAgeMs = 10 * 60 * 1000;
@@ -1717,6 +1721,39 @@
     return `/audit?${params.toString()}`;
   }
 
+  function renderAuditDetail(entry) {
+    const detail = { ...entry };
+    const preview = detail.image_preview && typeof detail.image_preview === "object"
+      ? detail.image_preview
+      : null;
+    delete detail.image_preview;
+    const fragment = document.createDocumentFragment();
+    if (preview && preview.data_base64 && preview.mime_type) {
+      const figure = document.createElement("figure");
+      figure.className = "audit-image-preview";
+      const image = document.createElement("img");
+      image.alt = text(preview.path, "Audited image result");
+      image.src = `data:${preview.mime_type};base64,${preview.data_base64}`;
+      const caption = document.createElement("figcaption");
+      caption.textContent = `${text(preview.path, "image result")} · ${formatFileBytes(preview.bytes)}`;
+      figure.append(image, caption);
+      fragment.append(figure);
+    } else if (detail.image_preview_error) {
+      const warning = document.createElement("div");
+      warning.className = "audit-preview-error";
+      warning.textContent = `Image preview unavailable: ${detail.image_preview_error}`;
+      fragment.append(warning);
+    }
+    const pre = document.createElement("pre");
+    pre.className = "audit-detail-json";
+    const source = JSON.stringify(detail, null, 2);
+    if (window.LsmSyntax) window.LsmSyntax.render(pre, source, "json");
+    else pre.textContent = source;
+    fragment.append(pre);
+    elements.auditDetailBody.replaceChildren(fragment);
+  }
+
+
   async function loadAuditDetail(entryId) {
     if (!entryId || !auditMachineOnline()) {
       clearAuditDetail();
@@ -1741,7 +1778,7 @@
       if (!entry) throw new Error("Audit detail response was malformed");
       elements.auditDetailTitle.textContent = auditEntryTitle(entry);
       elements.auditDetailMeta.textContent = `${requestedMachine} · ${auditTimestamp(entry.ts)}`;
-      elements.auditDetailBody.textContent = JSON.stringify(entry, null, 2);
+      renderAuditDetail(entry);
       return entry;
     } catch (error) {
       if (
@@ -2569,7 +2606,12 @@
       pre.textContent = (hex.match(/.{1,32}/g) || []).join("\n") || "No preview bytes.";
       elements.filePreviewMeta.textContent = `${formatFileBytes(payload.bytes)} · ${payload.preview_bytes || 0} preview bytes · hex`;
     } else {
-      pre.textContent = text(payload.content, "");
+      const source = text(payload.content, "");
+      const language = window.LsmSyntax
+        ? window.LsmSyntax.languageForPath(entry.path, payload.media_type)
+        : "plain";
+      if (window.LsmSyntax && language !== "plain") window.LsmSyntax.render(pre, source, language);
+      else pre.textContent = source;
       if (payload.preview_truncated) elements.filePreviewMeta.textContent += " · preview truncated";
     }
     elements.filePreviewBody.replaceChildren(pre);

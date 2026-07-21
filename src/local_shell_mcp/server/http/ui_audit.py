@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 from typing import Any, cast
 
 from fastapi import HTTPException
@@ -21,6 +23,7 @@ from ...oauth.core.scopes import (
     SCOPE_SHELL_WRITE,
     SUPPORTED_OAUTH_SCOPES,
 )
+from ...ops.image import detect_image_type
 from ...remote.manager import remote_manager
 from ...remote.service import call_remote_worker_tool
 
@@ -33,6 +36,7 @@ UI_AUDIT_REMOTE_TIMEOUT_S = 60
 
 _AUDIT_FILE_WRITE_TOOLS = frozenset(
     {
+        "apply_patch",
         "delete_file_or_dir",
         "edit_lines",
         "hashline_edit",
@@ -270,6 +274,68 @@ def _normalize_entry(machine: str, value: Any) -> dict[str, Any]:
     return entry
 
 
+def _audit_view_image_detail(entry: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize an audited MCP image result and attach a bounded browser preview."""
+    if str(entry.get("tool") or "") != "view_image":
+        return entry
+    output = entry.get("output")
+    if not isinstance(output, dict):
+        return entry
+    content = output.get("content")
+    if not isinstance(content, list):
+        return entry
+    image_index = next(
+        (
+            index
+            for index, item in enumerate(content)
+            if isinstance(item, dict)
+            and item.get("type") == "image"
+            and isinstance(item.get("data"), str)
+        ),
+        None,
+    )
+    if image_index is None:
+        return entry
+
+    source_item = content[image_index]
+    assert isinstance(source_item, dict)
+    sanitized_item = {
+        name: value for name, value in source_item.items() if name != "data"
+    }
+    sanitized_content = list(content)
+    sanitized_content[image_index] = sanitized_item
+    detail = {**entry, "output": {**output, "content": sanitized_content}}
+    try:
+        raw = base64.b64decode(str(source_item["data"]), validate=True)
+        maximum = max(1, int(get_settings().max_view_image_bytes))
+        if not raw:
+            raise ValueError("Image payload is empty")
+        if len(raw) > maximum:
+            raise ValueError(
+                f"Refusing image of {len(raw)} bytes; max is {maximum}"
+            )
+        _, mime_type = detect_image_type(raw[:16])
+        structured = output.get("structuredContent")
+        if not isinstance(structured, dict):
+            structured = output.get("structured_content")
+        path = (
+            str(structured.get("path") or "image result")
+            if isinstance(structured, dict)
+            else "image result"
+        )
+        sanitized_item["bytes"] = len(raw)
+        detail["image_preview"] = {
+            "kind": "image",
+            "path": path,
+            "bytes": len(raw),
+            "mime_type": mime_type,
+            "data_base64": base64.b64encode(raw).decode("ascii"),
+        }
+    except (ValueError, OSError, binascii.Error) as exc:
+        detail["image_preview_error"] = str(exc)
+    return detail
+
+
 def _summary_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Return metadata-only list data; protected payloads require detail scopes."""
     summary: dict[str, Any] = {
@@ -421,6 +487,7 @@ async def api_audit_detail(request: Request) -> Response:
         _require_scopes(*base_scopes)
         entry = await _detail(machine, entry_id)
         _require_scopes(*_detail_scopes(machine, entry))
+        entry = await asyncio.to_thread(_audit_view_image_detail, entry)
         return _json_ok(_payload(machine, {"entry": entry}))
     except HTTPException:
         raise

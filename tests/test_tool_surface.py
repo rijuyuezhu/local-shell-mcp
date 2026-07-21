@@ -54,6 +54,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "write_file",
     "edit_lines",
     "hashline_edit",
+    "apply_patch",
     "delete_file_or_dir",
     "create_file_link",
     "list_file_links",

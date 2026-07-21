@@ -24,6 +24,7 @@ CORE_TOOL_NAMES = {
     "glob_search",
     "write_file",
     "hashline_edit",
+    "apply_patch",
     "delete_file_or_dir",
     "secret_scan",
     "run_python_code",
@@ -134,6 +135,26 @@ async def exercise_explicit_session_workflow(
     assert "+needle three" in hash_edit["diff"]
     assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
         "alpha\nneedle three\ngamma\n"
+    )
+
+    patch_result = await client.call_tool(
+        "apply_patch",
+        {
+            "session_id": session_id,
+            "cwd": ".",
+            "patch": """*** Begin Patch
+*** Update File: notes.txt
+@@
+-needle three
++needle four
+*** End Patch
+""",
+        },
+    )
+    assert patch_result["checked"] is True
+    assert patch_result["applied"] is True
+    assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
+        "alpha\nneedle four\ngamma\n"
     )
 
     other_dir = workspace / "other-work"

@@ -21,6 +21,7 @@ from .constants import REMOTE_WORKER_BUNDLE_PATH
 _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "__init__.py",
     "audit.py",
+    "patch_ops.py",
     "conpty.py",
     "dashboard.py",
     "terminal_bridge.py",
@@ -31,6 +32,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "ops/__init__.py",
     "ops/files.py",
     "ops/jobs.py",
+    "ops/patch.py",
     "ops/read.py",
     "ops/todo.py",
     "ops/search.py",

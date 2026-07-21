@@ -1,11 +1,11 @@
 {
-  "count": 38,
+  "count": 39,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "38"
+          "code": "39"
         },
         "."
       ],
@@ -548,6 +548,49 @@
       ]
     },
     {
+      "body": "Register compatibility patch application tools.",
+      "headers": [
+        "Tool",
+        "Parameters",
+        "Description"
+      ],
+      "heading": "Patch",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "apply_patch"
+          },
+          {
+            "items": [
+              {
+                "description": "Directory inside the explicit session workdir against which patch paths are resolved. Defaults to the session workdir.",
+                "head": {
+                  "code": "cwd"
+                },
+                "note": "(string, optional)"
+              },
+              {
+                "description": "A standard unified diff or an apply_patch envelope beginning with '*** Begin Patch'. Paths resolve inside cwd and the explicit session workdir.",
+                "head": {
+                  "code": "patch"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "Check and apply a standard unified diff or an apply_patch envelope inside an explicit agent/workspace session. Paths resolve relative to cwd within the session workdir; absolute envelope paths are accepted only when they stay inside cwd. The tool validates the entire envelope, runs `git apply --check`, and applies only after preflight succeeds. Prefer hashline_edit for ordinary grounded edits copied from read/search; use apply_patch for portable multi-file patches or compatibility with apply_patch envelopes. Current patch input cap: 5000000 bytes."
+        ]
+      ]
+    },
+    {
       "body": "Register the read tool with selector support.",
       "headers": [
         "Tool",
@@ -615,7 +658,7 @@
               }
             ]
           },
-          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
+          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, apply_patch, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
         ]
       ]
     },
@@ -1546,6 +1589,144 @@
           "dynamic_tools"
         ],
         "title": "AgentConfigStatusOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Check and apply a standard unified diff or an apply_patch envelope inside an explicit agent/workspace session. Paths resolve relative to cwd within the session workdir; absolute envelope paths are accepted only when they stay inside cwd. The tool validates the entire envelope, runs `git apply --check`, and applies only after preflight succeeds. Prefer hashline_edit for ordinary grounded edits copied from read/search; use apply_patch for portable multi-file patches or compatibility with apply_patch envelopes. Current patch input cap: 5000000 bytes.",
+      "inputSchema": {
+        "properties": {
+          "cwd": {
+            "default": ".",
+            "description": "Directory inside the explicit session workdir against which patch paths are resolved. Defaults to the session workdir.",
+            "title": "Cwd",
+            "type": "string"
+          },
+          "patch": {
+            "description": "A standard unified diff or an apply_patch envelope beginning with '*** Begin Patch'. Paths resolve inside cwd and the explicit session workdir.",
+            "title": "Patch",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "patch"
+        ],
+        "title": "apply_patchArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:read",
+              "shell:write"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "apply_patch",
+      "outputSchema": {
+        "description": "Result of validating and applying a unified diff.",
+        "properties": {
+          "applied": {
+            "description": "Whether the patch was applied to the worktree.",
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "checked": {
+            "description": "Whether the preflight git apply --check phase succeeded.",
+            "title": "Checked",
+            "type": "boolean"
+          },
+          "command": {
+            "description": "Human-readable git apply command.",
+            "title": "Command",
+            "type": "string"
+          },
+          "cwd": {
+            "description": "Resolved directory against which paths were applied.",
+            "title": "Cwd",
+            "type": "string"
+          },
+          "duration_ms": {
+            "description": "Elapsed time for the reported git phase.",
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "git apply exit code, or null when execution timed out.",
+            "title": "Exit Code"
+          },
+          "ok": {
+            "description": "Whether the final patch application succeeded.",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "patch_path": {
+            "description": "Temporary normalized unified-diff file used by git apply.",
+            "title": "Patch Path",
+            "type": "string"
+          },
+          "stderr": {
+            "default": "",
+            "description": "Bounded standard error.",
+            "title": "Stderr",
+            "type": "string"
+          },
+          "stdout": {
+            "default": "",
+            "description": "Bounded standard output.",
+            "title": "Stdout",
+            "type": "string"
+          },
+          "timed_out": {
+            "default": false,
+            "description": "Whether git apply exceeded its timeout.",
+            "title": "Timed Out",
+            "type": "boolean"
+          },
+          "truncated": {
+            "default": false,
+            "description": "Whether captured output was truncated.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "exit_code",
+          "duration_ms",
+          "cwd",
+          "command",
+          "patch_path",
+          "checked",
+          "applied"
+        ],
+        "title": "ApplyPatchOutput",
         "type": "object"
       }
     },
@@ -4870,7 +5051,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
+      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, apply_patch, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
       "inputSchema": {
         "properties": {
           "action": {

@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     """Idle timeout for authenticated Human UI terminal WebSockets; 0 disables idle expiry."""
     ui_terminal_max_connections: int = 8
     """Maximum concurrent Human UI terminal WebSocket connections."""
+    ui_wallpaper: Literal["aurora", "grid", "none"] = "aurora"
+    """Browser Human UI background treatment; no external network image is fetched."""
 
     # Paths and state.
     workspace_root: Path = DEFAULT_WORKSPACE_ROOT
@@ -269,6 +271,8 @@ class Settings(BaseSettings):
     """tmux executable."""
     rg_bin: str = "rg"
     """ripgrep executable."""
+    git_bin: str = "git"
+    """Git executable used for patch validation and application."""
     python_bin: str = "python3"
     """Python executable."""
 

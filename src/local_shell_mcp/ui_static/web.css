@@ -16,6 +16,20 @@ body {
     radial-gradient(circle at 12% 10%, rgba(40, 123, 155, 0.22), transparent 28rem),
     radial-gradient(circle at 86% 18%, rgba(113, 73, 175, 0.18), transparent 30rem),
     linear-gradient(160deg, #071018 0%, #0b131d 52%, #071018 100%);
+  background-attachment: fixed;
+}
+
+body[data-wallpaper="grid"] {
+  background:
+    linear-gradient(rgba(83, 151, 180, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(83, 151, 180, 0.07) 1px, transparent 1px),
+    linear-gradient(160deg, #071018 0%, #0b131d 52%, #071018 100%);
+  background-size: 2.4rem 2.4rem, 2.4rem 2.4rem, auto;
+  background-attachment: fixed;
+}
+
+body[data-wallpaper="none"] {
+  background: #071018;
 }
 
 button,
@@ -628,7 +642,8 @@ h2 {
   min-width: 0;
   border: 1px solid rgba(151, 184, 202, 0.12);
   border-radius: 0.8rem;
-  background: rgba(2, 8, 13, 0.72);
+  background: rgba(2, 8, 13, 0.62);
+  backdrop-filter: blur(14px) saturate(115%);
 }
 
 .file-list {
@@ -1876,3 +1891,70 @@ h2 {
     font-size: 0.78rem;
   }
 }
+
+
+.audit-detail-body {
+  min-width: 0;
+  min-height: 24rem;
+  overflow: auto;
+  border: 1px solid rgba(151, 184, 202, 0.1);
+  border-radius: 0.55rem;
+  background: rgba(3, 8, 12, 0.78);
+  padding: 0.75rem;
+}
+
+.audit-detail-json {
+  min-width: 0;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #d9e7f2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.48;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.audit-image-preview {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.8rem;
+  border-bottom: 1px solid rgba(151, 184, 202, 0.12);
+  padding-bottom: 0.8rem;
+}
+
+.audit-image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 24rem;
+  border-radius: 0.5rem;
+  object-fit: contain;
+}
+
+.audit-image-preview figcaption,
+.audit-preview-error {
+  color: #91a6b8;
+  font-size: 0.74rem;
+}
+
+.audit-preview-error {
+  margin-bottom: 0.75rem;
+  color: #ffc3c3;
+}
+
+.syntax-code {
+  font: inherit;
+}
+
+.syntax-comment { color: #74899a; font-style: italic; }
+.syntax-string { color: #a9f4d0; }
+.syntax-number { color: #f4d58a; }
+.syntax-keyword { color: #9bbcff; font-weight: 600; }
+.syntax-key { color: #8af2e2; }
+.syntax-punctuation { color: #b9c8d6; }
+.syntax-diff-add { color: #a9f4d0; background: rgba(57, 166, 106, 0.12); }
+.syntax-diff-delete { color: #ffc3c3; background: rgba(190, 70, 70, 0.12); }

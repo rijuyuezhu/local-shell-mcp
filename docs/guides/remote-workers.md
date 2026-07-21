@@ -102,7 +102,7 @@ The normal flow before remote edits is:
 1. `remote_admin(action="list", args={})`
 2. `session_start(target="remote", machine="gpu1", workdir="/home/me/project")`
 3. `read(session_id=..., path=".")` or `search(session_id=..., pattern=..., paths=[...])`
-4. `hashline_edit(session_id=..., input=...)` from copied hashline rows; use `edit_lines(session_id=..., ...)` only for exact structured range edits
+4. `hashline_edit(session_id=..., input=...)` from copied hashline rows; use `edit_lines(session_id=..., ...)` only for exact structured range edits; use `apply_patch(session_id=..., patch=..., cwd=...)` only when you already have a portable unified diff or compatibility envelope
 5. `bash(session_id=..., command=...)` for commands and validation
 
 ## Run remote commands

@@ -426,6 +426,28 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             )
             assert not (control_workspace / "remote" / "demo.txt").exists()
 
+            patch_result = await client.call_tool(
+                "apply_patch",
+                {
+                    "session_id": first_class_session_id,
+                    "cwd": ".",
+                    "patch": """*** Begin Patch
+*** Update File: remote/demo.txt
+@@
+-edited through structured remote edit
++edited through remote apply_patch
+*** End Patch
+""",
+                },
+            )
+            assert patch_result["checked"] is True
+            assert patch_result["applied"] is True
+            assert (remote_workspace / "remote" / "demo.txt").read_text() == (
+                "edited through hashline remote session\n"
+                "edited through remote apply_patch\n"
+            )
+            assert not (control_workspace / "remote" / "demo.txt").exists()
+
             first_class_bash = await client.call_tool(
                 "bash",
                 {
