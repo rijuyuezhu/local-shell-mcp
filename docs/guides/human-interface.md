@@ -24,11 +24,12 @@ The current migration slice provides:
 - machine-aware local and remote file browsing, bounded previews, text editing, creation, and deletion;
 - local workspace copy, move, and rename operations;
 - revision-guarded local and remote Todo lists with machine isolation;
+- filtered local and remote Audit records with scope-sensitive details;
 - OAuth-protected Human UI APIs and terminal WebSockets;
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Remote-worker terminals, rich xterm-compatible rendering, Audit, dashboard telemetry, Remotes management, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Remote-worker terminals, rich xterm-compatible rendering, dashboard telemetry, Remotes management, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -119,6 +120,18 @@ Each persisted list has a monotonic non-negative `revision`. The browser sends t
 Todo count and serialized-byte limits reuse `max_todos` and `max_todo_bytes`. The Human UI additionally bounds machine names, item IDs, content, status, and priority fields by encoded byte length and rejects duplicate IDs or malformed item shapes. A save disables machine selection and row controls until completion. Machine switches reset list state and increment a request generation, so a slow response from a previous machine cannot replace the active list. Periodic inventory refreshes do not overwrite unsaved edits, and offline or revoked workers remain visible but cannot be selected.
 
 The browser supports filtering open and completed items, adding and removing rows, and editing content, status, and priority. The list area is height-bounded and scrollable on narrow and wide layouts. The native OpenTUI Todos screen and its exact clipping behavior remain deferred until the OpenTUI runtime is migrated.
+
+## Audit
+
+The **Audit** panel reads the private process-level JSONL log for one selected machine. Unlike Files and Todos, Audit data is not owned by a workspace session: the local server reads its own process log, while a remote worker serves its own log through native `query_audit` and `get_audit_entry` RPC handlers. Remote requests therefore carry no Files/Todos `session_id`, use the existing worker allowlist, require an online exact machine match, and are capped at 60 seconds. The UI never constructs remote shell commands or copies remote log files to emulate Audit access.
+
+The query path reads a consistent bounded tail while holding the same cross-process transaction lock used by Audit append and retention. It examines at most 4 MB and returns at most 2,000 coalesced rows. Malformed JSONL lines are skipped. Stored `tool_call_start` and `tool_call_end` events remain explicit on disk for retention integrity, while the Human UI query pairs them by `call_id` (or a legacy tool/node/session key), preserves unpaired rows, and folds semantic `parent_call_id` events into the displayed call without deleting their source records. Routine `auth_ok` events are hidden so polling the authenticated UI does not create an ever-growing visible feedback loop.
+
+Lists require `shell:read`; selecting a remote machine additionally requires `remote:use`. Full details are authorized again based on the actual operation: file mutations require `shell:write`, shell and job activity require `shell:execute`, shared-file activity requires `file:share`, Git writes require `git:write`, and remote activity requires `remote:use`. Unknown operation types require the complete supported scope set rather than guessing a weaker permission. This second check prevents a read-only token from using the list endpoint to retrieve command, mutation, sharing, or remote-operation payloads.
+
+The list response is metadata-only: it includes stable identifiers, timestamps, operation, tool, status, duration, session, and lifecycle counts, but excludes `input`, `output`, `error`, and child-event payloads. Free-text search is limited to the same summary metadata, so a read-only token cannot use match/no-match behavior to probe protected payload content. The browser can also filter by operation, event text, session, order, and result limit. Machine and detail requests carry independent generation guards, so a slow response from a previous worker or selection cannot overwrite the active panel. Inventory refreshes preserve an online selection and fall back to local when a worker becomes unavailable. Both the list and detail areas are height-bounded and scrollable on narrow and wide layouts.
+
+Audit fields are already normalized through the shared portability, byte-budget, and credential-redaction boundary before they reach the JSONL log. The browser renders details only through `textContent` inside a `<pre>` element; stored HTML, SVG, or script-like text is never interpreted as active markup. The native OpenTUI Audit screen, lightweight syntax highlighting, and any optional external payload side store remain separate follow-up work.
 
 ## Configuration
 

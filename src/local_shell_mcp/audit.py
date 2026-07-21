@@ -387,6 +387,400 @@ def _enforce_audit_log_limit(path: Path, max_bytes: int) -> None:
     atomic_write_private_bytes(path, b"".join(line for _, line in selected))
 
 
+_AUDIT_SOURCE_INDEXES = "_source_indexes"
+_AUDIT_QUERY_MAX_BYTES = 4_000_000
+_AUDIT_QUERY_MAX_ENTRIES = 2_000
+_AUDIT_HIDDEN_EVENTS = frozenset({"auth_ok"})
+_AUDIT_LIFECYCLE_EVENTS = frozenset({"tool_call_start", "tool_call_end"})
+
+_AUDIT_FILE_TOOLS = frozenset(
+    {
+        "delete_file_or_dir",
+        "edit_lines",
+        "glob_search",
+        "hashline_edit",
+        "list_files",
+        "read",
+        "search",
+        "secret_scan",
+        "tree_view",
+        "write_file",
+    }
+)
+_AUDIT_SHELL_TOOLS = frozenset(
+    {
+        "bash",
+        "kill_persistent_shell",
+        "list_persistent_shells",
+        "read_persistent_shell_output",
+        "resize_persistent_shell",
+        "run_python_code",
+        "send_persistent_shell_input",
+        "session_start",
+    }
+)
+
+
+def _audit_operation(record: dict[str, Any]) -> str:
+    """Return one stable UI operation category for an audit record."""
+    tool = str(record.get("tool") or "")
+    event = str(record.get("event") or "")
+    if tool in _AUDIT_FILE_TOOLS:
+        return "files"
+    if tool in _AUDIT_SHELL_TOOLS:
+        return "shell"
+    if tool == "job" or event.startswith("job_"):
+        return "jobs"
+    if tool.startswith("transfer_") or event.startswith(
+        ("download_", "file_link_", "transfer_")
+    ):
+        return "transfer"
+    if tool.startswith("remote_") or event.startswith("remote_"):
+        return "remote"
+    if tool.startswith("agent_") or event.startswith(("agent_", "skill_")):
+        return "agent"
+    if event.startswith(("run_shell_", "shell_", "ui_terminal_")):
+        return "shell"
+    if event.startswith("oauth_") or event.startswith("mcp_"):
+        return "security"
+    return "other"
+
+
+def _audit_node(record: dict[str, Any]) -> str:
+    return str(record.get("machine") or record.get("node") or "local")
+
+
+def _audit_session(record: dict[str, Any]) -> str:
+    return str(
+        record.get("session_id")
+        or record.get("session")
+        or record.get("shell_id")
+        or ""
+    )
+
+
+def _audit_call_key(record: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(record.get("tool") or ""),
+        _audit_node(record),
+        _audit_session(record),
+    )
+
+
+def _audit_call_input(record: dict[str, Any]) -> Any:
+    if "input" in record:
+        return record["input"]
+    arguments = record.get("arguments")
+    if isinstance(arguments, dict):
+        return arguments.get("keyword_args", arguments)
+    return None
+
+
+def _new_audit_call_entry(record: dict[str, Any], index: int) -> dict[str, Any]:
+    call_id = str(record.get("call_id") or "")
+    entry: dict[str, Any] = {
+        "id": (
+            f"call:{call_id}"
+            if call_id
+            else f"legacy-call:{record.get('ts', 0)}:{index}"
+        ),
+        "ts": _audit_timestamp(record.get("ts")),
+        "event": "tool_call",
+        "tool": str(record.get("tool") or "unknown"),
+        "node": _audit_node(record),
+        "operation": _audit_operation(record),
+        "paired": False,
+        "status": "running",
+        "source_events": ["tool_call_start"],
+        _AUDIT_SOURCE_INDEXES: [index],
+    }
+    if call_id:
+        entry["call_id"] = call_id
+    session = _audit_session(record)
+    if session:
+        entry["session"] = session
+    call_input = _audit_call_input(record)
+    if call_input is not None:
+        entry["input"] = call_input
+    return entry
+
+
+def _finish_audit_call_entry(
+    entry: dict[str, Any], record: dict[str, Any], index: int
+) -> None:
+    ok = record.get("ok") if isinstance(record.get("ok"), bool) else None
+    entry["paired"] = True
+    entry["status"] = (
+        "success" if ok is True else "failed" if ok is False else "completed"
+    )
+    entry["source_events"] = ["tool_call_start", "tool_call_end"]
+    entry[_AUDIT_SOURCE_INDEXES].append(index)
+    if ok is not None:
+        entry["ok"] = ok
+    for name in ("duration_ms", "output", "error", "error_type"):
+        if name in record:
+            entry[name] = record[name]
+
+
+def _unpaired_audit_end_entry(
+    record: dict[str, Any], index: int
+) -> dict[str, Any]:
+    call_id = str(record.get("call_id") or "")
+    entry: dict[str, Any] = {
+        "id": (
+            f"call:{call_id}"
+            if call_id
+            else f"legacy-end:{record.get('ts', 0)}:{index}"
+        ),
+        "ts": _audit_timestamp(record.get("ts")),
+        "event": "tool_call",
+        "tool": str(record.get("tool") or "unknown"),
+        "node": _audit_node(record),
+        "operation": _audit_operation(record),
+        "paired": False,
+        "status": "unpaired",
+        "source_events": ["tool_call_end"],
+        _AUDIT_SOURCE_INDEXES: [index],
+    }
+    if call_id:
+        entry["call_id"] = call_id
+    session = _audit_session(record)
+    if session:
+        entry["session"] = session
+    for name in ("ok", "duration_ms", "output", "error", "error_type"):
+        if name in record:
+            entry[name] = record[name]
+    return entry
+
+
+def _nested_audit_event(record: dict[str, Any]) -> dict[str, Any] | None:
+    event = str(record.get("event") or "")
+    if not event or event in _AUDIT_LIFECYCLE_EVENTS:
+        return None
+    return {
+        name: value
+        for name, value in record.items()
+        if name not in {"id", "ts", "parent_call_id"}
+    }
+
+
+def _coalesce_audit_records(
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Pair tool calls and fold child events into stable Human UI rows."""
+    rows: list[dict[str, Any]] = []
+    pending_by_id: dict[str, dict[str, Any]] = {}
+    entries_by_id: dict[str, dict[str, Any]] = {}
+    pending_legacy: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+
+    for index, record in enumerate(records):
+        event = str(record.get("event") or "")
+        if event in _AUDIT_HIDDEN_EVENTS:
+            continue
+        parent_call_id = str(record.get("parent_call_id") or "")
+        if parent_call_id:
+            parent = entries_by_id.get(parent_call_id)
+            if parent is not None:
+                parent[_AUDIT_SOURCE_INDEXES].append(index)
+                nested = _nested_audit_event(record)
+                if nested is not None:
+                    parent.setdefault("related_events", []).append(nested)
+                continue
+            if event in _AUDIT_LIFECYCLE_EVENTS:
+                continue
+        if event == "tool_call_start":
+            entry = _new_audit_call_entry(record, index)
+            rows.append(entry)
+            call_id = str(record.get("call_id") or "")
+            if call_id:
+                pending_by_id[call_id] = entry
+                entries_by_id[call_id] = entry
+            else:
+                pending_legacy.setdefault(_audit_call_key(record), []).append(
+                    entry
+                )
+            continue
+        if event == "tool_call_end":
+            call_id = str(record.get("call_id") or "")
+            entry = pending_by_id.pop(call_id, None) if call_id else None
+            if entry is None and not call_id:
+                pending = pending_legacy.get(_audit_call_key(record), [])
+                if pending:
+                    entry = pending.pop(0)
+            if entry is None:
+                rows.append(_unpaired_audit_end_entry(record, index))
+            else:
+                _finish_audit_call_entry(entry, record, index)
+            continue
+
+        rows.append(
+            {
+                **record,
+                "ts": _audit_timestamp(record.get("ts")),
+                "id": str(
+                    record.get("id") or f"record:{record.get('ts', 0)}:{index}"
+                ),
+                "node": _audit_node(record),
+                "operation": _audit_operation(record),
+                _AUDIT_SOURCE_INDEXES: [index],
+            }
+        )
+    return rows
+
+
+def _public_audit_entry(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        name: value
+        for name, value in row.items()
+        if name != _AUDIT_SOURCE_INDEXES
+    }
+
+
+def _read_audit_records() -> list[dict[str, Any]]:
+    """Read a bounded, consistent tail of the private JSONL audit log."""
+    settings = get_settings()
+    path = settings.audit_log_path
+    configured_limit = int(settings.max_audit_log_bytes)
+    max_bytes = _AUDIT_QUERY_MAX_BYTES
+    if configured_limit > 0:
+        max_bytes = min(max_bytes, configured_limit)
+    max_bytes = max(1, max_bytes)
+
+    with _audit_transaction(path):
+        if not path.exists():
+            return []
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            if size > max_bytes:
+                handle.seek(size - max_bytes)
+                handle.readline()
+            raw = handle.read(max_bytes)
+
+    records: list[dict[str, Any]] = []
+    for line in raw.splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError, UnicodeDecodeError:
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+    return records
+
+
+def _audit_timestamp(value: Any) -> float:
+    """Return a finite sortable timestamp, treating malformed values as zero."""
+    try:
+        timestamp = float(value or 0)
+    except TypeError, ValueError:
+        return 0.0
+    return timestamp if math.isfinite(timestamp) else 0.0
+
+
+def _audit_search_document(row: dict[str, Any]) -> str:
+    """Return searchable summary metadata without indexing protected payloads."""
+    related_events = row.get("related_events")
+    related_names = (
+        [
+            str(event.get("event") or "")
+            for event in related_events
+            if isinstance(event, dict)
+        ]
+        if isinstance(related_events, list)
+        else []
+    )
+    summary = {
+        "id": row.get("id"),
+        "event": row.get("event"),
+        "source_events": row.get("source_events"),
+        "related_events": related_names,
+        "tool": row.get("tool"),
+        "node": row.get("node"),
+        "operation": row.get("operation"),
+        "session": row.get("session"),
+        "status": row.get("status"),
+        "ok": row.get("ok"),
+        "call_id": row.get("call_id"),
+    }
+    return json.dumps(summary, ensure_ascii=False, default=str).casefold()
+
+
+def query_audit(
+    *,
+    limit: int = 300,
+    event: str | None = None,
+    operation: str | None = None,
+    session: str | None = None,
+    search: str | None = None,
+    start_ts: float | None = None,
+    end_ts: float | None = None,
+    sort: str = "desc",
+) -> dict[str, Any]:
+    """Read, pair, filter, and sort bounded audit rows for a Human UI client."""
+    bounded_limit = max(1, min(int(limit), _AUDIT_QUERY_MAX_ENTRIES))
+    normalized_sort = str(sort).casefold()
+    if normalized_sort not in {"asc", "desc"}:
+        raise ValueError("sort must be asc or desc")
+    if start_ts is not None and end_ts is not None and start_ts > end_ts:
+        raise ValueError("start_ts must not be greater than end_ts")
+
+    rows = _coalesce_audit_records(_read_audit_records())
+    needle = (search or "").casefold().strip()
+    event_filter = (event or "").casefold().strip()
+    operation_filter = (operation or "").casefold().strip()
+    session_filter = (session or "").casefold().strip()
+    matched: list[dict[str, Any]] = []
+    for row in rows:
+        timestamp = _audit_timestamp(row.get("ts"))
+        if start_ts is not None and timestamp < start_ts:
+            continue
+        if end_ts is not None and timestamp > end_ts:
+            continue
+        event_text = " ".join(
+            [
+                str(row.get("event") or ""),
+                *map(str, row.get("source_events") or []),
+            ]
+        )
+        if event_filter and event_filter not in event_text.casefold():
+            continue
+        if (
+            operation_filter
+            and operation_filter != str(row.get("operation") or "").casefold()
+        ):
+            continue
+        if (
+            session_filter
+            and session_filter != str(row.get("session") or "").casefold()
+        ):
+            continue
+        if needle and needle not in _audit_search_document(row):
+            continue
+        matched.append(row)
+
+    matched.sort(
+        key=lambda item: _audit_timestamp(item.get("ts")),
+        reverse=normalized_sort == "desc",
+    )
+    total = len(matched)
+    selected = matched[:bounded_limit]
+    return {
+        "entries": [_public_audit_entry(row) for row in selected],
+        "count": len(selected),
+        "total_matched": total,
+    }
+
+
+def get_audit_entry(entry_id: str) -> dict[str, Any]:
+    """Return one full coalesced audit entry by stable identifier."""
+    normalized = str(entry_id).strip()
+    if not normalized:
+        raise ValueError("audit entry id is required")
+    for row in _coalesce_audit_records(_read_audit_records()):
+        if str(row.get("id") or "") == normalized:
+            return _public_audit_entry(row)
+    raise ValueError(f"Unknown audit entry: {normalized}")
+
+
 def audit(event: str, **fields: Any) -> None:
     """Append one uniformly redacted, bounded, private audit record."""
     settings = get_settings()

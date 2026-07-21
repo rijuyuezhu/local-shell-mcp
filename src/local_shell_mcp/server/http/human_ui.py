@@ -23,6 +23,7 @@ from ...oauth.core.urls import issuer_url, resource_url
 from ...remote.manager import remote_manager
 from ...ui_security import UI_API_PREFIX
 from ...version import version_info
+from .ui_audit import api_audit, api_audit_detail
 from .ui_files import (
     api_file_action,
     api_file_content,
@@ -180,7 +181,8 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                     "remote_file_editor": True,
                     "todos": True,
                     "remote_todos": True,
-                    "audit": False,
+                    "audit": True,
+                    "remote_audit": True,
                 },
             },
             **_machine_rows(settings),
@@ -229,6 +231,12 @@ def human_ui_routes(
             methods=["POST"],
         ),
         Route(UI_API_PREFIX + "/todos", api_todos, methods=["GET", "PUT"]),
+        Route(UI_API_PREFIX + "/audit", api_audit, methods=["GET"]),
+        Route(
+            UI_API_PREFIX + "/audit/detail",
+            api_audit_detail,
+            methods=["GET"],
+        ),
         Route(UI_API_PREFIX + "/terminals", api_terminals, methods=["GET"]),
         Route(
             UI_API_PREFIX + "/terminals/read",

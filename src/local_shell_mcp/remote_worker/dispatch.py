@@ -26,6 +26,28 @@ async def _session_start(args: dict[str, Any]) -> Any:
     )
 
 
+async def _query_audit(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.audit import query_audit
+
+    return await asyncio.to_thread(
+        query_audit,
+        limit=int(args.get("limit") or 300),
+        event=args.get("event"),
+        operation=args.get("operation"),
+        session=args.get("session"),
+        search=args.get("search"),
+        start_ts=args.get("start_ts"),
+        end_ts=args.get("end_ts"),
+        sort=str(args.get("sort") or "desc"),
+    )
+
+
+async def _get_audit_entry(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.audit import get_audit_entry
+
+    return await asyncio.to_thread(get_audit_entry, str(args.get("id") or ""))
+
+
 async def _bash(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import bash_execute
 
@@ -364,6 +386,8 @@ async def _transfer_delete_temp_path(args: dict[str, Any]) -> Any:
 
 _HANDLERS: dict[str, WorkerHandler] = {
     "session_start": _session_start,
+    "query_audit": _query_audit,
+    "get_audit_entry": _get_audit_entry,
     "read_todos": _read_todos,
     "write_todos": _write_todos,
     "bash": _bash,

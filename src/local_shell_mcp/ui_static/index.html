@@ -199,12 +199,85 @@
       </div>
     </section>
 
+    <section id="audit-panel" class="panel audit-panel">
+      <div class="section-heading audit-heading">
+        <div>
+          <p class="eyebrow">Private activity log</p>
+          <h2>Audit</h2>
+        </div>
+        <span id="audit-state" class="muted">Not loaded</span>
+      </div>
+      <form id="audit-filter-form" class="audit-toolbar">
+        <label class="audit-control" for="audit-machine">
+          <span>Machine</span>
+          <select id="audit-machine" name="audit-machine">
+            <option value="local">local</option>
+          </select>
+        </label>
+        <label class="audit-control" for="audit-operation">
+          <span>Operation</span>
+          <select id="audit-operation" name="audit-operation">
+            <option value="">All</option>
+            <option value="files">Files</option>
+            <option value="shell">Shell</option>
+            <option value="jobs">Jobs</option>
+            <option value="transfer">Transfer</option>
+            <option value="remote">Remote</option>
+            <option value="agent">Agent</option>
+            <option value="security">Security</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label class="audit-control" for="audit-event">
+          <span>Event</span>
+          <input id="audit-event" name="audit-event" type="text" maxlength="1024" placeholder="tool_call" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="audit-control" for="audit-session">
+          <span>Session</span>
+          <input id="audit-session" name="audit-session" type="text" maxlength="1024" placeholder="Optional session ID" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="audit-control audit-search-control" for="audit-search">
+          <span>Search</span>
+          <input id="audit-search" name="audit-search" type="search" maxlength="4096" placeholder="Search redacted records" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="audit-control" for="audit-sort">
+          <span>Order</span>
+          <select id="audit-sort" name="audit-sort">
+            <option value="desc">Newest first</option>
+            <option value="asc">Oldest first</option>
+          </select>
+        </label>
+        <label class="audit-control" for="audit-limit">
+          <span>Limit</span>
+          <select id="audit-limit" name="audit-limit">
+            <option value="100">100</option>
+            <option value="300" selected>300</option>
+            <option value="1000">1000</option>
+          </select>
+        </label>
+        <button id="audit-refresh" type="submit">Refresh</button>
+      </form>
+      <div id="audit-summary" class="audit-summary" aria-live="polite">0 entries</div>
+      <div class="audit-layout">
+        <nav id="audit-list" class="audit-list" aria-label="Audit records" aria-live="polite">
+          <div class="empty-state">Loading Audit records…</div>
+        </nav>
+        <article class="audit-detail">
+          <div class="audit-detail-header">
+            <strong id="audit-detail-title">No record selected</strong>
+            <span id="audit-detail-meta" class="muted">Select an Audit record</span>
+          </div>
+          <pre id="audit-detail-body" tabindex="0">Select an Audit record.</pre>
+        </article>
+      </div>
+    </section>
+
     <section class="panel roadmap">
       <div>
         <p class="eyebrow">Migration status</p>
         <h2>Human UI foundation active</h2>
       </div>
-      <p>Machine inventory, automatic OAuth PKCE, persistent local tmux terminals, workspace-safe local and remote Files, and revision-guarded local and remote Todos are available. Remote Files copy, move, and rename remain local-only. Rich terminal emulation, remote terminals, Audit, dashboard telemetry, Remotes management, and the native OpenTUI client remain in subsequent migration slices.</p>
+      <p>Machine inventory, automatic OAuth PKCE, persistent local tmux terminals, workspace-safe local and remote Files, revision-guarded local and remote Todos, and filtered local and remote Audit records are available. Remote Files copy, move, and rename remain local-only. Rich terminal emulation, remote terminals, dashboard telemetry, Remotes management, and the native OpenTUI client remain in subsequent migration slices.</p>
     </section>
   </main>
   <script src="__LSM_UI_PATH__/assets/web.js" defer></script>

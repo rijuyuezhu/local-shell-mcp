@@ -45,8 +45,30 @@
     content_bytes: 16384,
     label_bytes: 64,
   };
+  let auditMachine = "local";
+  let auditEntries = [];
+  let auditSelectedId = "";
+  let auditGeneration = 0;
+  let auditDetailGeneration = 0;
+  let auditLoading = false;
+  let auditMachineStates = new Map([["local", "online"]]);
 
   const elements = {
+    auditDetailBody: document.getElementById("audit-detail-body"),
+    auditDetailMeta: document.getElementById("audit-detail-meta"),
+    auditDetailTitle: document.getElementById("audit-detail-title"),
+    auditEvent: document.getElementById("audit-event"),
+    auditFilterForm: document.getElementById("audit-filter-form"),
+    auditLimit: document.getElementById("audit-limit"),
+    auditList: document.getElementById("audit-list"),
+    auditMachine: document.getElementById("audit-machine"),
+    auditOperation: document.getElementById("audit-operation"),
+    auditRefresh: document.getElementById("audit-refresh"),
+    auditSearch: document.getElementById("audit-search"),
+    auditSession: document.getElementById("audit-session"),
+    auditSort: document.getElementById("audit-sort"),
+    auditState: document.getElementById("audit-state"),
+    auditSummary: document.getElementById("audit-summary"),
     authDetail: document.getElementById("auth-detail"),
     authForm: document.getElementById("auth-form"),
     authMode: document.getElementById("auth-mode"),
@@ -779,6 +801,254 @@
       if (requestedMachine === todoMachine) setTodoMutationBusy(false);
     }
   }
+
+  function auditMachineOnline(machine = auditMachine) {
+    return machine === "local" || auditMachineStates.get(machine) === "online";
+  }
+
+  function setAuditControls() {
+    const online = auditMachineOnline();
+    elements.auditRefresh.disabled = auditLoading || !online;
+    elements.auditMachine.disabled = auditLoading;
+    for (const control of elements.auditFilterForm.querySelectorAll("input, select")) {
+      if (control !== elements.auditMachine) control.disabled = auditLoading || !online;
+    }
+  }
+
+  function clearAuditDetail(message = "Select an Audit record.") {
+    auditDetailGeneration += 1;
+    elements.auditDetailTitle.textContent = "No record selected";
+    elements.auditDetailMeta.textContent = auditMachine;
+    elements.auditDetailBody.textContent = message;
+  }
+
+  function resetAuditWorkspace(machine) {
+    auditMachine = machine || "local";
+    auditLoading = false;
+    auditEntries = [];
+    auditSelectedId = "";
+    auditGeneration += 1;
+    elements.auditMachine.value = auditMachine;
+    elements.auditList.replaceChildren();
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = `Audit records for ${auditMachine} are not loaded.`;
+    elements.auditList.append(empty);
+    elements.auditSummary.textContent = "0 entries";
+    elements.auditState.textContent = `Not loaded · ${auditMachine}`;
+    clearAuditDetail();
+    setAuditControls();
+  }
+
+  function renderAuditMachines(machines) {
+    const available = Array.isArray(machines) ? machines : [];
+    auditMachineStates = new Map([["local", "online"]]);
+    elements.auditMachine.replaceChildren();
+    let localPresent = false;
+    let currentPresent = false;
+    let currentOnline = auditMachine === "local";
+    for (const machine of available) {
+      const name = text(machine.name, "");
+      if (!name) continue;
+      if (name === "local") localPresent = true;
+      const state = name === "local" ? "online" : text(machine.status, "offline");
+      const online = name === "local" || state === "online";
+      auditMachineStates.set(name, state);
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = online ? name : `${name} (${state})`;
+      option.disabled = !online;
+      option.selected = name === auditMachine;
+      if (option.selected) {
+        currentPresent = true;
+        currentOnline = online;
+      }
+      elements.auditMachine.append(option);
+    }
+    if (!localPresent) {
+      const local = document.createElement("option");
+      local.value = "local";
+      local.textContent = "local";
+      local.selected = auditMachine === "local";
+      elements.auditMachine.prepend(local);
+      if (local.selected) {
+        currentPresent = true;
+        currentOnline = true;
+      }
+    }
+    if (!currentPresent && auditMachine !== "local") {
+      const stale = document.createElement("option");
+      stale.value = auditMachine;
+      stale.textContent = `${auditMachine} (unavailable)`;
+      stale.disabled = true;
+      stale.selected = true;
+      elements.auditMachine.append(stale);
+    }
+    if (!currentPresent || !currentOnline) {
+      const changed = auditMachine !== "local";
+      resetAuditWorkspace("local");
+      if (changed) void refreshAudit();
+    } else {
+      elements.auditMachine.value = auditMachine;
+      setAuditControls();
+    }
+  }
+
+  function auditTimestamp(value) {
+    const date = new Date(Number(value || 0) * 1000);
+    return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString();
+  }
+
+  function auditEntryTitle(entry) {
+    return text(entry.tool, text(entry.event, "unknown"));
+  }
+
+  function auditEntryStatus(entry) {
+    const raw = entry.status
+      ? text(entry.status, "recorded").toLowerCase()
+      : entry.ok === true
+        ? "success"
+        : entry.ok === false
+          ? "failed"
+          : "recorded";
+    return ["success", "failed", "running", "unpaired", "completed", "recorded"].includes(raw)
+      ? raw
+      : "recorded";
+  }
+
+  function renderAuditList() {
+    elements.auditList.replaceChildren();
+    if (!auditEntries.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = `No Audit records match on ${auditMachine}.`;
+      elements.auditList.append(empty);
+      clearAuditDetail("No matching Audit record is available.");
+      return;
+    }
+    for (const entry of auditEntries) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "audit-entry";
+      button.dataset.auditId = text(entry.id, "");
+      button.setAttribute("aria-current", entry.id === auditSelectedId ? "true" : "false");
+
+      const title = document.createElement("span");
+      title.className = "audit-entry-title";
+      title.textContent = auditEntryTitle(entry);
+
+      const status = auditEntryStatus(entry);
+      const meta = document.createElement("span");
+      meta.className = `audit-entry-meta audit-entry-status-${status}`;
+      const duration = Number.isFinite(Number(entry.duration_ms)) ? ` · ${Number(entry.duration_ms)} ms` : "";
+      meta.textContent = `${auditTimestamp(entry.ts)} · ${text(entry.operation, "other")} · ${status}${duration}`;
+
+      const session = document.createElement("span");
+      session.className = "audit-entry-session";
+      session.textContent = text(entry.session, text(entry.event, "record"));
+
+      button.append(title, meta, session);
+      button.addEventListener("click", () => {
+        auditSelectedId = text(entry.id, "");
+        renderAuditList();
+        void loadAuditDetail(auditSelectedId);
+      });
+      elements.auditList.append(button);
+    }
+  }
+
+  function auditQueryPath() {
+    const params = new URLSearchParams({
+      machine: auditMachine,
+      limit: elements.auditLimit.value || "300",
+      sort: elements.auditSort.value || "desc",
+    });
+    const filters = [
+      ["operation", elements.auditOperation.value],
+      ["event", elements.auditEvent.value.trim()],
+      ["session", elements.auditSession.value.trim()],
+      ["search", elements.auditSearch.value.trim()],
+    ];
+    for (const [name, value] of filters) {
+      if (value) params.set(name, value);
+    }
+    return `/audit?${params.toString()}`;
+  }
+
+  async function loadAuditDetail(entryId) {
+    if (!entryId || !auditMachineOnline()) {
+      clearAuditDetail();
+      return null;
+    }
+    const generation = ++auditDetailGeneration;
+    const requestedMachine = auditMachine;
+    elements.auditDetailTitle.textContent = auditEntryTitle(
+      auditEntries.find((entry) => entry.id === entryId) || {},
+    );
+    elements.auditDetailMeta.textContent = "Loading details";
+    elements.auditDetailBody.textContent = `Loading ${requestedMachine}:${entryId}`;
+    try {
+      const params = new URLSearchParams({ machine: requestedMachine, id: entryId });
+      const payload = await request(`/audit/detail?${params.toString()}`);
+      if (
+        generation !== auditDetailGeneration ||
+        requestedMachine !== auditMachine ||
+        entryId !== auditSelectedId
+      ) return null;
+      const entry = payload && payload.entry && typeof payload.entry === "object" ? payload.entry : null;
+      if (!entry) throw new Error("Audit detail response was malformed");
+      elements.auditDetailTitle.textContent = auditEntryTitle(entry);
+      elements.auditDetailMeta.textContent = `${requestedMachine} · ${auditTimestamp(entry.ts)}`;
+      elements.auditDetailBody.textContent = JSON.stringify(entry, null, 2);
+      return entry;
+    } catch (error) {
+      if (
+        generation !== auditDetailGeneration ||
+        requestedMachine !== auditMachine ||
+        entryId !== auditSelectedId
+      ) return null;
+      elements.auditDetailMeta.textContent = "Details unavailable";
+      elements.auditDetailBody.textContent = error instanceof Error ? error.message : String(error);
+      return null;
+    }
+  }
+
+  async function refreshAudit() {
+    if (auditLoading || !auditMachineOnline()) return null;
+    const generation = ++auditGeneration;
+    const requestedMachine = auditMachine;
+    const previousSelection = auditSelectedId;
+    auditLoading = true;
+    setAuditControls();
+    elements.auditState.textContent = `Loading ${requestedMachine}`;
+    try {
+      const payload = await request(auditQueryPath());
+      if (generation !== auditGeneration || requestedMachine !== auditMachine) return null;
+      auditEntries = Array.isArray(payload.entries) ? payload.entries.map((entry) => ({ ...entry })) : [];
+      auditSelectedId = auditEntries.some((entry) => entry.id === previousSelection)
+        ? previousSelection
+        : text(auditEntries[0] && auditEntries[0].id, "");
+      const total = Number.isInteger(payload.total_matched) ? payload.total_matched : auditEntries.length;
+      elements.auditSummary.textContent = `${auditEntries.length} shown · ${total} matched · ${requestedMachine}`;
+      elements.auditState.textContent = `${requestedMachine} · loaded ${auditEntries.length} records`;
+      renderAuditList();
+      if (auditSelectedId) void loadAuditDetail(auditSelectedId);
+      return payload;
+    } catch (error) {
+      if (generation !== auditGeneration || requestedMachine !== auditMachine) return null;
+      auditEntries = [];
+      auditSelectedId = "";
+      renderAuditList();
+      elements.auditState.textContent = error instanceof Error ? error.message : String(error);
+      return null;
+    } finally {
+      if (generation === auditGeneration) {
+        auditLoading = false;
+        setAuditControls();
+      }
+    }
+  }
+
   function terminalSocketProtocols() {
     const protocols = ["lsm-ui-terminal"];
     if (accessToken) protocols.push(`bearer.${base64Url(encoder.encode(accessToken))}`);
@@ -1372,6 +1642,7 @@
 
     renderFileMachines(machines);
     renderTodoMachines(machines);
+    renderAuditMachines(machines);
     elements.machineList.replaceChildren();
     if (!machines.length) {
       const empty = document.createElement("div");
@@ -1410,11 +1681,14 @@
         if (error.authenticationRequired) throw error;
         elements.todoState.textContent = error instanceof Error ? error.message : "Todo list unavailable";
       }
+      await refreshAudit();
     } catch (error) {
       if (error.authenticationRequired) {
         closeTerminalSocket();
         filePreviewGeneration += 1;
         todoGeneration += 1;
+        auditGeneration += 1;
+        auditDetailGeneration += 1;
         todoDirty = false;
         clearFileEditor();
         clearAccessToken();
@@ -1500,6 +1774,19 @@
       elements.terminalKill.disabled = !selectedShellId;
     }
   });
+
+  elements.auditMachine.addEventListener("change", () => {
+    if (auditLoading) return;
+    resetAuditWorkspace(elements.auditMachine.value || "local");
+    void refreshAudit();
+  });
+  elements.auditFilterForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void refreshAudit();
+  });
+  for (const control of [elements.auditOperation, elements.auditSort, elements.auditLimit]) {
+    control.addEventListener("change", () => void refreshAudit());
+  }
 
   elements.todoMachine.addEventListener("change", () => {
     if (todoMutationBusy) return;
@@ -1588,8 +1875,10 @@
     closeTerminalSocket();
     resetFileWorkspace("local");
     resetTodoWorkspace("local");
+    resetAuditWorkspace("local");
     elements.fileState.textContent = "Authentication required";
     elements.todoState.textContent = "Authentication required";
+    elements.auditState.textContent = "Authentication required";
     clearAccessToken();
     sessionStorage.removeItem(pendingStorageKey);
     elements.tokenInput.value = "";

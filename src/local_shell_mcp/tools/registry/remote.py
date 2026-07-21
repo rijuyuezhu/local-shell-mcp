@@ -1,10 +1,12 @@
 """Remote-worker tool registry."""
 
+import asyncio
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from ...audit import get_audit_entry, query_audit
 from ...config.settings import Settings
 from ...ops.remote import (
     remote_admin_execute,
@@ -27,6 +29,30 @@ def _remote_tools_enabled(settings: Settings) -> bool:
     return settings.remote_enabled and settings.mode == "mcp"
 
 
+async def _query_audit_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        query_audit,
+        limit=int(args.get("limit") or 300),
+        event=args.get("event"),
+        operation=args.get("operation"),
+        session=args.get("session"),
+        search=args.get("search"),
+        start_ts=args.get("start_ts"),
+        end_ts=args.get("end_ts"),
+        sort=str(args.get("sort") or "desc"),
+    )
+
+
+async def _get_audit_entry_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return await asyncio.to_thread(get_audit_entry, str(args.get("id") or ""))
+
+
+_REMOTE_INTERNAL_HANDLERS: Mapping[str, ToolHandler] = {
+    "query_audit": _query_audit_handler,
+    "get_audit_entry": _get_audit_entry_handler,
+}
+
+
 class RemoteToolRegistry(DeclarativeToolRegistry):
     """Register remote-worker control-plane tools."""
 
@@ -40,10 +66,14 @@ class RemoteToolRegistry(DeclarativeToolRegistry):
         return (*super().http_routes(), *REMOTE_WORKER_HTTP_ROUTES)
 
     def http_handlers(self) -> Mapping[str, ToolHandler]:
-        """Return public remote HTTP handlers when remote tools are enabled."""
+        """Return internal Audit handlers plus enabled public remote handlers."""
         if not _remote_tools_enabled(self._settings()):
-            return {}
-        return {**super().http_handlers(), **REMOTE_WORKER_HTTP_HANDLERS}
+            return _REMOTE_INTERNAL_HANDLERS
+        return {
+            **super().http_handlers(),
+            **REMOTE_WORKER_HTTP_HANDLERS,
+            **_REMOTE_INTERNAL_HANDLERS,
+        }
 
     def register_mcp(self, mcp: FastMCP, context: McpToolContext) -> None:
         """Register declarative remote MCP tools when remote tools are enabled."""

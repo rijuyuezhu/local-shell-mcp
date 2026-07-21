@@ -13,9 +13,12 @@ from local_shell_mcp.audit import (
     _AUDIT_BINARY_KEY,
     _AUDIT_CYCLE_KEY,
     _AUDIT_TRUNCATED_KEY,
+    _coalesce_audit_records,
     audit,
     audit_tool_call_end,
     audit_tool_call_start,
+    get_audit_entry,
+    query_audit,
 )
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 
@@ -273,3 +276,123 @@ def test_audit_retention_keeps_completed_tool_calls_paired(
         events == {"tool_call_start", "tool_call_end"}
         for events in by_call.values()
     )
+
+
+def test_query_audit_pairs_calls_folds_children_and_hides_auth(
+    tmp_path, monkeypatch
+):
+    _configure_audit(tmp_path, monkeypatch)
+    audit(
+        "tool_call_start",
+        call_id="call-1",
+        transport="mcp",
+        tool="write_file",
+        session_id="session-a",
+        input={"path": "notes.txt", "content": "hello"},
+    )
+    audit(
+        "file_link_created",
+        parent_call_id="call-1",
+        url="https://files.test/download/private-token",
+    )
+    audit(
+        "tool_call_end",
+        call_id="call-1",
+        transport="mcp",
+        tool="write_file",
+        ok=True,
+        duration_ms=7,
+        output={"path": "notes.txt"},
+    )
+    audit("auth_ok", subject="browser")
+
+    result = query_audit()
+
+    assert result["count"] == 1
+    assert result["total_matched"] == 1
+    entry = result["entries"][0]
+    assert entry["id"] == "call:call-1"
+    assert entry["operation"] == "files"
+    assert entry["session"] == "session-a"
+    assert entry["status"] == "success"
+    assert entry["paired"] is True
+    assert entry["input"]["path"] == "notes.txt"
+    assert entry["output"] == {"path": "notes.txt"}
+    assert entry["related_events"][0]["event"] == "file_link_created"
+    assert entry["related_events"][0]["url"].endswith("/download/<redacted>")
+    assert "_source_indexes" not in entry
+    assert get_audit_entry("call:call-1") == entry
+
+
+def test_query_audit_filters_sorts_limits_and_skips_malformed_lines(
+    tmp_path, monkeypatch
+):
+    path = _configure_audit(tmp_path, monkeypatch)
+    audit(
+        "tool_call_start",
+        call_id="read-1",
+        tool="read",
+        transport="http",
+        session_id="session-a",
+        input={"path": "alpha.txt"},
+    )
+    audit(
+        "tool_call_end",
+        call_id="read-1",
+        tool="read",
+        transport="http",
+        ok=True,
+        duration_ms=2,
+        output={"content": "alpha"},
+    )
+    audit("job_started", job_id="job-1", command="compile beta")
+    with path.open("ab") as handle:
+        handle.write(b"not-json\n")
+
+    files = query_audit(operation="files", search="READ", sort="asc")
+    jobs = query_audit(event="job", operation="jobs", limit=1)
+    session = query_audit(session="SESSION-A")
+    payload_only = query_audit(search="ALPHA")
+
+    assert [entry["id"] for entry in files["entries"]] == ["call:read-1"]
+    assert jobs["count"] == 1
+    assert jobs["total_matched"] == 1
+    assert jobs["entries"][0]["event"] == "job_started"
+    assert session["count"] == 1
+    assert session["entries"][0]["session"] == "session-a"
+    assert payload_only["count"] == 0
+    with pytest.raises(ValueError, match="sort must be asc or desc"):
+        query_audit(sort="sideways")
+    with pytest.raises(ValueError, match="start_ts"):
+        query_audit(start_ts=2, end_ts=1)
+    with pytest.raises(ValueError, match="Unknown audit entry"):
+        get_audit_entry("missing")
+
+
+def test_coalesce_audit_records_supports_legacy_calls_without_ids():
+    rows = _coalesce_audit_records(
+        [
+            {
+                "ts": 1.0,
+                "event": "tool_call_start",
+                "tool": "read",
+                "session_id": "legacy-session",
+                "input": {"path": "one.txt"},
+            },
+            {
+                "ts": 2.0,
+                "event": "tool_call_end",
+                "tool": "read",
+                "session_id": "legacy-session",
+                "ok": False,
+                "duration_ms": 3,
+                "error": {"message": "missing"},
+            },
+        ]
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["id"] == "legacy-call:1.0:0"
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["paired"] is True
+    assert rows[0]["error"] == {"message": "missing"}

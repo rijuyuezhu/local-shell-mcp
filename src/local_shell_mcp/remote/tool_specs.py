@@ -34,6 +34,8 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
         "", "run_python_code", None, timeout_arg="timeout_s", default_timeout=60
     ),
     RemoteWorkerToolSpec("", "session_start", None),
+    RemoteWorkerToolSpec("", "query_audit", None),
+    RemoteWorkerToolSpec("", "get_audit_entry", None),
     RemoteWorkerToolSpec("", "read_todos", None),
     RemoteWorkerToolSpec("", "write_todos", None),
     RemoteWorkerToolSpec("", "list_files", None),

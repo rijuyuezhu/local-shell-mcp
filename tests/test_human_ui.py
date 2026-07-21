@@ -261,7 +261,8 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
             "remote_file_editor": True,
             "todos": True,
             "remote_todos": True,
-            "audit": False,
+            "audit": True,
+            "remote_audit": True,
         },
     }
     assert payload["counts"] == {"online": 1, "offline": 0, "total": 1}
