@@ -70,6 +70,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert index.status_code == 200
     assert "Human Interface" in index.text
     assert 'id="file-panel"' in index.text
+    assert 'id="file-machine"' in index.text
     assert 'id="file-editor-form"' in index.text
     assert 'id="file-copy"' in index.text
     assert 'id="file-move"' in index.text
@@ -89,11 +90,15 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "OAuth issuer verification failed" in script.text
     assert "filePreviewGeneration" in script.text
     assert "generation !== filePreviewGeneration" in script.text
+    assert "fileListGeneration" in script.text
+    assert "requestedMachine !== fileMachine" in script.text
     assert 'fileQuery("/files/preview"' in script.text
+    assert "machine: fileMachine" in script.text
+    assert "renderFileMachines" in script.text
+    assert "fileMutations" in script.text
     assert 'fileAction("copy"' in script.text
     assert 'fileAction("move"' in script.text
     assert 'fileAction("rename"' in script.text
-
     protected = client.get("/api/ui/bootstrap")
     assert protected.status_code == 401
 
@@ -252,6 +257,8 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
             "file_copy": True,
             "file_move": True,
             "file_rename": True,
+            "remote_files": True,
+            "remote_file_editor": True,
             "todos": False,
             "audit": False,
         },

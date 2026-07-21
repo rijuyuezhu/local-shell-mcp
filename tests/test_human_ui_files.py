@@ -85,9 +85,18 @@ def test_file_listing_is_sorted_bounded_and_workspace_relative(
 
     assert response.status_code == 200
     payload = response.json()["data"]
+    assert payload["machine"] == "local"
+    assert payload["remote"] is False
     assert payload["path"] == "."
     assert payload["parent"] == "."
     assert payload["is_truncated"] is False
+    assert payload["mutations"] == {
+        "write": True,
+        "delete": True,
+        "copy": True,
+        "move": True,
+        "rename": True,
+    }
     assert [entry["name"] for entry in payload["entries"]] == [
         ".state",
         "a-dir",
@@ -326,6 +335,8 @@ def test_copy_file_preserves_content_mode_and_source(monkeypatch, tmp_path):
         "source": "source.txt",
         "destination": "copied.txt",
         "type": "file",
+        "machine": "local",
+        "remote": False,
     }
     assert source.read_text(encoding="utf-8") == "copy me"
     copied = workspace / "copied.txt"

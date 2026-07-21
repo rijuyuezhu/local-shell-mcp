@@ -14,13 +14,22 @@
   let selectedShellId = "";
   let terminalSessions = [];
   let terminalGeneration = 0;
+  let fileMachine = "local";
   let filePath = ".";
   let fileParentPath = ".";
   let fileEntries = [];
   let selectedFilePath = "";
+  let fileListGeneration = 0;
   let filePreviewGeneration = 0;
   let fileEditorPath = "";
   let fileMutationBusy = false;
+  let fileMutations = {
+    write: true,
+    delete: true,
+    copy: true,
+    move: true,
+    rename: true,
+  };
 
   const elements = {
     authDetail: document.getElementById("auth-detail"),
@@ -35,6 +44,7 @@
     fileEditorCancel: document.getElementById("file-editor-cancel"),
     fileEditorForm: document.getElementById("file-editor-form"),
     fileList: document.getElementById("file-list"),
+    fileMachine: document.getElementById("file-machine"),
     fileMove: document.getElementById("file-move"),
     fileNew: document.getElementById("file-new"),
     fileOpen: document.getElementById("file-open"),
@@ -364,6 +374,67 @@
     article.append(header, workdir, meta);
     return article;
   }
+
+  function defaultFileMutations(machine = fileMachine) {
+    const local = machine === "local";
+    return {
+      write: true,
+      delete: true,
+      copy: local,
+      move: local,
+      rename: local,
+    };
+  }
+
+  function resetFileWorkspace(machine) {
+    fileMachine = machine || "local";
+    filePath = ".";
+    fileParentPath = ".";
+    fileEntries = [];
+    selectedFilePath = "";
+    fileListGeneration += 1;
+    filePreviewGeneration += 1;
+    clearFileEditor();
+    fileMutations = defaultFileMutations(fileMachine);
+    elements.fileMachine.value = fileMachine;
+    elements.filePath.value = ".";
+    renderFileList();
+    showFilePreviewMessage("No file selected", `Select a file or directory on ${fileMachine}.`);
+  }
+
+  function renderFileMachines(machines) {
+    const available = Array.isArray(machines) ? machines : [];
+    elements.fileMachine.replaceChildren();
+    let currentAvailable = false;
+    for (const machine of available) {
+      const name = text(machine.name, "");
+      if (!name) continue;
+      const option = document.createElement("option");
+      const online = name === "local" || machine.status === "online";
+      option.value = name;
+      option.textContent = online ? name : `${name} (${text(machine.status, "offline")})`;
+      option.disabled = !online;
+      option.selected = online && name === fileMachine;
+      if (option.selected) currentAvailable = true;
+      elements.fileMachine.append(option);
+    }
+    if (!elements.fileMachine.options.length) {
+      const local = document.createElement("option");
+      local.value = "local";
+      local.textContent = "local";
+      local.selected = fileMachine === "local";
+      currentAvailable = local.selected;
+      elements.fileMachine.append(local);
+    }
+    if (!currentAvailable) {
+      const changed = fileMachine !== "local";
+      resetFileWorkspace("local");
+      if (changed) void refreshFiles();
+    } else {
+      elements.fileMachine.value = fileMachine;
+    }
+  }
+
   function terminalSocketProtocols() {
     const protocols = ["lsm-ui-terminal"];
     if (accessToken) protocols.push(`bearer.${base64Url(encoder.encode(accessToken))}`);
@@ -523,7 +594,10 @@
   }
 
   function fileQuery(path, value) {
-    const query = new URLSearchParams({ path: value });
+    const query = new URLSearchParams({
+      machine: fileMachine,
+      path: value,
+    });
     return `${path}?${query.toString()}`;
   }
 
@@ -531,7 +605,7 @@
     return request(`/files/${encodeURIComponent(action)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, machine: fileMachine }),
     });
   }
 
@@ -555,6 +629,7 @@
 
   function setFileMutationBusy(busy) {
     fileMutationBusy = busy;
+    elements.fileMachine.disabled = busy;
     elements.filePath.disabled = busy;
     elements.fileRefresh.disabled = busy;
     elements.fileShowHidden.disabled = busy;
@@ -576,14 +651,19 @@
 
   function setFileControls() {
     const entry = currentFileEntry();
-    elements.fileNew.disabled = fileMutationBusy;
+    elements.fileNew.disabled = fileMutationBusy || !fileMutations.write;
     elements.fileOpen.disabled = fileMutationBusy || !entry || entry.type !== "dir";
-    elements.fileEdit.disabled = fileMutationBusy || !entry || entry.type !== "file";
-    elements.fileCopy.disabled = fileMutationBusy || !entry;
-    elements.fileMove.disabled = fileMutationBusy || !entry;
-    elements.fileRename.disabled = fileMutationBusy || !entry;
-    elements.fileDelete.disabled = fileMutationBusy || !entry;
+    elements.fileEdit.disabled =
+      fileMutationBusy || !fileMutations.write || !entry || entry.type !== "file";
+    elements.fileCopy.disabled = fileMutationBusy || !fileMutations.copy || !entry;
+    elements.fileMove.disabled = fileMutationBusy || !fileMutations.move || !entry;
+    elements.fileRename.disabled = fileMutationBusy || !fileMutations.rename || !entry;
+    elements.fileDelete.disabled = fileMutationBusy || !fileMutations.delete || !entry;
     elements.fileUp.disabled = fileMutationBusy || filePath === fileParentPath;
+    const localOnly = fileMachine === "local" ? "" : "Only available for local Files";
+    elements.fileCopy.title = fileMutations.copy ? "" : localOnly;
+    elements.fileMove.title = fileMutations.move ? "" : localOnly;
+    elements.fileRename.title = fileMutations.rename ? "" : localOnly;
   }
 
   function showFilePreviewMessage(title, detail) {
@@ -737,27 +817,39 @@
   }
 
   async function refreshFiles({ previewSelection = false } = {}) {
+    const generation = ++fileListGeneration;
+    const requestedMachine = fileMachine;
+    const requestedPath = filePath;
     elements.fileRefresh.disabled = true;
-    elements.fileState.textContent = `Loading ${filePath}`;
+    elements.fileState.textContent = `Loading ${requestedMachine}:${requestedPath}`;
     try {
-      const payload = await request(fileQuery("/files", filePath));
+      const payload = await request(fileQuery("/files", requestedPath));
+      if (generation !== fileListGeneration || requestedMachine !== fileMachine) return null;
+      fileMachine = text(payload.machine, requestedMachine);
       filePath = text(payload.path, ".");
       fileParentPath = text(payload.parent, filePath);
       fileEntries = Array.isArray(payload.entries) ? payload.entries : [];
+      fileMutations = {
+        ...defaultFileMutations(fileMachine),
+        ...(payload.mutations && typeof payload.mutations === "object" ? payload.mutations : {}),
+      };
+      elements.fileMachine.value = fileMachine;
       elements.filePath.value = filePath;
       const selected = currentFileEntry();
       if (!selected) {
         selectedFilePath = "";
         filePreviewGeneration += 1;
         clearFileEditor();
-        showFilePreviewMessage("No file selected", "Select a file or directory.");
+        showFilePreviewMessage("No file selected", `Select a file or directory on ${fileMachine}.`);
       }
       renderFileList();
       if (selected && previewSelection) void previewFile(selected);
-      elements.fileState.textContent = `${filePath} · ${fileEntries.length} entries${payload.is_truncated ? " · truncated" : ""}`;
+      elements.fileState.textContent = `${fileMachine}:${filePath} · ${fileEntries.length} entries${payload.is_truncated ? " · truncated" : ""}`;
       return payload;
     } finally {
-      elements.fileRefresh.disabled = fileMutationBusy;
+      if (generation === fileListGeneration) {
+        elements.fileRefresh.disabled = fileMutationBusy;
+      }
     }
   }
 
@@ -766,7 +858,7 @@
     selectedFilePath = selection;
     filePreviewGeneration += 1;
     clearFileEditor();
-    showFilePreviewMessage("Loading directory", filePath);
+    showFilePreviewMessage("Loading directory", `${fileMachine}:${filePath}`);
     try {
       await refreshFiles({ previewSelection: Boolean(selection) });
       return true;
@@ -934,6 +1026,7 @@
     elements.authMode.textContent = text(data.ui && data.ui.auth_mode, config.authMode);
     elements.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
+    renderFileMachines(machines);
     elements.machineList.replaceChildren();
     if (!machines.length) {
       const empty = document.createElement("div");
@@ -1055,6 +1148,11 @@
     }
   });
 
+  elements.fileMachine.addEventListener("change", () => {
+    if (fileMutationBusy) return;
+    resetFileWorkspace(elements.fileMachine.value || "local");
+    void refreshFiles();
+  });
   elements.filePathForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!fileMutationBusy) void navigateFiles(elements.filePath.value.trim() || ".");
@@ -1079,17 +1177,18 @@
     const entry = currentFileEntry();
     filePreviewGeneration += 1;
     clearFileEditor();
-    elements.fileState.textContent = filePath;
+    elements.fileState.textContent = `${fileMachine}:${filePath}`;
     if (entry) void previewFile(entry);
-    else showFilePreviewMessage("No file selected", "Select a file or directory.");
+    else showFilePreviewMessage("No file selected", `Select a file or directory on ${fileMachine}.`);
   });
   elements.fileEditorForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!fileEditorPath) return;
+    if (!fileEditorPath || !fileMutations.write) return;
     const path = fileEditorPath;
     const button = elements.fileEditorForm.querySelector('button[type="submit"]');
     button.disabled = true;
-    elements.fileState.textContent = `Saving ${path}`;
+    setFileMutationBusy(true);
+    elements.fileState.textContent = `Saving ${fileMachine}:${path}`;
     try {
       await fileAction("write", {
         path,
@@ -1101,10 +1200,11 @@
       await refreshFiles();
       const entry = currentFileEntry();
       if (entry) await previewFile(entry);
-      elements.fileState.textContent = `Saved ${path}`;
+      elements.fileState.textContent = `Saved ${fileMachine}:${path}`;
     } catch (error) {
       elements.fileState.textContent = error instanceof Error ? error.message : String(error);
     } finally {
+      setFileMutationBusy(false);
       button.disabled = false;
     }
   });
@@ -1113,11 +1213,7 @@
   elements.refresh.addEventListener("click", () => void load());
   elements.signOut.addEventListener("click", () => {
     closeTerminalSocket();
-    filePreviewGeneration += 1;
-    clearFileEditor();
-    selectedFilePath = "";
-    fileEntries = [];
-    renderFileList();
+    resetFileWorkspace("local");
     elements.fileState.textContent = "Authentication required";
     clearAccessToken();
     sessionStorage.removeItem(pendingStorageKey);

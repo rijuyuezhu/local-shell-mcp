@@ -175,6 +175,8 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                     "file_copy": True,
                     "file_move": True,
                     "file_rename": True,
+                    "remote_files": True,
+                    "remote_file_editor": True,
                     "todos": False,
                     "audit": False,
                 },

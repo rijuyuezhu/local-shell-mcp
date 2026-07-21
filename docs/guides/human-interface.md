@@ -21,12 +21,13 @@ The current migration slice provides:
 - local and remote machine inventory;
 - automatic browser OAuth Authorization Code flow with PKCE S256;
 - authenticated local tmux terminal listing, creation, input, resize, snapshots, and termination;
-- workspace-confined local file browsing, previews, editing, creation, copy, move, rename, and deletion;
+- machine-aware local and remote file browsing, bounded previews, text editing, creation, and deletion;
+- local workspace copy, move, and rename operations;
 - OAuth-protected Human UI APIs and terminal WebSockets;
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Remote-worker terminals and files, rich xterm-compatible rendering, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Remote-worker terminals, rich xterm-compatible rendering, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -75,9 +76,13 @@ The current renderer displays normalized full-pane text snapshots rather than a 
 
 ## Files
 
-The **Files** panel browses the local workspace used by the server. Directory entries are sorted with directories first, hidden entries can be toggled, double-clicking or **Open** enters a directory, and the path field plus **Up** button provide direct navigation. Directory previews are themselves navigable, so selecting a child from the preview opens its containing directory and keeps that child selected.
+The **Files** panel has a machine selector for the server's local workspace and each currently online remote worker. Directory entries are sorted with directories first, hidden entries can be toggled, double-clicking or **Open** enters a directory, and the path field plus **Up** button provide direct navigation. Directory previews are themselves navigable, so selecting a child from the preview opens its containing directory and keeps that child selected. Offline and revoked workers remain visible in inventory but cannot be selected for file work.
 
-Read-only file routes require `shell:read`. Creating, replacing, copying, moving, renaming, or deleting entries additionally requires `shell:write`. The browser surface stays confined to `workspace_root` even when the server-wide `allow_full_control` setting is enabled; that setting does not turn the Human UI into an unrestricted host filesystem browser.
+Read-only local routes require `shell:read`. Remote reads additionally require `remote:use`. Creating, replacing, or deleting entries requires `shell:write`, plus `remote:use` for a remote machine. The local browser surface stays confined to `workspace_root` even when the server-wide `allow_full_control` setting is enabled; that setting does not turn the Human UI into an unrestricted host filesystem browser.
+
+For each remote machine, the server lazily creates and caches one explicit worker workspace session rooted at the worker's advertised workdir. Every remote file RPC carries that session ID. If a worker restarts and rejects the cached session, the UI recreates it and retries the operation once. Remote requests are capped at 60 seconds and use the existing worker allowlist rather than constructing shell commands.
+
+Remote UI paths are portable workspace-relative paths. Absolute POSIX paths, UNC paths, drive-qualified paths, home-expansion forms, NUL bytes, and `..` components are rejected before dispatch. The worker resolves every path against the workspace session again, including a second containment check after following symbolic links, so a link cannot be used to read outside the remote workdir.
 
 The built-in preview supports:
 
@@ -86,19 +91,21 @@ The built-in preview supports:
 - a 256-byte hexadecimal sample for binary files;
 - inline AVIF, BMP, GIF, JPEG, PNG, and WebP images that fit the configured file-read byte limit.
 
+Remote file bytes are fetched through the existing transfer RPC in chunks of at most 256 KiB. Every chunk is checked for the requested offset, returned length, total file size, progress, early EOF, and SHA-256 digest. A size change, malformed payload, corrupt digest, or stalled transfer aborts the preview. Truncated text prefixes use incremental UTF-8 decoding, so a byte limit that splits a multibyte character does not turn valid text into binary or insert a replacement character. Filenames containing selector-like text such as `name:raw` remain literal because remote previews and editor reads use raw transfer chunks instead of the text-selector parser.
+
 SVG is intentionally rendered as text instead of an inline image, preventing active SVG content from executing in the browser. Images above the byte limit produce metadata and an explanatory message rather than an oversized data URL.
 
-**Edit** loads the complete bounded UTF-8 file. Binary files and files truncated by `max_file_read_bytes` are refused rather than silently saving a partial document. Saves reuse the normal file operation path: existing modes are preserved, writes use same-directory atomic replacement and path locking, command/path restrictions remain active, and the event loop is not blocked by disk operations. **New file** uses create-only semantics, so it will not overwrite an existing path.
+**Edit** loads the complete bounded UTF-8 file. Binary files and files above `max_file_read_bytes` are refused rather than silently saving a partial document. Local saves reuse the normal atomic file operation path with mode preservation and path locking. Remote saves reuse the worker's session-bound `write_file` primitive. **New file** uses create-only semantics locally and remotely, so it will not overwrite an existing path.
 
-Deletion is explicit and confirmed in the browser. The workspace root itself cannot be deleted. Deleting a symbolic link removes the selected link entry without deleting its target. Recursive deletion is requested only for selected directories.
+Deletion is explicit and confirmed in the browser. Neither the local nor a remote workspace root can be deleted. Deleting a symbolic link removes the selected link entry without deleting its target. Recursive deletion is requested only for selected directories.
 
-**Copy**, **Move**, and **Rename** work with regular files, directories, and symbolic links. They never replace an existing destination. Directory copies preserve symbolic links as links instead of traversing their targets, and copying or moving a directory into its own subtree is rejected. Source and destination paths are serialized through the shared cross-thread and cross-process path-lock registry.
+Local **Copy**, **Move**, and **Rename** work with regular files, directories, and symbolic links. They never replace an existing destination. Directory copies preserve symbolic links as links instead of traversing their targets, and copying or moving a directory into its own subtree is rejected. Source and destination paths are serialized through the shared cross-thread and cross-process path-lock registry.
 
-Moves and renames use the operating system rename operation when source and destination share a filesystem. If the operating system reports a cross-device move, the server copies the entry without following symbolic links and removes the source only after the copy completes. A failed source removal rolls back the copied destination. Regular-file copies use exclusive destination creation, preserve file metadata, flush the copied data, and reject a source that changes while it is being read.
+Local moves and renames use the operating system rename operation when source and destination share a filesystem. If the operating system reports a cross-device move, the server copies the entry without following symbolic links and removes the source only after the copy completes. A failed source removal rolls back the copied destination. Regular-file copies use exclusive destination creation, preserve file metadata, flush the copied data, and reject a source that changes while it is being read.
 
-Selection and preview requests use generation guards. A slow response for an earlier selection is ignored, periodic dashboard refreshes retain the current selection without reloading its preview, and signing out invalidates pending file work.
+Remote copy, move, and rename remain disabled because the current worker allowlist has no corresponding primitives. The UI reports these capabilities explicitly and does not emulate them with remote shell commands. Richer binary viewers and the native OpenTUI Files screen remain in the follow-up migration queue.
 
-The current Files panel is local-only. Remote-worker files, richer binary viewers, and the native OpenTUI Files screen remain in the follow-up migration queue.
+List and preview requests use generation and machine guards. Switching machines invalidates the previous path, selection, editor, preview, and pending directory request; a slow response from an earlier machine cannot overwrite the active workspace. Periodic dashboard refreshes preserve an online current machine and selection, fall back to local immediately if a worker becomes unavailable, and signing out invalidates pending file work.
 
 ## Configuration
 

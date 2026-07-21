@@ -20,7 +20,11 @@ from starlette.responses import JSONResponse, Response
 
 from ...config.settings import get_settings
 from ...oauth.core.context import MissingOAuthScopeError, require_oauth_scopes
-from ...oauth.core.scopes import SCOPE_SHELL_READ, SCOPE_SHELL_WRITE
+from ...oauth.core.scopes import (
+    SCOPE_REMOTE_USE,
+    SCOPE_SHELL_READ,
+    SCOPE_SHELL_WRITE,
+)
 from ...ops.files import (
     delete_file_or_dir_execute,
     list_files_execute,
@@ -29,6 +33,13 @@ from ...ops.files import (
 )
 from ...ops.utils.path import relative_display, resolve_path, workspace_root
 from ...utils.path_locks import path_locks
+from .ui_remote_files import (
+    remote_delete_file,
+    remote_file_content,
+    remote_file_preview,
+    remote_list_payload,
+    remote_write_file,
+)
 
 UI_FILE_PATH_MAX_BYTES = 4_096
 UI_FILE_PREVIEW_MAX_LINES = 400
@@ -77,6 +88,24 @@ def _path_arg(value: Any, *, default: str | None = None) -> str:
     if len(path.encode("utf-8")) > UI_FILE_PATH_MAX_BYTES:
         raise ValueError(f"path exceeds {UI_FILE_PATH_MAX_BYTES} encoded bytes")
     return path
+
+
+def _machine_arg(value: Any) -> str:
+    machine = str(value or "local").strip()
+    if not machine:
+        return "local"
+    if len(machine.encode("utf-8")) > 255:
+        raise ValueError("machine exceeds 255 encoded bytes")
+    return machine
+
+
+def _require_file_scopes(machine: str, *, write: bool = False) -> None:
+    required = [SCOPE_SHELL_READ]
+    if write:
+        required.append(SCOPE_SHELL_WRITE)
+    if machine != "local":
+        required.append(SCOPE_REMOTE_USE)
+    _require_scopes(*required)
 
 
 def _workspace_path(
@@ -147,12 +176,21 @@ def _list_payload(path: str, *, max_entries: int) -> dict[str, Any]:
     root = workspace_root()
     parent = root if resolved == root else resolved.parent
     return {
+        "machine": "local",
+        "remote": False,
         "path": relative_display(resolved),
         "parent": relative_display(parent),
         "count": result.count,
         "limit_count": result.limit_count,
         "is_truncated": result.is_truncated,
         "entries": _sorted_entries(result.entries),
+        "mutations": {
+            "write": True,
+            "delete": True,
+            "copy": True,
+            "move": True,
+            "rename": True,
+        },
     }
 
 
@@ -465,48 +503,94 @@ def _delete_file(path: str, recursive: bool) -> Any:
 
 
 async def api_files(request: Request) -> Response:
-    """List one bounded local workspace directory for the Human UI."""
-    _require_scopes(SCOPE_SHELL_READ)
+    """List one bounded local or remote workspace directory for the Human UI."""
     try:
+        machine = _machine_arg(request.query_params.get("machine"))
+        _require_file_scopes(machine)
         path = _path_arg(request.query_params.get("path"), default=".")
-        payload = await asyncio.to_thread(
-            _list_payload, path, max_entries=UI_FILE_DIRECTORY_MAX_ENTRIES
-        )
+        if machine == "local":
+            payload = await asyncio.to_thread(
+                _list_payload,
+                path,
+                max_entries=UI_FILE_DIRECTORY_MAX_ENTRIES,
+            )
+        else:
+            payload = await remote_list_payload(machine, path)
         return _json_ok(payload)
+    except HTTPException:
+        raise
     except Exception as exc:
         return _json_error(exc)
 
 
 async def api_file_preview(request: Request) -> Response:
-    """Return a bounded directory, text, binary, or inline image preview."""
-    _require_scopes(SCOPE_SHELL_READ)
+    """Return a bounded local or remote directory, text, binary, or image preview."""
     try:
+        machine = _machine_arg(request.query_params.get("machine"))
+        _require_file_scopes(machine)
         path = _path_arg(request.query_params.get("path"))
-        return _json_ok(await asyncio.to_thread(_file_preview, path))
+        payload = (
+            await asyncio.to_thread(_file_preview, path)
+            if machine == "local"
+            else await remote_file_preview(machine, path)
+        )
+        return _json_ok(payload)
+    except HTTPException:
+        raise
     except Exception as exc:
         return _json_error(exc)
 
 
 async def api_file_content(request: Request) -> Response:
-    """Return one complete bounded UTF-8 file for the built-in editor."""
-    _require_scopes(SCOPE_SHELL_READ)
+    """Return one complete bounded local or remote UTF-8 file for editing."""
     try:
+        machine = _machine_arg(request.query_params.get("machine"))
+        _require_file_scopes(machine)
         path = _path_arg(request.query_params.get("path"))
-        return _json_ok(await asyncio.to_thread(_file_content, path))
+        payload = (
+            await asyncio.to_thread(_file_content, path)
+            if machine == "local"
+            else await remote_file_content(machine, path)
+        )
+        return _json_ok(payload)
+    except HTTPException:
+        raise
     except Exception as exc:
         return _json_error(exc)
 
 
 async def api_file_action(request: Request) -> Response:
-    """Mutate local workspace entries through bounded, no-overwrite operations."""
-    _require_scopes(SCOPE_SHELL_READ, SCOPE_SHELL_WRITE)
+    """Mutate local or remote workspace entries through safe file primitives."""
     action = str(request.path_params.get("action") or "")
     try:
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError("Request body must be a JSON object")
+        machine = _machine_arg(body.get("machine"))
+        _require_file_scopes(machine, write=True)
         path = _path_arg(body.get("path"))
-        if action == "write":
+        if machine != "local":
+            if action == "write":
+                content = body.get("content")
+                if not isinstance(content, str):
+                    raise ValueError("content must be a string")
+                result = await remote_write_file(
+                    machine,
+                    path,
+                    content,
+                    bool(body.get("overwrite", True)),
+                )
+            elif action == "delete":
+                result = await remote_delete_file(
+                    machine,
+                    path,
+                    bool(body.get("recursive", False)),
+                )
+            else:
+                raise ValueError(
+                    f"Remote Files does not support {action}; use a remote terminal"
+                )
+        elif action == "write":
             content = body.get("content")
             if not isinstance(content, str):
                 raise ValueError("content must be a string")
@@ -538,6 +622,9 @@ async def api_file_action(request: Request) -> Response:
             if isinstance(result, dict)
             else result.model_dump(mode="json")
         )
+        if isinstance(payload, dict):
+            payload.setdefault("machine", machine)
+            payload.setdefault("remote", machine != "local")
         return _json_ok(payload)
     except HTTPException:
         raise

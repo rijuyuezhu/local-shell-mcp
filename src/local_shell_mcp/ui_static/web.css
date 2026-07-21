@@ -444,13 +444,18 @@ h2 {
 .file-toolbar {
   margin-top: 1rem;
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 
-.file-path-form {
-  flex: 1 1 24rem;
-  gap: 0.55rem;
+.file-machine-control {
+  display: grid;
+  flex: 0 1 14rem;
+  gap: 0.3rem;
+  color: #8ca0b2;
+  font-size: 0.72rem;
 }
 
+.file-machine-control select,
 .file-path-form input,
 .file-editor textarea {
   min-width: 0;
@@ -459,6 +464,16 @@ h2 {
   color: #f4f8fc;
   background: rgba(2, 10, 16, 0.72);
   padding: 0.7rem 0.8rem;
+}
+
+.file-machine-control select {
+  min-height: 2.55rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.file-path-form {
+  flex: 1 1 24rem;
+  gap: 0.55rem;
 }
 
 .file-path-form input {

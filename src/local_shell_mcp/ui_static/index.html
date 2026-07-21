@@ -109,12 +109,18 @@
     <section id="file-panel" class="panel file-panel">
       <div class="section-heading file-heading">
         <div>
-          <p class="eyebrow">Local workspace</p>
+          <p class="eyebrow">Machine workspace</p>
           <h2>Files</h2>
         </div>
         <span id="file-state" class="muted">Not loaded</span>
       </div>
       <div class="file-toolbar">
+        <label class="file-machine-control" for="file-machine">
+          <span>Machine</span>
+          <select id="file-machine" name="file-machine">
+            <option value="local">local</option>
+          </select>
+        </label>
         <form id="file-path-form" class="file-path-form">
           <label class="visually-hidden" for="file-path">Workspace path</label>
           <input id="file-path" name="file-path" type="text" value="." maxlength="4096" autocomplete="off" spellcheck="false">
@@ -161,7 +167,7 @@
         <p class="eyebrow">Migration status</p>
         <h2>Human UI foundation active</h2>
       </div>
-      <p>Machine inventory, automatic OAuth PKCE, persistent local tmux terminals, and workspace-safe local Files with copy, move, and rename are available. Rich terminal emulation, remote terminals and files, Todos, Audit, dashboard telemetry, and the native OpenTUI client remain in subsequent migration slices.</p>
+      <p>Machine inventory, automatic OAuth PKCE, persistent local tmux terminals, and workspace-safe local and remote Files are available. Remote Files support browsing, bounded previews, text editing, creation, and deletion; copy, move, and rename remain local-only. Rich terminal emulation, remote terminals, Todos, Audit, dashboard telemetry, and the native OpenTUI client remain in subsequent migration slices.</p>
     </section>
   </main>
   <script src="__LSM_UI_PATH__/assets/web.js" defer></script>

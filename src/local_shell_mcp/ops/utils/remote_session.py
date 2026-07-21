@@ -92,10 +92,16 @@ async def start_worker_session(
     machine: str,
     workdir: str,
     label: str | None = None,
+    timeout_s: int | None = None,
 ) -> dict[str, Any]:
     """Create a local agent session on a remote worker."""
     payload: dict[str, Any] = {"target": "local", "workdir": workdir}
     if label is not None:
         payload["label"] = label
-    result = await call_remote_worker_tool(machine, "session_start", payload)
+    result = await call_remote_worker_tool(
+        machine,
+        "session_start",
+        payload,
+        timeout_s,
+    )
     return _remote_result_data(result, tool="session_start", machine=machine)
