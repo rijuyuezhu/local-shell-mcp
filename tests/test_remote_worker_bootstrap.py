@@ -163,6 +163,89 @@ async def test_worker_dispatches_persistent_shell_start(monkeypatch):
     assert calls == [("/edge", "edge", "bash")]
 
 
+@pytest.mark.asyncio
+async def test_worker_dispatches_terminal_bridge_lifecycle(monkeypatch):
+    import local_shell_mcp.terminal_bridge as bridge_ops
+    from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
+
+    calls = []
+    bridge_id = "bridge_capability_1234567890"
+
+    async def fake_open(shell_id, cols, rows):
+        calls.append(("open", shell_id, cols, rows))
+        return {
+            "bridge_id": bridge_id,
+            "shell_id": shell_id,
+            "cols": cols,
+            "rows": rows,
+            "backend": "tmux-pty",
+        }
+
+    async def fake_read(value, max_bytes, wait_ms):
+        calls.append(("read", value, max_bytes, wait_ms))
+        return {"bridge_id": value, "data_b64": "", "bytes": 0, "eof": False}
+
+    async def fake_write(value, data_b64):
+        calls.append(("write", value, data_b64))
+        return {"bridge_id": value, "written_bytes": 3}
+
+    async def fake_resize(value, cols, rows):
+        calls.append(("resize", value, cols, rows))
+        return {
+            "bridge_id": value,
+            "cols": cols,
+            "rows": rows,
+            "resized": True,
+            "backend": "tmux-pty",
+        }
+
+    async def fake_close(value):
+        calls.append(("close", value))
+        return {"bridge_id": value, "closed": True}
+
+    monkeypatch.setattr(bridge_ops, "open_terminal_bridge_execute", fake_open)
+    monkeypatch.setattr(bridge_ops, "read_terminal_bridge_execute", fake_read)
+    monkeypatch.setattr(bridge_ops, "write_terminal_bridge_execute", fake_write)
+    monkeypatch.setattr(
+        bridge_ops, "resize_terminal_bridge_execute", fake_resize
+    )
+    monkeypatch.setattr(bridge_ops, "close_terminal_bridge_execute", fake_close)
+
+    opened = await execute_worker_tool(
+        "open_terminal_bridge",
+        {"shell_id": "edge", "cols": 100, "rows": 30},
+    )
+    read = await execute_worker_tool(
+        "read_terminal_bridge",
+        {"bridge_id": bridge_id, "max_bytes": 2048, "wait_ms": 75},
+    )
+    written = await execute_worker_tool(
+        "write_terminal_bridge",
+        {"bridge_id": bridge_id, "data_b64": "YWJj"},
+    )
+    resized = await execute_worker_tool(
+        "resize_terminal_bridge",
+        {"bridge_id": bridge_id, "cols": 120, "rows": 36},
+    )
+    closed = await execute_worker_tool(
+        "close_terminal_bridge",
+        {"bridge_id": bridge_id},
+    )
+
+    assert opened["backend"] == "tmux-pty"
+    assert read["eof"] is False
+    assert written["written_bytes"] == 3
+    assert resized["resized"] is True
+    assert closed["closed"] is True
+    assert calls == [
+        ("open", "edge", 100, 30),
+        ("read", bridge_id, 2048, 75),
+        ("write", bridge_id, "YWJj"),
+        ("resize", bridge_id, 120, 36),
+        ("close", bridge_id),
+    ]
+
+
 def test_worker_session_start_result_serializes_with_dependency_shim(tmp_path):
     script = """
 import asyncio

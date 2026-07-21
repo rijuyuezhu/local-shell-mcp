@@ -426,8 +426,28 @@ h2 {
   background: rgba(17, 78, 104, 0.88);
 }
 
-.terminal-latest[hidden] {
+.terminal-latest[hidden],
+.terminal-xterm[hidden],
+#terminal-output[hidden] {
   display: none;
+}
+
+.terminal-xterm {
+  height: clamp(22rem, 48vh, 36rem);
+  min-height: 22rem;
+  overflow: hidden;
+  border: 1px solid rgba(151, 184, 202, 0.1);
+  border-radius: 0.55rem;
+  background: #07111f;
+  padding: 0.55rem;
+}
+
+.terminal-xterm .xterm {
+  height: 100%;
+}
+
+.terminal-xterm .xterm-viewport {
+  border-radius: 0.35rem;
 }
 
 #terminal-output {
@@ -1841,6 +1861,12 @@ h2 {
 
   .terminal-keyboard {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .terminal-xterm {
+    height: clamp(18rem, 52vh, 28rem);
+    min-height: 18rem;
+    padding: 0.45rem;
   }
 
   #terminal-output {

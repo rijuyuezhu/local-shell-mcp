@@ -37,3 +37,9 @@ repos:
         language: system
         pass_filenames: false
         files: ^vscode-extension/(src/.*\.ts|package(-lock)?\.json|tsconfig\.json)$
+      - id: terminal-ui-build
+        name: terminal UI generated assets
+        entry: bash -c 'cd ui-terminal && npm ci && npm run check'
+        language: system
+        pass_filenames: false
+        files: ^(ui-terminal/(src/.*\.js|scripts/.*\.mjs|package(-lock)?\.json)|src/local_shell_mcp/ui_static/xterm(_bundle\.js|\.css|\.LICENSE\.txt))$

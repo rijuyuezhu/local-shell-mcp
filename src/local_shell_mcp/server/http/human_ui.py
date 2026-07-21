@@ -94,9 +94,10 @@ def _index_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-store",
         "Content-Security-Policy": (
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "connect-src 'self'; img-src 'self' data:; "
-            "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+            "default-src 'self'; script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+            "img-src 'self' data:; base-uri 'none'; "
+            "frame-ancestors 'none'; form-action 'self'"
         ),
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",

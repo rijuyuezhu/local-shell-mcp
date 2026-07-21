@@ -23,6 +23,13 @@ from ...schemas.result_models.remote import (
     RemoteAdminOutput,
     RemoteWorkerToolOutput,
 )
+from ...terminal_bridge import (
+    close_terminal_bridge_execute,
+    open_terminal_bridge_execute,
+    read_terminal_bridge_execute,
+    resize_terminal_bridge_execute,
+    write_terminal_bridge_execute,
+)
 from ..contracts import HttpToolRoute, McpToolContext, ToolHandler
 from ..declarative import DeclarativeToolRegistry
 
@@ -49,7 +56,9 @@ async def _get_audit_entry_handler(args: dict[str, Any]) -> dict[str, Any]:
     return await asyncio.to_thread(get_audit_entry, str(args.get("id") or ""))
 
 
-async def _dashboard_snapshot_handler(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
+async def _dashboard_snapshot_handler(
+    args: dict[str, Any],  # noqa: ARG001
+) -> dict[str, Any]:
     return await asyncio.to_thread(dashboard_snapshot)
 
 
@@ -61,7 +70,47 @@ async def _start_persistent_shell_handler(args: dict[str, Any]) -> Any:
     )
 
 
+async def _open_terminal_bridge_handler(args: dict[str, Any]) -> Any:
+    return await open_terminal_bridge_execute(
+        str(args["shell_id"]),
+        int(args.get("cols") or 120),
+        int(args.get("rows") or 36),
+    )
+
+
+async def _read_terminal_bridge_handler(args: dict[str, Any]) -> Any:
+    return await read_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        int(args.get("max_bytes") or 65_536),
+        int(args.get("wait_ms") or 0),
+    )
+
+
+async def _write_terminal_bridge_handler(args: dict[str, Any]) -> Any:
+    return await write_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        str(args.get("data_b64") or ""),
+    )
+
+
+async def _resize_terminal_bridge_handler(args: dict[str, Any]) -> Any:
+    return await resize_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        int(args["cols"]),
+        int(args["rows"]),
+    )
+
+
+async def _close_terminal_bridge_handler(args: dict[str, Any]) -> Any:
+    return await close_terminal_bridge_execute(str(args["bridge_id"]))
+
+
 _REMOTE_INTERNAL_HANDLERS: Mapping[str, ToolHandler] = {
+    "open_terminal_bridge": _open_terminal_bridge_handler,
+    "read_terminal_bridge": _read_terminal_bridge_handler,
+    "write_terminal_bridge": _write_terminal_bridge_handler,
+    "resize_terminal_bridge": _resize_terminal_bridge_handler,
+    "close_terminal_bridge": _close_terminal_bridge_handler,
     "start_persistent_shell": _start_persistent_shell_handler,
     "dashboard_snapshot": _dashboard_snapshot_handler,
     "query_audit": _query_audit_handler,

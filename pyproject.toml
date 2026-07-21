@@ -46,6 +46,12 @@ docs = [
 requires = ["uv_build>=0.11.0,<0.12.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+source-include = ["ui-terminal/**"]
+source-exclude = [
+    "/ui-terminal/node_modules",
+    "/ui-terminal/.build-check",
+]
 
 [project.urls]
 Homepage = "https://github.com/rijuyuezhu/local-shell-mcp"

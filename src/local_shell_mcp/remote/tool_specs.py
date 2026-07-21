@@ -25,6 +25,11 @@ class RemoteWorkerToolSpec:
 
 
 REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
+    RemoteWorkerToolSpec("", "open_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "read_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "write_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "resize_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "close_terminal_bridge", None),
     RemoteWorkerToolSpec("", "start_persistent_shell", None),
     RemoteWorkerToolSpec("", "send_persistent_shell_input", None),
     RemoteWorkerToolSpec("", "resize_persistent_shell", None),

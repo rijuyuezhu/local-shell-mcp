@@ -13,6 +13,12 @@
   let terminalSocket = null;
   let terminalSocketMachine = "";
   let terminalMachine = "local";
+  let terminalMode = "snapshot";
+  let terminalReady = false;
+  let terminalXterm = null;
+  let terminalFitAddon = null;
+  let terminalXtermData = null;
+  let terminalXtermBinary = null;
   let selectedShellId = "";
   let terminalSessions = [];
   let terminalGeneration = 0;
@@ -212,6 +218,7 @@
     terminalName: document.getElementById("terminal-name"),
     terminalOutput: document.getElementById("terminal-output"),
     terminalPendingCount: document.getElementById("terminal-pending-count"),
+    terminalXterm: document.getElementById("terminal-xterm"),
     terminalStartForm: document.getElementById("terminal-start-form"),
     terminalState: document.getElementById("terminal-state"),
     terminalTitle: document.getElementById("terminal-title"),
@@ -1802,7 +1809,7 @@
   }
 
   function updateTerminalLatestControl() {
-    const pending = terminalPendingOutput !== null;
+    const pending = terminalMode !== "pty" && terminalPendingOutput !== null;
     elements.terminalLatest.hidden = !pending;
     elements.terminalPendingCount.textContent = pending
       ? `(${Math.max(1, terminalPendingUpdates)})`
@@ -1824,6 +1831,7 @@
   }
 
   function showTerminalMessage(message) {
+    activateTerminalMode("snapshot");
     terminalFollowOutput = true;
     terminalPendingOutput = null;
     terminalPendingUpdates = 0;
@@ -1834,6 +1842,7 @@
   }
 
   function acceptTerminalSnapshot(value) {
+    activateTerminalMode("snapshot");
     const output = String(value ?? "");
     terminalLastOutput = output;
     if (!terminalAtBottom()) {
@@ -1890,13 +1899,111 @@
     );
   }
 
+  function terminalSocketCurrent() {
+    return Boolean(
+      terminalSocket &&
+      terminalSocket.readyState === WebSocket.OPEN &&
+      terminalSocketMachine === terminalMachine
+    );
+  }
+
+  function sendTerminalBytes(data) {
+    if (!terminalReady || !terminalSocketCurrent() || terminalMode !== "pty") return false;
+    const bytes = data instanceof Uint8Array ? data : encoder.encode(String(data ?? ""));
+    if (!bytes.byteLength) return false;
+    for (let offset = 0; offset < bytes.byteLength; offset += 65536) {
+      terminalSocket.send(bytes.slice(offset, Math.min(bytes.byteLength, offset + 65536)));
+    }
+    return true;
+  }
+
+  function ensureTerminalXterm() {
+    if (terminalXterm) return true;
+    const api = globalThis.LsmXterm;
+    if (!api || typeof api.Terminal !== "function" || typeof api.FitAddon !== "function") {
+      return false;
+    }
+    terminalXterm = new api.Terminal({
+      allowProposedApi: false,
+      convertEol: false,
+      cursorBlink: true,
+      cursorStyle: "block",
+      disableStdin: false,
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontSize: 13,
+      lineHeight: 1.15,
+      linkHandler: {
+        activate: () => {},
+        allowNonHttpProtocols: false,
+      },
+      scrollback: 5000,
+      theme: {
+        background: "#07111f",
+        foreground: "#d8e9f5",
+        cursor: "#57d7ff",
+        cursorAccent: "#07111f",
+        selectionBackground: "#24546e",
+        black: "#07111f",
+        red: "#ff6b7a",
+        green: "#62d196",
+        yellow: "#f1c75b",
+        blue: "#5aa9ff",
+        magenta: "#c792ea",
+        cyan: "#57d7ff",
+        white: "#d8e9f5",
+        brightBlack: "#66788a",
+        brightRed: "#ff8794",
+        brightGreen: "#7ee2aa",
+        brightYellow: "#ffe08a",
+        brightBlue: "#82c0ff",
+        brightMagenta: "#d9a7f2",
+        brightCyan: "#8be8ff",
+        brightWhite: "#f3fbff",
+      },
+    });
+    terminalXterm.parser.registerOscHandler(8, () => true);
+    terminalFitAddon = new api.FitAddon();
+    terminalXterm.loadAddon(terminalFitAddon);
+    terminalXterm.open(elements.terminalXterm);
+    terminalXtermData = terminalXterm.onData((data) => {
+      sendTerminalBytes(encoder.encode(data));
+    });
+    terminalXtermBinary = terminalXterm.onBinary((data) => {
+      const bytes = new Uint8Array(data.length);
+      for (let index = 0; index < data.length; index += 1) {
+        bytes[index] = data.charCodeAt(index) & 0xff;
+      }
+      sendTerminalBytes(bytes);
+    });
+    return true;
+  }
+
+  function activateTerminalMode(mode, { reset = false } = {}) {
+    terminalMode = mode === "pty" ? "pty" : "snapshot";
+    const raw = terminalMode === "pty";
+    if (raw && !ensureTerminalXterm()) return false;
+    elements.terminalXterm.hidden = !raw;
+    elements.terminalOutput.hidden = raw;
+    if (raw) {
+      terminalPendingOutput = null;
+      terminalPendingUpdates = 0;
+      updateTerminalLatestControl();
+      if (reset) terminalXterm.reset();
+      window.requestAnimationFrame(() => {
+        if (terminalMode !== "pty" || !terminalFitAddon) return;
+        sendTerminalResize();
+        terminalXterm.focus();
+      });
+    }
+    return true;
+  }
+
   function sendTerminalData(data, enter = false) {
-    if (
-      !data ||
-      !terminalSocket ||
-      terminalSocket.readyState !== WebSocket.OPEN ||
-      terminalSocketMachine !== terminalMachine
-    ) return false;
+    if (!data || !terminalReady || !terminalSocketCurrent()) return false;
+    if (terminalMode === "pty") {
+      const bytes = encoder.encode(`${data}${enter ? "\r" : ""}`);
+      return sendTerminalBytes(bytes);
+    }
     terminalSocket.send(JSON.stringify({ type: "input", data, enter }));
     return true;
   }
@@ -1912,6 +2019,12 @@
   }
 
   function terminalSize() {
+    if (terminalMode === "pty" && terminalXterm) {
+      return {
+        cols: Math.max(20, Math.min(300, terminalXterm.cols)),
+        rows: Math.max(3, Math.min(120, terminalXterm.rows)),
+      };
+    }
     const bounds = elements.terminalOutput.getBoundingClientRect();
     const cols = Math.max(20, Math.min(300, Math.floor(bounds.width / 8.2)));
     const rows = Math.max(3, Math.min(120, Math.floor(bounds.height / 19)));
@@ -1924,6 +2037,7 @@
       enabled &&
       online &&
       terminalSocketMachine === terminalMachine &&
+      terminalReady &&
       terminalSocket?.readyState === WebSocket.OPEN;
     elements.terminalMachine.disabled = terminalLoading;
     elements.terminalStartForm.querySelector("button").disabled = terminalLoading || !online;
@@ -1942,6 +2056,14 @@
     if (socket && socket.readyState < WebSocket.CLOSING) {
       socket.close(1000, "Client changed terminal");
     }
+    terminalMode = "snapshot";
+    terminalReady = false;
+    elements.terminalXterm.hidden = true;
+    elements.terminalOutput.hidden = false;
+    terminalXterm?.reset();
+    terminalPendingOutput = null;
+    terminalPendingUpdates = 0;
+    updateTerminalLatestControl();
     elements.terminalState.textContent = selectedShellId ? "Disconnected" : "No session";
     setTerminalControls(false);
   }
@@ -2056,18 +2178,27 @@
   function terminalWebSocketUrl(shellId, machine) {
     const url = new URL(`${uiPath}/ws/terminals/${encodeURIComponent(shellId)}`, location.href);
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const size = terminalSize();
     url.searchParams.set("machine", machine);
     url.searchParams.set("lines", "1000");
+    url.searchParams.set("mode", "auto");
+    url.searchParams.set("cols", String(size.cols));
+    url.searchParams.set("rows", String(size.rows));
     return url;
   }
 
   function sendTerminalResize() {
-    if (
-      !terminalSocket ||
-      terminalSocket.readyState !== WebSocket.OPEN ||
-      terminalSocketMachine !== terminalMachine
-    ) return;
+    if (!terminalReady || !terminalSocketCurrent()) return;
+    if (terminalMode === "pty" && terminalFitAddon && !elements.terminalXterm.hidden) {
+      terminalFitAddon.fit();
+    }
     terminalSocket.send(JSON.stringify({ type: "resize", ...terminalSize() }));
+  }
+
+  function terminalNotice(value, fallback = "Terminal session exited.") {
+    return text(value, fallback)
+      .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+      .slice(0, 4096);
   }
 
   function connectTerminal(shellId) {
@@ -2094,6 +2225,7 @@
       terminalWebSocketUrl(shellId, requestedMachine),
       terminalSocketProtocols(),
     );
+    socket.binaryType = "arraybuffer";
     terminalSocket = socket;
     terminalSocketMachine = requestedMachine;
     const current = () =>
@@ -2103,13 +2235,18 @@
       requestedMachine === terminalSocketMachine;
     socket.addEventListener("open", () => {
       if (!current()) return;
-      elements.terminalState.textContent = `Connected · ${requestedMachine}`;
-      setTerminalControls(true);
-      sendTerminalResize();
-      elements.terminalInput.focus();
+      elements.terminalState.textContent = `Negotiating · ${requestedMachine}`;
+      terminalReady = false;
+      setTerminalControls(false);
     });
     socket.addEventListener("message", (event) => {
       if (!current()) return;
+      if (event.data instanceof ArrayBuffer) {
+        if (terminalMode === "pty" && terminalXterm) {
+          terminalXterm.write(new Uint8Array(event.data));
+        }
+        return;
+      }
       let message;
       try {
         message = JSON.parse(String(event.data));
@@ -2120,11 +2257,34 @@
         message.machine !== requestedMachine ||
         message.shell_id !== shellId
       ) return;
-      if (message.type === "snapshot") {
+      if (message.type === "ready") {
+        const mode = message.mode === "pty" ? "pty" : "snapshot";
+        if (!activateTerminalMode(mode, { reset: mode === "pty" })) {
+          elements.terminalState.textContent = "xterm assets unavailable";
+          socket.close(1011, "xterm assets unavailable");
+          return;
+        }
+        terminalReady = true;
+        elements.terminalState.textContent = `Connected · ${requestedMachine} · ${mode.toUpperCase()}`;
+        setTerminalControls(true);
+        sendTerminalResize();
+        if (mode === "pty") terminalXterm?.focus();
+        else elements.terminalInput.focus();
+      } else if (message.type === "snapshot") {
         acceptTerminalSnapshot(text(message.output, ""));
+        terminalReady = true;
+        elements.terminalState.textContent = `Connected · ${requestedMachine} · SNAPSHOT`;
+        setTerminalControls(true);
+        elements.terminalInput.focus();
       } else if (message.type === "exit") {
+        const detail = terminalNotice(message.message);
+        terminalReady = false;
         elements.terminalState.textContent = `Exited · ${requestedMachine}`;
-        showTerminalMessage(text(message.message, "Terminal session exited."));
+        if (terminalMode === "pty" && terminalXterm) {
+          terminalXterm.write(`\r\n\u001b[31m[${detail}]\u001b[0m\r\n`);
+        } else {
+          showTerminalMessage(detail);
+        }
         setTerminalControls(false);
         refreshTerminalsInBackground({ force: true });
       }
@@ -2133,6 +2293,7 @@
       if (!current()) return;
       terminalSocket = null;
       terminalSocketMachine = "";
+      terminalReady = false;
       setTerminalControls(false);
       if (event.code === 4401 || event.code === 4403) {
         clearAccessToken();
@@ -2811,7 +2972,10 @@
   for (const button of elements.terminalKeyButtons) {
     button.addEventListener("click", () => {
       const data = terminalSpecialKeys[button.dataset.terminalKey || ""];
-      if (data && sendTerminalData(data, false)) elements.terminalInput.focus();
+      if (data && sendTerminalData(data, false)) {
+        if (terminalMode === "pty") terminalXterm?.focus();
+        else elements.terminalInput.focus();
+      }
     });
   }
 

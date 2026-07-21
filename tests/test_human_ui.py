@@ -80,9 +80,12 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="remote-rename-dialog"' in index.text
     assert 'id="remote-revoke-dialog"' in index.text
     assert 'id="terminal-machine"' in index.text
+    assert 'id="terminal-xterm"' in index.text
     assert 'id="terminal-latest"' in index.text
     assert 'id="terminal-keyboard"' in index.text
     assert 'data-terminal-key="ctrl-c"' in index.text
+    assert "assets/xterm.css" in index.text
+    assert "assets/xterm_bundle.js" in index.text
     assert "assets/terminal_renderer.js" in index.text
     assert 'id="file-panel"' in index.text
     assert 'id="file-machine"' in index.text
@@ -92,9 +95,12 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="file-rename"' in index.text
     assert "__LSM_UI_PATH__" not in index.text
     assert index.headers["cache-control"] == "no-store"
-    assert "frame-ancestors 'none'" in index.headers["content-security-policy"]
+    csp = index.headers["content-security-policy"]
+    assert "script-src 'self'" in csp
+    assert "unsafe-eval" not in csp
+    assert "style-src 'self' 'unsafe-inline'" in csp
+    assert "frame-ancestors 'none'" in csp
     assert client.get("/ui/callback?code=example").status_code == 200
-
     renderer = client.get("/ui/assets/terminal_renderer.js")
     assert renderer.status_code == 200
     assert renderer.headers["x-content-type-options"] == "nosniff"
@@ -103,6 +109,17 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "createTextNode" in renderer.text
     assert "innerHTML" not in renderer.text
 
+    xterm_bundle = client.get("/ui/assets/xterm_bundle.js")
+    assert xterm_bundle.status_code == 200
+    assert xterm_bundle.headers["x-content-type-options"] == "nosniff"
+    assert "LsmXterm" in xterm_bundle.text
+    assert "sourceMappingURL" not in xterm_bundle.text
+    assert client.get("/ui/assets/xterm.css").status_code == 200
+    license_text = client.get("/ui/assets/xterm.LICENSE.txt")
+    assert license_text.status_code == 200
+    assert "Permission is hereby granted" in license_text.text
+    assert "@xterm/xterm 5.5.0" in license_text.text
+    assert "@xterm/addon-fit 0.10.0" in license_text.text
     script = client.get("/ui/assets/web.js")
     assert script.status_code == 200
     assert script.headers["x-content-type-options"] == "nosniff"
@@ -127,7 +144,16 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "terminalMachineStates" in script.text
     assert "requestedMachine !== terminalMachine" in script.text
     assert 'url.searchParams.set("machine", machine)' in script.text
+    assert 'url.searchParams.set("mode", "auto")' in script.text
+    assert 'socket.binaryType = "arraybuffer"' in script.text
+    assert "terminalReady" in script.text
+    assert "activateTerminalMode" in script.text
+    assert "sendTerminalBytes" in script.text
+    assert "offset += 65536" in script.text
+    assert "registerOscHandler(8" in script.text
+    assert "allowNonHttpProtocols: false" in script.text
     assert "terminalSocketMachine === terminalMachine" in script.text
+    assert "bridge_id" not in script.text
     assert "acceptTerminalSnapshot" in script.text
     assert "terminalPendingOutput" in script.text
     assert "terminalSpecialKeys" in script.text

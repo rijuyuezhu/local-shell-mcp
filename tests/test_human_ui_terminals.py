@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import threading
 from types import SimpleNamespace
@@ -418,6 +419,148 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
     assert not terminal_module._ACTIVE_CONNECTIONS
 
 
+def test_terminal_websocket_raw_pty_streams_binary_and_closes_bridge(
+    monkeypatch, tmp_path
+):
+    calls: list[tuple] = []
+    read_count = 0
+
+    async def fake_list():
+        return ListPersistentShellsOutput(
+            shells=[PersistentShellInfo(shell_id="demo")]
+        )
+
+    async def fake_open(shell_id, cols, rows):
+        calls.append(("open", shell_id, cols, rows))
+        return {
+            "bridge_id": "bridge_capability_1234567890",
+            "shell_id": shell_id,
+            "cols": cols,
+            "rows": rows,
+            "backend": "tmux-pty",
+        }
+
+    async def fake_read(bridge_id, max_bytes=65_536, wait_ms=100):
+        nonlocal read_count
+        await asyncio.sleep(0.01)
+        read_count += 1
+        payload = b"\x1b[?1049hRAW\xff" if read_count == 1 else b""
+        return {
+            "bridge_id": bridge_id,
+            "data_b64": base64.b64encode(payload).decode(),
+            "bytes": len(payload),
+            "eof": False,
+        }
+
+    async def fake_write(bridge_id, data_b64):
+        data = base64.b64decode(data_b64)
+        calls.append(("write", bridge_id, data))
+        return {"bridge_id": bridge_id, "written_bytes": len(data)}
+
+    async def fake_resize(bridge_id, cols, rows):
+        calls.append(("resize", bridge_id, cols, rows))
+        return {
+            "bridge_id": bridge_id,
+            "cols": cols,
+            "rows": rows,
+            "resized": True,
+            "backend": "tmux-pty",
+        }
+
+    async def fake_close(bridge_id):
+        calls.append(("close", bridge_id))
+        return {"bridge_id": bridge_id, "closed": True}
+
+    monkeypatch.setattr(
+        terminal_module, "list_persistent_shells_execute", fake_list
+    )
+    monkeypatch.setattr(
+        terminal_module, "open_terminal_bridge_execute", fake_open
+    )
+    monkeypatch.setattr(
+        terminal_module, "read_terminal_bridge_execute", fake_read
+    )
+    monkeypatch.setattr(
+        terminal_module, "write_terminal_bridge_execute", fake_write
+    )
+    monkeypatch.setattr(
+        terminal_module, "resize_terminal_bridge_execute", fake_resize
+    )
+    monkeypatch.setattr(
+        terminal_module, "close_terminal_bridge_execute", fake_close
+    )
+    client = _client(monkeypatch, tmp_path, auth_mode="oauth")
+    bearer = _bearer_protocol(f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE}")
+
+    with client.websocket_connect(
+        "/ui/ws/terminals/demo?mode=auto&cols=90&rows=28",
+        subprotocols=["lsm-ui-terminal", bearer],
+    ) as websocket:
+        assert websocket.receive_json() == {
+            "type": "ready",
+            "machine": "local",
+            "shell_id": "demo",
+            "mode": "pty",
+            "backend": "tmux-pty",
+        }
+        assert websocket.receive_bytes() == b"\x1b[?1049hRAW\xff"
+        websocket.send_bytes(b"\xff\x00")
+        websocket.send_json(
+            {"type": "input", "data": "echo raw", "enter": True}
+        )
+        websocket.send_json({"type": "resize", "cols": 120, "rows": 36})
+        websocket.send_json({"type": "ping"})
+        assert websocket.receive_json() == {
+            "type": "pong",
+            "machine": "local",
+            "shell_id": "demo",
+            "mode": "pty",
+        }
+        websocket.send_json({"type": "close"})
+
+    bridge_id = "bridge_capability_1234567890"
+    assert calls[0] == ("open", "demo", 90, 28)
+    assert ("write", bridge_id, b"\xff\x00") in calls
+    assert ("write", bridge_id, b"echo raw\r") in calls
+    assert ("resize", bridge_id, 120, 36) in calls
+    assert calls[-1] == ("close", bridge_id)
+    assert not terminal_module._ACTIVE_CONNECTIONS
+
+
+def test_terminal_websocket_auto_falls_back_to_snapshot(monkeypatch, tmp_path):
+    async def fake_list():
+        return ListPersistentShellsOutput(
+            shells=[PersistentShellInfo(shell_id="demo")]
+        )
+
+    async def fake_open(shell_id, cols, rows):
+        raise terminal_module.TerminalBridgeUnsupportedError("PTY unavailable")
+
+    async def fake_read(shell_id, lines=200, *, preserve_ansi=False):
+        await asyncio.sleep(0.01)
+        return ReadPersistentShellOutput(shell_id=shell_id, output="fallback$ ")
+
+    monkeypatch.setattr(
+        terminal_module, "list_persistent_shells_execute", fake_list
+    )
+    monkeypatch.setattr(
+        terminal_module, "open_terminal_bridge_execute", fake_open
+    )
+    monkeypatch.setattr(
+        terminal_module, "read_persistent_shell_output_execute", fake_read
+    )
+    client = _client(monkeypatch, tmp_path, auth_mode="oauth")
+    bearer = _bearer_protocol(f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE}")
+
+    with client.websocket_connect(
+        "/ui/ws/terminals/demo?mode=auto",
+        subprotocols=["lsm-ui-terminal", bearer],
+    ) as websocket:
+        assert websocket.receive_json()["mode"] == "snapshot"
+        assert websocket.receive_json()["output"] == "fallback$ "
+        websocket.send_json({"type": "close"})
+
+
 class _RemoteTerminalManager:
     def __init__(self, status: str = "online") -> None:
         self.status = status
@@ -660,6 +803,159 @@ def test_remote_terminal_websocket_uses_selected_machine(monkeypatch, tmp_path):
     assert all(args.get("preserve_ansi") is True for args in read_args)
 
 
+def test_remote_terminal_websocket_raw_bridge_is_sessionless(
+    monkeypatch, tmp_path
+):
+    bridge_id = "remote_bridge_capability_1234567890"
+    calls: list[tuple[str, str, dict, int]] = []
+    read_count = 0
+
+    async def remote_call(machine, tool, args, timeout_s):
+        nonlocal read_count
+        calls.append((machine, tool, args, timeout_s))
+        if tool == "list_persistent_shells":
+            data = {"shells": [{"shell_id": "shared", "cwd": "/edge"}]}
+        elif tool == "open_terminal_bridge":
+            data = {
+                "bridge_id": bridge_id,
+                "shell_id": "shared",
+                "cols": args["cols"],
+                "rows": args["rows"],
+                "backend": "tmux-pty",
+            }
+        elif tool == "read_terminal_bridge":
+            await asyncio.sleep(0.01)
+            read_count += 1
+            payload = b"REMOTE_RAW" if read_count == 1 else b""
+            data = {
+                "bridge_id": bridge_id,
+                "data_b64": base64.b64encode(payload).decode(),
+                "bytes": len(payload),
+                "eof": False,
+            }
+        elif tool == "write_terminal_bridge":
+            data = {
+                "bridge_id": bridge_id,
+                "written_bytes": len(base64.b64decode(args["data_b64"])),
+            }
+        elif tool == "resize_terminal_bridge":
+            data = {
+                "bridge_id": bridge_id,
+                "cols": args["cols"],
+                "rows": args["rows"],
+                "resized": True,
+                "backend": "tmux-pty",
+            }
+        elif tool == "close_terminal_bridge":
+            data = {"bridge_id": bridge_id, "closed": True}
+        else:
+            raise AssertionError(tool)
+        return {"ok": True, "data": data}
+
+    client = _client(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        remote_enabled=True,
+    )
+    monkeypatch.setattr(
+        terminal_module,
+        "remote_manager",
+        lambda: _RemoteTerminalManager("online"),
+    )
+    monkeypatch.setattr(terminal_module, "call_remote_worker_tool", remote_call)
+    scope = f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE} {SCOPE_REMOTE_USE}"
+    bearer = _bearer_protocol(scope)
+
+    with client.websocket_connect(
+        "/ui/ws/terminals/shared?machine=edge&mode=auto&cols=100&rows=30",
+        subprotocols=["lsm-ui-terminal", bearer],
+    ) as websocket:
+        ready = websocket.receive_json()
+        assert ready == {
+            "type": "ready",
+            "machine": "edge",
+            "shell_id": "shared",
+            "mode": "pty",
+            "backend": "tmux-pty",
+        }
+        assert bridge_id not in str(ready)
+        assert websocket.receive_bytes() == b"REMOTE_RAW"
+        websocket.send_bytes(b"\xffremote")
+        websocket.send_json({"type": "resize", "cols": 110, "rows": 32})
+        websocket.send_json({"type": "close"})
+
+    tools = [tool for _, tool, _, _ in calls]
+    assert tools[0:2] == ["list_persistent_shells", "open_terminal_bridge"]
+    assert "read_terminal_bridge" in tools
+    assert "write_terminal_bridge" in tools
+    assert "resize_terminal_bridge" in tools
+    assert tools[-1] == "close_terminal_bridge"
+    assert all(machine == "edge" for machine, _, _, _ in calls)
+    assert all("session_id" not in args for _, _, args, _ in calls)
+    write_args = [
+        args for _, tool, args, _ in calls if tool == "write_terminal_bridge"
+    ]
+    assert base64.b64decode(write_args[0]["data_b64"]) == b"\xffremote"
+
+
+def test_remote_terminal_auto_falls_back_for_older_worker(
+    monkeypatch, tmp_path
+):
+    calls: list[tuple[str, str, dict, int]] = []
+
+    async def remote_call(machine, tool, args, timeout_s):
+        calls.append((machine, tool, args, timeout_s))
+        if tool == "list_persistent_shells":
+            return {
+                "ok": True,
+                "data": {"shells": [{"shell_id": "shared", "cwd": "/edge"}]},
+            }
+        if tool == "open_terminal_bridge":
+            return {
+                "ok": False,
+                "error": "ValueError",
+                "message": "Unsupported remote worker tool: open_terminal_bridge",
+            }
+        if tool == "read_persistent_shell_output":
+            return {
+                "ok": True,
+                "data": {"shell_id": "shared", "output": "legacy edge$ "},
+            }
+        raise AssertionError(tool)
+
+    client = _client(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        remote_enabled=True,
+    )
+    monkeypatch.setattr(
+        terminal_module,
+        "remote_manager",
+        lambda: _RemoteTerminalManager("online"),
+    )
+    monkeypatch.setattr(terminal_module, "call_remote_worker_tool", remote_call)
+    scope = f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE} {SCOPE_REMOTE_USE}"
+    bearer = _bearer_protocol(scope)
+
+    with client.websocket_connect(
+        "/ui/ws/terminals/shared?machine=edge&mode=auto",
+        subprotocols=["lsm-ui-terminal", bearer],
+    ) as websocket:
+        assert websocket.receive_json()["mode"] == "snapshot"
+        assert websocket.receive_json()["output"] == "legacy edge$ "
+        websocket.send_json({"type": "close"})
+
+    tools = [tool for _, tool, _, _ in calls]
+    assert tools[:3] == [
+        "list_persistent_shells",
+        "open_terminal_bridge",
+        "read_persistent_shell_output",
+    ]
+    assert "close_terminal_bridge" not in tools
+
+
 def test_remote_terminal_websocket_requires_remote_scope(monkeypatch, tmp_path):
     calls = _RemoteTerminalCalls()
     client = _remote_terminal_client(
@@ -678,6 +974,37 @@ def test_remote_terminal_websocket_requires_remote_scope(monkeypatch, tmp_path):
 
     assert exc_info.value.code == 4403
     assert calls.calls == []
+
+
+@pytest.mark.asyncio
+async def test_terminal_bridge_malformed_open_is_closed(monkeypatch):
+    closed = []
+    bridge_id = "bridge_capability_1234567890"
+
+    async def fake_open(shell_id, cols, rows):
+        return {
+            "bridge_id": bridge_id,
+            "shell_id": shell_id,
+            "cols": cols + 1,
+            "rows": rows,
+            "backend": "tmux-pty",
+        }
+
+    async def fake_close(value):
+        closed.append(value)
+        return {"bridge_id": value, "closed": True}
+
+    monkeypatch.setattr(
+        terminal_module, "open_terminal_bridge_execute", fake_open
+    )
+    monkeypatch.setattr(
+        terminal_module, "close_terminal_bridge_execute", fake_close
+    )
+
+    with pytest.raises(RuntimeError, match="malformed terminal bridge open"):
+        await terminal_module._open_bridge("local", "demo", 80, 24)
+
+    assert closed == [bridge_id]
 
 
 def test_remote_terminal_rejects_malformed_envelope_and_oversized_output():

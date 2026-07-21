@@ -27,7 +27,9 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: vscode-extension/package-lock.json
+          cache-dependency-path: |
+            vscode-extension/package-lock.json
+            ui-terminal/package-lock.json
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -77,6 +79,21 @@ jobs:
         with:
           enable-cache: true
       - run: uv build --out-dir dist
+      - name: Validate source distribution contents and rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/local-shell-mcp-sdist /tmp/local-shell-mcp-sdist-wheel
+          mkdir -p /tmp/local-shell-mcp-sdist /tmp/local-shell-mcp-sdist-wheel
+          tar -xzf dist/*.tar.gz -C /tmp/local-shell-mcp-sdist
+          source_dir="$(find /tmp/local-shell-mcp-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -f "$source_dir/ui-terminal/package.json"
+          test -f "$source_dir/ui-terminal/package-lock.json"
+          test -f "$source_dir/ui-terminal/src/index.js"
+          test -f "$source_dir/ui-terminal/scripts/build.mjs"
+          test ! -e "$source_dir/ui-terminal/node_modules"
+          uv build --wheel "$source_dir" --out-dir /tmp/local-shell-mcp-sdist-wheel
+          test -n "$(find /tmp/local-shell-mcp-sdist-wheel -maxdepth 1 -name '*.whl' -print -quit)"
       - name: Install wheel in a clean virtualenv
         run: |
           python -m venv /tmp/local-shell-mcp-wheel-venv

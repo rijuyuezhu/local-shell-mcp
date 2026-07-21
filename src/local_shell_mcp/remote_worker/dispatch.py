@@ -86,6 +86,51 @@ async def _run_python_code(args: dict[str, Any]) -> Any:
     )
 
 
+async def _open_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal_bridge import open_terminal_bridge_execute
+
+    return await open_terminal_bridge_execute(
+        str(args["shell_id"]),
+        int(args.get("cols") or 120),
+        int(args.get("rows") or 36),
+    )
+
+
+async def _read_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal_bridge import read_terminal_bridge_execute
+
+    return await read_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        int(args.get("max_bytes") or 65_536),
+        int(args.get("wait_ms") or 0),
+    )
+
+
+async def _write_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal_bridge import write_terminal_bridge_execute
+
+    return await write_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        str(args.get("data_b64") or ""),
+    )
+
+
+async def _resize_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal_bridge import resize_terminal_bridge_execute
+
+    return await resize_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        int(args["cols"]),
+        int(args["rows"]),
+    )
+
+
+async def _close_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal_bridge import close_terminal_bridge_execute
+
+    return await close_terminal_bridge_execute(str(args["bridge_id"]))
+
+
 async def _start_persistent_shell(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import start_persistent_shell_execute
 
@@ -414,6 +459,11 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "write_todos": _write_todos,
     "bash": _bash,
     "run_python_code": _run_python_code,
+    "open_terminal_bridge": _open_terminal_bridge,
+    "read_terminal_bridge": _read_terminal_bridge,
+    "write_terminal_bridge": _write_terminal_bridge,
+    "resize_terminal_bridge": _resize_terminal_bridge,
+    "close_terminal_bridge": _close_terminal_bridge,
     "start_persistent_shell": _start_persistent_shell,
     "send_persistent_shell_input": _send_persistent_shell_input,
     "resize_persistent_shell": _resize_persistent_shell,
