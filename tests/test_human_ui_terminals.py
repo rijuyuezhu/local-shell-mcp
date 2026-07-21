@@ -419,6 +419,47 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
     assert not terminal_module._ACTIVE_CONNECTIONS
 
 
+def test_terminal_bridge_normalization_accepts_conpty_without_resize():
+    handle = terminal_module._normalize_bridge_open(
+        "edge",
+        "demo",
+        100,
+        30,
+        {
+            "bridge_id": "bridge_capability_1234567890",
+            "shell_id": "demo",
+            "cols": 100,
+            "rows": 30,
+            "backend": "conpty",
+        },
+    )
+    terminal_module._normalize_bridge_resize(
+        handle,
+        {
+            "bridge_id": handle.bridge_id,
+            "cols": 120,
+            "rows": 40,
+            "resized": False,
+            "backend": "conpty",
+        },
+        120,
+        40,
+    )
+    with pytest.raises(RuntimeError, match="malformed terminal bridge resize"):
+        terminal_module._normalize_bridge_resize(
+            handle,
+            {
+                "bridge_id": handle.bridge_id,
+                "cols": 120,
+                "rows": 40,
+                "resized": False,
+                "backend": "tmux-pty",
+            },
+            120,
+            40,
+        )
+
+
 def test_terminal_websocket_raw_pty_streams_binary_and_closes_bridge(
     monkeypatch, tmp_path
 ):

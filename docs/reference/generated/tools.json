@@ -3464,6 +3464,19 @@
         "additionalProperties": true,
         "description": "Result of terminating a persistent shell.",
         "properties": {
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Persistent-shell backend that handled termination.",
+            "title": "Backend"
+          },
           "killed": {
             "anyOf": [
               {
@@ -3474,7 +3487,7 @@
               }
             ],
             "default": null,
-            "description": "Whether tmux reported that the shell was killed successfully.",
+            "description": "Whether the persistent shell was killed successfully.",
             "title": "Killed"
           },
           "shell_id": {
@@ -3492,7 +3505,7 @@
               }
             ],
             "default": null,
-            "description": "Captured tmux stderr from the kill operation, when available.",
+            "description": "Captured backend error text from the kill operation, when available.",
             "title": "Stderr"
           }
         },
@@ -4046,6 +4059,19 @@
             "additionalProperties": true,
             "description": "One persistent shell entry.",
             "properties": {
+              "backend": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Persistent-shell backend that owns this session.",
+                "title": "Backend"
+              },
               "command": {
                 "anyOf": [
                   {
@@ -4099,7 +4125,7 @@
           }
         },
         "additionalProperties": true,
-        "description": "Active tmux-backed persistent shells.",
+        "description": "Active persistent shells.",
         "properties": {
           "shells": {
             "description": "Active persistent shells with at least shell_id and optional implementation-specific metadata.",
@@ -4599,6 +4625,19 @@
         "additionalProperties": true,
         "description": "Recent output captured from a persistent shell.",
         "properties": {
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Persistent-shell backend that produced the output.",
+            "title": "Backend"
+          },
           "lines": {
             "anyOf": [
               {
@@ -4865,11 +4904,6 @@
         "properties": {
           "backend": {
             "description": "Persistent-terminal backend that handled the resize request.",
-            "enum": [
-              "tmux",
-              "conpty",
-              "native"
-            ],
             "title": "Backend",
             "type": "string"
           },

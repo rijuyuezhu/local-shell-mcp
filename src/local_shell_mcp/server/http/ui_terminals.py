@@ -53,7 +53,7 @@ from ...schemas.result_models.shell import (
     StartPersistentShellOutput,
 )
 from ...terminal_bridge import (
-    TERMINAL_BRIDGE_BACKEND,
+    TERMINAL_BRIDGE_BACKENDS,
     TERMINAL_BRIDGE_MAX_CHUNK_BYTES,
     TerminalBridgeBusyError,
     TerminalBridgeNotFoundError,
@@ -625,7 +625,7 @@ def _normalize_bridge_open(
         returned_shell != shell_id
         or returned_cols != cols
         or returned_rows != rows
-        or backend != TERMINAL_BRIDGE_BACKEND
+        or backend not in TERMINAL_BRIDGE_BACKENDS
     ):
         raise RuntimeError(
             "Machine returned malformed terminal bridge open data"
@@ -704,11 +704,12 @@ def _normalize_bridge_resize(
         raise RuntimeError(
             "Machine returned malformed terminal bridge resize data"
         ) from exc
+    resized = data.get("resized")
     if (
         returned_cols != cols
         or returned_rows != rows
-        or data.get("resized") is not True
-        or data.get("backend") != TERMINAL_BRIDGE_BACKEND
+        or not isinstance(resized, bool)
+        or data.get("backend") != handle.backend
     ):
         raise RuntimeError(
             "Machine returned malformed terminal bridge resize data"

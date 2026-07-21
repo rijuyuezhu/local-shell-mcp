@@ -67,6 +67,25 @@ jobs:
       - run: uv sync --locked --group dev
       - run: uv run pytest -q
 
+
+  windows-conpty:
+    name: Windows ConPTY
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - run: >-
+          uv run pytest -q
+          tests/test_conpty_backend.py
+          tests/test_conpty_windows_integration.py
+          tests/test_terminal_bridge.py
+
   package-smoke:
     name: Package smoke
     runs-on: ubuntu-latest

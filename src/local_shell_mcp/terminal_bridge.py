@@ -1,10 +1,10 @@
-"""Connection-scoped raw PTY bridges for existing tmux sessions.
+"""Connection-scoped raw PTY bridges for persistent shells.
 
-The public persistent-shell tools intentionally remain snapshot based.  This
-module is an internal Human UI transport: each bridge starts one short-lived
-``tmux attach-session`` client inside a PTY and streams its bytes to an
-authenticated browser connection.  Closing the bridge terminates only that
-attach client; the underlying tmux session keeps running.
+The public persistent-shell tools intentionally remain snapshot based. This
+module is an internal Human UI transport. POSIX bridges start a short-lived
+``tmux attach-session`` client; Windows bridges subscribe to the existing
+ConPTY session's shared reader. Closing either bridge removes only the raw
+client and preserves the underlying persistent shell.
 """
 
 from __future__ import annotations
@@ -22,8 +22,9 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
+from . import conpty
 from .config.settings import get_settings
 from .ops.shell import (
     PERSISTENT_SHELL_MAX_COLUMNS,
@@ -35,6 +36,9 @@ from .ops.shell import (
 TERMINAL_BRIDGE_MAX_CHUNK_BYTES = 65_536
 TERMINAL_BRIDGE_MAX_WAIT_MS = 1_000
 TERMINAL_BRIDGE_BACKEND = "tmux-pty"
+TERMINAL_BRIDGE_BACKENDS = frozenset(
+    {TERMINAL_BRIDGE_BACKEND, conpty.CONPTY_BACKEND}
+)
 _TERMINAL_BRIDGE_HARD_IDLE_TIMEOUT_S = 300
 _BRIDGE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
 _SHELL_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -130,8 +134,27 @@ def _idle_timeout_s() -> float:
     return float(max(60, min(configured, _TERMINAL_BRIDGE_HARD_IDLE_TIMEOUT_S)))
 
 
+def _use_conpty_bridge() -> bool:
+    return os.name == "nt"
+
+
+class _TerminalProcess(Protocol):
+    backend: str
+    shell_id: str
+
+    def read_wait(self, max_bytes: int, wait_ms: int) -> tuple[bytes, bool]: ...
+
+    def write_all(self, data: bytes) -> None: ...
+
+    def resize(self, cols: int, rows: int) -> bool: ...
+
+    def close_sync(self) -> None: ...
+
+
 class _UnixTmuxAttach:
     """One POSIX PTY hosting a tmux attach client."""
+
+    backend = TERMINAL_BRIDGE_BACKEND
 
     def __init__(self, shell_id: str, cols: int, rows: int) -> None:
         if os.name == "nt":  # pragma: no cover - exercised by platform guards.
@@ -197,7 +220,7 @@ class _UnixTmuxAttach:
                 os.close(slave_fd)
         os.set_blocking(master_fd, False)
 
-    def resize(self, cols: int, rows: int) -> None:
+    def resize(self, cols: int, rows: int) -> bool:
         if self._closed or self.master_fd < 0:
             raise TerminalBridgeNotFoundError("Terminal bridge is unavailable")
         winsize = self._struct.pack("HHHH", rows, cols, 0, 0)
@@ -210,6 +233,7 @@ class _UnixTmuxAttach:
         if process is not None and process.poll() is None:
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGWINCH)
+        return True
 
     def read_wait(self, max_bytes: int, wait_ms: int) -> tuple[bytes, bool]:
         if self._closed or self.master_fd < 0:
@@ -286,7 +310,7 @@ class _UnixTmuxAttach:
 class _Bridge:
     bridge_id: str
     shell_id: str
-    process: _UnixTmuxAttach
+    process: _TerminalProcess
     cols: int
     rows: int
     idle_timeout_s: float
@@ -314,7 +338,7 @@ def _schedule_expiry_locked(
 
 
 def _expire_bridge(bridge_id: str) -> None:
-    process: _UnixTmuxAttach | None = None
+    process: _TerminalProcess | None = None
     with _BRIDGES_LOCK:
         bridge = _BRIDGES.get(bridge_id)
         if bridge is None:
@@ -364,13 +388,9 @@ async def open_terminal_bridge_execute(
     cols: int = 120,
     rows: int = 36,
 ) -> dict[str, Any]:
-    """Open one exclusive raw PTY attachment to an existing tmux shell."""
+    """Open one exclusive raw PTY attachment to a persistent shell."""
     normalized_shell = _shell_id(shell_id)
     columns, lines = _terminal_size(cols, rows)
-    if os.name == "nt":
-        raise TerminalBridgeUnsupportedError(
-            "Raw tmux terminal bridges require POSIX PTY support"
-        )
 
     maximum = max(1, min(int(get_settings().ui_terminal_max_connections), 128))
     with _BRIDGES_LOCK:
@@ -387,15 +407,31 @@ async def open_terminal_bridge_execute(
             )
         _PENDING_SHELLS.add(normalized_shell)
 
-    process: _UnixTmuxAttach | None = None
+    bridge_id = secrets.token_urlsafe(32)
+    process: _TerminalProcess | None = None
     try:
-        process = await asyncio.to_thread(
-            _UnixTmuxAttach,
-            normalized_shell,
-            columns,
-            lines,
-        )
-        bridge_id = secrets.token_urlsafe(32)
+        if _use_conpty_bridge():
+            if not conpty.is_available():
+                raise TerminalBridgeUnsupportedError(
+                    "Raw terminal bridges on Windows require pywinpty"
+                )
+            try:
+                process = await asyncio.to_thread(
+                    conpty.open_raw_attachment,
+                    normalized_shell,
+                    bridge_id,
+                    columns,
+                    lines,
+                )
+            except RuntimeError as exc:
+                raise TerminalBridgeNotFoundError(str(exc)) from exc
+        else:
+            process = await asyncio.to_thread(
+                _UnixTmuxAttach,
+                normalized_shell,
+                columns,
+                lines,
+            )
         bridge = _Bridge(
             bridge_id=bridge_id,
             shell_id=normalized_shell,
@@ -419,7 +455,7 @@ async def open_terminal_bridge_execute(
             "shell_id": normalized_shell,
             "cols": columns,
             "rows": lines,
-            "backend": TERMINAL_BRIDGE_BACKEND,
+            "backend": bridge.process.backend,
         }
     finally:
         with _BRIDGES_LOCK:
@@ -486,7 +522,11 @@ async def resize_terminal_bridge_execute(
     """Resize the PTY used by one raw terminal attachment."""
     columns, lines = _terminal_size(cols, rows)
     bridge = _lookup_bridge(bridge_id)
-    await asyncio.to_thread(bridge.process.resize, columns, lines)
+    resized = await asyncio.to_thread(
+        bridge.process.resize,
+        columns,
+        lines,
+    )
     with _BRIDGES_LOCK:
         current = _BRIDGES.get(bridge.bridge_id)
         if current is not None:
@@ -497,13 +537,13 @@ async def resize_terminal_bridge_execute(
         "bridge_id": bridge.bridge_id,
         "cols": columns,
         "rows": lines,
-        "resized": True,
-        "backend": TERMINAL_BRIDGE_BACKEND,
+        "resized": bool(resized),
+        "backend": bridge.process.backend,
     }
 
 
 async def close_terminal_bridge_execute(bridge_id: str) -> dict[str, Any]:
-    """Close an attach client without terminating the tmux session."""
+    """Close a raw client without terminating its persistent shell."""
     normalized = _bridge_id(bridge_id)
     bridge = _detach_bridge(normalized)
     if bridge is None:

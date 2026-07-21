@@ -11,6 +11,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from .. import conpty
 from ..audit import audit
 from ..config.settings import get_settings
 from ..schemas.result_models.shell import (
@@ -578,18 +579,36 @@ async def tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
     return await run_shell(cmd, cwd=".", timeout_s=timeout_s)
 
 
+def _use_conpty_persistent_shell_backend() -> bool:
+    """Return whether persistent shells should use the Windows ConPTY backend."""
+    return os.name == "nt"
+
+
 async def start_persistent_shell_execute(
     cwd: str = ".", name: str | None = None, command: str | None = None
 ) -> StartPersistentShellOutput:
-    """Start or replace a tmux-backed persistent shell in a resolved working directory."""
+    """Start a platform-native persistent shell in a resolved working directory."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
     shells = await list_persistent_shells_execute()
     max_sessions = max(1, get_settings().max_tmux_sessions)
     if len(shells.shells) >= max_sessions:
         raise RuntimeError(
-            f"Refusing to start more than {max_sessions} tmux sessions"
+            f"Refusing to start more than {max_sessions} persistent shell sessions"
         )
     shell_id = _tmux_session_name(name)
+    if _use_conpty_persistent_shell_backend():
+        if not conpty.is_available():
+            raise RuntimeError(
+                "pywinpty is required for persistent shells on Windows"
+            )
+        initial = conpty.initial_command(command)
+        check_command_policy(initial)
+        return await conpty.start_shell(
+            shell_id=shell_id,
+            cwd=resolved_cwd,
+            command=command,
+        )
+
     initial = command or get_settings().shell_executable
     check_command_policy(initial)
     cmd = [
@@ -609,11 +628,13 @@ async def start_persistent_shell_execute(
         shell_id=shell_id,
         cwd=str(resolved_cwd),
         command=initial,
+        backend="tmux",
     )
     return StartPersistentShellOutput(
         shell_id=shell_id,
         cwd=relative_display(resolved_cwd),
         command=initial,
+        backend="tmux",
     )
 
 
@@ -621,6 +642,8 @@ async def send_persistent_shell_input_execute(
     shell_id: str, input_text: str, enter: bool = True
 ) -> SendPersistentShellInputOutput:
     """Send input to a persistent shell, optionally appending Enter."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.send_shell(shell_id, input_text, enter)
     if input_text:
         result = await tmux(["send-keys", "-l", "-t", shell_id, input_text])
         if not result.ok:
@@ -634,6 +657,7 @@ async def send_persistent_shell_input_execute(
         shell_id=shell_id,
         bytes=len(input_text.encode()),
         enter=enter,
+        backend="tmux",
     )
     return SendPersistentShellInputOutput(
         shell_id=shell_id,
@@ -665,8 +689,10 @@ def _validate_persistent_shell_size(cols: int, rows: int) -> tuple[int, int]:
 async def resize_persistent_shell_execute(
     shell_id: str, cols: int, rows: int
 ) -> ResizePersistentShellOutput:
-    """Resize one tmux-backed persistent shell window."""
+    """Resize one persistent terminal when supported by its backend."""
     columns, lines = _validate_persistent_shell_size(cols, rows)
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.resize_shell(shell_id, columns, lines)
     result = await tmux(
         [
             "resize-window",
@@ -702,7 +728,13 @@ async def read_persistent_shell_output_execute(
     *,
     preserve_ansi: bool = False,
 ) -> ReadPersistentShellOutput:
-    """Read recent output from a persistent shell through tmux capture-pane."""
+    """Read recent output from a persistent shell."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.read_shell(
+            shell_id,
+            lines,
+            preserve_ansi=preserve_ansi,
+        )
     capture_args = ["capture-pane", "-p"]
     if preserve_ansi:
         capture_args.append("-e")
@@ -715,25 +747,41 @@ async def read_persistent_shell_output_execute(
         shell_id=shell_id,
         lines=lines,
         preserve_ansi=preserve_ansi,
+        backend="tmux",
     )
-    return ReadPersistentShellOutput(shell_id=shell_id, output=result.stdout)
+    return ReadPersistentShellOutput(
+        shell_id=shell_id,
+        output=result.stdout,
+        lines=lines,
+        backend="tmux",
+    )
 
 
 async def kill_persistent_shell_execute(
     shell_id: str,
 ) -> KillPersistentShellOutput:
-    """Terminate a persistent shell by its normalized tmux shell id."""
+    """Terminate a persistent shell by its normalized shell id."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.kill_shell(shell_id)
     result = await tmux(["kill-session", "-t", shell_id])
-    audit("kill_persistent_shell", shell_id=shell_id, ok=result.ok)
+    audit(
+        "kill_persistent_shell",
+        shell_id=shell_id,
+        ok=result.ok,
+        backend="tmux",
+    )
     return KillPersistentShellOutput(
         shell_id=shell_id,
         killed=result.ok,
         stderr=result.stderr,
+        backend="tmux",
     )
 
 
 async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
-    """List active tmux-backed persistent shells managed by local-shell-mcp."""
+    """List active persistent shells managed by local-shell-mcp."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.list_shells()
     result = await tmux(
         [
             "list-sessions",
@@ -743,7 +791,6 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
         timeout_s=5,
     )
     if not result.ok:
-        # tmux exits nonzero when no server/sessions exist.
         return ListPersistentShellsOutput(shells=[])
     shells = []
     for line in result.stdout.splitlines():
@@ -754,6 +801,7 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
                     "shell_id": parts[0],
                     "created": parts[1] if len(parts) > 1 else None,
                     "attached": parts[2] if len(parts) > 2 else None,
+                    "backend": "tmux",
                 }
             )
     return ListPersistentShellsOutput(shells=shells)
