@@ -178,6 +178,35 @@ def test_worker_subcommand_parse_to_worker_handler():
     assert args.persist is True
 
 
+def test_tui_subcommand_parses_loopback_api_base():
+    args = cli._build_parser().parse_args(
+        ["--port", "9443", "tui", "--api-base", "https://localhost:9443/api/ui"]
+    )
+
+    assert args.handler is cli._run_tui_from_args
+    assert args.port == 9443
+    assert args.api_base == "https://localhost:9443/api/ui"
+
+
+def test_tui_handler_uses_configured_port_and_settings(monkeypatch):
+    calls = []
+
+    def fake_run(api_base, *, settings):
+        calls.append((api_base, settings.port, settings.ui_tui_command))
+        return 0
+
+    monkeypatch.setattr(cli, "run_tui", fake_run)
+    args = cli._build_parser().parse_args(
+        ["--port", "9555", "--ui-tui-command", "/opt/tui", "tui"]
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        args.handler(args)
+
+    assert exc_info.value.code == 0
+    assert calls == [("http://127.0.0.1:9555/api/ui", 9555, "/opt/tui")]
+
+
 def test_main_dispatches_to_argparse_handler(monkeypatch):
     calls = []
 

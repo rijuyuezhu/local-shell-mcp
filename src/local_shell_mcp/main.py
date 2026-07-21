@@ -9,6 +9,8 @@ from .ops.jobs import run_job_runner_from_args
 from .remote_worker.worker import add_worker_cli_args, run_worker_from_args
 from .server.http.app import run_http
 from .server.mcp.app import run_mcp
+from .tui_runtime import run_tui
+from .ui_security import UI_API_PREFIX
 from .version import format_version_info
 
 
@@ -52,6 +54,22 @@ def _build_parser() -> argparse.ArgumentParser:
     add_worker_cli_args(worker)
     worker.set_defaults(handler=run_worker_from_args)
 
+    # native OpenTUI subcommand
+    tui = subparsers.add_parser(
+        "tui",
+        help="Launch the optional native OpenTUI client",
+    )
+    tui.add_argument(
+        "--api-base",
+        default=None,
+        metavar="URL",
+        help=(
+            "Loopback Human UI API base. Defaults to "
+            "http://127.0.0.1:<port>/api/ui."
+        ),
+    )
+    tui.set_defaults(handler=_run_tui_from_args)
+
     return parser
 
 
@@ -70,6 +88,16 @@ def _build_job_runner_parser() -> argparse.ArgumentParser:
 def _print_version_from_args(args: argparse.Namespace) -> None:
     """Print detailed version information."""
     print(format_version_info())
+
+
+def _run_tui_from_args(args: argparse.Namespace) -> None:
+    """Load configuration and launch OpenTUI against the loopback HTTP service."""
+    settings = load_settings(args.config, cli_overrides_from_args(args))
+    configure_settings(settings)
+    api_base = (
+        args.api_base or f"http://127.0.0.1:{settings.port}{UI_API_PREFIX}"
+    )
+    raise SystemExit(run_tui(api_base, settings=settings))
 
 
 def _run_server_from_args(args: argparse.Namespace) -> None:

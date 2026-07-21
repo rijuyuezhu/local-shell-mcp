@@ -1,6 +1,6 @@
 # Human interface
 
-The HTTP server includes the canonical packaged browser Human UI at `/ui` by default. It is a self-contained cross-platform interface and does not require Bun, OpenTUI, Yazi, or a separately materialized sidecar runtime.
+The HTTP server includes the canonical packaged browser Human UI at `/ui` by default. The native browser interface remains the default cross-platform surface. An optional OpenTUI client uses the same authenticated Human UI API from a terminal, either as a release/Docker sidecar, from source with Bun, or through the browser's separate OpenTUI Console panel. Yazi is not required.
 
 ## Start the HTTP server
 
@@ -13,6 +13,34 @@ Open the URL formed from the configured host and port, for example:
 ```text
 http://127.0.0.1:8765/ui
 ```
+
+## OpenTUI client
+
+Keep the HTTP service running, then launch the optional native terminal interface in another terminal:
+
+```bash
+local-shell-mcp tui
+```
+
+The CLI defaults to the configured loopback API at `http://127.0.0.1:<port>/api/ui`. A different loopback port or HTTPS endpoint can be selected explicitly:
+
+```bash
+local-shell-mcp tui --api-base https://localhost:9443/api/ui
+```
+
+`--api-base` accepts only a credential-free loopback HTTP(S) URL with the exact `/api/ui` path. The mode-`0600` local UI token is passed to the OpenTUI process through its environment and never appears in the command line. Resolution order is: an administrator-configured `ui_tui_command`, a platform sidecar beside the installed executable, a release/runtime sidecar, an optional embedded payload, then the checked-out `ui-opentui/src/tui.tsx` source when Bun is available.
+
+Official release archives and Docker images build a platform-native `local-shell-mcp-tui` sidecar. Source distributions include the TypeScript/TSX source and lockfile but exclude `node_modules` and generated binaries. The ordinary Python wheel remains platform-independent; a source checkout can run or compile OpenTUI with:
+
+```bash
+cd ui-opentui
+bun install --frozen-lockfile
+bun run typecheck
+bun test
+bun run build:tui
+```
+
+The browser also exposes an optional **OpenTUI Console** when a runtime is available. It is separate from the native Dashboard, Remotes, Terminals, Files, Todos, and Audit panels: xterm connects to an authenticated `<ui_path>/ws/opentui` WebSocket, the server starts a private PTY/ConPTY OpenTUI process, and that process talks back to the loopback Human UI API. Closing the console terminates only that OpenTUI process.
 
 The current migration slice provides:
 
@@ -32,7 +60,7 @@ The current migration slice provides:
 - safe lightweight syntax highlighting for bounded Files previews and Audit JSON;
 - configurable UI enablement, mount path, and local-only wallpaper mode.
 
-The fork intentionally does not ship the upstream OpenTUI/Bun/Yazi sidecar stack. Browser-native controls provide the supported interface on Linux, macOS, and Windows, while terminal execution still uses tmux or ConPTY on the host as appropriate.
+The browser-native controls remain the default interface on Linux, macOS, and Windows. OpenTUI is an optional second client built from the adapted upstream React/OpenTUI sources; it reuses the fork's API, OAuth boundaries, remote-worker dispatch, tmux, and ConPTY implementations. Yazi remains intentionally absent because Files operations are performed through the authenticated API rather than a shell-launched file manager.
 
 ## Authentication
 
@@ -73,7 +101,7 @@ Audit contributes only tool/event names, operation categories, timestamps, statu
 
 The browser polls the selected machine every five seconds and retains at most sixty in-tab samples for lightweight CPU, memory, disk, and network sparklines. Machine switches and sign-out increment a generation guard so a slow response from a previously selected worker cannot overwrite the active panel. Inventory refreshes preserve an online selection and immediately fall back to local if the worker becomes unavailable. Wide layouts use separate system, alert, and activity columns; medium and narrow layouts collapse to two and one column. Long alert titles, details, and timestamps are independently bounded and wrapped so they cannot overlap adjacent rows.
 
-All Dashboard text is assigned through `textContent`; sparklines are created with explicit SVG `polyline` nodes and numeric attributes. Telemetry text is never interpreted as HTML, SVG markup, or script. The browser Dashboard is the supported rendering surface; no parallel OpenTUI chart renderer is shipped.
+All browser Dashboard text is assigned through `textContent`; sparklines are created with explicit SVG `polyline` nodes and numeric attributes. Telemetry text is never interpreted as HTML, SVG markup, or script. OpenTUI renders the same normalized telemetry with terminal-native panels and bounded charts; neither client interprets worker text as markup.
 
 ## Remotes
 
@@ -85,7 +113,7 @@ The inventory shows online/offline status, last-seen age and timestamp, queue de
 
 Renaming changes the durable worker identity and refreshes every machine selector after success. Revocation removes the persisted worker registration, disconnects the current worker, invalidates its credential for future reconnects, and cancels outstanding work assigned to that machine. Both operations are explicit dialog submissions and produce metadata-only Audit events without worker secrets.
 
-The browser polls the control-plane inventory every four seconds with an independent generation guard, preserves a still-valid selected worker, and prevents a stale response from replacing newer state. Worker-provided text is assigned only through `textContent`; status styling is restricted to the fixed online/offline classes. Wide layouts use a list/detail split, while narrow screens collapse to one column and stack destructive-action controls. The responsive browser Remotes screen is the supported management surface.
+The browser polls the control-plane inventory every four seconds with an independent generation guard, preserves a still-valid selected worker, and prevents a stale response from replacing newer state. Worker-provided text is assigned only through `textContent`; status styling is restricted to the fixed online/offline classes. Wide layouts use a list/detail split, while narrow screens collapse to one column and stack destructive-action controls. OpenTUI provides the same invite, rename, revoke, mouse, keyboard, and responsive list/detail workflows through the shared API.
 
 ## Terminals
 
@@ -115,7 +143,7 @@ The command field keeps at most 100 consecutive-de-duplicated commands in the cu
 
 HTTP list/read operations require `shell:read`; start/send/resize/kill require `shell:read` and `shell:execute`; every remote operation additionally requires `remote:use`. Browser terminal WebSockets require both shell scopes, plus `remote:use` for a remote machine. The bearer token remains a base64url WebSocket subprotocol credential and is never echoed. Missing authentication closes with `4401`, missing scopes with `4403`, invalid controls with `4400`, missing shells with `4404`, unsupported explicitly required PTY mode with `4406`, idle connections with `4408`, an already attached raw shell with `4409`, unavailable remote workers with `1013`, and connection-capacity exhaustion with `4429`.
 
-The browser retains separate list and socket generation guards, includes the selected machine in every request, closes the previous socket on a machine or shell change, and does not enable input until a `ready` or compatible first snapshot has selected the protocol. Closing, reloading, signing out, or losing the connection terminates only the raw attachment and releases its capability; it deliberately leaves the tmux or ConPTY persistent shell running. Use **Kill selected** when the persistent shell itself should terminate. The browser terminal is the supported interactive client; no OpenTUI sidecar is launched.
+The browser retains separate list and socket generation guards, includes the selected machine in every request, closes the previous socket on a machine or shell change, and does not enable input until a `ready` or compatible first snapshot has selected the protocol. Closing, reloading, signing out, or losing the connection terminates only the raw attachment and releases its capability; it deliberately leaves the tmux or ConPTY persistent shell running. Use **Kill selected** when the persistent shell itself should terminate. OpenTUI lists and operates the same persistent shell inventory through `/api/ui/terminals`; the optional browser Console PTY is separate and is terminated when that console closes.
 
 ## Files
 
@@ -138,7 +166,7 @@ Remote file bytes are fetched through the existing transfer RPC in chunks of at 
 
 SVG is intentionally rendered as text instead of an inline image, preventing active SVG content from executing in the browser. Images above the byte limit produce metadata and an explanatory message rather than an oversized data URL.
 
-**Edit** loads the complete bounded UTF-8 file. Binary files and files above `max_file_read_bytes` are refused rather than silently saving a partial document. Local saves reuse the normal atomic file operation path with mode preservation and path locking. Remote saves reuse the worker's session-bound `write_file` primitive. **New file** uses create-only semantics locally and remotely, so it will not overwrite an existing path.
+**Edit** loads the complete bounded UTF-8 file. Binary files and files above `max_file_read_bytes` are refused rather than silently saving a partial document. The response includes the SHA-256 digest of the exact file revision. OpenTUI sends that digest when saving; local and remote writes compare it under the existing path lock and reject stale editors instead of overwriting a concurrent change. Local saves reuse the normal atomic file operation path with mode preservation, while remote saves reuse the worker's session-bound `write_file` primitive. **New file** uses create-only semantics locally and remotely, so it will not overwrite an existing path.
 
 Deletion is explicit and confirmed in the browser. Neither the local nor a remote workspace root can be deleted. Deleting a symbolic link removes the selected link entry without deleting its target. Recursive deletion is requested only for selected directories.
 
@@ -146,7 +174,7 @@ Local **Copy**, **Move**, and **Rename** work with regular files, directories, a
 
 Local moves and renames use the operating system rename operation when source and destination share a filesystem. If the operating system reports a cross-device move, the server copies the entry without following symbolic links and removes the source only after the copy completes. A failed source removal rolls back the copied destination. Regular-file copies use exclusive destination creation, preserve file metadata, flush the copied data, and reject a source that changes while it is being read.
 
-Remote copy, move, and rename remain disabled because the current worker allowlist has no corresponding primitives. The UI reports these capabilities explicitly and does not emulate them with remote shell commands. Cross-workspace movement uses the explicit session transfer tools, and the browser Files screen is the supported visual interface.
+Remote copy, move, rename, and directory creation remain disabled because the current worker allowlist has no corresponding primitives. Both browser and OpenTUI report these capabilities explicitly and do not emulate them with remote shell commands. Cross-workspace movement uses the explicit session transfer tools. Local OpenTUI Files additionally supports API-backed directory creation, revision-guarded editing, and bounded terminal-native image previews.
 
 List and preview requests use generation and machine guards. Switching machines invalidates the previous path, selection, editor, preview, and pending directory request; a slow response from an earlier machine cannot overwrite the active workspace. Periodic dashboard refreshes preserve an online current machine and selection, fall back to local immediately if a worker becomes unavailable, and signing out invalidates pending file work.
 
@@ -160,7 +188,7 @@ Each persisted list has a monotonic non-negative `revision`. The browser sends t
 
 Todo count and serialized-byte limits reuse `max_todos` and `max_todo_bytes`. The Human UI additionally bounds machine names, item IDs, content, status, and priority fields by encoded byte length and rejects duplicate IDs or malformed item shapes. A save disables machine selection and row controls until completion. Machine switches reset list state and increment a request generation, so a slow response from a previous machine cannot replace the active list. Periodic inventory refreshes do not overwrite unsaved edits, and offline or revoked workers remain visible but cannot be selected.
 
-The browser supports filtering open and completed items, adding and removing rows, and editing content, status, and priority. The list area is height-bounded and scrollable on narrow and wide layouts; this browser screen is the supported Todos interface.
+The browser and OpenTUI support filtering open and completed items, adding and removing rows, and editing content, status, and priority. Both clients use revision-guarded writes; their list areas remain height-bounded and usable across narrow and wide layouts.
 
 ## Audit
 
@@ -172,13 +200,14 @@ Lists require `shell:read`; selecting a remote machine additionally requires `re
 
 The list response is metadata-only: it includes stable identifiers, timestamps, operation, tool, status, duration, session, and lifecycle counts, but excludes `input`, `output`, `error`, and child-event payloads. Free-text search is limited to the same summary metadata, so a read-only token cannot use match/no-match behavior to probe protected payload content. The browser can also filter by operation, event text, session, order, and result limit. Machine and detail requests carry independent generation guards, so a slow response from a previous worker or selection cannot overwrite the active panel. Inventory refreshes preserve an online selection and fall back to local when a worker becomes unavailable. Both the list and detail areas are height-bounded and scrollable on narrow and wide layouts.
 
-Audit fields are normalized through the shared portability, byte-budget, and credential-redaction boundary before they reach the JSONL log. The browser renders JSON with a dependency-free tokenizer that creates only text nodes and fixed-class spans; stored HTML, SVG, or script-like text is never interpreted as active markup. For `view_image` records, the detail endpoint removes the original inline MCP image field, validates base64, byte limits, and PNG/JPEG/GIF/WebP magic, and attaches one bounded browser preview. Invalid or oversized image payloads produce an isolated preview error while the sanitized Audit detail remains readable.
+Audit fields are normalized through the shared portability, byte-budget, and credential-redaction boundary before they reach the JSONL log. The browser renders JSON with a dependency-free tokenizer that creates only text nodes and fixed-class spans; OpenTUI uses a terminal-native highlighter. Stored HTML, SVG, or script-like text is never interpreted as active markup. For `view_image` records, the detail endpoint removes the original inline MCP image field, validates base64, byte limits, and PNG/JPEG/GIF/WebP magic, and preserves the bounded browser preview. When OpenTUI supplies a viewport, Pillow also decodes a first-frame RGBA thumbnail with strict source-pixel and output-dimension limits. Invalid, oversized, or undecodable image payloads produce an isolated preview error while the sanitized Audit detail remains readable.
 
 ## Configuration
 
 ```yaml
 ui_enabled: true
 ui_path: /ui
+ui_tui_command: null
 ui_terminal_idle_timeout_s: 3600
 ui_terminal_max_connections: 8
 ui_wallpaper: aurora
@@ -189,12 +218,14 @@ Equivalent environment variables are:
 ```bash
 LOCAL_SHELL_MCP_UI_ENABLED=true
 LOCAL_SHELL_MCP_UI_PATH=/ui
+# Optional override; normally release sidecar or Bun source discovery is automatic.
+# LOCAL_SHELL_MCP_UI_TUI_COMMAND=/opt/local-shell-mcp-tui
 LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S=3600
 LOCAL_SHELL_MCP_UI_TERMINAL_MAX_CONNECTIONS=8
 LOCAL_SHELL_MCP_UI_WALLPAPER=aurora
 ```
 
-`ui_path` must be a non-root URL path. Paths reserved by the MCP, OAuth, remote-worker, download, health, documentation, and Human UI API surfaces are rejected. Set `ui_terminal_idle_timeout_s` to `0` to disable idle expiry; negative values are rejected. `ui_terminal_max_connections` must be between `1` and `128`. `ui_wallpaper` accepts `aurora`, `grid`, or `none`; all three are local CSS treatments and never fetch an image or send browser context to a third party.
+`ui_path` must be a non-root URL path. Paths reserved by the MCP, OAuth, remote-worker, download, health, documentation, and Human UI API surfaces are rejected. `ui_tui_command` is an administrator-controlled argv string used only when explicitly configured; do not point it at untrusted content. Set `ui_terminal_idle_timeout_s` to `0` to disable idle expiry; negative values are rejected. `ui_terminal_max_connections` must be between `1` and `128` and is shared by persistent-terminal attachments and browser OpenTUI Console processes. `ui_wallpaper` accepts `aurora`, `grid`, or `none`; all three are local CSS treatments and never fetch an image or send browser context to a third party.
 
 Disable the browser surface completely with:
 
@@ -204,7 +235,7 @@ LOCAL_SHELL_MCP_UI_ENABLED=false
 
 ## Security notes
 
-Do not run `auth_mode: none` on a public or shared network. The Human UI can create shells and execute arbitrary terminal input with the server account's permissions, so it inherits the same deployment trust requirements as the REST and MCP surfaces.
+Do not run `auth_mode: none` on a public or shared network. The Human UI and OpenTUI can create shells and execute arbitrary terminal input with the server account's permissions, so they inherit the same deployment trust requirements as the REST and MCP surfaces. The browser OpenTUI Console requires the same OAuth shell scopes as browser terminals and never receives the private local token; only the server-spawned PTY child gets that token in its environment for loopback API calls.
 
 Automatic OAuth sign-in requires a secure browser context for Web Crypto. HTTPS and localhost satisfy this requirement in supported browsers. The browser refuses to start PKCE when secure randomness or SHA-256 Web Crypto is unavailable.
 

@@ -23,6 +23,7 @@ from ...schemas.result_models.transfer import (
     TransferReadChunkOutput,
     TransferStatOutput,
 )
+from .ui_image_preview import UiImagePreviewRequest, terminal_image_fields
 
 UI_REMOTE_FILE_TIMEOUT_S = 60
 UI_REMOTE_FILE_SAMPLE_BYTES = 4_096
@@ -292,6 +293,7 @@ async def remote_list_payload(machine: str, path: str) -> dict[str, Any]:
             "copy": False,
             "move": False,
             "rename": False,
+            "mkdir": False,
         },
     }
 
@@ -386,7 +388,11 @@ def _binary_preview(
     }
 
 
-async def remote_file_preview(machine: str, path: str) -> dict[str, Any]:
+async def remote_file_preview(
+    machine: str,
+    path: str,
+    preview_request: UiImagePreviewRequest | None = None,
+) -> dict[str, Any]:
     """Return a bounded remote directory, text, binary, or inline image preview."""
     normalized = normalize_remote_ui_path(path)
     metadata = TransferStatOutput.model_validate(
@@ -434,6 +440,7 @@ async def remote_file_preview(machine: str, path: str) -> dict[str, Any]:
                 ),
             }
         data = await _remote_bytes(machine, normalized, size)
+
         return {
             "kind": "image",
             "machine": machine,
@@ -443,6 +450,7 @@ async def remote_file_preview(machine: str, path: str) -> dict[str, Any]:
             "media_type": media_type,
             "inline": True,
             "data_base64": base64.b64encode(data).decode("ascii"),
+            **terminal_image_fields(data, preview_request),
         }
 
     if _looks_binary(sample, complete=len(sample) == size):
@@ -511,6 +519,7 @@ async def remote_file_content(machine: str, path: str) -> dict[str, Any]:
             "Binary files cannot be edited in the built-in editor"
         ) from exc
     lines = content.splitlines()
+
     return {
         "kind": "text",
         "machine": machine,
@@ -525,18 +534,28 @@ async def remote_file_content(machine: str, path: str) -> dict[str, Any]:
         "line_count": len(lines),
         "truncated": False,
         "content": content,
+        "file_sha256": hashlib.sha256(data).hexdigest(),
     }
 
 
 async def remote_write_file(
-    machine: str, path: str, content: str, overwrite: bool
+    machine: str,
+    path: str,
+    content: str,
+    overwrite: bool,
+    expected_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Create or atomically replace one remote workspace text file."""
     normalized = normalize_remote_ui_path(path)
     return await call_remote_ui_file_tool(
         machine,
         "write_file",
-        {"path": normalized, "content": content, "overwrite": overwrite},
+        {
+            "path": normalized,
+            "content": content,
+            "overwrite": overwrite,
+            "expected_sha256": expected_sha256,
+        },
     )
 
 

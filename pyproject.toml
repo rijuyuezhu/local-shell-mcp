@@ -22,6 +22,7 @@ dependencies = [
     "httpx>=0.28.1",
     "mcp>=1.28.0",
     "pathspec>=1.1.1",
+    "pillow>=12.1.1",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
@@ -48,10 +49,13 @@ requires = ["uv_build>=0.11.0,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-source-include = ["ui-terminal/**"]
+source-include = ["ui-terminal/**", "ui-opentui/**"]
 source-exclude = [
     "/ui-terminal/node_modules",
     "/ui-terminal/.build-check",
+    "/ui-opentui/node_modules",
+    "/ui-opentui/dist",
+    "/ui-opentui/coverage",
 ]
 
 [project.urls]

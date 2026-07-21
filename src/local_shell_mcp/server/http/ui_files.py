@@ -32,7 +32,13 @@ from ...ops.files import (
     write_file_execute,
 )
 from ...ops.utils.path import relative_display, resolve_path, workspace_root
+from ...tool_session.store import file_sha256
 from ...utils.path_locks import path_locks
+from .ui_image_preview import (
+    UiImagePreviewRequest,
+    image_preview_request,
+    terminal_image_fields,
+)
 from .ui_remote_files import (
     remote_delete_file,
     remote_file_content,
@@ -190,6 +196,7 @@ def _list_payload(path: str, *, max_entries: int) -> dict[str, Any]:
             "copy": True,
             "move": True,
             "rename": True,
+            "mkdir": True,
         },
     }
 
@@ -224,7 +231,10 @@ def _file_sample(path: Path) -> tuple[bytes, bytes]:
     return probe[:sample_bytes], probe[sample_bytes:]
 
 
-def _file_preview(path: str) -> dict[str, Any]:
+def _file_preview(
+    path: str,
+    preview_request: UiImagePreviewRequest | None = None,
+) -> dict[str, Any]:
     resolved = _workspace_path(path, must_exist=True)
     if resolved.is_dir():
         return {
@@ -263,6 +273,7 @@ def _file_preview(path: str) -> dict[str, Any]:
             "media_type": media_type,
             "inline": True,
             "data_base64": base64.b64encode(data).decode("ascii"),
+            **terminal_image_fields(data, preview_request),
         }
 
     if _looks_binary(sample, continuation=continuation):
@@ -303,12 +314,17 @@ def _file_content(path: str) -> dict[str, Any]:
     sample, continuation = _file_sample(resolved)
     if _looks_binary(sample, continuation=continuation):
         raise ValueError("Binary files cannot be edited in the built-in editor")
+
     result = read_file_execute(str(resolved))
     if result.truncated:
         raise ValueError(
             "File exceeds the configured editor read limit; use a terminal or external editor"
         )
-    return {"kind": "text", **result.model_dump(mode="json")}
+    return {
+        "kind": "text",
+        **result.model_dump(mode="json"),
+        "file_sha256": file_sha256(resolved),
+    }
 
 
 def _ensure_mutable_path(path: str, *, follow_final_symlink: bool) -> Path:
@@ -508,9 +524,26 @@ def _rename_entry(path: str, name: str) -> dict[str, Any]:
     )
 
 
-def _write_file(path: str, content: str, overwrite: bool) -> Any:
+def _write_file(
+    path: str,
+    content: str,
+    overwrite: bool,
+    expected_sha256: str | None = None,
+) -> Any:
     resolved = _ensure_mutable_path(path, follow_final_symlink=True)
-    return write_file_execute(str(resolved), content, overwrite)
+    return write_file_execute(
+        str(resolved),
+        content,
+        overwrite,
+        expected_sha256=expected_sha256,
+    )
+
+
+def _mkdir_directory(path: str) -> dict[str, Any]:
+    resolved = _ensure_mutable_path(path, follow_final_symlink=False)
+    with path_locks([resolved]):
+        resolved.mkdir(parents=False, exist_ok=False)
+    return {"action": "mkdir", "path": relative_display(resolved)}
 
 
 def _delete_file(path: str, recursive: bool) -> Any:
@@ -545,10 +578,11 @@ async def api_file_preview(request: Request) -> Response:
         machine = _machine_arg(request.query_params.get("machine"))
         _require_file_scopes(machine)
         path = _path_arg(request.query_params.get("path"))
+        preview_request = image_preview_request(request.query_params)
         payload = (
-            await asyncio.to_thread(_file_preview, path)
+            await asyncio.to_thread(_file_preview, path, preview_request)
             if machine == "local"
-            else await remote_file_preview(machine, path)
+            else await remote_file_preview(machine, path, preview_request)
         )
         return _json_ok(payload)
     except HTTPException:
@@ -595,6 +629,9 @@ async def api_file_action(request: Request) -> Response:
                     path,
                     content,
                     bool(body.get("overwrite", True)),
+                    None
+                    if body.get("expected_sha256") is None
+                    else str(body.get("expected_sha256")),
                 )
             elif action == "delete":
                 result = await remote_delete_file(
@@ -615,7 +652,12 @@ async def api_file_action(request: Request) -> Response:
                 path,
                 content,
                 bool(body.get("overwrite", True)),
+                None
+                if body.get("expected_sha256") is None
+                else str(body.get("expected_sha256")),
             )
+        elif action == "mkdir":
+            result = await asyncio.to_thread(_mkdir_directory, path)
         elif action == "delete":
             result = await asyncio.to_thread(
                 _delete_file,

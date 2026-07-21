@@ -349,14 +349,19 @@ def write_file_execute(
     content: str,
     overwrite: bool = True,
     session_id: str | None = None,
+    expected_sha256: str | None = None,
 ) -> WriteFileOutput:
-    """Write a text file after path validation, parent creation, and overwrite checks."""
+    """Write text atomically, optionally rejecting a stale editor revision."""
     settings = get_settings()
     data = content.encode("utf-8")
     if len(data) > settings.max_file_write_bytes:
         raise ValueError(
             f"Refusing to write {len(data)} bytes; max is {settings.max_file_write_bytes}"
         )
+    if expected_sha256 is not None and not re.fullmatch(
+        r"[0-9a-f]{64}", expected_sha256
+    ):
+        raise ValueError("expected_sha256 must be a lowercase SHA-256 digest")
     session = (
         get_tool_session_store().touch_session(session_id)
         if session_id is not None
@@ -371,6 +376,10 @@ def write_file_execute(
         exists = p.exists()
         if exists and not overwrite:
             raise FileExistsError(str(p))
+        if expected_sha256 is not None and (
+            not exists or not p.is_file() or file_sha256(p) != expected_sha256
+        ):
+            raise ValueError("File changed; reload before saving")
         created = not exists
         _atomic_write_text(p, content)
     return WriteFileOutput(
@@ -383,10 +392,13 @@ async def write_file_dispatch_execute(
     content: str,
     overwrite: bool = True,
     session_id: str | None = None,
+    expected_sha256: str | None = None,
 ) -> WriteFileOutput:
     """Dispatch write_file to a local or remote session."""
     if session_id is None:
-        return write_file_execute(path, content, overwrite, session_id)
+        return write_file_execute(
+            path, content, overwrite, session_id, expected_sha256
+        )
     session = get_tool_session_store().touch_session(session_id)
     if session.target == "remote":
         data = await call_remote_session_tool(
@@ -396,10 +408,13 @@ async def write_file_dispatch_execute(
                 "path": path,
                 "content": content,
                 "overwrite": overwrite,
+                "expected_sha256": expected_sha256,
             },
         )
         return WriteFileOutput.model_validate(data)
-    return write_file_execute(path, content, overwrite, session_id)
+    return write_file_execute(
+        path, content, overwrite, session_id, expected_sha256
+    )
 
 
 def _newline_for_text(text: str) -> str:

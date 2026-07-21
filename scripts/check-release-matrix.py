@@ -6,6 +6,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = REPO / ".github" / "workflows" / "release.yml"
+DOCKERFILE = REPO / "Dockerfile"
 EXPECTED_BINARY_ARTIFACTS = {
     "linux-x86_64",
     "linux-aarch64",
@@ -67,8 +68,19 @@ def _report_mismatch(kind: str, expected: set[str], actual: set[str]) -> int:
     return 1
 
 
+def _require_fragments(kind: str, text: str, fragments: tuple[str, ...]) -> int:
+    missing = [fragment for fragment in fragments if fragment not in text]
+    if not missing:
+        return 0
+    print(f"Release {kind} is incomplete.")
+    for fragment in missing:
+        print(f"missing fragment: {fragment}")
+    return 1
+
+
 def main() -> int:
     text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     binary_status = _report_mismatch(
         "binary matrix",
         EXPECTED_BINARY_ARTIFACTS,
@@ -79,10 +91,37 @@ def main() -> int:
         EXPECTED_DOCKER_PLATFORMS,
         _release_docker_platforms(text),
     )
-    if binary_status or docker_status:
+    opentui_release_status = _require_fragments(
+        "OpenTUI sidecar packaging",
+        _section(text, r"^  build-binary:\n", r"^  [A-Za-z0-9_-]+:\n"),
+        (
+            "oven-sh/setup-bun@v2",
+            "bun install --frozen-lockfile",
+            "bun run build:tui",
+            "ui-opentui/dist/local-shell-mcp-tui.exe",
+            "ui-opentui/dist/local-shell-mcp-tui",
+        ),
+    )
+    opentui_docker_status = _require_fragments(
+        "OpenTUI Docker packaging",
+        dockerfile,
+        (
+            "FROM oven/bun:1.3.14 AS opentui-build",
+            "bun install --frozen-lockfile",
+            "bun run build:tui",
+            "/usr/local/bin/local-shell-mcp-tui",
+        ),
+    )
+    if (
+        binary_status
+        or docker_status
+        or opentui_release_status
+        or opentui_docker_status
+    ):
         return 1
     print(
-        "Release workflow covers expected binary artifacts and Docker platforms."
+        "Release workflow covers expected binary artifacts, Docker platforms, "
+        "and OpenTUI sidecars."
     )
     return 0
 

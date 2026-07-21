@@ -229,11 +229,13 @@ async def _list_files(args: dict[str, Any]) -> Any:
 async def _write_file(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.files import write_file_dispatch_execute
 
+    expected_sha256 = args.get("expected_sha256")
     return await write_file_dispatch_execute(
         str(args["path"]),
         str(args.get("content") or ""),
         bool(args.get("overwrite", True)),
         str(args["session_id"]),
+        None if expected_sha256 is None else str(expected_sha256),
     )
 
 

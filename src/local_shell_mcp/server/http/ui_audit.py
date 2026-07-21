@@ -26,6 +26,11 @@ from ...oauth.core.scopes import (
 from ...ops.image import detect_image_type
 from ...remote.manager import remote_manager
 from ...remote.service import call_remote_worker_tool
+from .ui_image_preview import (
+    UiImagePreviewRequest,
+    image_preview_request,
+    terminal_image_fields,
+)
 
 UI_AUDIT_MACHINE_MAX_BYTES = 255
 UI_AUDIT_ENTRY_ID_MAX_BYTES = 512
@@ -274,8 +279,11 @@ def _normalize_entry(machine: str, value: Any) -> dict[str, Any]:
     return entry
 
 
-def _audit_view_image_detail(entry: dict[str, Any]) -> dict[str, Any]:
-    """Sanitize an audited MCP image result and attach a bounded browser preview."""
+def _audit_view_image_detail(
+    entry: dict[str, Any],
+    preview_request: UiImagePreviewRequest | None = None,
+) -> dict[str, Any]:
+    """Sanitize an audited MCP image result and attach bounded UI previews."""
     if str(entry.get("tool") or "") != "view_image":
         return entry
     output = entry.get("output")
@@ -330,6 +338,7 @@ def _audit_view_image_detail(entry: dict[str, Any]) -> dict[str, Any]:
             "bytes": len(raw),
             "mime_type": mime_type,
             "data_base64": base64.b64encode(raw).decode("ascii"),
+            **terminal_image_fields(raw, preview_request),
         }
     except (ValueError, OSError, binascii.Error) as exc:
         detail["image_preview_error"] = str(exc)
@@ -487,7 +496,10 @@ async def api_audit_detail(request: Request) -> Response:
         _require_scopes(*base_scopes)
         entry = await _detail(machine, entry_id)
         _require_scopes(*_detail_scopes(machine, entry))
-        entry = await asyncio.to_thread(_audit_view_image_detail, entry)
+        preview_request = image_preview_request(request.query_params)
+        entry = await asyncio.to_thread(
+            _audit_view_image_detail, entry, preview_request
+        )
         return _json_ok(_payload(machine, {"entry": entry}))
     except HTTPException:
         raise

@@ -21,6 +21,7 @@ from ...config.settings import Settings, get_settings
 from ...oauth.core.scopes import default_scope
 from ...oauth.core.urls import issuer_url, resource_url
 from ...remote.manager import remote_manager
+from ...tui_runtime import tui_runtime_available
 from ...ui_security import UI_API_PREFIX
 from ...version import version_info
 from .ui_audit import api_audit, api_audit_detail
@@ -31,6 +32,7 @@ from .ui_files import (
     api_file_preview,
     api_files,
 )
+from .ui_opentui import ui_opentui_websocket
 from .ui_remotes import api_remote_action, api_remotes
 from .ui_terminals import (
     api_terminal_action,
@@ -77,6 +79,7 @@ def _ui_index_html(settings: Settings) -> str:
                 "apiPrefix": UI_API_PREFIX,
                 "authMode": settings.auth_mode,
                 "wallpaper": settings.ui_wallpaper,
+                "opentuiAvailable": tui_runtime_available(settings),
                 "oauth": oauth,
             },
             separators=(",", ":"),
@@ -186,6 +189,7 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                     "syntax_highlighting": True,
                     "audit_image_preview": True,
                     "wallpaper": settings.ui_wallpaper,
+                    "opentui": tui_runtime_available(settings),
                     "file_editor": True,
                     "file_copy": True,
                     "file_move": True,
@@ -225,6 +229,7 @@ def human_ui_routes(
         WebSocketRoute(
             ui_path + "/ws/terminals/{shell_id}", ui_terminal_websocket
         ),
+        WebSocketRoute(ui_path + "/ws/opentui", ui_opentui_websocket),
         Route(UI_API_PREFIX + "/bootstrap", api_bootstrap, methods=["GET"]),
         Route(UI_API_PREFIX + "/dashboard", api_dashboard, methods=["GET"]),
         Route(UI_API_PREFIX + "/machines", api_machines, methods=["GET"]),

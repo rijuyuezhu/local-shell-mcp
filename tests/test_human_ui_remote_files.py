@@ -23,6 +23,9 @@ BASE_URL = "https://local-shell-mcp.example"
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZP2sAAAAASUVORK5CYII="
 )
+VALID_PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+)
 
 
 class _FakeManager:
@@ -199,6 +202,20 @@ class _FakeRemoteFiles:
         if tool == "write_file":
             path = str(args["path"])
             overwrite = bool(args["overwrite"])
+            expected_sha256 = args.get("expected_sha256")
+            if expected_sha256 is not None and (
+                path not in self.files
+                or hashlib.sha256(self.files[path]).hexdigest()
+                != expected_sha256
+            ):
+                return {
+                    "ok": True,
+                    "data": {
+                        "status": "error",
+                        "error_type": "ValueError",
+                        "message": "File changed; reload before saving",
+                    },
+                }
             if not overwrite and path in self.files:
                 return {
                     "ok": True,
@@ -377,12 +394,14 @@ def test_remote_files_browse_preview_edit_create_and_delete(
     listing_data = listing.json()["data"]
     assert listing_data["machine"] == "edge"
     assert listing_data["remote"] is True
+
     assert listing_data["mutations"] == {
         "write": True,
         "delete": True,
         "copy": False,
         "move": False,
         "rename": False,
+        "mkdir": False,
     }
     assert [entry["name"] for entry in listing_data["entries"]] == [
         "docs",
@@ -693,3 +712,59 @@ def test_remote_files_reject_unavailable_machine(monkeypatch, tmp_path, status):
     assert response.status_code == 400
     assert status in response.json()["message"]
     assert not fake.started
+
+
+def test_remote_opentui_preview_and_revision_guard(monkeypatch, tmp_path):
+    fake = _FakeRemoteFiles()
+    fake.files["pixel.png"] = VALID_PNG_1X1
+    client = _client(monkeypatch, tmp_path, fake)
+
+    preview = client.get(
+        "/api/ui/files/preview",
+        params={
+            "machine": "edge",
+            "path": "pixel.png",
+            "columns": 12,
+            "rows": 6,
+            "cell_aspect": 2,
+        },
+    )
+    content = client.get(
+        "/api/ui/files/content",
+        params={"machine": "edge", "path": "hello.txt"},
+    ).json()["data"]
+    saved = client.post(
+        "/api/ui/files/write",
+        json={
+            "machine": "edge",
+            "path": "hello.txt",
+            "content": "updated remotely\n",
+            "overwrite": True,
+            "expected_sha256": content["file_sha256"],
+        },
+    )
+    stale = client.post(
+        "/api/ui/files/write",
+        json={
+            "machine": "edge",
+            "path": "hello.txt",
+            "content": "stale remotely\n",
+            "overwrite": True,
+            "expected_sha256": content["file_sha256"],
+        },
+    )
+
+    assert preview.status_code == 200
+    image = preview.json()["data"]
+    assert (
+        len(base64.b64decode(image["rgba"]))
+        == image["width"] * image["height"] * 4
+    )
+    assert (
+        content["file_sha256"] == hashlib.sha256(b"hello\nremote\n").hexdigest()
+    )
+    assert saved.status_code == 200
+    assert stale.status_code == 400
+    assert fake.files["hello.txt"] == b"updated remotely\n"
+    writes = [args for tool, args in fake.calls if tool == "write_file"]
+    assert writes[0]["expected_sha256"] == content["file_sha256"]

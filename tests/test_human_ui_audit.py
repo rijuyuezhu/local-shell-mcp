@@ -422,7 +422,7 @@ def test_audit_api_validates_bounds_and_unknown_details(monkeypatch, tmp_path):
 def test_audit_detail_sanitizes_and_previews_view_image(monkeypatch, tmp_path):
     client = _client(monkeypatch, tmp_path)
     png = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lP7LAAAAAElFTkSuQmCC"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
     )
     audit(
         "tool_call_start",
@@ -450,20 +450,28 @@ def test_audit_detail_sanitizes_and_previews_view_image(monkeypatch, tmp_path):
     )
 
     response = client.get(
-        "/api/ui/audit/detail", params={"id": "call:local-image"}
+        "/api/ui/audit/detail",
+        params={
+            "id": "call:local-image",
+            "columns": 10,
+            "rows": 5,
+            "cell_aspect": 2,
+        },
     )
 
     assert response.status_code == 200
     entry = response.json()["data"]["entry"]
     assert "data" not in entry["output"]["content"][0]
     assert entry["output"]["content"][0]["bytes"] == len(png)
-    assert entry["image_preview"] == {
-        "kind": "image",
-        "path": "pixel.png",
-        "bytes": len(png),
-        "mime_type": "image/png",
-        "data_base64": base64.b64encode(png).decode("ascii"),
-    }
+    preview = entry["image_preview"]
+    assert preview["kind"] == "image"
+    assert preview["path"] == "pixel.png"
+    assert preview["bytes"] == len(png)
+    assert preview["mime_type"] == "image/png"
+    assert preview["data_base64"] == base64.b64encode(png).decode("ascii")
+    assert len(base64.b64decode(preview["rgba"])) == (
+        preview["width"] * preview["height"] * 4
+    )
 
 
 def test_audit_detail_rejects_invalid_inline_image(monkeypatch, tmp_path):

@@ -1,3 +1,11 @@
+FROM oven/bun:1.3.14 AS opentui-build
+
+WORKDIR /src/ui-opentui
+COPY ui-opentui/package.json ui-opentui/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY ui-opentui ./
+RUN bun run build:tui
+
 FROM ubuntu:26.04
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
@@ -25,7 +33,9 @@ RUN apt-get update \
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE /app/
 COPY src /app/src
-RUN uv sync --locked --no-dev \
+COPY --from=opentui-build /src/ui-opentui/dist/local-shell-mcp-tui /usr/local/bin/local-shell-mcp-tui
+RUN chmod +x /usr/local/bin/local-shell-mcp-tui \
+  && uv sync --locked --no-dev \
   && /app/.venv/bin/python -m compileall -q /app/src \
   && printf '#!/usr/bin/env bash\nexec /app/.venv/bin/python -m local_shell_mcp.main "$@"\n' > /usr/local/bin/local-shell-mcp \
   && chmod +x /usr/local/bin/local-shell-mcp

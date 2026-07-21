@@ -18,6 +18,9 @@ BASE_URL = "https://local-shell-mcp.example"
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZP2sAAAAASUVORK5CYII="
 )
+VALID_PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+)
 
 
 @pytest.fixture(autouse=True)
@@ -90,12 +93,14 @@ def test_file_listing_is_sorted_bounded_and_workspace_relative(
     assert payload["path"] == "."
     assert payload["parent"] == "."
     assert payload["is_truncated"] is False
+
     assert payload["mutations"] == {
         "write": True,
         "delete": True,
         "copy": True,
         "move": True,
         "rename": True,
+        "mkdir": True,
     }
     assert [entry["name"] for entry in payload["entries"]] == [
         ".state",
@@ -611,3 +616,71 @@ def test_file_api_rejects_invalid_paths(monkeypatch, tmp_path, path, message):
 
     assert response.status_code == 400
     assert message in response.json()["message"]
+
+
+def test_opentui_image_preview_editor_revision_and_mkdir(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    image_path = workspace / "pixel.png"
+    image_path.write_bytes(VALID_PNG_1X1)
+    document = workspace / "document.txt"
+    document.write_text("first\n", encoding="utf-8")
+    client = _client(monkeypatch, workspace)
+
+    preview = client.get(
+        "/api/ui/files/preview",
+        params={
+            "path": "pixel.png",
+            "columns": 10,
+            "rows": 5,
+            "cell_aspect": 2,
+        },
+    )
+    invalid = client.get(
+        "/api/ui/files/preview",
+        params={"path": "pixel.png", "columns": 1, "rows": 5},
+    )
+    content = client.get(
+        "/api/ui/files/content", params={"path": "document.txt"}
+    ).json()["data"]
+    saved = client.post(
+        "/api/ui/files/write",
+        json={
+            "path": "document.txt",
+            "content": "second\n",
+            "overwrite": True,
+            "expected_sha256": content["file_sha256"],
+        },
+    )
+    stale = client.post(
+        "/api/ui/files/write",
+        json={
+            "path": "document.txt",
+            "content": "stale\n",
+            "overwrite": True,
+            "expected_sha256": content["file_sha256"],
+        },
+    )
+    made = client.post("/api/ui/files/mkdir", json={"path": "new-directory"})
+    duplicate = client.post(
+        "/api/ui/files/mkdir", json={"path": "new-directory"}
+    )
+
+    assert preview.status_code == 200
+    data = preview.json()["data"]
+    assert data["kind"] == "image"
+    rgba = base64.b64decode(data["rgba"])
+    assert data["width"] >= 1
+    assert data["height"] >= 1
+    assert len(rgba) == data["width"] * data["height"] * 4
+    assert data["cell_width"] >= 1
+    assert data["cell_height"] >= 1
+    assert invalid.status_code == 400
+    assert saved.status_code == 200
+    assert stale.status_code == 400
+    assert "reload before saving" in stale.json()["message"]
+    assert document.read_text(encoding="utf-8") == "second\n"
+    assert made.status_code == 200
+    assert made.json()["data"]["action"] == "mkdir"
+    assert (workspace / "new-directory").is_dir()
+    assert duplicate.status_code == 400

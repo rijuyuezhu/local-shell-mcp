@@ -487,6 +487,30 @@
       </div>
     </section>
 
+    <section id="opentui-panel" class="panel opentui-panel" hidden>
+      <div class="section-heading opentui-heading">
+        <div>
+          <p class="eyebrow">Optional terminal interface</p>
+          <h2>OpenTUI Console</h2>
+        </div>
+        <div class="opentui-actions">
+          <span id="opentui-state" class="muted">Stopped</span>
+          <button id="opentui-stop" type="button" disabled>Stop</button>
+          <button id="opentui-start" class="primary-action" type="button">Open console</button>
+        </div>
+      </div>
+      <p class="muted">Runs the same optional OpenTUI client available through <code>local-shell-mcp tui</code>. The native browser panels above remain the default interface.</p>
+      <div id="opentui-terminal" class="opentui-terminal" aria-label="OpenTUI terminal console"></div>
+      <div class="terminal-keyboard" aria-label="OpenTUI shortcut keys">
+        <button type="button" data-opentui-key="\u001b">Esc</button>
+        <button type="button" data-opentui-key="\t">Tab</button>
+        <button type="button" data-opentui-key="\u001b[1;3P">Alt+1</button>
+        <button type="button" data-opentui-key="\u001b[1;3Q">Alt+2</button>
+        <button type="button" data-opentui-key="\r">Enter</button>
+        <button type="button" data-opentui-key="\u001bOP">F1</button>
+      </div>
+    </section>
+
     <section class="panel roadmap">
       <div>
         <p class="eyebrow">Migration status</p>
@@ -499,5 +523,6 @@
   <script src="__LSM_UI_PATH__/assets/terminal_renderer.js" defer></script>
   <script src="__LSM_UI_PATH__/assets/syntax_highlight.js" defer></script>
   <script src="__LSM_UI_PATH__/assets/web.js" defer></script>
+  <script src="__LSM_UI_PATH__/assets/opentui_console.js" defer></script>
 </body>
 </html>

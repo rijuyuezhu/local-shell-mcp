@@ -37,6 +37,7 @@ def _configure_ui(monkeypatch, tmp_path, *, auth_mode="none", **values):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_UI_TUI_COMMAND", "test-opentui")
     for name, value in values.items():
         monkeypatch.setenv(
             f"LOCAL_SHELL_MCP_{name.upper()}", str(value).lower()
@@ -84,9 +85,13 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="terminal-latest"' in index.text
     assert 'id="terminal-keyboard"' in index.text
     assert 'data-terminal-key="ctrl-c"' in index.text
+
     assert "assets/xterm.css" in index.text
     assert "assets/xterm_bundle.js" in index.text
     assert "assets/terminal_renderer.js" in index.text
+    assert "assets/opentui_console.js" in index.text
+    assert 'id="opentui-panel"' in index.text
+    assert 'id="opentui-terminal"' in index.text
     assert 'id="file-panel"' in index.text
     assert 'id="file-machine"' in index.text
     assert 'id="file-editor-form"' in index.text
@@ -332,6 +337,7 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
             "syntax_highlighting": True,
             "audit_image_preview": True,
             "wallpaper": "aurora",
+            "opentui": True,
             "file_editor": True,
             "file_copy": True,
             "file_move": True,
