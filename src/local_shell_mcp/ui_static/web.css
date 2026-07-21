@@ -338,6 +338,30 @@ h2 {
   justify-content: flex-end;
 }
 
+.machine-select {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 9rem;
+}
+
+.machine-select span {
+  color: #91a4b7;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.machine-select select {
+  min-width: 0;
+  min-height: 2.55rem;
+  border: 1px solid rgba(137, 186, 207, 0.28);
+  border-radius: 0.65rem;
+  color: #f4f8fc;
+  background: rgba(2, 10, 16, 0.72);
+  padding: 0.65rem 0.75rem;
+}
+
 .terminal-start-form input,
 .terminal-input-form input {
   min-width: 0;
@@ -1391,6 +1415,7 @@ h2 {
   }
 
   .dashboard-machine-control,
+  .machine-select,
   .todo-field-content,
   .todo-field-status,
   .todo-field-priority {
@@ -1398,7 +1423,9 @@ h2 {
   }
 
   .dashboard-machine-control,
-  .dashboard-machine-control select {
+  .dashboard-machine-control select,
+  .machine-select,
+  .machine-select select {
     width: 100%;
   }
 

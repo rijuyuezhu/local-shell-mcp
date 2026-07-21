@@ -86,6 +86,16 @@ async def _run_python_code(args: dict[str, Any]) -> Any:
     )
 
 
+async def _start_persistent_shell(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.shell import start_persistent_shell_execute
+
+    return await start_persistent_shell_execute(
+        str(args.get("cwd") or "."),
+        str(args["name"]) if args.get("name") is not None else None,
+        str(args["command"]) if args.get("command") is not None else None,
+    )
+
+
 async def _send_persistent_shell_input(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import send_persistent_shell_input_execute
 
@@ -399,6 +409,7 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "write_todos": _write_todos,
     "bash": _bash,
     "run_python_code": _run_python_code,
+    "start_persistent_shell": _start_persistent_shell,
     "send_persistent_shell_input": _send_persistent_shell_input,
     "resize_persistent_shell": _resize_persistent_shell,
     "read_persistent_shell_output": _read_persistent_shell_output,

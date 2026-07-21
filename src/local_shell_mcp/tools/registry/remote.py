@@ -13,6 +13,7 @@ from ...ops.remote import (
     remote_admin_execute,
     remote_worker_tool_execute,
 )
+from ...ops.shell import start_persistent_shell_execute
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
 from ...schemas.input_models.remote import (
     RemoteAdminActionArg,
@@ -52,7 +53,16 @@ async def _dashboard_snapshot_handler(args: dict[str, Any]) -> dict[str, Any]:  
     return await asyncio.to_thread(dashboard_snapshot)
 
 
+async def _start_persistent_shell_handler(args: dict[str, Any]) -> Any:
+    return await start_persistent_shell_execute(
+        str(args.get("cwd") or "."),
+        str(args["name"]) if args.get("name") is not None else None,
+        str(args["command"]) if args.get("command") is not None else None,
+    )
+
+
 _REMOTE_INTERNAL_HANDLERS: Mapping[str, ToolHandler] = {
+    "start_persistent_shell": _start_persistent_shell_handler,
     "dashboard_snapshot": _dashboard_snapshot_handler,
     "query_audit": _query_audit_handler,
     "get_audit_entry": _get_audit_entry_handler,

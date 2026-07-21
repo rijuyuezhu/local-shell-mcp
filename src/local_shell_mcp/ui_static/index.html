@@ -183,10 +183,16 @@
     <section id="terminal-panel" class="panel terminal-panel">
       <div class="section-heading terminal-heading">
         <div>
-          <p class="eyebrow">Local tmux</p>
+          <p class="eyebrow">Machine-isolated tmux</p>
           <h2>Terminals</h2>
         </div>
         <div class="terminal-actions">
+          <label class="machine-select" for="terminal-machine">
+            <span>Machine</span>
+            <select id="terminal-machine" name="terminal-machine" aria-label="Terminal machine">
+              <option value="local">local</option>
+            </select>
+          </label>
           <form id="terminal-start-form" class="terminal-start-form">
             <input id="terminal-name" name="terminal-name" type="text" maxlength="64" placeholder="Optional shell name" autocomplete="off" spellcheck="false">
             <button type="submit">New terminal</button>

@@ -74,6 +74,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="dashboard-cpu-trend"' in index.text
     assert 'id="dashboard-alerts"' in index.text
     assert 'id="dashboard-activity"' in index.text
+    assert 'id="terminal-machine"' in index.text
     assert 'id="file-panel"' in index.text
     assert 'id="file-machine"' in index.text
     assert 'id="file-editor-form"' in index.text
@@ -99,6 +100,10 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "request(dashboardQueryPath())" in script.text
     assert "createElementNS" in script.text
     assert "dashboardNumber" in script.text
+    assert "terminalMachineStates" in script.text
+    assert "requestedMachine !== terminalMachine" in script.text
+    assert 'url.searchParams.set("machine", machine)' in script.text
+    assert "terminalSocketMachine === terminalMachine" in script.text
     assert "filePreviewGeneration" in script.text
     assert "generation !== filePreviewGeneration" in script.text
     assert "fileListGeneration" in script.text
@@ -262,6 +267,7 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
             "remote_dashboard": True,
             "machines": True,
             "terminals": True,
+            "remote_terminals": True,
             "terminal_websocket": True,
             "files": True,
             "file_preview": True,

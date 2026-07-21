@@ -21,7 +21,7 @@ The current migration slice provides:
 - local and remote machine inventory;
 - process-scoped local and remote Dashboard telemetry with degraded-source alerts;
 - automatic browser OAuth Authorization Code flow with PKCE S256;
-- authenticated local tmux terminal listing, creation, input, resize, snapshots, and termination;
+- machine-isolated local and remote tmux terminal listing, creation, input, resize, snapshots, and termination;
 - machine-aware local and remote file browsing, bounded previews, text editing, creation, and deletion;
 - local workspace copy, move, and rename operations;
 - revision-guarded local and remote Todo lists with machine isolation;
@@ -30,7 +30,7 @@ The current migration slice provides:
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Remote-worker terminals, rich xterm-compatible rendering, Remotes management, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Rich xterm-compatible rendering, Remotes management, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -59,7 +59,7 @@ The file is created with mode `0600`. This token bypasses OAuth only when both c
 1. the request targets `/api/ui`;
 2. the transport peer itself is a loopback address.
 
-Forwarded headers are ignored, so a reverse proxy connected over loopback does not grant this bypass to remote users. Browser terminal WebSockets never accept the private loopback token: in OAuth mode they require a valid bearer token with both `shell:read` and `shell:execute` scopes.
+Forwarded headers are ignored, so a reverse proxy connected over loopback does not grant this bypass to remote users. Browser terminal WebSockets never accept the private loopback token: in OAuth mode they require a valid bearer token with both `shell:read` and `shell:execute` scopes, plus `remote:use` when the selected machine is remote.
 
 ## Dashboard
 
@@ -75,19 +75,23 @@ All Dashboard text is assigned through `textContent`; sparklines are created wit
 
 ## Terminals
 
-The **Terminals** panel manages the same tmux-backed persistent shells exposed by the MCP shell tools. A browser can create a shell, select an existing shell, submit commands, resize the tmux window, and terminate a selected shell. The server streams bounded `capture-pane` snapshots every 250 ms only when output changes.
+The **Terminals** panel manages the same tmux-backed persistent shells exposed by the MCP shell tools on one selected local or remote machine. A browser can list, create, select, write to, resize, inspect, and terminate a shell. The local server executes these operations directly. For a remote machine it calls the worker's native `list_persistent_shells`, `start_persistent_shell`, `read_persistent_shell_output`, `send_persistent_shell_input`, `resize_persistent_shell`, and `kill_persistent_shell` RPCs. These calls are machine-scoped and do not create, reuse, or carry Files/Todos workspace `session_id` values.
 
-The browser sends ordered JSON controls over:
+The browser always opens its WebSocket to the control server rather than directly to a worker:
 
 ```text
-<ui_path>/ws/terminals/<shell_id>
+<ui_path>/ws/terminals/<shell_id>?machine=<machine>&lines=<bounded-lines>
 ```
 
-The OAuth access token is transported as a base64url-encoded WebSocket subprotocol credential; the server accepts only the non-secret `lsm-ui-terminal` subprotocol, so the bearer credential is not echoed back. Missing authentication closes with code `4401`, missing shell scopes with `4403`, invalid controls with `4400`, missing shells with `4404`, idle connections with `4408`, and connection-capacity exhaustion with `4429`.
+The control server verifies that the selected worker is still online before listing or opening a shell and treats `(machine, shell_id)` as the terminal identity. This prevents two machines with the same tmux shell name from sharing browser state or output. HTTP list/read operations require `shell:read`; start/send/resize/kill require `shell:read` and `shell:execute`; every remote operation additionally requires `remote:use`.
 
-Terminal input and resize controls are processed in receive order. Individual messages are limited to 64 KiB, snapshots are limited to 5,000 lines, dimensions reuse the persistent-shell bounds, and each browser sends a heartbeat every 30 seconds. Closing or reloading the browser disconnects the WebSocket but deliberately leaves the tmux shell running; use **Kill selected** when the shell itself should terminate.
+The OAuth access token is transported as a base64url-encoded WebSocket subprotocol credential; the server accepts only the non-secret `lsm-ui-terminal` subprotocol, so the bearer credential is not echoed back. Missing authentication closes with code `4401`, missing shell or remote scopes with `4403`, invalid controls with `4400`, missing shells with `4404`, idle connections with `4408`, unavailable remote workers with `1013`, and connection-capacity exhaustion with `4429`.
 
-The current renderer displays normalized full-pane text snapshots rather than a raw PTY byte stream. Interactive command workflows work now, while alternate-screen applications, exact ANSI styling, mouse protocols, and remote-machine terminals remain queued with the xterm/OpenTUI migration.
+Terminal input and resize controls are processed in receive order. Individual messages are limited to 64 KiB, snapshots are limited to 5,000 lines and 4 MB, dimensions reuse the persistent-shell bounds, remote inventory is capped at 256 shells, and worker text fields and errors are bounded before browser delivery. Remote responses are validated against the same typed result models used locally; mismatched shell IDs, duplicate sessions, malformed dimensions, oversized output, and malformed worker payloads are rejected.
+
+Local panes are sampled every 250 ms and remote panes every 750 ms; unchanged snapshots are not resent. The browser uses separate list and socket generations, includes the selected machine in every HTTP body, query, WebSocket URL, and accepted socket message, and closes the previous socket immediately on a machine switch. Inventory refreshes preserve an online selection and fall back to local if a worker becomes unavailable. Signing out clears terminal loading state and invalidates pending list/socket work.
+
+Closing or reloading the browser disconnects the WebSocket but deliberately leaves the tmux shell running; use **Kill selected** when the shell itself should terminate. The current renderer displays normalized full-pane text snapshots rather than a raw PTY byte stream. Interactive command workflows work locally and remotely, while alternate-screen applications, exact ANSI styling, mouse protocols, Windows ConPTY parity, and native OpenTUI rendering remain queued with the richer terminal-client migration.
 
 ## Files
 

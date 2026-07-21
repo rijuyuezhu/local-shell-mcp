@@ -94,6 +94,33 @@ async def test_worker_dispatches_persistent_shell_resize(monkeypatch):
     assert calls == [("shell-1", 132, 38)]
 
 
+@pytest.mark.asyncio
+async def test_worker_dispatches_persistent_shell_start(monkeypatch):
+    from local_shell_mcp.ops import shell as shell_ops
+    from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
+
+    calls = []
+
+    async def fake_start(cwd: str, name: str | None, command: str | None):
+        calls.append((cwd, name, command))
+        return {
+            "shell_id": "edge-shell",
+            "name": name,
+            "cwd": cwd,
+            "command": command,
+        }
+
+    monkeypatch.setattr(shell_ops, "start_persistent_shell_execute", fake_start)
+
+    result = await execute_worker_tool(
+        "start_persistent_shell",
+        {"cwd": "/edge", "name": "edge", "command": "bash"},
+    )
+
+    assert result["shell_id"] == "edge-shell"
+    assert calls == [("/edge", "edge", "bash")]
+
+
 def test_worker_session_start_result_serializes_with_dependency_shim(tmp_path):
     script = """
 import asyncio

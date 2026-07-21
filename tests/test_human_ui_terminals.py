@@ -1,5 +1,6 @@
 import base64
 import threading
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +10,7 @@ from starlette.websockets import WebSocketDisconnect
 import local_shell_mcp.server.http.ui_terminals as terminal_module
 from local_shell_mcp.config.settings import Settings, clear_settings_cache
 from local_shell_mcp.oauth.core.scopes import (
+    SCOPE_REMOTE_USE,
     SCOPE_SHELL_EXECUTE,
     SCOPE_SHELL_READ,
 )
@@ -389,6 +391,7 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
         assert websocket.accepted_subprotocol == "lsm-ui-terminal"
         assert websocket.receive_json() == {
             "type": "snapshot",
+            "machine": "local",
             "shell_id": "demo",
             "output": "prompt$ ",
         }
@@ -397,7 +400,11 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
         )
         websocket.send_json({"type": "resize", "cols": 120, "rows": 36})
         websocket.send_json({"type": "ping"})
-        assert websocket.receive_json() == {"type": "pong", "shell_id": "demo"}
+        assert websocket.receive_json() == {
+            "type": "pong",
+            "machine": "local",
+            "shell_id": "demo",
+        }
         assert input_seen.wait(timeout=1)
         websocket.send_json({"type": "close"})
 
@@ -406,3 +413,266 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
         ("resize", "demo", 120, 36),
     ]
     assert not terminal_module._ACTIVE_CONNECTIONS
+
+
+class _RemoteTerminalManager:
+    def __init__(self, status: str = "online") -> None:
+        self.status = status
+
+    def list_machines(self):
+        return SimpleNamespace(
+            machines=[SimpleNamespace(name="edge", status=self.status)]
+        )
+
+
+class _RemoteTerminalCalls:
+    def __init__(self, *, malformed: str = "") -> None:
+        self.calls: list[tuple[str, str, dict, int]] = []
+        self.malformed = malformed
+
+    async def __call__(self, machine, tool, args, timeout_s):
+        self.calls.append((machine, tool, args, timeout_s))
+        if self.malformed == tool:
+            data = (
+                {"shells": [{"shell_id": "bad id"}]}
+                if tool == "list_persistent_shells"
+                else {"shell_id": "wrong"}
+            )
+            return {"ok": True, "data": data}
+        outputs = {
+            "list_persistent_shells": {
+                "shells": [
+                    {"shell_id": "shared", "name": "edge-shell", "cwd": "/edge"}
+                ]
+            },
+            "start_persistent_shell": {
+                "shell_id": "created",
+                "name": args.get("name"),
+                "cwd": args.get("cwd", "."),
+                "command": args.get("command") or "/bin/sh",
+            },
+            "send_persistent_shell_input": {
+                "shell_id": args.get("shell_id"),
+                "sent_bytes": len(str(args.get("input_text") or "").encode()),
+                "enter": bool(args.get("enter", True)),
+            },
+            "resize_persistent_shell": {
+                "shell_id": args.get("shell_id"),
+                "cols": args.get("cols"),
+                "rows": args.get("rows"),
+                "resized": True,
+                "backend": "tmux",
+            },
+            "read_persistent_shell_output": {
+                "shell_id": args.get("shell_id"),
+                "output": "edge$ ",
+            },
+            "kill_persistent_shell": {
+                "shell_id": args.get("shell_id"),
+                "killed": True,
+                "stderr": None,
+            },
+        }
+        return {"ok": True, "data": outputs[tool]}
+
+
+def _remote_terminal_client(
+    monkeypatch,
+    tmp_path,
+    calls: _RemoteTerminalCalls,
+    *,
+    auth_mode: str = "none",
+    status: str = "online",
+):
+    client = _client(
+        monkeypatch,
+        tmp_path,
+        auth_mode=auth_mode,
+        remote_enabled=True,
+    )
+    monkeypatch.setattr(
+        terminal_module,
+        "remote_manager",
+        lambda: _RemoteTerminalManager(status),
+    )
+    monkeypatch.setattr(terminal_module, "call_remote_worker_tool", calls)
+    return client
+
+
+def test_remote_terminal_http_is_machine_scoped_and_sessionless(
+    monkeypatch, tmp_path
+):
+    calls = _RemoteTerminalCalls()
+    client = _remote_terminal_client(monkeypatch, tmp_path, calls)
+
+    listed = client.get("/api/ui/terminals", params={"machine": "edge"})
+    started = client.post(
+        "/api/ui/terminals/start",
+        json={"machine": "edge", "cwd": ".", "name": "created"},
+    )
+    sent = client.post(
+        "/api/ui/terminals/send",
+        json={
+            "machine": "edge",
+            "shell_id": "shared",
+            "input_text": "printf ok",
+            "enter": False,
+        },
+    )
+    resized = client.post(
+        "/api/ui/terminals/resize",
+        json={"machine": "edge", "shell_id": "shared", "cols": 120, "rows": 36},
+    )
+    read = client.get(
+        "/api/ui/terminals/read",
+        params={"machine": "edge", "shell_id": "shared", "lines": 50},
+    )
+    killed = client.post(
+        "/api/ui/terminals/kill",
+        json={"machine": "edge", "shell_id": "shared"},
+    )
+
+    assert [
+        response.status_code
+        for response in (listed, started, sent, resized, read, killed)
+    ] == [200] * 6
+    assert listed.json()["data"] == {
+        "machine": "edge",
+        "remote": True,
+        "shells": [
+            {
+                "shell_id": "shared",
+                "name": "edge-shell",
+                "cwd": "/edge",
+                "command": None,
+            }
+        ],
+    }
+    assert started.json()["data"]["machine"] == "edge"
+    assert read.json()["data"]["output"] == "edge$ "
+    assert all(
+        machine == "edge" and 1 <= timeout <= 60
+        for machine, _, _, timeout in calls.calls
+    )
+    assert all("session_id" not in args for _, _, args, _ in calls.calls)
+    assert [tool for _, tool, _, _ in calls.calls] == [
+        "list_persistent_shells",
+        "start_persistent_shell",
+        "send_persistent_shell_input",
+        "resize_persistent_shell",
+        "read_persistent_shell_output",
+        "kill_persistent_shell",
+    ]
+
+
+def test_remote_terminal_requires_scope_and_handles_offline_and_malformed(
+    monkeypatch, tmp_path
+):
+    calls = _RemoteTerminalCalls()
+    client = _remote_terminal_client(
+        monkeypatch, tmp_path, calls, auth_mode="oauth"
+    )
+    denied = client.get(
+        "/api/ui/terminals",
+        params={"machine": "edge"},
+        headers={"Authorization": f"Bearer {_bearer_token(SCOPE_SHELL_READ)}"},
+    )
+    allowed_scope = f"{SCOPE_SHELL_READ} {SCOPE_REMOTE_USE}"
+    allowed = client.get(
+        "/api/ui/terminals",
+        params={"machine": "edge"},
+        headers={"Authorization": f"Bearer {_bearer_token(allowed_scope)}"},
+    )
+    assert denied.status_code == 403
+    assert SCOPE_REMOTE_USE in denied.text
+    assert allowed.status_code == 200
+
+    malformed_calls = _RemoteTerminalCalls(malformed="list_persistent_shells")
+    malformed_client = _remote_terminal_client(
+        monkeypatch, tmp_path / "malformed", malformed_calls
+    )
+    malformed = malformed_client.get(
+        "/api/ui/terminals", params={"machine": "edge"}
+    )
+    assert malformed.status_code == 502
+
+    offline_calls = _RemoteTerminalCalls()
+    offline_client = _remote_terminal_client(
+        monkeypatch, tmp_path / "offline", offline_calls, status="offline"
+    )
+    offline = offline_client.get(
+        "/api/ui/terminals", params={"machine": "edge"}
+    )
+    assert offline.status_code == 503
+    assert offline_calls.calls == []
+
+
+def test_remote_terminal_websocket_uses_selected_machine(monkeypatch, tmp_path):
+    calls = _RemoteTerminalCalls()
+    client = _remote_terminal_client(
+        monkeypatch, tmp_path, calls, auth_mode="oauth"
+    )
+    scope = f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE} {SCOPE_REMOTE_USE}"
+    bearer = _bearer_protocol(scope)
+
+    with client.websocket_connect(
+        "/ui/ws/terminals/shared?machine=edge&lines=50",
+        subprotocols=["lsm-ui-terminal", bearer],
+    ) as websocket:
+        assert websocket.receive_json() == {
+            "type": "snapshot",
+            "machine": "edge",
+            "shell_id": "shared",
+            "output": "edge$ ",
+        }
+        websocket.send_json(
+            {"type": "input", "data": "echo edge", "enter": True}
+        )
+        websocket.send_json({"type": "resize", "cols": 100, "rows": 30})
+        websocket.send_json({"type": "ping"})
+        assert websocket.receive_json() == {
+            "type": "pong",
+            "machine": "edge",
+            "shell_id": "shared",
+        }
+        websocket.send_json({"type": "close"})
+
+    tools = [tool for _, tool, _, _ in calls.calls]
+    assert tools[0] == "list_persistent_shells"
+    assert "read_persistent_shell_output" in tools
+    assert "send_persistent_shell_input" in tools
+    assert "resize_persistent_shell" in tools
+    assert all("session_id" not in args for _, _, args, _ in calls.calls)
+
+
+def test_remote_terminal_websocket_requires_remote_scope(monkeypatch, tmp_path):
+    calls = _RemoteTerminalCalls()
+    client = _remote_terminal_client(
+        monkeypatch, tmp_path, calls, auth_mode="oauth"
+    )
+    bearer = _bearer_protocol(f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE}")
+
+    with (
+        pytest.raises(WebSocketDisconnect) as exc_info,
+        client.websocket_connect(
+            "/ui/ws/terminals/shared?machine=edge",
+            subprotocols=["lsm-ui-terminal", bearer],
+        ),
+    ):
+        pass
+
+    assert exc_info.value.code == 4403
+    assert calls.calls == []
+
+
+def test_remote_terminal_rejects_malformed_envelope_and_oversized_output():
+    with pytest.raises(RuntimeError, match="malformed terminal envelope"):
+        terminal_module._remote_result_data([], machine="edge", tool="list")
+
+    oversized = {
+        "shell_id": "shared",
+        "output": "x" * (terminal_module.UI_TERMINAL_OUTPUT_MAX_BYTES + 1),
+    }
+
+    with pytest.raises(RuntimeError, match="oversized terminal output"):
+        terminal_module._normalize_read("edge", "shared", 50, oversized)

@@ -142,7 +142,7 @@ def _machine_rows(settings: Settings) -> dict[str, Any]:
             "last_seen": time.time(),
             "last_seen_age_s": 0.0,
             "queue_depth": 0,
-            "capabilities": ["dashboard", "local"],
+            "capabilities": ["dashboard", "local", "terminals"],
             "info": {
                 "target": "local",
                 "version": version_info().get("version"),
@@ -175,6 +175,7 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                     "remote_dashboard": True,
                     "machines": True,
                     "terminals": True,
+                    "remote_terminals": True,
                     "terminal_websocket": True,
                     "files": True,
                     "file_preview": True,

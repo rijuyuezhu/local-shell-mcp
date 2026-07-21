@@ -194,19 +194,34 @@ def _list_payload(path: str, *, max_entries: int) -> dict[str, Any]:
     }
 
 
-def _looks_binary(sample: bytes) -> bool:
+def _looks_binary(sample: bytes, *, continuation: bytes = b"") -> bool:
     if b"\x00" in sample:
         return True
     try:
         sample.decode("utf-8")
-    except UnicodeDecodeError:
-        return True
+    except UnicodeDecodeError as exc:
+        if exc.reason != "unexpected end of data" or exc.end != len(sample):
+            return True
+        lead = sample[exc.start]
+        if lead < 0xC2 or lead > 0xF4:
+            return True
+        width = 2 if lead < 0xE0 else 3 if lead < 0xF0 else 4
+        missing = width - (len(sample) - exc.start)
+        sequence = sample[exc.start :] + continuation[:missing]
+        if len(sequence) != width:
+            return True
+        try:
+            sequence.decode("utf-8")
+        except UnicodeDecodeError:
+            return True
     return False
 
 
-def _file_sample(path: Path) -> bytes:
+def _file_sample(path: Path) -> tuple[bytes, bytes]:
+    sample_bytes = max(4_096, UI_FILE_BINARY_PREVIEW_BYTES)
     with path.open("rb") as handle:
-        return handle.read(max(4_096, UI_FILE_BINARY_PREVIEW_BYTES))
+        probe = handle.read(sample_bytes + 3)
+    return probe[:sample_bytes], probe[sample_bytes:]
 
 
 def _file_preview(path: str) -> dict[str, Any]:
@@ -225,7 +240,7 @@ def _file_preview(path: str) -> dict[str, Any]:
     media_type = (
         mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
     )
-    sample = _file_sample(resolved)
+    sample, continuation = _file_sample(resolved)
     settings = get_settings()
     if media_type in UI_FILE_INLINE_IMAGE_TYPES:
         if size > settings.max_file_read_bytes:
@@ -250,7 +265,7 @@ def _file_preview(path: str) -> dict[str, Any]:
             "data_base64": base64.b64encode(data).decode("ascii"),
         }
 
-    if _looks_binary(sample):
+    if _looks_binary(sample, continuation=continuation):
         return {
             "kind": "binary",
             "path": relative_display(resolved),
@@ -285,7 +300,8 @@ def _file_content(path: str) -> dict[str, Any]:
     resolved = _workspace_path(path, must_exist=True)
     if not resolved.is_file():
         raise ValueError("Only regular text files can be edited")
-    if _looks_binary(_file_sample(resolved)):
+    sample, continuation = _file_sample(resolved)
+    if _looks_binary(sample, continuation=continuation):
         raise ValueError("Binary files cannot be edited in the built-in editor")
     result = read_file_execute(str(resolved))
     if result.truncated:

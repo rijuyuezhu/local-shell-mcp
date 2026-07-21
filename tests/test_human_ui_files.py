@@ -204,6 +204,40 @@ def test_file_preview_supports_text_binary_directory_and_raster_images(
     assert "data_base64" not in svg
 
 
+def test_local_file_preview_handles_utf8_split_at_binary_probe_boundary(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    valid_content = "a" * 4_095 + "模型"
+    (workspace / "boundary.txt").write_text(valid_content, encoding="utf-8")
+    (workspace / "invalid.txt").write_bytes(b"a" * 4_095 + b"\xe6x")
+    client = _client(monkeypatch, workspace)
+
+    preview = client.get(
+        "/api/ui/files/preview", params={"path": "boundary.txt"}
+    )
+    content = client.get(
+        "/api/ui/files/content", params={"path": "boundary.txt"}
+    )
+    invalid_preview = client.get(
+        "/api/ui/files/preview", params={"path": "invalid.txt"}
+    )
+    invalid_content = client.get(
+        "/api/ui/files/content", params={"path": "invalid.txt"}
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["data"]["kind"] == "text"
+    assert preview.json()["data"]["content"] == valid_content
+    assert content.status_code == 200
+    assert content.json()["data"]["content"] == valid_content
+    assert invalid_preview.status_code == 200
+    assert invalid_preview.json()["data"]["kind"] == "binary"
+    assert invalid_content.status_code == 400
+    assert "Binary files" in invalid_content.json()["message"]
+
+
 def test_editor_reads_complete_text_and_rejects_binary_or_truncated_files(
     monkeypatch, tmp_path
 ):
