@@ -665,6 +665,9 @@ async def test_worker_processes_required_upgrade_before_job(
 
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(
+        worker, "_configure_worker_runtime_env", lambda workdir: None
+    )
+    monkeypatch.setattr(
         worker,
         "_read_worker_identity",
         lambda server, name: {
@@ -730,6 +733,9 @@ async def test_upgrade_retry_is_capped_and_resets_after_successful_poll(
     import local_shell_mcp.remote_worker.worker as worker
 
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        worker, "_configure_worker_runtime_env", lambda workdir: None
+    )
     monkeypatch.setattr(
         worker,
         "_read_worker_identity",
