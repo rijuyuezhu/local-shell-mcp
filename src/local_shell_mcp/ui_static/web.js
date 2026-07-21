@@ -30,6 +30,21 @@
     move: true,
     rename: true,
   };
+  let todoMachine = "local";
+  let todoItems = [];
+  let todoRevision = 0;
+  let todoGeneration = 0;
+  let todoMutationBusy = false;
+  let todoDirty = false;
+  let todoSequence = 0;
+  let todoMachineStates = new Map([["local", "online"]]);
+  let todoLimits = {
+    todos: 1000,
+    bytes: 1000000,
+    id_bytes: 256,
+    content_bytes: 16384,
+    label_bytes: 64,
+  };
 
   const elements = {
     authDetail: document.getElementById("auth-detail"),
@@ -74,6 +89,14 @@
     terminalStartForm: document.getElementById("terminal-start-form"),
     terminalState: document.getElementById("terminal-state"),
     terminalTitle: document.getElementById("terminal-title"),
+    todoAdd: document.getElementById("todo-add"),
+    todoFilter: document.getElementById("todo-filter"),
+    todoList: document.getElementById("todo-list"),
+    todoMachine: document.getElementById("todo-machine"),
+    todoRefresh: document.getElementById("todo-refresh"),
+    todoSave: document.getElementById("todo-save"),
+    todoState: document.getElementById("todo-state"),
+    todoSummary: document.getElementById("todo-summary"),
     tokenInput: document.getElementById("access-token"),
     version: document.getElementById("version"),
   };
@@ -133,11 +156,15 @@
     if (response.status === 401 || response.status === 403) {
       const error = new Error("Authentication required");
       error.authenticationRequired = true;
+      error.status = response.status;
       throw error;
     }
     const payload = await responsePayload(response);
     if (!response.ok || !payload.ok) {
-      throw new Error(payload.message || `Request failed (${response.status})`);
+      const error = new Error(payload.message || `Request failed (${response.status})`);
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
     }
     return payload.data;
   }
@@ -435,6 +462,323 @@
     }
   }
 
+
+  function todoMachineOnline(machine = todoMachine) {
+    return machine === "local" || todoMachineStates.get(machine) === "online";
+  }
+
+  function setTodoControls() {
+    const online = todoMachineOnline();
+    elements.todoMachine.disabled = todoMutationBusy;
+    elements.todoRefresh.disabled = todoMutationBusy || !online;
+    elements.todoAdd.disabled = todoMutationBusy || !online || todoItems.length >= todoLimits.todos;
+    elements.todoSave.disabled = todoMutationBusy || !online || !todoDirty;
+    for (const control of elements.todoList.querySelectorAll("input, select, button")) {
+      control.disabled = todoMutationBusy || !online;
+    }
+    for (const row of elements.todoList.querySelectorAll(".todo-row")) {
+      row.setAttribute("aria-disabled", todoMutationBusy || !online ? "true" : "false");
+    }
+  }
+
+  function setTodoMutationBusy(busy) {
+    todoMutationBusy = busy;
+    setTodoControls();
+  }
+
+  function setTodoDirty(dirty = true) {
+    todoDirty = dirty;
+    if (dirty) elements.todoState.textContent = `Unsaved changes on ${todoMachine}`;
+    setTodoControls();
+  }
+
+  function resetTodoWorkspace(machine) {
+    todoMachine = machine || "local";
+    todoItems = [];
+    todoRevision = 0;
+    todoDirty = false;
+    todoGeneration += 1;
+    elements.todoMachine.value = todoMachine;
+    renderTodos();
+    elements.todoState.textContent = `Not loaded · ${todoMachine}`;
+  }
+
+  function renderTodoMachines(machines) {
+    const available = Array.isArray(machines) ? machines : [];
+    todoMachineStates = new Map([["local", "online"]]);
+    elements.todoMachine.replaceChildren();
+    let localPresent = false;
+    let currentPresent = false;
+    let currentOnline = todoMachine === "local";
+    for (const machine of available) {
+      const name = text(machine.name, "");
+      if (!name) continue;
+      if (name === "local") localPresent = true;
+      const state = name === "local" ? "online" : text(machine.status, "offline");
+      const online = name === "local" || state === "online";
+      todoMachineStates.set(name, state);
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = online ? name : `${name} (${state})`;
+      option.disabled = !online;
+      option.selected = name === todoMachine;
+      if (option.selected) {
+        currentPresent = true;
+        currentOnline = online;
+      }
+      elements.todoMachine.append(option);
+    }
+    if (!localPresent) {
+      const local = document.createElement("option");
+      local.value = "local";
+      local.textContent = "local";
+      local.selected = todoMachine === "local";
+      elements.todoMachine.prepend(local);
+      if (local.selected) {
+        currentPresent = true;
+        currentOnline = true;
+      }
+    }
+    if (!currentPresent && todoMachine !== "local") {
+      const stale = document.createElement("option");
+      stale.value = todoMachine;
+      stale.textContent = `${todoMachine} (unavailable)`;
+      stale.disabled = true;
+      stale.selected = true;
+      elements.todoMachine.append(stale);
+    }
+    if ((!currentPresent || !currentOnline) && !todoDirty && !todoMutationBusy) {
+      const changed = todoMachine !== "local";
+      resetTodoWorkspace("local");
+      if (changed) void refreshTodos();
+    } else {
+      elements.todoMachine.value = todoMachine;
+      if (!currentOnline) elements.todoState.textContent = `${todoMachine} is offline`;
+      setTodoControls();
+    }
+  }
+
+  function todoOption(select, value, choices) {
+    const normalized = text(value, choices[0]);
+    const values = choices.includes(normalized) ? choices : [...choices, normalized];
+    for (const choice of values) {
+      const option = document.createElement("option");
+      option.value = choice;
+      option.textContent = choice.replaceAll("_", " ");
+      option.selected = choice === normalized;
+      select.append(option);
+    }
+  }
+
+  function todoField(labelText, className, control) {
+    const label = document.createElement("label");
+    label.className = `todo-field ${className}`;
+    const caption = document.createElement("span");
+    caption.textContent = labelText;
+    label.append(caption, control);
+    return label;
+  }
+
+  function visibleTodos() {
+    const filter = elements.todoFilter.value;
+    return todoItems
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        if (filter === "completed") return item.status === "completed";
+        if (filter === "open") return item.status !== "completed";
+        return true;
+      });
+  }
+
+  function renderTodoSummary() {
+    const completed = todoItems.filter((item) => item.status === "completed").length;
+    const open = todoItems.length - completed;
+    const labels = [
+      `${todoItems.length} total`,
+      `${open} open`,
+      `${completed} completed`,
+      `revision ${todoRevision}`,
+    ];
+    elements.todoSummary.replaceChildren(
+      ...labels.map((label) => {
+        const span = document.createElement("span");
+        span.textContent = label;
+        return span;
+      }),
+    );
+  }
+
+  function renderTodos() {
+    renderTodoSummary();
+    const visible = visibleTodos();
+    elements.todoList.replaceChildren();
+    if (!visible.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = todoItems.length ? "No todos match this filter." : "No todos in this machine session.";
+      elements.todoList.append(empty);
+      setTodoControls();
+      return;
+    }
+
+    for (const { item, index } of visible) {
+      const row = document.createElement("article");
+      row.className = "todo-row";
+      row.dataset.todoId = item.id;
+
+      const content = document.createElement("input");
+      content.type = "text";
+      content.value = item.content;
+      content.maxLength = todoLimits.content_bytes;
+      content.autocomplete = "off";
+      content.spellcheck = true;
+      content.addEventListener("input", () => {
+        todoItems[index].content = content.value;
+        setTodoDirty();
+      });
+
+      const status = document.createElement("select");
+      todoOption(status, item.status, ["pending", "in_progress", "completed"]);
+      status.addEventListener("change", () => {
+        todoItems[index].status = status.value;
+        setTodoDirty();
+        renderTodoSummary();
+        if (elements.todoFilter.value !== "all") renderTodos();
+      });
+
+      const priority = document.createElement("select");
+      todoOption(priority, item.priority, ["high", "medium", "low"]);
+      priority.addEventListener("change", () => {
+        todoItems[index].priority = priority.value;
+        setTodoDirty();
+      });
+
+      const identifier = document.createElement("span");
+      identifier.className = "todo-id";
+      identifier.textContent = item.id;
+      identifier.title = item.id;
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "todo-remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        todoItems.splice(index, 1);
+        setTodoDirty();
+        renderTodos();
+      });
+
+      row.append(
+        identifier,
+        todoField("Content", "todo-field-content", content),
+        todoField("Status", "todo-field-status", status),
+        todoField("Priority", "todo-field-priority", priority),
+        remove,
+      );
+      elements.todoList.append(row);
+    }
+    setTodoControls();
+  }
+
+  function newTodoId() {
+    let candidate;
+    do {
+      todoSequence += 1;
+      candidate = `ui-${Date.now().toString(36)}-${todoSequence.toString(36)}`;
+    } while (todoItems.some((item) => item.id === candidate));
+    return candidate;
+  }
+
+  function addTodo() {
+    if (todoMutationBusy || !todoMachineOnline() || todoItems.length >= todoLimits.todos) return;
+    const item = { id: newTodoId(), content: "", status: "pending", priority: "medium" };
+    todoItems.push(item);
+    elements.todoFilter.value = "all";
+    setTodoDirty();
+    renderTodos();
+    const row = elements.todoList.querySelector(`[data-todo-id="${CSS.escape(item.id)}"]`);
+    row?.querySelector("input")?.focus();
+  }
+
+  function todoQuery() {
+    return `/todos?${new URLSearchParams({ machine: todoMachine }).toString()}`;
+  }
+
+  async function refreshTodos({ force = false } = {}) {
+    if (!force && (todoDirty || todoMutationBusy)) return null;
+    const generation = ++todoGeneration;
+    const requestedMachine = todoMachine;
+    elements.todoState.textContent = `Loading ${requestedMachine}`;
+    setTodoControls();
+    try {
+      const payload = await request(todoQuery());
+      if (generation !== todoGeneration || requestedMachine !== todoMachine) return null;
+      todoItems = Array.isArray(payload.todos)
+        ? payload.todos.map((item) => ({
+            id: text(item.id, ""),
+            content: text(item.content, ""),
+            status: text(item.status, "pending"),
+            priority: text(item.priority, "medium"),
+          }))
+        : [];
+      todoRevision = Number.isInteger(payload.revision) && payload.revision >= 0 ? payload.revision : 0;
+      if (payload.limits && typeof payload.limits === "object") {
+        todoLimits = { ...todoLimits, ...payload.limits };
+      }
+      todoDirty = false;
+      renderTodos();
+      elements.todoState.textContent = `${requestedMachine} · loaded ${todoItems.length} todos`;
+      return payload;
+    } catch (error) {
+      if (generation !== todoGeneration || requestedMachine !== todoMachine) return null;
+      elements.todoState.textContent = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      if (generation === todoGeneration) setTodoControls();
+    }
+  }
+
+  async function saveTodos() {
+    if (!todoDirty || todoMutationBusy || !todoMachineOnline()) return;
+    const generation = ++todoGeneration;
+    const requestedMachine = todoMachine;
+    const expectedRevision = todoRevision;
+    const todos = todoItems.map((item) => ({ ...item }));
+    setTodoMutationBusy(true);
+    elements.todoState.textContent = `Saving ${requestedMachine} revision ${expectedRevision}`;
+    try {
+      const payload = await request("/todos", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          machine: requestedMachine,
+          expected_revision: expectedRevision,
+          todos,
+        }),
+      });
+      if (generation !== todoGeneration || requestedMachine !== todoMachine) return;
+      todoItems = Array.isArray(payload.todos) ? payload.todos.map((item) => ({ ...item })) : [];
+      todoRevision = Number(payload.revision) || expectedRevision + 1;
+      todoDirty = false;
+      renderTodos();
+      elements.todoState.textContent = `Saved ${requestedMachine} · revision ${todoRevision}`;
+    } catch (error) {
+      if (generation !== todoGeneration || requestedMachine !== todoMachine) return;
+      if (error && error.status === 409) {
+        todoDirty = false;
+        try {
+          await refreshTodos({ force: true });
+          elements.todoState.textContent = "Todo list changed elsewhere; reloaded the latest revision";
+        } catch (reloadError) {
+          elements.todoState.textContent = reloadError instanceof Error ? reloadError.message : String(reloadError);
+        }
+      } else {
+        elements.todoState.textContent = error instanceof Error ? error.message : String(error);
+      }
+    } finally {
+      if (requestedMachine === todoMachine) setTodoMutationBusy(false);
+    }
+  }
   function terminalSocketProtocols() {
     const protocols = ["lsm-ui-terminal"];
     if (accessToken) protocols.push(`bearer.${base64Url(encoder.encode(accessToken))}`);
@@ -1027,6 +1371,7 @@
     elements.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
     renderFileMachines(machines);
+    renderTodoMachines(machines);
     elements.machineList.replaceChildren();
     if (!machines.length) {
       const empty = document.createElement("div");
@@ -1059,10 +1404,18 @@
         elements.fileState.textContent = "File list unavailable";
         showFilePreviewMessage("Files unavailable", error instanceof Error ? error.message : String(error));
       }
+      try {
+        await refreshTodos();
+      } catch (error) {
+        if (error.authenticationRequired) throw error;
+        elements.todoState.textContent = error instanceof Error ? error.message : "Todo list unavailable";
+      }
     } catch (error) {
       if (error.authenticationRequired) {
         closeTerminalSocket();
         filePreviewGeneration += 1;
+        todoGeneration += 1;
+        todoDirty = false;
         clearFileEditor();
         clearAccessToken();
         showAuthentication("Authentication required");
@@ -1148,6 +1501,26 @@
     }
   });
 
+  elements.todoMachine.addEventListener("change", () => {
+    if (todoMutationBusy) return;
+    const next = elements.todoMachine.value || "local";
+    if (todoDirty && !globalThis.confirm(`Discard unsaved changes on ${todoMachine}?`)) {
+      elements.todoMachine.value = todoMachine;
+      return;
+    }
+    resetTodoWorkspace(next);
+    void refreshTodos();
+  });
+  elements.todoFilter.addEventListener("change", renderTodos);
+  elements.todoAdd.addEventListener("click", addTodo);
+  elements.todoSave.addEventListener("click", () => void saveTodos());
+  elements.todoRefresh.addEventListener("click", () => {
+    if (todoMutationBusy) return;
+    if (todoDirty && !globalThis.confirm(`Discard unsaved changes on ${todoMachine}?`)) return;
+    todoDirty = false;
+    void refreshTodos({ force: true });
+  });
+
   elements.fileMachine.addEventListener("change", () => {
     if (fileMutationBusy) return;
     resetFileWorkspace(elements.fileMachine.value || "local");
@@ -1214,7 +1587,9 @@
   elements.signOut.addEventListener("click", () => {
     closeTerminalSocket();
     resetFileWorkspace("local");
+    resetTodoWorkspace("local");
     elements.fileState.textContent = "Authentication required";
+    elements.todoState.textContent = "Authentication required";
     clearAccessToken();
     sessionStorage.removeItem(pendingStorageKey);
     elements.tokenInput.value = "";

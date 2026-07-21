@@ -1272,6 +1272,13 @@
           {
             "items": [
               {
+                "description": "Optional revision that must still be current before replacement.",
+                "head": {
+                  "code": "expected_revision"
+                },
+                "note": "(integer / null, optional)"
+              },
+              {
                 "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
                 "head": {
                   "code": "session_id"
@@ -1287,7 +1294,7 @@
               }
             ]
           },
-          "Replace the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start and provide the full desired todo list, not a partial patch; omitted existing items are removed. Use this for multi-step coding work where tracking in_progress/completed/pending items helps coordinate the current session. Keep todo content concise and actionable, and use read_todos first when preserving existing items matters."
+          "Replace the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start and provide the full desired todo list, not a partial patch; omitted existing items are removed. Use expected_revision from read_todos when a stale replacement must be rejected. Keep todo content concise and actionable."
         ]
       ]
     },
@@ -4698,6 +4705,13 @@
         },
         "description": "Current persisted agent todo list.",
         "properties": {
+          "revision": {
+            "default": 0,
+            "description": "Monotonic list revision used for optimistic concurrency.",
+            "minimum": 0,
+            "title": "Revision",
+            "type": "integer"
+          },
           "todos": {
             "description": "Persisted todo items.",
             "items": {
@@ -6986,9 +7000,23 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Replace the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start and provide the full desired todo list, not a partial patch; omitted existing items are removed. Use this for multi-step coding work where tracking in_progress/completed/pending items helps coordinate the current session. Keep todo content concise and actionable, and use read_todos first when preserving existing items matters.",
+      "description": "Replace the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start and provide the full desired todo list, not a partial patch; omitted existing items are removed. Use expected_revision from read_todos when a stale replacement must be rejected. Keep todo content concise and actionable.",
       "inputSchema": {
         "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional revision that must still be current before replacement.",
+            "title": "Expected Revision"
+          },
           "session_id": {
             "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
             "maxLength": 8,
@@ -7064,6 +7092,13 @@
         },
         "description": "Todo list replacement result.",
         "properties": {
+          "revision": {
+            "default": 0,
+            "description": "Monotonic list revision used for optimistic concurrency.",
+            "minimum": 0,
+            "title": "Revision",
+            "type": "integer"
+          },
           "todos": {
             "description": "Persisted todo items.",
             "items": {

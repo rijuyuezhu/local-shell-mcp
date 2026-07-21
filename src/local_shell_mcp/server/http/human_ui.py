@@ -35,6 +35,7 @@ from .ui_terminals import (
     api_terminals,
     ui_terminal_websocket,
 )
+from .ui_todos import api_todos
 
 
 def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
@@ -177,7 +178,8 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                     "file_rename": True,
                     "remote_files": True,
                     "remote_file_editor": True,
-                    "todos": False,
+                    "todos": True,
+                    "remote_todos": True,
                     "audit": False,
                 },
             },
@@ -226,6 +228,7 @@ def human_ui_routes(
             api_file_action,
             methods=["POST"],
         ),
+        Route(UI_API_PREFIX + "/todos", api_todos, methods=["GET", "PUT"]),
         Route(UI_API_PREFIX + "/terminals", api_terminals, methods=["GET"]),
         Route(
             UI_API_PREFIX + "/terminals/read",

@@ -660,6 +660,149 @@ h2 {
   gap: 0.55rem;
 }
 
+
+.todo-heading,
+.todo-toolbar,
+.todo-actions,
+.todo-summary,
+.todo-row,
+.todo-field {
+  display: flex;
+  align-items: center;
+}
+
+.todo-heading,
+.todo-toolbar {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.todo-toolbar {
+  margin-top: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.todo-control {
+  display: grid;
+  flex: 0 1 14rem;
+  gap: 0.3rem;
+  color: #8ca0b2;
+  font-size: 0.72rem;
+}
+
+.todo-control select,
+.todo-field input,
+.todo-field select {
+  min-width: 0;
+  border: 1px solid rgba(137, 186, 207, 0.28);
+  border-radius: 0.65rem;
+  color: #f4f8fc;
+  background: rgba(2, 10, 16, 0.72);
+  padding: 0.7rem 0.8rem;
+}
+
+.todo-control select {
+  min-height: 2.55rem;
+}
+
+.todo-actions {
+  flex: 1 1 24rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.todo-actions .primary-action {
+  width: auto;
+}
+
+.todo-summary {
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+  color: #91a6b8;
+  font-size: 0.78rem;
+}
+
+.todo-summary span {
+  border: 1px solid rgba(151, 184, 202, 0.12);
+  border-radius: 999px;
+  background: rgba(5, 15, 23, 0.5);
+  padding: 0.35rem 0.65rem;
+}
+
+.todo-list {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  max-height: 40rem;
+  margin-top: 0.8rem;
+  overflow: auto;
+}
+
+.todo-row {
+  min-width: 0;
+  align-items: end;
+  gap: 0.6rem;
+  border: 1px solid rgba(151, 184, 202, 0.12);
+  border-radius: 0.8rem;
+  background: rgba(2, 8, 13, 0.72);
+  padding: 0.7rem;
+}
+
+.todo-row[aria-disabled="true"] {
+  opacity: 0.68;
+}
+
+.todo-field {
+  min-width: 0;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: #91a6b8;
+  font-size: 0.7rem;
+}
+
+.todo-field-content {
+  flex: 1 1 24rem;
+}
+
+.todo-field-status,
+.todo-field-priority {
+  flex: 0 1 10rem;
+}
+
+.todo-field input,
+.todo-field select {
+  width: 100%;
+}
+
+.todo-field input {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.todo-id {
+  max-width: 12rem;
+  overflow: hidden;
+  color: #718697;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-remove {
+  flex: 0 0 auto;
+  border-color: rgba(209, 101, 112, 0.32);
+  background: rgba(128, 42, 51, 0.48);
+}
+
+.todo-remove:hover {
+  background: rgba(161, 52, 63, 0.72);
+}
+
 @media (max-width: 780px) {
   .shell {
     width: min(100% - 1rem, 44rem);
@@ -679,18 +822,32 @@ h2 {
   }
 
   .terminal-actions,
-  .file-actions {
+  .file-actions,
+  .todo-actions {
     justify-content: flex-start;
   }
 
-  .file-toolbar {
+  .file-toolbar,
+  .todo-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
 
   .file-path-form,
-  .file-actions {
+  .file-actions,
+  .todo-actions,
+  .todo-control {
     flex-basis: auto;
+  }
+
+  .todo-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .todo-id {
+    flex: 1 0 100%;
+    max-width: none;
   }
 
   .file-layout {
@@ -731,9 +888,17 @@ h2 {
   .terminal-start-form,
   .terminal-input-form,
   .file-path-form,
-  .file-preview-header {
+  .file-preview-header,
+  .todo-actions,
+  .todo-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .todo-field-content,
+  .todo-field-status,
+  .todo-field-priority {
+    flex-basis: auto;
   }
 
   .file-preview-header .muted {

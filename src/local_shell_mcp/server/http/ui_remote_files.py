@@ -177,7 +177,7 @@ async def _remote_file_session(machine: str) -> _RemoteFileSession:
         created = await start_worker_session(
             machine=machine,
             workdir=workdir,
-            label="Human UI Files",
+            label="Human UI Workspace",
             timeout_s=_remote_timeout_s(),
         )
         worker_session_id = str(created.get("session_id") or "")
@@ -211,14 +211,14 @@ def _missing_worker_session(exc: Exception) -> bool:
     )
 
 
-async def call_remote_ui_file_tool(
+async def call_remote_ui_workspace_tool(
     machine: str,
     tool: str,
     args: dict[str, Any],
     *,
     retry_session: bool = True,
 ) -> dict[str, Any]:
-    """Call one session-bound remote file tool, recreating stale sessions once."""
+    """Call one session-bound remote UI tool, recreating stale sessions once."""
     session = await _remote_file_session(machine)
     payload = {**args, "session_id": session.worker_session_id}
     timeout_s = _remote_timeout_s()
@@ -231,12 +231,15 @@ async def call_remote_ui_file_tool(
         if not retry_session or not _missing_worker_session(exc):
             raise
         _invalidate_session(machine, session.worker_session_id)
-        return await call_remote_ui_file_tool(
+        return await call_remote_ui_workspace_tool(
             machine,
             tool,
             args,
             retry_session=False,
         )
+
+
+call_remote_ui_file_tool = call_remote_ui_workspace_tool
 
 
 def _entry_payload(entry: Any) -> dict[str, Any]:

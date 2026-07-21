@@ -110,6 +110,23 @@ async def _job(args: dict[str, Any]) -> Any:
     )
 
 
+async def _read_todos(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.todo import read_todos_execute
+
+    return await asyncio.to_thread(read_todos_execute, str(args["session_id"]))
+
+
+async def _write_todos(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.todo import write_todos_execute
+
+    return await asyncio.to_thread(
+        write_todos_execute,
+        list(args.get("todos") or []),
+        str(args["session_id"]),
+        args.get("expected_revision"),
+    )
+
+
 async def _list_files(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.files import list_files_dispatch_execute
 
@@ -347,6 +364,8 @@ async def _transfer_delete_temp_path(args: dict[str, Any]) -> Any:
 
 _HANDLERS: dict[str, WorkerHandler] = {
     "session_start": _session_start,
+    "read_todos": _read_todos,
+    "write_todos": _write_todos,
     "bash": _bash,
     "run_python_code": _run_python_code,
     "send_persistent_shell_input": _send_persistent_shell_input,

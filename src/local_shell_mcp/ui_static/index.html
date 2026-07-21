@@ -162,12 +162,49 @@
       </div>
     </section>
 
+    <section id="todo-panel" class="panel todo-panel">
+      <div class="section-heading todo-heading">
+        <div>
+          <p class="eyebrow">Machine session</p>
+          <h2>Todos</h2>
+        </div>
+        <span id="todo-state" class="muted">Not loaded</span>
+      </div>
+      <div class="todo-toolbar">
+        <label class="todo-control" for="todo-machine">
+          <span>Machine</span>
+          <select id="todo-machine" name="todo-machine">
+            <option value="local">local</option>
+          </select>
+        </label>
+        <label class="todo-control" for="todo-filter">
+          <span>Filter</span>
+          <select id="todo-filter" name="todo-filter">
+            <option value="all">All</option>
+            <option value="open">Open</option>
+            <option value="completed">Completed</option>
+          </select>
+        </label>
+        <div class="todo-actions">
+          <button id="todo-refresh" type="button">Reload</button>
+          <button id="todo-add" type="button">Add todo</button>
+          <button id="todo-save" class="primary-action" type="button" disabled>Save changes</button>
+        </div>
+      </div>
+      <div id="todo-summary" class="todo-summary" aria-live="polite">
+        <span>0 total</span><span>0 open</span><span>0 completed</span><span>revision 0</span>
+      </div>
+      <div id="todo-list" class="todo-list" aria-live="polite">
+        <div class="empty-state">Loading todo list…</div>
+      </div>
+    </section>
+
     <section class="panel roadmap">
       <div>
         <p class="eyebrow">Migration status</p>
         <h2>Human UI foundation active</h2>
       </div>
-      <p>Machine inventory, automatic OAuth PKCE, persistent local tmux terminals, and workspace-safe local and remote Files are available. Remote Files support browsing, bounded previews, text editing, creation, and deletion; copy, move, and rename remain local-only. Rich terminal emulation, remote terminals, Todos, Audit, dashboard telemetry, and the native OpenTUI client remain in subsequent migration slices.</p>
+      <p>Machine inventory, automatic OAuth PKCE, persistent local tmux terminals, workspace-safe local and remote Files, and revision-guarded local and remote Todos are available. Remote Files copy, move, and rename remain local-only. Rich terminal emulation, remote terminals, Audit, dashboard telemetry, Remotes management, and the native OpenTUI client remain in subsequent migration slices.</p>
     </section>
   </main>
   <script src="__LSM_UI_PATH__/assets/web.js" defer></script>

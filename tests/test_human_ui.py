@@ -259,7 +259,8 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
             "file_rename": True,
             "remote_files": True,
             "remote_file_editor": True,
-            "todos": False,
+            "todos": True,
+            "remote_todos": True,
             "audit": False,
         },
     }

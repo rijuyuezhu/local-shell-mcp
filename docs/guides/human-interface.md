@@ -23,11 +23,12 @@ The current migration slice provides:
 - authenticated local tmux terminal listing, creation, input, resize, snapshots, and termination;
 - machine-aware local and remote file browsing, bounded previews, text editing, creation, and deletion;
 - local workspace copy, move, and rename operations;
+- revision-guarded local and remote Todo lists with machine isolation;
 - OAuth-protected Human UI APIs and terminal WebSockets;
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Remote-worker terminals, rich xterm-compatible rendering, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Remote-worker terminals, rich xterm-compatible rendering, Audit, dashboard telemetry, Remotes management, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -106,6 +107,18 @@ Local moves and renames use the operating system rename operation when source an
 Remote copy, move, and rename remain disabled because the current worker allowlist has no corresponding primitives. The UI reports these capabilities explicitly and does not emulate them with remote shell commands. Richer binary viewers and the native OpenTUI Files screen remain in the follow-up migration queue.
 
 List and preview requests use generation and machine guards. Switching machines invalidates the previous path, selection, editor, preview, and pending directory request; a slow response from an earlier machine cannot overwrite the active workspace. Periodic dashboard refreshes preserve an online current machine and selection, fall back to local immediately if a worker becomes unavailable, and signing out invalidates pending file work.
+
+## Todos
+
+The **Todos** panel edits the structured Todo list owned by one explicit Human UI workspace session. The local server reuses one session rooted at `workspace_root`; each remote worker reuses the same lazily created per-machine workspace session used by remote Files. Todo data is therefore isolated by machine and by worker session, while terminal shell IDs remain a separate namespace.
+
+Local reads require `shell:read`, and local replacements additionally require `shell:write`. Remote reads require `shell:read` plus `remote:use`; remote replacements additionally require `shell:write`. Remote Todo operations use the worker's native `read_todos` and `write_todos` RPC handlers with the same 60-second timeout and stale-session recreate-and-retry behavior as remote Files. The UI never constructs remote shell commands to emulate Todo storage.
+
+Each persisted list has a monotonic non-negative `revision`. The browser sends the revision it loaded as `expected_revision` when replacing the list. The server performs the comparison and replacement while holding the shared path lock, writes a mode-`0600` temporary file in the same state directory, flushes it, and publishes it with `os.replace`. A competing writer advances the revision first, causing the stale replacement to fail with HTTP `409`; the browser then reloads the current list instead of overwriting it. Existing Todo files without a revision remain readable as revision zero.
+
+Todo count and serialized-byte limits reuse `max_todos` and `max_todo_bytes`. The Human UI additionally bounds machine names, item IDs, content, status, and priority fields by encoded byte length and rejects duplicate IDs or malformed item shapes. A save disables machine selection and row controls until completion. Machine switches reset list state and increment a request generation, so a slow response from a previous machine cannot replace the active list. Periodic inventory refreshes do not overwrite unsaved edits, and offline or revoked workers remain visible but cannot be selected.
+
+The browser supports filtering open and completed items, adding and removing rows, and editing content, status, and priority. The list area is height-bounded and scrollable on narrow and wide layouts. The native OpenTUI Todos screen and its exact clipping behavior remain deferred until the OpenTUI runtime is migrated.
 
 ## Configuration
 
