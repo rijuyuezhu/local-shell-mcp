@@ -5,8 +5,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import contextlib
+import errno
 import mimetypes
 import os
+import shutil
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +28,7 @@ from ...ops.files import (
     write_file_execute,
 )
 from ...ops.utils.path import relative_display, resolve_path, workspace_root
+from ...utils.path_locks import path_locks
 
 UI_FILE_PATH_MAX_BYTES = 4_096
 UI_FILE_PREVIEW_MAX_LINES = 400
@@ -263,6 +268,192 @@ def _ensure_mutable_path(path: str, *, follow_final_symlink: bool) -> Path:
     return resolved
 
 
+def _source_entry(path: str) -> Path:
+    resolved = _workspace_path(
+        path,
+        must_exist=True,
+        follow_final_symlink=False,
+    )
+    if resolved == workspace_root():
+        raise ValueError("Refusing to mutate the workspace root")
+    return resolved
+
+
+def _destination_entry(path: str) -> Path:
+    resolved = _ensure_mutable_path(path, follow_final_symlink=False)
+    if not resolved.parent.is_dir():
+        raise NotADirectoryError(str(resolved.parent))
+    return resolved
+
+
+def _entry_kind(path: Path) -> str:
+    mode = path.lstat().st_mode
+    if stat.S_ISLNK(mode):
+        return "link"
+    if stat.S_ISREG(mode):
+        return "file"
+    if stat.S_ISDIR(mode):
+        return "dir"
+    raise ValueError(
+        "Only regular files, directories, and symbolic links can be copied or moved"
+    )
+
+
+def _validate_copy_destination(
+    source: Path, destination: Path, kind: str
+) -> None:
+    if source == destination:
+        raise ValueError("Source and destination must be different")
+    if os.path.lexists(destination):
+        raise FileExistsError(str(destination))
+    if kind == "dir":
+        try:
+            destination.relative_to(source)
+        except ValueError:
+            pass
+        else:
+            raise ValueError(
+                "A directory cannot be copied or moved inside itself"
+            )
+
+
+def _remove_entry(path: Path) -> None:
+    if not os.path.lexists(path):
+        return
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
+def _copy_regular_file(source: Path, destination: Path) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    with source.open("rb") as input_handle:
+        before = os.fstat(input_handle.fileno())
+        fd = os.open(destination, flags, stat.S_IMODE(before.st_mode))
+        try:
+            with os.fdopen(fd, "wb") as output_handle:
+                shutil.copyfileobj(
+                    input_handle, output_handle, length=1024 * 1024
+                )
+                output_handle.flush()
+                os.fsync(output_handle.fileno())
+            after = os.fstat(input_handle.fileno())
+            signature_before = (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+            )
+            signature_after = (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+            )
+            if signature_before != signature_after:
+                raise RuntimeError(
+                    "Source file changed while it was being copied"
+                )
+            shutil.copystat(source, destination, follow_symlinks=False)
+        except BaseException:
+            _remove_entry(destination)
+            raise
+
+
+def _copy_entry_locked(source: Path, destination: Path, kind: str) -> None:
+    if kind == "file":
+        _copy_regular_file(source, destination)
+        return
+    if kind == "link":
+        target = os.readlink(source)
+        try:
+            os.symlink(
+                target,
+                destination,
+                target_is_directory=source.resolve(strict=False).is_dir(),
+            )
+            with contextlib.suppress(OSError):
+                shutil.copystat(source, destination, follow_symlinks=False)
+        except BaseException:
+            _remove_entry(destination)
+            raise
+        return
+    try:
+        shutil.copytree(
+            source,
+            destination,
+            symlinks=True,
+            copy_function=shutil.copy2,
+        )
+    except BaseException:
+        _remove_entry(destination)
+        raise
+
+
+def _copy_entry(source_path: str, destination_path: str) -> dict[str, Any]:
+    source = _source_entry(source_path)
+    destination = _destination_entry(destination_path)
+    with path_locks([source, destination]):
+        if not os.path.lexists(source):
+            raise FileNotFoundError(str(source))
+        kind = _entry_kind(source)
+        _validate_copy_destination(source, destination, kind)
+        _copy_entry_locked(source, destination, kind)
+    return {
+        "action": "copy",
+        "source": relative_display(source),
+        "destination": relative_display(destination),
+        "type": kind,
+    }
+
+
+def _move_entry(
+    source_path: str,
+    destination_path: str,
+    *,
+    action: str = "move",
+) -> dict[str, Any]:
+    source = _source_entry(source_path)
+    destination = _destination_entry(destination_path)
+    with path_locks([source, destination]):
+        if not os.path.lexists(source):
+            raise FileNotFoundError(str(source))
+        kind = _entry_kind(source)
+        _validate_copy_destination(source, destination, kind)
+        try:
+            os.rename(source, destination)
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+            _copy_entry_locked(source, destination, kind)
+            try:
+                _remove_entry(source)
+            except BaseException:
+                _remove_entry(destination)
+                raise
+    return {
+        "action": action,
+        "source": relative_display(source),
+        "destination": relative_display(destination),
+        "type": kind,
+    }
+
+
+def _rename_entry(path: str, name: str) -> dict[str, Any]:
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        raise ValueError("name must be one file name without path separators")
+    if len(name.encode("utf-8")) > 255:
+        raise ValueError("name exceeds 255 encoded bytes")
+    source = _source_entry(path)
+    return _move_entry(
+        str(source),
+        str(source.with_name(name)),
+        action="rename",
+    )
+
+
 def _write_file(path: str, content: str, overwrite: bool) -> Any:
     resolved = _ensure_mutable_path(path, follow_final_symlink=True)
     return write_file_execute(str(resolved), content, overwrite)
@@ -307,7 +498,7 @@ async def api_file_content(request: Request) -> Response:
 
 
 async def api_file_action(request: Request) -> Response:
-    """Create, replace, or delete a local workspace file through existing safe primitives."""
+    """Mutate local workspace entries through bounded, no-overwrite operations."""
     _require_scopes(SCOPE_SHELL_READ, SCOPE_SHELL_WRITE)
     action = str(request.path_params.get("action") or "")
     try:
@@ -331,9 +522,23 @@ async def api_file_action(request: Request) -> Response:
                 path,
                 bool(body.get("recursive", False)),
             )
+        elif action in {"copy", "move"}:
+            destination = _path_arg(body.get("destination"))
+            operation = _copy_entry if action == "copy" else _move_entry
+            result = await asyncio.to_thread(operation, path, destination)
+        elif action == "rename":
+            name = body.get("name")
+            if not isinstance(name, str):
+                raise ValueError("name must be a string")
+            result = await asyncio.to_thread(_rename_entry, path, name.strip())
         else:
             raise ValueError(f"Unsupported file action: {action}")
-        return _json_ok(result.model_dump(mode="json"))
+        payload = (
+            result
+            if isinstance(result, dict)
+            else result.model_dump(mode="json")
+        )
+        return _json_ok(payload)
     except HTTPException:
         raise
     except Exception as exc:

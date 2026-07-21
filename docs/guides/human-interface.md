@@ -21,12 +21,12 @@ The current migration slice provides:
 - local and remote machine inventory;
 - automatic browser OAuth Authorization Code flow with PKCE S256;
 - authenticated local tmux terminal listing, creation, input, resize, snapshots, and termination;
-- workspace-confined local file browsing, previews, text editing, creation, and deletion;
+- workspace-confined local file browsing, previews, editing, creation, copy, move, rename, and deletion;
 - OAuth-protected Human UI APIs and terminal WebSockets;
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Remote-worker terminals and files, rich xterm-compatible rendering, file copy/move/rename, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Remote-worker terminals and files, rich xterm-compatible rendering, Todos, Audit, dashboard telemetry, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -77,7 +77,7 @@ The current renderer displays normalized full-pane text snapshots rather than a 
 
 The **Files** panel browses the local workspace used by the server. Directory entries are sorted with directories first, hidden entries can be toggled, double-clicking or **Open** enters a directory, and the path field plus **Up** button provide direct navigation. Directory previews are themselves navigable, so selecting a child from the preview opens its containing directory and keeps that child selected.
 
-Read-only file routes require `shell:read`. Creating, replacing, or deleting files additionally requires `shell:write`. The browser surface stays confined to `workspace_root` even when the server-wide `allow_full_control` setting is enabled; that setting does not turn the Human UI into an unrestricted host filesystem browser.
+Read-only file routes require `shell:read`. Creating, replacing, copying, moving, renaming, or deleting entries additionally requires `shell:write`. The browser surface stays confined to `workspace_root` even when the server-wide `allow_full_control` setting is enabled; that setting does not turn the Human UI into an unrestricted host filesystem browser.
 
 The built-in preview supports:
 
@@ -92,9 +92,13 @@ SVG is intentionally rendered as text instead of an inline image, preventing act
 
 Deletion is explicit and confirmed in the browser. The workspace root itself cannot be deleted. Deleting a symbolic link removes the selected link entry without deleting its target. Recursive deletion is requested only for selected directories.
 
+**Copy**, **Move**, and **Rename** work with regular files, directories, and symbolic links. They never replace an existing destination. Directory copies preserve symbolic links as links instead of traversing their targets, and copying or moving a directory into its own subtree is rejected. Source and destination paths are serialized through the shared cross-thread and cross-process path-lock registry.
+
+Moves and renames use the operating system rename operation when source and destination share a filesystem. If the operating system reports a cross-device move, the server copies the entry without following symbolic links and removes the source only after the copy completes. A failed source removal rolls back the copied destination. Regular-file copies use exclusive destination creation, preserve file metadata, flush the copied data, and reject a source that changes while it is being read.
+
 Selection and preview requests use generation guards. A slow response for an earlier selection is ignored, periodic dashboard refreshes retain the current selection without reloading its preview, and signing out invalidates pending file work.
 
-The current Files panel is local-only. Remote-worker files, copy, move, rename, richer binary viewers, and the native OpenTUI Files screen remain in the follow-up migration queue.
+The current Files panel is local-only. Remote-worker files, richer binary viewers, and the native OpenTUI Files screen remain in the follow-up migration queue.
 
 ## Configuration
 

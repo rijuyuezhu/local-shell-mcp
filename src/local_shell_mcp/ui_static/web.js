@@ -20,6 +20,7 @@
   let selectedFilePath = "";
   let filePreviewGeneration = 0;
   let fileEditorPath = "";
+  let fileMutationBusy = false;
 
   const elements = {
     authDetail: document.getElementById("auth-detail"),
@@ -27,12 +28,14 @@
     authMode: document.getElementById("auth-mode"),
     authPanel: document.getElementById("auth-panel"),
     connectionState: document.getElementById("connection-state"),
+    fileCopy: document.getElementById("file-copy"),
     fileDelete: document.getElementById("file-delete"),
     fileEdit: document.getElementById("file-edit"),
     fileEditor: document.getElementById("file-editor"),
     fileEditorCancel: document.getElementById("file-editor-cancel"),
     fileEditorForm: document.getElementById("file-editor-form"),
     fileList: document.getElementById("file-list"),
+    fileMove: document.getElementById("file-move"),
     fileNew: document.getElementById("file-new"),
     fileOpen: document.getElementById("file-open"),
     filePath: document.getElementById("file-path"),
@@ -41,6 +44,7 @@
     filePreviewMeta: document.getElementById("file-preview-meta"),
     filePreviewTitle: document.getElementById("file-preview-title"),
     fileRefresh: document.getElementById("file-refresh"),
+    fileRename: document.getElementById("file-rename"),
     fileShowHidden: document.getElementById("file-show-hidden"),
     fileState: document.getElementById("file-state"),
     fileUp: document.getElementById("file-up"),
@@ -537,6 +541,28 @@
     return `${String(parent).replace(/[\\/]+$/, "")}/${child}`;
   }
 
+  function splitFilePath(path) {
+    const normalized = String(path || ".")
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "");
+    const separator = normalized.lastIndexOf("/");
+    if (separator < 0) return { parent: ".", name: normalized };
+    return {
+      parent: normalized.slice(0, separator) || ".",
+      name: normalized.slice(separator + 1),
+    };
+  }
+
+  function setFileMutationBusy(busy) {
+    fileMutationBusy = busy;
+    elements.filePath.disabled = busy;
+    elements.fileRefresh.disabled = busy;
+    elements.fileShowHidden.disabled = busy;
+    const goButton = elements.filePathForm.querySelector('button[type="submit"]');
+    if (goButton) goButton.disabled = busy;
+    setFileControls();
+  }
+
   function currentFileEntry() {
     return fileEntries.find((entry) => entry.path === selectedFilePath) || null;
   }
@@ -550,10 +576,14 @@
 
   function setFileControls() {
     const entry = currentFileEntry();
-    elements.fileOpen.disabled = !entry || entry.type !== "dir";
-    elements.fileEdit.disabled = !entry || entry.type !== "file";
-    elements.fileDelete.disabled = !entry;
-    elements.fileUp.disabled = filePath === fileParentPath;
+    elements.fileNew.disabled = fileMutationBusy;
+    elements.fileOpen.disabled = fileMutationBusy || !entry || entry.type !== "dir";
+    elements.fileEdit.disabled = fileMutationBusy || !entry || entry.type !== "file";
+    elements.fileCopy.disabled = fileMutationBusy || !entry;
+    elements.fileMove.disabled = fileMutationBusy || !entry;
+    elements.fileRename.disabled = fileMutationBusy || !entry;
+    elements.fileDelete.disabled = fileMutationBusy || !entry;
+    elements.fileUp.disabled = fileMutationBusy || filePath === fileParentPath;
   }
 
   function showFilePreviewMessage(title, detail) {
@@ -609,7 +639,7 @@
       button.append(label, detail);
       button.addEventListener("click", () => selectFile(entry));
       button.addEventListener("dblclick", () => {
-        if (entry.type === "dir") void navigateFiles(entry.path);
+        if (!fileMutationBusy && entry.type === "dir") void navigateFiles(entry.path);
       });
       elements.fileList.append(button);
     }
@@ -636,7 +666,7 @@
       button.textContent = fileEntryLabel(entry);
       button.title = entry.path;
       button.addEventListener("click", () => {
-        void navigateFiles(payload.path, entry.path);
+        if (!fileMutationBusy) void navigateFiles(payload.path, entry.path);
       });
       list.append(button);
     }
@@ -700,6 +730,7 @@
   }
 
   function selectFile(entry) {
+    if (fileMutationBusy) return;
     selectedFilePath = entry.path;
     renderFileList();
     void previewFile(entry);
@@ -726,7 +757,7 @@
       elements.fileState.textContent = `${filePath} · ${fileEntries.length} entries${payload.is_truncated ? " · truncated" : ""}`;
       return payload;
     } finally {
-      elements.fileRefresh.disabled = false;
+      elements.fileRefresh.disabled = fileMutationBusy;
     }
   }
 
@@ -738,13 +769,16 @@
     showFilePreviewMessage("Loading directory", filePath);
     try {
       await refreshFiles({ previewSelection: Boolean(selection) });
+      return true;
     } catch (error) {
       elements.fileState.textContent = "Directory unavailable";
       showFilePreviewMessage("Unable to open directory", error instanceof Error ? error.message : String(error));
+      return false;
     }
   }
 
   function openSelectedFile() {
+    if (fileMutationBusy) return;
     const entry = currentFileEntry();
     if (entry?.type === "dir") void navigateFiles(entry.path);
   }
@@ -779,7 +813,7 @@
     const name = globalThis.prompt("New file name or relative path:");
     if (name === null || !name.trim()) return;
     const path = joinFilePath(filePath, name.trim());
-    elements.fileNew.disabled = true;
+    setFileMutationBusy(true);
     try {
       await fileAction("write", { path, content: "", overwrite: false });
       selectedFilePath = path;
@@ -788,7 +822,86 @@
     } catch (error) {
       elements.fileState.textContent = error instanceof Error ? error.message : String(error);
     } finally {
-      elements.fileNew.disabled = false;
+      setFileMutationBusy(false);
+    }
+  }
+
+  async function finishFileMutation(destination, message) {
+    const target = splitFilePath(destination);
+    const opened = await navigateFiles(target.parent, destination);
+    if (opened) elements.fileState.textContent = message;
+  }
+
+  async function copySelectedFile() {
+    const entry = currentFileEntry();
+    if (!entry) return;
+    const current = splitFilePath(entry.path);
+    const suggested = joinFilePath(current.parent, `${current.name}.copy`);
+    const destination = globalThis.prompt("Copy to workspace path:", suggested);
+    if (destination === null || !destination.trim()) return;
+    const target = destination.trim();
+    setFileMutationBusy(true);
+    filePreviewGeneration += 1;
+    clearFileEditor();
+    try {
+      const result = await fileAction("copy", {
+        path: entry.path,
+        destination: target,
+      });
+      const copied = text(result.destination, target);
+      await finishFileMutation(copied, `Copied ${entry.path} to ${copied}`);
+    } catch (error) {
+      elements.fileState.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      setFileMutationBusy(false);
+    }
+  }
+
+  async function moveSelectedFile() {
+    const entry = currentFileEntry();
+    if (!entry) return;
+    const destination = globalThis.prompt("Move to workspace path:", entry.path);
+    if (destination === null || !destination.trim()) return;
+    const target = destination.trim();
+    setFileMutationBusy(true);
+    filePreviewGeneration += 1;
+    clearFileEditor();
+    try {
+      const result = await fileAction("move", {
+        path: entry.path,
+        destination: target,
+      });
+      const moved = text(result.destination, target);
+      await finishFileMutation(moved, `Moved ${entry.path} to ${moved}`);
+    } catch (error) {
+      elements.fileState.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      setFileMutationBusy(false);
+    }
+  }
+
+  async function renameSelectedFile() {
+    const entry = currentFileEntry();
+    if (!entry) return;
+    const current = splitFilePath(entry.path);
+    const name = globalThis.prompt("New name:", current.name);
+    if (name === null || !name.trim()) return;
+    const nextName = name.trim();
+    const destination = joinFilePath(current.parent, nextName);
+    setFileMutationBusy(true);
+    filePreviewGeneration += 1;
+    clearFileEditor();
+    try {
+      const result = await fileAction("rename", {
+        path: entry.path,
+        name: nextName,
+      });
+      const renamed = text(result.destination, destination);
+      await finishFileMutation(renamed, `Renamed ${entry.path} to ${renamed}`);
+    } catch (error) {
+      elements.fileState.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      setFileMutationBusy(false);
     }
   }
 
@@ -797,7 +910,7 @@
     if (!entry) return;
     const detail = entry.type === "dir" ? " and all of its contents" : "";
     if (!globalThis.confirm(`Delete ${entry.path}${detail}?`)) return;
-    elements.fileDelete.disabled = true;
+    setFileMutationBusy(true);
     try {
       await fileAction("delete", { path: entry.path, recursive: entry.type === "dir" });
       selectedFilePath = "";
@@ -808,7 +921,7 @@
     } catch (error) {
       elements.fileState.textContent = error instanceof Error ? error.message : String(error);
     } finally {
-      setFileControls();
+      setFileMutationBusy(false);
     }
   }
 
@@ -944,7 +1057,7 @@
 
   elements.filePathForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    void navigateFiles(elements.filePath.value.trim() || ".");
+    if (!fileMutationBusy) void navigateFiles(elements.filePath.value.trim() || ".");
   });
   elements.fileUp.addEventListener("click", () => void navigateFiles(fileParentPath));
   elements.fileRefresh.addEventListener("click", () => void refreshFiles());
@@ -958,6 +1071,9 @@
   elements.fileNew.addEventListener("click", () => void createFile());
   elements.fileOpen.addEventListener("click", openSelectedFile);
   elements.fileEdit.addEventListener("click", () => void openFileEditor());
+  elements.fileCopy.addEventListener("click", () => void copySelectedFile());
+  elements.fileMove.addEventListener("click", () => void moveSelectedFile());
+  elements.fileRename.addEventListener("click", () => void renameSelectedFile());
   elements.fileDelete.addEventListener("click", () => void deleteSelectedFile());
   elements.fileEditorCancel.addEventListener("click", () => {
     const entry = currentFileEntry();

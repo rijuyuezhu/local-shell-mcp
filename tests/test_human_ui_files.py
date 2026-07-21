@@ -1,9 +1,11 @@
 import base64
+import errno
 import os
 
 import pytest
 from fastapi.testclient import TestClient
 
+import local_shell_mcp.server.http.ui_files as ui_files_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.oauth.core.scopes import (
     SCOPE_SHELL_READ,
@@ -303,6 +305,248 @@ def test_delete_refuses_workspace_root_and_unlinks_symlink_not_target(
     assert deleted.json()["data"]["deleted"] == "link"
     assert not link.exists()
     assert outside.read_text(encoding="utf-8") == "keep"
+
+
+def test_copy_file_preserves_content_mode_and_source(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    source = workspace / "source.txt"
+    source.write_text("copy me", encoding="utf-8")
+    source.chmod(0o640)
+    client = _client(monkeypatch, workspace)
+
+    response = client.post(
+        "/api/ui/files/copy",
+        json={"path": "source.txt", "destination": "copied.txt"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "action": "copy",
+        "source": "source.txt",
+        "destination": "copied.txt",
+        "type": "file",
+    }
+    assert source.read_text(encoding="utf-8") == "copy me"
+    copied = workspace / "copied.txt"
+    assert copied.read_text(encoding="utf-8") == "copy me"
+    assert copied.stat().st_mode & 0o777 == 0o640
+
+
+def test_copy_directory_preserves_symlinks_without_following_targets(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    source = workspace / "source"
+    source.mkdir()
+    (source / "child.txt").write_text("child", encoding="utf-8")
+    (source / "outside-link").symlink_to(outside)
+    client = _client(monkeypatch, workspace)
+
+    response = client.post(
+        "/api/ui/files/copy",
+        json={"path": "source", "destination": "copied"},
+    )
+
+    assert response.status_code == 200
+    copied = workspace / "copied"
+    assert (copied / "child.txt").read_text(encoding="utf-8") == "child"
+    copied_link = copied / "outside-link"
+    assert copied_link.is_symlink()
+    assert os.readlink(copied_link) == os.readlink(source / "outside-link")
+    assert outside.read_text(encoding="utf-8") == "outside"
+
+
+def test_move_and_rename_entries(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    destination_dir = workspace / "destination"
+    destination_dir.mkdir()
+    (workspace / "move.txt").write_text("moved", encoding="utf-8")
+    rename_dir = workspace / "old-dir"
+    rename_dir.mkdir()
+    (rename_dir / "child.txt").write_text("child", encoding="utf-8")
+    client = _client(monkeypatch, workspace)
+
+    moved = client.post(
+        "/api/ui/files/move",
+        json={"path": "move.txt", "destination": "destination/move.txt"},
+    )
+    renamed = client.post(
+        "/api/ui/files/rename",
+        json={"path": "old-dir", "name": "new-dir"},
+    )
+
+    assert moved.status_code == 200
+    assert moved.json()["data"]["destination"] == "destination/move.txt"
+    assert not (workspace / "move.txt").exists()
+    assert (destination_dir / "move.txt").read_text(encoding="utf-8") == "moved"
+    assert renamed.status_code == 200
+    assert renamed.json()["data"]["action"] == "rename"
+    assert renamed.json()["data"]["destination"] == "new-dir"
+    assert not rename_dir.exists()
+    assert (workspace / "new-dir" / "child.txt").read_text(
+        encoding="utf-8"
+    ) == "child"
+
+
+def test_move_cross_device_fallback_copies_then_deletes(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    source = workspace / "source.bin"
+    source.write_bytes(b"cross-device")
+    client = _client(monkeypatch, workspace)
+
+    def cross_device(_source, _destination):  # noqa: ANN001
+        raise OSError(errno.EXDEV, "cross-device link")
+
+    monkeypatch.setattr(ui_files_module.os, "rename", cross_device)
+    response = client.post(
+        "/api/ui/files/move",
+        json={"path": "source.bin", "destination": "destination.bin"},
+    )
+
+    assert response.status_code == 200
+    assert not source.exists()
+    assert (workspace / "destination.bin").read_bytes() == b"cross-device"
+
+
+@pytest.mark.parametrize("action", ["copy", "move"])
+def test_copy_and_move_refuse_existing_or_unsafe_destinations(
+    monkeypatch, tmp_path, action
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "source.txt").write_text("source", encoding="utf-8")
+    (workspace / "existing.txt").write_text("existing", encoding="utf-8")
+    source_dir = workspace / "source-dir"
+    source_dir.mkdir()
+    client = _client(monkeypatch, workspace)
+
+    existing = client.post(
+        f"/api/ui/files/{action}",
+        json={"path": "source.txt", "destination": "existing.txt"},
+    )
+    same = client.post(
+        f"/api/ui/files/{action}",
+        json={"path": "source.txt", "destination": "source.txt"},
+    )
+    nested = client.post(
+        f"/api/ui/files/{action}",
+        json={"path": "source-dir", "destination": "source-dir/nested"},
+    )
+    root = client.post(
+        f"/api/ui/files/{action}",
+        json={"path": ".", "destination": "root-copy"},
+    )
+
+    assert existing.status_code == 400
+    assert existing.json()["error"] == "FileExistsError"
+    assert same.status_code == 400
+    assert "different" in same.json()["message"]
+    assert nested.status_code == 400
+    assert "inside itself" in nested.json()["message"]
+    assert root.status_code == 400
+    assert "workspace root" in root.json()["message"]
+    assert (workspace / "existing.txt").read_text(
+        encoding="utf-8"
+    ) == "existing"
+
+
+@pytest.mark.parametrize("action", ["copy", "move"])
+def test_copy_and_move_reject_destination_symlink_escape(
+    monkeypatch, tmp_path, action
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (workspace / "source.txt").write_text("source", encoding="utf-8")
+    (workspace / "outside-link").symlink_to(outside, target_is_directory=True)
+    client = _client(monkeypatch, workspace, allow_full_control=True)
+
+    response = client.post(
+        f"/api/ui/files/{action}",
+        json={
+            "path": "source.txt",
+            "destination": "outside-link/escaped.txt",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "escapes workspace" in response.json()["message"].lower()
+    assert not (outside / "escaped.txt").exists()
+    assert (workspace / "source.txt").read_text(encoding="utf-8") == "source"
+
+
+def test_rename_refuses_existing_destination(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "source.txt").write_text("source", encoding="utf-8")
+    (workspace / "existing.txt").write_text("existing", encoding="utf-8")
+    client = _client(monkeypatch, workspace)
+
+    response = client.post(
+        "/api/ui/files/rename",
+        json={"path": "source.txt", "name": "existing.txt"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "FileExistsError"
+    assert (workspace / "source.txt").read_text(encoding="utf-8") == "source"
+    assert (workspace / "existing.txt").read_text(
+        encoding="utf-8"
+    ) == "existing"
+
+
+@pytest.mark.parametrize("name", ["", ".", "..", "nested/name", "nested\\name"])
+def test_rename_rejects_invalid_names(monkeypatch, tmp_path, name):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "source.txt").write_text("source", encoding="utf-8")
+    client = _client(monkeypatch, workspace)
+
+    response = client.post(
+        "/api/ui/files/rename",
+        json={"path": "source.txt", "name": name},
+    )
+
+    assert response.status_code == 400
+    assert "one file name" in response.json()["message"]
+    assert (workspace / "source.txt").exists()
+
+
+def test_copy_move_and_rename_require_write_scope(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "source.txt").write_text("source", encoding="utf-8")
+    client = _client(monkeypatch, workspace, auth_mode="oauth")
+    read_headers = {"Authorization": f"Bearer {_token(SCOPE_SHELL_READ)}"}
+
+    responses = [
+        client.post(
+            "/api/ui/files/copy",
+            json={"path": "source.txt", "destination": "copy.txt"},
+            headers=read_headers,
+        ),
+        client.post(
+            "/api/ui/files/move",
+            json={"path": "source.txt", "destination": "move.txt"},
+            headers=read_headers,
+        ),
+        client.post(
+            "/api/ui/files/rename",
+            json={"path": "source.txt", "name": "renamed.txt"},
+            headers=read_headers,
+        ),
+    ]
+
+    assert all(response.status_code == 403 for response in responses)
+    assert all(SCOPE_SHELL_WRITE in response.text for response in responses)
+    assert (workspace / "source.txt").exists()
 
 
 @pytest.mark.parametrize(
