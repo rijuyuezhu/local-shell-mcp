@@ -69,6 +69,11 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     index = client.get("/ui")
     assert index.status_code == 200
     assert "Human Interface" in index.text
+    assert 'id="dashboard-panel"' in index.text
+    assert 'id="dashboard-machine"' in index.text
+    assert 'id="dashboard-cpu-trend"' in index.text
+    assert 'id="dashboard-alerts"' in index.text
+    assert 'id="dashboard-activity"' in index.text
     assert 'id="file-panel"' in index.text
     assert 'id="file-machine"' in index.text
     assert 'id="file-editor-form"' in index.text
@@ -88,6 +93,12 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'resource: String(oauth.resource || "")' in script.text
     assert "pending.redirectUri === callbackUrl()" in script.text
     assert "OAuth issuer verification failed" in script.text
+    assert "dashboardGeneration" in script.text
+    assert "requestedMachine !== dashboardMachine" in script.text
+    assert "refreshDashboardInBackground" in script.text
+    assert "request(dashboardQueryPath())" in script.text
+    assert "createElementNS" in script.text
+    assert "dashboardNumber" in script.text
     assert "filePreviewGeneration" in script.text
     assert "generation !== filePreviewGeneration" in script.text
     assert "fileListGeneration" in script.text
@@ -248,6 +259,7 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
         "auth_mode": "none",
         "features": {
             "dashboard": True,
+            "remote_dashboard": True,
             "machines": True,
             "terminals": True,
             "terminal_websocket": True,

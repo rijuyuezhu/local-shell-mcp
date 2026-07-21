@@ -762,11 +762,16 @@ def query_audit(
         reverse=normalized_sort == "desc",
     )
     total = len(matched)
+    failed_matched = sum(
+        row.get("ok") is False or str(row.get("status") or "") == "failed"
+        for row in matched
+    )
     selected = matched[:bounded_limit]
     return {
         "entries": [_public_audit_entry(row) for row in selected],
         "count": len(selected),
         "total_matched": total,
+        "failed_matched": failed_matched,
     }
 
 

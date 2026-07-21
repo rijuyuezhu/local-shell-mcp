@@ -19,6 +19,7 @@ The current migration slice provides:
 - a packaged responsive browser shell;
 - runtime and package version information;
 - local and remote machine inventory;
+- process-scoped local and remote Dashboard telemetry with degraded-source alerts;
 - automatic browser OAuth Authorization Code flow with PKCE S256;
 - authenticated local tmux terminal listing, creation, input, resize, snapshots, and termination;
 - machine-aware local and remote file browsing, bounded previews, text editing, creation, and deletion;
@@ -29,7 +30,7 @@ The current migration slice provides:
 - a private loopback-only token path for future native OpenTUI clients;
 - configurable UI enablement and mount path.
 
-Remote-worker terminals, rich xterm-compatible rendering, dashboard telemetry, Remotes management, and the native OpenTUI executable remain in the explicit follow-up migration queue.
+Remote-worker terminals, rich xterm-compatible rendering, Remotes management, and the native OpenTUI executable remain in the explicit follow-up migration queue.
 
 ## Authentication
 
@@ -59,6 +60,18 @@ The file is created with mode `0600`. This token bypasses OAuth only when both c
 2. the transport peer itself is a loopback address.
 
 Forwarded headers are ignored, so a reverse proxy connected over loopback does not grant this bypass to remote users. Browser terminal WebSockets never accept the private loopback token: in OAuth mode they require a valid bearer token with both `shell:read` and `shell:execute` scopes.
+
+## Dashboard
+
+The **Dashboard** panel displays one process-scoped telemetry snapshot for the selected machine. The local server samples its own host and process environment, while an online remote worker returns the same schema through the native `dashboard_snapshot` RPC. Dashboard requests do not create or reuse Files/Todos workspace sessions, never carry a `session_id`, and do not construct remote shell commands. Local reads require `shell:read`; a remote selection additionally requires `remote:use`.
+
+The snapshot includes CPU utilization and count, memory pressure, workspace-filesystem usage, one-minute load, aggregate non-loopback network receive/transmit rates, host uptime, runtime/package version information, and metadata-only Audit activity from the previous 24 hours. CPU and network rates are derived from interval samples. Unsupported or unreadable telemetry remains `null` and renders as `—`; the browser never converts a missing source into a false zero. The server bounds alerts and activity to twelve rows each, validates finite numeric values and encoded text lengths, and rejects malformed worker payloads before returning them to the browser.
+
+Audit contributes only tool/event names, operation categories, timestamps, status, and duration. Dashboard responses never contain Audit `input`, `output`, `error`, session payloads, or child-event details. Failed recent calls produce a summary alert that directs an authorized operator to the Audit panel for details. Disk usage at 85% and memory usage at 90% produce warnings; disk usage at 95% and memory usage at 98% produce critical alerts. If the Audit store cannot be queried, system telemetry remains available and the source is marked degraded instead of failing the whole Dashboard.
+
+The browser polls the selected machine every five seconds and retains at most sixty in-tab samples for lightweight CPU, memory, disk, and network sparklines. Machine switches and sign-out increment a generation guard so a slow response from a previously selected worker cannot overwrite the active panel. Inventory refreshes preserve an online selection and immediately fall back to local if the worker becomes unavailable. Wide layouts use separate system, alert, and activity columns; medium and narrow layouts collapse to two and one column. Long alert titles, details, and timestamps are independently bounded and wrapped so they cannot overlap adjacent rows.
+
+All Dashboard text is assigned through `textContent`; sparklines are created with explicit SVG `polyline` nodes and numeric attributes. Telemetry text is never interpreted as HTML, SVG markup, or script. The native OpenTUI Dashboard and its exact chart rendering remain deferred.
 
 ## Terminals
 

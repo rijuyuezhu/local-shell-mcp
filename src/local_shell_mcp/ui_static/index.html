@@ -42,6 +42,112 @@
       </div>
     </section>
 
+    <section id="dashboard-panel" class="panel dashboard-panel">
+      <div class="section-heading dashboard-heading">
+        <div>
+          <p class="eyebrow">Process telemetry</p>
+          <h2>Dashboard</h2>
+        </div>
+        <div class="dashboard-actions">
+          <label class="dashboard-machine-control" for="dashboard-machine">
+            <span>Machine</span>
+            <select id="dashboard-machine" name="dashboard-machine">
+              <option value="local">local</option>
+            </select>
+          </label>
+          <button id="dashboard-refresh" type="button">Refresh telemetry</button>
+          <span id="dashboard-state" class="muted">Not loaded</span>
+        </div>
+      </div>
+      <div class="dashboard-summary" aria-live="polite">
+        <article id="dashboard-health-card" class="dashboard-card dashboard-health-card">
+          <span>System health</span>
+          <strong id="dashboard-health">—</strong>
+          <small id="dashboard-health-detail">Waiting for telemetry</small>
+        </article>
+        <article class="dashboard-card">
+          <span>CPU</span>
+          <strong id="dashboard-cpu">—</strong>
+          <svg id="dashboard-cpu-trend" class="dashboard-sparkline" viewBox="0 0 100 32" role="img" aria-label="Recent CPU trend"></svg>
+        </article>
+        <article class="dashboard-card">
+          <span>Memory</span>
+          <strong id="dashboard-memory">—</strong>
+          <svg id="dashboard-memory-trend" class="dashboard-sparkline" viewBox="0 0 100 32" role="img" aria-label="Recent memory trend"></svg>
+        </article>
+        <article class="dashboard-card">
+          <span>Disk</span>
+          <strong id="dashboard-disk">—</strong>
+          <svg id="dashboard-disk-trend" class="dashboard-sparkline" viewBox="0 0 100 32" role="img" aria-label="Recent disk trend"></svg>
+        </article>
+        <article class="dashboard-card">
+          <span>Network</span>
+          <strong id="dashboard-network">—</strong>
+          <svg id="dashboard-network-trend" class="dashboard-sparkline" viewBox="0 0 100 32" role="img" aria-label="Recent network trend"></svg>
+        </article>
+        <article class="dashboard-card">
+          <span>Audit · 24h</span>
+          <strong id="dashboard-audit-total">—</strong>
+          <small id="dashboard-audit-detail">No activity loaded</small>
+        </article>
+      </div>
+      <div class="dashboard-layout">
+        <article class="dashboard-section dashboard-system">
+          <div class="dashboard-section-heading">
+            <h3>System snapshot</h3>
+            <span id="dashboard-generated" class="muted">—</span>
+          </div>
+          <div class="dashboard-resource-list">
+            <div class="dashboard-resource-row">
+              <span>CPU utilization</span>
+              <div class="dashboard-resource-track"><i id="dashboard-cpu-bar"></i></div>
+              <strong id="dashboard-cpu-value">—</strong>
+            </div>
+            <div class="dashboard-resource-row">
+              <span>Memory pressure</span>
+              <div class="dashboard-resource-track"><i id="dashboard-memory-bar"></i></div>
+              <strong id="dashboard-memory-value">—</strong>
+            </div>
+            <div class="dashboard-resource-row">
+              <span>Workspace disk</span>
+              <div class="dashboard-resource-track"><i id="dashboard-disk-bar"></i></div>
+              <strong id="dashboard-disk-value">—</strong>
+            </div>
+          </div>
+          <dl class="dashboard-details">
+            <div><dt>Version</dt><dd id="dashboard-version">—</dd></div>
+            <div><dt>Platform</dt><dd id="dashboard-platform">—</dd></div>
+            <div><dt>Python</dt><dd id="dashboard-python">—</dd></div>
+            <div><dt>CPUs</dt><dd id="dashboard-cpu-count">—</dd></div>
+            <div><dt>Load · 1m</dt><dd id="dashboard-load">—</dd></div>
+            <div><dt>Uptime</dt><dd id="dashboard-uptime">—</dd></div>
+            <div><dt>Memory used</dt><dd id="dashboard-memory-used">—</dd></div>
+            <div><dt>Disk used</dt><dd id="dashboard-disk-used">—</dd></div>
+            <div><dt>Network RX</dt><dd id="dashboard-network-rx">—</dd></div>
+            <div><dt>Network TX</dt><dd id="dashboard-network-tx">—</dd></div>
+          </dl>
+        </article>
+        <article class="dashboard-section dashboard-alerts-section">
+          <div class="dashboard-section-heading">
+            <h3>Needs attention</h3>
+            <span id="dashboard-alert-count" class="muted">0</span>
+          </div>
+          <div id="dashboard-alerts" class="dashboard-list" aria-live="polite">
+            <div class="empty-state">No telemetry loaded.</div>
+          </div>
+        </article>
+        <article class="dashboard-section dashboard-activity-section">
+          <div class="dashboard-section-heading">
+            <h3>Recent activity</h3>
+            <span id="dashboard-source-state" class="muted">—</span>
+          </div>
+          <div id="dashboard-activity" class="dashboard-list" aria-live="polite">
+            <div class="empty-state">No telemetry loaded.</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section class="metric-grid" aria-label="Service summary">
       <article class="metric">
         <span>Version</span>

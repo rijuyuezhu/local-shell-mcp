@@ -358,6 +358,7 @@ def test_query_audit_filters_sorts_limits_and_skips_malformed_lines(
     assert jobs["count"] == 1
     assert jobs["total_matched"] == 1
     assert jobs["entries"][0]["event"] == "job_started"
+    assert jobs["failed_matched"] == 0
     assert session["count"] == 1
     assert session["entries"][0]["session"] == "session-a"
     assert payload_only["count"] == 0
@@ -367,6 +368,33 @@ def test_query_audit_filters_sorts_limits_and_skips_malformed_lines(
         query_audit(start_ts=2, end_ts=1)
     with pytest.raises(ValueError, match="Unknown audit entry"):
         get_audit_entry("missing")
+
+
+def test_query_audit_reports_failures_across_all_matches(tmp_path, monkeypatch):
+    _configure_audit(tmp_path, monkeypatch)
+    for index, ok in enumerate((False, True, False)):
+        call_id = f"aggregate-{index}"
+        audit_tool_call_start(
+            call_id=call_id,
+            transport="mcp",
+            tool="read",
+            input={"path": f"file-{index}.txt"},
+        )
+        audit_tool_call_end(
+            call_id=call_id,
+            transport="mcp",
+            tool="read",
+            ok=ok,
+            duration_ms=index,
+            output={"content": "ok"} if ok else None,
+            error=None if ok else {"message": "failed"},
+        )
+
+    result = query_audit(limit=1)
+
+    assert result["count"] == 1
+    assert result["total_matched"] == 3
+    assert result["failed_matched"] == 2
 
 
 def test_coalesce_audit_records_supports_legacy_calls_without_ids():

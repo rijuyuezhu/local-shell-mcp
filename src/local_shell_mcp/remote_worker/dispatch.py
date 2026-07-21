@@ -48,6 +48,12 @@ async def _get_audit_entry(args: dict[str, Any]) -> Any:
     return await asyncio.to_thread(get_audit_entry, str(args.get("id") or ""))
 
 
+async def _dashboard_snapshot(args: dict[str, Any]) -> Any:  # noqa: ARG001
+    from local_shell_mcp.dashboard import dashboard_snapshot
+
+    return await asyncio.to_thread(dashboard_snapshot)
+
+
 async def _bash(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import bash_execute
 
@@ -386,6 +392,7 @@ async def _transfer_delete_temp_path(args: dict[str, Any]) -> Any:
 
 _HANDLERS: dict[str, WorkerHandler] = {
     "session_start": _session_start,
+    "dashboard_snapshot": _dashboard_snapshot,
     "query_audit": _query_audit,
     "get_audit_entry": _get_audit_entry,
     "read_todos": _read_todos,

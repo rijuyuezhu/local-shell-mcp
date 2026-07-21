@@ -24,6 +24,7 @@ from ...remote.manager import remote_manager
 from ...ui_security import UI_API_PREFIX
 from ...version import version_info
 from .ui_audit import api_audit, api_audit_detail
+from .ui_dashboard import api_dashboard
 from .ui_files import (
     api_file_action,
     api_file_content,
@@ -141,8 +142,11 @@ def _machine_rows(settings: Settings) -> dict[str, Any]:
             "last_seen": time.time(),
             "last_seen_age_s": 0.0,
             "queue_depth": 0,
-            "capabilities": ["local"],
-            "info": {"target": "local"},
+            "capabilities": ["dashboard", "local"],
+            "info": {
+                "target": "local",
+                "version": version_info().get("version"),
+            },
         }
     ]
     if settings.remote_enabled:
@@ -168,6 +172,7 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                 "auth_mode": settings.auth_mode,
                 "features": {
                     "dashboard": True,
+                    "remote_dashboard": True,
                     "machines": True,
                     "terminals": True,
                     "terminal_websocket": True,
@@ -213,6 +218,7 @@ def human_ui_routes(
             ui_path + "/ws/terminals/{shell_id}", ui_terminal_websocket
         ),
         Route(UI_API_PREFIX + "/bootstrap", api_bootstrap, methods=["GET"]),
+        Route(UI_API_PREFIX + "/dashboard", api_dashboard, methods=["GET"]),
         Route(UI_API_PREFIX + "/machines", api_machines, methods=["GET"]),
         Route(UI_API_PREFIX + "/files", api_files, methods=["GET"]),
         Route(

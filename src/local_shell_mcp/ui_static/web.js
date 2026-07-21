@@ -52,8 +52,51 @@
   let auditDetailGeneration = 0;
   let auditLoading = false;
   let auditMachineStates = new Map([["local", "online"]]);
+  let dashboardMachine = "local";
+  let dashboardGeneration = 0;
+  let dashboardLoading = false;
+  let dashboardMachineStates = new Map([["local", "online"]]);
+  let dashboardHistory = [];
+  let dashboardTimer = null;
 
   const elements = {
+    dashboardActivity: document.getElementById("dashboard-activity"),
+    dashboardAlertCount: document.getElementById("dashboard-alert-count"),
+    dashboardAlerts: document.getElementById("dashboard-alerts"),
+    dashboardAuditDetail: document.getElementById("dashboard-audit-detail"),
+    dashboardAuditTotal: document.getElementById("dashboard-audit-total"),
+    dashboardCpu: document.getElementById("dashboard-cpu"),
+    dashboardCpuBar: document.getElementById("dashboard-cpu-bar"),
+    dashboardCpuCount: document.getElementById("dashboard-cpu-count"),
+    dashboardCpuTrend: document.getElementById("dashboard-cpu-trend"),
+    dashboardCpuValue: document.getElementById("dashboard-cpu-value"),
+    dashboardDisk: document.getElementById("dashboard-disk"),
+    dashboardDiskBar: document.getElementById("dashboard-disk-bar"),
+    dashboardDiskTrend: document.getElementById("dashboard-disk-trend"),
+    dashboardDiskUsed: document.getElementById("dashboard-disk-used"),
+    dashboardDiskValue: document.getElementById("dashboard-disk-value"),
+    dashboardGenerated: document.getElementById("dashboard-generated"),
+    dashboardHealth: document.getElementById("dashboard-health"),
+    dashboardHealthCard: document.getElementById("dashboard-health-card"),
+    dashboardHealthDetail: document.getElementById("dashboard-health-detail"),
+    dashboardLoad: document.getElementById("dashboard-load"),
+    dashboardMachine: document.getElementById("dashboard-machine"),
+    dashboardMemory: document.getElementById("dashboard-memory"),
+    dashboardMemoryBar: document.getElementById("dashboard-memory-bar"),
+    dashboardMemoryTrend: document.getElementById("dashboard-memory-trend"),
+    dashboardMemoryUsed: document.getElementById("dashboard-memory-used"),
+    dashboardMemoryValue: document.getElementById("dashboard-memory-value"),
+    dashboardNetwork: document.getElementById("dashboard-network"),
+    dashboardNetworkRx: document.getElementById("dashboard-network-rx"),
+    dashboardNetworkTrend: document.getElementById("dashboard-network-trend"),
+    dashboardNetworkTx: document.getElementById("dashboard-network-tx"),
+    dashboardPlatform: document.getElementById("dashboard-platform"),
+    dashboardPython: document.getElementById("dashboard-python"),
+    dashboardRefresh: document.getElementById("dashboard-refresh"),
+    dashboardSourceState: document.getElementById("dashboard-source-state"),
+    dashboardState: document.getElementById("dashboard-state"),
+    dashboardUptime: document.getElementById("dashboard-uptime"),
+    dashboardVersion: document.getElementById("dashboard-version"),
     auditDetailBody: document.getElementById("audit-detail-body"),
     auditDetailMeta: document.getElementById("audit-detail-meta"),
     auditDetailTitle: document.getElementById("audit-detail-title"),
@@ -388,6 +431,394 @@
     sessionStorage.removeItem(pendingStorageKey);
     cleanCallbackUrl();
     return true;
+  }
+
+  function dashboardMachineOnline(machine = dashboardMachine) {
+    return machine === "local" || dashboardMachineStates.get(machine) === "online";
+  }
+
+  function dashboardNumber(value) {
+    if (value === null || value === undefined || value === "" || typeof value === "boolean") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function dashboardPercent(value) {
+    const number = dashboardNumber(value);
+    return number === null ? "—" : `${number.toFixed(1)}%`;
+  }
+
+  function dashboardBytes(value) {
+    const number = dashboardNumber(value);
+    if (number === null || number < 0) return "—";
+    const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let scaled = number;
+    let unit = 0;
+    while (scaled >= 1024 && unit < units.length - 1) {
+      scaled /= 1024;
+      unit += 1;
+    }
+    const digits = scaled >= 100 || unit === 0 ? 0 : scaled >= 10 ? 1 : 2;
+    return `${scaled.toFixed(digits)} ${units[unit]}`;
+  }
+
+  function dashboardRate(value) {
+    const formatted = dashboardBytes(value);
+    return formatted === "—" ? formatted : `${formatted}/s`;
+  }
+
+  function dashboardDuration(value) {
+    let seconds = dashboardNumber(value);
+    if (seconds === null || seconds < 0) return "—";
+    seconds = Math.floor(seconds);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (days) return `${days}d ${hours}h`;
+    if (hours) return `${hours}h ${minutes}m`;
+    return `${minutes}m ${seconds % 60}s`;
+  }
+
+  function dashboardTimestamp(value, fallback = "Unknown time") {
+    const seconds = dashboardNumber(value);
+    if (seconds === null || seconds <= 0) return fallback;
+    const date = new Date(seconds * 1000);
+    return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString();
+  }
+
+  function setDashboardControls() {
+    const online = dashboardMachineOnline();
+    elements.dashboardRefresh.disabled = dashboardLoading || !online;
+    elements.dashboardMachine.disabled = dashboardLoading;
+  }
+
+  function stopDashboardPolling() {
+    if (dashboardTimer !== null) {
+      window.clearInterval(dashboardTimer);
+      dashboardTimer = null;
+    }
+  }
+
+  function startDashboardPolling() {
+    stopDashboardPolling();
+    dashboardTimer = window.setInterval(() => {
+      if ((config.authMode !== "oauth" || accessToken) && dashboardMachineOnline()) {
+        refreshDashboardInBackground();
+      }
+    }, 5000);
+  }
+
+  function dashboardEmpty(container, message) {
+    container.replaceChildren();
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = message;
+    container.append(empty);
+  }
+
+  function renderDashboardSparkline(element, rawValues, fixedMaximum = null) {
+    const values = Array.isArray(rawValues) ? rawValues : [];
+    element.replaceChildren();
+    const finite = values
+      .map((value, index) => ({ index, value: dashboardNumber(value) }))
+      .filter((item) => item.value !== null);
+    if (finite.length < 2) return;
+    const normalizedMaximum = dashboardNumber(fixedMaximum);
+    const maximum = normalizedMaximum !== null
+      ? Math.max(1, normalizedMaximum)
+      : Math.max(1, ...finite.map((item) => item.value));
+    const lastIndex = Math.max(1, values.length - 1);
+    const points = finite
+      .map((item) => {
+        const x = (item.index / lastIndex) * 100;
+        const y = 30 - Math.max(0, Math.min(1, item.value / maximum)) * 26;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    line.setAttribute("points", points);
+    line.setAttribute("fill", "none");
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    element.append(line);
+  }
+
+  function setDashboardBar(element, value) {
+    const number = dashboardNumber(value);
+    const width = number === null ? 0 : Math.max(0, Math.min(100, number));
+    element.style.width = `${width}%`;
+    element.parentElement?.classList.toggle("dashboard-resource-missing", number === null);
+  }
+
+  function resetDashboardWorkspace(machine) {
+    dashboardMachine = machine || "local";
+    dashboardLoading = false;
+    dashboardGeneration += 1;
+    dashboardHistory = [];
+    elements.dashboardMachine.value = dashboardMachine;
+    elements.dashboardState.textContent = `Not loaded · ${dashboardMachine}`;
+    elements.dashboardHealth.textContent = "—";
+    elements.dashboardHealthDetail.textContent = "Waiting for telemetry";
+    elements.dashboardHealthCard.className = "dashboard-card dashboard-health-card";
+    for (const element of [
+      elements.dashboardCpu,
+      elements.dashboardMemory,
+      elements.dashboardDisk,
+      elements.dashboardNetwork,
+      elements.dashboardAuditTotal,
+      elements.dashboardCpuValue,
+      elements.dashboardMemoryValue,
+      elements.dashboardDiskValue,
+      elements.dashboardVersion,
+      elements.dashboardPlatform,
+      elements.dashboardPython,
+      elements.dashboardCpuCount,
+      elements.dashboardLoad,
+      elements.dashboardUptime,
+      elements.dashboardMemoryUsed,
+      elements.dashboardDiskUsed,
+      elements.dashboardNetworkRx,
+      elements.dashboardNetworkTx,
+      elements.dashboardGenerated,
+      elements.dashboardSourceState,
+    ]) element.textContent = "—";
+    elements.dashboardAuditDetail.textContent = "No activity loaded";
+    elements.dashboardAlertCount.textContent = "0";
+    setDashboardBar(elements.dashboardCpuBar, null);
+    setDashboardBar(elements.dashboardMemoryBar, null);
+    setDashboardBar(elements.dashboardDiskBar, null);
+    for (const trend of [
+      elements.dashboardCpuTrend,
+      elements.dashboardMemoryTrend,
+      elements.dashboardDiskTrend,
+      elements.dashboardNetworkTrend,
+    ]) trend.replaceChildren();
+    dashboardEmpty(elements.dashboardAlerts, `Alerts for ${dashboardMachine} are not loaded.`);
+    dashboardEmpty(elements.dashboardActivity, `Activity for ${dashboardMachine} is not loaded.`);
+    setDashboardControls();
+  }
+
+  function renderDashboardMachines(machines) {
+    const available = Array.isArray(machines) ? machines : [];
+    dashboardMachineStates = new Map([["local", "online"]]);
+    elements.dashboardMachine.replaceChildren();
+    let localPresent = false;
+    let currentPresent = false;
+    let currentOnline = dashboardMachine === "local";
+    for (const machine of available) {
+      const name = text(machine.name, "");
+      if (!name) continue;
+      if (name === "local") localPresent = true;
+      const state = name === "local" ? "online" : text(machine.status, "offline");
+      const online = name === "local" || state === "online";
+      dashboardMachineStates.set(name, state);
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = online ? name : `${name} (${state})`;
+      option.disabled = !online;
+      option.selected = name === dashboardMachine;
+      if (option.selected) {
+        currentPresent = true;
+        currentOnline = online;
+      }
+      elements.dashboardMachine.append(option);
+    }
+    if (!localPresent) {
+      const local = document.createElement("option");
+      local.value = "local";
+      local.textContent = "local";
+      local.selected = dashboardMachine === "local";
+      elements.dashboardMachine.prepend(local);
+      if (local.selected) {
+        currentPresent = true;
+        currentOnline = true;
+      }
+    }
+    if (!currentPresent && dashboardMachine !== "local") {
+      const stale = document.createElement("option");
+      stale.value = dashboardMachine;
+      stale.textContent = `${dashboardMachine} (unavailable)`;
+      stale.disabled = true;
+      stale.selected = true;
+      elements.dashboardMachine.append(stale);
+    }
+    if (!currentPresent || !currentOnline) {
+      const changed = dashboardMachine !== "local";
+      resetDashboardWorkspace("local");
+      if (changed) refreshDashboardInBackground({ force: true });
+    } else {
+      elements.dashboardMachine.value = dashboardMachine;
+      setDashboardControls();
+    }
+  }
+
+  function dashboardListItem(kind, titleText, detailText, metaText = "") {
+    const article = document.createElement("article");
+    article.className = `dashboard-list-item dashboard-list-${kind}`;
+    const header = document.createElement("div");
+    header.className = "dashboard-list-header";
+    const title = document.createElement("strong");
+    title.textContent = titleText;
+    const meta = document.createElement("span");
+    meta.textContent = metaText;
+    header.append(title, meta);
+    const detail = document.createElement("p");
+    detail.textContent = detailText;
+    article.append(header, detail);
+    return article;
+  }
+
+  function renderDashboard(payload) {
+    const system = payload && payload.system && typeof payload.system === "object" ? payload.system : {};
+    const version = payload && payload.version && typeof payload.version === "object" ? payload.version : {};
+    const alerts = Array.isArray(payload?.alerts) ? payload.alerts : [];
+    const activity = Array.isArray(payload?.activity) ? payload.activity : [];
+    const sources = payload && payload.sources && typeof payload.sources === "object" ? payload.sources : {};
+    const networkRx = dashboardNumber(system.network_rx_bps);
+    const networkTx = dashboardNumber(system.network_tx_bps);
+    const networkTotal = networkRx !== null && networkTx !== null
+      ? networkRx + networkTx
+      : null;
+    dashboardHistory.push({
+      cpu: dashboardNumber(system.cpu_percent),
+      memory: dashboardNumber(system.memory_percent),
+      disk: dashboardNumber(system.disk_percent),
+      network: networkTotal,
+    });
+    dashboardHistory = dashboardHistory.slice(-60);
+
+    const health = ["healthy", "attention", "critical"].includes(payload.health)
+      ? payload.health
+      : "attention";
+    elements.dashboardHealth.textContent = health;
+    elements.dashboardHealthCard.className = `dashboard-card dashboard-health-card dashboard-health-${health}`;
+    elements.dashboardHealthDetail.textContent = alerts.length
+      ? `${alerts.length} alert${alerts.length === 1 ? "" : "s"} on ${dashboardMachine}`
+      : `No active alerts on ${dashboardMachine}`;
+    elements.dashboardCpu.textContent = dashboardPercent(system.cpu_percent);
+    elements.dashboardMemory.textContent = dashboardPercent(system.memory_percent);
+    elements.dashboardDisk.textContent = dashboardPercent(system.disk_percent);
+    elements.dashboardNetwork.textContent = networkTotal === null ? "—" : dashboardRate(networkTotal);
+    elements.dashboardAuditTotal.textContent = text(payload.audit_total_24h, "0");
+    elements.dashboardAuditDetail.textContent = `${text(payload.audit_failed_24h, "0")} failed · last 24h`;
+    elements.dashboardGenerated.textContent = dashboardTimestamp(payload.generated_at, "Unknown sample time");
+
+    elements.dashboardCpuValue.textContent = dashboardPercent(system.cpu_percent);
+    elements.dashboardMemoryValue.textContent = dashboardPercent(system.memory_percent);
+    elements.dashboardDiskValue.textContent = dashboardPercent(system.disk_percent);
+    setDashboardBar(elements.dashboardCpuBar, system.cpu_percent);
+    setDashboardBar(elements.dashboardMemoryBar, system.memory_percent);
+    setDashboardBar(elements.dashboardDiskBar, system.disk_percent);
+    renderDashboardSparkline(
+      elements.dashboardCpuTrend,
+      dashboardHistory.map((sample) => sample.cpu),
+      100,
+    );
+    renderDashboardSparkline(
+      elements.dashboardMemoryTrend,
+      dashboardHistory.map((sample) => sample.memory),
+      100,
+    );
+    renderDashboardSparkline(
+      elements.dashboardDiskTrend,
+      dashboardHistory.map((sample) => sample.disk),
+      100,
+    );
+    renderDashboardSparkline(
+      elements.dashboardNetworkTrend,
+      dashboardHistory.map((sample) => sample.network),
+    );
+
+    elements.dashboardVersion.textContent = text(version.version, text(version.package_version));
+    elements.dashboardPlatform.textContent = text(version.platform);
+    elements.dashboardPython.textContent = text(version.python);
+    elements.dashboardCpuCount.textContent = text(system.cpu_count);
+    const load = dashboardNumber(system.load_1m);
+    elements.dashboardLoad.textContent = load === null ? "—" : load.toFixed(2);
+    elements.dashboardUptime.textContent = dashboardDuration(system.uptime_s);
+    elements.dashboardMemoryUsed.textContent = system.memory_total_bytes === null
+      ? "—"
+      : `${dashboardBytes(system.memory_used_bytes)} / ${dashboardBytes(system.memory_total_bytes)}`;
+    elements.dashboardDiskUsed.textContent = system.disk_total_bytes === null
+      ? "—"
+      : `${dashboardBytes(system.disk_used_bytes)} / ${dashboardBytes(system.disk_total_bytes)}`;
+    elements.dashboardNetworkRx.textContent = dashboardRate(system.network_rx_bps);
+    elements.dashboardNetworkTx.textContent = dashboardRate(system.network_tx_bps);
+
+    elements.dashboardAlertCount.textContent = String(alerts.length);
+    elements.dashboardAlerts.replaceChildren();
+    if (!alerts.length) {
+      dashboardEmpty(elements.dashboardAlerts, "No active alerts.");
+    } else {
+      for (const alert of alerts) {
+        elements.dashboardAlerts.append(
+          dashboardListItem(
+            text(alert.severity, "info"),
+            text(alert.title, "Dashboard alert"),
+            text(alert.detail, ""),
+            text(alert.node, dashboardMachine),
+          ),
+        );
+      }
+    }
+
+    elements.dashboardActivity.replaceChildren();
+    if (!activity.length) {
+      dashboardEmpty(elements.dashboardActivity, "No recent Audit activity.");
+    } else {
+      for (const item of activity) {
+        const durationMs = dashboardNumber(item.duration_ms);
+        const duration = durationMs === null ? "" : `${durationMs.toFixed(0)} ms`;
+        elements.dashboardActivity.append(
+          dashboardListItem(
+            text(item.kind, "success"),
+            text(item.title, "MCP activity"),
+            text(item.detail, ""),
+            `${dashboardTimestamp(item.timestamp)}${duration ? ` · ${duration}` : ""}`,
+          ),
+        );
+      }
+    }
+    elements.dashboardSourceState.textContent = `system ${text(sources.system, "unknown")} · audit ${text(sources.audit, "unknown")}`;
+    elements.dashboardState.textContent = `${dashboardMachine} · ${health} · updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  function dashboardQueryPath() {
+    const params = new URLSearchParams({ machine: dashboardMachine });
+    return `/dashboard?${params.toString()}`;
+  }
+
+  async function refreshDashboard({ force = false } = {}) {
+    if ((dashboardLoading && !force) || !dashboardMachineOnline()) return null;
+    const generation = ++dashboardGeneration;
+    const requestedMachine = dashboardMachine;
+    dashboardLoading = true;
+    setDashboardControls();
+    elements.dashboardState.textContent = `Loading ${requestedMachine}`;
+    try {
+      const payload = await request(dashboardQueryPath());
+      if (generation !== dashboardGeneration || requestedMachine !== dashboardMachine) return null;
+      renderDashboard(payload);
+      return payload;
+    } catch (error) {
+      if (error.authenticationRequired) throw error;
+      if (generation !== dashboardGeneration || requestedMachine !== dashboardMachine) return null;
+      elements.dashboardState.textContent = error instanceof Error ? error.message : String(error);
+      elements.dashboardHealth.textContent = "unavailable";
+      elements.dashboardHealthCard.className = "dashboard-card dashboard-health-card dashboard-health-attention";
+      elements.dashboardHealthDetail.textContent = `Telemetry for ${requestedMachine} could not be loaded`;
+      return null;
+    } finally {
+      if (generation === dashboardGeneration) {
+        dashboardLoading = false;
+        setDashboardControls();
+      }
+    }
+  }
+
+  function refreshDashboardInBackground(options = {}) {
+    void refreshDashboard(options).catch((error) => {
+      if (error.authenticationRequired) void load();
+    });
   }
 
   function machineCard(machine) {
@@ -1640,6 +2071,7 @@
     elements.authMode.textContent = text(data.ui && data.ui.auth_mode, config.authMode);
     elements.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
+    renderDashboardMachines(machines);
     renderFileMachines(machines);
     renderTodoMachines(machines);
     renderAuditMachines(machines);
@@ -1661,6 +2093,8 @@
     elements.refresh.disabled = true;
     try {
       render(await request("/bootstrap"));
+      await refreshDashboard({ force: true });
+      startDashboardPolling();
       try {
         await refreshTerminals();
       } catch (error) {
@@ -1685,12 +2119,17 @@
     } catch (error) {
       if (error.authenticationRequired) {
         closeTerminalSocket();
+        stopDashboardPolling();
+        dashboardGeneration += 1;
+        dashboardLoading = false;
         filePreviewGeneration += 1;
         todoGeneration += 1;
         auditGeneration += 1;
         auditDetailGeneration += 1;
         todoDirty = false;
         clearFileEditor();
+        resetDashboardWorkspace("local");
+        elements.dashboardState.textContent = "Authentication required";
         clearAccessToken();
         showAuthentication("Authentication required");
       } else {
@@ -1773,6 +2212,15 @@
     } finally {
       elements.terminalKill.disabled = !selectedShellId;
     }
+  });
+
+  elements.dashboardMachine.addEventListener("change", () => {
+    if (dashboardLoading) return;
+    resetDashboardWorkspace(elements.dashboardMachine.value || "local");
+    refreshDashboardInBackground({ force: true });
+  });
+  elements.dashboardRefresh.addEventListener("click", () => {
+    refreshDashboardInBackground({ force: true });
   });
 
   elements.auditMachine.addEventListener("change", () => {
@@ -1873,9 +2321,12 @@
   elements.refresh.addEventListener("click", () => void load());
   elements.signOut.addEventListener("click", () => {
     closeTerminalSocket();
+    stopDashboardPolling();
+    resetDashboardWorkspace("local");
     resetFileWorkspace("local");
     resetTodoWorkspace("local");
     resetAuditWorkspace("local");
+    elements.dashboardState.textContent = "Authentication required";
     elements.fileState.textContent = "Authentication required";
     elements.todoState.textContent = "Authentication required";
     elements.auditState.textContent = "Authentication required";
@@ -1886,7 +2337,10 @@
   });
 
   window.addEventListener("resize", () => window.requestAnimationFrame(sendTerminalResize));
-  window.addEventListener("beforeunload", closeTerminalSocket);
+  window.addEventListener("beforeunload", () => {
+    stopDashboardPolling();
+    closeTerminalSocket();
+  });
   elements.oauthLogin.hidden = !oauthAvailable();
   elements.authMode.textContent = text(config.authMode);
   void boot();

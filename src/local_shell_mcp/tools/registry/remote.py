@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ...audit import get_audit_entry, query_audit
 from ...config.settings import Settings
+from ...dashboard import dashboard_snapshot
 from ...ops.remote import (
     remote_admin_execute,
     remote_worker_tool_execute,
@@ -47,7 +48,12 @@ async def _get_audit_entry_handler(args: dict[str, Any]) -> dict[str, Any]:
     return await asyncio.to_thread(get_audit_entry, str(args.get("id") or ""))
 
 
+async def _dashboard_snapshot_handler(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
+    return await asyncio.to_thread(dashboard_snapshot)
+
+
 _REMOTE_INTERNAL_HANDLERS: Mapping[str, ToolHandler] = {
+    "dashboard_snapshot": _dashboard_snapshot_handler,
     "query_audit": _query_audit_handler,
     "get_audit_entry": _get_audit_entry_handler,
 }
@@ -66,7 +72,7 @@ class RemoteToolRegistry(DeclarativeToolRegistry):
         return (*super().http_routes(), *REMOTE_WORKER_HTTP_ROUTES)
 
     def http_handlers(self) -> Mapping[str, ToolHandler]:
-        """Return internal Audit handlers plus enabled public remote handlers."""
+        """Return internal UI handlers plus enabled public remote handlers."""
         if not _remote_tools_enabled(self._settings()):
             return _REMOTE_INTERNAL_HANDLERS
         return {
