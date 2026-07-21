@@ -7,9 +7,10 @@ Remote workers let the control server run normal session-bound code work on anot
 1. The MCP client calls `remote_admin(action="invite", args={...})` on the control server.
 2. The server returns a one-time shell command containing an invite code.
 3. You paste that command on the remote machine.
-4. The remote machine downloads a worker bundle from the control server, starts the worker, registers once, then long-polls for jobs.
+4. The remote machine downloads a digest-qualified worker bundle manifest, verifies and installs the bundle into its persistent state directory, starts the worker, registers once, then long-polls for jobs.
 5. The worker persists its identity locally and resumes the same registration after restart. While a long tool call runs, it sends heartbeats independently of job execution.
-6. The MCP client uses `remote_admin(action="list", args={})` to discover the registered machine name, then `session_start(target="remote", machine=..., workdir=...)` to start remote work.
+6. Each upgraded worker poll reports protocol, package version, bundle version, and the digest of the runtime that is actually executing. The controller requests an idle-time upgrade before dequeuing work when that digest differs from its current bundle.
+7. The MCP client uses `remote_admin(action="list", args={})` to discover the registered machine name, then `session_start(target="remote", machine=..., workdir=...)` to start remote work.
 
 Remote worker enrollment routes are public so the worker can join. Treat invite commands as sensitive and short-lived. The control server persists worker registrations in `state_dir/remote-workers.json` with a backup copy; unreadable primary state is recovered from the backup, while two invalid copies make remote management fail instead of silently forgetting trusted workers.
 
@@ -23,8 +24,9 @@ Control server:
 
 Remote machine:
 
-- `python3`, `curl`, and `tar` are required by the join script.
+- `curl` plus Python 3.14 or newer are required. When Python is unavailable, the join script can use an existing `uv` or download a temporary `uv` installer to provision Python 3.14.
 - The selected working directory should exist or be creatable by the user running the worker.
+- The worker state directory defaults to `$XDG_STATE_HOME/local-shell-mcp-worker` or `~/.local/state/local-shell-mcp-worker`; override it with `LOCAL_SHELL_MCP_WORKER_STATE_DIR`.
 - The worker inherits the remote machine's installed tools such as Git, compilers, CUDA tooling, and package managers.
 
 ## Create an invite
@@ -58,7 +60,7 @@ Paste it on the remote machine. The generated invite is one-time use and expires
 
 ## Start an installed worker manually
 
-If `local-shell-mcp` is already installed on the remote machine, run:
+If `local-shell-mcp` is already installed on the remote machine, enroll it once with:
 
 ```bash
 local-shell-mcp worker \
@@ -68,7 +70,24 @@ local-shell-mcp worker \
   --workdir /home/me/project
 ```
 
-The `--server` value is the public origin, not `/mcp`.
+The `--server` value is the public origin, not `/mcp`. After a successful enrollment, the worker can resume from its persisted identity without placing either the invite or access token in a restart command:
+
+```bash
+local-shell-mcp worker \
+  --server https://your-public-host.example.com \
+  --name gpu1 \
+  --workdir /home/me/project
+```
+
+## Automatic runtime upgrades
+
+Poll protocol version 1 negotiates the actual worker bundle digest. A worker that reports the current digest receives normal heartbeat and job responses. A worker that reports a different digest receives a required upgrade instruction instead of a job, so runtime replacement only happens while the worker is idle. Legacy workers that send no versioned poll payload keep their existing heartbeat and job behavior; restart them through a current join command to opt into automatic upgrades.
+
+The controller manifest contains a schema version, bundle version, SHA-256 digest, byte size, and digest-qualified URL. Manifest and bundle responses use `Cache-Control: no-store`; the worker requests them with no-cache headers, rejects cross-origin URLs and redirects, verifies version, size, and digest, and refuses numeric version downgrades. The bundle remains a source-only allowlist rather than a copy of the controller package.
+
+Installation extracts only bounded regular files and directories. Absolute paths, `..`, duplicates, symlinks, hardlinks, devices, and incomplete package layouts are rejected. The worker extracts into a temporary directory, atomically swaps the runtime, writes metadata with restricted permissions, and restores the previous runtime if any step fails. POSIX workers use process replacement; Windows workers spawn the verified runtime and exit. Restart arguments never contain the worker access token, which remains only in the persisted identity file.
+
+Upgrade failures do not dequeue normal jobs. The worker continues polling with capped exponential backoff, logs credential-redacted diagnostics, and resets the retry counter after a non-upgrade poll.
 
 ## Verify connection
 

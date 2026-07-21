@@ -1,19 +1,30 @@
-"""Build and serve the Python-only source bundle used by remote workers."""
+"""Build and serve the source-only runtime used by remote workers."""
 
 import fnmatch
+import functools
+import gzip
+import hashlib
 import tarfile
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
+
+from .. import __version__
+from .constants import REMOTE_WORKER_BUNDLE_PATH
 
 # Keep the worker bundle Python-only and source-only. These patterns are a
 # worker-runtime manifest, not a general local_shell_mcp package snapshot.
 _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "__init__.py",
     "audit.py",
+    "conpty.py",
+    "dashboard.py",
+    "terminal_bridge.py",
+    "version.py",
     "agent_bridge/__init__.py",
     "agent_bridge/redaction.py",
     "config/*.py",
@@ -21,6 +32,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "ops/files.py",
     "ops/jobs.py",
     "ops/read.py",
+    "ops/todo.py",
     "ops/search.py",
     "ops/secret_scan.py",
     "ops/session.py",
@@ -37,8 +49,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "schemas/input_models/files.py",
     "schemas/result_models/*.py",
     "tool_session/*.py",
-    "utils/__init__.py",
-    "utils/serialization.py",
+    "utils/*.py",
 )
 _WORKER_BUNDLE_EXCLUDE_PATTERNS = (
     "**/__pycache__/**",
@@ -71,11 +82,67 @@ def _worker_bundle_paths(package_root: Path) -> list[Path]:
     )
 
 
-async def worker_bundle(request: Request) -> Response:
-    """Serve a Python-only bundle used to bootstrap a remote worker."""
+def _normalized_tar_info(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    """Remove host-specific archive metadata for a stable bundle digest."""
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    info.mtime = 0
+    info.mode = 0o644
+    return info
+
+
+@functools.lru_cache(maxsize=1)
+def worker_bundle_bytes() -> bytes:
+    """Return one deterministic, source-only worker runtime archive."""
     package_root = Path(__file__).resolve().parents[1]
     buffer = BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+    with (
+        gzip.GzipFile(
+            fileobj=buffer, mode="wb", filename="", mtime=0
+        ) as compressed,
+        tarfile.open(fileobj=compressed, mode="w") as tar,
+    ):
         for path in _worker_bundle_paths(package_root):
-            tar.add(path, arcname=str(path.relative_to(package_root.parent)))
-    return Response(buffer.getvalue(), media_type="application/gzip")
+            tar.add(
+                path,
+                arcname=path.relative_to(package_root.parent).as_posix(),
+                recursive=False,
+                filter=_normalized_tar_info,
+            )
+    return buffer.getvalue()
+
+
+@functools.lru_cache(maxsize=1)
+def worker_bundle_manifest() -> dict[str, Any]:
+    """Return the authoritative version, digest, size, and cache-busted URL."""
+    payload = worker_bundle_bytes()
+    digest = hashlib.sha256(payload).hexdigest()
+    return {
+        "schema_version": 1,
+        "bundle_version": __version__,
+        "sha256": digest,
+        "size": len(payload),
+        "url": f"{REMOTE_WORKER_BUNDLE_PATH}?sha256={digest}",
+    }
+
+
+async def worker_bundle(request: Request) -> Response:
+    """Serve the worker manifest or its digest-qualified runtime archive."""
+    headers = {"Cache-Control": "no-store"}
+    manifest = worker_bundle_manifest()
+    if request.query_params.get("manifest") == "1":
+        return JSONResponse(manifest, headers=headers)
+    requested_digest = request.query_params.get("sha256")
+    if requested_digest and requested_digest != manifest["sha256"]:
+        return JSONResponse(
+            {"error": "worker bundle digest is no longer available"},
+            status_code=404,
+            headers=headers,
+        )
+    return Response(
+        worker_bundle_bytes(),
+        media_type="application/gzip",
+        headers=headers,
+    )

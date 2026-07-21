@@ -17,12 +17,14 @@ import uuid
 from pathlib import Path
 from typing import Any, cast
 
+from ..agent_bridge.redaction import _redact_text
 from ..remote.constants import (
     REMOTE_API_PREFIX,
     REMOTE_WORKER_IDENTITY_FILE_NAME,
 )
 from ..remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
 from ..version import version_info
+from . import runtime as worker_runtime
 from .compat import _jsonable as to_jsonable
 
 
@@ -34,7 +36,8 @@ class WorkerHttpError(RuntimeError):
         self.status_code = status_code
         self.detail = detail
         super().__init__(
-            f"worker HTTP POST {url} failed with {status_code}: {detail}"
+            f"worker HTTP POST {_redact_text(url)} failed with {status_code}: "
+            f"{_redact_text(detail)}"
         )
 
 
@@ -67,11 +70,13 @@ def _parse_worker_http_json(
     except json.JSONDecodeError as exc:
         detail = response_body.strip() or "<empty response body>"
         raise RuntimeError(
-            f"worker HTTP POST {url} returned invalid JSON: {detail}"
+            f"worker HTTP POST {_redact_text(url)} returned invalid JSON: "
+            f"{_redact_text(detail)}"
         ) from exc
     if not isinstance(decoded, dict):
         raise RuntimeError(
-            f"worker HTTP POST {url} returned JSON {type(decoded).__name__}, expected object"
+            f"worker HTTP POST {_redact_text(url)} returned JSON "
+            f"{type(decoded).__name__}, expected object"
         )
     return cast(dict[str, Any], decoded)
 
@@ -117,7 +122,8 @@ def _worker_post_json_with_curl(
             "\n".join(detail_parts) or "curl exited without a response body"
         )
         raise RuntimeError(
-            f"worker HTTP POST {url} failed with curl exit {completed.returncode} (HTTP {status_code}): {detail}"
+            f"worker HTTP POST {_redact_text(url)} failed with curl exit "
+            f"{completed.returncode} (HTTP {status_code}): {_redact_text(detail)}"
         )
     return _parse_worker_http_json(url, status_code, response_body)
 
@@ -174,9 +180,10 @@ def _worker_retry_delay(attempt: int) -> float:
 
 
 def _worker_log_retry(operation: str, exc: Exception, delay_s: float) -> None:
-    """Print one retry status line to stderr for worker operators."""
+    """Print one credential-redacted retry status line for worker operators."""
     print(
-        f"Status: {operation} failed: {exc}. Retrying in {delay_s:g}s...",
+        f"Status: {operation} failed: {_redact_text(str(exc))}. "
+        f"Retrying in {delay_s:g}s...",
         file=sys.stderr,
         flush=True,
     )
@@ -441,6 +448,45 @@ def worker_info(workdir: str) -> dict[str, Any]:
     }
 
 
+async def _install_and_reexec_worker(
+    instruction: dict[str, Any],
+    *,
+    server: str,
+    machine_name: str,
+    workdir: str,
+    persist: bool,
+    worker_version: str,
+) -> None:
+    """Install one required runtime and replace the idle worker process."""
+    installed = await asyncio.to_thread(
+        worker_runtime.install_runtime,
+        server,
+        instruction,
+        current_version=worker_version,
+    )
+    expected_digest = str(instruction.get("sha256") or "")
+    expected_version = str(instruction.get("version") or "")
+    if (
+        installed.get("sha256") != expected_digest
+        or installed.get("version") != expected_version
+    ):
+        raise RuntimeError(
+            "installed worker runtime does not match instruction"
+        )
+    print(
+        f"Status: worker runtime {expected_version} ({expected_digest[:12]}) installed; restarting.",
+        file=sys.stderr,
+        flush=True,
+    )
+    worker_runtime.reexec_worker(
+        server=server,
+        name=machine_name,
+        workdir=workdir,
+        persist=persist,
+    )
+    raise RuntimeError("worker restart returned unexpectedly")
+
+
 async def run_worker(
     server: str,
     invite: str,
@@ -476,6 +522,10 @@ async def run_worker(
             30,
         )
     if body is None:
+        if not invite:
+            raise ValueError(
+                "--invite is required when no resumable worker identity exists"
+            )
         body = await _worker_post_json_forever(
             f"{server}{REMOTE_API_PREFIX}/register",
             register_payload,
@@ -512,12 +562,41 @@ async def run_worker(
         flush=True,
     )
     headers = {"Author" + "ization": "B" + "earer " + access}
+    worker_version = str(version_info().get("version") or "")
+    running_runtime = worker_runtime.current_runtime_identity()
+    upgrade_attempt = 0
     while True:
         poll_body = await _worker_post_json_forever(
-            f"{server}{REMOTE_API_PREFIX}/poll", {}, headers, None, "poll"
+            f"{server}{REMOTE_API_PREFIX}/poll",
+            worker_runtime.worker_poll_payload(worker_version, running_runtime),
+            headers,
+            None,
+            "poll",
         )
         payload = poll_body.get("data", {})
-        job = payload.get("job") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            continue
+        upgrade = payload.get("upgrade")
+        if isinstance(upgrade, dict) and upgrade.get("required") is True:
+            try:
+                await _install_and_reexec_worker(
+                    upgrade,
+                    server=server,
+                    machine_name=machine_name,
+                    workdir=workdir,
+                    persist=persist,
+                    worker_version=worker_version,
+                )
+            except SystemExit:
+                raise
+            except Exception as exc:
+                delay_s = _worker_retry_delay(upgrade_attempt)
+                upgrade_attempt += 1
+                _worker_log_retry("upgrade", exc, delay_s)
+                await asyncio.sleep(delay_s)
+            continue
+        upgrade_attempt = 0
+        job = payload.get("job")
         if not job:
             continue
         expires_at = float(job.get("expires_at") or 0)
@@ -553,7 +632,7 @@ async def run_worker(
 def add_worker_cli_args(parser: argparse.ArgumentParser) -> None:
     """Add remote-worker connection and lifecycle options to the shared CLI parser."""
     parser.add_argument("--server", required=True)
-    parser.add_argument("--invite", required=True)
+    parser.add_argument("--invite", default="")
     parser.add_argument("--name", default=None)
     parser.add_argument("--workdir", default=None)
     parser.add_argument(
@@ -575,7 +654,11 @@ def run_worker_from_args(args: argparse.Namespace) -> None:
         print("\nStatus: disconnected by user.", file=sys.stderr, flush=True)
         raise SystemExit(130) from None
     except Exception as exc:
-        print(f"Status: connection failed: {exc}", file=sys.stderr, flush=True)
+        print(
+            f"Status: connection failed: {_redact_text(str(exc))}",
+            file=sys.stderr,
+            flush=True,
+        )
         raise SystemExit(1) from None
 
 

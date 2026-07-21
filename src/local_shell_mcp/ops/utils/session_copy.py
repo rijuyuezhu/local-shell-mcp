@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any, Literal, cast
 
-from ...remote.service import call_remote_worker_tool
 from ...schemas.result_models.jobs import JobStartOutput
 from ...schemas.result_models.session import (
     SessionCopyEndpoint,
@@ -35,7 +34,6 @@ from ..transfer import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
-from .remote_session import call_remote_session_tool
 
 SessionCopyKind = Literal["auto", "file", "dir"]
 SessionCopyRoute = Literal[
@@ -46,6 +44,30 @@ SessionCopyRoute = Literal[
     "remote_to_remote_different_machines",
 ]
 SessionCopyProgress = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+async def call_remote_worker_tool(
+    machine: str,
+    tool: str,
+    args: dict[str, Any],
+    timeout_s: int | None = None,
+) -> dict[str, Any]:
+    """Lazily call a raw worker tool while preserving the patchable seam."""
+    from ...remote.service import call_remote_worker_tool as call_impl
+
+    return await call_impl(machine, tool, args, timeout_s)
+
+
+async def call_remote_session_tool(
+    session: AgentSession,
+    tool: str,
+    args: dict[str, Any],
+    timeout_s: int | None = None,
+) -> dict[str, Any]:
+    """Lazily call a session-bound worker tool without controller imports."""
+    from .remote_session import call_remote_session_tool as call_impl
+
+    return await call_impl(session, tool, args, timeout_s)
 
 
 async def _report_progress(

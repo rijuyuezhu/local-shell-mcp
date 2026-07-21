@@ -2,8 +2,19 @@
 
 from typing import Any, cast
 
-from ...remote.service import call_remote_worker_tool
 from ...tool_session.store import AgentSession
+
+
+async def call_remote_worker_tool(
+    machine: str,
+    tool: str,
+    args: dict[str, Any],
+    timeout_s: int | None = None,
+) -> dict[str, Any]:
+    """Lazily call the controller manager while preserving the patchable seam."""
+    from ...remote.service import call_remote_worker_tool as call_impl
+
+    return await call_impl(machine, tool, args, timeout_s)
 
 
 def _remote_binding(session: AgentSession) -> tuple[str, str]:

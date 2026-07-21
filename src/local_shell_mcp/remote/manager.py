@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import secrets
 import shlex
 import threading
@@ -23,12 +24,20 @@ from ..schemas.result_models.remote import (
     RemoteRenameMachineOutput,
     RemoteRevokeMachineOutput,
 )
-from .constants import REMOTE_JOIN_PATH, REMOTE_WORKER_REGISTRY_FILE_NAME
+from .bundle import worker_bundle_manifest
+from .constants import (
+    REMOTE_JOIN_PATH,
+    REMOTE_WORKER_MANIFEST_PATH,
+    REMOTE_WORKER_POLL_PROTOCOL_VERSION,
+    REMOTE_WORKER_REGISTRY_FILE_NAME,
+)
 from .responses import _ok
 
 MAX_REMOTE_INVITES = 1_024
 MAX_REMOTE_MACHINE_NAME_LENGTH = 128
 REMOTE_WORKER_REGISTRY_VERSION = 1
+
+_WORKER_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 
 
 def _utc() -> float:
@@ -55,6 +64,56 @@ def _validate_machine_name(value: str) -> str:
     ):
         raise ValueError("machine name contains unsupported characters")
     return name
+
+
+def _reported_text(payload: dict[str, Any], key: str, *, required: bool) -> str:
+    """Validate one bounded worker-reported text field."""
+    value = payload.get(key, "")
+    if not isinstance(value, str):
+        raise ValueError(f"worker poll {key} must be a string")
+    if required and not value:
+        raise ValueError(f"worker poll {key} is required")
+    if len(value) > 128 or any(ord(character) < 32 for character in value):
+        raise ValueError(f"worker poll {key} is invalid")
+    return value
+
+
+def _validate_poll_report(
+    payload: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Validate optional version negotiation while preserving legacy polls."""
+    if not payload:
+        return None
+    protocol = payload.get("protocol_version", 0)
+    if isinstance(protocol, bool) or not isinstance(protocol, int):
+        raise ValueError("worker poll protocol_version must be an integer")
+    if not 0 <= protocol <= REMOTE_WORKER_POLL_PROTOCOL_VERSION:
+        raise ValueError("worker poll protocol_version is unsupported")
+    if protocol == 0:
+        return {"protocol_version": 0}
+
+    worker_version = _reported_text(payload, "worker_version", required=True)
+    bundle_version = _reported_text(payload, "bundle_version", required=False)
+    digest = _reported_text(payload, "bundle_sha256", required=False).lower()
+    if digest and not _WORKER_DIGEST_RE.fullmatch(digest):
+        raise ValueError("worker poll bundle_sha256 is invalid")
+    return {
+        "protocol_version": protocol,
+        "worker_version": worker_version,
+        "bundle_version": bundle_version,
+        "bundle_sha256": digest,
+    }
+
+
+def _upgrade_instruction(*, required: bool) -> dict[str, Any]:
+    """Return a non-sensitive instruction bound to the current bundle digest."""
+    manifest = worker_bundle_manifest()
+    return {
+        "required": required,
+        "version": manifest["bundle_version"],
+        "sha256": manifest["sha256"],
+        "manifest_path": REMOTE_WORKER_MANIFEST_PATH,
+    }
 
 
 @dataclass
@@ -425,25 +484,64 @@ class RemoteManager:
             index += 1
         return f"{base}-{index}"
 
-    async def poll(self, token: str) -> dict[str, Any]:
-        """Long-poll for the next live job assigned to one worker."""
+    async def poll(
+        self,
+        token: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Negotiate runtime state, then long-poll for the next live job."""
+        report = _validate_poll_report(payload)
+        upgrade: dict[str, Any] | None = None
         with self._state_lock:
             self._load_registry_unlocked()
             worker = self._worker_by_token_unlocked(token)
             worker.status = "online"
             worker.last_seen = _utc()
+            if report is not None:
+                info_updates = {
+                    "poll_protocol_version": report["protocol_version"],
+                }
+                if report["protocol_version"]:
+                    info_updates.update(
+                        {
+                            "lsm_version": report["worker_version"],
+                            "worker_bundle_version": report["bundle_version"],
+                            "worker_bundle_sha256": report["bundle_sha256"],
+                        }
+                    )
+                    upgrade = _upgrade_instruction(
+                        required=(
+                            report["bundle_sha256"]
+                            != worker_bundle_manifest()["sha256"]
+                        )
+                    )
+                if any(
+                    worker.info.get(key) != value
+                    for key, value in info_updates.items()
+                ):
+                    worker.info.update(info_updates)
+                    self._save_registry_unlocked()
+        if upgrade is not None and upgrade["required"]:
+            return {"job": None, "upgrade": upgrade}
+
         loop = asyncio.get_running_loop()
         deadline = loop.time() + get_settings().remote_poll_timeout_s
         while True:
             remaining = deadline - loop.time()
             if remaining <= 0:
-                return {"job": None, "heartbeat": True}
+                response: dict[str, Any] = {"job": None, "heartbeat": True}
+                if upgrade is not None:
+                    response["upgrade"] = upgrade
+                return response
             try:
                 job = await asyncio.wait_for(
                     worker.queue.get(), timeout=remaining
                 )
             except TimeoutError:
-                return {"job": None, "heartbeat": True}
+                response = {"job": None, "heartbeat": True}
+                if upgrade is not None:
+                    response["upgrade"] = upgrade
+                return response
             job_id = str(job.get("id") or "")
             with self._state_lock:
                 self._prune_cancelled_jobs_unlocked()
@@ -454,7 +552,10 @@ class RemoteManager:
                 if expires_at and expires_at < _utc():
                     self._cancel_job_unlocked(job_id)
                     continue
-            return {"job": job}
+            response = {"job": job}
+            if upgrade is not None:
+                response["upgrade"] = upgrade
+            return response
 
     async def heartbeat(self, token: str) -> dict[str, Any]:
         """Refresh worker liveness while a long-running job executes."""

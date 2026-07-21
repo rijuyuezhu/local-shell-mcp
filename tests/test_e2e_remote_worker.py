@@ -112,6 +112,9 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
             "LOCAL_SHELL_MCP_STATE_DIR": str(
                 remote_workspace / ".local-shell-mcp"
             ),
+            "LOCAL_SHELL_MCP_WORKER_STATE_DIR": str(
+                remote_workspace / ".local-shell-mcp-worker"
+            ),
             "LOCAL_SHELL_MCP_AUTH_MODE": "none",
             "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
             "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
@@ -226,11 +229,20 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "__REMOTE_WORKER_BUNDLE_PATH__" not in join_script
         assert f"SERVER={base_url}" in join_script
         assert 'BUNDLE_URL="$SERVER/remote/worker-bundle.tgz"' in join_script
-        assert 'export PYTHONPATH="$TMPDIR:${PYTHONPATH:-}"' in join_script
+        assert 'RUNTIME_DIR="$STATE_DIR/runtime"' in join_script
+        assert (
+            'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"'
+            in join_script
+        )
         assert "python_supports_worker" in join_script
         assert "python install 3.14" in join_script
+        assert "Downloading worker manifest" in join_script
         assert "Downloading worker bundle" in join_script
-        assert "curl -fL --progress-bar" in join_script
+        assert "Cache-Control: no-cache" in join_script
+        assert "Verifying and installing worker runtime" in join_script
+        assert "os.replace(staging, runtime)" in join_script
+        assert "member.isreg()" in join_script
+        assert "curl -fSs" in join_script
         assert "-m local_shell_mcp.remote_worker" in join_script
         assert "python3 -m local_shell_mcp.main worker" not in join_script
 
@@ -246,8 +258,12 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert "local_shell_mcp/remote_worker/__main__.py" in names
             assert "local_shell_mcp/remote_worker/worker.py" in names
             assert "local_shell_mcp/remote_worker/compat.py" in names
+            assert "local_shell_mcp/remote_worker/runtime.py" in names
             assert "local_shell_mcp/remote/join_worker.sh" not in names
+            assert "local_shell_mcp/remote/manager.py" not in names
+            assert "local_shell_mcp/remote/http.py" not in names
             assert not any(name.startswith("vendor/") for name in names)
+            assert not any("ui_static" in name for name in names)
             assert all(name.endswith(".py") for name in names)
 
         worker = start_worker_process(

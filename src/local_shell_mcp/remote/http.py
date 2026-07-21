@@ -1,5 +1,6 @@
 """HTTP routes for remote worker bootstrap, polling, and results."""
 
+import json
 import shlex
 from importlib import resources
 
@@ -26,6 +27,20 @@ def _bearer_token(request: Request) -> str:
     if auth.lower().startswith("bearer "):
         return auth.split(" ", 1)[1].strip()
     return ""
+
+
+async def _optional_json_object(request: Request) -> dict[str, object]:
+    """Decode an optional JSON object without breaking legacy empty polls."""
+    body = await request.body()
+    if not body.strip():
+        return {}
+    try:
+        decoded = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("request body must be valid JSON") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError("request body must be a JSON object")
+    return decoded
 
 
 async def join_script(request: Request) -> PlainTextResponse:
@@ -67,13 +82,18 @@ async def resume_endpoint(request: Request) -> JSONResponse:
 
 
 async def poll_endpoint(request: Request) -> JSONResponse:
-    """Long-poll for the next job assigned to the authenticated worker."""
+    """Negotiate worker runtime state, then long-poll for its next job."""
     try:
+        payload = await _optional_json_object(request)
         return JSONResponse(
-            _ok(await remote_manager().poll(_bearer_token(request)))
+            _ok(await remote_manager().poll(_bearer_token(request), payload))
         )
-    except Exception as exc:
+    except PermissionError as exc:
         return _error(str(exc), type(exc).__name__, 401)
+    except ValueError as exc:
+        return _error(str(exc), type(exc).__name__, 400)
+    except Exception as exc:
+        return _error(str(exc), type(exc).__name__, 500)
 
 
 async def heartbeat_endpoint(request: Request) -> JSONResponse:

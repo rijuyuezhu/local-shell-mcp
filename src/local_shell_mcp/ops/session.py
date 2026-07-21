@@ -2,7 +2,7 @@
 
 import subprocess
 from pathlib import Path
-from typing import Literal, overload
+from typing import Any, Literal, overload
 
 from ..ops.utils.path import relative_display, workspace_root
 from ..schemas.result_models.jobs import JobStartOutput
@@ -12,13 +12,6 @@ from ..schemas.result_models.session import (
     SessionStartOutput,
 )
 from ..tool_session.store import AgentSession, get_tool_session_store
-from .utils.remote_session import start_worker_session
-from .utils.session_copy import (
-    session_copy_execute as _session_copy_execute,
-)
-from .utils.session_copy import (
-    session_copy_job_execute,
-)
 
 _INSTRUCTION_FILE_NAMES = (
     "AGENTS.md",
@@ -26,6 +19,24 @@ _INSTRUCTION_FILE_NAMES = (
     "CONTRIBUTING",
     "CONTRIBUTING.md",
 )
+
+
+async def start_worker_session(
+    *,
+    machine: str,
+    workdir: str,
+    label: str | None = None,
+) -> dict[str, Any]:
+    """Lazily dispatch remote session creation without importing the control plane."""
+    from .utils.remote_session import (
+        start_worker_session as start_worker_session_impl,
+    )
+
+    return await start_worker_session_impl(
+        machine=machine,
+        workdir=workdir,
+        label=label,
+    )
 
 
 def _git_output(args: list[str], cwd: Path) -> str | None:
@@ -209,6 +220,11 @@ async def session_copy_execute(
     background: bool = False,
 ) -> SessionCopyOutput | JobStartOutput:
     """Copy synchronously or start a managed background copy job."""
+    from .utils.session_copy import (
+        session_copy_execute as _session_copy_execute,
+    )
+    from .utils.session_copy import session_copy_job_execute
+
     if background:
         return await session_copy_job_execute(
             src_session_id,
