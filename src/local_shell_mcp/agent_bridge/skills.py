@@ -208,6 +208,8 @@ def _open_regular_file(
     """Open a bounded regular file without following its final symlink and verify it stayed in-root."""
     limit = _bounded(max_bytes, DEFAULT_MAX_ENTRY_BYTES)
     root = allowed_root.resolve()
+    if path.is_symlink():
+        raise ValueError("Skill file path must not be a symlink")
     flags = os.O_RDONLY | int(getattr(os, "O_BINARY", 0))
     flags |= int(getattr(os, "O_NOFOLLOW", 0))
 
@@ -273,6 +275,10 @@ def _open_regular_file(
 def _resolve_skill_root(skills_dir: Path, name: str) -> Path:
     validated_name = validate_skill_name(name)
     candidate = skills_dir / validated_name
+    if candidate.is_symlink():
+        raise ValueError(
+            "Skill directory must be a regular directory, not a symlink"
+        )
     try:
         candidate_stat = candidate.stat(follow_symlinks=False)
     except FileNotFoundError as exc:
@@ -353,6 +359,12 @@ def _scan_related_files(
 
         for entry in sorted(entries, key=lambda item: item.name, reverse=True):
             path = Path(entry.path)
+            if entry.is_symlink():
+                _append_warning(
+                    warnings,
+                    f"Skipping related path {path.name}: symlinks are not allowed",
+                )
+                continue
             try:
                 entry_stat = entry.stat(follow_symlinks=False)
                 if (
@@ -507,6 +519,12 @@ def scan_agent_skills(
                     )
                     break
                 scanned_entries += 1
+                if entry.is_symlink():
+                    _append_warning(
+                        warnings,
+                        f"Skipping skill {entry.name!r}: skill directory is a symlink",
+                    )
+                    continue
                 try:
                     entry_stat = entry.stat(follow_symlinks=False)
                 except OSError as exc:

@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Annotated, Any, Literal
 
 import local_shell_mcp.config.surface as surface
@@ -35,6 +35,13 @@ def test_generated_config_examples_are_current():
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_path_defaults_use_portable_posix_separators():
+    value = PureWindowsPath(r"\workspace\.local-shell-mcp")
+
+    assert surface.default_to_string(value) == "/workspace/.local-shell-mcp"
+    assert surface.yaml_default(value) == "/workspace/.local-shell-mcp"
 
 
 def test_config_examples_include_every_registered_setting():

@@ -68,6 +68,34 @@ jobs:
       - run: uv sync --locked --group dev
       - if: runner.os != 'Windows'
         run: uv run pytest -q
+      - name: Windows compatibility preflight
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tests = @(
+            'tests/test_agent_bridge_skills.py::test_scan_agent_skills_skips_symlinked_entry',
+            'tests/test_agent_bridge_skills.py::test_activate_and_read_related_skill_file',
+            'tests/test_apply_patch_tool.py::test_apply_patch_envelope_is_session_bound_and_atomic',
+            'tests/test_bash_facade.py::test_shell_execution_runs_bounded_command_in_session_workdir',
+            'tests/test_bash_facade.py::test_shell_execution_is_exposed_in_mcp',
+            'tests/test_config_surface.py::test_generated_config_examples_are_current',
+            'tests/test_e2e_http_rest.py::test_http_rest_process_exercises_core_tool_categories',
+            'tests/test_e2e_mcp_http.py::test_mcp_streamable_http_process_exercises_core_tool_categories',
+            'tests/test_e2e_remote_worker.py::test_mcp_remote_worker_process_exercises_remote_tool_categories',
+            'tests/test_e2e_stdio.py::test_stdio_process_exercises_core_tool_categories'
+          )
+          $failed = $false
+          foreach ($test in $tests) {
+            Write-Host "::group::$test"
+            uv run pytest -vv --tb=short $test
+            if ($LASTEXITCODE -ne 0) {
+              $failed = $true
+            }
+            Write-Host '::endgroup::'
+          }
+          if ($failed) {
+            exit 1
+          }
       - if: runner.os == 'Windows'
         run: uv run pytest -vv --tb=short --durations=20
 

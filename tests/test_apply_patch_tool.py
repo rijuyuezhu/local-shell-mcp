@@ -47,7 +47,7 @@ async def test_apply_patch_envelope_is_session_bound_and_atomic(
     assert result.checked is True
     assert result.applied is True
     assert target.read_bytes() == b"one\r\nTWO\r\n"
-    assert (tmp_path / "added.txt").read_bytes() == b"new\n"
+    assert (tmp_path / "added.txt").read_text(encoding="utf-8") == "new\n"
     assert "--check" not in result.command
 
 

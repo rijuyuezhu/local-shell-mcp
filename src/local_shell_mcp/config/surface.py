@@ -8,7 +8,7 @@ configuration files.
 import argparse
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import PurePath
 from typing import Annotated, Any, Literal, cast, get_args, get_origin
 
 from .settings import ENV_PREFIX, Settings
@@ -403,8 +403,8 @@ def default_to_string(value: Any) -> str:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, Path):
-        return str(value)
+    if isinstance(value, PurePath):
+        return value.as_posix()
     if isinstance(value, list):
         items = cast(list[Any], value)
         return ",".join(str(item) for item in items)
@@ -413,8 +413,8 @@ def default_to_string(value: Any) -> str:
 
 def yaml_default(value: Any) -> Any:
     """Render a default value suitable for YAML dumping."""
-    if isinstance(value, Path):
-        return str(value)
+    if isinstance(value, PurePath):
+        return value.as_posix()
     return value
 
 
