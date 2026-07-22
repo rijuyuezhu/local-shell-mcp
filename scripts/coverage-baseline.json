@@ -43,7 +43,7 @@
     "src/local_shell_mcp/agent_bridge/sources.py": {
       "num_branches": 26,
       "num_statements": 75,
-      "percent_covered": 93.069307
+      "percent_covered": 92.079208
     },
     "src/local_shell_mcp/agent_bridge/state.py": {
       "num_branches": 24,
@@ -268,7 +268,7 @@
     "src/local_shell_mcp/ops/search.py": {
       "num_branches": 158,
       "num_statements": 369,
-      "percent_covered": 80.455408
+      "percent_covered": 44.781784
     },
     "src/local_shell_mcp/ops/secret_scan.py": {
       "num_branches": 50,
@@ -338,7 +338,7 @@
     "src/local_shell_mcp/ops/workspace_connector.py": {
       "num_branches": 8,
       "num_statements": 45,
-      "percent_covered": 79.245283
+      "percent_covered": 64.150943
     },
     "src/local_shell_mcp/patch_ops.py": {
       "num_branches": 110,
@@ -403,7 +403,7 @@
     "src/local_shell_mcp/remote_worker/compat.py": {
       "num_branches": 98,
       "num_statements": 260,
-      "percent_covered": 74.860335
+      "percent_covered": 72.905028
     },
     "src/local_shell_mcp/remote_worker/dispatch.py": {
       "num_branches": 4,
@@ -423,7 +423,7 @@
     "src/local_shell_mcp/remote_worker/worker.py": {
       "num_branches": 86,
       "num_statements": 354,
-      "percent_covered": 76.136364
+      "percent_covered": 76.363636
     },
     "src/local_shell_mcp/schemas/__init__.py": {
       "num_branches": 0,
@@ -907,6 +907,7 @@
     }
   },
   "new_file_min_percent": 90.0,
+  "report_count": 2,
   "schema_version": 1,
-  "total_percent_covered": 83.507285
+  "total_percent_covered": 82.504909
 }

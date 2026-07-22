@@ -119,7 +119,10 @@ uv run pytest tests/test_agent_bridge_tools.py -q
 The Ubuntu CI job runs the complete Python suite under branch coverage. It
 ratchets both the aggregate percentage and every existing source file against
 `scripts/coverage-baseline.json`; a new non-empty module must begin at 90%
-coverage. Run the same gate locally with:
+coverage. The committed baseline records the lowest value observed for each
+module across the local Linux and GitHub Ubuntu reports, so environment-only
+branches cannot make either supported run flaky. Run the same gate locally
+with:
 
 ```bash
 find . -maxdepth 1 -name '.coverage*' -delete
@@ -131,13 +134,21 @@ uv run python -m coverage report
 uv run python scripts/check-coverage.py
 ```
 
-Only update the baseline after reviewing why coverage changed. Improvements
-can be recorded with the following command; regressions should instead gain
-tests or be explicitly justified in review:
+Only update the baseline after reviewing why coverage changed. Download the
+`python-coverage` artifact from the Ubuntu job for the same source revision,
+then merge it with the local report. The checker rejects different source sets
+or statement/branch counts, and stores the per-module and aggregate minima:
 
 ```bash
-uv run python scripts/check-coverage.py --write-baseline
+gh run download <run-id> -n python-coverage -D /tmp/python-coverage
+uv run python scripts/check-coverage.py \
+  --write-baseline \
+  --report coverage.json \
+  --report /tmp/python-coverage/coverage.json
 ```
+
+Coverage regressions should instead gain tests or be explicitly justified in
+review.
 
 ## Regenerate generated reference data
 

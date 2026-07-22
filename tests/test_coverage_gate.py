@@ -29,24 +29,28 @@ def _report(total: float, files: dict[str, dict[str, Any]]) -> dict[str, Any]:
 
 def _run(
     tmp_path: Path,
-    report: dict[str, Any],
+    report: dict[str, Any] | list[dict[str, Any]],
     baseline: dict[str, Any] | None = None,
     *,
     write_baseline: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    report_path = tmp_path / "coverage.json"
+    reports = report if isinstance(report, list) else [report]
+    report_paths: list[Path] = []
+    for index, value in enumerate(reports, start=1):
+        report_path = tmp_path / f"coverage-{index}.json"
+        report_path.write_text(json.dumps(value), encoding="utf-8")
+        report_paths.append(report_path)
     baseline_path = tmp_path / "baseline.json"
-    report_path.write_text(json.dumps(report), encoding="utf-8")
     if baseline is not None:
         baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
     command = [
         sys.executable,
         str(CHECKER),
-        "--report",
-        str(report_path),
         "--baseline",
         str(baseline_path),
     ]
+    for report_path in report_paths:
+        command.extend(["--report", str(report_path)])
     if write_baseline:
         command.append("--write-baseline")
     return subprocess.run(
@@ -81,12 +85,51 @@ def test_write_baseline_and_accept_equal_report(tmp_path: Path) -> None:
     written = _run(tmp_path, report, write_baseline=True)
     assert written.returncode == 0, written.stderr
     baseline = json.loads((tmp_path / "baseline.json").read_text())
+    assert baseline["report_count"] == 1
     assert baseline["total_percent_covered"] == 91.25
     assert list(baseline["files"]) == sorted(baseline["files"])
 
     checked = _run(tmp_path, report, baseline)
     assert checked.returncode == 0, checked.stderr
     assert "coverage ratchet passed" in checked.stdout
+
+
+def test_write_baseline_uses_cross_environment_minima(tmp_path: Path) -> None:
+    first = _report(
+        93.0,
+        {
+            "src/local_shell_mcp/a.py": _entry(95.0),
+            "src/local_shell_mcp/b.py": _entry(70.0),
+        },
+    )
+    second = _report(
+        90.0,
+        {
+            "src/local_shell_mcp/a.py": _entry(80.0),
+            "src/local_shell_mcp/b.py": _entry(90.0),
+        },
+    )
+    written = _run(tmp_path, [first, second], write_baseline=True)
+    assert written.returncode == 0, written.stderr
+    baseline = json.loads((tmp_path / "baseline.json").read_text())
+    assert baseline["report_count"] == 2
+    assert baseline["total_percent_covered"] == 90.0
+    assert (
+        baseline["files"]["src/local_shell_mcp/a.py"]["percent_covered"] == 80.0
+    )
+    assert (
+        baseline["files"]["src/local_shell_mcp/b.py"]["percent_covered"] == 70.0
+    )
+    assert _run(tmp_path, first, baseline).returncode == 0
+    assert _run(tmp_path, second, baseline).returncode == 0
+
+
+def test_write_baseline_rejects_mismatched_source_sets(tmp_path: Path) -> None:
+    first = _report(90.0, {"src/local_shell_mcp/a.py": _entry(90.0)})
+    second = _report(90.0, {"src/local_shell_mcp/b.py": _entry(90.0)})
+    written = _run(tmp_path, [first, second], write_baseline=True)
+    assert written.returncode == 2
+    assert "different source set" in written.stderr
 
 
 def test_rejects_total_coverage_regression(tmp_path: Path) -> None:

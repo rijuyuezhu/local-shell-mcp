@@ -106,8 +106,81 @@ def snapshot_report(report: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def write_baseline(report_path: Path, baseline_path: Path) -> None:
-    snapshot = snapshot_report(load_json(report_path))
+def merge_snapshots(snapshots: list[dict[str, Any]]) -> dict[str, Any]:
+    if not snapshots:
+        raise CoverageDataError("at least one coverage report is required")
+
+    file_maps = [
+        _mapping(snapshot.get("files"), f"coverage snapshot {index} files")
+        for index, snapshot in enumerate(snapshots, start=1)
+    ]
+    expected_paths = set(file_maps[0])
+    for index, files in enumerate(file_maps[1:], start=2):
+        paths = set(files)
+        if paths != expected_paths:
+            missing = sorted(expected_paths - paths)
+            extra = sorted(paths - expected_paths)
+            raise CoverageDataError(
+                f"coverage snapshot {index} has a different source set; "
+                f"missing={missing[:5]!r}, extra={extra[:5]!r}"
+            )
+
+    merged_files: dict[str, dict[str, int | float]] = {}
+    for path in sorted(expected_paths):
+        entries = [
+            _mapping(files[path], f"coverage snapshot entry {path}")
+            for files in file_maps
+        ]
+        statement_counts = {
+            _integer(
+                entry.get("num_statements"),
+                f"statement count for {path}",
+            )
+            for entry in entries
+        }
+        branch_counts = {
+            _integer(
+                entry.get("num_branches"),
+                f"branch count for {path}",
+            )
+            for entry in entries
+        }
+        if len(statement_counts) != 1 or len(branch_counts) != 1:
+            raise CoverageDataError(
+                f"coverage reports describe different source revisions for {path}"
+            )
+        merged_files[path] = {
+            "percent_covered": min(
+                _number(
+                    entry.get("percent_covered"),
+                    f"coverage percent for {path}",
+                )
+                for entry in entries
+            ),
+            "num_statements": statement_counts.pop(),
+            "num_branches": branch_counts.pop(),
+        }
+
+    total_percent = min(
+        _number(
+            snapshot.get("total_percent_covered"),
+            "coverage snapshot total_percent_covered",
+        )
+        for snapshot in snapshots
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "report_count": len(snapshots),
+        "total_percent_covered": round(total_percent, 6),
+        "new_file_min_percent": NEW_FILE_MIN_PERCENT,
+        "files": merged_files,
+    }
+
+
+def write_baseline(report_paths: list[Path], baseline_path: Path) -> None:
+    snapshot = merge_snapshots(
+        [snapshot_report(load_json(path)) for path in report_paths]
+    )
     baseline_path.parent.mkdir(parents=True, exist_ok=True)
     baseline_path.write_text(
         json.dumps(snapshot, indent=2, sort_keys=True) + "\n",
@@ -116,7 +189,8 @@ def write_baseline(report_path: Path, baseline_path: Path) -> None:
     print(
         "wrote coverage baseline: "
         f"{baseline_path} ({len(snapshot['files'])} files, "
-        f"{snapshot['total_percent_covered']:.2f}% total)"
+        f"{snapshot['total_percent_covered']:.2f}% total, "
+        f"{snapshot['report_count']} reports)"
     )
 
 
@@ -205,24 +279,40 @@ def evaluate(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument(
+        "--report",
+        type=Path,
+        action="append",
+        help=(
+            "coverage JSON report; repeat when writing a cross-environment "
+            "baseline (defaults to coverage.json)"
+        ),
+    )
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     parser.add_argument(
         "--write-baseline",
         action="store_true",
-        help="replace the baseline with the supplied coverage report",
+        help=(
+            "replace the baseline with per-module and aggregate minima from "
+            "all supplied reports"
+        ),
     )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    report_paths = args.report or [DEFAULT_REPORT]
     try:
         if args.write_baseline:
-            write_baseline(args.report, args.baseline)
+            write_baseline(report_paths, args.baseline)
             return 0
+        if len(report_paths) != 1:
+            raise CoverageDataError(
+                "coverage checking accepts exactly one --report"
+            )
         failures, summary = evaluate(
-            load_json(args.report),
+            load_json(report_paths[0]),
             load_json(args.baseline),
         )
     except CoverageDataError as exc:
