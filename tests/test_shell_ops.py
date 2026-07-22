@@ -85,7 +85,7 @@ async def test_bash_rejects_timeout_above_public_cap(tmp_path, monkeypatch):
         await mcp.call_tool("session_start", {"workdir": "."})
     )
 
-    with pytest.raises(ToolError, match="timeout_s must be <= 60 seconds"):
+    with pytest.raises(ToolError, match="timeout_s must be <= 120 seconds"):
         await mcp.call_tool(
             "bash",
             {
@@ -346,7 +346,7 @@ def test_run_shell_command_timeout_allows_explicit_cap(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
-    assert run_shell_command_timeout(60) == 60
+    assert run_shell_command_timeout(120) == 120
 
 
 def test_internal_shell_timeout_uses_at_least_builtin_default(

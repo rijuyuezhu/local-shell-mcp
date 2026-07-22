@@ -10,6 +10,7 @@ from starlette.applications import Starlette
 from starlette.routing import BaseRoute, Mount
 
 from ...config.settings import get_settings
+from ...deprecated_tools import DeprecatedToolFastMCP
 from ...oauth.core.security import validate_public_oauth_configuration
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
@@ -38,7 +39,7 @@ def _make_read_only_tool_annotations() -> ToolAnnotations:
 def build_mcp() -> FastMCP:
     """Create the MCP server and register the local tools."""
     settings = get_settings()
-    mcp = FastMCP(
+    mcp = DeprecatedToolFastMCP(
         "local-shell-mcp",
         instructions=SERVER_INSTRUCTIONS,
         transport_security=transport_security_settings(),

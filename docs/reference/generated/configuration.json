@@ -787,7 +787,7 @@
           },
           "integer",
           {
-            "code": "60"
+            "code": "120"
           },
           "Maximum timeout accepted by bounded shell command calls in seconds."
         ],
@@ -2346,8 +2346,8 @@
     {
       "choices": [],
       "cli": "--run-shell-max-timeout-s",
-      "default": 60,
-      "default_display": "60",
+      "default": 120,
+      "default_display": "120",
       "description": "Maximum timeout accepted by bounded shell command calls in seconds.",
       "env": "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S",
       "name": "run_shell_max_timeout_s",

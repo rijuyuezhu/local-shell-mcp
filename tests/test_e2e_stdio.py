@@ -33,6 +33,25 @@ async def test_stdio_process_exercises_core_tool_categories(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_stdio_process_diagnoses_stale_tool_snapshot(tmp_path):
+    async with stdio_tool_client(tmp_path) as (client, _workspace):
+        listed = await client.list_tools()
+        assert "remote_run_shell_tool" not in listed
+
+        result = await client.call_tool(
+            "remote_run_shell_tool", {"machine": "worker"}
+        )
+
+        assert result["ok"] is False
+        assert result["data"]["status"] == "stale_tool_snapshot"
+        assert result["data"]["replacement"] == "bash"
+        assert (
+            "session_start(target='remote'"
+            in result["data"]["assistant_instruction"]
+        )
+
+
+@pytest.mark.asyncio
 async def test_stdio_process_returns_native_image_content(tmp_path):
     import base64
 

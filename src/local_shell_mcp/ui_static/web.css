@@ -462,6 +462,14 @@ h2 {
 
 .terminal-xterm .xterm-viewport {
   border-radius: 0.35rem;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none;
+}
+
+.terminal-xterm .xterm-viewport::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 #terminal-output {

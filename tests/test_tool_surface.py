@@ -221,13 +221,13 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
         "hashline_edit when editing copied read/search rows"
         in descriptions["bash"]
     )
-    assert "timeout default/cap: 10/60 seconds" in descriptions["bash"]
+    assert "timeout default/cap: 10/120 seconds" in descriptions["bash"]
     assert (
         "read/search/hashline_edit/edit_lines/write_file"
         in descriptions["run_python_code"]
     )
     assert (
-        "timeout default/cap: 10/60 seconds" in descriptions["run_python_code"]
+        "timeout default/cap: 10/120 seconds" in descriptions["run_python_code"]
     )
     assert (
         "read, search, hashline_edit, edit_lines"

@@ -40,7 +40,7 @@ def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
 
     assert response.status_code == 400
     assert response.json()["error"] == "validation_error"
-    assert "timeout_s must be <= 60 seconds" in response.json()["message"]
+    assert "timeout_s must be <= 120 seconds" in response.json()["message"]
 
 
 def test_http_unknown_session_returns_validation_error(tmp_path, monkeypatch):

@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     """Base MCP/HTTP tool watchdog timeout in seconds. Shell execution tools receive additional bounded cleanup time beyond run_shell_max_timeout_s."""
     run_shell_default_timeout_s: int = 10
     """Default timeout for bounded shell command calls in seconds."""
-    run_shell_max_timeout_s: int = 60
+    run_shell_max_timeout_s: int = 120
     """Maximum timeout accepted by bounded shell command calls in seconds."""
     max_output_bytes: int = 200_000
     """Command output limit in bytes."""
