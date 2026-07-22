@@ -5,7 +5,9 @@ from __future__ import annotations
 import base64
 import binascii
 import contextlib
+import ctypes
 import hashlib
+import importlib
 import json
 import os
 import shutil
@@ -14,6 +16,7 @@ import tarfile
 import tempfile
 import time
 import uuid
+from ctypes import wintypes
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -299,6 +302,61 @@ def _open_transfer_source(path: Path) -> BinaryIO:
         raise
 
 
+class _ByHandleFileInformation(ctypes.Structure):
+    """Windows file identity fields returned for one open handle."""
+
+    _fields_ = [
+        ("dwFileAttributes", wintypes.DWORD),
+        ("ftCreationTime", wintypes.FILETIME),
+        ("ftLastAccessTime", wintypes.FILETIME),
+        ("ftLastWriteTime", wintypes.FILETIME),
+        ("dwVolumeSerialNumber", wintypes.DWORD),
+        ("nFileSizeHigh", wintypes.DWORD),
+        ("nFileSizeLow", wintypes.DWORD),
+        ("nNumberOfLinks", wintypes.DWORD),
+        ("nFileIndexHigh", wintypes.DWORD),
+        ("nFileIndexLow", wintypes.DWORD),
+    ]
+
+
+def _windows_file_identity(descriptor: int) -> tuple[int, int]:
+    """Return the stable Windows volume and file index for an open descriptor."""
+    msvcrt = importlib.import_module("msvcrt")
+    native_handle = int(msvcrt.get_osfhandle(descriptor))
+    if native_handle == -1:
+        raise OSError("invalid Windows file handle")
+    windows_ctypes: Any = ctypes
+    kernel32 = windows_ctypes.WinDLL("kernel32", use_last_error=True)
+    get_information = kernel32.GetFileInformationByHandle
+    get_information.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(_ByHandleFileInformation),
+    ]
+    get_information.restype = wintypes.BOOL
+    information = _ByHandleFileInformation()
+    if not get_information(
+        wintypes.HANDLE(native_handle), ctypes.byref(information)
+    ):
+        error_code = int(windows_ctypes.get_last_error())
+        raise OSError(error_code, "GetFileInformationByHandle failed")
+    file_index = (int(information.nFileIndexHigh) << 32) | int(
+        information.nFileIndexLow
+    )
+    return int(information.dwVolumeSerialNumber), file_index
+
+
+def _transfer_handle_identity(
+    handle: BinaryIO, *, platform: str | None = None
+) -> tuple[int, int]:
+    """Return a stable platform-native identity for an open transfer file."""
+    descriptor = handle.fileno()
+    effective_platform = os.name if platform is None else platform
+    if effective_platform == "nt":
+        return _windows_file_identity(descriptor)
+    file_stat = os.fstat(descriptor)
+    return int(file_stat.st_dev), int(file_stat.st_ino)
+
+
 def _stable_source_identity(source_stat: os.stat_result) -> tuple[int, ...]:
     return (
         int(source_stat.st_dev),
@@ -402,24 +460,18 @@ def transfer_copy_file(
 def _validate_transfer_identity(
     handle: BinaryIO, metadata: dict[str, Any]
 ) -> os.stat_result:
-    """Verify an open temporary file still matches its begin-write identity."""
+    """Verify an open temporary file still matches its stable identity and size."""
     file_stat = os.fstat(handle.fileno())
     if not stat.S_ISREG(file_stat.st_mode):
         raise ValueError("transfer temporary path is not a regular file")
     expected_identity = (
-        int(metadata.get("temporary_device", -1)),
-        int(metadata.get("temporary_inode", -1)),
-        int(metadata.get("temporary_ctime_ns", -1)),
-        int(metadata.get("temporary_mtime_ns", -1)),
+        int(metadata.get("temporary_identity_a", -1)),
+        int(metadata.get("temporary_identity_b", -1)),
     )
-    actual_identity = (
-        int(file_stat.st_dev),
-        int(file_stat.st_ino),
-        int(file_stat.st_ctime_ns),
-        int(file_stat.st_mtime_ns),
-    )
-    if expected_identity != actual_identity:
+    if expected_identity != _transfer_handle_identity(handle):
         raise ValueError("transfer temporary file identity changed")
+    if int(metadata.get("temporary_size", -1)) != int(file_stat.st_size):
+        raise ValueError("transfer temporary file size changed")
     return file_stat
 
 
@@ -482,6 +534,7 @@ def transfer_begin_write(
         temporary = _transfer_temp_path(destination, transfer_id)
         with _open_private_transfer_file(temporary) as handle:
             temporary_stat = os.fstat(handle.fileno())
+            temporary_identity = _transfer_handle_identity(handle)
         try:
             _write_transfer_metadata(
                 temporary,
@@ -491,10 +544,9 @@ def transfer_begin_write(
                     "expected_bytes": expected,
                     "received_ranges": [],
                     "created_at": time.time(),
-                    "temporary_device": int(temporary_stat.st_dev),
-                    "temporary_inode": int(temporary_stat.st_ino),
-                    "temporary_ctime_ns": int(temporary_stat.st_ctime_ns),
-                    "temporary_mtime_ns": int(temporary_stat.st_mtime_ns),
+                    "temporary_identity_a": temporary_identity[0],
+                    "temporary_identity_b": temporary_identity[1],
+                    "temporary_size": int(temporary_stat.st_size),
                 },
             )
         except Exception:
@@ -510,6 +562,8 @@ def transfer_begin_write(
 
 
 def _open_transfer_for_update(path: Path) -> BinaryIO:
+    if path.is_symlink():
+        raise ValueError("transfer temporary path must not be a symlink")
     flags = os.O_RDWR
     flags |= int(getattr(os, "O_BINARY", 0))
     flags |= int(getattr(os, "O_NOFOLLOW", 0))
@@ -561,8 +615,7 @@ def transfer_write_chunk(
             handle.write(data)
             handle.flush()
             updated_stat = os.fstat(handle.fileno())
-            metadata["temporary_ctime_ns"] = int(updated_stat.st_ctime_ns)
-            metadata["temporary_mtime_ns"] = int(updated_stat.st_mtime_ns)
+            metadata["temporary_size"] = int(updated_stat.st_size)
         _write_transfer_metadata(temporary, metadata)
     return TransferWriteChunkOutput(
         path=relative_display(destination),
@@ -627,19 +680,8 @@ def transfer_finish_write(
             digest = _sha256_handle(handle) if expected_sha256 else None
             if expected_sha256 and digest != expected_sha256:
                 raise ValueError("file sha256 mismatch")
-        current_stat = os.lstat(temporary)
-        if (
-            int(current_stat.st_dev),
-            int(current_stat.st_ino),
-            int(current_stat.st_ctime_ns),
-            int(current_stat.st_mtime_ns),
-        ) != (
-            int(temporary_stat.st_dev),
-            int(temporary_stat.st_ino),
-            int(temporary_stat.st_ctime_ns),
-            int(temporary_stat.st_mtime_ns),
-        ):
-            raise ValueError("transfer temporary file identity changed")
+        with _open_transfer_for_update(temporary) as handle:
+            _validate_transfer_identity(handle, metadata)
         if not bool(metadata.get("overwrite", True)) and os.path.lexists(
             destination
         ):

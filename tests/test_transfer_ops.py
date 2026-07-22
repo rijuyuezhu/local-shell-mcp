@@ -34,6 +34,30 @@ def _workspace(tmp_path, monkeypatch):
     return tmp_path
 
 
+def test_transfer_handle_identity_uses_platform_native_ids(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "identity.bin"
+    path.write_bytes(b"data")
+
+    with path.open("rb") as handle:
+        file_stat = os.fstat(handle.fileno())
+        assert transfer_ops._transfer_handle_identity(
+            handle, platform="posix"
+        ) == (int(file_stat.st_dev), int(file_stat.st_ino))
+
+        seen_descriptors = []
+        monkeypatch.setattr(
+            transfer_ops,
+            "_windows_file_identity",
+            lambda descriptor: seen_descriptors.append(descriptor) or (7, 11),
+        )
+        assert transfer_ops._transfer_handle_identity(
+            handle, platform="nt"
+        ) == (7, 11)
+        assert seen_descriptors == [handle.fileno()]
+
+
 def test_chunked_transfer_round_trip_and_checksum(tmp_path, monkeypatch):
     root = _workspace(tmp_path, monkeypatch)
     data = bytes(range(256)) * 3000 + b"tail"
@@ -238,15 +262,23 @@ def test_replaced_transfer_temp_is_rejected(tmp_path, monkeypatch):
     root = _workspace(tmp_path, monkeypatch)
     begin = transfer_begin_write("dest.bin", expected_bytes=3)
     temporary = root / begin.temp_path
-    alias = temporary.with_name(temporary.name + ".alias")
-    try:
-        os.link(temporary, alias)
-    except OSError as exc:
-        pytest.skip(f"hard links are unavailable: {exc}")
-    temporary.unlink()
-    os.replace(alias, temporary)
+    replacement = temporary.with_name(temporary.name + ".replacement")
+    replacement.write_bytes(b"")
+    os.replace(replacement, temporary)
 
     with pytest.raises(ValueError, match="identity changed"):
+        _write_payload("dest.bin", begin.transfer_id, 0, b"new")
+
+    transfer_abort_write("dest.bin", begin.transfer_id)
+
+
+def test_externally_resized_transfer_temp_is_rejected(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    begin = transfer_begin_write("dest.bin", expected_bytes=3)
+    temporary = root / begin.temp_path
+    temporary.write_bytes(b"x")
+
+    with pytest.raises(ValueError, match="size changed"):
         _write_payload("dest.bin", begin.transfer_id, 0, b"new")
 
     transfer_abort_write("dest.bin", begin.transfer_id)
