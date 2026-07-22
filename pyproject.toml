@@ -38,11 +38,11 @@ dev = [
     "pyright>=1.1.411",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-timeout>=2.4.0",
     "ruff>=0.15.20",
 ]
 docs = [
     "mkdocs-material>=9.7.6",
-    "mkdocs-static-i18n>=1.3",
 ]
 
 [build-system]
@@ -50,15 +50,8 @@ requires = ["uv_build>=0.11.0,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-source-include = [
-    "ui-terminal/**",
-    "ui-opentui/**",
-    "docs/**",
-    "mkdocs.yml",
-    "scripts/check-doc-i18n.py",
-]
+source-include = ["ui-terminal/**", "ui-opentui/**"]
 source-exclude = [
-    "/site",
     "/ui-terminal/node_modules",
     "/ui-terminal/.build-check",
     "/ui-opentui/node_modules",
@@ -85,6 +78,8 @@ ignore = ["E501"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+timeout = 120
+timeout_method = "thread"
 markers = [
     "integration: tests that start real local-shell-mcp server processes",
 ]

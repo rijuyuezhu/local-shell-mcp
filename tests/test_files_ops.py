@@ -336,7 +336,10 @@ def test_full_container_mode_disables_builtin_restrictions(
     assert settings.command_denylist == []
 
     assert settings.path_denylist == []
-    assert resolve_path("/etc/passwd") == Path("/etc/passwd").resolve()
+    outside_workspace = Path(tmp_path.anchor) / "outside-workspace"
+    assert resolve_path(outside_workspace) == Path(
+        os.path.abspath(outside_workspace)
+    )
     check_command_policy("mount /dev/null /mnt || true")
 
 

@@ -5,19 +5,17 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
-
       - "pyproject.toml"
       - "uv.lock"
-      - "scripts/check-doc-i18n.py"
+      - "scripts/check-doc-reference-assets.py"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
       - "mkdocs.yml"
-
       - "pyproject.toml"
       - "uv.lock"
-      - "scripts/check-doc-i18n.py"
+      - "scripts/check-doc-reference-assets.py"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -41,10 +39,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-
       - run: uv sync --locked --group docs
-      - run: uv run python scripts/check-doc-i18n.py
       - run: uv run mkdocs build --strict
+      - run: uv run python scripts/check-doc-reference-assets.py --site-dir site
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:

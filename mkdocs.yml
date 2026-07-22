@@ -8,8 +8,8 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   language: en
-
   features:
+    - navigation.instant
     - navigation.sections
     - navigation.top
     - navigation.tracking
@@ -34,50 +34,6 @@ theme:
 
 plugins:
   - search
-  - i18n:
-      docs_structure: suffix
-      fallback_to_default: true
-      reconfigure_material: true
-      reconfigure_search: true
-      languages:
-        - locale: en
-          name: English
-          build: true
-          default: true
-        - locale: zh
-          name: 简体中文
-          build: true
-          nav_translations:
-            Home: 首页
-            Getting started: 快速开始
-            Quickstart: 快速开始
-            Cloudflare Tunnel: Cloudflare Tunnel
-            ChatGPT connector: ChatGPT 连接器
-            Install options: 安装方式
-            Docker Compose: Docker Compose
-            VS Code: VS Code
-            Guides: 指南
-            Common workflows: 常见工作流
-            Human interface: 人机界面
-            Remote workers: 远程工作节点
-            Agent capability bridge: Agent 能力桥
-            Audit log: 审计日志
-            Example prompts: 示例提示词
-            Reference: 参考
-            Configuration: 配置
-            CLI: 命令行
-            Tools: 工具
-            MCP server instructions: MCP 服务器指令
-            Security: 安全
-            Troubleshooting: 故障排查
-            Development: 开发
-            Maintenance: 维护
-            Upstream commit review: 上游提交审查
-            Community: 社区
-            Contributing: 贡献指南
-            Support: 支持
-            Security policy: 安全策略
-            Code of conduct: 行为准则
 
 markdown_extensions:
   - admonition
