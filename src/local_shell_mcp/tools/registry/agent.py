@@ -9,17 +9,18 @@ from ...agent_bridge.tools import register_agent_bridge_dynamic_tools
 from ...config.settings import Settings
 from ...oauth.core.scopes import SUPPORTED_OAUTH_SCOPES
 from ...ops.agent import (
-    activate_agent_skill_execute,
+    activate_agent_skill_dispatch_execute,
     agent_config_status_execute,
     call_agent_mcp_tool_execute,
     list_agent_mcp_servers_execute,
     list_agent_mcp_tools_execute,
-    list_agent_skills_execute,
-    read_agent_skill_file_execute,
+    list_agent_skills_dispatch_execute,
+    read_agent_skill_file_dispatch_execute,
 )
 from ...schemas.input_models.agent import (
     AgentServerArg,
     AgentServerFilterArg,
+    AgentSessionIdArg,
     AgentSkillFilePathArg,
     AgentSkillNameArg,
     AgentToolArg,
@@ -83,9 +84,11 @@ async def agent_config_status() -> AgentConfigStatusOutput:
     enabled=_agent_bridge_enabled,
     annotations="read_only",
 )
-async def list_agent_skills() -> ListAgentSkillsOutput:
-    """List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them."""
-    return list_agent_skills_execute(_agent_registry())
+async def list_agent_skills(
+    session_id: AgentSessionIdArg = None,
+) -> ListAgentSkillsOutput:
+    """List Skills in project/session, managed, then global priority order without loading instructions."""
+    return await list_agent_skills_dispatch_execute(session_id)
 
 
 @agent_bridge_tool(
@@ -96,9 +99,10 @@ async def list_agent_skills() -> ListAgentSkillsOutput:
 )
 async def activate_agent_skill(
     name: AgentSkillNameArg,
+    session_id: AgentSessionIdArg = None,
 ) -> ActivateAgentSkillOutput:
-    """Load an agent skill's instructions. Parameter name must be the exact skill name returned by list_agent_skills; use before tasks that need that specialized guidance."""
-    return activate_agent_skill_execute(name, _agent_registry())
+    """Load one exact Skill from the same local or remote session registry used by list_agent_skills."""
+    return await activate_agent_skill_dispatch_execute(name, session_id)
 
 
 @agent_bridge_tool(
@@ -108,10 +112,12 @@ async def activate_agent_skill(
     annotations="read_only",
 )
 async def read_agent_skill_file(
-    name: AgentSkillNameArg, path: AgentSkillFilePathArg
+    name: AgentSkillNameArg,
+    path: AgentSkillFilePathArg,
+    session_id: AgentSessionIdArg = None,
 ) -> ReadAgentSkillFileOutput:
-    """Read a bounded related text file from an agent skill. Call activate_agent_skill first and pass one of its related_files paths."""
-    return read_agent_skill_file_execute(name, path, _agent_registry())
+    """Read a bounded related file from the same selected Skill source; activate the Skill first."""
+    return await read_agent_skill_file_dispatch_execute(name, path, session_id)
 
 
 @agent_bridge_tool(

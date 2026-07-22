@@ -729,6 +729,12 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
             for spec in REMOTE_WORKER_TOOL_SPECS
             if spec.expose_http
         }
+        if agent_bridge_enabled == "false":
+            internal_worker_handlers -= {
+                "list_agent_skills",
+                "activate_agent_skill",
+                "read_agent_skill_file",
+            }
 
         assert route_tool_names == mcp_tool_names - {"view_image"}
         assert handler_tool_names == mcp_tool_names | internal_worker_handlers

@@ -14,9 +14,10 @@ from ..schemas.result_models.agent import (
     ListAgentMcpToolsOutput,
     ListAgentSkillsOutput,
 )
+from ..tool_session.store import get_tool_session_store
 from ..utils.serialization import to_jsonable
 from .mcp import AgentMcpClientManager
-from .models import AgentCapabilityRegistry, AgentMcpServerRecord
+from .models import AgentCapabilityRegistry, AgentMcpServerRecord, SkillRecord
 from .redaction import (
     _redact_text,
     redact_configured_value_tree,
@@ -32,15 +33,27 @@ type AgentMcpClientManagerFactory = Callable[[float], Any]
 def build_agent_registry_from_settings(
     settings: Settings | None = None,
     client_manager_factory: AgentMcpClientManagerFactory = AgentMcpClientManager,
+    *,
+    session_id: str | None = None,
+    project_root: Path | None = None,
 ) -> AgentCapabilityRegistry:
-    """Build the current agent capability registry from runtime settings."""
+    """Build the current registry for the default workspace or one explicit local session."""
     active_settings = settings or get_settings()
+    active_project_root = project_root or active_settings.workspace_root
+    if session_id is not None:
+        session = get_tool_session_store().touch_session(session_id)
+        if session.target != "local":
+            raise ValueError(
+                "remote agent Skill registries must be dispatched to the worker"
+            )
+        active_project_root = Path(session.workdir)
     return build_agent_registry(
         active_settings.agent_config_dir,
         client_manager_factory(active_settings.agent_mcp_call_timeout_s),
         active_settings.agent_mcp_probe_timeout_s,
         None if active_settings.agent_dynamic_mcp_tools else False,
         None if active_settings.agent_dynamic_skill_tools else False,
+        project_root=Path(active_project_root),
         max_skills=active_settings.max_skills,
         max_skill_related_files=active_settings.max_skill_related_files,
         max_skill_scan_entries=active_settings.max_skill_scan_entries,
@@ -132,11 +145,23 @@ def agent_config_status_payload(
 def list_agent_skills_payload(
     registry: AgentCapabilityRegistry,
 ) -> ListAgentSkillsOutput:
-    """Return discovered agent skills and non-fatal skill warnings."""
+    """Return discovered agent skills, source roots, and non-fatal warnings."""
     return ListAgentSkillsOutput(
+        sources=[source.public_row() for source in registry.skill_sources],
         skills=[asdict(skill) for skill in registry.skills.values()],
         warnings=registry.skill_warnings,
     )
+
+
+def _skill_source(registry: AgentCapabilityRegistry, skill: SkillRecord):
+    """Return the selected source record for one discovered Skill."""
+    for source in registry.skill_sources:
+        if (
+            source.name == skill.source
+            and str(source.path) == skill.source_path
+        ):
+            return source
+    raise RuntimeError(f"Skill source is no longer available: {skill.source}")
 
 
 def activate_agent_skill_payload(
@@ -154,8 +179,10 @@ def activate_agent_skill_payload(
         if max_entry_bytes is not None
         else {}
     )
+
+    source = _skill_source(registry, skill)
     return ActivateAgentSkillOutput(
-        **activate_skill(registry.config_dir, skill, **kwargs)
+        **activate_skill(source.config_dir, skill, **kwargs)
     )
 
 
@@ -167,16 +194,22 @@ def read_agent_skill_file_payload(
     max_file_bytes: int | None = None,
 ) -> dict[str, Any]:
     """Read one bounded related file from a discovered agent skill."""
+
     skill = registry.skills.get(name)
     if skill is None:
         raise ValueError(f"Unknown agent skill: {name}")
-    entry = Path(skill.entry_path)
-    directory = entry.parent.parent.as_posix()
+    source = _skill_source(registry, skill)
     kwargs = (
         {"max_file_bytes": max_file_bytes} if max_file_bytes is not None else {}
     )
     return read_agent_skill_file(
-        registry.config_dir, name, path, directory, **kwargs
+        source.config_dir,
+        name,
+        path,
+        source.directory,
+        source_name=source.name,
+        source_path=str(source.path),
+        **kwargs,
     )
 
 

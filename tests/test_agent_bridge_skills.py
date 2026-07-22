@@ -37,6 +37,8 @@ def test_scan_agent_skills_reads_skill_md_with_bounded_related_paths(tmp_path):
     assert result.skills == {
         "paper-writer": SkillRecord(
             name="paper-writer",
+            source="managed",
+            source_path=str((tmp_path / "skills").resolve()),
             entry_path="skills/paper-writer/SKILL.md",
             description="Helps draft ML papers.",
             related_files=["template.md"],
@@ -95,12 +97,16 @@ def test_activate_and_read_related_skill_file(tmp_path):
     )
 
     assert activated["name"] == "debugging"
+    assert activated["source"] == "managed"
+    assert activated["source_path"] == str((tmp_path / "skills").resolve())
     assert activated["entry_path"] == "skills/debugging/SKILL.md"
     assert activated["content"] == "# Debugging\n\nFind root causes.\n"
     assert activated["bytes"] == len(activated["content"].encode())
     assert activated["related_files"] == ["guide.md"]
     assert related == {
         "name": "debugging",
+        "source": "managed",
+        "source_path": str((tmp_path / "skills").resolve()),
         "path": "guide.md",
         "content": "Reproduce first.\n",
         "bytes": len(b"Reproduce first.\r\n"),

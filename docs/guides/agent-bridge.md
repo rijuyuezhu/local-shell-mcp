@@ -1,6 +1,6 @@
 # Agent capability bridge
 
-The agent capability bridge exposes extra capabilities from a server-side config directory. It can surface external MCP servers and Markdown skills through `local-shell-mcp`.
+The agent capability bridge exposes extra capabilities from a managed server-side config directory. It can surface external MCP servers and Markdown skills through `local-shell-mcp`. Skills are discovered from ordered project/session, managed, and global registry sources.
 
 Use it when the control server should provide a stable set of additional tools or reusable instructions without asking the user to configure every MCP client separately.
 
@@ -24,6 +24,16 @@ For the default workspace state directory, the server path is:
 ```
 
 The server reads this directory at runtime. Treat it as configuration input and review external MCP server definitions before enabling them.
+
+Skill discovery uses these deduplicated sources in priority order:
+
+1. Project/session: `<workdir>/.agents/skills`
+2. Managed: `<agent_config_dir>/<skills.directory>`
+3. Global: `$XDG_CONFIG_HOME/agents/skills`, or `~/.config/agents/skills` when `XDG_CONFIG_HOME` is unset or relative
+
+The first valid Skill with a given directory name wins. A malformed higher-priority directory does not block a valid lower-priority Skill. The sources share the configured skill-count, scan-entry, and path-byte budgets, and duplicate or truncated entries are reported as bounded warnings. Symlinks and paths escaping their selected source root remain rejected.
+
+When `session_id` is supplied to `list_agent_skills`, `activate_agent_skill`, or `read_agent_skill_file`, the project source is that explicit local session workdir. For a remote session, discovery and reads execute on the owning worker against its session workdir; source paths are never resolved on the control machine. Without `session_id`, the project source is `workspace_root`. Dynamic skill tools use that default workspace registry.
 
 ## `config.json`
 
@@ -89,7 +99,7 @@ Example:
 Use this skill for debugging failing tests. First reproduce the failure, then inspect the smallest relevant code path, then propose a minimal fix.
 ```
 
-The skill name is derived from the directory name. Use `list_agent_skills` to see exact names, then `activate_agent_skill` to load one skill.
+The skill name is derived from the directory name. Use `list_agent_skills` to see exact names, selected `source`, and `source_path`, then pass the same optional `session_id` to `activate_agent_skill` or `read_agent_skill_file`.
 
 When dynamic skill tools are enabled, a skill such as `paper-writer` can also appear as a first-class MCP tool named like `activate_skill__paper_writer`.
 

@@ -4,6 +4,15 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
+AgentSessionIdArg = Annotated[
+    str | None,
+    Field(
+        description=(
+            "Optional explicit session id. Local sessions add <workdir>/.agents/skills "
+            "as the highest-priority source; remote sessions scan on that worker."
+        )
+    ),
+]
 AgentSkillNameArg = Annotated[
     str, Field(description="Exact skill name returned by list_agent_skills.")
 ]

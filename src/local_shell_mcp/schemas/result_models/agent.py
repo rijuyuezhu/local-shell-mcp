@@ -29,8 +29,11 @@ class AgentConfigStatusOutput(BaseModel):
 
 
 class ListAgentSkillsOutput(BaseModel):
-    """Discovered agent skills."""
+    """Discovered agent skills from ordered project, managed, and global roots."""
 
+    sources: list[dict[str, str]] = Field(
+        description="Ordered Skill registry source rows."
+    )
     skills: list[dict[str, Any]] = Field(
         description="Discovered skill metadata rows."
     )
@@ -43,8 +46,10 @@ class ActivateAgentSkillOutput(BaseModel):
     """Loaded agent skill instructions."""
 
     name: str = Field(description="Activated skill name.")
+    source: str = Field(description="Selected Skill registry source.")
+    source_path: str = Field(description="Absolute selected Skill source root.")
     entry_path: str = Field(
-        description="Skill entry file path relative to the agent config directory."
+        description="Skill entry file path relative to the selected source config root."
     )
     description: str = Field(description="Skill summary description.")
     content: str = Field(
@@ -60,6 +65,8 @@ class ReadAgentSkillFileOutput(BaseModel):
     """One bounded related text file from an agent skill."""
 
     name: str = Field(description="Selected skill name.")
+    source: str = Field(description="Selected Skill registry source.")
+    source_path: str = Field(description="Absolute selected Skill source root.")
     path: str = Field(description="Path relative to the skill directory.")
     content: str = Field(description="Normalized UTF-8 text content.")
     bytes: int = Field(description="Original file byte count.")

@@ -215,6 +215,35 @@ async def _write_todos(args: dict[str, Any]) -> Any:
     )
 
 
+async def _list_agent_skills(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.agent import list_agent_skills_execute
+
+    return await asyncio.to_thread(
+        list_agent_skills_execute, str(args["session_id"])
+    )
+
+
+async def _activate_agent_skill(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.agent import activate_agent_skill_execute
+
+    return await asyncio.to_thread(
+        activate_agent_skill_execute,
+        str(args["name"]),
+        str(args["session_id"]),
+    )
+
+
+async def _read_agent_skill_file(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.agent import read_agent_skill_file_execute
+
+    return await asyncio.to_thread(
+        read_agent_skill_file_execute,
+        str(args["name"]),
+        str(args["path"]),
+        str(args["session_id"]),
+    )
+
+
 async def _list_files(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.files import list_files_dispatch_execute
 
@@ -469,6 +498,9 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "get_audit_entry": _get_audit_entry,
     "read_todos": _read_todos,
     "write_todos": _write_todos,
+    "list_agent_skills": _list_agent_skills,
+    "activate_agent_skill": _activate_agent_skill,
+    "read_agent_skill_file": _read_agent_skill_file,
     "bash": _bash,
     "run_python_code": _run_python_code,
     "open_terminal_bridge": _open_terminal_bridge,

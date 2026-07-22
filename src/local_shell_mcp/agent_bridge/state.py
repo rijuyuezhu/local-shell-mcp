@@ -1,10 +1,16 @@
 """Manifest loading and configuration fingerprinting for the agent bridge."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
 import stat
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .sources import SkillSource
 
 from pydantic import ValidationError
 
@@ -94,6 +100,21 @@ def agent_config_fingerprint(config_dir: Path) -> str:
     for error in walk_errors:
         update("walk_error", type(error).__name__, error)
 
+    return digest.hexdigest()
+
+
+def agent_registry_fingerprint(
+    config_dir: Path, sources: tuple[SkillSource, ...]
+) -> str:
+    """Fingerprint the managed manifest tree plus all ordered Skill source roots."""
+    digest = hashlib.sha256()
+    digest.update(agent_config_fingerprint(config_dir).encode("ascii"))
+    for source in sources:
+        digest.update(source.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(source.path).encode("utf-8", errors="replace"))
+        digest.update(b"\0")
+        digest.update(agent_config_fingerprint(source.path).encode("ascii"))
     return digest.hexdigest()
 
 

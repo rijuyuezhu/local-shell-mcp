@@ -229,6 +229,9 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/conpty.py" in names
     assert "local_shell_mcp/dashboard.py" in names
     assert "local_shell_mcp/terminal_bridge.py" in names
+    assert "local_shell_mcp/ops/agent.py" in names
+    assert "local_shell_mcp/agent_bridge/skills.py" in names
+    assert "local_shell_mcp/agent_bridge/sources.py" in names
     assert "local_shell_mcp/utils/path_locks.py" in names
     assert "local_shell_mcp/utils/private_files.py" in names
     assert "local_shell_mcp/remote/manager.py" not in names
@@ -256,6 +259,9 @@ def test_worker_bundle_imports_without_checkout_fallback(tmp_path):
         "local_shell_mcp.dashboard",
         "local_shell_mcp.terminal_bridge",
         "local_shell_mcp.ops.session",
+        "local_shell_mcp.ops.agent",
+        "local_shell_mcp.agent_bridge.sources",
+        "local_shell_mcp.schemas.result_models.agent",
         "local_shell_mcp.ops.shell",
         "local_shell_mcp.ops.jobs",
         "local_shell_mcp.ops.todo",

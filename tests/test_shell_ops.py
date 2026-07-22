@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import os
 import shlex
 import sys
 
@@ -31,6 +33,11 @@ from tests.helpers import mcp_structured
 
 
 def _python_shell_command(source: str) -> str:
+    if os.name == "nt":
+        escaped_executable = sys.executable.replace("'", "''")
+        encoded = base64.b64encode(source.encode("utf-8")).decode("ascii")
+        wrapper = f"import base64; exec(base64.b64decode('{encoded}'))"
+        return f"& '{escaped_executable}' -c {shlex.quote(wrapper)}"
     return f"{shlex.quote(sys.executable)} -c {shlex.quote(source)}"
 
 

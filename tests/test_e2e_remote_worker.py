@@ -36,6 +36,9 @@ REMOTE_TOOL_NAMES = {
     "job",
     "view_image",
     "create_file_link",
+    "list_agent_skills",
+    "activate_agent_skill",
+    "read_agent_skill_file",
 }
 
 
@@ -73,7 +76,7 @@ async def run_remote_enabled_mcp_process(
             "--workspace-root",
             str(control_workspace),
             "--agent-bridge-enabled",
-            "false",
+            "true",
             "--remote-enabled",
             "true",
             "--remote-poll-timeout-s",
@@ -116,7 +119,7 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
                 remote_workspace / ".local-shell-mcp-worker"
             ),
             "LOCAL_SHELL_MCP_AUTH_MODE": "none",
-            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
+            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "true",
             "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
             "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
             "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S": "15",
@@ -283,6 +286,17 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lP7LAAAAAElFTkSuQmCC"
             )
             (remote_workspace / "remote" / "pixel.png").write_bytes(png)
+            remote_skill = (
+                remote_workspace / ".agents" / "skills" / "remote-skill"
+            )
+            remote_skill.mkdir(parents=True)
+            (remote_skill / "SKILL.md").write_text(
+                "# Remote Skill\n\nUse the remote workspace.\n",
+                encoding="utf-8",
+            )
+            (remote_skill / "guide.md").write_text(
+                "remote guide\n", encoding="utf-8"
+            )
 
             first_class_session = await client.call_tool(
                 "session_start",
@@ -297,6 +311,30 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert first_class_session["target"] == "remote"
             assert first_class_session["machine"] == machine
             assert "worker_session_id" not in first_class_session
+
+            remote_skills = await client.call_tool(
+                "list_agent_skills", {"session_id": first_class_session_id}
+            )
+            assert [row["name"] for row in remote_skills["skills"]] == [
+                "remote-skill"
+            ]
+            assert remote_skills["skills"][0]["source"] == "project"
+            remote_activated = await client.call_tool(
+                "activate_agent_skill",
+                {"name": "remote-skill", "session_id": first_class_session_id},
+            )
+            assert remote_activated["source"] == "project"
+            assert "remote workspace" in remote_activated["content"]
+            remote_guide = await client.call_tool(
+                "read_agent_skill_file",
+                {
+                    "name": "remote-skill",
+                    "path": "guide.md",
+                    "session_id": first_class_session_id,
+                },
+            )
+            assert remote_guide["content"] == "remote guide\n"
+            assert remote_guide["source"] == "project"
 
             image_result = await client.call_tool_result(
                 "view_image",

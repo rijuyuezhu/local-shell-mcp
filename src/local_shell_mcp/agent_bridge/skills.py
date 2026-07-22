@@ -303,7 +303,7 @@ def _scan_related_files(
     max_related_files: int,
     max_scan_entries: int,
     max_path_bytes: int,
-) -> tuple[list[str], list[str], int]:
+) -> tuple[list[str], list[str], int, int]:
     related_limit = _bounded(max_related_files, DEFAULT_MAX_RELATED_FILES)
     scan_limit = max(0, int(max_scan_entries))
     path_limit = max(0, int(max_path_bytes))
@@ -315,13 +315,13 @@ def _scan_related_files(
             warnings,
             "Related file scan omitted because the scan budget is exhausted",
         )
-        return related_files, warnings, scanned_entries
+        return related_files, warnings, scanned_entries, 0
     if path_limit == 0:
         _append_warning(
             warnings,
             "Related file paths omitted because the path budget is exhausted",
         )
-        return related_files, warnings, scanned_entries
+        return related_files, warnings, scanned_entries, 0
     path_bytes = 0
     stack = [skill_root]
 
@@ -336,7 +336,12 @@ def _scan_related_files(
                             warnings,
                             f"Related file scan stopped after {scan_limit} entries",
                         )
-                        return sorted(related_files), warnings, scanned_entries
+                        return (
+                            sorted(related_files),
+                            warnings,
+                            scanned_entries,
+                            path_bytes,
+                        )
                     scanned_entries += 1
                     entries.append(entry)
         except OSError as exc:
@@ -385,13 +390,23 @@ def _scan_related_files(
                         warnings,
                         f"Related file list truncated at {related_limit} files",
                     )
-                    return sorted(related_files), warnings, scanned_entries
+                    return (
+                        sorted(related_files),
+                        warnings,
+                        scanned_entries,
+                        path_bytes,
+                    )
                 if path_bytes + encoded_bytes > path_limit:
                     _append_warning(
                         warnings,
                         f"Related file paths truncated at {path_limit} UTF-8 bytes",
                     )
-                    return sorted(related_files), warnings, scanned_entries
+                    return (
+                        sorted(related_files),
+                        warnings,
+                        scanned_entries,
+                        path_bytes,
+                    )
                 related_files.append(relative)
                 path_bytes += encoded_bytes
             except (OSError, ValueError) as exc:
@@ -400,7 +415,7 @@ def _scan_related_files(
                     f"Skipping related path {path.name}: {exc}",
                 )
 
-    return sorted(related_files), warnings, scanned_entries
+    return sorted(related_files), warnings, scanned_entries, path_bytes
 
 
 def _load_skill_record(
@@ -408,11 +423,13 @@ def _load_skill_record(
     skills_dir: Path,
     name: str,
     *,
+    source_name: str,
+    source_path: str,
     max_entry_bytes: int,
     max_related_files: int,
     max_scan_entries: int,
     max_path_bytes: int,
-) -> tuple[SkillRecord, str, int, list[str], int]:
+) -> tuple[SkillRecord, str, int, list[str], int, int]:
     skill_root = _resolve_skill_root(skills_dir, name)
     entry_path = skill_root / "SKILL.md"
     if not entry_path.exists():
@@ -420,7 +437,7 @@ def _load_skill_record(
     content, content_bytes, resolved_entry = _open_regular_file(
         entry_path, skill_root, max_entry_bytes
     )
-    related_files, warnings, scanned_entries = _scan_related_files(
+    related_files, warnings, scanned_entries, path_bytes = _scan_related_files(
         skill_root,
         resolved_entry,
         max_related_files=max_related_files,
@@ -429,17 +446,28 @@ def _load_skill_record(
     )
     record = SkillRecord(
         name=name,
+        source=source_name,
+        source_path=source_path,
         entry_path=_relative_posix(config_root, resolved_entry),
         description=_skill_description(content),
         related_files=related_files,
     )
-    return record, content, content_bytes, warnings, scanned_entries
+    return (
+        record,
+        content,
+        content_bytes,
+        warnings,
+        scanned_entries,
+        path_bytes,
+    )
 
 
 def scan_agent_skills(
     config_dir: Path,
     directory: str = "skills",
     *,
+    source_name: str = "managed",
+    source_path: str | None = None,
     max_skills: int = DEFAULT_MAX_SKILLS,
     max_related_files: int = DEFAULT_MAX_RELATED_FILES,
     max_scan_entries: int = DEFAULT_MAX_SCAN_ENTRIES,
@@ -461,6 +489,9 @@ def scan_agent_skills(
         )
 
     skill_limit = _bounded(max_skills, DEFAULT_MAX_SKILLS)
+    display_source_path = (
+        str(skills_dir) if source_path is None else source_path
+    )
     scan_limit = _bounded(max_scan_entries, DEFAULT_MAX_SCAN_ENTRIES)
     warnings: list[str] = []
     candidates: list[str] = []
@@ -507,15 +538,25 @@ def scan_agent_skills(
 
     skills: dict[str, SkillRecord] = {}
     total_scanned_entries = scanned_entries
+    total_path_bytes = 0
     remaining_scan_entries = max(0, scan_limit - scanned_entries)
     remaining_path_bytes = max(0, int(max_path_bytes))
     for name in candidates:
         try:
             validate_skill_name(name)
-            record, _, _, skill_warnings, related_scanned = _load_skill_record(
+            (
+                record,
+                _,
+                _,
+                skill_warnings,
+                related_scanned,
+                related_path_bytes,
+            ) = _load_skill_record(
                 config_root,
                 skills_dir,
                 name,
+                source_name=source_name,
+                source_path=display_source_path,
                 max_entry_bytes=max_entry_bytes,
                 max_related_files=max_related_files,
                 max_scan_entries=remaining_scan_entries,
@@ -531,15 +572,14 @@ def scan_agent_skills(
         )
         for warning in skill_warnings:
             _append_warning(warnings, f"Skill {name}: {warning}")
-        remaining_path_bytes -= sum(
-            len(path.encode("utf-8")) for path in record.related_files
-        )
-        remaining_path_bytes = max(0, remaining_path_bytes)
+        total_path_bytes += related_path_bytes
+        remaining_path_bytes = max(0, remaining_path_bytes - related_path_bytes)
 
     return SkillScanResult(
         skills=skills,
         warnings=warnings,
         scanned_entries=total_scanned_entries,
+        path_bytes=total_path_bytes,
     )
 
 
@@ -548,6 +588,8 @@ def load_agent_skill(
     name: str,
     directory: str = "skills",
     *,
+    source_name: str = "managed",
+    source_path: str | None = None,
     max_related_files: int = DEFAULT_MAX_RELATED_FILES,
     max_scan_entries: int = DEFAULT_MAX_SCAN_ENTRIES,
     max_path_bytes: int = DEFAULT_MAX_PATH_BYTES,
@@ -555,10 +597,12 @@ def load_agent_skill(
 ) -> dict[str, Any]:
     """Load one Skill directly without scanning or reading every installed Skill."""
     config_root, skills_dir = _resolved_skills_directory(config_dir, directory)
-    record, content, content_bytes, warnings, _ = _load_skill_record(
+    record, content, content_bytes, warnings, _, _ = _load_skill_record(
         config_root,
         skills_dir,
         validate_skill_name(name),
+        source_name=source_name,
+        source_path=str(skills_dir) if source_path is None else source_path,
         max_entry_bytes=max_entry_bytes,
         max_related_files=max_related_files,
         max_scan_entries=max_scan_entries,
@@ -566,6 +610,8 @@ def load_agent_skill(
     )
     return {
         "name": record.name,
+        "source": record.source,
+        "source_path": record.source_path,
         "entry_path": record.entry_path,
         "description": record.description,
         "content": content,
@@ -581,6 +627,8 @@ def read_agent_skill_file(
     path: str,
     directory: str = "skills",
     *,
+    source_name: str = "managed",
+    source_path: str | None = None,
     max_file_bytes: int = DEFAULT_MAX_ENTRY_BYTES,
 ) -> dict[str, Any]:
     """Read one bounded regular text file directly from inside an installed Skill."""
@@ -596,6 +644,8 @@ def read_agent_skill_file(
     )
     return {
         "name": skill_name,
+        "source": source_name,
+        "source_path": str(skills_dir) if source_path is None else source_path,
         "path": relative_path.as_posix(),
         "content": content,
         "bytes": content_bytes,
@@ -619,6 +669,8 @@ def activate_skill(
     )
     return {
         "name": skill.name,
+        "source": skill.source,
+        "source_path": skill.source_path,
         "entry_path": skill.entry_path,
         "description": skill.description,
         "content": content,

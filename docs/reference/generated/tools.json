@@ -33,10 +33,17 @@
                   "code": "name"
                 },
                 "note": "(string, required)"
+              },
+              {
+                "description": "Optional explicit session id. Local sessions add <workdir>/.agents/skills as the highest-priority source; remote sessions scan on that worker.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string / null, optional)"
               }
             ]
           },
-          "Load an agent skill's instructions. Parameter name must be the exact skill name returned by list_agent_skills; use before tasks that need that specialized guidance."
+          "Load one exact Skill from the same local or remote session registry used by list_agent_skills."
         ],
         [
           {
@@ -104,8 +111,18 @@
           {
             "code": "list_agent_skills"
           },
-          "none",
-          "List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them."
+          {
+            "items": [
+              {
+                "description": "Optional explicit session id. Local sessions add <workdir>/.agents/skills as the highest-priority source; remote sessions scan on that worker.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string / null, optional)"
+              }
+            ]
+          },
+          "List Skills in project/session, managed, then global priority order without loading instructions."
         ],
         [
           {
@@ -126,10 +143,17 @@
                   "code": "path"
                 },
                 "note": "(string, required)"
+              },
+              {
+                "description": "Optional explicit session id. Local sessions add <workdir>/.agents/skills as the highest-priority source; remote sessions scan on that worker.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string / null, optional)"
               }
             ]
           },
-          "Read a bounded related text file from an agent skill. Call activate_agent_skill first and pass one of its related_files paths."
+          "Read a bounded related file from the same selected Skill source; activate the Skill first."
         ]
       ]
     },
@@ -1422,13 +1446,26 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Load an agent skill's instructions. Parameter name must be the exact skill name returned by list_agent_skills; use before tasks that need that specialized guidance.",
+      "description": "Load one exact Skill from the same local or remote session registry used by list_agent_skills.",
       "inputSchema": {
         "properties": {
           "name": {
             "description": "Exact skill name returned by list_agent_skills.",
             "title": "Name",
             "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional explicit session id. Local sessions add <workdir>/.agents/skills as the highest-priority source; remote sessions scan on that worker.",
+            "title": "Session Id"
           }
         },
         "required": [
@@ -1472,7 +1509,7 @@
             "type": "string"
           },
           "entry_path": {
-            "description": "Skill entry file path relative to the agent config directory.",
+            "description": "Skill entry file path relative to the selected source config root.",
             "title": "Entry Path",
             "type": "string"
           },
@@ -1488,10 +1525,22 @@
             },
             "title": "Related Files",
             "type": "array"
+          },
+          "source": {
+            "description": "Selected Skill registry source.",
+            "title": "Source",
+            "type": "string"
+          },
+          "source_path": {
+            "description": "Absolute selected Skill source root.",
+            "title": "Source Path",
+            "type": "string"
           }
         },
         "required": [
           "name",
+          "source",
+          "source_path",
           "entry_path",
           "description",
           "content",
@@ -3886,9 +3935,23 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them.",
+      "description": "List Skills in project/session, managed, then global priority order without loading instructions.",
       "inputSchema": {
-        "properties": {},
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional explicit session id. Local sessions add <workdir>/.agents/skills as the highest-priority source; remote sessions scan on that worker.",
+            "title": "Session Id"
+          }
+        },
         "title": "list_agent_skillsArguments",
         "type": "object"
       },
@@ -3909,7 +3972,7 @@
       },
       "name": "list_agent_skills",
       "outputSchema": {
-        "description": "Discovered agent skills.",
+        "description": "Discovered agent skills from ordered project, managed, and global roots.",
         "properties": {
           "skills": {
             "description": "Discovered skill metadata rows.",
@@ -3918,6 +3981,17 @@
               "type": "object"
             },
             "title": "Skills",
+            "type": "array"
+          },
+          "sources": {
+            "description": "Ordered Skill registry source rows.",
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Sources",
             "type": "array"
           },
           "warnings": {
@@ -3930,6 +4004,7 @@
           }
         },
         "required": [
+          "sources",
           "skills",
           "warnings"
         ],
@@ -4775,7 +4850,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read a bounded related text file from an agent skill. Call activate_agent_skill first and pass one of its related_files paths.",
+      "description": "Read a bounded related file from the same selected Skill source; activate the Skill first.",
       "inputSchema": {
         "properties": {
           "name": {
@@ -4787,6 +4862,19 @@
             "description": "Canonical POSIX path relative to the selected skill directory. Use one of activate_agent_skill.related_files.",
             "title": "Path",
             "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional explicit session id. Local sessions add <workdir>/.agents/skills as the highest-priority source; remote sessions scan on that worker.",
+            "title": "Session Id"
           }
         },
         "required": [
@@ -4834,10 +4922,22 @@
             "description": "Path relative to the skill directory.",
             "title": "Path",
             "type": "string"
+          },
+          "source": {
+            "description": "Selected Skill registry source.",
+            "title": "Source",
+            "type": "string"
+          },
+          "source_path": {
+            "description": "Absolute selected Skill source root.",
+            "title": "Source Path",
+            "type": "string"
           }
         },
         "required": [
           "name",
+          "source",
+          "source_path",
           "path",
           "content",
           "bytes"

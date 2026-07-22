@@ -42,6 +42,7 @@ dev = [
 ]
 docs = [
     "mkdocs-material>=9.7.6",
+    "mkdocs-static-i18n>=1.3",
 ]
 
 [build-system]
@@ -49,8 +50,15 @@ requires = ["uv_build>=0.11.0,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-source-include = ["ui-terminal/**", "ui-opentui/**"]
+source-include = [
+    "ui-terminal/**",
+    "ui-opentui/**",
+    "docs/**",
+    "mkdocs.yml",
+    "scripts/check-doc-i18n.py",
+]
 source-exclude = [
+    "/site",
     "/ui-terminal/node_modules",
     "/ui-terminal/.build-check",
     "/ui-opentui/node_modules",

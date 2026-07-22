@@ -22,8 +22,8 @@ from .skills import (
     DEFAULT_MAX_RELATED_FILES,
     DEFAULT_MAX_SCAN_ENTRIES,
     DEFAULT_MAX_SKILLS,
-    scan_agent_skills,
 )
+from .sources import scan_skill_sources, skill_sources
 from .state import load_agent_manifest
 
 
@@ -92,15 +92,26 @@ def build_agent_registry(
     dynamic_mcp_tools: bool | None = None,
     dynamic_skill_tools: bool | None = None,
     *,
+    project_root: Path | None = None,
     max_skills: int = DEFAULT_MAX_SKILLS,
     max_skill_related_files: int = DEFAULT_MAX_RELATED_FILES,
     max_skill_scan_entries: int = DEFAULT_MAX_SCAN_ENTRIES,
     max_skill_path_bytes: int = DEFAULT_MAX_PATH_BYTES,
     max_skill_entry_bytes: int = DEFAULT_MAX_ENTRY_BYTES,
 ) -> AgentCapabilityRegistry:
-    """Build a complete bridge registry by loading config, scanning skills, probing MCP servers, and assigning dynamic names."""
-    config_root = Path(config_dir)
+    """Build one manifest-backed registry with ordered project, managed, and global Skills."""
+    config_root = Path(config_dir).expanduser().resolve()
+    active_project_root = (
+        config_root
+        if project_root is None
+        else Path(project_root).expanduser().resolve()
+    )
     manifest = load_agent_manifest(config_root)
+    sources = skill_sources(
+        project_root=active_project_root,
+        managed_config_dir=config_root,
+        managed_directory=manifest.data.skills.directory,
+    )
     probe_timeout = _probe_timeout_seconds(probe_timeout_s)
     if client_manager is None:
         from .mcp import AgentMcpClientManager
@@ -109,9 +120,8 @@ def build_agent_registry(
 
     skill_scan = SkillScanResult()
     if manifest.status != "invalid_config" and manifest.data.skills.enabled:
-        skill_scan = scan_agent_skills(
-            config_root,
-            manifest.data.skills.directory,
+        skill_scan = scan_skill_sources(
+            sources,
             max_skills=max_skills,
             max_related_files=max_skill_related_files,
             max_scan_entries=max_skill_scan_entries,
@@ -208,6 +218,8 @@ def build_agent_registry(
 
     return AgentCapabilityRegistry(
         config_dir=config_root,
+        project_root=active_project_root,
+        skill_sources=sources,
         config_path=manifest.config_path,
         manifest_status=manifest.status,
         manifest_errors=manifest.errors,

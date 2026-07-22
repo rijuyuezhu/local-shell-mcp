@@ -14,7 +14,7 @@ from .service import (
     redact_configured_value_tree,
     tool_value,
 )
-from .state import agent_config_fingerprint
+from .state import agent_registry_fingerprint
 
 type SkillHandler = Callable[[], Awaitable[Any]]
 type McpHandler = Callable[..., Awaitable[Any]]
@@ -41,7 +41,9 @@ class AgentBridgeToolReloader:
         self.dynamic_skill_tools = dynamic_skill_tools
         self.skill_limits = dict(skill_limits or {})
         self._dynamic_tool_names: set[str] = set()
-        self._fingerprint = agent_config_fingerprint(registry.config_dir)
+        self._fingerprint = agent_registry_fingerprint(
+            registry.config_dir, registry.skill_sources
+        )
         self._lock = threading.RLock()
 
     def current_registry(self) -> AgentCapabilityRegistry:
@@ -51,11 +53,15 @@ class AgentBridgeToolReloader:
 
     def refresh_if_needed(self) -> None:
         """Rebuild the registry and dynamic tool set when bridge config files change on disk."""
-        fingerprint = agent_config_fingerprint(self.registry.config_dir)
+        fingerprint = agent_registry_fingerprint(
+            self.registry.config_dir, self.registry.skill_sources
+        )
         if fingerprint == self._fingerprint:
             return
         with self._lock:
-            fingerprint = agent_config_fingerprint(self.registry.config_dir)
+            fingerprint = agent_registry_fingerprint(
+                self.registry.config_dir, self.registry.skill_sources
+            )
             if fingerprint == self._fingerprint:
                 return
             self._remove_dynamic_tools()
@@ -65,6 +71,7 @@ class AgentBridgeToolReloader:
                 self.probe_timeout_s,
                 self.dynamic_mcp_tools,
                 self.dynamic_skill_tools,
+                project_root=self.registry.project_root,
                 **self.skill_limits,
             )
             self._fingerprint = fingerprint

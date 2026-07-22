@@ -1,8 +1,13 @@
 """Agent bridge configuration and registry data models."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from .sources import SkillSource
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -108,8 +113,12 @@ class SkillRecord:
 
     name: str
     """Stable skill name derived from its directory."""
+    source: str
+    """Registry source that supplied this skill."""
+    source_path: str
+    """Absolute path to the selected source's Skill root."""
     entry_path: str
-    """Path to the Markdown skill entry file."""
+    """Path to the Markdown skill entry file relative to the source config root."""
     description: str
     """Human-readable skill summary."""
     related_files: list[str]
@@ -122,10 +131,13 @@ class SkillScanResult:
 
     skills: dict[str, SkillRecord] = field(default_factory=dict)
     """Accepted skills keyed by skill name."""
+
     warnings: list[str] = field(default_factory=list)
     """Non-fatal skill discovery warnings for ignored or invalid entries."""
     scanned_entries: int = 0
     """Filesystem entries consumed from the bounded scan budget."""
+    path_bytes: int = 0
+    """UTF-8 related-file path bytes consumed from the bounded path budget."""
 
 
 @dataclass(frozen=True)
@@ -171,7 +183,11 @@ class AgentCapabilityRegistry:
     """Snapshot of discovered agent bridge capabilities."""
 
     config_dir: Path
-    """Directory containing bridge configuration and skills."""
+    """Directory containing the managed bridge manifest."""
+    project_root: Path
+    """Project or explicit session workdir used for project-local Skills."""
+    skill_sources: tuple[SkillSource, ...]
+    """Ordered project, managed, and global Skill sources."""
     config_path: Path
     """Path to the bridge manifest file."""
     manifest_status: str
@@ -207,6 +223,9 @@ class AgentCapabilityRegistry:
             "skills": {
                 "count": len(self.skills),
                 "warnings": self.skill_warnings,
+                "sources": [
+                    source.public_row() for source in self.skill_sources
+                ],
             },
             "mcp_servers": {
                 name: {
