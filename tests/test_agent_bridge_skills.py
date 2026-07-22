@@ -69,7 +69,10 @@ def test_scan_agent_skills_skips_symlinked_entry(tmp_path):
     result = skills.scan_agent_skills(tmp_path, "skills")
 
     assert result.skills == {}
-    assert any("regular file" in warning for warning in result.warnings)
+    assert any(
+        "regular file" in warning or "symlink" in warning
+        for warning in result.warnings
+    )
 
 
 def test_scan_agent_skills_rejects_directories_outside_config_root(tmp_path):

@@ -66,7 +66,10 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --group dev
-      - run: uv run pytest -q
+      - if: runner.os != 'Windows'
+        run: uv run pytest -q
+      - if: runner.os == 'Windows'
+        run: uv run pytest -vv --tb=short --durations=20
 
 
   opentui:

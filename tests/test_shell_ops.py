@@ -1,7 +1,4 @@
 import asyncio
-import base64
-import os
-import shlex
 import sys
 
 import pytest
@@ -13,6 +10,7 @@ from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.shell import (
     SHELL_TIMEOUT_CLEANUP_GRACE_S,
     _shared_tail_bytes,
+    _shell_command_args,
     _subprocess_env,
     _tmux_session_name,
     check_command_policy,
@@ -29,16 +27,34 @@ from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import files as fs_tools_module
-from tests.helpers import mcp_structured
+from tests.helpers import (
+    mcp_structured,
+)
+from tests.helpers import (
+    python_shell_command as _python_shell_command,
+)
 
 
-def _python_shell_command(source: str) -> str:
-    if os.name == "nt":
-        escaped_executable = sys.executable.replace("'", "''")
-        encoded = base64.b64encode(source.encode("utf-8")).decode("ascii")
-        wrapper = f"import base64; exec(base64.b64decode('{encoded}'))"
-        return f"& '{escaped_executable}' -c {shlex.quote(wrapper)}"
-    return f"{shlex.quote(sys.executable)} -c {shlex.quote(source)}"
+def test_shell_command_args_are_native_for_supported_shells():
+    assert _shell_command_args("/bin/bash", "echo hi") == [
+        "/bin/bash",
+        "-lc",
+        "echo hi",
+    ]
+    assert _shell_command_args("cmd.exe", "echo hi") == [
+        "cmd.exe",
+        "/D",
+        "/S",
+        "/C",
+        "echo hi",
+    ]
+    assert _shell_command_args("pwsh.exe", "Write-Output hi") == [
+        "pwsh.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Write-Output hi",
+    ]
 
 
 def test_command_denylist_matching_is_case_insensitive(monkeypatch):
@@ -319,7 +335,9 @@ async def test_run_shell_command_timeout_includes_subprocess_spawn(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
-    async def hanging_spawn(command: str, cwd: str):
+    async def hanging_spawn(
+        command: str, cwd: str, env: dict[str, str] | None = None
+    ):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(

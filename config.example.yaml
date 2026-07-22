@@ -200,7 +200,7 @@ agent_dynamic_mcp_tools: true
 agent_dynamic_skill_tools: true
 
 # Tool executables.
-# Shell executable used for shell commands.
+# Shell executable; the POSIX default maps to COMSPEC on Windows.
 shell_executable: "/bin/bash"
 # tmux executable.
 tmux_bin: "tmux"
@@ -208,5 +208,5 @@ tmux_bin: "tmux"
 rg_bin: "rg"
 # Git executable used for patch validation and application.
 git_bin: "git"
-# Python executable.
+# Python executable; the POSIX default maps to the running interpreter on Windows.
 python_bin: "python3"

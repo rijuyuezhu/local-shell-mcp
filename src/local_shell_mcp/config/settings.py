@@ -268,7 +268,7 @@ class Settings(BaseSettings):
 
     # Tool executables.
     shell_executable: str = "/bin/bash"
-    """Shell executable used for shell commands."""
+    """Shell executable; the POSIX default maps to COMSPEC on Windows."""
     tmux_bin: str = "tmux"
     """tmux executable."""
     rg_bin: str = "rg"
@@ -276,7 +276,7 @@ class Settings(BaseSettings):
     git_bin: str = "git"
     """Git executable used for patch validation and application."""
     python_bin: str = "python3"
-    """Python executable."""
+    """Python executable; the POSIX default maps to the running interpreter on Windows."""
 
     @property
     def audit_log_path(self) -> Path:

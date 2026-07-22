@@ -28,7 +28,7 @@ async def test_apply_patch_envelope_is_session_bound_and_atomic(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "sample.txt"
-    target.write_text("one\ntwo\n", encoding="utf-8")
+    target.write_bytes(b"one\r\ntwo\r\n")
     session_id = _local_session(tmp_path, monkeypatch)
     patch = """*** Begin Patch
 *** Update File: sample.txt
@@ -46,8 +46,8 @@ async def test_apply_patch_envelope_is_session_bound_and_atomic(
     assert result.ok is True
     assert result.checked is True
     assert result.applied is True
-    assert target.read_text(encoding="utf-8") == "one\nTWO\n"
-    assert (tmp_path / "added.txt").read_text(encoding="utf-8") == "new\n"
+    assert target.read_bytes() == b"one\r\nTWO\r\n"
+    assert (tmp_path / "added.txt").read_bytes() == b"new\n"
     assert "--check" not in result.command
 
 

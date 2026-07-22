@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import signal
+import subprocess
 import sys
 import time
 import uuid
@@ -236,19 +237,75 @@ def _subprocess_env() -> dict[str, str]:
     return env
 
 
-async def _spawn_process(command: str, cwd: str) -> asyncio.subprocess.Process:
-    """Start a shell command in its own process group with workspace-aware cwd resolution."""
-    settings = get_settings()
+def _effective_shell_executable() -> str:
+    """Return a usable configured shell, adapting the POSIX default on Windows."""
+    configured = str(get_settings().shell_executable).strip()
+    if os.name == "nt" and configured in {"", "/bin/bash"}:
+        return os.environ.get("COMSPEC") or "cmd.exe"
+    return configured or os.environ.get("SHELL") or "/bin/sh"
+
+
+def _shell_command_args(shell: str, command: str) -> list[str]:
+    """Build native argv for POSIX shells, PowerShell, or cmd.exe."""
+    name = os.path.basename(shell).lower()
+    if name in {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}:
+        return [shell, "-NoProfile", "-NonInteractive", "-Command", command]
+    if name in {"cmd", "cmd.exe"}:
+        return [shell, "/D", "/S", "/C", command]
+    return [shell, "-lc", command]
+
+
+def _shell_join_argv(argv: list[str]) -> str:
+    """Render argv for the native shell without losing Windows quoting."""
+    return (
+        subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
+    )
+
+
+def _effective_python_executable() -> str:
+    """Return a usable Python executable, adapting the POSIX default on Windows."""
+    configured = str(get_settings().python_bin).strip()
+    if os.name == "nt" and configured in {"", "python3"}:
+        return sys.executable or "python"
+    return configured or sys.executable
+
+
+def _validated_env_overrides(env: dict[str, str] | None) -> dict[str, str]:
+    """Validate and normalize caller-provided subprocess environment overrides."""
+    if not env:
+        return {}
+    normalized: dict[str, str] = {}
+    for name, value in env.items():
+        if not _ENV_NAME_RE.match(name):
+            raise ValueError(f"Invalid environment variable name: {name!r}")
+        normalized[name] = str(value)
+    return normalized
+
+
+async def _spawn_process(
+    command: str,
+    cwd: str,
+    env: dict[str, str] | None = None,
+) -> asyncio.subprocess.Process:
+    """Start a native shell command in its own process group."""
+    shell = _effective_shell_executable()
+    child_env = _subprocess_env()
+    child_env.update(_validated_env_overrides(env))
+    process_group: dict[str, Any]
+    if os.name == "nt":
+        process_group = {
+            "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP,
+        }
+    else:
+        process_group = {"start_new_session": True}
     return await asyncio.create_subprocess_exec(
-        settings.shell_executable,
-        "-lc",
-        command,
+        *_shell_command_args(shell, command),
         cwd=cwd,
-        env=_subprocess_env(),
+        env=child_env,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        start_new_session=True,
+        **process_group,
     )
 
 
@@ -315,6 +372,7 @@ async def run_shell(
     cwd: str = ".",
     timeout_s: int | None = None,
     max_output_bytes: int | None = None,
+    env: dict[str, str] | None = None,
 ) -> CommandResult:
     """Execute a shell command with policy enforcement, concurrency limits, timeout handling, and bounded output capture."""
     check_command_policy(command)
@@ -333,7 +391,7 @@ async def run_shell(
 
     async def spawn_and_wait() -> None:
         nonlocal proc
-        proc = await _spawn_process(command, str(resolved_cwd))
+        proc = await _spawn_process(command, str(resolved_cwd), env)
         reader_tasks.extend(
             [
                 asyncio.create_task(
@@ -413,6 +471,7 @@ async def run_shell_command_execute(
     cwd: str = ".",
     timeout_s: int | None = None,
     max_output_bytes: int | None = None,
+    env: dict[str, str] | None = None,
 ) -> RunShellCommandOutput:
     """Execute a shell command through the public API using stricter timeout defaults."""
     result = await run_shell(
@@ -420,19 +479,31 @@ async def run_shell_command_execute(
         cwd,
         run_shell_command_timeout(timeout_s),
         max_output_bytes,
+        env,
     )
     return RunShellCommandOutput(**result.model_dump())
 
 
 def _command_with_env(command: str, env: dict[str, str] | None) -> str:
-    """Return a shell command prefixed with validated environment assignments."""
-    if not env:
+    """Prefix PTY/job commands with shell-native environment assignments."""
+    overrides = _validated_env_overrides(env)
+    if not overrides:
         return command
-    assignments: list[str] = []
-    for name, value in env.items():
-        if not _ENV_NAME_RE.match(name):
-            raise ValueError(f"Invalid environment variable name: {name!r}")
-        assignments.append(f"{name}={shlex.quote(value)}")
+    shell_name = os.path.basename(_effective_shell_executable()).lower()
+    if shell_name in {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}:
+        assignments = [
+            f"$env:{name}='{value.replace(chr(39), chr(39) * 2)}'"
+            for name, value in overrides.items()
+        ]
+        return f"{'; '.join(assignments)}; {command}"
+    if shell_name in {"cmd", "cmd.exe"}:
+        assignments = [
+            f'set "{name}={value}"' for name, value in overrides.items()
+        ]
+        return f"{' && '.join(assignments)} && {command}"
+    assignments = [
+        f"{name}={shlex.quote(value)}" for name, value in overrides.items()
+    ]
     return f"{' '.join(assignments)} {command}"
 
 
@@ -504,7 +575,7 @@ async def bash_execute(
             result=_as_result_dict(result),
         )
     result = await run_shell_command_execute(
-        command_with_env, cwd_text, timeout_s, max_output_bytes
+        command, cwd_text, timeout_s, max_output_bytes, env
     )
     return ShellExecutionOutput(
         mode="command",
@@ -549,7 +620,9 @@ async def run_python_code_execute(
     script_path = await write_temp_text_file(
         "Python script", code, "script", "py"
     )
-    command = f"python3 {shlex.quote(str(script_path))}"
+    command = _shell_join_argv(
+        [_effective_python_executable(), str(script_path)]
+    )
     result = await bash_execute(
         session_id,
         command,

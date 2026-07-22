@@ -72,9 +72,9 @@ def coerce_max_downloads(max_downloads: int | None) -> int:
 
 
 def safe_download_filename(filename: str | None, source: str | Path) -> str:
-    """Return a path-free, control-free, bounded browser filename."""
+    """Return a platform-independent, path-free browser filename."""
     source_name = Path(source).name
-    candidate = Path(filename).name if filename else source_name
+    candidate = str(filename) if filename else source_name
     candidate = candidate.replace("/", "_").replace("\\", "_")
     candidate = "".join(
         character

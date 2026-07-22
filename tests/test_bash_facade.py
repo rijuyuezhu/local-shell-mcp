@@ -8,7 +8,7 @@ from local_shell_mcp.schemas.result_models.shell import (
 )
 from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
-from tests.helpers import mcp_structured
+from tests.helpers import mcp_structured, python_shell_command
 
 
 def _create_session(workdir: str = ".") -> str:
@@ -26,16 +26,19 @@ async def test_shell_execution_runs_bounded_command_in_session_workdir(
     session_dir = tmp_path / "project"
     session_dir.mkdir()
     session_id = _create_session("project")
+    command = python_shell_command(
+        "import os; print(os.environ['FOO'] + ':' + os.getcwd(), end='')"
+    )
 
     result = await shell_ops.bash_execute(
         session_id,
-        "sh -c 'printf \"$FOO:$PWD\"'",
+        command,
         cwd=".",
         env={"FOO": "hello"},
     )
 
     assert result.mode == "command"
-    assert result.command == "sh -c 'printf \"$FOO:$PWD\"'"
+    assert result.command == command
     assert result.cwd == str(session_dir)
     assert result.result["ok"] is True
     assert result.result["stdout"] == f"hello:{session_dir}"
@@ -159,7 +162,10 @@ async def test_shell_execution_is_exposed_in_mcp(tmp_path, monkeypatch):
     payload = mcp_structured(
         await mcp.call_tool(
             "bash",
-            {"session_id": session["session_id"], "command": "printf hi"},
+            {
+                "session_id": session["session_id"],
+                "command": python_shell_command("print('hi', end='')"),
+            },
         )
     )
 

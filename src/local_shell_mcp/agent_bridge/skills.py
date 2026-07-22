@@ -237,7 +237,8 @@ def _open_regular_file(
             if stat.S_ISLNK(current_stat.st_mode):
                 raise ValueError("Skill file path must not be a symlink")
             if (
-                opened_stat.st_ino
+                os.name != "nt"
+                and opened_stat.st_ino
                 and current_stat.st_ino
                 and (opened_stat.st_dev, opened_stat.st_ino)
                 != (current_stat.st_dev, current_stat.st_ino)

@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from tests.e2e_helpers import ToolClient, assert_required_tools
+from tests.helpers import python_shell_command
 
 CORE_TOOL_NAMES = {
     "bash",
@@ -422,7 +423,9 @@ async def exercise_shell_tools(client: ToolClient, workspace: Path) -> None:
         "bash",
         {
             "session_id": session_id,
-            "command": "printf e2e-shell && pwd",
+            "command": python_shell_command(
+                "import os; print('e2e-shell' + os.getcwd(), end='')"
+            ),
             "timeout_s": 5,
         },
     )
@@ -436,7 +439,9 @@ async def exercise_shell_tools(client: ToolClient, workspace: Path) -> None:
         "bash",
         {
             "session_id": session_id,
-            "command": "pwd",
+            "command": python_shell_command(
+                "import os; print(os.getcwd(), end='')"
+            ),
             "cwd": "subdir",
             "timeout_s": 5,
         },
@@ -584,7 +589,7 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
             "send_persistent_shell_input",
             {
                 "shell_id": shell_id,
-                "input_text": "printf ready",
+                "input_text": "echo ready",
                 "enter": True,
             },
         )

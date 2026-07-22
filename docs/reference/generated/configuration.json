@@ -1731,7 +1731,7 @@
           {
             "code": "/bin/bash"
           },
-          "Shell executable used for shell commands."
+          "Shell executable; the POSIX default maps to COMSPEC on Windows."
         ],
         [
           {
@@ -1811,7 +1811,7 @@
           {
             "code": "python3"
           },
-          "Python executable."
+          "Python executable; the POSIX default maps to the running interpreter on Windows."
         ]
       ]
     },
@@ -2966,7 +2966,7 @@
       "cli": "--shell-executable",
       "default": "/bin/bash",
       "default_display": "/bin/bash",
-      "description": "Shell executable used for shell commands.",
+      "description": "Shell executable; the POSIX default maps to COMSPEC on Windows.",
       "env": "LOCAL_SHELL_MCP_SHELL_EXECUTABLE",
       "name": "shell_executable",
       "nullable": false,
@@ -3018,7 +3018,7 @@
       "cli": "--python-bin",
       "default": "python3",
       "default_display": "python3",
-      "description": "Python executable.",
+      "description": "Python executable; the POSIX default maps to the running interpreter on Windows.",
       "env": "LOCAL_SHELL_MCP_PYTHON_BIN",
       "name": "python_bin",
       "nullable": false,

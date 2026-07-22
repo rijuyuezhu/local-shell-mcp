@@ -44,7 +44,10 @@ def test_local_system_snapshot_uses_interval_cpu_and_network_samples(
     monkeypatch.setattr(dashboard_module.time, "monotonic", lambda: 12.0)
     monkeypatch.setattr(dashboard_module.os, "cpu_count", lambda: 8)
     monkeypatch.setattr(
-        dashboard_module.os, "getloadavg", lambda: (2.0, 1.0, 0.5)
+        dashboard_module.os,
+        "getloadavg",
+        lambda: (2.0, 1.0, 0.5),
+        raising=False,
     )
     monkeypatch.setattr(
         dashboard_module.shutil,
@@ -87,6 +90,7 @@ def test_local_system_snapshot_preserves_missing_metrics(
         dashboard_module.os,
         "getloadavg",
         lambda: (_ for _ in ()).throw(OSError("missing")),
+        raising=False,
     )
     monkeypatch.setattr(
         dashboard_module.shutil,

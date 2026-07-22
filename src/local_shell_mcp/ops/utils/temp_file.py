@@ -15,5 +15,10 @@ async def write_temp_text_file(
     await asyncio.to_thread(prune_temp_dir)
     path = temp_dir() / f"{filename_prefix}-{uuid.uuid4().hex}.{suffix}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(path.write_text, content, encoding="utf-8")
+    await asyncio.to_thread(
+        path.write_text,
+        content,
+        encoding="utf-8",
+        newline="",
+    )
     return path
