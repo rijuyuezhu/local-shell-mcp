@@ -29,6 +29,7 @@ const licenses = [];
 for (const [name, path] of [
   ["@xterm/xterm 5.5.0", "node_modules/@xterm/xterm/LICENSE"],
   ["@xterm/addon-fit 0.10.0", "node_modules/@xterm/addon-fit/LICENSE"],
+  ["@xterm/addon-image 0.8.0", "node_modules/@xterm/addon-image/LICENSE"],
 ]) {
   const license = (await readFile(resolve(root, path), "utf8")).trimEnd();
   licenses.push(`${name}\n${"=".repeat(name.length)}\n${license}`);

@@ -52,6 +52,9 @@
       allowTransparency: true,
       theme: { background: "rgba(3, 8, 12, 0.78)", foreground: "#d8e9f5", cursor: "#6bd5ff" },
     });
+    if (typeof api.createImageAddon === "function") {
+      terminal.loadAddon(api.createImageAddon());
+    }
     fitAddon = new api.FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(terminalElement);

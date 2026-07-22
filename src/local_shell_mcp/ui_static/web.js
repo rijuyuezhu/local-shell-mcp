@@ -1999,6 +1999,9 @@
       },
     });
     terminalXterm.parser.registerOscHandler(8, () => true);
+    if (typeof api.createImageAddon === "function") {
+      terminalXterm.loadAddon(api.createImageAddon());
+    }
     terminalFitAddon = new api.FitAddon();
     terminalXterm.loadAddon(terminalFitAddon);
     terminalXterm.open(elements.terminalXterm);

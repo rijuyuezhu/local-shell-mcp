@@ -139,6 +139,8 @@ jobs:
           test -f "$source_dir/ui-terminal/package.json"
           test -f "$source_dir/ui-terminal/package-lock.json"
           test -f "$source_dir/ui-terminal/src/index.js"
+          test -f "$source_dir/ui-terminal/src/image-support.js"
+          test -f "$source_dir/ui-terminal/src/image-support.test.js"
           test -f "$source_dir/ui-terminal/scripts/build.mjs"
           test ! -e "$source_dir/ui-terminal/node_modules"
           test -f "$source_dir/ui-opentui/package.json"

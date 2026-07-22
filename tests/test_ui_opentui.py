@@ -136,3 +136,9 @@ def test_spawn_opentui_process_keeps_local_token_in_environment(
         ":8765/api/ui"
     )
     assert captured["env"]["LOCAL_SHELL_MCP_UI_MODE"] == "web"
+    assert captured["env"]["TERM"] == "xterm-256color"
+    assert captured["env"]["COLORTERM"] == "truecolor"
+    assert captured["env"]["TERM_PROGRAM"] == "vscode"
+    assert captured["env"]["TERM_PROGRAM_VERSION"] == (
+        f"local-shell-mcp/{opentui.__version__}"
+    )

@@ -286,8 +286,8 @@ def spawn_opentui_process(
         {
             "TERM": "xterm-256color",
             "COLORTERM": "truecolor",
-            "TERM_PROGRAM": "local-shell-mcp-web",
-            "TERM_PROGRAM_VERSION": __version__,
+            "TERM_PROGRAM": "vscode",
+            "TERM_PROGRAM_VERSION": f"local-shell-mcp/{__version__}",
             "LOCAL_SHELL_MCP_UI_API_BASE": (
                 f"http://127.0.0.1:{settings.port}{UI_API_PREFIX}"
             ),

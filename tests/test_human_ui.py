@@ -119,6 +119,8 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert xterm_bundle.status_code == 200
     assert xterm_bundle.headers["x-content-type-options"] == "nosniff"
     assert "LsmXterm" in xterm_bundle.text
+    assert "createImageAddon" in xterm_bundle.text
+    assert "WEB_IMAGE_ADDON_OPTIONS" in xterm_bundle.text
     assert "sourceMappingURL" not in xterm_bundle.text
     assert client.get("/ui/assets/xterm.css").status_code == 200
     web_css = client.get("/ui/assets/web.css")
@@ -130,6 +132,14 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "Permission is hereby granted" in license_text.text
     assert "@xterm/xterm 5.5.0" in license_text.text
     assert "@xterm/addon-fit 0.10.0" in license_text.text
+    assert "@xterm/addon-image 0.8.0" in license_text.text
+    opentui_script = client.get("/ui/assets/opentui_console.js")
+    assert opentui_script.status_code == 200
+    assert opentui_script.headers["x-content-type-options"] == "nosniff"
+    assert "createImageAddon" in opentui_script.text
+    assert opentui_script.text.index("loadAddon(api.createImageAddon())") < (
+        opentui_script.text.index("fitAddon = new api.FitAddon()")
+    )
     script = client.get("/ui/assets/web.js")
     assert script.status_code == 200
     assert script.headers["x-content-type-options"] == "nosniff"
@@ -161,6 +171,10 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "sendTerminalBytes" in script.text
     assert "offset += 65536" in script.text
     assert "registerOscHandler(8" in script.text
+    assert "createImageAddon" in script.text
+    assert script.text.index("loadAddon(api.createImageAddon())") < (
+        script.text.index("terminalFitAddon = new api.FitAddon()")
+    )
     assert "allowNonHttpProtocols: false" in script.text
     assert "terminalSocketMachine === terminalMachine" in script.text
     assert "bridge_id" not in script.text
