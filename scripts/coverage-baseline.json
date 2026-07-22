@@ -281,9 +281,9 @@
       "percent_covered": 78.703704
     },
     "src/local_shell_mcp/ops/shell.py": {
-      "num_branches": 126,
-      "num_statements": 391,
-      "percent_covered": 86.460348
+      "num_branches": 128,
+      "num_statements": 396,
+      "percent_covered": 88.167939
     },
     "src/local_shell_mcp/ops/todo.py": {
       "num_branches": 22,
@@ -742,8 +742,13 @@
     },
     "src/local_shell_mcp/terminal_bridge.py": {
       "num_branches": 86,
-      "num_statements": 318,
-      "percent_covered": 76.237624
+      "num_statements": 320,
+      "percent_covered": 77.093596
+    },
+    "src/local_shell_mcp/tmux_helper.py": {
+      "num_branches": 22,
+      "num_statements": 68,
+      "percent_covered": 100.0
     },
     "src/local_shell_mcp/tool_session/__init__.py": {
       "num_branches": 0,
@@ -909,5 +914,5 @@
   "new_file_min_percent": 90.0,
   "report_count": 2,
   "schema_version": 1,
-  "total_percent_covered": 82.504909
+  "total_percent_covered": 82.604226
 }
