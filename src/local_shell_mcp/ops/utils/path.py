@@ -117,14 +117,14 @@ def resolve_path(
 
 
 def relative_display(path: Path) -> str:
-    """Render a lexical path relative to the workspace without following its final symlink."""
+    """Render a lexical API path with portable POSIX separators."""
     root = workspace_root()
     candidate = path if path.is_absolute() else root / path
     lexical = Path(os.path.abspath(candidate))
     try:
-        return str(lexical.relative_to(root))
+        return lexical.relative_to(root).as_posix()
     except ValueError:
-        return str(lexical)
+        return lexical.as_posix()
 
 
 def missing_path_context(

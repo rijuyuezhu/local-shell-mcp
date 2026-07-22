@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
+import local_shell_mcp.ops.shell as shell_ops
 import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.shell import (
@@ -297,6 +298,37 @@ def test_run_shell_command_timeout_uses_ten_second_default(
     clear_settings_cache()
 
     assert run_shell_command_timeout(None) == 10
+
+
+@pytest.mark.asyncio
+async def test_spawn_process_uses_native_shell_api_for_cmd(monkeypatch):
+    calls = []
+    sentinel = object()
+
+    async def fake_shell(command: str, **kwargs):
+        calls.append((command, kwargs))
+        return sentinel
+
+    async def unexpected_exec(*args, **kwargs):
+        raise AssertionError("cmd.exe must use create_subprocess_shell")
+
+    monkeypatch.setattr(
+        shell_ops, "_effective_shell_executable", lambda: "cmd.exe"
+    )
+    monkeypatch.setattr(shell_ops, "_subprocess_env", lambda: {"BASE": "1"})
+    monkeypatch.setattr(
+        shell_ops.asyncio, "create_subprocess_shell", fake_shell
+    )
+    monkeypatch.setattr(
+        shell_ops.asyncio, "create_subprocess_exec", unexpected_exec
+    )
+
+    result = await shell_ops._spawn_process("echo hi", ".", {"EXTRA": "2"})
+
+    assert result is sentinel
+    assert calls[0][0] == "echo hi"
+    assert calls[0][1]["executable"] == "cmd.exe"
+    assert calls[0][1]["env"] == {"BASE": "1", "EXTRA": "2"}
 
 
 def test_run_shell_command_timeout_allows_explicit_cap(tmp_path, monkeypatch):

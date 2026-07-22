@@ -104,7 +104,7 @@ def test_activate_and_read_related_skill_file(tmp_path):
     assert activated["source_path"] == str((tmp_path / "skills").resolve())
     assert activated["entry_path"] == "skills/debugging/SKILL.md"
     assert activated["content"] == "# Debugging\n\nFind root causes.\n"
-    assert activated["bytes"] == len(activated["content"].encode())
+    assert activated["bytes"] == (skill_dir / "SKILL.md").stat().st_size
     assert activated["related_files"] == ["guide.md"]
     assert related == {
         "name": "debugging",

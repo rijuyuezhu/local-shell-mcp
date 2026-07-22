@@ -43,6 +43,24 @@ def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
     assert "timeout_s must be <= 60 seconds" in response.json()["message"]
 
 
+def test_http_unknown_session_returns_validation_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).post(
+        "/tools/read",
+        json={"session_id": "BAD00000", "path": "missing.txt"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "message": "unknown session_id 'BAD00000'; call session_start first",
+    }
+
+
 def test_http_app_exposes_oauth_public_routes(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")

@@ -298,14 +298,24 @@ async def _spawn_process(
         }
     else:
         process_group = {"start_new_session": True}
+    common: dict[str, Any] = {
+        "cwd": cwd,
+        "env": child_env,
+        "stdin": asyncio.subprocess.DEVNULL,
+        "stdout": asyncio.subprocess.PIPE,
+        "stderr": asyncio.subprocess.PIPE,
+        **process_group,
+    }
+    shell_name = os.path.basename(shell).lower()
+    if shell_name in {"cmd", "cmd.exe"}:
+        return await asyncio.create_subprocess_shell(
+            command,
+            executable=shell,
+            **common,
+        )
     return await asyncio.create_subprocess_exec(
         *_shell_command_args(shell, command),
-        cwd=cwd,
-        env=child_env,
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        **process_group,
+        **common,
     )
 
 

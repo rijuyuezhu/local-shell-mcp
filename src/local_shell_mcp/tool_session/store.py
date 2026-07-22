@@ -85,7 +85,7 @@ def _new_snapshot_id() -> str:
     return secrets.token_hex(6)
 
 
-class UnknownAgentSessionError(KeyError):
+class UnknownAgentSessionError(ValueError):
     """Raised when a tool call references a missing agent session."""
 
 
