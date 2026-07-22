@@ -1,5 +1,6 @@
 """Explicit agent session operations."""
 
+import asyncio
 import subprocess
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -45,6 +46,7 @@ def _git_output(args: list[str], cwd: Path) -> str | None:
         result = subprocess.run(
             ["git", *args],
             cwd=cwd,
+            stdin=subprocess.DEVNULL,
             text=True,
             capture_output=True,
             timeout=5,
@@ -115,6 +117,19 @@ def _session_output(session: AgentSession) -> SessionStartOutput:
     )
 
 
+def _start_local_session(
+    *, workdir: str, machine: str | None, label: str | None
+) -> SessionStartOutput:
+    """Create and orient one local session outside the async transport loop."""
+    session = get_tool_session_store().create_session(
+        target="local",
+        workdir=workdir,
+        machine=machine,
+        label=label,
+    )
+    return _session_output(session)
+
+
 async def session_start_execute(
     workdir: str,
     target: str = "local",
@@ -123,13 +138,12 @@ async def session_start_execute(
 ) -> SessionStartOutput:
     """Create an explicit agent/workspace session."""
     if target == "local":
-        session = get_tool_session_store().create_session(
-            target="local",
+        return await asyncio.to_thread(
+            _start_local_session,
             workdir=workdir,
             machine=machine,
             label=label,
         )
-        return _session_output(session)
     if target != "remote":
         raise ValueError("target must be 'local' or 'remote'")
     if not machine:

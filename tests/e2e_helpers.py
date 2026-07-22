@@ -257,7 +257,11 @@ class McpSessionToolClient:
     async def call_tool_result(
         self, name: str, args: dict[str, Any] | None = None
     ) -> Any:
-        return await self._session.call_tool(name, args or {})
+        try:
+            async with asyncio.timeout(45):
+                return await self._session.call_tool(name, args or {})
+        except TimeoutError:
+            raise AssertionError(f"MCP tool call timed out: {name}") from None
 
     async def call_tool(
         self, name: str, args: dict[str, Any] | None = None

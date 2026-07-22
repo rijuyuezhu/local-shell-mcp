@@ -42,6 +42,33 @@ REMOTE_TOOL_NAMES = {
 }
 
 
+def start_logged_process(
+    args: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    stdout_path: Path,
+    stderr_path: Path,
+) -> subprocess.Popen[Any]:
+    """Launch a long-lived child without bounded PIPE buffers."""
+    with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
+        return subprocess.Popen(
+            args,
+            cwd=cwd,
+            env=env,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+
+def process_logs(workspace: Path, prefix: str) -> str:
+    stdout_path = workspace / f"{prefix}.stdout.log"
+    stderr_path = workspace / f"{prefix}.stderr.log"
+    stdout = stdout_path.read_text(encoding="utf-8", errors="replace")
+    stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
+    return f"stdout:\n{stdout}\nstderr:\n{stderr}"
+
+
 @asynccontextmanager
 async def run_remote_enabled_mcp_process(
     tmp_path: Path,
@@ -60,7 +87,7 @@ async def run_remote_enabled_mcp_process(
             "LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S": "15",
         }
     )
-    process = subprocess.Popen(
+    process = start_logged_process(
         [
             sys.executable,
             "-m",
@@ -86,21 +113,14 @@ async def run_remote_enabled_mcp_process(
         ],
         cwd=PROJECT_ROOT,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        stdout_path=control_workspace / "server.stdout.log",
+        stderr_path=control_workspace / "server.stderr.log",
     )
     try:
         await wait_for_http_ready(base_url, process)
         yield base_url, control_workspace, remote_workspace
     finally:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.communicate(timeout=5)
+        terminate_process(process)
 
 
 def worker_env(remote_workspace: Path) -> dict[str, str]:
@@ -131,8 +151,8 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
 
 def start_worker_process(
     base_url: str, invite: str, machine: str, remote_workspace: Path
-) -> subprocess.Popen[str]:
-    return subprocess.Popen(
+) -> subprocess.Popen[Any]:
+    return start_logged_process(
         [
             sys.executable,
             "-m",
@@ -148,35 +168,34 @@ def start_worker_process(
         ],
         cwd=PROJECT_ROOT,
         env=worker_env(remote_workspace),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        stdout_path=remote_workspace / "worker.stdout.log",
+        stderr_path=remote_workspace / "worker.stderr.log",
     )
 
 
-def terminate_process(process: subprocess.Popen[str]) -> None:
+def terminate_process(process: subprocess.Popen[Any]) -> None:
     if process.poll() is not None:
         return
     process.terminate()
     try:
-        process.communicate(timeout=5)
+        process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.communicate(timeout=5)
+        process.wait(timeout=5)
 
 
 async def wait_for_machine(
     client: ToolClient,
-    process: subprocess.Popen[str],
+    process: subprocess.Popen[Any],
     machine: str,
+    remote_workspace: Path,
 ) -> dict[str, Any]:
     deadline = asyncio.get_running_loop().time() + 10
     while True:
         if process.poll() is not None:
-            stdout, stderr = process.communicate(timeout=1)
             raise AssertionError(
                 f"worker exited early with code {process.returncode}\n"
-                f"stdout:\n{stdout}\nstderr:\n{stderr}"
+                f"{process_logs(remote_workspace, 'worker')}"
             )
         inventory_result = await client.call_tool(
             "remote_admin", {"action": "list", "args": {}}
@@ -273,7 +292,9 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             base_url, invite["code"], machine, remote_workspace
         )
         try:
-            row = await wait_for_machine(client, worker, machine)
+            row = await wait_for_machine(
+                client, worker, machine, remote_workspace
+            )
             assert row["workdir"] == str(remote_workspace)
 
             (remote_workspace / "remote").mkdir()
