@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import math
 import os
 import re
 import secrets
@@ -436,6 +437,7 @@ class RemoteManager:
             "token": token,
             "name": name,
             "poll_interval_s": 0,
+            "poll_timeout_s": get_settings().remote_poll_timeout_s,
             "heartbeat_interval_s": _heartbeat_interval_s(),
         }
 
@@ -468,6 +470,7 @@ class RemoteManager:
             "token": token,
             "name": name,
             "poll_interval_s": 0,
+            "poll_timeout_s": get_settings().remote_poll_timeout_s,
             "heartbeat_interval_s": _heartbeat_interval_s(),
         }
 
@@ -491,6 +494,18 @@ class RemoteManager:
     ) -> dict[str, Any]:
         """Negotiate runtime state, then long-poll for the next live job."""
         report = _validate_poll_report(payload)
+        configured_poll_timeout_s = float(get_settings().remote_poll_timeout_s)
+        effective_poll_timeout_s = configured_poll_timeout_s
+        try:
+            worker_poll_timeout_s = float(
+                (payload or {}).get("poll_timeout_s") or 0
+            )
+        except TypeError, ValueError:
+            worker_poll_timeout_s = 0.0
+        if math.isfinite(worker_poll_timeout_s) and worker_poll_timeout_s > 0:
+            effective_poll_timeout_s = min(
+                configured_poll_timeout_s, worker_poll_timeout_s
+            )
         upgrade: dict[str, Any] | None = None
         with self._state_lock:
             self._load_registry_unlocked()
@@ -522,14 +537,22 @@ class RemoteManager:
                     worker.info.update(info_updates)
                     self._save_registry_unlocked()
         if upgrade is not None and upgrade["required"]:
-            return {"job": None, "upgrade": upgrade}
+            return {
+                "job": None,
+                "upgrade": upgrade,
+                "poll_timeout_s": configured_poll_timeout_s,
+            }
 
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + get_settings().remote_poll_timeout_s
+        deadline = loop.time() + effective_poll_timeout_s
         while True:
             remaining = deadline - loop.time()
             if remaining <= 0:
-                response: dict[str, Any] = {"job": None, "heartbeat": True}
+                response: dict[str, Any] = {
+                    "job": None,
+                    "heartbeat": True,
+                    "poll_timeout_s": configured_poll_timeout_s,
+                }
                 if upgrade is not None:
                     response["upgrade"] = upgrade
                 return response
@@ -538,7 +561,11 @@ class RemoteManager:
                     worker.queue.get(), timeout=remaining
                 )
             except TimeoutError:
-                response = {"job": None, "heartbeat": True}
+                response = {
+                    "job": None,
+                    "heartbeat": True,
+                    "poll_timeout_s": configured_poll_timeout_s,
+                }
                 if upgrade is not None:
                     response["upgrade"] = upgrade
                 return response
@@ -552,7 +579,10 @@ class RemoteManager:
                 if expires_at and expires_at < _utc():
                     self._cancel_job_unlocked(job_id)
                     continue
-            response = {"job": job}
+            response = {
+                "job": job,
+                "poll_timeout_s": configured_poll_timeout_s,
+            }
             if upgrade is not None:
                 response["upgrade"] = upgrade
             return response

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import math
 import os
 import shutil
 import socket
@@ -47,6 +48,8 @@ def _handled_remote_exception(exc: Exception) -> dict[str, Any]:
 
 
 WORKER_TOOL_NAMES = REMOTE_WORKER_TOOL_NAMES
+_WORKER_CONNECT_TIMEOUT_S = 10.0
+_WORKER_POLL_TIMEOUT_GRACE_S = 10.0
 
 
 async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
@@ -82,30 +85,38 @@ def _parse_worker_http_json(
 
 
 def _worker_post_json_with_curl(
-    url: str, body: bytes, headers: dict[str, str], timeout: float | None = None
+    url: str,
+    body: bytes,
+    headers: dict[str, str],
+    timeout: float | None = None,
+    connect_timeout: float | None = _WORKER_CONNECT_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """POST JSON through curl when available to better handle CDN/proxy edge cases."""
+    """POST JSON through curl with separate connection and request deadlines."""
     curl = shutil.which("curl")
     if not curl:
         raise FileNotFoundError("curl is not available")
     status_marker = "\nLOCAL_SHELL_MCP_HTTP_STATUS:"
-    command = [
-        curl,
-        "-sS",
-        "-L",
-        "-X",
-        "POST",
-        "-H",
-        "Content-Type: application/json",
-        "--data-binary",
-        "@-",
-        "-w",
-        f"{status_marker}%{{http_code}}",
-    ]
+    command = [curl]
+    if connect_timeout is not None:
+        command.extend(["--connect-timeout", f"{connect_timeout:g}"])
+    if timeout is not None:
+        command.extend(["--max-time", f"{timeout:g}"])
+    command.extend(
+        [
+            "-sS",
+            "-L",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            "@-",
+            "-w",
+            f"{status_marker}%{{http_code}}",
+        ]
+    )
     for name, value in headers.items():
         command.extend(["-H", f"{name}: {value}"])
-    if timeout is not None:
-        command[1:1] = ["--max-time", str(timeout)]
     command.append(url)
     completed = subprocess.run(
         command, input=body, capture_output=True, check=False
@@ -155,20 +166,40 @@ def _worker_post_json(
     payload: dict[str, Any],
     headers: dict[str, str] | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = _WORKER_CONNECT_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """POST a JSON worker request using curl when available or urllib otherwise."""
+    """POST a JSON worker request with bounded connection and request time."""
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("worker server URL must use absolute HTTP(S)")
     body = json.dumps(payload).encode("utf-8")
     request_headers = headers or {}
     if shutil.which("curl"):
-        return _worker_post_json_with_curl(url, body, request_headers, timeout)
+        return _worker_post_json_with_curl(
+            url, body, request_headers, timeout, connect_timeout
+        )
+    if timeout is not None and parsed.path.endswith(
+        f"{REMOTE_API_PREFIX}/poll"
+    ):
+        raise RuntimeError("curl is required for bounded worker poll requests")
     return _worker_post_json_with_urllib(url, body, request_headers, timeout)
 
 
 _WORKER_RETRY_INITIAL_DELAY_S = 1.0
 _WORKER_RETRY_MAX_DELAY_S = 30.0
+
+
+def _worker_poll_request_timeout_s(data: dict[str, Any]) -> float | None:
+    """Return a request timeout with transport grace from controller data."""
+    if "poll_timeout_s" not in data:
+        return None
+    try:
+        poll_timeout_s = float(data["poll_timeout_s"])
+    except TypeError, ValueError:
+        return None
+    if not math.isfinite(poll_timeout_s) or poll_timeout_s <= 0:
+        return None
+    return poll_timeout_s + _WORKER_POLL_TIMEOUT_GRACE_S
 
 
 def _worker_retry_delay(attempt: int) -> float:
@@ -450,6 +481,22 @@ def worker_info(workdir: str) -> dict[str, Any]:
     }
 
 
+def _worker_poll_payload(
+    worker_version: str,
+    running_runtime: dict[str, str],
+    poll_request_timeout_s: float | None,
+) -> dict[str, Any]:
+    """Build one poll report and advertise the worker-side deadline."""
+    payload = worker_runtime.worker_poll_payload(
+        worker_version, running_runtime
+    )
+    if poll_request_timeout_s is not None:
+        payload["poll_timeout_s"] = max(
+            0.001, poll_request_timeout_s - _WORKER_POLL_TIMEOUT_GRACE_S
+        )
+    return payload
+
+
 async def _install_and_reexec_worker(
     instruction: dict[str, Any],
     *,
@@ -496,7 +543,21 @@ async def run_worker(
     workdir: str | None = None,
     persist: bool = False,
 ) -> None:
-    """Register with a server, poll for jobs, execute tools locally, and submit results until stopped."""
+    """Run one worker process while holding its lifecycle lock."""
+    from .lifecycle import worker_run_lock
+
+    with worker_run_lock():
+        await _run_worker_locked(server, invite, name, workdir, persist)
+
+
+async def _run_worker_locked(
+    server: str,
+    invite: str,
+    name: str | None = None,
+    workdir: str | None = None,
+    persist: bool = False,
+) -> None:
+    """Enroll or resume, then poll and execute jobs under the worker lock."""
     workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
     _configure_worker_runtime_env(workdir)
     from ..config.settings import clear_settings_cache
@@ -546,6 +607,7 @@ async def run_worker(
         data = body["data"]
         machine_name = data["name"]
     heartbeat_interval_s = float(data.get("heartbeat_interval_s") or 15)
+    poll_request_timeout_s = _worker_poll_request_timeout_s(data)
     _write_worker_identity(
         {
             "server": server,
@@ -570,14 +632,19 @@ async def run_worker(
     while True:
         poll_body = await _worker_post_json_forever(
             f"{server}{REMOTE_API_PREFIX}/poll",
-            worker_runtime.worker_poll_payload(worker_version, running_runtime),
+            _worker_poll_payload(
+                worker_version, running_runtime, poll_request_timeout_s
+            ),
             headers,
-            None,
+            poll_request_timeout_s,
             "poll",
         )
         payload = poll_body.get("data", {})
         if not isinstance(payload, dict):
             continue
+        updated_poll_request_timeout_s = _worker_poll_request_timeout_s(payload)
+        if updated_poll_request_timeout_s is not None:
+            poll_request_timeout_s = updated_poll_request_timeout_s
         upgrade = payload.get("upgrade")
         if isinstance(upgrade, dict) and upgrade.get("required") is True:
             try:

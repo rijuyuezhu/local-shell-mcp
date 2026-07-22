@@ -443,7 +443,13 @@ def test_worker_post_json_uses_curl_when_available(monkeypatch):
     assert captured["input"] == b"{}"
     command = captured["command"]
     assert isinstance(command, list)
-    assert command[:3] == ["/usr/bin/curl", "--max-time", "12"]
+    assert command[:5] == [
+        "/usr/bin/curl",
+        "--connect-timeout",
+        "10",
+        "--max-time",
+        "12",
+    ]
     assert "X-Test: value" in command
 
 
@@ -676,6 +682,7 @@ async def test_remote_manager_persists_workers_and_resumes(
             "info": {"hostname": "remote-host"},
         }
     )
+    assert registered["poll_timeout_s"] == 25
 
     reloaded = RemoteManager()
     inventory = reloaded.list_machines()
@@ -689,6 +696,7 @@ async def test_remote_manager_persists_workers_and_resumes(
     )
     assert resumed["name"] == "worker-a"
     assert resumed["token"] == registered["token"]
+    assert resumed["poll_timeout_s"] == 25
     assert reloaded.list_machines().counts == {
         "online": 1,
         "offline": 0,

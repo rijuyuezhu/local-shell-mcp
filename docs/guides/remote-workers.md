@@ -79,6 +79,14 @@ local-shell-mcp worker \
   --workdir /home/me/project
 ```
 
+## Lifecycle safety
+
+One worker state directory permits one active worker process. The worker acquires `worker.lock` before it resumes or consumes an invite, so an accidental second manual process fails before it can create a duplicate registration or compete for jobs. The operating system releases the lock after a crash or forced exit. Existing systemd or launchd workers are recognized by their service PID and may wait for an orderly handoff instead of failing immediately.
+
+Automatic runtime upgrades preserve the same lock across process replacement. POSIX workers inherit the locked file descriptor through `exec`; Windows workers inherit the native file handle, wait for the parent to release its byte-range lock, then reacquire it before reconnecting. The access token is never added to restart arguments.
+
+Registration and resume responses advertise the controller's long-poll timeout. Each worker adds a small transport grace period, sends a bounded `curl` request with a separate connection timeout, and advertises its own deadline back to the controller. The controller uses the shorter deadline and returns its current value on every poll, so timeout changes take effect without restarting the worker.
+
 ## Automatic runtime upgrades
 
 Poll protocol version 1 negotiates the actual worker bundle digest. A worker that reports the current digest receives normal heartbeat and job responses. A worker that reports a different digest receives a required upgrade instruction instead of a job, so runtime replacement only happens while the worker is idle. Legacy workers that send no versioned poll payload keep their existing heartbeat and job behavior; restart them through a current join command to opt into automatic upgrades.

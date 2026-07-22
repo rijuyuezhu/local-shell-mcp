@@ -78,6 +78,7 @@ async def test_poll_mismatch_records_report_and_does_not_dequeue(
             "sha256": manifest["sha256"],
             "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
         },
+        "poll_timeout_s": 1.0,
     }
     assert worker.queue.qsize() == 1
     assert worker.info["poll_protocol_version"] == 1
@@ -122,13 +123,13 @@ async def test_poll_legacy_and_protocol_zero_remain_compatible(
     worker = manager.workers[registered["name"]]
     worker.queue.put_nowait({"id": "legacy"})
     legacy = await manager.poll(registered["token"])
-    assert legacy == {"job": {"id": "legacy"}}
+    assert legacy == {"job": {"id": "legacy"}, "poll_timeout_s": 1.0}
 
     worker.queue.put_nowait({"id": "v0"})
     protocol_zero = await manager.poll(
         registered["token"], {"protocol_version": 0}
     )
-    assert protocol_zero == {"job": {"id": "v0"}}
+    assert protocol_zero == {"job": {"id": "v0"}, "poll_timeout_s": 1.0}
     assert worker.info["poll_protocol_version"] == 0
 
 
@@ -224,6 +225,7 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
         names = set(tar.getnames())
 
     assert "local_shell_mcp/remote_worker/runtime.py" in names
+    assert "local_shell_mcp/remote_worker/lifecycle.py" in names
     assert "local_shell_mcp/remote_worker/worker.py" in names
     assert "local_shell_mcp/version.py" in names
     assert "local_shell_mcp/conpty.py" in names
@@ -660,7 +662,7 @@ def test_reexec_uses_execve_on_posix_and_spawn_on_windows(
             persist=False,
         )
     assert exc_info.value.code == 0
-    assert spawned["kwargs"]["close_fds"] is True
+    assert spawned["kwargs"]["close_fds"] is False
 
 
 @pytest.mark.asyncio

@@ -32,6 +32,7 @@ _REQUIRED_RUNTIME_FILES = (
     "local_shell_mcp/remote_worker/__init__.py",
     "local_shell_mcp/remote_worker/__main__.py",
     "local_shell_mcp/remote_worker/compat.py",
+    "local_shell_mcp/remote_worker/lifecycle.py",
     "local_shell_mcp/remote_worker/worker.py",
 )
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
@@ -521,15 +522,28 @@ def reexec_worker(
     workdir: str,
     persist: bool,
 ) -> None:
-    """Replace the worker process, or spawn-and-exit on Windows."""
+    """Replace the worker while preserving its single-instance lock."""
+    from .lifecycle import (
+        cancel_worker_lock_reexec,
+        prepare_worker_lock_reexec,
+    )
+
     argv = worker_reexec_argv(
         server=server,
         name=name,
         workdir=workdir,
         persist=persist,
     )
-    environment = reexec_environment()
-    if sys.platform == "win32":
-        subprocess.Popen(argv, env=environment, close_fds=True)  # noqa: S603
-        raise SystemExit(0)
-    os.execve(argv[0], argv, environment)
+    inherited = prepare_worker_lock_reexec()
+    try:
+        environment = reexec_environment()
+        if sys.platform == "win32":
+            subprocess.Popen(  # noqa: S603
+                argv,
+                env=environment,
+                close_fds=False,
+            )
+            raise SystemExit(0)
+        os.execve(argv[0], argv, environment)
+    finally:
+        cancel_worker_lock_reexec(inherited)
