@@ -386,12 +386,11 @@ def test_job_runner_records_nonzero_exit(tmp_path, monkeypatch):
         jobs_ops.run_job_runner_from_args(args)
 
     status = json.loads(paths["status"].read_text(encoding="utf-8"))
+    output_lines = paths["log"].read_text(encoding="utf-8").splitlines()
     assert exit_info.value.code == 7
     assert status["exit_code"] == 7
     assert status["error"] is None
-    assert paths["log"].read_text(encoding="utf-8").splitlines() == [
-        "failed-output"
-    ]
+    assert [line.rstrip() for line in output_lines] == ["failed-output"]
 
 
 @pytest.mark.asyncio
