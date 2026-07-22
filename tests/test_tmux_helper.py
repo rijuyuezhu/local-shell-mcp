@@ -51,12 +51,20 @@ def test_bundled_tmux_path_repairs_user_execute_bit(
 ):
     helper = _install_helper(tmp_path)
     access_results = iter([False, True])
+    requested_modes = []
+    original_chmod = Path.chmod
+
+    def chmod(path: Path, mode: int):
+        requested_modes.append(mode)
+        original_chmod(path, mode)
+
     monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
     monkeypatch.setattr(
         tmux_helper.os, "access", lambda *_: next(access_results)
     )
+    monkeypatch.setattr(Path, "chmod", chmod)
     assert tmux_helper.bundled_tmux_path(package_root=tmp_path) == helper
-    assert helper.stat().st_mode & 0o100
+    assert requested_modes and requested_modes[-1] & 0o100
 
 
 def test_bundled_tmux_path_rejects_missing_unsupported_and_symlink(
@@ -185,3 +193,26 @@ async def test_shell_tmux_uses_resolved_executable(
     monkeypatch.setattr(shell, "run_shell", fake_run_shell)
     assert await shell.tmux(["list-sessions"], timeout_s=7) is expected
     assert calls == [("'/bundle path/tmux' list-sessions", ".", 7)]
+
+
+@pytest.mark.asyncio
+async def test_list_persistent_shells_is_empty_when_default_tmux_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from local_shell_mcp.ops import shell
+
+    monkeypatch.setattr(
+        shell, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell,
+        "resolve_tmux",
+        lambda: tmux_helper.TmuxSelection(None, "unavailable", "tmux"),
+    )
+    monkeypatch.setattr(
+        shell,
+        "tmux",
+        lambda *args, **kwargs: pytest.fail("tmux must not be invoked"),
+    )
+    result = await shell.list_persistent_shells_execute()
+    assert result.shells == []

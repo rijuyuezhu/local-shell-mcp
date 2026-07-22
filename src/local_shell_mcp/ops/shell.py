@@ -27,7 +27,7 @@ from ..schemas.result_models.shell import (
     ShellExecutionOutput,
     StartPersistentShellOutput,
 )
-from ..tmux_helper import require_tmux
+from ..tmux_helper import require_tmux, resolve_tmux
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -871,6 +871,9 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
     """List active persistent shells managed by local-shell-mcp."""
     if _use_conpty_persistent_shell_backend():
         return await conpty.list_shells()
+    selection = resolve_tmux()
+    if selection.path is None and selection.source == "unavailable":
+        return ListPersistentShellsOutput(shells=[])
     result = await tmux(
         [
             "list-sessions",
