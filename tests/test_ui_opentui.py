@@ -119,7 +119,7 @@ def test_spawn_opentui_process_keeps_local_token_in_environment(
             )
 
     monkeypatch.setattr(opentui, "UnixOpenTuiProcess", FakeUnix)
-    monkeypatch.setattr(opentui.os, "name", "posix")
+    monkeypatch.setattr(opentui, "WindowsOpenTuiProcess", FakeUnix)
     monkeypatch.setattr(
         opentui, "resolve_tui_command", lambda _settings: ["fake-tui"]
     )

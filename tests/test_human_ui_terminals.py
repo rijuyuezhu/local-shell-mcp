@@ -481,11 +481,15 @@ def test_terminal_websocket_raw_pty_streams_binary_and_closes_bridge(
             "backend": "tmux-pty",
         }
 
+    blocked_read = asyncio.Event()
+
     async def fake_read(bridge_id, max_bytes=65_536, wait_ms=100):
         nonlocal read_count
-        await asyncio.sleep(0.01)
         read_count += 1
-        payload = b"\x1b[?1049hRAW\xff" if read_count == 1 else b""
+        if read_count > 1:
+            await blocked_read.wait()
+        await asyncio.sleep(0.01)
+        payload = b"\x1b[?1049hRAW\xff"
         return {
             "bridge_id": bridge_id,
             "data_b64": base64.b64encode(payload).decode(),

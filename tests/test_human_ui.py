@@ -2,6 +2,7 @@ import base64
 import hashlib
 import html
 import json
+import os
 import re
 import stat
 from urllib.parse import parse_qs, urlparse
@@ -301,7 +302,8 @@ def test_local_ui_token_bypasses_oauth_only_on_loopback(monkeypatch, tmp_path):
 
     token_path = tmp_path / ".state" / "ui" / "local-token"
     assert token_path.read_text(encoding="utf-8").strip() == token
-    assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
 
 
 def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):

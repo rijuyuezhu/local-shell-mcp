@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import os
 import re
 import time
 from typing import Any
@@ -343,7 +344,7 @@ async def test_shell_tool_returns_per_tool_structured_content(
 
     assert structured["mode"] == "command"
     assert structured["command"] == "echo ok"
-    assert structured["result"]["stdout"] == "ok\n"
+    assert structured["result"]["stdout"].splitlines() == ["ok"]
     assert "data" not in structured
 
 
@@ -942,7 +943,8 @@ def test_oauth_approved_clients_persist_across_app_rebuild(
 
     store_path = client_store_path()
     assert store_path.exists()
-    assert store_path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert store_path.stat().st_mode & 0o777 == 0o600
     stored = json.loads(store_path.read_text())
     assert [client["client_id"] for client in stored["clients"]] == [client_id]
     assert stored["clients"][0]["approved_at"] is not None

@@ -763,5 +763,5 @@ async def test_run_python_code_creates_temp_file(tmp_path, monkeypatch):
     assert payload.mode == "command"
     assert payload.cwd == str(tmp_path)
     assert payload.result["ok"] is True
-    assert payload.result["stdout"] == "py314\n"
+    assert payload.result["stdout"].splitlines() == ["py314"]
     assert payload.script_path.endswith(".py")

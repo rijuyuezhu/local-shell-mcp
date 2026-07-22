@@ -239,7 +239,9 @@ def _normalized_env_path(path: str) -> str:
 def _env_is_absent_or_default(name: str, default: str) -> bool:
     """Return whether a worker env path is unset or still the package default."""
     value = os.getenv(name)
-    return not value or _normalized_env_path(value) == default
+    return not value or _normalized_env_path(value) == _normalized_env_path(
+        default
+    )
 
 
 def _configure_worker_runtime_env(workdir: str) -> None:

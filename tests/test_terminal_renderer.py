@@ -19,12 +19,14 @@ def _parse_ansi(value: str) -> list[dict]:
     if node is None:
         pytest.skip("Node.js is required for browser renderer tests")
     script = """
+const fs = require("fs");
 const renderer = require(process.argv[1]);
-const value = JSON.parse(process.argv[2]);
+const value = JSON.parse(fs.readFileSync(0, "utf8"));
 process.stdout.write(JSON.stringify(renderer.parseAnsi(value)));
 """
     completed = subprocess.run(
-        [node, "-e", script, str(RENDERER), json.dumps(value)],
+        [node, "-e", script, str(RENDERER)],
+        input=json.dumps(value),
         check=True,
         capture_output=True,
         text=True,

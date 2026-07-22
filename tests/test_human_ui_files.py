@@ -249,7 +249,7 @@ def test_editor_reads_complete_text_and_rejects_binary_or_truncated_files(
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     complete = "\n".join(f"line-{index}" for index in range(40))
-    (workspace / "complete.txt").write_text(complete, encoding="utf-8")
+    (workspace / "complete.txt").write_bytes(complete.encode("utf-8"))
     (workspace / "binary.bin").write_bytes(b"\x00binary")
     (workspace / "large.txt").write_text("x" * 200, encoding="utf-8")
     client = _client(
@@ -317,7 +317,8 @@ def test_file_mutations_require_write_scope_and_preserve_safe_semantics(
     )
     assert written.status_code == 200
     assert target.read_text(encoding="utf-8") == "new"
-    assert target.stat().st_mode & 0o777 == 0o640
+    if os.name != "nt":
+        assert target.stat().st_mode & 0o777 == 0o640
 
     created = client.post(
         "/api/ui/files/write",
@@ -380,7 +381,8 @@ def test_copy_file_preserves_content_mode_and_source(monkeypatch, tmp_path):
     assert source.read_text(encoding="utf-8") == "copy me"
     copied = workspace / "copied.txt"
     assert copied.read_text(encoding="utf-8") == "copy me"
-    assert copied.stat().st_mode & 0o777 == 0o640
+    if os.name != "nt":
+        assert copied.stat().st_mode & 0o777 == 0o640
 
 
 def test_copy_directory_preserves_symlinks_without_following_targets(

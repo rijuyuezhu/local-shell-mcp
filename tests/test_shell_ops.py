@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 
 import pytest
@@ -112,14 +113,15 @@ async def test_mcp_shell_timeout_returns_partial_output_after_cleanup(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "1")
     clear_settings_cache()
 
     mcp = build_mcp()
     session = mcp_structured(
         await mcp.call_tool("session_start", {"workdir": "."})
     )
+    monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "1")
+    clear_settings_cache()
     command = _python_shell_command(
         'import sys, time; print("partial-out", flush=True); '
         'print("partial-err", file=sys.stderr, flush=True); time.sleep(5)'
@@ -493,6 +495,7 @@ async def test_run_shell_command_timeout_marks_result_and_cleans_up(
     assert result.timed_out is True
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tmux-specific behavior")
 @pytest.mark.asyncio
 async def test_read_persistent_shell_preserves_ansi_only_when_requested(
     monkeypatch,
@@ -526,6 +529,7 @@ async def test_read_persistent_shell_preserves_ansi_only_when_requested(
     ]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tmux-specific behavior")
 @pytest.mark.asyncio
 async def test_resize_persistent_shell_resizes_tmux_window(monkeypatch):
     calls = []
@@ -565,6 +569,7 @@ async def test_resize_persistent_shell_rejects_invalid_dimensions():
         await resize_persistent_shell_execute("shell-1", 80, 2)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tmux-specific behavior")
 @pytest.mark.asyncio
 async def test_send_shell_invokes_tmux_promptly(monkeypatch):
     calls = []
@@ -614,10 +619,13 @@ async def test_run_shell_command_filters_server_environment(
     clear_settings_cache()
 
     result = await run_shell(
-        (
-            "env | grep_search_execute -E "
-            "'^(PYTHONPATH|LOCAL_SHELL_MCP_|DOCKER_|CLOUDFLARE_TUNNEL_TOKEN=)' "
-            "|| true"
+        _python_shell_command(
+            "import os; "
+            "blocked = ('PYTHONPATH', 'CLOUDFLARE_TUNNEL_TOKEN'); "
+            "keys = [key for key in sorted(os.environ) "
+            "if key in blocked or key.startswith('LOCAL_SHELL_MCP_') "
+            "or key.startswith('DOCKER_')]; "
+            "print('\\n'.join(f'{key}={os.environ[key]}' for key in keys), end='')"
         ),
         cwd=str(tmp_path),
     )

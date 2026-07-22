@@ -39,7 +39,7 @@ assert worker_info(".")["lsm_version"]
     result = subprocess.run(
         [sys.executable, "-c", script],
         cwd=".",
-        env={"PYTHONPATH": "src"},
+        env={**os.environ, "PYTHONPATH": "src"},
         text=True,
         capture_output=True,
     )
@@ -644,7 +644,7 @@ worker.run_worker_from_args(
     completed = subprocess.run(
         [sys.executable, "-c", code],
         cwd=".",
-        env={"PYTHONPATH": "src"},
+        env={**os.environ, "PYTHONPATH": "src"},
         capture_output=True,
         text=True,
         check=False,

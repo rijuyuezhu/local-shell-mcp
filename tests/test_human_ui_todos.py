@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -132,7 +133,8 @@ def test_local_todos_revision_guard_and_atomic_persistence(
         (tmp_path / "workspace" / ".state" / "todos").glob("*.json")
     )
     assert len(todo_files) == 1
-    assert stat.S_IMODE(todo_files[0].stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(todo_files[0].stat().st_mode) == 0o600
     assert not list(todo_files[0].parent.glob("*.tmp"))
 
 

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
@@ -22,6 +23,7 @@ from local_shell_mcp.schemas.result_models.shell import (
     StartPersistentShellOutput,
 )
 from local_shell_mcp.tool_session.store import get_tool_session_store
+from tests.helpers import python_shell_command
 
 
 def _create_session(workdir: str = ".") -> str:
@@ -328,7 +330,7 @@ def test_job_runner_persists_bounded_output_and_terminal_status(
     _configure_job_state(tmp_path, monkeypatch)
     paths = jobs_ops._attempt_paths("job_runner", 1)
     paths["command"].write_text(
-        "python3 -c \"print('prefix-' + 'x' * 100 + '-suffix')\"",
+        python_shell_command("print('prefix-' + 'x' * 100 + '-suffix')"),
         encoding="utf-8",
     )
     args = SimpleNamespace(
@@ -336,7 +338,9 @@ def test_job_runner_persists_bounded_output_and_terminal_status(
         log_file=str(paths["log"]),
         status_file=str(paths["status"]),
         cwd=str(tmp_path),
-        shell="/bin/bash",
+        shell=os.environ.get("COMSPEC", "cmd.exe")
+        if os.name == "nt"
+        else "/bin/bash",
         max_log_bytes=32,
     )
 
@@ -350,7 +354,7 @@ def test_job_runner_persists_bounded_output_and_terminal_status(
     assert status["error"] is None
     assert status["log_truncated"] is True
     assert status["output_bytes"] > len(output.encode())
-    assert output.endswith("-suffix\n")
+    assert output.rstrip().endswith("-suffix")
     assert len(output.encode()) <= 32
 
 
@@ -358,14 +362,17 @@ def test_job_runner_records_nonzero_exit(tmp_path, monkeypatch):
     _configure_job_state(tmp_path, monkeypatch)
     paths = jobs_ops._attempt_paths("job_failed", 1)
     paths["command"].write_text(
-        "printf 'failed-output\\n'; exit 7", encoding="utf-8"
+        python_shell_command("import sys; print('failed-output'); sys.exit(7)"),
+        encoding="utf-8",
     )
     args = SimpleNamespace(
         command_file=str(paths["command"]),
         log_file=str(paths["log"]),
         status_file=str(paths["status"]),
         cwd=str(tmp_path),
-        shell="/bin/bash",
+        shell=os.environ.get("COMSPEC", "cmd.exe")
+        if os.name == "nt"
+        else "/bin/bash",
         max_log_bytes=1024,
     )
 
@@ -376,7 +383,9 @@ def test_job_runner_records_nonzero_exit(tmp_path, monkeypatch):
     assert exit_info.value.code == 7
     assert status["exit_code"] == 7
     assert status["error"] is None
-    assert paths["log"].read_text(encoding="utf-8") == "failed-output\n"
+    assert paths["log"].read_text(encoding="utf-8").splitlines() == [
+        "failed-output"
+    ]
 
 
 @pytest.mark.asyncio
