@@ -5,14 +5,42 @@ from pathlib import Path
 
 import pytest
 
+import local_shell_mcp.patch_ops as patch_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.patch import (
+    APPLY_PATCH_PHASE_TIMEOUT_S,
     _git_apply_args,
+    _run_git_apply,
     apply_patch_dispatch_execute,
     apply_patch_execute,
 )
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.local_handlers import local_tool_handlers
+
+
+def test_patch_git_subprocesses_detach_stdio(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_run(args: list[str], **kwargs: object):
+        calls.append((args, kwargs))
+        text_mode = bool(kwargs.get("text"))
+        stdout = "nested/\n" if text_mode else b""
+        stderr = "" if text_mode else b""
+        return subprocess.CompletedProcess(args, 0, stdout, stderr)
+
+    monkeypatch.setattr(patch_ops.subprocess, "run", fake_run)
+    monkeypatch.setattr("local_shell_mcp.ops.patch.subprocess.run", fake_run)
+
+    assert patch_ops.git_apply_prefix("git", str(tmp_path)) == "nested"
+    result = _run_git_apply(["git", "apply", "patch.diff"], tmp_path)
+
+    assert result["ok"] is True
+    assert calls[0][1]["stdin"] is subprocess.DEVNULL
+    assert calls[0][1]["timeout"] == 5
+    assert calls[1][1]["stdin"] is subprocess.DEVNULL
+    assert calls[1][1]["timeout"] == APPLY_PATCH_PHASE_TIMEOUT_S
 
 
 def _local_session(root: Path, monkeypatch: pytest.MonkeyPatch) -> str:

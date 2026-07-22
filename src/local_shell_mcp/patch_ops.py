@@ -37,11 +37,13 @@ def git_apply_prefix(git_bin: str, cwd: str) -> str | None:
         result = subprocess.run(
             [git_bin, "rev-parse", "--show-prefix"],
             cwd=Path(cwd).resolve(),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            timeout=5,
             check=False,
         )
-    except OSError:
+    except OSError, subprocess.SubprocessError:
         return None
     if result.returncode != 0:
         return None

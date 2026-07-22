@@ -17,7 +17,8 @@ from .utils.path import assert_text_input_size, relative_display
 from .utils.remote_session import call_remote_session_tool
 from .utils.temp_file import write_temp_text_file
 
-_APPLY_PATCH_TIMEOUT_S = 60
+APPLY_PATCH_PHASE_TIMEOUT_S = 20
+APPLY_PATCH_WATCHDOG_TIMEOUT_S = 45
 _APPLY_PATCH_MAX_OUTPUT_BYTES = 500_000
 
 
@@ -45,7 +46,10 @@ def _git_apply_args(
 
 
 def _run_git_apply(
-    args: list[str], cwd: Path, *, timeout_s: int = _APPLY_PATCH_TIMEOUT_S
+    args: list[str],
+    cwd: Path,
+    *,
+    timeout_s: int = APPLY_PATCH_PHASE_TIMEOUT_S,
 ) -> dict[str, Any]:
     """Run one bounded git apply phase without shell interpolation."""
     started = time.monotonic()
@@ -53,6 +57,7 @@ def _run_git_apply(
         completed = subprocess.run(
             args,
             cwd=cwd,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             check=False,
             timeout=timeout_s,

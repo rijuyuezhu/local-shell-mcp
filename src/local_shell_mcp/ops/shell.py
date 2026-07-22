@@ -191,6 +191,10 @@ def tool_timeout_s(tool_name: str | None = None) -> float:
     """Return the effective MCP/HTTP watchdog timeout for one tool."""
     settings = get_settings()
     configured = max(0.001, settings.tool_timeout_s)
+    if tool_name == "apply_patch":
+        from .patch import APPLY_PATCH_WATCHDOG_TIMEOUT_S
+
+        return max(configured, float(APPLY_PATCH_WATCHDOG_TIMEOUT_S))
     if tool_name not in SHELL_TIMEOUT_CLEANUP_TOOL_NAMES:
         return configured
     cleanup_safe_shell_timeout = (

@@ -290,6 +290,15 @@ async def test_mcp_tool_watchdog_times_out_sync_tool(tmp_path, monkeypatch):
         )
 
 
+def test_apply_patch_watchdog_covers_both_git_phases(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "15")
+    clear_settings_cache()
+
+    assert tool_timeout_s("apply_patch") == 45
+    assert tool_timeout_s("list_files") == 15
+
+
 def test_run_shell_command_timeout_uses_ten_second_default(
     tmp_path, monkeypatch
 ):
