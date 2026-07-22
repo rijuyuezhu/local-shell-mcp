@@ -329,10 +329,12 @@ def test_job_runner_persists_bounded_output_and_terminal_status(
 ):
     _configure_job_state(tmp_path, monkeypatch)
     paths = jobs_ops._attempt_paths("job_runner", 1)
-    paths["command"].write_text(
-        python_shell_command("print('prefix-' + 'x' * 100 + '-suffix')"),
-        encoding="utf-8",
+    command = (
+        "echo prefix-" + "x" * 100 + "-suffix"
+        if os.name == "nt"
+        else python_shell_command("print('prefix-' + 'x' * 100 + '-suffix')")
     )
+    paths["command"].write_text(command, encoding="utf-8")
     args = SimpleNamespace(
         command_file=str(paths["command"]),
         log_file=str(paths["log"]),
@@ -361,10 +363,14 @@ def test_job_runner_persists_bounded_output_and_terminal_status(
 def test_job_runner_records_nonzero_exit(tmp_path, monkeypatch):
     _configure_job_state(tmp_path, monkeypatch)
     paths = jobs_ops._attempt_paths("job_failed", 1)
-    paths["command"].write_text(
-        python_shell_command("import sys; print('failed-output'); sys.exit(7)"),
-        encoding="utf-8",
+    command = (
+        "echo failed-output & exit /b 7"
+        if os.name == "nt"
+        else python_shell_command(
+            "import sys; print('failed-output'); sys.exit(7)"
+        )
     )
+    paths["command"].write_text(command, encoding="utf-8")
     args = SimpleNamespace(
         command_file=str(paths["command"]),
         log_file=str(paths["log"]),
