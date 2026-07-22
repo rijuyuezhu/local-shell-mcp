@@ -114,6 +114,31 @@ uv run pytest tests/test_config_surface.py -q
 uv run pytest tests/test_agent_bridge_tools.py -q
 ```
 
+## Check branch coverage
+
+The Ubuntu CI job runs the complete Python suite under branch coverage. It
+ratchets both the aggregate percentage and every existing source file against
+`scripts/coverage-baseline.json`; a new non-empty module must begin at 90%
+coverage. Run the same gate locally with:
+
+```bash
+find . -maxdepth 1 -name '.coverage*' -delete
+uv run python -m coverage run -m pytest -q
+uv run python -m coverage combine
+uv run python -m coverage json
+uv run python -m coverage xml
+uv run python -m coverage report
+uv run python scripts/check-coverage.py
+```
+
+Only update the baseline after reviewing why coverage changed. Improvements
+can be recorded with the following command; regressions should instead gain
+tests or be explicitly justified in review:
+
+```bash
+uv run python scripts/check-coverage.py --write-baseline
+```
+
 ## Regenerate generated reference data
 
 Configuration examples and reference JSON are generated from the settings registry:

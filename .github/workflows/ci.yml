@@ -54,9 +54,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -67,6 +66,37 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --group dev
       - run: uv run pytest -q
+
+  coverage:
+    name: Test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - name: Run branch coverage
+        run: |
+          find . -maxdepth 1 -name '.coverage*' -delete
+          uv run python -m coverage run -m pytest -q
+          uv run python -m coverage combine
+          uv run python -m coverage json
+          uv run python -m coverage xml
+          uv run python -m coverage report
+          uv run python scripts/check-coverage.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: python-coverage
+          path: |
+            coverage.json
+            coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
 
   opentui:
@@ -136,6 +166,12 @@ jobs:
           mkdir -p /tmp/local-shell-mcp-sdist /tmp/local-shell-mcp-sdist-wheel
           tar -xzf dist/*.tar.gz -C /tmp/local-shell-mcp-sdist
           source_dir="$(find /tmp/local-shell-mcp-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -f "$source_dir/scripts/check-coverage.py"
+          test -f "$source_dir/scripts/coverage-baseline.json"
+          test -f "$source_dir/tests/test_coverage_gate.py"
+          test ! -e "$source_dir/.coverage"
+          test ! -e "$source_dir/coverage.json"
+          test ! -e "$source_dir/coverage.xml"
           test -f "$source_dir/ui-terminal/package.json"
           test -f "$source_dir/ui-terminal/package-lock.json"
           test -f "$source_dir/ui-terminal/src/index.js"

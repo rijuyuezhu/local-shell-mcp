@@ -34,6 +34,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "coverage[toml]>=7.15.2",
     "pre-commit>=4.6.0",
     "pyright>=1.1.411",
     "pytest>=9.1.1",
@@ -50,7 +51,13 @@ requires = ["uv_build>=0.11.0,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-source-include = ["ui-terminal/**", "ui-opentui/**"]
+source-include = [
+    "ui-terminal/**",
+    "ui-opentui/**",
+    "scripts/check-coverage.py",
+    "scripts/coverage-baseline.json",
+    "tests/test_coverage_gate.py",
+]
 source-exclude = [
     "/ui-terminal/node_modules",
     "/ui-terminal/.build-check",
@@ -83,6 +90,38 @@ timeout_method = "thread"
 markers = [
     "integration: tests that start real local-shell-mcp server processes",
 ]
+
+[tool.coverage.run]
+branch = true
+parallel = true
+patch = ["subprocess"]
+relative_files = true
+sigterm = true
+source = ["local_shell_mcp"]
+
+[tool.coverage.paths]
+source = [
+    "src/local_shell_mcp",
+    "*/.local-shell-mcp-worker/runtime/local_shell_mcp",
+    "*/runtime/local_shell_mcp",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.coverage.json]
+output = "coverage.json"
+pretty_print = true
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.pyright]
 pythonVersion = "3.14"

@@ -26,3 +26,10 @@ site/
 /ui-opentui/dist/
 /ui-opentui/coverage/
 /src/local_shell_mcp/ui_runtime/
+
+# Python coverage outputs
+/.coverage
+/.coverage.*
+/coverage.json
+/coverage.xml
+/htmlcov/
