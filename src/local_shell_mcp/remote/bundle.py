@@ -25,6 +25,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "conpty.py",
     "dashboard.py",
     "terminal_bridge.py",
+    "tmux_helper.py",
     "version.py",
     "agent_bridge/__init__.py",
     "agent_bridge/models.py",

@@ -169,6 +169,13 @@ jobs:
           test -f "$source_dir/scripts/check-coverage.py"
           test -f "$source_dir/scripts/coverage-baseline.json"
           test -f "$source_dir/tests/test_coverage_gate.py"
+          test -f "$source_dir/tests/test_tmux_helper.py"
+          test -f "$source_dir/scripts/build-tmux-helper.sh"
+          test -f "$source_dir/scripts/tmux-helper.Dockerfile"
+          test -f "$source_dir/src/local_shell_mcp/helpers/README.md"
+          test -f "$source_dir/src/local_shell_mcp/helpers/tmux.LICENSE"
+          test ! -e "$source_dir/src/local_shell_mcp/helpers/linux-x86_64/tmux"
+          test ! -e "$source_dir/src/local_shell_mcp/helpers/linux-aarch64/tmux"
           test ! -e "$source_dir/.coverage"
           test ! -e "$source_dir/coverage.json"
           test ! -e "$source_dir/coverage.xml"
@@ -194,6 +201,32 @@ jobs:
           /tmp/local-shell-mcp-wheel-venv/bin/python -m pip install dist/*.whl
           /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp --version
           /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp version
+
+  bundled-tmux:
+    name: Bundled tmux (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x86_64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - label: linux-aarch64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and smoke static tmux helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/build-tmux-helper.sh /tmp/local-shell-mcp-tmux "${{ matrix.platform }}"
+          /tmp/local-shell-mcp-tmux -L local-shell-mcp-ci new-session -d -s smoke "sh -lc 'printf ready; sleep 5'"
+          sleep 1
+          /tmp/local-shell-mcp-tmux -L local-shell-mcp-ci capture-pane -p -t smoke | grep -F ready
+          /tmp/local-shell-mcp-tmux -L local-shell-mcp-ci kill-server
 
   compose-smoke:
     name: Docker Compose config

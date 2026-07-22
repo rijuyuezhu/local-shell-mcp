@@ -374,6 +374,32 @@ async def _worker_resume_or_none(
             await asyncio.sleep(delay_s)
 
 
+async def _worker_job_heartbeat_loop(
+    task: asyncio.Task[Any],
+    server: str,
+    headers: dict[str, str],
+    heartbeat_interval_s: float,
+) -> None:
+    """Refresh liveness until one worker job finishes or heartbeat becomes fatal."""
+    interval = max(0.01, heartbeat_interval_s)
+    while not task.done():
+        await asyncio.sleep(interval)
+        if task.done():
+            return
+        try:
+            await asyncio.to_thread(
+                _worker_post_json,
+                f"{server}{REMOTE_API_PREFIX}/heartbeat",
+                {},
+                headers,
+                30,
+            )
+        except Exception as exc:
+            if not _worker_error_is_retryable(exc):
+                return
+            _worker_log_retry("heartbeat", exc, interval)
+
+
 async def _execute_worker_job_with_heartbeat(
     job: dict[str, Any],
     server: str,
@@ -384,27 +410,14 @@ async def _execute_worker_job_with_heartbeat(
     task = asyncio.create_task(
         execute_worker_tool(job["tool"], dict(job.get("args") or {}))
     )
-
-    async def heartbeat_loop() -> None:
-        interval = max(0.01, heartbeat_interval_s)
-        while not task.done():
-            await asyncio.sleep(interval)
-            if task.done():
-                return
-            try:
-                await asyncio.to_thread(
-                    _worker_post_json,
-                    f"{server}{REMOTE_API_PREFIX}/heartbeat",
-                    {},
-                    headers,
-                    30,
-                )
-            except Exception as exc:
-                if not _worker_error_is_retryable(exc):
-                    return
-                _worker_log_retry("heartbeat", exc, interval)
-
-    heartbeat = asyncio.create_task(heartbeat_loop())
+    heartbeat = asyncio.create_task(
+        _worker_job_heartbeat_loop(
+            task,
+            server,
+            headers,
+            heartbeat_interval_s,
+        )
+    )
     try:
         return await task
     finally:

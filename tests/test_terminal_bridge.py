@@ -322,3 +322,22 @@ async def test_real_terminal_bridge_streams_raw_bytes_and_preserves_tmux_session
             check=False,
             capture_output=True,
         )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX PTY bridge")
+def test_unix_terminal_bridge_uses_resolved_tmux(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        bridge_module,
+        "require_tmux",
+        lambda: SimpleNamespace(path="/bundle/tmux"),
+    )
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=1, stderr=b"missing", stdout=b"")
+
+    monkeypatch.setattr(bridge_module.subprocess, "run", fake_run)
+    with pytest.raises(TerminalBridgeNotFoundError, match="missing"):
+        bridge_module._UnixTmuxAttach("demo", 80, 24)
+    assert calls[0][0] == ["/bundle/tmux", "has-session", "-t", "demo"]

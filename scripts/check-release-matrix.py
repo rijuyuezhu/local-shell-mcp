@@ -100,6 +100,15 @@ def main() -> int:
             "bun run build:tui",
             "ui-opentui/dist/local-shell-mcp-tui.exe",
             "ui-opentui/dist/local-shell-mcp-tui",
+            "helper_platform: linux/amd64",
+            "helper_platform: linux/arm64",
+            "helper_tag: linux-x86_64",
+            "helper_tag: linux-aarch64",
+            "scripts/build-tmux-helper.sh",
+            "--add-binary",
+            "pyi-archive_viewer",
+            "local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux",
+            "TMUX-LICENSE.txt",
         ),
     )
     opentui_docker_status = _require_fragments(
@@ -121,7 +130,7 @@ def main() -> int:
         return 1
     print(
         "Release workflow covers expected binary artifacts, Docker platforms, "
-        "and OpenTUI sidecars."
+        "OpenTUI sidecars, and bundled Linux tmux helpers."
     )
     return 0
 

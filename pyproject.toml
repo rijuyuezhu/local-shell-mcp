@@ -57,6 +57,11 @@ source-include = [
     "scripts/check-coverage.py",
     "scripts/coverage-baseline.json",
     "tests/test_coverage_gate.py",
+    "tests/test_tmux_helper.py",
+    "scripts/build-tmux-helper.sh",
+    "scripts/tmux-helper.Dockerfile",
+    "src/local_shell_mcp/helpers/README.md",
+    "src/local_shell_mcp/helpers/tmux.LICENSE",
 ]
 source-exclude = [
     "/ui-terminal/node_modules",
@@ -64,6 +69,7 @@ source-exclude = [
     "/ui-opentui/node_modules",
     "/ui-opentui/dist",
     "/ui-opentui/coverage",
+    "/src/local_shell_mcp/helpers/linux-*/tmux",
 ]
 
 [project.urls]

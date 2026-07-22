@@ -131,10 +131,14 @@ jobs:
         include:
           - artifact: linux-x86_64
             runner: ubuntu-latest
+            helper_platform: linux/amd64
+            helper_tag: linux-x86_64
             binary: local-shell-mcp
             archive: tar.gz
           - artifact: linux-aarch64
             runner: ubuntu-24.04-arm
+            helper_platform: linux/arm64
+            helper_tag: linux-aarch64
             binary: local-shell-mcp
             archive: tar.gz
           - artifact: macos-x86_64
@@ -165,6 +169,18 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      - name: Set up Docker Buildx for bundled tmux
+        if: runner.os == 'Linux'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build bundled tmux helper
+        if: runner.os == 'Linux'
+        shell: bash
+        run: >-
+          scripts/build-tmux-helper.sh
+          "src/local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux"
+          "${{ matrix.helper_platform }}"
+
       - name: Build OpenTUI sidecar
         working-directory: ui-opentui
         run: |
@@ -188,6 +204,12 @@ jobs:
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             PYINSTALLER_ARGS+=(--collect-all winpty)
           fi
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            PYINSTALLER_ARGS+=(
+              --add-binary
+              "src/local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux:local_shell_mcp/helpers/${{ matrix.helper_tag }}"
+            )
+          fi
           uv run --with pyinstaller --with typer pyinstaller \
             "${PYINSTALLER_ARGS[@]}" \
             scripts/pyinstaller-entry.py
@@ -196,6 +218,10 @@ jobs:
         shell: bash
         run: |
           ./dist/${{ matrix.binary }} --help
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            uv run --with pyinstaller pyi-archive_viewer "dist/${{ matrix.binary }}" -l |
+              grep -F "local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux"
+          fi
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             ./ui-opentui/dist/local-shell-mcp-tui.exe --version
           else
@@ -214,6 +240,10 @@ jobs:
             cp ui-opentui/dist/local-shell-mcp-tui release/local-shell-mcp-${{ matrix.artifact }}/
           fi
           cp README.md LICENSE release/local-shell-mcp-${{ matrix.artifact }}/
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            cp src/local_shell_mcp/helpers/tmux.LICENSE \
+              release/local-shell-mcp-${{ matrix.artifact }}/TMUX-LICENSE.txt
+          fi
           cat > release/local-shell-mcp-${{ matrix.artifact }}/QUICKSTART.txt <<'EOF'
           Start local-shell-mcp without Docker:
 

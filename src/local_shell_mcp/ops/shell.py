@@ -27,6 +27,7 @@ from ..schemas.result_models.shell import (
     ShellExecutionOutput,
     StartPersistentShellOutput,
 )
+from ..tmux_helper import require_tmux
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -662,7 +663,8 @@ def _tmux_session_name(name: str | None = None) -> str:
 
 async def tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
     """Run a tmux command with a bounded timeout and normalized command result payload."""
-    cmd = " ".join(shlex.quote(x) for x in [get_settings().tmux_bin, *args])
+    selection = require_tmux()
+    cmd = " ".join(shlex.quote(x) for x in [selection.path, *args])
     return await run_shell(cmd, cwd=".", timeout_s=timeout_s)
 
 

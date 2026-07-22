@@ -26,7 +26,12 @@ For binary deployments, set the workspace explicitly:
 LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project ./local-shell-mcp --mode mcp
 ```
 
-The binary includes the Python server and default OAuth dependencies. It does not bundle host tools such as Git, tmux, shells, compilers, or LibreOffice; those come from the host system.
+The binary includes the Python server and default OAuth dependencies. Linux
+`x86_64` and `aarch64` release binaries also include a statically linked tmux
+helper for persistent shells, used only when the default system `tmux` command
+is absent. Git, shells, compilers, LibreOffice, and other host tools still come
+from the host system. macOS and Windows releases do not bundle tmux; Windows
+persistent shells use ConPTY.
 
 ## Python package
 

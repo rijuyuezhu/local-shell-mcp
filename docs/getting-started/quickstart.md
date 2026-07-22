@@ -9,7 +9,7 @@ The local service path is the recommended default because it works without the D
 You need:
 
 - A Linux host or VM that should run the shell/file/Git operations.
-- `git`, `uv`, `python3`, `tmux`, `ripgrep`, and `cloudflared` available on that host.
+- `git`, `uv`, `python3`, `tmux`, `ripgrep`, and `cloudflared` available on that host. The source-checkout path in this guide uses host tmux; only Linux standalone release binaries contain the fallback helper.
 - A Cloudflare Tunnel token for the public hostname.
 - A workspace directory that you are willing to let an AI coding agent control.
 - A ChatGPT plan and client mode that can add a custom MCP connector.

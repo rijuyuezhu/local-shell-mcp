@@ -981,3 +981,39 @@ def test_remote_machine_names_are_portably_validated(tmp_path, monkeypatch):
         manager.rename("missing", "bad/name")
     with pytest.raises(ValueError, match="128 characters"):
         manager.rename("missing", "x" * 129)
+
+
+@pytest.mark.asyncio
+async def test_worker_job_heartbeat_stops_when_job_finishes_during_sleep(
+    monkeypatch,
+):
+    import local_shell_mcp.remote_worker.worker as worker
+
+    class FinishingTask:
+        def __init__(self):
+            self.checks = 0
+
+        def done(self):
+            self.checks += 1
+            return self.checks >= 2
+
+    sleeps = []
+
+    async def sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr(worker.asyncio, "sleep", sleep)
+    monkeypatch.setattr(
+        worker,
+        "_worker_post_json",
+        lambda *args, **kwargs: pytest.fail("heartbeat must not be sent"),
+    )
+    task = FinishingTask()
+    await worker._worker_job_heartbeat_loop(
+        task,  # type: ignore[arg-type]
+        "https://example.test",
+        {"authorization": "Bearer token"},
+        0,
+    )
+    assert task.checks == 2
+    assert sleeps == [0.01]

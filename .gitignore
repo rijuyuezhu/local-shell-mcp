@@ -33,3 +33,7 @@ site/
 /coverage.json
 /coverage.xml
 /htmlcov/
+
+# Generated platform helpers (release builds only)
+/src/local_shell_mcp/helpers/linux-x86_64/tmux
+/src/local_shell_mcp/helpers/linux-aarch64/tmux

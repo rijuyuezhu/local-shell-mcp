@@ -32,6 +32,7 @@ from .ops.shell import (
     PERSISTENT_SHELL_MIN_COLUMNS,
     PERSISTENT_SHELL_MIN_ROWS,
 )
+from .tmux_helper import require_tmux
 
 TERMINAL_BRIDGE_MAX_CHUNK_BYTES = 65_536
 TERMINAL_BRIDGE_MAX_WAIT_MS = 1_000
@@ -176,7 +177,8 @@ class _UnixTmuxAttach:
         self.shell_id = shell_id
         self.master_fd = -1
 
-        tmux_bin = get_settings().tmux_bin
+        tmux_bin = require_tmux().path
+        assert tmux_bin is not None
         check = subprocess.run(
             [tmux_bin, "has-session", "-t", shell_id],
             capture_output=True,
