@@ -548,7 +548,11 @@ def staged_payload(
             raise cleanup_error
 
 
-def _wheel_members(path: Path) -> tuple[list[tuple[ZipInfo, bytes]], str, str]:
+def _wheel_members(
+    path: Path,
+    *,
+    unread_names: frozenset[str] = frozenset(),
+) -> tuple[list[tuple[ZipInfo, bytes]], str, str]:
     try:
         with WheelFile(path, "r") as wheel_file:
             names = wheel_file.namelist()
@@ -562,8 +566,18 @@ def _wheel_members(path: Path) -> tuple[list[tuple[ZipInfo, bytes]], str, str]:
                 raise PlatformWheelError(
                     "wheel must contain exactly one WHEEL and one RECORD"
                 )
+            for unread_name in unread_names:
+                if names.count(unread_name) != 1:
+                    raise PlatformWheelError(
+                        "wheel must contain exactly one unread native payload"
+                    )
             members = [
-                (info, wheel_file.read(info.filename))
+                (
+                    info,
+                    b""
+                    if info.filename in unread_names
+                    else wheel_file.read(info.filename),
+                )
                 for info in wheel_file.infolist()
                 if info.filename != record_paths[0]
             ]
@@ -756,6 +770,7 @@ def rewrite_platform_wheel(
     universal_wheel: Path,
     output_dir: Path,
     target: PlatformWheelTarget,
+    payload: bytes,
     *,
     expected_payload_sha256: str,
     expected_executable_sha256: str,
@@ -764,7 +779,12 @@ def rewrite_platform_wheel(
 
     if _parse_wheel_tags(universal_wheel) != {Tag("py3", "none", "any")}:
         raise PlatformWheelError("input filename must use py3-none-any")
-    members, wheel_path, _record_path = _wheel_members(universal_wheel)
+    if hashlib.sha256(payload).hexdigest() != expected_payload_sha256:
+        raise PlatformWheelError("source platform-wheel payload digest changed")
+    members, wheel_path, _record_path = _wheel_members(
+        universal_wheel,
+        unread_names=frozenset({target.payload_path}),
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     suffix = "-py3-none-any.whl"
     if not universal_wheel.name.endswith(suffix):
@@ -784,7 +804,9 @@ def rewrite_platform_wheel(
     try:
         with _DeterministicWheelFile(temporary_path, "w") as output:
             for info, data in members:
-                if info.filename == wheel_path:
+                if info.filename == target.payload_path:
+                    data = payload
+                elif info.filename == wheel_path:
                     data = _rewrite_wheel_metadata(data, target)
                 normalised = _normalise_zip_info(info)
                 if info.filename == target.payload_path:
@@ -861,6 +883,7 @@ def build_platform_wheel(
                 universal,
                 output_dir,
                 target,
+                payload,
                 expected_payload_sha256=payload_sha256,
                 expected_executable_sha256=executable_sha256,
             )

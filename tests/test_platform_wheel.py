@@ -478,6 +478,7 @@ def test_rewrite_and_inspect_platform_wheel(tmp_path: Path) -> None:
         universal,
         tmp_path / "out",
         target,
+        payload,
         expected_payload_sha256=hashlib.sha256(payload).hexdigest(),
         expected_executable_sha256=hashlib.sha256(executable).hexdigest(),
     )
@@ -515,6 +516,7 @@ def test_rewrite_platform_wheel_is_byte_reproducible(tmp_path: Path) -> None:
             universal,
             directory,
             target,
+            payload,
             expected_payload_sha256=hashlib.sha256(payload).hexdigest(),
             expected_executable_sha256=hashlib.sha256(executable).hexdigest(),
         )
@@ -630,6 +632,50 @@ def test_wheel_members_rejects_invalid_archive_and_missing_metadata(
         pw._wheel_members(missing)
 
 
+def test_wheel_members_requires_each_unread_payload(tmp_path: Path) -> None:
+    target = pw.target_for_tag("linux_x86_64")
+    universal = _make_wheel(tmp_path / "local_shell_mcp-1.0-py3-none-any.whl")
+    with pytest.raises(pw.PlatformWheelError, match="unread native payload"):
+        pw._wheel_members(
+            universal,
+            unread_names=frozenset({target.payload_path}),
+        )
+
+
+def test_rewrite_does_not_read_staged_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = pw.target_for_tag("linux_x86_64")
+    executable = _executable(target, b"in-memory")
+    payload = pw.deterministic_gzip(executable)
+    universal = _make_wheel(
+        tmp_path / "local_shell_mcp-1.0-py3-none-any.whl",
+        payloads={target.payload_path: b"not-valid-gzip"},
+    )
+    original_read = pw.WheelFile.read
+
+    def guarded_read(wheel: WheelFile, name: str) -> bytes:
+        if (
+            Path(str(wheel.filename)) == universal
+            and name == target.payload_path
+        ):
+            raise AssertionError("staged payload must not be read")
+        return original_read(wheel, name)
+
+    monkeypatch.setattr(pw.WheelFile, "read", guarded_read)
+    output, inspection = pw.rewrite_platform_wheel(
+        universal,
+        tmp_path / "out",
+        target,
+        payload,
+        expected_payload_sha256=hashlib.sha256(payload).hexdigest(),
+        expected_executable_sha256=hashlib.sha256(executable).hexdigest(),
+    )
+    assert output.exists()
+    assert inspection.payload_sha256 == hashlib.sha256(payload).hexdigest()
+
+
 def test_rewrite_rejects_bad_input_and_digest_mismatch(tmp_path: Path) -> None:
     target = pw.target_for_tag("linux_x86_64")
     payload = pw.deterministic_gzip(_executable(target))
@@ -643,6 +689,7 @@ def test_rewrite_rejects_bad_input_and_digest_mismatch(tmp_path: Path) -> None:
             universal,
             out,
             target,
+            payload,
             expected_payload_sha256="0" * 64,
             expected_executable_sha256=hashlib.sha256(
                 _executable(target)
@@ -662,6 +709,7 @@ def test_rewrite_rejects_bad_input_and_digest_mismatch(tmp_path: Path) -> None:
             tagged,
             out,
             target,
+            payload,
             expected_payload_sha256="",
             expected_executable_sha256="",
         )
@@ -684,6 +732,7 @@ def test_rewrite_refuses_existing_output(tmp_path: Path) -> None:
             universal,
             out,
             target,
+            payload,
             expected_payload_sha256=hashlib.sha256(payload).hexdigest(),
             expected_executable_sha256=hashlib.sha256(executable).hexdigest(),
         )
