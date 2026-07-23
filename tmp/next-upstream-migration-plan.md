@@ -619,7 +619,7 @@ Final local validation:
   worker E2E. Direct failure-injection coverage validates malformed references,
   invalid roots/objects, open races, byte-count/digest/JSON/UTF-8 mismatches,
   bounded gzip bombs, recursive lists, quota pruning, and GC error paths.
-- The full branch-coverage suite passes `874 passed, 2 skipped`; total branch
+- The full branch-coverage suite passes `876 passed, 2 skipped`; total branch
   coverage is 84.82% against the unchanged 82.60% baseline. The new
   `audit_payloads.py` module is 98.12%; the new operation, input schema, result
   schema, and registry modules are 100%. The ratchet passes across 181 tracked
@@ -649,10 +649,17 @@ The same run's Windows pytest exposed a separate shared-lock contention issue:
 spawned writers. The Windows private-file helper now uses explicit nonblocking
 lock attempts and retries only contention errno values, matching POSIX blocking
 semantics while propagating unrelated I/O failures immediately. Deterministic
-unit tests cover both paths. The post-fix full local suite passes
-`874 passed, 2 skipped`; total branch coverage is 84.82%, the new payload module
-remains 98.12%, and the shared private-file module is 100%. A clean CI rerun
-remains pending.
+unit tests cover both paths. Clean CI run `29999693146` confirmed the deadlock
+retry but exposed a preceding Windows race: competing processes could both see an
+empty lock file and fail while flushing the sentinel byte before locking. Lock
+files are now initialized or repaired before opening, using exclusive creation
+and contention retries; `_lock_handle` only locks an already initialized byte.
+The same run showed the payload spawn test's fixed 20-second per-process join was
+too small under Ubuntu coverage without any child traceback. Both cross-process
+tests now use one shared 90-second deadline and always terminate/reap stragglers
+before failing. The post-fix full local suite previously passed
+`876 passed, 2 skipped`; the final local branch-coverage suite passes `876 passed, 2 skipped` at
+84.82%; another clean remote CI validation remains pending.
 
 #### Phase 5A — Recoverable payload store
 

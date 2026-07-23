@@ -13,11 +13,35 @@ from pathlib import Path
 from typing import BinaryIO
 
 
+def _ensure_lock_file(path: Path) -> None:
+    """Create or repair the one-byte lock file before any process opens it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    while True:
+        try:
+            descriptor = os.open(
+                path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+            )
+        except FileExistsError:
+            try:
+                if path.stat().st_size > 0:
+                    return
+                descriptor = os.open(path, os.O_WRONLY | os.O_APPEND)
+            except FileNotFoundError, PermissionError:
+                time.sleep(0.01)
+                continue
+        except PermissionError:
+            time.sleep(0.01)
+            continue
+        try:
+            os.write(descriptor, b"\0")
+        finally:
+            os.close(descriptor)
+        with contextlib.suppress(OSError):
+            path.chmod(0o600)
+        return
+
+
 def _lock_handle(handle: BinaryIO) -> None:
-    handle.seek(0, os.SEEK_END)
-    if handle.tell() == 0:
-        handle.write(b"\0")
-        handle.flush()
     handle.seek(0)
     if os.name == "nt":
         import msvcrt
@@ -57,8 +81,8 @@ def _unlock_handle(handle: BinaryIO) -> None:
 @contextmanager
 def private_file_lock(path: Path) -> Generator[BinaryIO]:
     """Hold one private cross-process file lock for the context lifetime."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+b") as handle:
+    _ensure_lock_file(path)
+    with path.open("r+b") as handle:
         with contextlib.suppress(OSError):
             path.chmod(0o600)
         _lock_handle(handle)

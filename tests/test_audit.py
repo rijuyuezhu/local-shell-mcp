@@ -4,6 +4,7 @@ import json
 import multiprocessing
 import os
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,29 @@ def _audit_payload_process(workspace: str, state_dir: str, worker: int) -> None:
             "body": "shared-process-payload-" * 1_000,
         },
     )
+
+
+def _join_processes(processes: list[Any], *, timeout_s: float = 90.0) -> None:
+    """Wait for one spawned group against a shared deadline and reap stragglers."""
+    deadline = time.monotonic() + timeout_s
+    failures: list[str] = []
+    try:
+        for process in processes:
+            process.join(timeout=max(0.0, deadline - time.monotonic()))
+            if process.is_alive():
+                failures.append(
+                    f"{process.name} did not exit within shared {timeout_s}s deadline"
+                )
+            elif process.exitcode != 0:
+                failures.append(
+                    f"{process.name} exited with {process.exitcode}"
+                )
+    finally:
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+    assert failures == []
 
 
 def test_audit_uniformly_redacts_secrets_but_retains_fingerprints(
@@ -270,9 +294,7 @@ def test_audit_cross_process_appends_do_not_corrupt_jsonl(
 
     for process in processes:
         process.start()
-    for process in processes:
-        process.join(timeout=30)
-        assert process.exitcode == 0
+    _join_processes(processes)
 
     records = _records(path)
     assert len(records) == 100
@@ -673,9 +695,7 @@ def test_audit_payload_cross_process_deduplicates_and_recovers(
     ]
     for process in processes:
         process.start()
-    for process in processes:
-        process.join(timeout=20)
-        assert process.exitcode == 0
+    _join_processes(processes)
 
     listing = query_audit(event="process_payload", sort="asc")
     assert listing["count"] == 4
