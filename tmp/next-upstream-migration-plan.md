@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-3 complete; Phase 4 local validation complete, remote CI pending
+Status: implementation in progress — Phases 1-4 complete; Phase 5 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `5537c05cd226365c8e48d898c7c77c7705dbe297` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `4adce7c16d7f7825f317fd22bbcaf7e1ab9e8551` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -427,7 +427,7 @@ Repository-wide pre-commit passed. Implementation commit
 Windows, Chromium, coverage, ConPTY, OpenTUI, package, VS Code, Docker, bundled
 tmux, pyright, pre-commit, and release-matrix jobs passed. Phase 3 has no
 unresolved design, implementation, test, security, documentation, or CI issue;
-Phase 4 is the next pending phase.
+Phase 4 is complete below; Phase 5 is the next pending phase.
 
 Exit criterion: an HTTP MCP server requiring OAuth and a stdio/HTTP server
 requiring a stored secret can both be configured and called without plaintext
@@ -435,7 +435,7 @@ credentials in the manifest.
 
 ### Phase 4 — Merge structured environment information into sessions
 
-Status: implementation and local validation complete; remote CI pending (started 2026-07-23).
+Status: complete (started and completed 2026-07-23).
 
 Actual baseline: branch HEAD and `origin/feat/port-upstream-features-2026-07` both point to `509ccc4`; fetched `upstream/main` remains `f72164a`, so no new upstream commit requires review before this phase.
 
@@ -545,7 +545,12 @@ ConPTY, OpenTUI, VS Code, Docker, bundled tmux, and release checks, but its macO
 pytest job found a platform-specific test bug: the generic sentinel `private`
 matched macOS's legitimate `/private/var/...` temporary path. The assertion now
 uses the unique sentinel `probe-secret-fixture`; no production behavior changed.
-A clean CI rerun remains pending.
+Fix commit `4adce7c16d7f7825f317fd22bbcaf7e1ab9e8551` was pushed. Clean CI rerun
+`29990557981` completed successfully, including Ubuntu coverage, Linux/macOS/
+Windows pytest, Chromium, pyright, pre-commit, package, ConPTY, OpenTUI, VS Code,
+Docker/Compose, bundled tmux, and release-matrix jobs. Docs run `29990231784`
+also completed successfully. Phase 4 has no unresolved design, implementation,
+test, security, documentation, or CI issue; Phase 5 is the next pending phase.
 
 Exit criterion: clients can choose tools and understand local/remote runtime
 capabilities from `session_start` alone, with no standalone environment tool.
@@ -819,7 +824,7 @@ and deleting this temporary plan does not remove unique operational knowledge.
 - [x] Phase 1: remove stale-tool diagnostics/tombstones.
 - [x] Phase 2: real Chromium browser E2E.
 - [x] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
-- [ ] Phase 4: structured environment in `session_start`.
+- [x] Phase 4: structured environment in `session_start`.
 - [ ] Phase 5A: recoverable oversized audit payload store.
 - [ ] Phase 5B: session-bound MCP `audit_tail`.
 - [ ] Phase 6: Linux/macOS worker user-service management.
