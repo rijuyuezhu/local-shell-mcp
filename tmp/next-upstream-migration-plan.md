@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-5 complete; Phase 6 implementation in progress
+Status: implementation in progress — Phases 1-6 complete; Phase 7 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `8a80d024a0fc78aab4c265365dc0c135cce560d5` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `31bc336dc53fdc7a48f93c8824ec49c8a1667c13` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -746,14 +746,14 @@ bounded previews.
 
 ### Phase 6 — Add remote-worker user-service management
 
-Status: implementation in progress (started 2026-07-23).
+Status: complete (started and completed 2026-07-23).
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to `be689fb`; fetched
 `upstream/main` remains `f72164a`, so no new upstream commit requires review.
 Phase 5 closure CI run `30003551128` completed successfully.
 
-Implementation result so far:
+Implementation result:
 
 - The old flat `worker --server ...` parser and reserved `--persist` flag are
   removed. The shared CLI and source-only entrypoint now use explicit
@@ -790,7 +790,7 @@ Final local validation:
   baselines at 80.83% and 83.08%. The ratchet passes across 181 tracked files and
   11 new files.
 - The focused worker/service/lifecycle/updater/CLI/remote/environment/public-
-  surface group passes 222 tests, including the real controller/worker E2E,
+  surface group passes, including the real controller/worker E2E,
   dependency-light source-only CLI, safe native systemd-user status probe, and
   strict no-new-MCP-tool checks. Direct tests cover systemd/launchd generation
   and quoting, private permissions, credential exclusion, launcher change
@@ -817,9 +817,17 @@ issues: a test compared an escaped systemd value to its raw Windows path, and
 coarse filesystem timestamps could hide a same-size launchd-log rewrite. The
 assertion now checks the generated quoted value, while log follow also compares a
 bounded BLAKE2 tail signature so same-size rewrites are detected even when inode,
-size, and mtime are unchanged. The post-fix full local suite passes
-`917 passed, 2 skipped` at 85.23% branch coverage; `service.py` remains 96.49%
-and the unchanged-baseline ratchet passes. A clean CI rerun remains pending.
+size, and mtime are unchanged. Remediation commit
+`31bc336dc53fdc7a48f93c8824ec49c8a1667c13`
+(`fix(worker): detect coarse log rewrites`) passes the post-fix local suite at
+`917 passed, 2 skipped` and 85.23% branch coverage; `service.py` remains 96.49%
+and the unchanged-baseline ratchet passes. Clean branch-head CI run
+`30014177330` completed successfully with all 19 jobs green, including Ubuntu
+coverage, Windows/macOS pytest, Chromium, pre-commit, pyright, package smoke,
+ConPTY, OpenTUI, VS Code, Docker, bundled tmux, and the release matrix.
+
+Phase 6 exit criteria are complete. Phase 7 is next; do not begin it without a
+new user instruction.
 
 CLI contract (intentional breaking cleanup; no hidden legacy parser):
 
