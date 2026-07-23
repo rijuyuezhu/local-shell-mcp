@@ -35,6 +35,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "coverage[toml]>=7.15.2",
+    "packaging>=26.0",
     "playwright>=1.61.0",
     "pre-commit>=4.6.0",
     "pyright>=1.1.411",
@@ -42,6 +43,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-timeout>=2.4.0",
     "ruff>=0.15.20",
+    "wheel>=0.46.3",
 ]
 docs = [
     "mkdocs-material>=9.7.6",
@@ -55,7 +57,9 @@ build-backend = "uv_build"
 source-include = [
     "ui-terminal/**",
     "ui-opentui/**",
+    "scripts/build-platform-wheel.py",
     "scripts/check-coverage.py",
+    "scripts/smoke-platform-wheel.py",
     "scripts/coverage-baseline.json",
     "tests/test_coverage_gate.py",
     "tests/test_tmux_helper.py",

@@ -195,7 +195,26 @@ uv run pre-commit run --all-files
 uv run pyright
 uv run pytest -q
 uv run mkdocs build --strict
+uv run python scripts/check-release-matrix.py
+uv build --out-dir dist
 ```
+
+The ordinary `uv build` output must contain exactly one payload-free universal
+`py3-none-any` wheel and one source-only sdist. Native OpenTUI wheels are built
+only on matching runners with the pinned Bun release, for example:
+
+```bash
+uv run python scripts/build-platform-wheel.py \
+  --platform-tag linux_x86_64 \
+  --output-dir dist
+```
+
+The builder accepts only the repository's explicit target tags, validates the
+native host and executable magic, creates deterministic gzip metadata, rewrites
+and verifies `WHEEL` plus `RECORD`, and removes staging files on success or
+failure. Release CI installs every platform wheel in an isolated environment
+with Bun and sidecars absent, then runs `scripts/smoke-platform-wheel.py` before
+all Python package artifacts are published together.
 
 Also test the Docker image or binary artifact and at least one real MCP connection path before publishing.
 

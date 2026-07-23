@@ -1,6 +1,6 @@
 # Human interface
 
-The HTTP server includes the canonical packaged browser Human UI at `/ui` by default. The native browser interface remains the default cross-platform surface. An optional OpenTUI client uses the same authenticated Human UI API from a terminal, either as a release/Docker sidecar, from source with Bun, or through the browser's separate OpenTUI Console panel. Yazi is not required.
+The HTTP server includes the canonical packaged browser Human UI at `/ui` by default. The native browser interface remains the default cross-platform surface. An optional OpenTUI client uses the same authenticated Human UI API from a terminal, either from an embedded platform-wheel runtime, as a release/Docker sidecar, from source with Bun, or through the browser's separate OpenTUI Console panel. Yazi is not required.
 
 ## Start the HTTP server
 
@@ -30,7 +30,7 @@ local-shell-mcp tui --api-base https://localhost:9443/api/ui
 
 `--api-base` accepts only a credential-free loopback HTTP(S) URL with the exact `/api/ui` path. The mode-`0600` local UI token is passed to the OpenTUI process through its environment and never appears in the command line. Resolution order is: an administrator-configured `ui_tui_command`, a platform sidecar beside the installed executable, a release/runtime sidecar, an optional embedded payload, then the checked-out `ui-opentui/src/tui.tsx` source when Bun is available.
 
-Official release archives and Docker images build a platform-native `local-shell-mcp-tui` sidecar. Source distributions include the TypeScript/TSX source and lockfile but exclude `node_modules` and generated binaries. The ordinary Python wheel remains platform-independent; a source checkout can run or compile OpenTUI with:
+Official same-version platform wheels embed one bounded, gzip-compressed native runtime and are tagged non-pure for Linux x86_64/aarch64, macOS x86_64/arm64, and Windows x86_64. Linux wheels deliberately use truthful `linux_x86_64` or `linux_aarch64` tags rather than claiming unaudited manylinux compatibility; Windows arm64 is validated by the builder but is not published until a native arm64 runner is available. The universal `py3-none-any` wheel and source distribution remain payload-free, and the sdist includes TypeScript/TSX source plus the lockfile while excluding `node_modules` and generated binaries. Release archives and Docker images continue to carry a sidecar. A source checkout can run or compile OpenTUI with:
 
 ```bash
 cd ui-opentui

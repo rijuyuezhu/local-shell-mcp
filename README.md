@@ -38,7 +38,7 @@ local-shell-mcp --mode http
 local-shell-mcp tui
 ```
 
-Release archives and Docker images include a platform-native `local-shell-mcp-tui` sidecar. Source checkouts can build it from [`ui-opentui/`](ui-opentui/) with Bun. When a runtime is available, the browser UI also shows a separate OpenTUI Console without replacing the native browser panels. See the [Human interface guide](docs/guides/human-interface.md).
+Matching Linux x86_64/aarch64, macOS x86_64/arm64, and Windows x86_64 Python wheels embed a platform-native OpenTUI runtime, so `local-shell-mcp tui` works after an ordinary platform-wheel install without Bun or a release archive. Release archives and Docker images also include a sidecar, while the universal `py3-none-any` wheel remains payload-free for server-only or unsupported platforms. Source checkouts can build OpenTUI from [`ui-opentui/`](ui-opentui/) with Bun. See the [Human interface guide](docs/guides/human-interface.md).
 
 ## License
 
