@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-6 complete; Phase 7 pending
+Status: implementation in progress — Phases 1-6 complete; Phase 7 implementation in progress
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `31bc336dc53fdc7a48f93c8824ec49c8a1667c13` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `c5b7d27ed07f7161b43f18cca84ab2a1cd5138b7` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -878,6 +878,105 @@ state without widening the MCP tool surface.
 
 ### Phase 7 — Publish platform wheels with embedded OpenTUI
 
+Status: implementation in progress (started 2026-07-23).
+
+Actual baseline: branch HEAD and
+`origin/feat/port-upstream-features-2026-07` both point to
+`c5b7d27ed07f7161b43f18cca84ab2a1cd5138b7`; divergence is `0/0`, the worktree
+was clean, and fetched `upstream/main` remains
+`f72164a3d1883f83e22599c7e22e8e07fa6c77a8`. No newer upstream commit changes
+the Phase 7 audit.
+
+Implementation decision:
+
+- Preserve `uv_build` and add a repository-owned build/verification command.
+  It will compile with the repository-pinned Bun version into an isolated
+  temporary directory, create deterministic gzip bytes in Python, stage exactly
+  one bounded payload, build the ordinary wheel, rewrite `WHEEL` plus `RECORD`,
+  and reject any filename, metadata, executable-magic, digest, size, or cleanup
+  mismatch.
+- Use explicit truthful tags: `linux_x86_64`, `linux_aarch64`,
+  `macosx_10_15_x86_64`, `macosx_11_0_arm64`, and `win_amd64`. Support
+  `win_arm64` validation only for a future native arm64 runner; do not publish it
+  from x64 Windows. Linux wheels will not claim manylinux compatibility in this
+  phase.
+- Keep the universal wheel and sdist payload-free. Extend CI and release jobs to
+  build native payloads on matching runners, inspect all artifacts, and install
+  each platform wheel in an isolated environment with no Bun or sidecar before
+  invoking the embedded executable.
+- Reuse the existing fork-native `materialize_embedded_tui`; it already provides
+  bounded streaming decompression, private versioned state, atomic replacement,
+  fsync, executable permissions, and Windows/concurrent replacement handling.
+  Add tests only where Phase 7 exposes a packaging or installed-wheel gap.
+
+Rejected upstream design:
+
+- Do not replace `uv_build` with Hatchling or use an environment-triggered build
+  hook that infers the wheel tag. The tag and target runner must be explicit and
+  independently verified.
+- Do not place a native payload in the universal wheel, advertise an unaudited
+  manylinux tag, cross-tag Windows x64 output as arm64, add an MCP tool, or alter
+  controller/worker authorization or source-only remote-worker packaging.
+
+Focused implementation checkpoint (2026-07-23):
+
+- Added the typed `local_shell_mcp.platform_wheel` builder/inspector, thin build
+  and installed-wheel smoke scripts, build-only `packaging`/`wheel` dependencies,
+  five-runner CI/release matrices, atomic artifact download, and permanent
+  packaging documentation. The public MCP registry is unchanged.
+- Focused static checks passed. `57` builder tests cover all approved tags plus
+  validation-only `win_arm64`, native host/magic checks, deterministic gzip and
+  byte-reproducible ZIP/`RECORD` metadata, bounds, symlinks, external lock
+  timeout/private permissions, subprocess failure, payload digests, corrupt
+  archives, sdist exclusions, cleanup, and orchestration. The new production
+  module has `91.64%` branch coverage.
+- The broader focused set passed: `158 passed` across platform-wheel, TUI runtime,
+  source-only worker bootstrap, real controller/worker E2E, CLI, and public tool
+  surface tests.
+- A real pinned-Bun Linux x86_64 build produced a verified non-pure
+  `linux_x86_64` wheel with one 28 MiB gzip payload (about 95 MiB executable).
+  Installing it into a clean virtual environment with Bun and sidecars absent
+  materialized the runtime under the private versioned state directory and
+  successfully executed `--version`.
+- A real `uv build` produced one payload-free `py3-none-any` wheel and one
+  source-only sdist; the sdist retained both repository scripts, excluded
+  generated OpenTUI files, and rebuilt another verified payload-free wheel.
+- The first real native build exposed one validator bug: `uv_build` emits an
+  explicit `ui_runtime/` ZIP directory entry, which was incorrectly counted as
+  a second payload. The inspector now counts only regular payload members and a
+  regression fixture preserves the directory-entry case.
+- Byte-level reproducibility testing then exposed that the original package-local
+  build lock was included by `uv_build`; its PID changed the wheel and `RECORD`
+  and leaked build-process metadata. The lock now lives in the system temporary
+  directory under a repository-path hash, all ZIP members including `RECORD` use
+  fixed metadata, and inspection rejects any packaged build lock. Two complete
+  pinned-Bun builds separated in wall-clock time now have the identical wheel
+  SHA-256 `71870fef03762579bc2a715d65b37ce67d4a80279ab042fcebf323cfc3eabf04`.
+
+Full local verification checkpoint (2026-07-23):
+
+- The required clean coverage workflow completed from an absolute-path detached
+  script with `/tmp/phase7-full-coverage.log` and exit marker `0`: `974 passed,
+  2 skipped`, aggregate branch coverage `85.39%` against the `82.60%` baseline,
+  and the coverage ratchet accepted all `181` tracked plus `12` new files.
+  `coverage.json`, `coverage.xml`, and `.coverage` were freshly generated by this
+  run; `platform_wheel.py` remained at `91.64%` branch coverage.
+- Repository-wide Ruff format/check, Pyright, `uv lock --check`, generated config
+  and tool-reference checks, release-matrix validation, YAML parsing, and
+  `git diff --check` passed. The generated MCP tool surface did not change.
+  Final `pre-commit run --all-files --show-diff-on-failure` also passed all Ruff,
+  generated-reference, VS Code, and terminal UI asset hooks.
+- Strict MkDocs plus generated reference-asset validation passed. OpenTUI
+  TypeScript checking and all `91` Bun tests passed. Real Chromium browser E2E
+  passed (`1 passed`) and its artifacts were removed.
+- Repository secret scans found no findings in every Phase 7 `src`/`tests` file
+  or either new repository script. Manual review found no bearer/access/OAuth
+  token, invite, admin PIN, credential-bearing URL/argv, unit, plist, or private
+  absolute-path disclosure. No service lifecycle or authorization code changed.
+- Main implementation commit: `d7e9a11` (`feat(packaging): publish embedded
+  OpenTUI wheels`). It contains production code, tests, workflows, permanent
+  documentation, lockfile changes, and release-matrix enforcement.
+
 Packaging architecture:
 
 - Keep `uv_build`; do not switch the entire project to Hatchling merely to copy
@@ -1019,9 +1118,9 @@ and deleting this temporary plan does not remove unique operational knowledge.
 - [x] Phase 2: real Chromium browser E2E.
 - [x] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
 - [x] Phase 4: structured environment in `session_start`.
-- [ ] Phase 5A: recoverable oversized audit payload store.
-- [ ] Phase 5B: session-bound MCP `audit_tail`.
-- [ ] Phase 6: Linux/macOS worker user-service management.
-- [ ] Phase 7: platform wheels with embedded OpenTUI.
+- [x] Phase 5A: recoverable oversized audit payload store.
+- [x] Phase 5B: session-bound MCP `audit_tail`.
+- [x] Phase 6: Linux/macOS worker user-service management.
+- [ ] Phase 7: platform wheels with embedded OpenTUI (implementation in progress).
 - [ ] Phase 8: internal resumable HTTP large-file transfer.
 - [ ] Phase 9: full integration, permanent docs, and plan deletion.
