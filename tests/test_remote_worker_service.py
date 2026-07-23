@@ -131,7 +131,7 @@ def test_systemd_install_is_private_idempotent_and_credential_free(
         assert secret not in launcher_text
     assert "worker-launcher.py" in text
     assert 'main(["run"])' in launcher_text
-    assert identity["workdir"] in text
+    assert service._systemd_quote(identity["workdir"]) in text
     if os.name != "nt":
         assert unit.stat().st_mode & 0o777 == 0o600
         assert launcher.stat().st_mode & 0o777 == 0o600
@@ -921,6 +921,43 @@ def test_private_log_missing_symlink_rotation_and_append(
     assert "old" in output
     assert "new" in output
     assert "append" in output
+
+
+def test_log_tail_signature_detects_same_metadata_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    path = tmp_path / "worker.log"
+    path.write_text("old\n", encoding="utf-8")
+    original_stat = path.stat()
+    real_stat = Path.stat
+    sleeps = 0
+
+    def stable_stat(candidate: Path, *args, **kwargs):
+        info = real_stat(candidate, *args, **kwargs)
+        if candidate == path:
+            return SimpleNamespace(
+                st_size=info.st_size,
+                st_dev=original_stat.st_dev,
+                st_ino=original_stat.st_ino,
+                st_mtime_ns=original_stat.st_mtime_ns,
+            )
+        return info
+
+    def sleep(_delay: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps == 1:
+            path.write_text("new\n", encoding="utf-8")
+            return
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(Path, "stat", stable_stat)
+    monkeypatch.setattr(service.time, "sleep", sleep)
+    service._follow_private_log(path, 1)
+
+    output = capsys.readouterr().out
+    assert "old" in output
+    assert "new" in output
 
 
 def test_systemd_logs_nonfollow_follow_and_not_installed(

@@ -783,10 +783,10 @@ Implementation result so far:
 
 Final local validation:
 
-- The complete repository suite passes `916 passed, 2 skipped`; total branch
+- The complete repository suite passes `917 passed, 2 skipped`; total branch
   coverage is 85.23% against the unchanged 82.60% baseline. The new
   `remote_worker/cli.py` and `remote_worker/service.py` modules are 98.86% and
-  97.35%; existing `lifecycle.py` and `runtime.py` remain above their stored
+  96.49%; existing `lifecycle.py` and `runtime.py` remain above their stored
   baselines at 80.83% and 83.08%. The ratchet passes across 181 tracked files and
   11 new files.
 - The focused worker/service/lifecycle/updater/CLI/remote/environment/public-
@@ -808,8 +808,18 @@ Final local validation:
 
 Repository-wide pre-commit passed. Implementation commit
 `8a80d024a0fc78aab4c265365dc0c135cce560d5`
-(`feat(worker): add user service management`) is complete; push and remote CI
-remain pending.
+(`feat(worker): add user service management`) and checkpoint commit
+`f4f27c08a2a5c366a448a0770aa5d4790c5e1195` were pushed. Docs run
+`30013103450` completed successfully. Initial CI run `30013103398` passed Ubuntu
+coverage, macOS, Chromium, pre-commit, pyright, package, ConPTY, OpenTUI, VS Code,
+Docker, bundled tmux, and release checks, but Windows exposed two portability
+issues: a test compared an escaped systemd value to its raw Windows path, and
+coarse filesystem timestamps could hide a same-size launchd-log rewrite. The
+assertion now checks the generated quoted value, while log follow also compares a
+bounded BLAKE2 tail signature so same-size rewrites are detected even when inode,
+size, and mtime are unchanged. The post-fix full local suite passes
+`917 passed, 2 skipped` at 85.23% branch coverage; `service.py` remains 96.49%
+and the unchanged-baseline ratchet passes. A clean CI rerun remains pending.
 
 CLI contract (intentional breaking cleanup; no hidden legacy parser):
 

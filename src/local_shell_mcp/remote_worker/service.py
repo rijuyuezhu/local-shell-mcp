@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import platform
@@ -665,6 +666,26 @@ def _bounded_tail(path: Path, lines: int) -> str:
     return "\n".join(decoded.splitlines()[-lines:])
 
 
+def _log_tail_signature(path: Path, size: int) -> bytes | None:
+    """Fingerprint the bounded retained tail to detect coarse-timestamp rewrites."""
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        with path.open("rb") as handle:
+            handle.seek(max(0, size - _MAX_LOG_BYTES))
+            digest = hashlib.blake2b(digest_size=16)
+            remaining = _MAX_LOG_BYTES
+            while remaining > 0:
+                chunk = handle.read(min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                digest.update(chunk)
+                remaining -= len(chunk)
+        return digest.digest()
+    except OSError:
+        return None
+
+
 def _follow_private_log(path: Path, lines: int) -> None:
     initial = _bounded_tail(path, lines)
     if initial:
@@ -678,6 +699,11 @@ def _follow_private_log(path: Path, lines: int) -> None:
     position = initial.st_size if initial is not None else 0
     identity = (initial.st_dev, initial.st_ino) if initial is not None else None
     modified_ns = initial.st_mtime_ns if initial is not None else None
+    signature = (
+        _log_tail_signature(path, initial.st_size)
+        if initial is not None
+        else None
+    )
     try:
         while True:
             if path.exists() and not path.is_symlink():
@@ -689,6 +715,14 @@ def _follow_private_log(path: Path, lines: int) -> None:
                     and info.st_mtime_ns != modified_ns
                     and info.st_size <= position
                 )
+                current_signature = None
+                if not replaced and info.st_size <= position:
+                    current_signature = _log_tail_signature(path, info.st_size)
+                    rewritten = rewritten or (
+                        signature is not None
+                        and current_signature is not None
+                        and current_signature != signature
+                    )
                 if replaced or rewritten or info.st_size < position:
                     position = 0
                 identity = current_identity
@@ -702,6 +736,7 @@ def _follow_private_log(path: Path, lines: int) -> None:
                         position = handle.tell()
                     if chunk:
                         print(chunk, end="", flush=True)
+                signature = _log_tail_signature(path, info.st_size)
             time.sleep(0.25)
     except KeyboardInterrupt:
         return
