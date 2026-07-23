@@ -347,7 +347,7 @@ async def test_worker_continuously_updates_negotiated_poll_timeout(
 
     with pytest.raises(SystemExit):
         await worker._run_worker_locked(
-            "https://controller.test", "", "worker", str(tmp_path), False
+            "https://controller.test", "", "worker", str(tmp_path)
         )
 
     assert calls == [(40.0, 30.0), (15.0, 5.0)]
@@ -385,13 +385,29 @@ def test_windows_reexec_preserves_lock_handle(
     monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
 
     with pytest.raises(SystemExit):
-        runtime.reexec_worker(
-            server="https://controller.test",
-            name="worker",
-            workdir="C:/work",
-            persist=False,
-        )
+        runtime.reexec_worker()
 
     assert calls == ["prepare", ("cancel", 99)]
     assert captured.kwargs["close_fds"] is False
     assert captured.kwargs["env"]["LOCAL_SHELL_MCP_WORKER_LOCK_HANDLE"] == "99"
+
+
+def test_managed_service_pid_probe_failure_is_nonfatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    monkeypatch.setattr(lifecycle.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        lifecycle.shutil, "which", lambda _name: "/usr/bin/systemctl"
+    )
+    path = lifecycle._systemd_unit_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+    monkeypatch.setattr(
+        lifecycle,
+        "_run",
+        lambda _command: (_ for _ in ()).throw(OSError("manager unavailable")),
+    )
+
+    assert lifecycle._managed_service_pid() is None
+    assert lifecycle._current_worker_is_managed() is False

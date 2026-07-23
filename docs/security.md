@@ -136,6 +136,16 @@ Operational notes:
 - The HTTP streaming protocol used by upstream is intentionally not exposed. The fork retains its authenticated worker control channel and explicit-session chunk RPCs.
 - Treat a compromised remote worker as able to provide malicious transfer data; the control side still validates offsets, sizes, checksums, archive paths, member types, and resource limits before commit.
 
+## Remote worker identity and user services
+
+Remote enrollment invitations are one-time bearer capabilities. Prefer `worker enroll/connect --invite-stdin` or the generated join command, avoid copying invites into durable scripts, and revoke a worker whose state directory may be compromised. The private worker identity stores the controller origin, assigned name, access token, and canonical workdir; keep the entire worker state directory owner-private.
+
+Linux systemd-user units and macOS launchd plists invoke a stable private launcher plus `worker run`. They do not contain the invitation, access token, controller URL, or worker name. The launcher derives the state directory from its own path, prefers the verified installed runtime, and reads identity only inside the worker process. Windows service installation is deliberately unsupported rather than emulated with an untracked detached process.
+
+Service lifecycle commands are local CLI operations, not MCP tools. A controller can still request a verified idle-time runtime upgrade through the existing authenticated worker channel, so a trusted controller has authority to replace worker code. Automatic and manual updates enforce same-origin URLs and redirects, bounded downloads/extraction, version/digest checks, safe archive members, atomic replacement, rollback, and credential-free re-exec. The single-instance lock is retained across re-exec so a competing manual process cannot consume jobs during handoff.
+
+`worker logs` can contain tool diagnostics, paths, and application output. Systemd reads the user journal; launchd writes an owner-private bounded file. Treat both as sensitive and avoid forwarding them to systems that are not trusted for worker command output.
+
 ## Audit log handling
 
 Audit records preserve non-sensitive tool inputs, outputs, nested errors, file contents, and command output within configured bounds. Credential-like keys and free-form text are redacted on a best-effort basis before any externalization, and tokenized download URLs are masked. Small sanitized values remain inline; larger accepted values are stored as deterministic gzip-compressed canonical JSON under the private `audit_log/payloads` directory and represented in JSONL by bounded content-addressed references. Values above the per-value limit remain explicit omissions.

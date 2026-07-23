@@ -7,7 +7,7 @@ Remote workers let the control server run normal session-bound code work on anot
 1. The MCP client calls `remote_admin(action="invite", args={...})` on the control server.
 2. The server returns a one-time shell command containing an invite code.
 3. You paste that command on the remote machine.
-4. The remote machine downloads a digest-qualified worker bundle manifest, verifies and installs the bundle into its persistent state directory, starts the worker, registers once, then long-polls for jobs.
+4. The remote machine downloads a digest-qualified worker bundle manifest, verifies and installs the bundle into its persistent state directory, then starts `worker connect` to register once and long-poll for jobs.
 5. The worker persists its identity locally and resumes the same registration after restart. While a long tool call runs, it sends heartbeats independently of job execution.
 6. Each upgraded worker poll reports protocol, package version, bundle version, and the digest of the runtime that is actually executing. The controller requests an idle-time upgrade before dequeuing work when that digest differs from its current bundle.
 7. The MCP client uses `remote_admin(action="list", args={})` to discover the registered machine name, then `session_start(target="remote", machine=..., workdir=...)` to start remote work.
@@ -58,30 +58,76 @@ curl -fsSL https://your-public-host.example.com/join | bash -s -- --invite lsmcp
 
 Paste it on the remote machine. The generated invite is one-time use and expires after the configured TTL.
 
-## Start an installed worker manually
+## Enroll and run an installed worker
 
-If `local-shell-mcp` is already installed on the remote machine, enroll it once with:
+If `local-shell-mcp` is already installed on the remote machine, enroll it once without starting the poll loop:
 
 ```bash
-local-shell-mcp worker \
+local-shell-mcp worker enroll \
   --server https://your-public-host.example.com \
-  --invite lsmcp_inv_xxxxx \
+  --invite-stdin \
   --name gpu1 \
   --workdir /home/me/project
 ```
 
-The `--server` value is the public origin, not `/mcp`. After a successful enrollment, the worker can resume from its persisted identity without placing either the invite or access token in a restart command:
+Pipe or redirect the one-time invite into stdin. `--invite VALUE` is also supported, but stdin avoids retaining the invite in shell history. The `--server` value is the public origin, not `/mcp`. Enrollment writes the server, assigned name, access credential, and canonical workdir to the existing private identity file, then exits.
+
+To enroll or resume and stay attached in the foreground, use:
 
 ```bash
-local-shell-mcp worker \
+local-shell-mcp worker connect \
   --server https://your-public-host.example.com \
+  --invite-stdin \
   --name gpu1 \
   --workdir /home/me/project
 ```
+
+After enrollment, the stable foreground command contains no invite, access token, server URL, name, or workdir:
+
+```bash
+local-shell-mcp worker run
+```
+
+The old flat `local-shell-mcp worker --server ...` form and `--persist` flag are intentionally unsupported.
+
+## Install a user service
+
+On Linux with a working `systemd --user` session, or on macOS with launchd, install and start a reboot/session-persistent worker with:
+
+```bash
+local-shell-mcp worker install-service
+local-shell-mcp worker status
+```
+
+Use `--no-start` to install and enable without starting. Lifecycle and diagnostics commands are:
+
+```bash
+local-shell-mcp worker start
+local-shell-mcp worker stop
+local-shell-mcp worker restart
+local-shell-mcp worker logs --lines 100
+local-shell-mcp worker logs --follow
+local-shell-mcp worker uninstall-service
+```
+
+Lifecycle mutations and status return versioned JSON. Linux uses `~/.config/systemd/user/local-shell-mcp-worker.service` and `journalctl --user`; macOS uses `~/Library/LaunchAgents/com.fwerkor.local-shell-mcp-worker.plist` plus a private bounded log under the worker state directory. Windows reports `unsupported` and does not create an untracked detached process.
+The systemd unit starts whenever that user's systemd manager starts. For pre-login startup after reboot, an administrator must deliberately enable user lingering, for example `loginctl enable-linger USER`; the worker CLI does not silently change linger policy.
+
+Units and plists invoke a stable private launcher plus `worker run`. They contain only the Python executable, launcher path, canonical workdir, state-directory location, and a managed-runtime marker. The invite, worker access token, server URL, and worker name remain exclusively in the private identity file.
+
+## Update an installed runtime
+
+Check and install the controller's latest verified source bundle with:
+
+```bash
+local-shell-mcp worker update
+```
+
+`--force` reinstalls the current digest. The command reuses the same same-origin redirect policy, size and SHA-256 verification, safe extraction, numeric downgrade protection, atomic replacement, and rollback used by automatic idle-time upgrades. It restarts the native user service only when a new runtime was installed and that service was running before the update.
 
 ## Lifecycle safety
 
-One worker state directory permits one active worker process. The worker acquires `worker.lock` before it resumes or consumes an invite, so an accidental second manual process fails before it can create a duplicate registration or compete for jobs. The operating system releases the lock after a crash or forced exit. Existing systemd or launchd workers are recognized by their service PID and may wait for an orderly handoff instead of failing immediately.
+One worker state directory permits one active worker process. The worker initializes and acquires `worker.lock` before it resumes or consumes an invite, so an accidental second manual process fails before it can create a duplicate registration or compete for jobs. The operating system releases the lock after a crash or forced exit. Managed systemd or launchd workers are recognized by their service PID and may wait for an orderly upgrade/restart handoff instead of failing immediately.
 
 Automatic runtime upgrades preserve the same lock across process replacement. POSIX workers inherit the locked file descriptor through `exec`; Windows workers inherit the native file handle, wait for the parent to release its byte-range lock, then reacquire it before reconnecting. The access token is never added to restart arguments.
 

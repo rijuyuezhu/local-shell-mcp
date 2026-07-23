@@ -162,6 +162,7 @@ def test_worker_subcommand_parse_to_worker_handler():
     args = cli._build_parser().parse_args(
         [
             "worker",
+            "connect",
             "--server",
             "https://example.com",
             "--invite",
@@ -170,16 +171,28 @@ def test_worker_subcommand_parse_to_worker_handler():
             "npu-4card",
             "--workdir",
             "/home/user/project",
-            "--persist",
         ]
     )
 
-    assert args.handler is cli.run_worker_from_args
+    assert args.worker_command == "connect"
     assert args.server == "https://example.com"
     assert args.invite == "lsmcp_inv_xxxxx"
     assert args.name == "npu-4card"
     assert args.workdir == "/home/user/project"
-    assert args.persist is True
+    assert not hasattr(args, "persist")
+
+
+def test_legacy_flat_worker_parser_is_rejected():
+    with pytest.raises(SystemExit):
+        cli._build_parser().parse_args(
+            [
+                "worker",
+                "--server",
+                "https://example.com",
+                "--invite",
+                "lsmcp_inv_xxxxx",
+            ]
+        )
 
 
 def test_tui_subcommand_parses_loopback_api_base():

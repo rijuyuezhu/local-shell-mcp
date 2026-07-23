@@ -19,7 +19,10 @@ import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from ..remote.constants import REMOTE_WORKER_POLL_PROTOCOL_VERSION
+from ..remote.constants import (
+    REMOTE_WORKER_MANIFEST_PATH,
+    REMOTE_WORKER_POLL_PROTOCOL_VERSION,
+)
 
 POLL_PROTOCOL_VERSION = REMOTE_WORKER_POLL_PROTOCOL_VERSION
 MANIFEST_SCHEMA_VERSION = 1
@@ -268,6 +271,33 @@ def fetch_manifest(
     return decoded
 
 
+def fetch_latest_manifest(server: str) -> dict[str, Any]:
+    """Fetch the current manifest and revalidate it against a second stable read."""
+    manifest_url = _manifest_url(server, REMOTE_WORKER_MANIFEST_PATH)
+    payload = _fetch_bytes(
+        manifest_url,
+        server=server,
+        timeout=60,
+        max_bytes=256 * 1024,
+    )
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid remote worker manifest JSON") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError("invalid remote worker manifest")
+    version = str(decoded.get("bundle_version") or "")
+    digest = str(decoded.get("sha256") or "").lower()
+    if not version or not _DIGEST_RE.fullmatch(digest):
+        raise ValueError("remote worker manifest has invalid identity")
+    return fetch_manifest(
+        server,
+        manifest_path=REMOTE_WORKER_MANIFEST_PATH,
+        expected_version=version,
+        expected_digest=digest,
+    )
+
+
 def _safe_member_target(destination: Path, name: str) -> Path:
     pure = PurePosixPath(name)
     if (
@@ -379,6 +409,7 @@ def install_runtime(
     instruction: dict[str, Any],
     *,
     current_version: str,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Install one authenticated bundle instruction transactionally."""
     expected_digest = str(instruction.get("sha256") or "").lower()
@@ -392,7 +423,7 @@ def install_runtime(
 
     runtime = worker_runtime_dir()
     current = current_runtime_identity()
-    if current["sha256"] == expected_digest and runtime.is_dir():
+    if not force and current["sha256"] == expected_digest and runtime.is_dir():
         return {
             "updated": False,
             "sha256": expected_digest,
@@ -491,49 +522,47 @@ def reexec_environment() -> dict[str, str]:
     return environment
 
 
-def worker_reexec_argv(
-    *,
-    server: str,
-    name: str,
-    workdir: str,
-    persist: bool,
-) -> list[str]:
-    """Build a restart argv that relies on persisted identity, never its token."""
-    argv = [
+def worker_reexec_argv() -> list[str]:
+    """Build a credential-free restart argv using only persisted identity."""
+    return [
         sys.executable,
         "-m",
         "local_shell_mcp.remote_worker",
-        "--server",
-        server,
-        "--name",
-        name,
-        "--workdir",
-        workdir,
+        "run",
     ]
-    if persist:
-        argv.append("--persist")
-    return argv
 
 
-def reexec_worker(
-    *,
-    server: str,
-    name: str,
-    workdir: str,
-    persist: bool,
-) -> None:
+def update_installed_runtime(
+    server: str, *, force: bool = False
+) -> dict[str, Any]:
+    """Install the controller's latest verified worker bundle without restarting."""
+    from ..version import version_info
+
+    manifest = fetch_latest_manifest(server)
+    current = current_runtime_identity()
+    current_version = str(current.get("bundle_version") or "") or str(
+        version_info().get("version") or ""
+    )
+    return install_runtime(
+        server,
+        {
+            "version": str(manifest["bundle_version"]),
+            "sha256": str(manifest["sha256"]),
+            "manifest_path": REMOTE_WORKER_MANIFEST_PATH,
+        },
+        current_version=current_version,
+        force=force,
+    )
+
+
+def reexec_worker() -> None:
     """Replace the worker while preserving its single-instance lock."""
     from .lifecycle import (
         cancel_worker_lock_reexec,
         prepare_worker_lock_reexec,
     )
 
-    argv = worker_reexec_argv(
-        server=server,
-        name=name,
-        workdir=workdir,
-        persist=persist,
-    )
+    argv = worker_reexec_argv()
     inherited = prepare_worker_lock_reexec()
     try:
         environment = reexec_environment()

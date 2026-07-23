@@ -609,16 +609,15 @@ def test_reexec_argv_and_pythonpath_are_safe(tmp_path, monkeypatch):
     entries = environment["PYTHONPATH"].split(os.pathsep)
     assert entries == [runtime_path, "/old"]
 
-    argv = runtime.worker_reexec_argv(
-        server="https://controller.test",
-        name="worker-a",
-        workdir="/work",
-        persist=True,
-    )
-    assert argv[:3] == [sys.executable, "-m", "local_shell_mcp.remote_worker"]
+    argv = runtime.worker_reexec_argv()
+    assert argv == [
+        sys.executable,
+        "-m",
+        "local_shell_mcp.remote_worker",
+        "run",
+    ]
     assert "--invite" not in argv
     assert "token" not in " ".join(argv).lower()
-    assert argv[-1] == "--persist"
 
 
 def test_reexec_uses_execve_on_posix_and_spawn_on_windows(
@@ -636,12 +635,7 @@ def test_reexec_uses_execve_on_posix_and_spawn_on_windows(
             executable=executable, argv=argv, env=env
         ),
     )
-    runtime.reexec_worker(
-        server="https://controller.test",
-        name="worker-a",
-        workdir="/work",
-        persist=False,
-    )
+    runtime.reexec_worker()
     assert captured["argv"][0] == sys.executable
     assert captured["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(
         runtime.worker_runtime_dir()
@@ -655,12 +649,7 @@ def test_reexec_uses_execve_on_posix_and_spawn_on_windows(
         lambda argv, **kwargs: spawned.update(argv=argv, kwargs=kwargs),
     )
     with pytest.raises(SystemExit) as exc_info:
-        runtime.reexec_worker(
-            server="https://controller.test",
-            name="worker-a",
-            workdir="C:/work",
-            persist=False,
-        )
+        runtime.reexec_worker()
     assert exc_info.value.code == 0
     assert spawned["kwargs"]["close_fds"] is False
 
@@ -727,7 +716,7 @@ async def test_worker_processes_required_upgrade_before_job(
 
     with pytest.raises(SystemExit):
         await worker.run_worker(
-            "https://controller.test", "", "worker-a", str(tmp_path), False
+            "https://controller.test", "", "worker-a", str(tmp_path)
         )
     assert poll_payloads[0]["protocol_version"] == 1
     assert poll_payloads[0]["worker_version"]
@@ -793,7 +782,7 @@ async def test_upgrade_retry_is_capped_and_resets_after_successful_poll(
 
     with pytest.raises(SystemExit):
         await worker.run_worker(
-            "https://controller.test", "", "worker-a", str(tmp_path), False
+            "https://controller.test", "", "worker-a", str(tmp_path)
         )
     assert sleeps == [1.0, 1.0]
     assert worker._worker_retry_delay(100) == 30.0
@@ -816,6 +805,9 @@ def test_join_script_installs_persistent_verified_runtime():
     assert (
         'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"' in script
     )
+    assert 'ARGS=(connect --server "$SERVER" --invite "$INVITE"' in script
+    assert "--persist" not in script
+    assert "ARGS=(--server" not in script
     assert 'rm -rf "$RUNTIME_DIR"' not in script
 
 
@@ -846,3 +838,91 @@ def test_bundle_rejects_stale_digest_and_retry_logs_redact_secrets(capsys):
     assert fixture_value not in stderr
     assert "<redacted>" in stderr
     assert bundle.worker_bundle_manifest()["sha256"] not in response.text
+
+
+def test_fetch_latest_manifest_revalidates_stable_identity(monkeypatch):
+    from local_shell_mcp.remote_worker import runtime
+
+    digest = "a" * 64
+    initial = json.dumps({"bundle_version": "3.9.1", "sha256": digest}).encode()
+    monkeypatch.setattr(
+        runtime, "_fetch_bytes", lambda *args, **kwargs: initial
+    )
+    calls = []
+
+    def fetch_manifest(server, **kwargs):
+        calls.append((server, kwargs))
+        return {"bundle_version": "3.9.1", "sha256": digest}
+
+    monkeypatch.setattr(runtime, "fetch_manifest", fetch_manifest)
+
+    result = runtime.fetch_latest_manifest("https://controller.test")
+
+    assert result["sha256"] == digest
+    assert calls == [
+        (
+            "https://controller.test",
+            {
+                "manifest_path": runtime.REMOTE_WORKER_MANIFEST_PATH,
+                "expected_version": "3.9.1",
+                "expected_digest": digest,
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b"not-json", "manifest JSON"),
+        (b"[]", "invalid remote worker manifest"),
+        (
+            json.dumps({"bundle_version": "", "sha256": "bad"}).encode(),
+            "invalid identity",
+        ),
+    ],
+)
+def test_fetch_latest_manifest_rejects_invalid_bootstrap_identity(
+    monkeypatch, payload, message
+):
+    from local_shell_mcp.remote_worker import runtime
+
+    monkeypatch.setattr(
+        runtime, "_fetch_bytes", lambda *args, **kwargs: payload
+    )
+    monkeypatch.setattr(
+        runtime,
+        "fetch_manifest",
+        lambda *args, **kwargs: pytest.fail("revalidated invalid identity"),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        runtime.fetch_latest_manifest("https://controller.test")
+
+
+def test_install_runtime_force_reinstalls_matching_digest(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.remote_worker import runtime
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    payload = _runtime_archive_bytes()
+    digest = _mock_runtime_download(monkeypatch, payload, "3.9.1")
+    instruction = {
+        "version": "3.9.1",
+        "sha256": digest,
+        "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+    }
+    runtime.install_runtime(
+        "https://controller.test", instruction, current_version="3.9.0"
+    )
+
+    second = runtime.install_runtime(
+        "https://controller.test",
+        instruction,
+        current_version="3.9.1",
+        force=True,
+    )
+
+    assert second["updated"] is True
+    assert second["sha256"] == digest

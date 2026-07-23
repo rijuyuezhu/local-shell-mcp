@@ -283,12 +283,14 @@ def test_resolve_command_rejects_invalid_or_missing(monkeypatch):
 
 
 def test_agent_oauth_counts_reflect_private_authorization_without_names(
-    tmp_path,
+    tmp_path, monkeypatch
 ):
     from mcp.shared.auth import OAuthToken
 
     from local_shell_mcp.agent_bridge.auth_store import AgentAuthStore
 
+    monkeypatch.delenv(env_ops._REMOTE_WORKER_RUNTIME_ENV, raising=False)
+    monkeypatch.delenv(env_ops._WORKER_MANAGED_ENV, raising=False)
     settings = _settings(tmp_path)
     settings.agent_config_dir.mkdir(parents=True)
     (settings.agent_config_dir / "config.json").write_text(

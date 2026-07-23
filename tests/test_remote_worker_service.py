@@ -1,0 +1,1044 @@
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import os
+import plistlib
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+import local_shell_mcp.remote_worker.cli as worker_cli
+import local_shell_mcp.remote_worker.runtime as runtime
+import local_shell_mcp.remote_worker.service as service
+import local_shell_mcp.remote_worker.worker as worker
+from local_shell_mcp.main import _build_parser
+
+
+@pytest.fixture(autouse=True)
+def _worker_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path / "worker-state")
+    )
+    monkeypatch.delenv("LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME", raising=False)
+    monkeypatch.delenv("LOCAL_SHELL_MCP_WORKER_MANAGED", raising=False)
+    yield
+
+
+def _identity(tmp_path: Path) -> dict[str, str]:
+    workdir = tmp_path / "work dir"
+    workdir.mkdir(exist_ok=True)
+    return {
+        "server": "https://controller.test",
+        "name": "worker-a",
+        "access": "private-worker-access",
+        "workdir": str(workdir),
+    }
+
+
+class _SystemdFake:
+    def __init__(self) -> None:
+        self.enabled = False
+        self.running = False
+        self.failed = False
+        self.commands: list[list[str]] = []
+
+    def run(
+        self, command: list[str], *, timeout: float = 15
+    ) -> subprocess.CompletedProcess[str]:
+        self.commands.append(command)
+        action = (
+            command[2]
+            if command[:2] == ["/usr/bin/systemctl", "--user"]
+            else ""
+        )
+        if action == "show":
+            active = (
+                "failed"
+                if self.failed
+                else ("active" if self.running else "inactive")
+            )
+            sub = (
+                "failed"
+                if self.failed
+                else ("running" if self.running else "dead")
+            )
+            output = "\n".join(
+                [
+                    "LoadState=loaded",
+                    f"UnitFileState={'enabled' if self.enabled else 'disabled'}",
+                    f"ActiveState={active}",
+                    f"SubState={sub}",
+                    f"MainPID={321 if self.running else 0}",
+                ]
+            )
+            return subprocess.CompletedProcess(command, 0, output, "")
+        if action == "enable":
+            self.enabled = True
+            self.running = "--now" in command
+        elif action == "disable":
+            self.enabled = False
+            self.running = False
+        elif action == "start":
+            self.running = True
+        elif action == "stop":
+            self.running = False
+        elif action == "restart":
+            self.running = True
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+
+def _configure_systemd(monkeypatch: pytest.MonkeyPatch) -> _SystemdFake:
+    fake = _SystemdFake()
+    monkeypatch.setattr(service.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        service.shutil,
+        "which",
+        lambda name: (
+            f"/usr/bin/{name}" if name in {"systemctl", "journalctl"} else None
+        ),
+    )
+    monkeypatch.setattr(service, "_run", fake.run)
+    return fake
+
+
+def test_systemd_install_is_private_idempotent_and_credential_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    identity = _identity(tmp_path)
+
+    first = service.install_service(identity)
+    second = service.install_service(identity)
+
+    assert first.changed is True
+    assert first.status.running is True
+    assert second.changed is False
+    assert fake.enabled is True
+    unit = service.systemd_unit_path()
+    launcher = service.launcher_path()
+    text = unit.read_text(encoding="utf-8")
+    launcher_text = launcher.read_text(encoding="utf-8")
+    for secret in (identity["access"], identity["server"], "--invite"):
+        assert secret not in text
+        assert secret not in launcher_text
+    assert "worker-launcher.py" in text
+    assert 'main(["run"])' in launcher_text
+    assert identity["workdir"] in text
+    if os.name != "nt":
+        assert unit.stat().st_mode & 0o777 == 0o600
+        assert launcher.stat().st_mode & 0o777 == 0o600
+
+    first_uninstall = service.uninstall_service()
+    second_uninstall = service.uninstall_service()
+    assert first_uninstall.changed is True
+    assert second_uninstall.changed is False
+    assert not unit.exists()
+
+
+def test_systemd_no_start_status_and_mutations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    installed = service.install_service(_identity(tmp_path), start=False)
+    assert installed.status.enabled is True
+    assert installed.status.running is False
+
+    started = service.start_service()
+    restarted = service.restart_service()
+    stopped = service.stop_service()
+
+    assert started.status.running is True
+    assert restarted.status.running is True
+    assert stopped.status.running is False
+    assert [
+        command[2]
+        for command in fake.commands
+        if command[:2] == ["/usr/bin/systemctl", "--user"]
+    ].count("restart") == 1
+
+
+def test_systemd_status_reports_unavailable_failed_and_parses_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    service.systemd_unit_path().parent.mkdir(parents=True)
+    service.systemd_unit_path().touch()
+    fake.enabled = True
+    fake.running = True
+    status = service.service_status()
+    assert status.to_dict() == {
+        "schema_version": 1,
+        "manager": "systemd",
+        "supported": True,
+        "available": True,
+        "installed": True,
+        "enabled": True,
+        "running": True,
+        "pid": 321,
+        "state": "running",
+        "unit_path": str(service.systemd_unit_path()),
+        "log_path": None,
+    }
+
+    fake.running = False
+    fake.failed = True
+    assert service.service_status().state == "failed"
+
+    monkeypatch.setattr(service.shutil, "which", lambda _name: None)
+    unavailable = service.service_status()
+    assert unavailable.available is False
+    assert unavailable.state == "unavailable"
+
+
+def test_systemd_command_failure_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_systemd(monkeypatch)
+    monkeypatch.setattr(
+        service,
+        "_run",
+        lambda command, timeout=15: subprocess.CompletedProcess(
+            command, 9, "sensitive stdout", "sensitive stderr"
+        ),
+    )
+    with pytest.raises(
+        service.WorkerServiceError, match="exited with 9"
+    ) as error:
+        service.install_service(_identity(tmp_path))
+    assert "sensitive" not in str(error.value)
+
+
+class _LaunchdFake:
+    def __init__(self) -> None:
+        self.loaded = False
+        self.commands: list[list[str]] = []
+
+    def run(
+        self, command: list[str], *, timeout: float = 15
+    ) -> subprocess.CompletedProcess[str]:
+        self.commands.append(command)
+        action = command[1] if len(command) > 1 else ""
+        if action == "print":
+            if not self.loaded:
+                return subprocess.CompletedProcess(
+                    command, 113, "", "not loaded"
+                )
+            return subprocess.CompletedProcess(
+                command, 0, "service = {\n state = running\n pid = 456\n}\n", ""
+            )
+        if action == "bootstrap":
+            self.loaded = True
+        elif action == "bootout":
+            self.loaded = False
+        elif action == "kickstart":
+            self.loaded = True
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+
+def _configure_launchd(monkeypatch: pytest.MonkeyPatch) -> _LaunchdFake:
+    fake = _LaunchdFake()
+    monkeypatch.setattr(service.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(service.os, "getuid", lambda: 501, raising=False)
+    monkeypatch.setattr(
+        service.shutil,
+        "which",
+        lambda name: "/bin/launchctl" if name == "launchctl" else None,
+    )
+    monkeypatch.setattr(service, "_run", fake.run)
+    return fake
+
+
+def test_launchd_plist_lifecycle_and_private_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    fake = _configure_launchd(monkeypatch)
+    identity = _identity(tmp_path)
+
+    installed = service.install_service(identity, start=False)
+    assert installed.status.running is False
+    plist = plistlib.loads(service.launchd_plist_path().read_bytes())
+    assert plist["ProgramArguments"] == [
+        sys.executable,
+        str(service.launcher_path()),
+    ]
+    assert plist["WorkingDirectory"] == identity["workdir"]
+    assert (
+        plist["EnvironmentVariables"]["LOCAL_SHELL_MCP_WORKER_MANAGED"] == "1"
+    )
+    serialized = json.dumps(plist)
+    assert identity["access"] not in serialized
+    assert identity["server"] not in serialized
+    assert "invite" not in serialized.lower()
+
+    started = service.start_service()
+    assert started.status.running is True
+    assert started.status.pid == 456
+    service.restart_service()
+    assert any(command[1] == "kickstart" for command in fake.commands)
+
+    log = service.launchd_log_path()
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("one\ntwo\nthree\n", encoding="utf-8")
+    service.service_logs(lines=2)
+    assert capsys.readouterr().out == "two\nthree\n"
+
+    stopped = service.stop_service()
+    assert stopped.status.running is False
+    assert service.uninstall_service().status.installed is False
+
+
+def test_service_status_and_install_are_explicitly_unsupported_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(service.platform, "system", lambda: "Windows")
+    status = service.service_status()
+    assert status.manager == "unsupported"
+    assert status.supported is False
+    with pytest.raises(service.WorkerServiceError, match="unsupported"):
+        service.install_service({})
+
+
+def test_bounded_launchd_log_tail_and_follow_interrupt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    _configure_launchd(monkeypatch)
+    path = service.launchd_plist_path()
+    path.parent.mkdir(parents=True)
+    path.touch()
+    log = service.launchd_log_path()
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        "\n".join(f"line-{index}" for index in range(3_000)), encoding="utf-8"
+    )
+    service.service_logs(lines=20_000)
+    output = capsys.readouterr().out
+    assert "line-1000" in output
+    assert "line-999" not in output
+
+    monkeypatch.setattr(
+        service.time,
+        "sleep",
+        lambda _delay: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+    service.service_logs(lines=1, follow=True)
+    assert "line-2999" in capsys.readouterr().out
+
+
+def test_worker_cli_contract_and_invite_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "worker",
+            "enroll",
+            "--server",
+            "https://controller.test",
+            "--invite-stdin",
+        ]
+    )
+    assert args.worker_command == "enroll"
+    assert not hasattr(args, "persist")
+
+    stdin = SimpleNamespace(
+        isatty=lambda: False,
+        buffer=io.BytesIO(b"invite-from-stdin\r\n"),
+    )
+    monkeypatch.setattr(worker_cli.sys, "stdin", stdin)
+    assert worker_cli._read_invite(args) == "invite-from-stdin"
+
+    monkeypatch.setattr(
+        worker_cli.sys,
+        "stdin",
+        SimpleNamespace(isatty=lambda: True, buffer=io.BytesIO()),
+    )
+    with pytest.raises(ValueError, match="TTY"):
+        worker_cli._read_invite(args)
+
+
+def test_invite_stdin_is_bounded_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    args = argparse.Namespace(invite=None, invite_stdin=True)
+    monkeypatch.setattr(
+        worker_cli.sys,
+        "stdin",
+        SimpleNamespace(
+            isatty=lambda: False,
+            buffer=io.BytesIO(b"x" * (worker_cli._MAX_INVITE_BYTES + 1)),
+        ),
+    )
+    with pytest.raises(ValueError, match="size limit"):
+        worker_cli._read_invite(args)
+
+    monkeypatch.setattr(
+        worker_cli.sys,
+        "stdin",
+        SimpleNamespace(isatty=lambda: False, buffer=io.BytesIO(b"\xff")),
+    )
+    with pytest.raises(ValueError, match="UTF-8"):
+        worker_cli._read_invite(args)
+
+
+@pytest.mark.asyncio
+async def test_enroll_stores_identity_without_polling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        worker, "_configure_worker_runtime_env", lambda _path: None
+    )
+    monkeypatch.setattr(worker, "_read_worker_identity", lambda *_args: None)
+    stored: list[dict[str, Any]] = []
+    monkeypatch.setattr(worker, "_write_worker_identity", stored.append)
+
+    async def post(url, payload, *_args, **_kwargs):
+        assert url.endswith("/register")
+        assert payload["invite"] == "one-time-invite"
+        return {
+            "ok": True,
+            "data": {"token": "private-access", "name": "worker-a"},
+        }
+
+    monkeypatch.setattr(worker, "_worker_post_json_forever", post)
+    identity = await worker.enroll_worker(
+        "https://controller.test/",
+        "one-time-invite",
+        "worker-a",
+        str(tmp_path),
+    )
+    assert identity["server"] == "https://controller.test"
+    assert identity["access"] == "private-access"
+    assert stored == [identity]
+
+
+@pytest.mark.asyncio
+async def test_run_stored_worker_uses_only_persisted_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        worker,
+        "load_worker_identity",
+        lambda: {
+            "server": "https://controller.test",
+            "name": "worker-a",
+            "access": "secret",
+            "workdir": "/work",
+        },
+    )
+    calls: list[tuple[Any, ...]] = []
+
+    async def run(*args):
+        calls.append(args)
+
+    monkeypatch.setattr(worker, "run_worker", run)
+    await worker.run_stored_worker()
+    assert calls == [("https://controller.test", "", "worker-a", "/work")]
+
+
+def test_cli_enroll_output_never_contains_invite_or_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    async def enroll(*_args):
+        return {
+            "server": "https://controller.test",
+            "name": "worker-a",
+            "access": "private-access",
+            "workdir": str(tmp_path),
+        }
+
+    monkeypatch.setattr(worker, "enroll_worker", enroll)
+    args = _build_parser().parse_args(
+        [
+            "worker",
+            "enroll",
+            "--server",
+            "https://controller.test",
+            "--invite",
+            "one-time-invite",
+        ]
+    )
+    args.handler(args)
+    output = capsys.readouterr().out
+    assert "one-time-invite" not in output
+    assert "private-access" not in output
+    assert json.loads(output)["enrolled"] is True
+
+
+def test_update_restarts_only_previously_running_service(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setattr(
+        worker_cli,
+        "_load_identity",
+        lambda: {"server": "https://controller.test"},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "update_installed_runtime",
+        lambda server, force=False: {
+            "updated": True,
+            "version": "4.0.0",
+            "sha256": "a" * 64,
+        },
+    )
+    running = service.WorkerServiceStatus(
+        1,
+        "systemd",
+        True,
+        True,
+        True,
+        True,
+        True,
+        123,
+        "running",
+        "/unit",
+        None,
+    )
+    monkeypatch.setattr(service, "service_status", lambda: running)
+    restarts: list[bool] = []
+    monkeypatch.setattr(
+        service, "restart_service", lambda: restarts.append(True)
+    )
+
+    worker_cli._update_from_args(argparse.Namespace(force=True))
+    result = json.loads(capsys.readouterr().out)
+    assert result["service_restarted"] is True
+    assert restarts == [True]
+
+    stopped = service.WorkerServiceStatus(
+        1,
+        "systemd",
+        True,
+        True,
+        True,
+        True,
+        False,
+        None,
+        "stopped",
+        "/unit",
+        None,
+    )
+    monkeypatch.setattr(service, "service_status", lambda: stopped)
+    restarts.clear()
+    worker_cli._update_from_args(argparse.Namespace(force=False))
+    assert json.loads(capsys.readouterr().out)["service_restarted"] is False
+    assert restarts == []
+
+
+def test_update_fetches_latest_manifest_and_propagates_force(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = {
+        "bundle_version": "4.0.0",
+        "sha256": "b" * 64,
+    }
+    monkeypatch.setattr(
+        runtime, "fetch_latest_manifest", lambda _server: manifest
+    )
+    monkeypatch.setattr(
+        runtime,
+        "current_runtime_identity",
+        lambda: {"sha256": "a" * 64, "bundle_version": "3.9.1"},
+    )
+    calls: list[tuple[Any, ...]] = []
+
+    def install(server, instruction, *, current_version, force=False):
+        calls.append((server, instruction, current_version, force))
+        return {
+            "updated": True,
+            "version": instruction["version"],
+            "sha256": instruction["sha256"],
+        }
+
+    monkeypatch.setattr(runtime, "install_runtime", install)
+    result = runtime.update_installed_runtime(
+        "https://controller.test", force=True
+    )
+    assert result["version"] == "4.0.0"
+    assert calls[0][2:] == ("3.9.1", True)
+
+
+def _stopped_status(
+    manager: service.ServiceManager = "systemd",
+) -> service.WorkerServiceStatus:
+    return service.WorkerServiceStatus(
+        1,
+        manager,
+        manager != "unsupported",
+        manager != "unsupported",
+        manager != "unsupported",
+        manager != "unsupported",
+        False,
+        None,
+        "stopped" if manager != "unsupported" else "unsupported",
+        "/unit" if manager != "unsupported" else None,
+        None,
+    )
+
+
+def _service_result(action: str) -> service.WorkerServiceResult:
+    return service.WorkerServiceResult(1, action, True, _stopped_status())
+
+
+def test_all_worker_service_cli_handlers_emit_typed_json(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setattr(
+        worker, "load_worker_identity", lambda: {"workdir": "/work"}
+    )
+    monkeypatch.setattr(
+        service,
+        "install_service",
+        lambda identity, start=True: _service_result("install-service"),
+    )
+    monkeypatch.setattr(
+        service,
+        "uninstall_service",
+        lambda: _service_result("uninstall-service"),
+    )
+    monkeypatch.setattr(
+        service, "start_service", lambda: _service_result("start")
+    )
+    monkeypatch.setattr(
+        service, "stop_service", lambda: _service_result("stop")
+    )
+    monkeypatch.setattr(
+        service, "restart_service", lambda: _service_result("restart")
+    )
+    monkeypatch.setattr(service, "service_status", _stopped_status)
+    log_calls: list[tuple[int, bool]] = []
+    monkeypatch.setattr(
+        service,
+        "service_logs",
+        lambda *, lines, follow: log_calls.append((lines, follow)),
+    )
+
+    for command, action in (
+        (["install-service", "--no-start"], "install-service"),
+        (["uninstall-service"], "uninstall-service"),
+        (["start"], "start"),
+        (["stop"], "stop"),
+        (["restart"], "restart"),
+    ):
+        args = _build_parser().parse_args(["worker", *command])
+        args.handler(args)
+        assert json.loads(capsys.readouterr().out)["action"] == action
+
+    status_args = _build_parser().parse_args(["worker", "status"])
+    status_args.handler(status_args)
+    assert json.loads(capsys.readouterr().out)["state"] == "stopped"
+
+    log_args = _build_parser().parse_args(
+        ["worker", "logs", "--lines", "17", "--follow"]
+    )
+    log_args.handler(log_args)
+    assert log_calls == [(17, True)]
+
+
+def test_service_handler_returns_safe_error_json_and_interrupt(
+    capsys,
+) -> None:
+    def fail(_args):
+        raise RuntimeError("private command detail")
+
+    wrapped = worker_cli._service_handler(fail)
+    with pytest.raises(SystemExit) as error:
+        wrapped(argparse.Namespace())
+    assert error.value.code == 1
+    output = capsys.readouterr().out
+    assert "private command detail" not in output
+    assert json.loads(output)["error"] == "RuntimeError"
+
+    def interrupt(_args):
+        raise KeyboardInterrupt
+
+    with pytest.raises(SystemExit) as interrupted:
+        worker_cli._service_handler(interrupt)(argparse.Namespace())
+    assert interrupted.value.code == 130
+
+
+def test_worker_connect_and_run_handlers_mark_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME", raising=False)
+    connect_calls: list[tuple[Any, ...]] = []
+
+    async def connect(*args):
+        connect_calls.append(args)
+
+    monkeypatch.setattr(worker, "run_worker", connect)
+    args = _build_parser().parse_args(
+        [
+            "worker",
+            "connect",
+            "--server",
+            "https://controller.test",
+            "--invite",
+            "invite",
+        ]
+    )
+    args.handler(args)
+    assert connect_calls == [("https://controller.test", "invite", None, None)]
+    assert os.environ["LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME"] == "1"
+
+    run_calls: list[bool] = []
+
+    async def run_stored():
+        run_calls.append(True)
+
+    monkeypatch.setattr(worker, "run_stored_worker", run_stored)
+    run_args = _build_parser().parse_args(["worker", "run"])
+    run_args.handler(run_args)
+    assert run_calls == [True]
+
+
+def test_worker_invite_error_and_async_failure_are_clean(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    args = argparse.Namespace(invite=None, invite_stdin=True)
+    monkeypatch.setattr(
+        worker_cli.sys,
+        "stdin",
+        SimpleNamespace(isatty=lambda: False, buffer=io.BytesIO(b"")),
+    )
+    with pytest.raises(SystemExit) as empty:
+        worker_cli._invite_or_exit(args)
+    assert empty.value.code == 1
+    assert "worker invite is empty" in capsys.readouterr().err
+
+    async def fail():
+        raise RuntimeError("redacted-failure")
+
+    with pytest.raises(SystemExit) as failed:
+        worker_cli._run_async(fail())
+    assert failed.value.code == 1
+    assert "redacted-failure" in capsys.readouterr().err
+
+
+def test_standalone_worker_parser_lists_only_new_commands(capsys) -> None:
+    with pytest.raises(SystemExit) as help_exit:
+        worker_cli.run_worker_cli(["--help"])
+    assert help_exit.value.code == 0
+    output = capsys.readouterr().out
+    for command in (
+        "enroll",
+        "connect",
+        "run",
+        "install-service",
+        "uninstall-service",
+        "start",
+        "stop",
+        "restart",
+        "status",
+        "logs",
+        "update",
+    ):
+        assert command in output
+    assert "--persist" not in output
+
+
+def test_systemd_quote_escapes_specifiers_variables_and_quotes() -> None:
+    assert service._systemd_quote('a b%$"\\c') == '"a b%%$$\\"\\\\c"'
+    with pytest.raises(ValueError, match="control"):
+        service._systemd_quote("bad\nvalue")
+
+
+def test_service_result_json_and_real_run_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _service_result("start")
+    assert (
+        json.loads(service.status_json(result))["status"]["state"] == "stopped"
+    )
+    monkeypatch.setattr(
+        service.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, "ok", ""
+        ),
+    )
+    assert service._run(["command"]).stdout == "ok"
+    monkeypatch.setattr(
+        service,
+        "_run",
+        lambda command, timeout=15: (_ for _ in ()).throw(OSError("private")),
+    )
+    with pytest.raises(service.WorkerServiceError, match="OSError"):
+        service._run_checked(["command"])
+
+
+def test_service_manager_paths_and_unavailable_branches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "profile"))
+    assert str(tmp_path / "profile") in str(service.systemd_unit_path())
+
+    monkeypatch.setattr(service.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(service.shutil, "which", lambda _name: None)
+    unavailable = service.service_status()
+    assert unavailable.manager == "launchd"
+    assert unavailable.state == "unavailable"
+    with pytest.raises(service.WorkerServiceError, match="unavailable"):
+        service.start_service()
+    assert service._manager_executable("unsupported") is None
+
+
+def test_status_unknown_show_failure_and_missing_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_systemd(monkeypatch)
+    assert service.service_status().state == "not_installed"
+    service.systemd_unit_path().parent.mkdir(parents=True)
+    service.systemd_unit_path().touch()
+    monkeypatch.setattr(
+        service,
+        "_run",
+        lambda command, timeout=15: subprocess.CompletedProcess(
+            command, 1, "", ""
+        ),
+    )
+    assert service.service_status().state == "unavailable"
+
+    monkeypatch.setattr(
+        service,
+        "_run",
+        lambda command, timeout=15: subprocess.CompletedProcess(
+            command,
+            0,
+            "ActiveState=mystery\nSubState=mystery\nMainPID=nope\nUnitFileState=disabled\n",
+            "",
+        ),
+    )
+    unknown = service.service_status()
+    assert unknown.state == "unknown"
+    assert unknown.pid is None
+    with pytest.raises(service.WorkerServiceError, match="not installed"):
+        service.systemd_unit_path().unlink()
+        service.start_service()
+
+
+def test_install_requires_workdir_and_reloads_running_units(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    with pytest.raises(service.WorkerServiceError, match="workdir"):
+        service.install_service({})
+
+    identity = _identity(tmp_path)
+    service.install_service(identity)
+    fake.commands.clear()
+    service.systemd_unit_path().write_text("stale", encoding="utf-8")
+    fake.running = True
+    fake.enabled = True
+    service.install_service(identity)
+    assert any(command[2] == "restart" for command in fake.commands)
+
+    launchd = _configure_launchd(monkeypatch)
+    service.install_service(identity)
+    service.launchd_plist_path().write_bytes(b"stale")
+    launchd.loaded = True
+    launchd.commands.clear()
+    service.install_service(identity)
+    actions = [command[1] for command in launchd.commands]
+    assert "bootout" in actions
+    assert "bootstrap" in actions
+
+
+def test_changed_launcher_restarts_running_systemd_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    identity = _identity(tmp_path)
+    service.install_service(identity)
+    fake.commands.clear()
+    service.launcher_path().write_text("stale launcher", encoding="utf-8")
+    fake.running = True
+    fake.enabled = True
+
+    result = service.install_service(identity)
+
+    assert result.changed is True
+    assert (
+        service.launcher_path().read_text(encoding="utf-8")
+        == service._launcher_text()
+    )
+    assert any(command[2] == "restart" for command in fake.commands)
+
+
+def test_launchd_running_start_is_noop_but_restart_kickstarts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_launchd(monkeypatch)
+    service.install_service(_identity(tmp_path))
+    fake.commands.clear()
+    service.start_service()
+    assert not any(
+        command[1] in {"bootstrap", "kickstart"} for command in fake.commands
+    )
+    service.restart_service()
+    assert any(command[1] == "kickstart" for command in fake.commands)
+
+
+def test_private_log_missing_symlink_rotation_and_append(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    path = tmp_path / "worker.log"
+    assert service._bounded_tail(path, 10) == ""
+    target = tmp_path / "target.log"
+    target.write_text("secret", encoding="utf-8")
+    try:
+        path.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink unavailable")
+    assert service._bounded_tail(path, 10) == ""
+    path.unlink()
+    path.write_text("old\n", encoding="utf-8")
+
+    sleeps = 0
+
+    def sleep(_delay: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps == 1:
+            path.write_text("new\n", encoding="utf-8")
+            return
+        if sleeps == 2:
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write("append\n")
+            return
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(service.time, "sleep", sleep)
+    service._follow_private_log(path, 1)
+    output = capsys.readouterr().out
+    assert "old" in output
+    assert "new" in output
+    assert "append" in output
+
+
+def test_systemd_logs_nonfollow_follow_and_not_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    with pytest.raises(service.WorkerServiceError, match="not installed"):
+        service.service_logs()
+
+    service.systemd_unit_path().parent.mkdir(parents=True)
+    service.systemd_unit_path().touch()
+    fake.enabled = True
+    fake.running = True
+
+    def run(command, *, timeout=15):
+        if command[0] == "/usr/bin/journalctl":
+            return subprocess.CompletedProcess(command, 0, "journal-line\n", "")
+        return fake.run(command, timeout=timeout)
+
+    monkeypatch.setattr(service, "_run", run)
+    service.service_logs(lines=3)
+    assert capsys.readouterr().out == "journal-line\n"
+
+    monkeypatch.setattr(
+        service.subprocess,
+        "run",
+        lambda command, check=False: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+    service.service_logs(lines=3, follow=True)
+
+
+def test_cli_service_error_json_on_unsupported_windows(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setattr(service.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        worker,
+        "load_worker_identity",
+        lambda: {"workdir": "/work"},
+    )
+    args = _build_parser().parse_args(["worker", "install-service"])
+    with pytest.raises(SystemExit) as error:
+        args.handler(args)
+    assert error.value.code == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "schema_version": 1,
+        "ok": False,
+        "error": "WorkerServiceError",
+    }
+
+
+def test_update_no_change_does_not_restart(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setattr(
+        worker_cli,
+        "_load_identity",
+        lambda: {"server": "https://controller.test"},
+    )
+    monkeypatch.setattr(service, "service_status", _stopped_status)
+    monkeypatch.setattr(
+        runtime,
+        "update_installed_runtime",
+        lambda server, force=False: {
+            "updated": False,
+            "version": "4.0.0",
+            "sha256": "a" * 64,
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "restart_service",
+        lambda: pytest.fail("restarted unchanged runtime"),
+    )
+    worker_cli._update_from_args(argparse.Namespace(force=False))
+    assert json.loads(capsys.readouterr().out)["service_restarted"] is False
+
+
+def test_real_systemd_user_status_smoke_when_available(monkeypatch):
+    if sys.platform != "linux" or service.shutil.which("systemctl") is None:
+        pytest.skip("systemd user manager is unavailable on this platform")
+    probe = subprocess.run(
+        ["systemctl", "--user", "show-environment"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if probe.returncode != 0:
+        pytest.skip("systemd user manager is unavailable in this session")
+    monkeypatch.setattr(service.platform, "system", lambda: "Linux")
+    status = service.service_status()
+    assert status.manager == "systemd"
+    assert status.supported is True
+    assert status.available is True
+    assert status.state in {
+        "not_installed",
+        "stopped",
+        "running",
+        "failed",
+        "unknown",
+    }
+
+
+def test_windows_install_reports_unsupported_before_identity_lookup(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setattr(service.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        worker,
+        "load_worker_identity",
+        lambda: pytest.fail(
+            "identity should not be loaded on unsupported platform"
+        ),
+    )
+    args = _build_parser().parse_args(["worker", "install-service"])
+    with pytest.raises(SystemExit) as error:
+        args.handler(args)
+    assert error.value.code == 1
+    assert json.loads(capsys.readouterr().out)["error"] == "WorkerServiceError"

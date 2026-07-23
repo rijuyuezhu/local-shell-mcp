@@ -157,6 +157,7 @@ def start_worker_process(
             sys.executable,
             "-m",
             "local_shell_mcp.remote_worker",
+            "connect",
             "--server",
             base_url,
             "--invite",
@@ -281,6 +282,8 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert "local_shell_mcp/remote_worker/worker.py" in names
             assert "local_shell_mcp/remote_worker/compat.py" in names
             assert "local_shell_mcp/remote_worker/runtime.py" in names
+            assert "local_shell_mcp/remote_worker/cli.py" in names
+            assert "local_shell_mcp/remote_worker/service.py" in names
             assert "local_shell_mcp/remote/join_worker.sh" not in names
             assert "local_shell_mcp/remote/manager.py" not in names
             assert "local_shell_mcp/remote/http.py" not in names

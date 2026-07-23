@@ -496,6 +496,7 @@ class BrowserHarness:
                 sys.executable,
                 "-m",
                 "local_shell_mcp.remote_worker",
+                "connect",
                 "--server",
                 self.base_url,
                 "--invite",

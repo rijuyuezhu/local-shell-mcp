@@ -7,7 +7,6 @@ INVITE=""
 NAME=""
 WORKDIR=""
 BACKGROUND=0
-PERSIST=0
 TMPDIR=""
 PYTHON_BIN=""
 UV_BIN=""
@@ -17,7 +16,7 @@ RUNTIME_METADATA="$STATE_DIR/runtime.json"
 
 usage() {
   cat >&2 <<'EOF'
-usage: join_worker.sh --invite CODE [--name NAME] [--workdir PATH] [--background] [--persist]
+usage: join_worker.sh --invite CODE [--name NAME] [--workdir PATH] [--background]
 EOF
 }
 
@@ -37,7 +36,6 @@ parse_args() {
       --name) NAME="${2:-}"; shift 2 ;;
       --workdir) WORKDIR="${2:-}"; shift 2 ;;
       --background) BACKGROUND=1; shift ;;
-      --persist) PERSIST=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) usage; die "unknown argument: $1" ;;
     esac
@@ -315,9 +313,8 @@ PY
 }
 
 worker_args() {
-  ARGS=(--server "$SERVER" --invite "$INVITE" --workdir "$WORKDIR")
+  ARGS=(connect --server "$SERVER" --invite "$INVITE" --workdir "$WORKDIR")
   if [ -n "$NAME" ]; then ARGS+=(--name "$NAME"); fi
-  if [ "$PERSIST" = "1" ]; then ARGS+=(--persist); fi
 }
 
 start_worker() {

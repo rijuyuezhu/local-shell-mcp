@@ -1,6 +1,5 @@
 """Remote worker-side tool dispatch, process loop, and CLI helpers."""
 
-import argparse
 import asyncio
 import contextlib
 import json
@@ -296,15 +295,17 @@ def _worker_identity_path() -> Path:
 
 
 def _read_worker_identity(
-    server: str, requested_name: str | None = None
+    server: str | None = None, requested_name: str | None = None
 ) -> dict[str, Any] | None:
-    """Read a stored worker identity when it matches the target server/name."""
+    """Read a stored worker identity, optionally matching server and name."""
     path = _worker_identity_path()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
-    if not isinstance(data, dict) or data.get("server") != server:
+    if not isinstance(data, dict):
+        return None
+    if server is not None and data.get("server") != server:
         return None
     stored_name = str(data.get("name") or "")
     if requested_name and stored_name != requested_name:
@@ -312,6 +313,20 @@ def _read_worker_identity(
     if not stored_name or not str(data.get("access") or ""):
         return None
     return data
+
+
+def load_worker_identity() -> dict[str, Any]:
+    """Load the complete stored identity required by ``worker run``."""
+    identity = _read_worker_identity()
+    if identity is None:
+        raise ValueError("no stored worker identity; run worker enroll first")
+    required = ("server", "name", "access", "workdir")
+    missing = [name for name in required if not str(identity.get(name) or "")]
+    if missing:
+        raise ValueError(
+            f"stored worker identity is incomplete: missing {missing[0]}"
+        )
+    return identity
 
 
 def _write_worker_identity(data: dict[str, Any]) -> None:
@@ -514,9 +529,6 @@ async def _install_and_reexec_worker(
     instruction: dict[str, Any],
     *,
     server: str,
-    machine_name: str,
-    workdir: str,
-    persist: bool,
     worker_version: str,
 ) -> None:
     """Install one required runtime and replace the idle worker process."""
@@ -540,39 +552,19 @@ async def _install_and_reexec_worker(
         file=sys.stderr,
         flush=True,
     )
-    worker_runtime.reexec_worker(
-        server=server,
-        name=machine_name,
-        workdir=workdir,
-        persist=persist,
-    )
+    worker_runtime.reexec_worker()
     raise RuntimeError("worker restart returned unexpectedly")
 
 
-async def run_worker(
+async def _enroll_or_resume_worker(
     server: str,
     invite: str,
     name: str | None = None,
     workdir: str | None = None,
-    persist: bool = False,
-) -> None:
-    """Run one worker process while holding its lifecycle lock."""
-    from .lifecycle import worker_run_lock
-
-    with worker_run_lock():
-        await _run_worker_locked(server, invite, name, workdir, persist)
-
-
-async def _run_worker_locked(
-    server: str,
-    invite: str,
-    name: str | None = None,
-    workdir: str | None = None,
-    persist: bool = False,
-) -> None:
-    """Enroll or resume, then poll and execute jobs under the worker lock."""
-    workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
-    _configure_worker_runtime_env(workdir)
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Enroll or resume one identity and persist it without entering the poll loop."""
+    resolved_workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
+    _configure_worker_runtime_env(resolved_workdir)
     from ..config.settings import clear_settings_cache
 
     clear_settings_cache()
@@ -580,9 +572,9 @@ async def _run_worker_locked(
     register_payload = {
         "invite": invite,
         "name": name,
-        "workdir": workdir,
+        "workdir": resolved_workdir,
         "capabilities": worker_capabilities(),
-        "info": worker_info(workdir),
+        "info": worker_info(resolved_workdir),
     }
     identity = _read_worker_identity(server, name)
     body: dict[str, Any] | None = None
@@ -600,7 +592,7 @@ async def _run_worker_locked(
     if body is None:
         if not invite:
             raise ValueError(
-                "--invite is required when no resumable worker identity exists"
+                "an invite is required when no resumable worker identity exists"
             )
         body = await _worker_post_json_forever(
             f"{server}{REMOTE_API_PREFIX}/register",
@@ -619,6 +611,70 @@ async def _run_worker_locked(
             raise RuntimeError(body.get("message") or body)
         data = body["data"]
         machine_name = data["name"]
+    stored = {
+        "server": server,
+        "name": machine_name,
+        "access": access,
+        "workdir": resolved_workdir,
+    }
+    _write_worker_identity(stored)
+    return stored, data
+
+
+async def enroll_worker(
+    server: str,
+    invite: str,
+    name: str | None = None,
+    workdir: str | None = None,
+) -> dict[str, Any]:
+    """Enroll or resume one worker identity and exit without polling."""
+    from .lifecycle import worker_run_lock
+
+    with worker_run_lock():
+        identity, _data = await _enroll_or_resume_worker(
+            server, invite, name, workdir
+        )
+    return identity
+
+
+async def run_worker(
+    server: str,
+    invite: str,
+    name: str | None = None,
+    workdir: str | None = None,
+) -> None:
+    """Run one worker process while holding its lifecycle lock."""
+    from .lifecycle import worker_run_lock
+
+    with worker_run_lock():
+        await _run_worker_locked(server, invite, name, workdir)
+
+
+async def run_stored_worker() -> None:
+    """Run using only the private persisted identity."""
+    identity = load_worker_identity()
+    await run_worker(
+        str(identity["server"]),
+        "",
+        str(identity["name"]),
+        str(identity["workdir"]),
+    )
+
+
+async def _run_worker_locked(
+    server: str,
+    invite: str,
+    name: str | None = None,
+    workdir: str | None = None,
+) -> None:
+    """Enroll or resume, then poll and execute jobs under the worker lock."""
+    identity, data = await _enroll_or_resume_worker(
+        server, invite, name, workdir
+    )
+    server = str(identity["server"])
+    machine_name = str(identity["name"])
+    access = str(identity["access"])
+    workdir = str(identity["workdir"])
     heartbeat_interval_s = float(data.get("heartbeat_interval_s") or 15)
     poll_request_timeout_s = _worker_poll_request_timeout_s(data)
     _write_worker_identity(
@@ -664,9 +720,6 @@ async def _run_worker_locked(
                 await _install_and_reexec_worker(
                     upgrade,
                     server=server,
-                    machine_name=machine_name,
-                    workdir=workdir,
-                    persist=persist,
                     worker_version=worker_version,
                 )
             except SystemExit:
@@ -711,45 +764,8 @@ async def _run_worker_locked(
         )
 
 
-def add_worker_cli_args(parser: argparse.ArgumentParser) -> None:
-    """Add remote-worker connection and lifecycle options to the shared CLI parser."""
-    parser.add_argument("--server", required=True)
-    parser.add_argument("--invite", default="")
-    parser.add_argument("--name", default=None)
-    parser.add_argument("--workdir", default=None)
-    parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Reserved for future user-service installation",
-    )
-
-
-def run_worker_from_args(args: argparse.Namespace) -> None:
-    """Run a remote worker from parsed CLI arguments."""
-    os.environ.setdefault("LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME", "1")
-    try:
-        asyncio.run(
-            run_worker(
-                args.server, args.invite, args.name, args.workdir, args.persist
-            )
-        )
-    except KeyboardInterrupt:
-        print("\nStatus: disconnected by user.", file=sys.stderr, flush=True)
-        raise SystemExit(130) from None
-    except Exception as exc:
-        print(
-            f"Status: connection failed: {_redact_text(str(exc))}",
-            file=sys.stderr,
-            flush=True,
-        )
-        raise SystemExit(1) from None
-
-
 def run_worker_cli(argv: list[str] | None = None) -> None:
-    """Entry point for launching a standalone remote worker process."""
-    parser = argparse.ArgumentParser(
-        description="Connect this machine to a local-shell-mcp control server"
-    )
-    add_worker_cli_args(parser)
-    args = parser.parse_args(argv)
-    run_worker_from_args(args)
+    """Run the standalone worker-only CLI used by source bundles."""
+    from .cli import run_worker_cli as run_cli
+
+    run_cli(argv)

@@ -7,7 +7,7 @@ from .agent_bridge.cli import add_mcp_cli_parser
 from .config.settings import configure_settings, load_settings
 from .config.surface import cli_overrides_from_args, register_setting_cli_args
 from .ops.jobs import run_job_runner_from_args
-from .remote_worker.worker import add_worker_cli_args, run_worker_from_args
+from .remote_worker.cli import add_worker_cli_parser
 from .server.http.app import run_http
 from .server.mcp.app import run_mcp
 from .tui_runtime import run_tui
@@ -50,13 +50,8 @@ def _build_parser() -> argparse.ArgumentParser:
     # Agent Bridge credential administration
     add_mcp_cli_parser(subparsers)
 
-    # worker subcommand
-    worker = subparsers.add_parser(
-        "worker",
-        help="Connect this machine to a local-shell-mcp control server",
-    )
-    add_worker_cli_args(worker)
-    worker.set_defaults(handler=run_worker_from_args)
+    # worker enrollment and user-service management
+    add_worker_cli_parser(subparsers)
 
     # native OpenTUI subcommand
     tui = subparsers.add_parser(

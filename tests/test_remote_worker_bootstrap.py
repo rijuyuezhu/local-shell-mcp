@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from email.message import Message
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 
@@ -45,6 +46,40 @@ assert worker_info(".")["lsm_version"]
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_source_only_worker_cli_exposes_new_subcommands(tmp_path):
+    source_root = Path(__file__).resolve().parents[1] / "src"
+    completed = subprocess.run(
+        [sys.executable, "-m", "local_shell_mcp.remote_worker", "--help"],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(source_root),
+            "PYTHONNOUSERSITE": "1",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    for command in (
+        "enroll",
+        "connect",
+        "run",
+        "install-service",
+        "uninstall-service",
+        "start",
+        "stop",
+        "restart",
+        "status",
+        "logs",
+        "update",
+    ):
+        assert command in completed.stdout
+    assert "--persist" not in completed.stdout
 
 
 def test_execute_worker_tool_imports_registry_lazily(monkeypatch):
@@ -626,8 +661,7 @@ def test_worker_identity_round_trips_and_filters_by_server_name(
 
 def test_worker_cli_keyboard_interrupt_exits_cleanly():
     code = """
-from argparse import Namespace
-from local_shell_mcp.remote_worker import worker
+from local_shell_mcp.remote_worker import cli
 
 
 def fake_asyncio_run(coro):
@@ -635,15 +669,15 @@ def fake_asyncio_run(coro):
     raise KeyboardInterrupt
 
 
-worker.asyncio.run = fake_asyncio_run
-worker.run_worker_from_args(
-    Namespace(
-        server="https://example.test",
-        invite="lsmcp_inv_test",
-        name=None,
-        workdir=None,
-        persist=False,
-    )
+cli.asyncio.run = fake_asyncio_run
+cli.run_worker_cli(
+    [
+        "connect",
+        "--server",
+        "https://example.test",
+        "--invite",
+        "lsmcp_inv_test",
+    ]
 )
 """
 

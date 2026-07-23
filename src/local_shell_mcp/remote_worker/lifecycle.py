@@ -15,6 +15,7 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import BinaryIO
 
+from ..utils.private_files import _ensure_lock_file
 from .runtime import worker_state_dir
 
 _SERVICE_NAME = "local-shell-mcp-worker"
@@ -202,18 +203,15 @@ def worker_run_lock() -> Generator[None]:
     global _active_worker_lock_handle
 
     path = worker_lock_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_lock_file(path)
     handle = _adopt_worker_lock_handle()
     inherited = handle is not None
     windows_handoff = inherited and os.name == "nt"
     locked = inherited and not windows_handoff
     if handle is None:
-        fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+        fd = os.open(path, os.O_RDWR)
         handle = os.fdopen(fd, "r+b", buffering=0)
     try:
-        if path.stat().st_size == 0:
-            handle.write(b"\0")
-            handle.flush()
         waiting = False
         while not locked:
             try:

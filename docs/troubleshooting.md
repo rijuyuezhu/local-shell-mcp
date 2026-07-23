@@ -77,7 +77,17 @@ Check:
 - The invite has not expired.
 - The remote machine can reach the public control server over outbound HTTPS.
 - `LOCAL_SHELL_MCP_REMOTE_ENABLED=true` on the control server.
-- The pasted command includes the correct `--server`, `--invite`, `--name`, and `--workdir` values.
+- The pasted command or `worker connect` invocation includes the correct `--server`, invite, `--name`, and `--workdir` values.
+
+
+For an installed worker, inspect the native service without exposing identity credentials:
+
+```bash
+local-shell-mcp worker status
+local-shell-mcp worker logs --lines 100
+```
+
+A `not_installed` status means enrollment may exist but no user service is installed. `unavailable` means systemd/launchd is supported on the platform but not reachable for the current user session. Windows returns `unsupported`. Use `worker run` to diagnose the stored identity in the foreground; use `worker install-service` only after foreground connection succeeds.
 
 Then ask the MCP client to run:
 

@@ -57,16 +57,26 @@ Every `LOCAL_SHELL_MCP_*` application setting has a matching CLI flag using lowe
 LOCAL_SHELL_MCP_REMOTE_ENABLED -> --remote-enabled true
 ```
 
-## Remote worker command
+## Remote worker commands
 
-A remote worker can be started directly when `local-shell-mcp` is installed on the remote machine:
+The worker CLI has an explicit breaking-clean subcommand tree:
 
-```bash
-local-shell-mcp worker \
-  --server https://your-public-host.example.com \
-  --invite lsmcp_inv_xxxxx \
-  --name npu-4card \
-  --workdir /home/cyh/FrameDiff
+```text
+local-shell-mcp worker enroll --server URL (--invite VALUE | --invite-stdin) [--name NAME] [--workdir PATH]
+local-shell-mcp worker connect --server URL (--invite VALUE | --invite-stdin) [--name NAME] [--workdir PATH]
+local-shell-mcp worker run
+local-shell-mcp worker install-service [--no-start]
+local-shell-mcp worker uninstall-service
+local-shell-mcp worker start
+local-shell-mcp worker stop
+local-shell-mcp worker restart
+local-shell-mcp worker status
+local-shell-mcp worker logs [--lines N] [--follow]
+local-shell-mcp worker update [--force]
 ```
 
-In most cases, create the invite with `remote_admin(action="invite", args={...})` and paste the generated command instead.
+`enroll` persists identity and exits. `connect` enrolls or resumes and stays in the foreground. `run` uses only the private persisted identity and is the command referenced by managed services and verified runtime re-exec. `--invite-stdin` accepts bounded UTF-8 from non-interactive stdin and avoids shell-history retention.
+
+User-service management supports Linux `systemd --user` and macOS launchd. Windows returns a structured unsupported result. Service files contain no invite, worker access token, or server credential, and these commands remain local CLI functionality rather than MCP tools.
+
+In most cases, create the invitation with `remote_admin(action="invite", args={...})` and paste the generated join command. The old flat `worker --server ...` form and `--persist` are not supported.
