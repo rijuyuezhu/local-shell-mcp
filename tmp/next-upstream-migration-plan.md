@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-4 complete; Phase 5 pending
+Status: implementation in progress — Phase 4 final CI test stabilization pending; Phase 5 not started
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -157,7 +157,7 @@ Exit criterion: repository search finds no `DeprecatedTool`, `DEPRECATED_TOOLS`,
 
 ### Phase 2 — Add real Chromium browser E2E
 
-Status: complete (started and completed 2026-07-23).
+Status: implementation complete; final CI test stabilization in progress (started 2026-07-23).
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to `3af7166`; fetched
@@ -549,8 +549,14 @@ Fix commit `4adce7c16d7f7825f317fd22bbcaf7e1ab9e8551` was pushed. Clean CI rerun
 `29990557981` completed successfully, including Ubuntu coverage, Linux/macOS/
 Windows pytest, Chromium, pyright, pre-commit, package, ConPTY, OpenTUI, VS Code,
 Docker/Compose, bundled tmux, and release-matrix jobs. Docs run `29990231784`
-also completed successfully. Phase 4 has no unresolved design, implementation,
-test, security, documentation, or CI issue; Phase 5 is the next pending phase.
+also completed successfully. A later documentation-only closing checkpoint run
+`29990885069` exposed a second pre-existing browser-test ordering race: terminal
+polling observed the output marker before Playwright's WebSocket receive event was
+recorded, and the helper asserted immediately. The helper now waits within the
+same existing 15-second bound until both independent signals have arrived; a
+regular unit regression reproduces the original ordering deterministically. No
+production behavior changed. A clean final CI rerun remains pending; Phase 5 has
+not started.
 
 Exit criterion: clients can choose tools and understand local/remote runtime
 capabilities from `session_start` alone, with no standalone environment tool.
@@ -824,7 +830,7 @@ and deleting this temporary plan does not remove unique operational knowledge.
 - [x] Phase 1: remove stale-tool diagnostics/tombstones.
 - [x] Phase 2: real Chromium browser E2E.
 - [x] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
-- [x] Phase 4: structured environment in `session_start`.
+- [ ] Phase 4: structured environment in `session_start` (implementation complete; final CI rerun pending).
 - [ ] Phase 5A: recoverable oversized audit payload store.
 - [ ] Phase 5B: session-bound MCP `audit_tail`.
 - [ ] Phase 6: Linux/macOS worker user-service management.

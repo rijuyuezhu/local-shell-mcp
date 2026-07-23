@@ -19,6 +19,7 @@ def _wait_terminal_output(
     websocket_event_start: int = 0,
 ) -> None:
     deadline = time.monotonic() + 15
+    marker_seen = False
     while time.monotonic() < deadline:
         result = harness.api(
             "GET",
@@ -26,15 +27,18 @@ def _wait_terminal_output(
         )
         if result["status"] == 200:
             output = str(result["payload"]["data"].get("output") or "")
-            if marker in output:
-                assert any(
-                    event.startswith("received ws://")
-                    for event in harness.websocket_events[
-                        websocket_event_start:
-                    ]
-                )
-                return
+            marker_seen = marker_seen or marker in output
+        websocket_seen = any(
+            event.startswith("received ws://")
+            for event in harness.websocket_events[websocket_event_start:]
+        )
+        if marker_seen and websocket_seen:
+            return
         time.sleep(0.1)
+    if marker_seen:
+        raise AssertionError(
+            "terminal output arrived without the expected WebSocket receive event"
+        )
     raise AssertionError(f"terminal output did not contain {marker!r}")
 
 
