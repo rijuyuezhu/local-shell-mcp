@@ -1010,23 +1010,32 @@ First remote CI checkpoints (2026-07-23):
   Docker, and release-matrix validation. The sole failure was Windows x86_64
   platform-wheel job `89268863096`, which reported `embedded OpenTUI payload is
   not valid gzip` after the encoder's immediate round-trip had already passed.
-  Inspection showed the already-gzipped payload was being ZIP-DEFLATE compressed
-  again while rewriting the wheel, leaving the Windows final read on a nested
-  large zlib path.
-- Final product fix commit `40644ef` (`fix(packaging): store embedded gzip
-  payloads`) forces the native `.gz` wheel member to `ZIP_STORED`; inspection now
-  rejects any platform wheel that re-compresses that member. Two complete
-  pinned-Bun Linux builds are byte-identical with wheel SHA-256
-  `07f421393015eb535fb857e98f9438effd061e108dd619e02be37c4e8de278ed`,
+  Forcing the final member to `ZIP_STORED` was necessary but not sufficient.
+- Exact-head CI run `30026649855` on checkpoint `df51a34` completed with all 23
+  other jobs successful; Windows x86_64 platform-wheel job `89272693465` alone
+  failed with the same gzip error before installation. The remaining failing
+  read was inside `_wheel_members` while opening the temporary uv-built universal
+  wheel: `uv_build` had already ZIP-DEFLATE compressed the staged `.gz`, so the
+  Windows builder still traversed the nested zlib path before the final wheel
+  could replace that member.
+- Root-cause fix commit `720326a` (`fix(packaging): inject verified wheel
+  payloads`) requires exactly one staged payload entry but deliberately does not
+  read its bytes. `rewrite_platform_wheel` receives the already round-tripped
+  in-memory payload, verifies its source SHA-256, and injects it directly as
+  `ZIP_STORED`. A permanent regression builds a temporary wheel containing an
+  intentionally invalid staged payload and proves that rewrite never reads it.
+- Two complete pinned-Bun Linux builds are byte-identical with wheel SHA-256
+  `872d1bd8d13f33a0f8e09b9bb9d0c537f766c58086c7f546a579f98b916bd253`,
   and the clean no-Bun/no-sidecar installation still executes successfully.
-- Final focused validation passed: `66 passed` for builder/docstring contracts,
-  `166 passed` for the broader Phase 7 regression set, and
-  `platform_wheel.py` reached `92.20%` branch coverage. The required clean full
-  workflow completed with durable exit marker `0`: `982 passed, 2 skipped`,
-  aggregate branch coverage `85.42%` against the `82.60%` baseline, and the
-  coverage ratchet accepted all `181` tracked plus `12` new files.
-  Repository-wide Ruff, Pyright, lock/generated-contract, release-matrix,
-  whitespace, secret-scan, and all-files pre-commit gates passed.
+- Final focused validation passed: `68 passed` for builder/docstring contracts,
+  `168 passed` for the broader Phase 7 regression set, and
+  `platform_wheel.py` retained `91.60%` branch coverage. The required clean full
+  workflow completed from an absolute-path detached script with durable exit
+  marker `0`: `984 passed, 2 skipped`, aggregate branch coverage `85.43%`
+  against the `82.60%` baseline, and the coverage ratchet accepted all `181`
+  tracked plus `12` new files. Repository-wide Ruff, Pyright,
+  lock/generated-contract, release-matrix, whitespace, secret-scan, and
+  all-files pre-commit gates passed.
 
 Packaging architecture:
 
@@ -1037,10 +1046,11 @@ Packaging architecture:
   2. gzip-compresses it as bounded deterministic 1 MiB concatenated members;
   3. stages it as `local_shell_mcp/ui_runtime/<executable>.gz`;
   4. builds the wheel with `uv build`;
-  5. rewrites/verifies the wheel `WHEEL` metadata as non-pure and assigns the
-     explicit platform tag;
-  6. stores the already-compressed `.gz` payload as `ZIP_STORED`; and
-  7. removes all staging files even on failure.
+  5. requires exactly one staged payload entry but never reads its bytes;
+  6. rewrites/verifies the `WHEEL` metadata as non-pure and assigns the explicit
+     platform tag;
+  7. injects the verified in-memory `.gz` payload as `ZIP_STORED`; and
+  8. removes all staging files even on failure.
 - Add build-only `wheel`/packaging tooling; do not add it to runtime dependencies.
 - Continue publishing one universal `py3-none-any` wheel without a payload as the
   fallback for unsupported platforms and server-only installations.
