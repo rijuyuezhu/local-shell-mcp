@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phase 1 complete; Phase 2 CI remediation in progress
+Status: implementation in progress — Phases 1-2 complete; Phase 3 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `1b8fed50309a67bc672d714e2f2ec062a6a9050b` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `083d3e8a5e02905a3346212839060596751c3c62` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -157,7 +157,7 @@ Exit criterion: repository search finds no `DeprecatedTool`, `DEPRECATED_TOOLS`,
 
 ### Phase 2 — Add real Chromium browser E2E
 
-Status: CI remediation in progress (started 2026-07-23).
+Status: complete (started and completed 2026-07-23).
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to `3af7166`; fetched
@@ -279,7 +279,13 @@ real Chromium `1 passed` in 28.63 seconds; ruff format/check, pyright, lockfile,
 generated configuration/tool/instruction, `git diff --check`, strict MkDocs, and
 all three reference-asset checks passed. Secret scanning still reports only the
 existing simulated credentials/fixtures in files untouched by this remediation.
-Only green rerun CI remains before Phase 2 closes.
+Final remediation commit `083d3e8a5e02905a3346212839060596751c3c62`
+(`test(terminal): wait for tmux shell prompt`) was pushed. GitHub Actions run
+`29983021351` completed successfully: Ubuntu branch coverage, real Chromium,
+Windows/macOS pytest, Windows ConPTY, all OpenTUI jobs, pyright, pre-commit,
+package smoke, bundled tmux, VS Code, Docker/Compose, and release-matrix jobs all
+passed. Phase 2 has no unresolved design, implementation, test, or CI issue; Phase
+3 is the next pending phase.
 
 ### Phase 3 — Add Agent Bridge secret storage and OAuth client authentication
 
