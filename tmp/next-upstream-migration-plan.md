@@ -257,18 +257,29 @@ Docker, pyright, and pre-commit. Ubuntu failed only in the existing real tmux
 bridge test because the test wrote input before the newly attached tmux client
 had emitted its shell prompt; the input was echoed during attach initialization
 but did not reach bash. This is a timing-sensitive test setup defect, not a bridge
-or browser runtime failure. The remediation now waits until the tmux client is
-registered and sends the same bounded terminal capability, color, and size
-responses that xterm.js sends before asserting bridge input/output. It does not
-add a timing sleep or change production code. The repaired real bridge test passed
-30 consecutive runs, and the complete terminal bridge/Human UI terminal suite
-passed 30 tests. The complete branch-coverage suite then passed with `777 passed,
-2 skipped`, 83.69% total branch coverage, and the unchanged 181-file coverage
-ratchet. The final real Chromium run passed in 30.79 seconds; ruff format/check,
-pyright, lockfile validation, generated configuration/tool/instruction checks,
-`git diff --check`, strict MkDocs, and all three reference-asset checks also
-passed. Phase 2 remains open only until the remediation commit's rerun CI is
-green.
+or browser runtime failure. The first remediation attempt waited for tmux client
+registration and sent bounded xterm-like capability, color, and size responses.
+That attempt passed 30 consecutive local runs, the 30-test terminal suite, the
+full `777 passed, 2 skipped` coverage suite at 83.69%, final Chromium, static,
+generated-reference, and documentation gates. Remediation commit
+`ca61f77ebb22fc7612fc5f086c77bad4a926134b` was pushed, and every remote job
+except Ubuntu branch coverage passed again; the second Ubuntu failure proved that
+attempt was still not a deterministic barrier. The second Ubuntu failure
+refined the race: client registration and synthetic xterm responses were both
+unsuitable test barriers because a pending response could be concatenated with the application command. Code audit also confirmed inherited
+`PS1` is not a reliable interactive Bash contract. The final test now starts Bash
+with a temporary `--rcfile` that clears `PROMPT_COMMAND` and emits the exact plain
+`BRIDGE_READY> ` prompt. It waits for that prompt through the raw bridge before
+sending application input, with no synthetic terminal responses, client polling,
+production change, or timing sleep. A standalone equivalent and the repository
+test each passed 60 consecutive iterations; the complete terminal bridge/Human UI
+terminal suite passed 30 tests. Final local validation then passed: `777 passed,
+2 skipped`, 83.69% total branch coverage with the unchanged 181-file ratchet;
+real Chromium `1 passed` in 28.63 seconds; ruff format/check, pyright, lockfile,
+generated configuration/tool/instruction, `git diff --check`, strict MkDocs, and
+all three reference-asset checks passed. Secret scanning still reports only the
+existing simulated credentials/fixtures in files untouched by this remediation.
+Only green rerun CI remains before Phase 2 closes.
 
 ### Phase 3 — Add Agent Bridge secret storage and OAuth client authentication
 
