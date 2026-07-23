@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import os
 import shutil
@@ -266,6 +267,7 @@ async def test_real_terminal_bridge_streams_raw_bytes_and_preserves_tmux_session
 ):
     shell_id = f"lsm-bridge-{uuid.uuid4().hex[:10]}"
     tmux = shutil.which("tmux") or "tmux"
+    bash = shutil.which("bash") or "bash"
     monkeypatch.setenv("LOCAL_SHELL_MCP_TMUX_BIN", tmux)
     clear_settings_cache()
     subprocess.run(
@@ -275,33 +277,76 @@ async def test_real_terminal_bridge_streams_raw_bytes_and_preserves_tmux_session
             "-d",
             "-s",
             shell_id,
-            "bash",
+            bash,
             "--noprofile",
             "--norc",
         ],
         check=True,
     )
+
+    async def wait_for_tmux_client() -> None:
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            clients = subprocess.run(
+                [
+                    tmux,
+                    "list-clients",
+                    "-t",
+                    shell_id,
+                    "-F",
+                    "#{client_session}",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if (
+                clients.returncode == 0
+                and shell_id in clients.stdout.splitlines()
+            ):
+                return
+            await asyncio.sleep(0.02)
+        pytest.fail("tmux attach client did not become ready")
+
+    async def read_until(marker: bytes) -> bytes:
+        deadline = time.monotonic() + 8
+        output = bytearray()
+        while time.monotonic() < deadline and marker not in output:
+            chunk = await read_terminal_bridge_execute(bridge_id, 65_536, 100)
+            output.extend(base64.b64decode(chunk["data_b64"]))
+            if chunk["eof"]:
+                break
+        assert marker in output, bytes(output[-4096:])
+        return bytes(output)
+
     bridge_id = ""
     try:
         opened = await open_terminal_bridge_execute(shell_id, 90, 28)
         bridge_id = opened["bridge_id"]
+        await wait_for_tmux_client()
+
+        # A real xterm responds to these bounded terminal capability, color, and
+        # size queries before tmux finishes its initial redraw. Reproduce that
+        # handshake so the bridge write assertion cannot race attach startup.
+        terminal_responses = (
+            b"\x1b[?62;4;9;22c"
+            b"\x1b[>0;276;0c"
+            b"\x1b]10;rgb:d8d8/e9e9/f5f5\x1b\\"
+            b"\x1b]11;rgb:0707/1111/1f1f\x1b\\"
+            b"\x1b[8;28;90t"
+            b"\x1b[4;532;738t"
+        )
+        await write_terminal_bridge_execute(
+            bridge_id,
+            base64.b64encode(terminal_responses).decode("ascii"),
+        )
+
         command = b"printf '\\033[31mBRIDGE_RAW_OK\\033[0m\\n'\r"
         await write_terminal_bridge_execute(
             bridge_id,
             base64.b64encode(command).decode("ascii"),
         )
-
-        deadline = time.monotonic() + 4
-        output = bytearray()
-        while (
-            time.monotonic() < deadline
-            and b"\x1b[31mBRIDGE_RAW_OK" not in output
-        ):
-            chunk = await read_terminal_bridge_execute(bridge_id, 65_536, 100)
-            output.extend(base64.b64decode(chunk["data_b64"]))
-            if chunk["eof"]:
-                break
-        assert b"\x1b[31mBRIDGE_RAW_OK" in output
+        await read_until(b"\x1b[31mBRIDGE_RAW_OK")
 
         await resize_terminal_bridge_execute(bridge_id, 120, 35)
         await close_terminal_bridge_execute(bridge_id)

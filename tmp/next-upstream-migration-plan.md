@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-2 complete; Phase 3 pending
+Status: implementation in progress — Phase 1 complete; Phase 2 CI remediation in progress
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -157,7 +157,7 @@ Exit criterion: repository search finds no `DeprecatedTool`, `DEPRECATED_TOOLS`,
 
 ### Phase 2 — Add real Chromium browser E2E
 
-Status: complete (started and completed 2026-07-23).
+Status: CI remediation in progress (started 2026-07-23).
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to `3af7166`; fetched
@@ -249,9 +249,26 @@ Local validation result:
   documentation, or retained log artifact introduced a secret finding.
 
 Implementation commit: `1b8fed50309a67bc672d714e2f2ec062a6a9050b`
-(`test(ui): add real Chromium browser E2E`). The phase has no unresolved design
-or implementation issue; Phase 3 is the next pending phase. Remote CI status is
-verified after pushing the implementation and this source-of-truth checkpoint.
+(`test(ui): add real Chromium browser E2E`) and checkpoint commit
+`68b1278c917da9ee9b925d3307e60c766175bd3f` were pushed. Docs and every CI job
+except Ubuntu branch coverage passed, including the new Chromium Human UI E2E,
+Windows/macOS suites, OpenTUI matrix, Windows ConPTY, package smoke, VS Code,
+Docker, pyright, and pre-commit. Ubuntu failed only in the existing real tmux
+bridge test because the test wrote input before the newly attached tmux client
+had emitted its shell prompt; the input was echoed during attach initialization
+but did not reach bash. This is a timing-sensitive test setup defect, not a bridge
+or browser runtime failure. The remediation now waits until the tmux client is
+registered and sends the same bounded terminal capability, color, and size
+responses that xterm.js sends before asserting bridge input/output. It does not
+add a timing sleep or change production code. The repaired real bridge test passed
+30 consecutive runs, and the complete terminal bridge/Human UI terminal suite
+passed 30 tests. The complete branch-coverage suite then passed with `777 passed,
+2 skipped`, 83.69% total branch coverage, and the unchanged 181-file coverage
+ratchet. The final real Chromium run passed in 30.79 seconds; ruff format/check,
+pyright, lockfile validation, generated configuration/tool/instruction checks,
+`git diff --check`, strict MkDocs, and all three reference-asset checks also
+passed. Phase 2 remains open only until the remediation commit's rerun CI is
+green.
 
 ### Phase 3 — Add Agent Bridge secret storage and OAuth client authentication
 
