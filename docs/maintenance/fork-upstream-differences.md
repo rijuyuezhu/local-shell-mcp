@@ -1,0 +1,264 @@
+# Fork and upstream differences
+
+This document compares the current fork with the current upstream product, not
+just individual commits. The corresponding commit-by-commit decisions remain in
+[Upstream commit review](upstream-commit-review.md).
+
+## Comparison snapshot
+
+The audit was performed against these immutable points:
+
+| Role | Ref | Commit |
+|---|---|---|
+| Fork implementation audited here | `feat/port-upstream-features-2026-07` | `6fbc0bb5babae6e651d55185a92c18184466a7f8` |
+| Fork branch baseline | `main` | `c40067a` |
+| Current upstream | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
+| Shared historical fork point | merge base with upstream | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
+
+The migration branch is 66 commits ahead of `main`. Its tip-to-tip diff against
+`main` changes 276 files with 54,378 insertions and 2,244 deletions. The fork and
+upstream are now architecturally divergent: a filename diff alone is not a
+reliable feature comparison.
+
+## Executive summary
+
+The fork is neither a strict subset nor a strict superset of upstream.
+
+- Most shell, filesystem, job, remote-worker, transfer, terminal, Human UI, and
+  OpenTUI outcomes from upstream exist in the fork, but are exposed through
+  explicit agent/workspace sessions and a different module layout.
+- The fork is materially ahead in session isolation, Agent Bridge integration,
+  durable managed jobs, transactional cross-session copies, Windows support,
+  worker-upgrade safety, browser-native operations UI, terminal streaming, and
+  release/coverage enforcement.
+- Upstream still has several real capabilities the fork does not: Playwright
+  browser automation, browser-level Human UI/OAuth/PTY E2E tests, OS service
+  installation and control for workers, platform wheels with an embedded native
+  TUI, a public MCP audit-tail tool, an HTTP ticket transport for large remote
+  transfers, optional recovery of oversized audit payloads, and multilingual
+  documentation.
+- Some upstream behavior should remain rejected: unredacted audit input
+  retention, copying upstream release metadata, restoring obsolete one-tool-per-
+  operation remote APIs, and removing the fork's active Agent Bridge.
+
+## Public MCP tool surface
+
+The two projects often provide the same outcome through different public tools.
+The important mappings and actual gaps are:
+
+| Upstream surface | Fork surface | Difference |
+|---|---|---|
+| `run_shell_tool` | `bash` | Equivalent execution outcome; fork binds it to an explicit session and combines bounded command, async job, and PTY entry modes. |
+| `run_python_tool` | `run_python_code` | Equivalent outcome; fork keeps a separate structured helper but uses session ownership. |
+| `shell_start`, `shell_send`, `shell_read`, `shell_kill`, `shell_list` | `bash(pty=true)` plus persistent-shell companions | Equivalent outcome with a stable `shell_id`; fork additionally supports Windows ConPTY. |
+| `job_start`, `job_list`, `job_tail`, `job_stop`, `job_retry` | `bash(async_=true)` plus unified `job` | Fork also manages durable non-shell jobs such as background `session_copy`. |
+| `read_file`, `grep_search`, `edit_file`, todo tools | `read`, `search`, `hashline_edit`/`edit_lines`, `read_todos`/`write_todos` | Adapted to snapshot-grounded edits, selectors, pagination, and session ownership. |
+| Optional `machine` on many tools | `session_start(target="remote", machine=...)` followed by ordinary tools | Fork avoids duplicating local and remote schemas and gives every remote operation an explicit workspace session. |
+| `transfer_path` | `session_copy` | Functional transfer support exists; fork preserves synchronous compatibility and adds managed background copy jobs. The dedicated upstream HTTP streaming transport is absent. |
+| Separate remote invite/list/revoke/rename tools | `remote_admin` | Same control-plane outcomes through one compact tool. |
+| `skills_list`, `skill_load`, `skill_read_file` | `list_agent_skills`, `activate_agent_skill`, `read_agent_skill_file` | Similar static Skill outcome; fork additionally bridges configured MCP servers and dynamically installed capabilities. |
+| `environment_info` | `version`, plus session-bound inspection through `bash` | The old name is a tombstone. There is no single structured fork tool returning the full upstream environment inventory. |
+| `audit_tail` | Human UI and authenticated Human UI audit APIs | Audit storage and browsing are richer in the fork, but agents do not have a public MCP audit query tool. |
+| `browser_get_text`, `browser_capture`, `playwright_run_script` | Deprecated-tool diagnostics pointing to `bash` | **Real missing capability.** The fork has no structured local or remote browser automation surface. |
+
+## Capabilities present upstream but absent or incomplete in the fork
+
+### Decision table
+
+| Capability | Upstream behavior | Fork behavior | Assessment | Recommendation |
+|---|---|---|---|---|
+| Structured browser automation | Local and remote `browser_get_text`, screenshot/capture, and arbitrary Playwright script execution with browser scopes and worker capabilities. | Browser tools are tombstones; users can manually invoke browser tooling through `bash`, without structured output, browser-specific scopes, or worker capability negotiation. | High-value functional gap, especially for web development and UI verification. Arbitrary scripts are also a high-risk execution surface. | **Port in stages.** First add session-bound read-only text and screenshot operations. Add arbitrary scripts only behind an explicit high-risk scope, bounded source/output, isolated profile, URL policy, and remote capability declaration. |
+| Real browser E2E for Human UI | CI installs Chromium and runs OAuth, PTY, navigation, responsive-layout, and related browser smoke tests. | Human UI has strong route/API and JavaScript state tests, but no real browser-runtime E2E. | High-value engineering gap; increasingly important because the fork maintains a native browser UI, OpenTUI, and a browser OpenTUI console. | **Port the testing outcome now**, rewritten for fork OAuth, session, terminal, and machine APIs. This does not require restoring public browser tools. |
+| Worker OS service management | CLI installs, starts, stops, restarts, reports status, and reads logs for `systemd --user` and launchd agents. | Worker identity, resume, upgrade, lock handoff, and existing managed-service detection are implemented, but the fork does not install or control services. | Useful operational gap. Exposing service mutation as an MCP tool would widen privilege and persistence boundaries. | **Port as local CLI-only functionality.** Keep it outside MCP, never place tokens in argv/unit files, use persisted identity, and make install/uninstall idempotent. Add Windows only when a safe service model is designed. |
+| Embedded native OpenTUI in Python wheels | Platform-specific wheels contain a compressed native TUI runtime and are tagged non-pure. A normal platform wheel install can launch the TUI without Bun or a release sidecar. | The ordinary wheel remains `py3-none-any`. Release archives and Docker images carry the sidecar; source checkout can build it with Bun; runtime code can consume an embedded payload if one is supplied. | Packaging and installation gap, not a runtime-feature gap. | **Worth adding if `pip install` is a supported TUI path.** Prefer a separate platform companion package or optional platform wheel set so the universal server wheel remains available. |
+| Public MCP audit query | `audit_tail` lets an agent inspect recent audit entries. | Authenticated browser APIs provide machine-scoped list/detail views with scope-sensitive reauthorization, but there is no public MCP audit tool. | Small but useful observability gap. It may expose prior prompts, paths, or command output to the calling agent. | **Consider a read-only session-bound audit tool** with strict limits, redaction, per-operation scopes, and no raw oversized payload access. |
+| Dedicated HTTP transfer transport | One-time authenticated upload/download tickets, streaming HTTP bodies, range validation, immutable download snapshots, and transactional commit. | Transfers use the authenticated worker control channel, bounded chunk RPC, same-worker fast paths, and managed retryable copy jobs. | The user-visible transfer outcome exists. The missing part is a potentially faster and more proxy-friendly transport. | **Port only after benchmarks show a bottleneck.** Keep `session_copy` as the public API and make HTTP tickets an internal route with short TTL, same-origin checks, digest/range validation, and no bearer token in URLs or logs. |
+| Full oversized audit-payload recovery | Oversized values may be externalized into private gzip payload objects and referenced from bounded log entries. | Audit events are bounded, portable, redacted, private, and atomically retained; data over the event budget is summarized/truncated and cannot be recovered in full. | Deliberate retention-policy difference. Full recovery improves forensics but increases secret-retention and lifecycle complexity. | **Do not enable by default.** Add only as an explicit encrypted/size-bounded retention mode with independent quotas, expiry, redaction, and access audit if forensic demand exists. |
+| Multilingual documentation | Locale trees, translated navigation, and i18n regression checks. | One canonical English documentation site. | Documentation reach gap, with substantial synchronization cost. | Keep English-only unless maintainers commit to owning translation freshness. Generated or community translations should not silently become canonical. |
+| Structured environment inventory | One read-only tool reports runtime, platform, dependencies, and machine information. | `version` reports package/runtime basics; richer inspection requires `bash`. | Minor convenience gap. | Low priority. Add only if clients need stable structured environment metadata without command execution. |
+
+### Upstream behavior that should remain rejected
+
+| Upstream behavior | Reason to keep it out of the fork |
+|---|---|
+| Preserve tool inputs without redaction | The fork intentionally redacts tokens, authorization headers, approval PINs, sensitive download URLs, and similar credentials. Debuggability does not justify raw credential retention. |
+| Restore every legacy local/remote tool name | Explicit `session_id` ownership is clearer and prevents schema duplication. Deprecated-tool tombstones already explain migrations without re-expanding the public surface. |
+| Remove the dynamic Agent Bridge | It is an active fork feature, not dead plumbing. Removing it would eliminate installed Skill discovery, configured MCP-server bridging, and dynamic capability activation. |
+| Copy upstream release/version commits | The fork has an independent `3.9.1` release line and release matrix. Functional commits should be reviewed independently of upstream version metadata. |
+| Copy upstream WebUI/OpenTUI architecture verbatim | The fork deliberately keeps a browser-native Human UI as the default and treats OpenTUI as an optional client sharing the same APIs. |
+
+## Capabilities where the fork leads upstream
+
+| Area | Fork advantage |
+|---|---|
+| Explicit workspace sessions | Every local or remote operation is owned by a stable `session_id`. Remote machine, worker session, workdir, lifecycle, and transfer routing are separated from persistent terminal `shell_id` and async `job_id`. |
+| Agent Bridge and installed Skills | The fork discovers Skills, loads their instructions/files, lists configured MCP servers, and invokes bridged MCP tools. It retains dynamic capabilities that upstream removed. |
+| Unified durable jobs | One `job` surface manages shell and controller-managed jobs, persists output/payload/progress/result, detects lost processes, supports retry/cancel, and remains useful when a worker is offline. |
+| Transactional cross-session copies | `session_copy` supports local/local, local/remote, remote/local, and remote/remote files and directories, same-worker fast paths, transactional commit/abort, background managed jobs, cancellation cleanup, and retry from durable arguments. |
+| Worker upgrade security | Upgrade authority is the actual deterministic bundle digest. The worker enforces authenticated same-origin manifest/archive downloads and redirects, cache bypass, size/version/SHA validation, safe extraction, downgrade protection, atomic replacement/rollback, credential-free argv, and bounded retry. |
+| Worker lifecycle robustness | Cross-platform single-instance locks cover enrollment, polling, jobs, and re-exec. POSIX inherits the lock descriptor; Windows adopts and reacquires the native handle. Poll deadlines are continuously negotiated. |
+| Windows support | Native shell execution, ConPTY persistent terminals, Windows transfer identities and path behavior, process-detachment fixes, and full Windows pytest/VS Code/OpenTUI coverage are maintained as first-class behavior. |
+| Browser-native Human UI | The default `/ui` is independent of terminal rendering and provides OAuth PKCE login, dashboard, remotes, local/remote files, copy/move/rename, todos, audit, and terminals with machine isolation and stale-response guards. |
+| Multiple terminal clients | The fork supports tmux, Windows ConPTY, raw browser PTY streaming, resize, snapshots, optional native OpenTUI, and an authenticated browser OpenTUI console without changing the underlying shell identity. |
+| Image handling | `view_image` is session-bound and remote-capable. Human UI/OpenTUI audit previews are bounded, and terminal image protocols can render inline images without unbounded decode or layout behavior. |
+| OAuth and request hardening | S256 PKCE, bounded pending codes and request bodies, strong public-client credentials/reuse, bounded stateful MCP sessions, explicit scopes, and corrected safety annotations are integrated across the fork architecture. |
+| File/download safety | Immutable private download snapshots, no-follow identity checks, bounded previews, symlink-aware serialized writes, snapshot-grounded hashline edits, and tokenized file links are composed with sessions. |
+| Audit safety | Uniform redaction, bounded records, private permissions, paired tool lifecycle events, scope-sensitive Human UI detail access, and machine-aware views trade unlimited recovery for a smaller secret-retention boundary. |
+| Compatibility diagnostics | Removed tool names remain non-enumerated tombstones that explain stale tool snapshots, name replacements, remote-session migration, and client refresh/re-add actions. |
+| CI and release enforcement | The branch runs Linux/macOS/Windows tests, Windows ConPTY, OpenTUI on three OSes, VS Code packages on Linux/Windows, package smoke, Docker checks, release-matrix validation, branch-coverage ratchets, and bundled static tmux smoke on x86_64/aarch64. |
+
+## What this migration branch added
+
+The baseline is `main` at `c40067a`; the implementation snapshot is `6fbc0bb`.
+The 66 commits fall into the following product decisions.
+
+| Group | Representative commits | What was added or restored | Was it likely cut or absent before this branch? | Assessment |
+|---|---|---|---|---|
+| Agent Bridge and Skills | `82288d1` | Hardened installed Skill discovery/loading, real Skill E2E, configured MCP-server discovery and invocation. | Mostly fork-specific capability that upstream later removed as unused dynamic plumbing. | **Keep if Agent Bridge is a product goal.** It is powerful and increases configuration, trust, and dynamic-schema complexity; this deserves explicit owner confirmation. |
+| Durable jobs | `9d759e5`, `02443a4` | Persistent shell output, lifecycle recovery, lost-state detection, managed background copy jobs, retry/cancel/list/poll. | Fork-specific strengthening of upstream job and transfer work. | **Keep.** The stable session/job ownership model is coherent and materially improves long-running operations. |
+| Remote worker persistence | `d277517`, `2a01281`, `4bd1886`, `733ec9a` | Identity/resume, inventory/admin, result heartbeats, safe auto-upgrade, process locks, lock handoff, bounded/negotiated polling. | Restores upstream remote-worker management outcomes but deliberately omits service installation. | **Keep, with explicit trust acknowledgement.** Auto-upgrade means an authenticated controller may replace worker code; digest/same-origin/rollback controls make this reasonable, but it is a major authority boundary. |
+| Native image viewing | `b5f4530`, `029403e` | Session-bound local/remote image results, bounded previews, inline terminal image rendering. | Restores and extends upstream image/UI behavior. | **Keep.** Limits and first-frame decoding make the feature proportionate. |
+| Audit hardening and UI | `d8f176f`, `df21341`, `9d875f7` | Bounded/redacted retention, machine-aware audit UI, dashboard telemetry, scope-sensitive detail access. | Restores Human UI observability while rejecting upstream raw/full-payload retention defaults. | **Keep.** The fork policy is safer; optional full-payload retention should remain a separate future decision. |
+| Immutable downloads and files | `dc3a39a`, `8cf017a`, `6a94e71`, `9d11cf2`, `af222ef` | Immutable download snapshots, browser file workspaces, copy/move/rename, remote workspaces, serialized symlink-safe writes. | Restores upstream Files UI and hardens it for fork sessions/remotes. | **Keep.** This is a coherent session-bound filesystem product rather than duplicated remote APIs. |
+| Transactional transfers | `3ec0eae`, `eec5015`, `962689c`, `02443a4` | Transaction begin/write/finish/abort, timestamp binding, same-worker streaming/fast paths, resumable managed jobs. | Restores upstream transfer behavior through a different transport and extends it. | **Keep.** Revisit HTTP streaming only if measurements justify another transport. |
+| HTTP/OAuth/MCP safety | `824ae5`, `e103617`, `067ae03`, `0fc3fa1`, `dbe18d0`, `b977e5b`, `a37da3c` | Request-body limits, S256, pending-code bounds, client reuse/credentials, correct annotations, stateful-session caps, safer local interfaces. | Mostly security fixes and fork architecture hardening. | **Keep.** These are defense-in-depth changes with low product ambiguity. |
+| Shell correctness | `ab0b001`, `aa04036`, `5cfa363`, `8694314`, `0dc21eb` | Shared stdout/stderr budget, timeout/watchdog cleanup, native Windows commands, missing-tmux compatibility. | Mix of upstream fixes and fork portability work. | **Keep.** These preserve compatibility and prevent resource leaks. |
+| Persistent terminals | `60fa2f8`, `dd0c2e9`, `6f14aec`, `a004089`, `5bc8f22` | Resize, browser console, remote terminals, raw PTY streaming, Windows ConPTY. | Restores upstream terminal UI and substantially extends it. | **Keep if interactive terminals are intended.** Raw terminal access is high privilege; loopback/OAuth/scope boundaries and session preservation must remain non-negotiable. |
+| Browser-native Human UI | `4c6c0bc` through `4813aa7`, plus `ceb6b30` and `d9d3020` | Human UI foundation, safe mounts, OAuth PKCE login, Files, Todos, Audit, Dashboard, Terminals, Remotes. | Reintroduces a UI capability that had been absent or cut, but uses a fork-native static implementation rather than upstream React architecture. | **Keep if operator UI is a product goal.** It is valuable, but maintaining native WebUI plus OpenTUI plus browser Console is a deliberate three-client maintenance commitment. |
+| Optional OpenTUI | `ae6a3e6`, `29daeba`, `c6737d3` | Adapted current upstream OpenTUI client and browser Console against fork Human UI APIs. | Restores upstream TUI presentation without replacing the native browser UI. | **Keep only with explicit multi-client commitment.** Otherwise choose one terminal client and reduce duplicate presentation maintenance. |
+| Windows compatibility | `5bc8f22`, `8694314` through `5764e09` | ConPTY, native job commands, stable file identities, path/error normalization, stdio/remote E2E, platform-aware tests. | Mostly new fork work needed by its expanded architecture. | **Keep if Windows is supported.** The CI investment indicates that it is already a first-class target. |
+| CI, coverage, and release artifacts | `8481d1f`, `e4e52f8`, `e9dbc32`, `a350752`, `6fbc0bb` | Unified full pytest matrix, branch coverage ratchet, merged platform baselines, bundled static tmux for Linux releases, coverage baseline tests. | Fork-specific maintenance and distribution work. | **Keep, but explicitly accept bundled-binary supply-chain ownership.** Record source/version/license/reproducibility for tmux artifacts. |
+| Stale-tool diagnostics | `a494f54` | Non-enumerated tombstones for removed tools with replacements and refresh guidance. | Fork-specific compatibility layer created because the public surface was aggressively consolidated. | **Keep.** It reduces breakage without resurrecting obsolete schemas. |
+
+### Branch additions that need explicit owner confirmation
+
+The following additions are reasonable, but they are not merely bug fixes. They
+change the product or trust model and should be explicitly accepted:
+
+1. **Dynamic Agent Bridge and installed Skills.** Keep only if loading external
+   capability instructions and invoking configured MCP servers is intentional.
+2. **Remote worker automatic code upgrade.** Keep only if the controller is
+   trusted as the worker's update authority. The current digest and same-origin
+   design is substantially safer than upstream's original version-only design.
+3. **Raw local/remote browser terminals.** Keep only if interactive shell access
+   through the Human UI is intended; do not weaken loopback, OAuth, scopes, or
+   session ownership.
+4. **Three UI clients.** Native browser UI, native OpenTUI, and browser OpenTUI
+   Console share APIs but still multiply visual and E2E maintenance.
+5. **Bundled tmux binaries.** This improves frozen Linux usability but creates
+   binary provenance, architecture, CVE, license, and rebuild responsibilities.
+
+Everything else in the branch is primarily correctness, compatibility, security,
+or a coherent implementation of those accepted product directions.
+
+## Upstream capabilities worth porting next
+
+Recommended order:
+
+1. **Fork-native real browser E2E.** Highest benefit-to-risk ratio. Test OAuth
+   login, Files navigation, stale-response handling, raw PTY attach/input/resize,
+   machine switching, and responsive layouts in Chromium.
+2. **Session-bound browser read/capture tools.** Restore structured text and
+   screenshot operations locally and remotely. Keep arbitrary Playwright scripts
+   out of the first phase.
+3. **Worker service management as local CLI-only commands.** Implement
+   install/uninstall/start/stop/restart/status/logs for systemd user units and
+   launchd without adding an MCP persistence primitive.
+4. **Read-only, bounded MCP audit query.** Useful for agents diagnosing their own
+   recent work, provided scope-sensitive details and redaction are retained.
+5. **Optional platform TUI companion packages.** Improve `pip install` TUI UX
+   without giving up the universal server wheel.
+6. **Arbitrary Playwright scripts, only after a security design.** Require an
+   explicit scope and purpose, isolated profiles, source/output/time limits,
+   browser process cleanup, audit redaction, and remote capability negotiation.
+7. **HTTP transfer transport, only after benchmarks.** Do not change the public
+   `session_copy` contract merely to mirror upstream internals.
+8. **Optional full audit payload retention, only after a concrete forensic need.**
+   Never port upstream's no-redaction behavior.
+
+## Commit inventory for the migration branch
+
+The exact first-parent commits relative to `main` are retained here so the scope
+can be reviewed without relying on a mutable GitHub comparison page:
+
+```text
+4c60b55 docs: inventory upstream feature port
+82288d1 feat(agent): harden skill loading and add real skill e2e
+9d759e5 feat(jobs): persist output and recover lifecycle state
+d277517 feat(remote): harden worker persistence and lifecycle
+b5f4530 feat(image): add session-bound native image viewing
+d8f176f feat(audit): harden retention and payload safety
+dc3a39a feat(downloads): add immutable inline file snapshots
+3ec0eae feat(transfer): harden transactional session copies
+eec5015 fix(transfer): bind temporary file timestamps
+824ae5c feat(http): bound inbound request bodies
+e103617 feat(oauth): require S256 and bound pending codes
+067ae03 fix(oauth): reuse matching public clients
+ab0b001 fix(shell): share output budget across streams
+af222ef fix(files): serialize writes and preserve symlinks
+0fc3fa1 fix(oauth): require strong public credentials
+dbe18d0 fix(mcp): correct safety annotations
+aa04036 fix(shell): allow timeout cleanup before watchdog
+5cfa363 test(shell): avoid watchdog setup race
+b977e5b fix(mcp): bound stateful sessions
+a37da3c fix(runtime): harden local interfaces
+962689c fix(remote): stream same-worker file copies
+60fa2f8 feat(shell): add persistent terminal resize
+4c6c0bc feat(ui): add human interface foundation
+2a01281 fix(remote): heartbeat while submitting results
+ceb6b30 fix(ui): restrict mount path segments
+a9ca23f docs(upstream): review WebUI transparency fix
+d9d3020 feat(ui): add browser OAuth PKCE login
+dd0c2e9 feat(ui): add persistent terminal console
+8cf017a feat(ui): add workspace file browser
+6a94e71 feat(ui): add file copy move and rename
+9d11cf2 feat(ui): add remote file workspaces
+647b2f8 feat(ui): add machine-isolated todos
+09770af docs(upstream): review syntax highlighting
+df21341 feat(ui): add machine-isolated audit
+9d875f7 feat(ui): add machine dashboard telemetry
+6f14aec feat(ui): add machine-isolated remote terminals
+4813aa7 feat(ui): add remotes management
+105fbf6 feat(ui): enrich terminal snapshots
+c7cf64d docs: review latest upstream patch fixes
+a004089 feat(ui): stream raw terminal PTYs
+5bc8f22 feat(windows): add ConPTY terminals
+02443a4 feat(transfer): add resumable copy jobs
+4bd1886 feat(remote): auto-upgrade workers safely
+8738575 test(remote): isolate worker runtime environment
+c6737d3 feat: resolve remaining upstream migrations
+ae6a3e6 feat(ui): add optional OpenTUI client
+29daeba feat: complete remaining upstream follow-ups
+2600fdf fix(docs): keep reference site English-only
+8694314 fix(windows): support native shell execution
+9d6f956 test(windows): isolate remaining compatibility failures
+a40d735 fix(windows): normalize transport errors and paths
+db46f55 fix(windows): use stable transfer file identities
+48f98b8 fix(windows): unblock stdio and remote e2e
+0b9ad1b fix(windows): detach patch git subprocesses
+656c9ec test(windows): make full suite platform-aware
+5ade414 test(windows): use native job runner commands
+5764e09 test(windows): normalize cmd echo whitespace
+8481d1f ci: unify full pytest matrix
+a494f54 feat: sync latest upstream diagnostics
+733ec9a fix(remote): harden worker lifecycle
+029403e feat(ui): render inline terminal images
+e4e52f8 ci: add branch coverage ratchet
+e9dbc32 fix(ci): merge cross-environment coverage baselines
+a350752 feat(release): bundle tmux for Linux binaries
+0dc21eb fix(shell): preserve missing-tmux compatibility
+6fbc0bb test: record bundled tmux coverage baseline
+```
+
+## Maintenance rule
+
+For each future upstream update:
+
+1. Add every upstream commit to the single chronological review table.
+2. Use `Partial (adapted)` whenever a user-visible or operational capability is
+   still absent, even if the fork implements related behavior.
+3. Use `Implemented (adapted)` only when the upstream outcome is fully available
+   through the fork architecture.
+4. Keep tip-to-tip product differences in this document, because capabilities
+   may predate the shared fork point or be removed only on one side and therefore
+   never appear as a new upstream commit decision.
