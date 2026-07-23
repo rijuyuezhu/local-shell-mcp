@@ -977,13 +977,40 @@ Full local verification checkpoint (2026-07-23):
   OpenTUI wheels`). It contains production code, tests, workflows, permanent
   documentation, lockfile changes, and release-matrix enforcement.
 
+First remote CI checkpoint (2026-07-23):
+
+- Pushed checkpoint `962583d4d33e16630caf7e2ee0728a32b2d5ef96` after confirming
+  origin had not advanced. Exact-head Docs run `30023223610` succeeded.
+- Exact-head CI run `30023221658` validated the universal package and the Linux
+  x86_64/aarch64 plus macOS arm64 platform wheels, but the Windows x86_64 wheel
+  job `89261019843` failed after Bun compilation and wheel construction while
+  inspecting its own payload on Python 3.14.6. The exact traceback was
+  `zlib.error: Error -3 while decompressing data: invalid distance too far back`.
+  This is a product/cross-platform defect, not runner infrastructure.
+- The fix replaces the single-call `gzip.GzipFile` writer with a fixed gzip
+  header, 1 MiB chunked raw-deflate stream, explicit CRC32/ISIZE trailer, and an
+  immediate full round-trip before staging. `zlib.error` is now wrapped in the
+  stable `PlatformWheelError` model. Fix commit: `d4aefd2`
+  (`fix(packaging): stabilize Windows gzip payloads`). Focused validation passed
+  (`61 passed`), the broader Phase 7 regression set passed (`161 passed`), and
+  the new module retained `91.30%` branch coverage.
+- Two complete real Linux builds with the fixed encoder remain byte-identical
+  (wheel SHA-256
+  `4430adf032ff411878d6b9685fd0a45f89cad83b84482c5713c390a36d34f8e7`),
+  and the 95 MiB executable still passes clean no-Bun installation and execution.
+- The required post-fix clean full workflow completed with durable exit marker
+  `0`: `977 passed, 2 skipped`, aggregate branch coverage `85.38%` against the
+  `82.60%` baseline, and the coverage ratchet again accepted all `181` tracked
+  plus `12` new files. Repository-wide Ruff, Pyright, lock/generated-contract,
+  release-matrix, whitespace, secret-scan, and all-files pre-commit gates passed.
+
 Packaging architecture:
 
 - Keep `uv_build`; do not switch the entire project to Hatchling merely to copy
   upstream's hook.
 - Add a deterministic platform-wheel builder that:
   1. builds the existing OpenTUI executable with pinned Bun;
-  2. gzip-compresses it with deterministic metadata (`mtime=0`);
+  2. gzip-compresses it with a fixed header/trailer and chunked raw deflate;
   3. stages it as `local_shell_mcp/ui_runtime/<executable>.gz`;
   4. builds the wheel with `uv build`;
   5. rewrites/verifies the wheel `WHEEL` metadata as non-pure and assigns the
