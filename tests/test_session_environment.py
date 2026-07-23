@@ -263,13 +263,17 @@ def test_collect_session_environment_is_allowlisted_and_falls_back(
     monkeypatch.setattr(
         env_ops,
         "_collect_tools",
-        lambda _settings: (_ for _ in ()).throw(RuntimeError("private")),
+        lambda _settings: (_ for _ in ()).throw(
+            RuntimeError("probe-secret-fixture")
+        ),
     )
     fallback = env_ops.collect_session_environment(
         settings, workdir=str(tmp_path), target="local", machine=None
     )
     assert fallback.tools.git.status == "error"
-    assert "private" not in json.dumps(fallback.model_dump(mode="json"))
+    assert "probe-secret-fixture" not in json.dumps(
+        fallback.model_dump(mode="json")
+    )
 
 
 def test_resolve_command_rejects_invalid_or_missing(monkeypatch):

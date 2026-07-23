@@ -538,8 +538,14 @@ Final local validation:
 
 Repository-wide pre-commit passed. Implementation commit
 `5537c05cd226365c8e48d898c7c77c7705dbe297`
-(`feat(session): add structured environment orientation`) is complete; push and
-remote CI remain pending.
+(`feat(session): add structured environment orientation`) and checkpoint commit
+`5d495dbbb8ab8adbcb3c00e03ac217bfeabe1f8f` were pushed. Initial CI run
+`29990231813` passed Ubuntu coverage, Chromium, pyright, pre-commit, package,
+ConPTY, OpenTUI, VS Code, Docker, bundled tmux, and release checks, but its macOS
+pytest job found a platform-specific test bug: the generic sentinel `private`
+matched macOS's legitimate `/private/var/...` temporary path. The assertion now
+uses the unique sentinel `probe-secret-fixture`; no production behavior changed.
+A clean CI rerun remains pending.
 
 Exit criterion: clients can choose tools and understand local/remote runtime
 capabilities from `session_start` alone, with no standalone environment tool.
