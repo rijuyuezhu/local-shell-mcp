@@ -19,11 +19,13 @@ import os
 import platform
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
 import tempfile
 import time
+import zlib
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -41,6 +43,8 @@ MAX_COMPRESSED_BYTES = 192 * 1024 * 1024
 PAYLOAD_PACKAGE_PREFIX = "local_shell_mcp/ui_runtime/"
 _LOCK_NAME = ".platform-wheel-build.lock"
 _ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+_COMPRESSION_CHUNK_BYTES = 1024 * 1024
+_GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"
 
 
 class PlatformWheelError(RuntimeError):
@@ -250,22 +254,41 @@ def verify_target_host(
 
 
 def deterministic_gzip(data: bytes) -> bytes:
-    """Compress executable bytes with a stable gzip header and bounded size."""
+    """Compress executable bytes into a bounded, cross-platform-stable gzip."""
 
     _verify_executable_size(data)
-    output = io.BytesIO()
-    with gzip.GzipFile(
-        filename="",
-        mode="wb",
-        compresslevel=9,
-        fileobj=output,
-        mtime=0,
-    ) as compressed:
-        compressed.write(data)
-    result = output.getvalue()
-    if len(result) > MAX_COMPRESSED_BYTES:
+    output = bytearray(_GZIP_HEADER)
+    if len(output) + 8 > MAX_COMPRESSED_BYTES:
         raise PlatformWheelError(
             "compressed OpenTUI payload exceeds the platform-wheel limit"
+        )
+    compressor = zlib.compressobj(
+        level=9,
+        method=zlib.DEFLATED,
+        wbits=-zlib.MAX_WBITS,
+    )
+    checksum = 0
+    view = memoryview(data)
+    for offset in range(0, len(view), _COMPRESSION_CHUNK_BYTES):
+        chunk = view[offset : offset + _COMPRESSION_CHUNK_BYTES]
+        checksum = zlib.crc32(chunk, checksum)
+        output.extend(compressor.compress(chunk))
+        if len(output) + 8 > MAX_COMPRESSED_BYTES:
+            raise PlatformWheelError(
+                "compressed OpenTUI payload exceeds the platform-wheel limit"
+            )
+    output.extend(compressor.flush())
+    output.extend(
+        struct.pack("<II", checksum & 0xFFFFFFFF, len(data) & 0xFFFFFFFF)
+    )
+    if len(output) > MAX_COMPRESSED_BYTES:
+        raise PlatformWheelError(
+            "compressed OpenTUI payload exceeds the platform-wheel limit"
+        )
+    result = bytes(output)
+    if _decompress_payload(result) != data:
+        raise PlatformWheelError(
+            "compressed OpenTUI payload round-trip mismatch"
         )
     return result
 
@@ -560,7 +583,9 @@ def _decompress_payload(payload: bytes) -> bytes:
     try:
         with gzip.GzipFile(fileobj=io.BytesIO(payload), mode="rb") as source:
             while True:
-                chunk = source.read(min(1024 * 1024, MAX_EXECUTABLE_BYTES + 1))
+                chunk = source.read(
+                    min(_COMPRESSION_CHUNK_BYTES, MAX_EXECUTABLE_BYTES + 1)
+                )
                 if not chunk:
                     break
                 output.extend(chunk)
@@ -568,7 +593,7 @@ def _decompress_payload(payload: bytes) -> bytes:
                     raise PlatformWheelError(
                         "embedded OpenTUI executable exceeds the wheel limit"
                     )
-    except (gzip.BadGzipFile, EOFError, OSError) as exc:
+    except (gzip.BadGzipFile, EOFError, OSError, zlib.error) as exc:
         raise PlatformWheelError(
             "embedded OpenTUI payload is not valid gzip"
         ) from exc

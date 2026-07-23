@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import zlib
 from pathlib import Path
 
 import pytest
@@ -120,13 +121,30 @@ def test_verify_target_host_rejects_cross_tag() -> None:
         )
 
 
-def test_deterministic_gzip_has_zero_mtime() -> None:
+def test_deterministic_gzip_has_fixed_header_and_round_trips() -> None:
     data = b"\x7fELF" + b"x" * 1024
     first = pw.deterministic_gzip(data)
     second = pw.deterministic_gzip(data)
     assert first == second
+    assert first[:10] == pw._GZIP_HEADER
     assert first[4:8] == b"\0\0\0\0"
+    assert first[9] == 255
     assert gzip.decompress(first) == data
+
+
+def test_deterministic_gzip_streams_multiple_chunks() -> None:
+    pattern = bytes(range(256))
+    data = b"MZ" + pattern * ((pw._COMPRESSION_CHUNK_BYTES * 2) // 256 + 1)
+    payload = pw.deterministic_gzip(data)
+    assert gzip.decompress(payload) == data
+
+
+def test_deterministic_gzip_rejects_round_trip_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pw, "_decompress_payload", lambda _payload: b"mismatch")
+    with pytest.raises(pw.PlatformWheelError, match="round-trip mismatch"):
+        pw.deterministic_gzip(b"MZruntime")
 
 
 @pytest.mark.parametrize("data", [b"", b"12345"])
@@ -601,6 +619,24 @@ def test_decompress_payload_enforces_all_limits(
     monkeypatch.setattr(pw, "MAX_EXECUTABLE_BYTES", 2)
     with pytest.raises(pw.PlatformWheelError, match="executable exceeds"):
         pw._decompress_payload(gzip.compress(b"123"))
+
+
+def test_decompress_payload_wraps_zlib_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenGzip:
+        def __enter__(self) -> BrokenGzip:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _size: int) -> bytes:
+            raise zlib.error("invalid distance too far back")
+
+    monkeypatch.setattr(pw.gzip, "GzipFile", lambda **_kwargs: BrokenGzip())
+    with pytest.raises(pw.PlatformWheelError, match="not valid gzip"):
+        pw._decompress_payload(b"not-empty")
 
 
 def test_inspect_sdist_accepts_source_and_rejects_generated_files(
