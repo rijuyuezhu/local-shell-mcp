@@ -376,9 +376,13 @@ async def ui_opentui_websocket(websocket: WebSocket) -> None:
             if not data:
                 code = await process.exit_code()
                 if code is not None:
-                    await websocket.close(
-                        code=1000, reason="OpenTUI process exited"
+                    close_code = 1000 if code == 0 else 1011
+                    reason = (
+                        "OpenTUI process exited"
+                        if code == 0
+                        else f"OpenTUI process exited with code {code}"
                     )
+                    await websocket.close(code=close_code, reason=reason)
                 return
             last_activity = loop.time()
             await websocket.send_bytes(data)

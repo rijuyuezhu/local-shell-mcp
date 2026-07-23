@@ -290,15 +290,16 @@
       cache: "no-store",
       credentials: "same-origin",
     });
-    if (response.status === 401 || response.status === 403) {
+    const payload = await responsePayload(response);
+    if (response.status === 401) {
       const error = new Error("Authentication required");
       error.authenticationRequired = true;
       error.status = response.status;
+      error.payload = payload;
       throw error;
     }
-    const payload = await responsePayload(response);
     if (!response.ok || !payload.ok) {
-      const error = new Error(payload.message || `Request failed (${response.status})`);
+      const error = new Error(payload.message || payload.detail || `Request failed (${response.status})`);
       error.status = response.status;
       error.payload = payload;
       throw error;

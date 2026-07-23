@@ -653,7 +653,7 @@ def _normalize_bridge_read(
         )
     try:
         raw = base64.b64decode(encoded, validate=True)
-        count = int(str(data.get("bytes") or ""))
+        count = int(str(data.get("bytes")))
     except (TypeError, ValueError) as exc:
         raise RuntimeError(
             "Machine returned malformed terminal bridge read data"

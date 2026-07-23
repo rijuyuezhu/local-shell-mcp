@@ -9,6 +9,7 @@ from ...config.settings import Settings, get_settings
 from ...oauth.core.security import validate_public_oauth_configuration
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
+from ...remote.http import remote_routes
 from ..shared.public_routes import public_http_routes
 from ..shared.request_limits import install_request_body_limit
 from .errors import install_error_handlers
@@ -44,6 +45,7 @@ def _install_public_routes(app: FastAPI, settings: Settings) -> list[BaseRoute]:
     documentation_routes = _fastapi_documentation_routes(app)
     installed_routes = [
         *public_http_routes(settings, readyz_include_workspace_root=False),
+        *(remote_routes() if settings.remote_enabled else ()),
         *oauth_public_routes(),
     ]
     app.router.routes.extend(installed_routes)

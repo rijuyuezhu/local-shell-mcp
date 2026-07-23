@@ -419,6 +419,27 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
     assert not terminal_module._ACTIVE_CONNECTIONS
 
 
+def test_terminal_bridge_read_normalization_accepts_empty_poll():
+    handle = terminal_module._TerminalBridgeHandle(
+        machine="local",
+        shell_id="demo",
+        bridge_id="bridge_capability_1234567890",
+        cols=100,
+        rows=30,
+        backend="tmux-pty",
+    )
+
+    assert terminal_module._normalize_bridge_read(
+        handle,
+        {
+            "bridge_id": handle.bridge_id,
+            "data_b64": "",
+            "bytes": 0,
+            "eof": False,
+        },
+    ) == (b"", False)
+
+
 def test_terminal_bridge_normalization_accepts_conpty_without_resize():
     handle = terminal_module._normalize_bridge_open(
         "edge",

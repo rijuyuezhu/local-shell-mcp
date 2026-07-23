@@ -31,12 +31,11 @@ The fork is neither a strict subset nor a strict superset of upstream.
   durable managed jobs, transactional cross-session copies, Windows support,
   worker-upgrade safety, browser-native operations UI, terminal streaming, and
   release/coverage enforcement.
-- Upstream still has several real capabilities the fork does not: Playwright
-  browser automation, browser-level Human UI/OAuth/PTY E2E tests, OS service
-  installation and control for workers, platform wheels with an embedded native
-  TUI, a public MCP audit-tail tool, an HTTP ticket transport for large remote
-  transfers, optional recovery of oversized audit payloads, and multilingual
-  documentation.
+- Upstream still has several real capabilities the fork does not: structured
+  Playwright browser automation, OS service installation and control for workers,
+  platform wheels with an embedded native TUI, a public MCP audit-tail tool, an
+  HTTP ticket transport for large remote transfers, optional recovery of oversized
+  audit payloads, and multilingual documentation.
 - Some upstream behavior should remain rejected: unredacted audit input
   retention, copying upstream release metadata, restoring obsolete one-tool-per-
   operation remote APIs, and removing the fork's active Agent Bridge.
@@ -68,7 +67,7 @@ The important mappings and actual gaps are:
 | Capability | Upstream behavior | Fork behavior | Assessment | Recommendation |
 |---|---|---|---|---|
 | Structured browser automation | Local and remote `browser_get_text`, screenshot/capture, and arbitrary Playwright script execution with browser scopes and worker capabilities. | No public browser automation tools are exposed; users can manually invoke browser tooling through `bash`, without structured output, browser-specific scopes, or worker capability negotiation. | High-value functional gap, especially for web development and UI verification. Arbitrary scripts are also a high-risk execution surface. | **Port in stages.** First add session-bound read-only text and screenshot operations. Add arbitrary scripts only behind an explicit high-risk scope, bounded source/output, isolated profile, URL policy, and remote capability declaration. |
-| Real browser E2E for Human UI | CI installs Chromium and runs OAuth, PTY, navigation, responsive-layout, and related browser smoke tests. | Human UI has strong route/API and JavaScript state tests, but no real browser-runtime E2E. | High-value engineering gap; increasingly important because the fork maintains a native browser UI, OpenTUI, and a browser OpenTUI console. | **Port the testing outcome now**, rewritten for fork OAuth, session, terminal, and machine APIs. This does not require restoring public browser tools. |
+| Real browser E2E for Human UI | CI installs Chromium and runs OAuth, PTY, navigation, responsive-layout, and related browser smoke tests. | A dedicated locked Playwright/Chromium job now starts the fork HTTP server and a real worker, then covers OAuth PKCE, Dashboard, Files, Todos, Audit, local/remote PTY, OpenTUI Console recovery, and responsive layout with retained failure artifacts. | **Implemented (adapted).** The fork tests its browser-native UI and machine/session model rather than restoring upstream public browser tools. | Keep the dedicated job isolated from the ordinary cross-platform pytest matrix and retain trace, screenshot, video, WebSocket, browser, server, and worker diagnostics on failure. |
 | Worker OS service management | CLI installs, starts, stops, restarts, reports status, and reads logs for `systemd --user` and launchd agents. | Worker identity, resume, upgrade, lock handoff, and existing managed-service detection are implemented, but the fork does not install or control services. | Useful operational gap. Exposing service mutation as an MCP tool would widen privilege and persistence boundaries. | **Port as local CLI-only functionality.** Keep it outside MCP, never place tokens in argv/unit files, use persisted identity, and make install/uninstall idempotent. Add Windows only when a safe service model is designed. |
 | Embedded native OpenTUI in Python wheels | Platform-specific wheels contain a compressed native TUI runtime and are tagged non-pure. A normal platform wheel install can launch the TUI without Bun or a release sidecar. | The ordinary wheel remains `py3-none-any`. Release archives and Docker images carry the sidecar; source checkout can build it with Bun; runtime code can consume an embedded payload if one is supplied. | Packaging and installation gap, not a runtime-feature gap. | **Worth adding if `pip install` is a supported TUI path.** Prefer a separate platform companion package or optional platform wheel set so the universal server wheel remains available. |
 | Public MCP audit query | `audit_tail` lets an agent inspect recent audit entries. | Authenticated browser APIs provide machine-scoped list/detail views with scope-sensitive reauthorization, but there is no public MCP audit tool. | Small but useful observability gap. It may expose prior prompts, paths, or command output to the calling agent. | **Consider a read-only session-bound audit tool** with strict limits, redaction, per-operation scopes, and no raw oversized payload access. |
@@ -155,25 +154,22 @@ or a coherent implementation of those accepted product directions.
 
 Recommended order:
 
-1. **Fork-native real browser E2E.** Highest benefit-to-risk ratio. Test OAuth
-   login, Files navigation, stale-response handling, raw PTY attach/input/resize,
-   machine switching, and responsive layouts in Chromium.
-2. **Session-bound browser read/capture tools.** Restore structured text and
+1. **Session-bound browser read/capture tools.** Restore structured text and
    screenshot operations locally and remotely. Keep arbitrary Playwright scripts
    out of the first phase.
-3. **Worker service management as local CLI-only commands.** Implement
+2. **Worker service management as local CLI-only commands.** Implement
    install/uninstall/start/stop/restart/status/logs for systemd user units and
    launchd without adding an MCP persistence primitive.
-4. **Read-only, bounded MCP audit query.** Useful for agents diagnosing their own
+3. **Read-only, bounded MCP audit query.** Useful for agents diagnosing their own
    recent work, provided scope-sensitive details and redaction are retained.
-5. **Optional platform TUI companion packages.** Improve `pip install` TUI UX
+4. **Optional platform TUI companion packages.** Improve `pip install` TUI UX
    without giving up the universal server wheel.
-6. **Arbitrary Playwright scripts, only after a security design.** Require an
+5. **Arbitrary Playwright scripts, only after a security design.** Require an
    explicit scope and purpose, isolated profiles, source/output/time limits,
    browser process cleanup, audit redaction, and remote capability negotiation.
-7. **HTTP transfer transport, only after benchmarks.** Do not change the public
+6. **HTTP transfer transport, only after benchmarks.** Do not change the public
    `session_copy` contract merely to mirror upstream internals.
-8. **Optional full audit payload retention, only after a concrete forensic need.**
+7. **Optional full audit payload retention, only after a concrete forensic need.**
    Never port upstream's no-redaction behavior.
 
 ## Commit inventory for the migration branch

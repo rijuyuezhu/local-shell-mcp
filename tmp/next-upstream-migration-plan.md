@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phase 1 complete; Phase 2 pending
+Status: implementation in progress — Phase 1 complete; Phase 2 in progress
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `2710cdb33ced490d65ff9c6c170d6cea1b19eb30` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `3af71668eb20afcaef6472db20c85897a7a65cda` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -85,7 +85,7 @@ Exit criterion: this file is committed and is the only temporary migration plan.
 
 ### Phase 1 — Remove stale-tool diagnostics and compatibility tombstones
 
-Status: complete (2026-07-23); implementation commit pending creation.
+Status: complete (2026-07-23); implementation commit `6212b776c3f86cbdd21cb67d4cac00fe11f0f67f`, checkpoint commit `3af71668eb20afcaef6472db20c85897a7a65cda`.
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to `2710cdb`; fetched
@@ -157,6 +157,30 @@ Exit criterion: repository search finds no `DeprecatedTool`, `DEPRECATED_TOOLS`,
 
 ### Phase 2 — Add real Chromium browser E2E
 
+Status: in progress (started 2026-07-23).
+
+Actual baseline: branch HEAD and
+`origin/feat/port-upstream-features-2026-07` both point to `3af7166`; fetched
+`upstream/main` remains `f72164a`, so no post-baseline upstream commits require
+review before this phase. The implementation will be based on an audit of the
+fork's current OAuth, Human UI, terminal, remote-worker, and browser Console
+architecture plus the upstream browser-test behavior; no public browser tools
+will be restored.
+
+Audit/design result: the fork already exposes stable browser element ids, a
+native Web Crypto S256 PKCE client, scoped Human UI APIs, authenticated terminal
+and OpenTUI WebSockets, generation guards for stale file/dashboard responses,
+revision-guarded Todos, and real remote-worker process helpers. The upstream
+`scripts/ui-smoke.py` is a large TUI-centric monolith with incompatible selectors,
+so only its product behaviors are being ported. Phase 2 will use modular pytest
+scenario helpers under `tests/browser/`, one small launcher, one real server and
+worker fixture, Playwright tracing plus bounded logs, and a dedicated Ubuntu job.
+The normal Linux/macOS/Windows pytest matrix will collect the browser module but
+skip it unless the launcher enables `LOCAL_SHELL_MCP_BROWSER_E2E=1`; native
+OpenTUI remains covered by the existing Bun matrix. Chromium revision pinning is
+owned by the locked Playwright development dependency, not by a public runtime
+dependency or a new MCP tool.
+
 Implementation:
 
 - Add Playwright as a development/CI dependency only; do not restore public
@@ -170,6 +194,21 @@ Implementation:
   ordinary route/API tests on Linux, macOS, and Windows.
 - Upload Playwright trace, screenshot, browser console, server log, and worker log
   artifacts on failure.
+
+Implementation result to date (2026-07-23): the modular harness and dedicated
+Chromium job are implemented. The job explicitly installs `tmux`, builds the
+browser OpenTUI runtime, installs the Chromium revision locked by Playwright, and
+retains trace, screenshot/video, browser/page/request/WebSocket diagnostics, and
+server/worker logs on failure. A complete local run passes all nine scenario
+groups against a real OAuth server and worker. Real-browser audit exposed and the
+implementation corrected four fork integration defects rather than weakening the
+tests: HTTP mode now mounts the existing remote-worker routes when remote support
+is enabled; HTTP `403` no longer clears a valid OAuth token; non-zero OpenTUI
+process exits close abnormally so reconnect can run; and a valid empty PTY bridge
+poll (`bytes=0`) is no longer rejected as malformed. The xterm Image Addon's
+required inline Wasm decoder is allowed only through CSP `wasm-unsafe-eval`;
+general `unsafe-eval` remains forbidden. These facts are reflected in permanent
+Human UI, security, fork-difference, and upstream-review documentation.
 
 Required scenarios:
 
@@ -193,6 +232,24 @@ browser-hosted clients.
 
 Exit criterion: the browser job is required in CI and fails reproducibly on an
 OAuth, Human UI, raw PTY, remote-machine, or browser Console regression.
+
+Local validation result:
+
+- Real Chromium launcher: `1 passed` in 20.72 seconds on the final clean run.
+- Focused Human UI/remote/terminal/OpenTUI suite: `44 passed, 1 skipped`;
+  the browser module remains intentionally skipped outside the dedicated launcher.
+- Full branch-coverage suite: `777 passed, 2 skipped`; total branch coverage
+  83.69% versus the 82.60% baseline; the 181-file module ratchet passed with no
+  new untracked coverage modules and no baseline reduction.
+- `ruff format --check`, `ruff check`, `pyright`, lockfile validation, generated
+  configuration/tool/instruction checks, `git diff --check`, strict MkDocs build,
+  and all three generated documentation reference-asset checks passed.
+- Repository secret scan reported only existing simulated credentials/test
+  fixtures in files untouched by this phase; no Phase 2 source, harness, workflow,
+  documentation, or retained log artifact introduced a secret finding.
+
+Implementation commit and remote CI results are pending the final commit/push
+checkpoint. No unresolved Phase 2 design issue remains.
 
 ### Phase 3 — Add Agent Bridge secret storage and OAuth client authentication
 
@@ -577,8 +634,8 @@ and deleting this temporary plan does not remove unique operational knowledge.
 
 ## Planned phase checklist
 
-- [ ] Phase 1: remove stale-tool diagnostics/tombstones.
-- [ ] Phase 2: real Chromium browser E2E.
+- [x] Phase 1: remove stale-tool diagnostics/tombstones.
+- [ ] Phase 2: real Chromium browser E2E (in progress).
 - [ ] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
 - [ ] Phase 4: structured environment in `session_start`.
 - [ ] Phase 5A: recoverable oversized audit payload store.

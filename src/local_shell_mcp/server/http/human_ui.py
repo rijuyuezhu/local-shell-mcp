@@ -98,7 +98,7 @@ def _index_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-store",
         "Content-Security-Policy": (
-            "default-src 'self'; script-src 'self'; "
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
             "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
             "img-src 'self' data:; base-uri 'none'; "
             "frame-ancestors 'none'; form-action 'self'"

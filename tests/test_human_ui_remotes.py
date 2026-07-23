@@ -78,6 +78,26 @@ def _headers(scope: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_http_app_installs_public_worker_routes_when_remote_enabled(
+    monkeypatch, tmp_path
+):
+    client = _client(
+        monkeypatch, tmp_path, auth_mode="oauth", remote_enabled=True
+    )
+
+    assert client.get("/join").status_code == 200
+    assert client.post("/remote/register", json={}).status_code == 400
+
+
+def test_http_app_omits_worker_routes_when_remote_disabled(
+    monkeypatch, tmp_path
+):
+    client = _client(monkeypatch, tmp_path, remote_enabled=False)
+
+    assert client.get("/join").status_code == 404
+    assert client.post("/remote/register", json={}).status_code == 404
+
+
 def _inventory() -> RemoteListMachinesOutput:
     return RemoteListMachinesOutput(
         machines=[

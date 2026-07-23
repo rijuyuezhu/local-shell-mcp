@@ -75,6 +75,10 @@ When OAuth authentication is enabled, protected MCP and REST routes authenticate
 
 In the Docker image, the entrypoint normally creates a non-root `agent` user at container startup. By default, its UID/GID are detected from the mounted `/workspace` owner so bind-mounted files stay writable by the host user. Set `DOCKER_AGENT_UID` or `DOCKER_AGENT_GID` only to override that detection. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
 
+## Browser Human UI policy
+
+The browser Human UI loads scripts only from the configured origin. Its Content Security Policy permits inline styles required by xterm's runtime layout and narrowly permits `wasm-unsafe-eval` for the bundled xterm Image Addon Sixel decoder; it never enables general `unsafe-eval` or external script origins. OAuth `401` responses clear an invalid tab token, while `403` scope failures preserve the valid token and expose only the bounded missing-scope error.
+
 ## Tokenized file download links
 
 `create_file_link` creates a public `/download/{token}` URL for an immutable creation-time snapshot of one regular file in an explicit local or remote session. Creating, listing, and revoking links remain protected tool operations; only the generated URL is public. Remote files are copied to the control server through the validated transfer-chunk protocol before the link is registered. Changing, deleting, or replacing the original local or remote file does not retarget an existing link.

@@ -34,8 +34,9 @@ def _configure(
 
 
 class _FakeProcess:
-    def __init__(self) -> None:
+    def __init__(self, *, return_code: int = 0) -> None:
         self.reads = [b"OpenTUI ready\r\n", b""]
+        self.return_code = return_code
         self.writes: list[bytes] = []
         self.resizes: list[tuple[int, int]] = []
         self.closed = False
@@ -51,7 +52,7 @@ class _FakeProcess:
         self.writes.append(data)
 
     async def exit_code(self) -> int | None:
-        return 0
+        return self.return_code
 
     async def close(self) -> None:
         self.closed = True
@@ -91,9 +92,36 @@ def test_opentui_websocket_streams_process_output_and_closes(
         subprotocols=["lsm-ui-terminal"],
     ) as websocket:
         assert websocket.receive_bytes() == b"OpenTUI ready\r\n"
-        with pytest.raises(WebSocketDisconnect):
+        with pytest.raises(WebSocketDisconnect) as exc_info:
             websocket.receive_bytes()
 
+    assert exc_info.value.code == 1000
+
+    assert process.closed is True
+
+
+def test_opentui_websocket_reports_abnormal_process_exit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _configure(monkeypatch, tmp_path, auth="none")
+    process = _FakeProcess(return_code=17)
+    monkeypatch.setattr(
+        opentui,
+        "spawn_opentui_process",
+        lambda cols, rows, cell_aspect: process,
+    )
+    client = TestClient(build_http_app())
+
+    with client.websocket_connect(
+        "/ui/ws/opentui?cols=90&rows=28&cell_aspect=2",
+        subprotocols=["lsm-ui-terminal"],
+    ) as websocket:
+        assert websocket.receive_bytes() == b"OpenTUI ready\r\n"
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            websocket.receive_bytes()
+
+    assert exc_info.value.code == 1011
+    assert exc_info.value.reason == "OpenTUI process exited with code 17"
     assert process.closed is True
 
 

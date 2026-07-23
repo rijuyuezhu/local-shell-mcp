@@ -102,8 +102,8 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "__LSM_UI_PATH__" not in index.text
     assert index.headers["cache-control"] == "no-store"
     csp = index.headers["content-security-policy"]
-    assert "script-src 'self'" in csp
-    assert "unsafe-eval" not in csp
+    assert "script-src 'self' 'wasm-unsafe-eval'" in csp
+    assert "'unsafe-eval'" not in csp
     assert "style-src 'self' 'unsafe-inline'" in csp
     assert "frame-ancestors 'none'" in csp
     assert client.get("/ui/callback?code=example").status_code == 200
@@ -148,6 +148,11 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'resource: String(oauth.resource || "")' in script.text
     assert "pending.redirectUri === callbackUrl()" in script.text
     assert "OAuth issuer verification failed" in script.text
+    assert "response.status === 401" in script.text
+    assert (
+        "response.status === 401 || response.status === 403" not in script.text
+    )
+    assert "payload.message || payload.detail" in script.text
     assert "dashboardGeneration" in script.text
     assert "requestedMachine !== dashboardMachine" in script.text
     assert "refreshDashboardInBackground" in script.text
