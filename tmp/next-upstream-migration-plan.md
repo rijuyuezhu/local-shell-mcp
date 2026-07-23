@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `2ba7f7b3de14a0d4611dc4ebed70d62b944b4f58` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `4bc64c527908758a48de2c4695cdda284a0dc2ee` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -633,8 +633,10 @@ Final local validation:
   `git diff --check` pass. Secret scanning reports zero findings in all 26
   modified Phase 5 source and test files.
 
-Repository-wide pre-commit, implementation commit/push, and remote CI remain
-pending.
+Repository-wide pre-commit passed. Implementation commit
+`4bc64c527908758a48de2c4695cdda284a0dc2ee`
+(`feat(audit): add recoverable payloads and audit tail`) is complete; push and
+remote CI remain pending.
 
 #### Phase 5A — Recoverable payload store
 
