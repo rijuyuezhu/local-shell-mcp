@@ -132,10 +132,17 @@ def test_deterministic_gzip_has_fixed_header_and_round_trips() -> None:
     assert gzip.decompress(first) == data
 
 
-def test_deterministic_gzip_streams_multiple_chunks() -> None:
+def test_deterministic_gzip_streams_multiple_members() -> None:
     pattern = bytes(range(256))
     data = b"MZ" + pattern * ((pw._COMPRESSION_CHUNK_BYTES * 2) // 256 + 1)
     payload = pw.deterministic_gzip(data)
+    expected = b"".join(
+        pw._deterministic_gzip_member(
+            data[offset : offset + pw._COMPRESSION_CHUNK_BYTES]
+        )
+        for offset in range(0, len(data), pw._COMPRESSION_CHUNK_BYTES)
+    )
+    assert payload == expected
     assert gzip.decompress(payload) == data
 
 
@@ -144,6 +151,17 @@ def test_deterministic_gzip_rejects_round_trip_mismatch(
 ) -> None:
     monkeypatch.setattr(pw, "_decompress_payload", lambda _payload: b"mismatch")
     with pytest.raises(pw.PlatformWheelError, match="round-trip mismatch"):
+        pw.deterministic_gzip(b"MZruntime")
+
+
+def test_deterministic_gzip_wraps_immediate_round_trip_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(_payload: bytes) -> bytes:
+        raise pw.PlatformWheelError("invalid gzip")
+
+    monkeypatch.setattr(pw, "_decompress_payload", fail)
+    with pytest.raises(pw.PlatformWheelError, match="failed immediate"):
         pw.deterministic_gzip(b"MZruntime")
 
 
@@ -377,6 +395,53 @@ def test_staged_payload_rejects_symlink_lock_or_staging(tmp_path: Path) -> None:
         pass
     assert not lock.exists()
     assert not (package_root / pw._LOCK_NAME).exists()
+
+
+def test_staged_payload_rejects_nonregular_lock(tmp_path: Path) -> None:
+    repo = _make_repo(tmp_path)
+    target = pw.target_for_tag("linux_x86_64")
+    lock = pw._platform_wheel_lock_path(repo)
+    lock.mkdir()
+    with (
+        pytest.raises(pw.PlatformWheelError, match="not a regular file"),
+        pw.staged_payload(repo, target, b"x", lock_timeout=0),
+    ):
+        pass
+    assert lock.is_dir()
+    lock.rmdir()
+
+
+def test_staged_payload_rejects_lock_identity_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _make_repo(tmp_path)
+    target = pw.target_for_tag("linux_x86_64")
+    lock = pw._platform_wheel_lock_path(repo)
+    monkeypatch.setattr(pw, "_same_file_identity", lambda *_args: False)
+    with (
+        pytest.raises(pw.PlatformWheelError, match="changed while.*acquired"),
+        pw.staged_payload(repo, target, b"x"),
+    ):
+        pass
+    assert lock.is_file()
+    lock.unlink()
+
+
+def test_staged_payload_does_not_remove_changed_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _make_repo(tmp_path)
+    target = pw.target_for_tag("linux_x86_64")
+    lock = pw._platform_wheel_lock_path(repo)
+    with (
+        pytest.raises(pw.PlatformWheelError, match="safely remove"),
+        pw.staged_payload(repo, target, b"x"),
+    ):
+        monkeypatch.setattr(pw, "_same_file_identity", lambda *_args: False)
+    assert lock.is_file()
+    lock.unlink()
 
 
 def test_inspect_wheel_rejects_packaged_build_lock(tmp_path: Path) -> None:

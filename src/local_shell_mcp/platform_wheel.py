@@ -93,6 +93,10 @@ def _platform_wheel_lock_path(repo_root: Path) -> Path:
     )
 
 
+def _same_file_identity(first: os.stat_result, second: os.stat_result) -> bool:
+    return os.path.samestat(first, second)
+
+
 @dataclass(frozen=True, slots=True)
 class PlatformWheelTarget:
     """One explicit native wheel target and its executable contract."""
@@ -253,40 +257,43 @@ def verify_target_host(
         )
 
 
-def deterministic_gzip(data: bytes) -> bytes:
-    """Compress executable bytes into a bounded, cross-platform-stable gzip."""
-
-    _verify_executable_size(data)
-    output = bytearray(_GZIP_HEADER)
-    if len(output) + 8 > MAX_COMPRESSED_BYTES:
-        raise PlatformWheelError(
-            "compressed OpenTUI payload exceeds the platform-wheel limit"
-        )
+def _deterministic_gzip_member(data: bytes) -> bytes:
     compressor = zlib.compressobj(
         level=9,
         method=zlib.DEFLATED,
         wbits=-zlib.MAX_WBITS,
     )
-    checksum = 0
+    deflated = compressor.compress(data) + compressor.flush()
+    trailer = struct.pack(
+        "<II",
+        zlib.crc32(data) & 0xFFFFFFFF,
+        len(data) & 0xFFFFFFFF,
+    )
+    return _GZIP_HEADER + deflated + trailer
+
+
+def deterministic_gzip(data: bytes) -> bytes:
+    """Compress bytes into bounded deterministic concatenated gzip members."""
+
+    _verify_executable_size(data)
+    output = bytearray()
     view = memoryview(data)
     for offset in range(0, len(view), _COMPRESSION_CHUNK_BYTES):
-        chunk = view[offset : offset + _COMPRESSION_CHUNK_BYTES]
-        checksum = zlib.crc32(chunk, checksum)
-        output.extend(compressor.compress(chunk))
-        if len(output) + 8 > MAX_COMPRESSED_BYTES:
+        chunk = view[offset : offset + _COMPRESSION_CHUNK_BYTES].tobytes()
+        member = _deterministic_gzip_member(chunk)
+        if len(output) + len(member) > MAX_COMPRESSED_BYTES:
             raise PlatformWheelError(
                 "compressed OpenTUI payload exceeds the platform-wheel limit"
             )
-    output.extend(compressor.flush())
-    output.extend(
-        struct.pack("<II", checksum & 0xFFFFFFFF, len(data) & 0xFFFFFFFF)
-    )
-    if len(output) > MAX_COMPRESSED_BYTES:
-        raise PlatformWheelError(
-            "compressed OpenTUI payload exceeds the platform-wheel limit"
-        )
+        output.extend(member)
     result = bytes(output)
-    if _decompress_payload(result) != data:
+    try:
+        recovered = _decompress_payload(result)
+    except PlatformWheelError as exc:
+        raise PlatformWheelError(
+            "compressed OpenTUI payload failed immediate round-trip"
+        ) from exc
+    if recovered != data:
         raise PlatformWheelError(
             "compressed OpenTUI payload round-trip mismatch"
         )
@@ -427,25 +434,63 @@ def staged_payload(
     staging = package_root / "ui_runtime"
     deadline = time.monotonic() + lock_timeout
     lock_fd: int | None = None
+    lock_stat: os.stat_result | None = None
+    owns_lock = False
     while lock_fd is None:
         try:
-            lock_fd = os.open(
-                lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
-            )
-        except FileExistsError as exc:
-            if lock_path.is_symlink():
+            existing = lock_path.lstat()
+        except FileNotFoundError:
+            existing = None
+        except OSError as exc:
+            raise PlatformWheelError(
+                "could not inspect platform-wheel lock"
+            ) from exc
+        if existing is not None:
+            if stat.S_ISLNK(existing.st_mode):
                 raise PlatformWheelError(
                     f"refusing symlink platform-wheel lock: {lock_path}"
-                ) from exc
+                )
+            if not stat.S_ISREG(existing.st_mode):
+                raise PlatformWheelError(
+                    f"platform-wheel lock is not a regular file: {lock_path}"
+                )
             if time.monotonic() >= deadline:
                 raise PlatformWheelError(
                     "timed out waiting for platform-wheel lock"
-                ) from exc
+                )
             time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+            continue
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            candidate_fd = os.open(lock_path, flags, 0o600)
+        except FileExistsError:
+            continue
         except OSError as exc:
             raise PlatformWheelError(
                 "could not create platform-wheel lock"
             ) from exc
+        try:
+            candidate_stat = os.fstat(candidate_fd)
+            path_stat = lock_path.lstat()
+        except OSError as exc:
+            os.close(candidate_fd)
+            raise PlatformWheelError(
+                "could not verify platform-wheel lock"
+            ) from exc
+        if (
+            stat.S_ISLNK(path_stat.st_mode)
+            or not stat.S_ISREG(path_stat.st_mode)
+            or not _same_file_identity(candidate_stat, path_stat)
+        ):
+            os.close(candidate_fd)
+            raise PlatformWheelError(
+                "platform-wheel lock changed while it was being acquired"
+            )
+        lock_fd = candidate_fd
+        lock_stat = candidate_stat
+        owns_lock = True
     created_staging = False
     try:
         os.write(lock_fd, f"pid={os.getpid()}\n".encode())
@@ -480,14 +525,25 @@ def staged_payload(
                 _safe_remove_staging(staging)
             except PlatformWheelError as exc:
                 cleanup_error = exc
-        try:
-            lock_path.unlink(missing_ok=True)
-        except OSError as exc:
-            if cleanup_error is None:
-                cleanup_error = PlatformWheelError(
-                    "could not remove platform-wheel lock"
-                )
-                cleanup_error.__cause__ = exc
+        if owns_lock:
+            try:
+                current_lock = lock_path.lstat()
+                if (
+                    lock_stat is None
+                    or stat.S_ISLNK(current_lock.st_mode)
+                    or not stat.S_ISREG(current_lock.st_mode)
+                    or not _same_file_identity(lock_stat, current_lock)
+                ):
+                    raise PlatformWheelError(
+                        "platform-wheel lock changed before cleanup"
+                    )
+                lock_path.unlink()
+            except (OSError, PlatformWheelError) as exc:
+                if cleanup_error is None:
+                    cleanup_error = PlatformWheelError(
+                        "could not safely remove platform-wheel lock"
+                    )
+                    cleanup_error.__cause__ = exc
         if cleanup_error is not None:
             raise cleanup_error
 
