@@ -977,31 +977,44 @@ Full local verification checkpoint (2026-07-23):
   OpenTUI wheels`). It contains production code, tests, workflows, permanent
   documentation, lockfile changes, and release-matrix enforcement.
 
-First remote CI checkpoint (2026-07-23):
+First remote CI checkpoints (2026-07-23):
 
 - Pushed checkpoint `962583d4d33e16630caf7e2ee0728a32b2d5ef96` after confirming
   origin had not advanced. Exact-head Docs run `30023223610` succeeded.
-- Exact-head CI run `30023221658` validated the universal package and the Linux
-  x86_64/aarch64 plus macOS arm64 platform wheels, but the Windows x86_64 wheel
-  job `89261019843` failed after Bun compilation and wheel construction while
-  inspecting its own payload on Python 3.14.6. The exact traceback was
-  `zlib.error: Error -3 while decompressing data: invalid distance too far back`.
-  This is a product/cross-platform defect, not runner infrastructure.
-- The fix replaces the single-call `gzip.GzipFile` writer with a fixed gzip
-  header, 1 MiB chunked raw-deflate stream, explicit CRC32/ISIZE trailer, and an
-  immediate full round-trip before staging. `zlib.error` is now wrapped in the
-  stable `PlatformWheelError` model. Fix commit: `d4aefd2`
-  (`fix(packaging): stabilize Windows gzip payloads`). Focused validation passed
-  (`61 passed`), the broader Phase 7 regression set passed (`161 passed`), and
-  the new module retained `91.30%` branch coverage.
-- Two complete real Linux builds with the fixed encoder remain byte-identical
-  (wheel SHA-256
-  `4430adf032ff411878d6b9685fd0a45f89cad83b84482c5713c390a36d34f8e7`),
-  and the 95 MiB executable still passes clean no-Bun installation and execution.
-- The required post-fix clean full workflow completed with durable exit marker
-  `0`: `977 passed, 2 skipped`, aggregate branch coverage `85.38%` against the
-  `82.60%` baseline, and the coverage ratchet again accepted all `181` tracked
-  plus `12` new files. Repository-wide Ruff, Pyright, lock/generated-contract,
+- Exact-head CI run `30023221658` completed with two real Windows product
+  failures while every other job succeeded. Platform-wheel job `89261019843`
+  failed after Bun compilation while reading its 95 MiB payload on Python
+  3.14.6 with `zlib.error: Error -3 while decompressing data: invalid distance
+  too far back`. Ordinary Windows pytest job `89261019649` also failed because
+  a dangling lock symlink was not rejected under Windows `os.open(O_EXCL)`
+  semantics. Neither failure was runner infrastructure.
+- Fix commit `d4aefd2` (`fix(packaging): stabilize Windows gzip payloads`) added
+  fixed gzip metadata, explicit CRC32/ISIZE, bounded writes, an immediate full
+  round-trip, and stable `zlib.error` wrapping. Local focused/full gates passed,
+  but exact-head CI run `30024146148` proved that one large raw-DEFLATE stream
+  still failed the Windows platform-wheel job `89264161560`; Windows pytest job
+  `89264161553` also reproduced the dangling-symlink lock failure. The remaining
+  22 jobs, including all Linux/macOS platform wheels and package/browser/release
+  gates, succeeded.
+- The final encoder uses standard concatenated gzip members: each at most 1 MiB,
+  independently raw-deflated with a fixed header and its own CRC32/ISIZE trailer.
+  This bounds every zlib stream while retaining deterministic compact output.
+  The final lock path is outside the package tree and uses `lstat` before
+  acquisition, `fstat`/`lstat` identity checks after `O_EXCL` creation, and the
+  same checks before cleanup. Symlinks, non-regular files, path replacement, and
+  cleanup of a lock not owned by the current builder are rejected. Final product
+  fix commit: `65102b6` (`fix(packaging): harden Windows wheel builds`).
+- Final focused validation passed: `65 passed` for builder/docstring contracts,
+  `165 passed` for the broader Phase 7 regression set, and
+  `platform_wheel.py` reached `92.07%` branch coverage. Two complete pinned-Bun
+  Linux builds emitted 91 gzip members and byte-identical wheels with SHA-256
+  `de3b93692402d89e512f9951d67136b5492ef426cef61a276bf5b2175c26ef83`.
+  The 95 MiB executable still installed and executed successfully with Bun and
+  sidecars absent, and no staging or external lock remained.
+- The required final clean workflow completed with durable exit marker `0`:
+  `981 passed, 2 skipped`, aggregate branch coverage `85.42%` against the
+  `82.60%` baseline, and the coverage ratchet accepted all `181` tracked plus
+  `12` new files. Repository-wide Ruff, Pyright, lock/generated-contract,
   release-matrix, whitespace, secret-scan, and all-files pre-commit gates passed.
 
 Packaging architecture:
@@ -1010,7 +1023,7 @@ Packaging architecture:
   upstream's hook.
 - Add a deterministic platform-wheel builder that:
   1. builds the existing OpenTUI executable with pinned Bun;
-  2. gzip-compresses it with a fixed header/trailer and chunked raw deflate;
+  2. gzip-compresses it as bounded deterministic 1 MiB concatenated members;
   3. stages it as `local_shell_mcp/ui_runtime/<executable>.gz`;
   4. builds the wheel with `uv build`;
   5. rewrites/verifies the wheel `WHEEL` metadata as non-pure and assigns the
