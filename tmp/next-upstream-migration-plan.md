@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phase 1 complete; Phase 2 in progress
+Status: implementation in progress — Phases 1-2 complete; Phase 3 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `3af71668eb20afcaef6472db20c85897a7a65cda` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `1b8fed50309a67bc672d714e2f2ec062a6a9050b` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -157,7 +157,7 @@ Exit criterion: repository search finds no `DeprecatedTool`, `DEPRECATED_TOOLS`,
 
 ### Phase 2 — Add real Chromium browser E2E
 
-Status: in progress (started 2026-07-23).
+Status: complete (started and completed 2026-07-23).
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to `3af7166`; fetched
@@ -248,8 +248,10 @@ Local validation result:
   fixtures in files untouched by this phase; no Phase 2 source, harness, workflow,
   documentation, or retained log artifact introduced a secret finding.
 
-Implementation commit and remote CI results are pending the final commit/push
-checkpoint. No unresolved Phase 2 design issue remains.
+Implementation commit: `1b8fed50309a67bc672d714e2f2ec062a6a9050b`
+(`test(ui): add real Chromium browser E2E`). The phase has no unresolved design
+or implementation issue; Phase 3 is the next pending phase. Remote CI status is
+verified after pushing the implementation and this source-of-truth checkpoint.
 
 ### Phase 3 — Add Agent Bridge secret storage and OAuth client authentication
 
@@ -635,7 +637,7 @@ and deleting this temporary plan does not remove unique operational knowledge.
 ## Planned phase checklist
 
 - [x] Phase 1: remove stale-tool diagnostics/tombstones.
-- [ ] Phase 2: real Chromium browser E2E (in progress).
+- [x] Phase 2: real Chromium browser E2E.
 - [ ] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
 - [ ] Phase 4: structured environment in `session_start`.
 - [ ] Phase 5A: recoverable oversized audit payload store.
