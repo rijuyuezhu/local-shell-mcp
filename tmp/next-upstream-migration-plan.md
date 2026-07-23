@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-2 complete; Phase 3 in progress
+Status: implementation in progress — Phases 1-3 complete; Phase 4 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -289,7 +289,7 @@ passed. Phase 2 has no unresolved design, implementation, test, or CI issue; Pha
 
 ### Phase 3 — Add Agent Bridge secret storage and OAuth client authentication
 
-Status: implementation and local validation complete; remote CI pending (started 2026-07-23).
+Status: complete (started and completed 2026-07-23).
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to `553161d`; fetched
@@ -421,8 +421,13 @@ Final local validation:
 
 Repository-wide pre-commit passed. Implementation commit
 `aa066e793cebdc5397857260574bb85b8f5e1481`
-(`feat(agent): add private secrets and OAuth clients`) is complete; push and
-remote CI remain pending.
+(`feat(agent): add private secrets and OAuth clients`) and checkpoint commit
+`8e8850db1128525d8deb4b008dbad929f6d459b9` were pushed. Docs run
+`29986940423` and CI run `29986940426` completed successfully; all Linux, macOS,
+Windows, Chromium, coverage, ConPTY, OpenTUI, package, VS Code, Docker, bundled
+tmux, pyright, pre-commit, and release-matrix jobs passed. Phase 3 has no
+unresolved design, implementation, test, security, documentation, or CI issue;
+Phase 4 is the next pending phase.
 
 Exit criterion: an HTTP MCP server requiring OAuth and a stdio/HTTP server
 requiring a stored secret can both be configured and called without plaintext
@@ -742,7 +747,7 @@ and deleting this temporary plan does not remove unique operational knowledge.
 
 - [x] Phase 1: remove stale-tool diagnostics/tombstones.
 - [x] Phase 2: real Chromium browser E2E.
-- [ ] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
+- [x] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
 - [ ] Phase 4: structured environment in `session_start`.
 - [ ] Phase 5A: recoverable oversized audit payload store.
 - [ ] Phase 5B: session-bound MCP `audit_tail`.
