@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-4 complete; Phase 5 local validation complete, remote CI pending
+Status: implementation in progress — Phases 1-5 complete; Phase 6 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `4bc64c527908758a48de2c4695cdda284a0dc2ee` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `9e05caa9ee8c01f0426cadadddb4f5145f6c3517` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -571,7 +571,7 @@ capabilities from `session_start` alone, with no standalone environment tool.
 
 ### Phase 5 — Add recoverable oversized audit payloads and public `audit_tail`
 
-Status: implementation and local validation complete; remote CI pending (started 2026-07-23).
+Status: complete (started and completed 2026-07-23).
 
 Actual baseline: branch HEAD and `origin/feat/port-upstream-features-2026-07`
 both point to `2ba7f7b`; fetched `upstream/main` remains `f72164a`, so no new
@@ -657,9 +657,16 @@ and contention retries; `_lock_handle` only locks an already initialized byte.
 The same run showed the payload spawn test's fixed 20-second per-process join was
 too small under Ubuntu coverage without any child traceback. Both cross-process
 tests now use one shared 90-second deadline and always terminate/reap stragglers
-before failing. The post-fix full local suite previously passed
-`876 passed, 2 skipped`; the final local branch-coverage suite passes `876 passed, 2 skipped` at
-84.82%; another clean remote CI validation remains pending.
+before failing. Final remediation commit
+`9e05caa9ee8c01f0426cadadddb4f5145f6c3517`
+(`fix(audit): initialize locks before contention`) passed clean branch-head CI
+run `30003144133`: Ubuntu coverage, Windows/macOS pytest, Chromium oversized
+payload recovery, pre-commit, pyright, package smoke, ConPTY, OpenTUI, VS Code,
+Docker, bundled tmux, and the release matrix all completed successfully. The
+final local suite is `876 passed, 2 skipped` at 84.82% branch coverage.
+
+Phase 5 exit criteria are complete. Phase 6 is next; do not begin it without a
+new user instruction.
 
 #### Phase 5A — Recoverable payload store
 
