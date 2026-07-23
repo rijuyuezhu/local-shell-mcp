@@ -419,8 +419,10 @@ Final local validation:
 - Secret scanning reports zero findings in every Phase 3 source and test file.
   Existing simulated fixtures elsewhere remain unchanged.
 
-Repository-wide pre-commit, implementation commit/push, and remote CI remain
-pending.
+Repository-wide pre-commit passed. Implementation commit
+`aa066e793cebdc5397857260574bb85b8f5e1481`
+(`feat(agent): add private secrets and OAuth clients`) is complete; push and
+remote CI remain pending.
 
 Exit criterion: an HTTP MCP server requiring OAuth and a stdio/HTTP server
 requiring a stored secret can both be configured and called without plaintext
