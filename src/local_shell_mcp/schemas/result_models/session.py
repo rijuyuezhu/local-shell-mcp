@@ -334,6 +334,13 @@ class SessionCopyOutput(BaseModel):
     kind: Literal["file", "dir"] = Field(
         description="Resolved copied object kind."
     )
+    transport: Literal["local", "same_worker", "worker_rpc", "http_stream"] = (
+        Field(description="Actual data transport used by the copy operation.")
+    )
+    resumed_bytes: int = Field(
+        default=0,
+        description="Bytes reused from a validated resumable HTTP transfer.",
+    )
     source: SessionCopyEndpoint = Field(description="Source copy endpoint.")
     destination: SessionCopyEndpoint = Field(
         description="Destination copy endpoint."

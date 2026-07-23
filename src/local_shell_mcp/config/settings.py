@@ -15,6 +15,7 @@ AUDIT_LOG_STATE_DIR_NAME = "audit_log"
 AUDIT_PAYLOAD_STATE_DIR_NAME = "payloads"
 AGENT_CONFIG_STATE_DIR_NAME = "agent_config"
 AGENT_AUTH_STATE_DIR_NAME = "agent_auth"
+REMOTE_TRANSFER_STATE_DIR_NAME = "remote_transfers"
 ENV_PREFIX = "LOCAL_SHELL_MCP_"
 _RESERVED_UI_PATHS = (
     "/api",
@@ -271,6 +272,18 @@ class Settings(BaseSettings):
     """Control-side remote job result timeout in seconds."""
     remote_max_pending_jobs: int = 64
     """Maximum queued or in-flight remote jobs allowed per worker."""
+    remote_http_transfer_enabled: bool = True
+    """Use the private resumable HTTP gateway for capable large session copies."""
+    remote_http_transfer_threshold_bytes: int = 1024 * 1024
+    """Minimum payload size selected for private HTTP streaming."""
+    remote_http_transfer_chunk_bytes: int = 1024 * 1024
+    """Maximum request or response chunk size for private HTTP transfer routes."""
+    remote_http_transfer_ticket_ttl_s: int = 300
+    """Lifetime of a private transfer grant before it must be renewed."""
+    remote_http_transfer_max_active: int = 16
+    """Maximum non-terminal private transfer objects retained concurrently."""
+    remote_http_transfer_max_spool_bytes: int = 10 * 1024 * 1024 * 1024
+    """Maximum aggregate bytes reserved by private controller transfer spools."""
 
     # Agent capability bridge.
     agent_bridge_enabled: bool = True
@@ -315,6 +328,11 @@ class Settings(BaseSettings):
     def agent_auth_dir(self) -> Path:
         """Private Agent Bridge credential directory, derived from state_dir."""
         return self.state_dir / AGENT_AUTH_STATE_DIR_NAME
+
+    @property
+    def remote_transfer_dir(self) -> Path:
+        """Private durable ticket and spool directory for HTTP transfers."""
+        return self.state_dir / REMOTE_TRANSFER_STATE_DIR_NAME
 
     @property
     def resolved_base_url(self) -> str:
@@ -368,6 +386,33 @@ class Settings(BaseSettings):
     def split_csv_fields(cls, value: str | list[str] | None) -> list[str]:
         """Normalize comma-delimited restriction lists supplied through environment variables."""
         return _split_csv(value)
+
+    @model_validator(mode="after")
+    def validate_remote_transfer_limits(self) -> Settings:
+        """Keep private HTTP transfer limits positive and internally consistent."""
+        positive = {
+            "remote_http_transfer_threshold_bytes": self.remote_http_transfer_threshold_bytes,
+            "remote_http_transfer_chunk_bytes": self.remote_http_transfer_chunk_bytes,
+            "remote_http_transfer_ticket_ttl_s": self.remote_http_transfer_ticket_ttl_s,
+            "remote_http_transfer_max_active": self.remote_http_transfer_max_active,
+            "remote_http_transfer_max_spool_bytes": self.remote_http_transfer_max_spool_bytes,
+        }
+        for name, value in positive.items():
+            if int(value) <= 0:
+                raise ValueError(f"{name} must be greater than zero")
+        if self.remote_http_transfer_chunk_bytes > 4 * 1024 * 1024:
+            raise ValueError(
+                "remote_http_transfer_chunk_bytes must not exceed 4194304"
+            )
+        if (
+            self.remote_http_transfer_threshold_bytes
+            > self.remote_http_transfer_max_spool_bytes
+        ):
+            raise ValueError(
+                "remote_http_transfer_threshold_bytes must not exceed "
+                "remote_http_transfer_max_spool_bytes"
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_audit_payload_limits(self) -> Settings:

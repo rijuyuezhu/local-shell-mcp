@@ -690,6 +690,18 @@ class RemoteManager:
             )
         return _ok(result.get("data"))
 
+    def supports(self, machine: str, capability: str) -> bool:
+        """Return whether one known online worker advertises a protocol capability."""
+        with self._state_lock:
+            self._load_registry_unlocked()
+            worker = self.workers.get(machine)
+            if worker is None:
+                return False
+            offline_after_s = max(2 * get_settings().remote_poll_timeout_s, 60)
+            if _utc() - worker.last_seen > offline_after_s:
+                return False
+            return capability in worker.capabilities
+
     def list_machines(self) -> RemoteListMachinesOutput:
         """Return synchronized worker inventory and online/offline counts."""
         with self._state_lock:

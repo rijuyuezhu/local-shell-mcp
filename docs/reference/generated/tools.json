@@ -7683,6 +7683,12 @@
                 "$ref": "#/$defs/SessionCopyRelation",
                 "description": "Analyzed relationship between the two sessions."
               },
+              "resumed_bytes": {
+                "default": 0,
+                "description": "Bytes reused from a validated resumable HTTP transfer.",
+                "title": "Resumed Bytes",
+                "type": "integer"
+              },
               "sha256": {
                 "anyOf": [
                   {
@@ -7699,10 +7705,22 @@
               "source": {
                 "$ref": "#/$defs/SessionCopyEndpoint",
                 "description": "Source copy endpoint."
+              },
+              "transport": {
+                "description": "Actual data transport used by the copy operation.",
+                "enum": [
+                  "local",
+                  "same_worker",
+                  "worker_rpc",
+                  "http_stream"
+                ],
+                "title": "Transport",
+                "type": "string"
               }
             },
             "required": [
               "kind",
+              "transport",
               "source",
               "destination",
               "relation",

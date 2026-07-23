@@ -14,6 +14,7 @@ from ...oauth.core.security import validate_public_oauth_configuration
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
 from ...remote.http import remote_routes
+from ...remote.transfer_gateway import build_transfer_gateway_router
 from ...tools.contracts import McpToolContext
 from ...tools.discovery import discover_tool_registries
 from ..shared.public_routes import public_http_routes
@@ -71,6 +72,11 @@ def _add_public_routes_to_mcp_http_app(
             readyz_include_workspace_root=False,
         ),
         *(remote_routes() if settings.remote_enabled else ()),
+        *(
+            build_transfer_gateway_router()
+            if settings.remote_enabled and settings.remote_http_transfer_enabled
+            else ()
+        ),
         *oauth_public_routes(),
     ]
     routes = [*public_routes, Mount("/", app=mcp_app)]

@@ -263,3 +263,88 @@ async def transfer_delete_temp_path(
 ) -> TransferDeleteTempPathOutput:
     """Delete a transfer scratch file under the configured temp directory."""
     return await asyncio.to_thread(transfer_delete_temp_path_sync, path)
+
+
+@transfer_tool(http_method="POST", http_path="/tools/transfer_http_upload")
+async def transfer_http_upload(
+    path: str,
+    session_id: str | None,
+    url: str,
+    controller_url: str,
+    authorization: str,
+    worker: str,
+    expected_bytes: int,
+    expected_sha256: str,
+    chunk_size: int,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """Run the private worker HTTP upload client through a local handler."""
+    from ...remote_worker.http_transfer import upload_file
+
+    return await asyncio.to_thread(
+        upload_file,
+        path=path,
+        session_id=session_id,
+        url=url,
+        controller_url=controller_url,
+        authorization=authorization,
+        worker=worker,
+        expected_bytes=expected_bytes,
+        expected_sha256=expected_sha256,
+        chunk_size=chunk_size,
+        timeout_s=timeout_s,
+    )
+
+
+@transfer_tool(http_method="POST", http_path="/tools/transfer_http_download")
+async def transfer_http_download(
+    path: str,
+    session_id: str | None,
+    url: str,
+    controller_url: str,
+    authorization: str,
+    worker: str,
+    transfer_id: str,
+    expected_bytes: int,
+    expected_sha256: str,
+    overwrite: bool,
+    chunk_size: int,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """Run the private worker HTTP download client through a local handler."""
+    from ...remote_worker.http_transfer import download_file
+
+    return await asyncio.to_thread(
+        download_file,
+        path=path,
+        session_id=session_id,
+        url=url,
+        controller_url=controller_url,
+        authorization=authorization,
+        worker=worker,
+        transfer_id=transfer_id,
+        expected_bytes=expected_bytes,
+        expected_sha256=expected_sha256,
+        overwrite=overwrite,
+        chunk_size=chunk_size,
+        timeout_s=timeout_s,
+    )
+
+
+@transfer_tool(
+    http_method="POST", http_path="/tools/transfer_http_abort_download"
+)
+async def transfer_http_abort_download(
+    path: str,
+    session_id: str | None,
+    transfer_id: str,
+) -> dict[str, Any]:
+    """Abort one private worker HTTP download transaction locally."""
+    from ...remote_worker.http_transfer import abort_download
+
+    return await asyncio.to_thread(
+        abort_download,
+        path=path,
+        session_id=session_id,
+        transfer_id=transfer_id,
+    )

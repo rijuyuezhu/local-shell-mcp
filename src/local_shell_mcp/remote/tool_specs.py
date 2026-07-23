@@ -73,6 +73,9 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "transfer_pack_dir", None),
     RemoteWorkerToolSpec("", "transfer_unpack_archive", None),
     RemoteWorkerToolSpec("", "transfer_delete_temp_path", None),
+    RemoteWorkerToolSpec("", "transfer_http_upload", None),
+    RemoteWorkerToolSpec("", "transfer_http_download", None),
+    RemoteWorkerToolSpec("", "transfer_http_abort_download", None),
 )
 
 REMOTE_WORKER_TOOL_NAMES = frozenset(

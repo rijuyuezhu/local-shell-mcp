@@ -493,6 +493,7 @@ def worker_capabilities() -> list[str]:
         "search",
         "python",
         "transfer",
+        "http-transfer-v1",
     ]
 
 

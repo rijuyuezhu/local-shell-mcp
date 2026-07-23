@@ -1664,6 +1664,126 @@
             "code": "64"
           },
           "Maximum queued or in-flight remote jobs allowed per worker."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Use the private resumable HTTP gateway for capable large session copies."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_threshold_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-threshold-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES"
+          },
+          "integer",
+          {
+            "code": "1048576"
+          },
+          "Minimum payload size selected for private HTTP streaming."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_chunk_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-chunk-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_CHUNK_BYTES"
+          },
+          "integer",
+          {
+            "code": "1048576"
+          },
+          "Maximum request or response chunk size for private HTTP transfer routes."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_ticket_ttl_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-ticket-ttl-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_TICKET_TTL_S"
+          },
+          "integer",
+          {
+            "code": "300"
+          },
+          "Lifetime of a private transfer grant before it must be renewed."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_max_active"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-max-active"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_ACTIVE"
+          },
+          "integer",
+          {
+            "code": "16"
+          },
+          "Maximum non-terminal private transfer objects retained concurrently."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_max_spool_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-max-spool-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES"
+          },
+          "integer",
+          {
+            "code": "10737418240"
+          },
+          "Maximum aggregate bytes reserved by private controller transfer spools."
         ]
       ]
     },
@@ -3014,6 +3134,87 @@
       "description": "Maximum queued or in-flight remote jobs allowed per worker.",
       "env": "LOCAL_SHELL_MCP_REMOTE_MAX_PENDING_JOBS",
       "name": "remote_max_pending_jobs",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--remote-http-transfer-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Use the private resumable HTTP gateway for capable large session copies.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_ENABLED",
+      "name": "remote_http_transfer_enabled",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-threshold-bytes",
+      "default": 1048576,
+      "default_display": "1048576",
+      "description": "Minimum payload size selected for private HTTP streaming.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES",
+      "name": "remote_http_transfer_threshold_bytes",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-chunk-bytes",
+      "default": 1048576,
+      "default_display": "1048576",
+      "description": "Maximum request or response chunk size for private HTTP transfer routes.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_CHUNK_BYTES",
+      "name": "remote_http_transfer_chunk_bytes",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-ticket-ttl-s",
+      "default": 300,
+      "default_display": "300",
+      "description": "Lifetime of a private transfer grant before it must be renewed.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_TICKET_TTL_S",
+      "name": "remote_http_transfer_ticket_ttl_s",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-max-active",
+      "default": 16,
+      "default_display": "16",
+      "description": "Maximum non-terminal private transfer objects retained concurrently.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_ACTIVE",
+      "name": "remote_http_transfer_max_active",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-max-spool-bytes",
+      "default": 10737418240,
+      "default_display": "10737418240",
+      "description": "Maximum aggregate bytes reserved by private controller transfer spools.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES",
+      "name": "remote_http_transfer_max_spool_bytes",
       "nullable": false,
       "section": "Remote workers",
       "type": "integer",

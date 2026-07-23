@@ -69,6 +69,14 @@ class TransferBeginWriteOutput(BaseModel):
     expected_bytes: int | None = Field(
         default=None, description="Expected final byte count, when provided."
     )
+    offset: int = Field(
+        default=0,
+        description="Validated contiguous byte offset already present.",
+    )
+    resumed: bool = Field(
+        default=False,
+        description="Whether an existing transaction was resumed.",
+    )
 
 
 class TransferWriteChunkOutput(BaseModel):

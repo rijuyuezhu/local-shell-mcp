@@ -366,6 +366,26 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("remote_poll_timeout_s", "Remote workers", metavar="SECONDS"),
     SettingSpec("remote_job_timeout_s", "Remote workers", metavar="SECONDS"),
     SettingSpec("remote_max_pending_jobs", "Remote workers", metavar="COUNT"),
+    SettingSpec("remote_http_transfer_enabled", "Remote workers"),
+    SettingSpec(
+        "remote_http_transfer_threshold_bytes",
+        "Remote workers",
+        metavar="BYTES",
+    ),
+    SettingSpec(
+        "remote_http_transfer_chunk_bytes", "Remote workers", metavar="BYTES"
+    ),
+    SettingSpec(
+        "remote_http_transfer_ticket_ttl_s", "Remote workers", metavar="SECONDS"
+    ),
+    SettingSpec(
+        "remote_http_transfer_max_active", "Remote workers", metavar="COUNT"
+    ),
+    SettingSpec(
+        "remote_http_transfer_max_spool_bytes",
+        "Remote workers",
+        metavar="BYTES",
+    ),
     SettingSpec("agent_bridge_enabled", "Agent capability bridge"),
     SettingSpec(
         "agent_mcp_probe_timeout_s",

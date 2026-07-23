@@ -4,6 +4,8 @@ from typing import Any
 import pytest
 
 import local_shell_mcp.remote.transfer as remote_transfer
+import local_shell_mcp.remote_worker.http_transfer as worker_http_transfer
+import local_shell_mcp.tools.registry.transfer as transfer_registry
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.files import delete_file_or_dir_execute
 from local_shell_mcp.ops.transfer import (
@@ -247,3 +249,78 @@ async def test_remote_copy_local_file_aborts_remote_write_on_cancellation(
         )
 
     assert aborted == [{"path": "dest.txt", "transfer_id": "transfer-1"}]
+
+
+@pytest.mark.asyncio
+async def test_private_local_http_transfer_handlers(monkeypatch):
+    monkeypatch.setattr(
+        transfer_registry,
+        "transfer_abort_write_sync",
+        lambda path, transfer_id, *, session_id=None: {
+            "path": path,
+            "transfer_id": transfer_id,
+            "session_id": session_id,
+        },
+    )
+    aborted = await transfer_registry.transfer_abort_write.func(
+        "destination.bin", "transfer-id", "session-id"
+    )
+    assert aborted == {
+        "path": "destination.bin",
+        "transfer_id": "transfer-id",
+        "session_id": "session-id",
+    }
+
+    monkeypatch.setattr(
+        worker_http_transfer, "upload_file", lambda **kwargs: {"upload": kwargs}
+    )
+    upload = await transfer_registry.transfer_http_upload.func(
+        "source.bin",
+        "source-session",
+        "https://controller/remote/transfer/" + "a" * 24,
+        "https://controller",
+        "Transfer secret",
+        "worker-a",
+        10,
+        "0" * 64,
+        4,
+        5,
+    )
+    assert upload["upload"]["path"] == "source.bin"
+    assert upload["upload"]["worker"] == "worker-a"
+
+    monkeypatch.setattr(
+        worker_http_transfer,
+        "download_file",
+        lambda **kwargs: {"download": kwargs},
+    )
+    download = await transfer_registry.transfer_http_download.func(
+        "destination.bin",
+        "destination-session",
+        "https://controller/remote/transfer/" + "b" * 24,
+        "https://controller",
+        "Transfer secret",
+        "worker-b",
+        "transfer-id",
+        10,
+        "1" * 64,
+        True,
+        4,
+        5,
+    )
+    assert download["download"]["transfer_id"] == "transfer-id"
+    assert download["download"]["overwrite"] is True
+
+    monkeypatch.setattr(
+        worker_http_transfer,
+        "abort_download",
+        lambda **kwargs: {"abort": kwargs},
+    )
+    cleanup = await transfer_registry.transfer_http_abort_download.func(
+        "destination.bin", "destination-session", "transfer-id"
+    )
+    assert cleanup["abort"] == {
+        "path": "destination.bin",
+        "session_id": "destination-session",
+        "transfer_id": "transfer-id",
+    }

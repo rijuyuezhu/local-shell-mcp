@@ -504,6 +504,55 @@ async def _transfer_delete_temp_path(args: dict[str, Any]) -> Any:
     return await asyncio.to_thread(transfer_delete_temp_path, str(args["path"]))
 
 
+async def _transfer_http_upload(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.remote_worker.http_transfer import upload_file
+
+    return await asyncio.to_thread(
+        upload_file,
+        path=str(args["path"]),
+        session_id=args.get("session_id"),
+        url=str(args["url"]),
+        controller_url=str(args["controller_url"]),
+        authorization=str(args["authorization"]),
+        worker=str(args["worker"]),
+        expected_bytes=int(args["expected_bytes"]),
+        expected_sha256=str(args["expected_sha256"]),
+        chunk_size=int(args["chunk_size"]),
+        timeout_s=float(args.get("timeout_s") or 30),
+    )
+
+
+async def _transfer_http_download(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.remote_worker.http_transfer import download_file
+
+    return await asyncio.to_thread(
+        download_file,
+        path=str(args["path"]),
+        session_id=args.get("session_id"),
+        url=str(args["url"]),
+        controller_url=str(args["controller_url"]),
+        authorization=str(args["authorization"]),
+        worker=str(args["worker"]),
+        transfer_id=str(args["transfer_id"]),
+        expected_bytes=int(args["expected_bytes"]),
+        expected_sha256=str(args["expected_sha256"]),
+        overwrite=bool(args.get("overwrite", True)),
+        chunk_size=int(args["chunk_size"]),
+        timeout_s=float(args.get("timeout_s") or 30),
+    )
+
+
+async def _transfer_http_abort_download(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.remote_worker.http_transfer import abort_download
+
+    return await asyncio.to_thread(
+        abort_download,
+        path=str(args["path"]),
+        session_id=args.get("session_id"),
+        transfer_id=str(args["transfer_id"]),
+    )
+
+
 _HANDLERS: dict[str, WorkerHandler] = {
     "session_start": _session_start,
     "session_change_cwd": _session_change_cwd,
@@ -551,6 +600,9 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "transfer_pack_dir": _transfer_pack_dir,
     "transfer_unpack_archive": _transfer_unpack_archive,
     "transfer_delete_temp_path": _transfer_delete_temp_path,
+    "transfer_http_upload": _transfer_http_upload,
+    "transfer_http_download": _transfer_http_download,
+    "transfer_http_abort_download": _transfer_http_abort_download,
 }
 
 

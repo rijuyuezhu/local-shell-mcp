@@ -87,8 +87,22 @@ After enrollment, the stable foreground command contains no invite, access token
 ```bash
 local-shell-mcp worker run
 ```
-
 The old flat `local-shell-mcp worker --server ...` form and `--persist` flag are intentionally unsupported.
+
+## Large `session_copy` transfers
+
+`session_copy` remains the only public copy API. The controller selects the transport from the actual topology, worker capabilities, configured public origin, and measured payload size:
+
+- local-to-local copies keep the local transactional path;
+- copies within one remote worker keep the direct same-worker path;
+- files below `remote_http_transfer_threshold_bytes`, workers without `http-transfer-v1`, or controllers without an explicit public `base_url` use the bounded JSON/base64 worker RPC path;
+- capable large local/remote and cross-worker copies use the private resumable HTTP gateway. Cross-worker data is staged in an owner-private controller spool rather than granting either worker a callback into the other.
+
+The measured default threshold is 1 MiB. Tune it with `remote_http_transfer_threshold_bytes`; related limits are `remote_http_transfer_chunk_bytes`, `remote_http_transfer_ticket_ttl_s`, `remote_http_transfer_max_active`, and `remote_http_transfer_max_spool_bytes`. Set `remote_http_transfer_enabled=false` to force the existing RPC/direct paths.
+
+The route identifier is not a credential. Each operation receives a separate short-lived Authorization capability bound to the registered worker, direction, source/destination sessions, expected size and SHA-256, cursor, expiry, and active claim. Workers reject cross-origin, redirected, credential-bearing, query-bearing, and malformed URLs. Uploads use bounded `Content-Range` chunks with per-chunk digests; downloads use bounded `Range` requests from an immutable controller snapshot. The source-only runtime implements this with Python's standard library and requires no additional package.
+
+Foreground failures and cancellation revoke capabilities and clean partial private state. Managed background copy jobs retain only validated spool/destination progress, clear active capabilities, and rotate new capabilities when the same durable job is retried. Final publication still uses the existing transactional destination writer and whole-object digest check. Results report the actual `transport` and `resumed_bytes`.
 
 ## Install a user service
 

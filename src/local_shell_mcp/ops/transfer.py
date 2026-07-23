@@ -514,24 +514,47 @@ def transfer_begin_write(
     path: str,
     overwrite: bool = True,
     expected_bytes: int | None = None,
+    transfer_id: str | None = None,
     *,
     session_id: str | None = None,
 ) -> TransferBeginWriteOutput:
-    """Create a private transactional destination for a chunked write."""
+    """Create or safely resume a private transactional chunked write."""
     destination = _resolve_transfer_destination(path, session_id=session_id)
     expected = None if expected_bytes is None else int(expected_bytes)
     if expected is not None and expected < 0:
         raise ValueError("expected_bytes must be >= 0")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with path_lock(destination):
+    requested_id = transfer_id or uuid.uuid4().hex
+    temporary = _transfer_temp_path(destination, requested_id)
+    with path_locks([destination, temporary]):
         _prune_stale_destination_transfers(destination)
         exists = os.path.lexists(destination)
         if exists and destination.is_dir() and not destination.is_symlink():
             raise IsADirectoryError(str(destination))
         if exists and not overwrite:
             raise FileExistsError(str(destination))
-        transfer_id = uuid.uuid4().hex
-        temporary = _transfer_temp_path(destination, transfer_id)
+        if transfer_id is not None and temporary.exists():
+            metadata = _read_transfer_metadata(temporary, destination)
+            if bool(metadata.get("overwrite", True)) != bool(overwrite):
+                raise ValueError("transfer overwrite mode mismatch")
+            metadata_expected = metadata.get("expected_bytes")
+            if metadata_expected != expected:
+                raise ValueError("transfer expected size mismatch")
+            with _open_transfer_for_update(temporary) as handle:
+                _validate_transfer_identity(handle, metadata)
+            ranges = _received_ranges(metadata)
+            offset = 0 if ranges == [] else ranges[0][1]
+            if ranges not in ([], [[0, offset]]):
+                raise ValueError("transfer resume ranges are not contiguous")
+            return TransferBeginWriteOutput(
+                path=relative_display(destination),
+                temp_path=relative_display(temporary),
+                transfer_id=requested_id,
+                created=not exists,
+                expected_bytes=expected,
+                offset=offset,
+                resumed=True,
+            )
         with _open_private_transfer_file(temporary) as handle:
             temporary_stat = os.fstat(handle.fileno())
             temporary_identity = _transfer_handle_identity(handle)
@@ -555,9 +578,11 @@ def transfer_begin_write(
     return TransferBeginWriteOutput(
         path=relative_display(destination),
         temp_path=relative_display(temporary),
-        transfer_id=transfer_id,
+        transfer_id=requested_id,
         created=not exists,
         expected_bytes=expected,
+        offset=0,
+        resumed=False,
     )
 
 
@@ -578,25 +603,21 @@ def _open_transfer_for_update(path: Path) -> BinaryIO:
         raise
 
 
-def transfer_write_chunk(
+def transfer_write_bytes(
     path: str,
     transfer_id: str,
     offset: int,
-    data_b64: str,
+    data: bytes,
     expected_sha256: str | None = None,
     *,
     session_id: str | None = None,
 ) -> TransferWriteChunkOutput:
-    """Write one validated, non-overlapping chunk into an active transfer."""
+    """Write one raw validated chunk into an active transactional destination."""
     destination = _resolve_transfer_destination(path, session_id=session_id)
     temporary = _transfer_temp_path(destination, transfer_id)
     start = int(offset)
     if start < 0:
         raise ValueError("offset must be >= 0")
-    try:
-        data = base64.b64decode(data_b64.encode("ascii"), validate=True)
-    except (UnicodeEncodeError, binascii.Error) as exc:
-        raise ValueError("data_b64 is not valid base64") from exc
     digest = hashlib.sha256(data).hexdigest()
     if expected_sha256 and digest != expected_sha256:
         raise ValueError("chunk sha256 mismatch")
@@ -614,6 +635,7 @@ def transfer_write_chunk(
             handle.seek(start)
             handle.write(data)
             handle.flush()
+            os.fsync(handle.fileno())
             updated_stat = os.fstat(handle.fileno())
             metadata["temporary_size"] = int(updated_stat.st_size)
         _write_transfer_metadata(temporary, metadata)
@@ -623,6 +645,30 @@ def transfer_write_chunk(
         offset=start,
         bytes=len(data),
         sha256=digest,
+    )
+
+
+def transfer_write_chunk(
+    path: str,
+    transfer_id: str,
+    offset: int,
+    data_b64: str,
+    expected_sha256: str | None = None,
+    *,
+    session_id: str | None = None,
+) -> TransferWriteChunkOutput:
+    """Decode and write one validated chunk from the JSON control channel."""
+    try:
+        data = base64.b64decode(data_b64.encode("ascii"), validate=True)
+    except (UnicodeEncodeError, binascii.Error) as exc:
+        raise ValueError("data_b64 is not valid base64") from exc
+    return transfer_write_bytes(
+        path,
+        transfer_id,
+        offset,
+        data,
+        expected_sha256,
+        session_id=session_id,
     )
 
 

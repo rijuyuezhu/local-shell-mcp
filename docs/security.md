@@ -123,18 +123,24 @@ Operational guidance:
 
 ## Session-to-session transfers
 
-`session_copy` moves files and directories between explicit local or remote sessions through the existing bounded worker RPC chunk protocol. A file destination is never published until its transfer metadata, received byte ranges, final size, temporary-file identity, and optional SHA-256 all validate. `overwrite=false` is checked again at commit time, and a final symbolic link is replaced as a directory entry rather than followed to its target.
+`session_copy` moves files and directories between explicit local or remote sessions. Local copies, same-worker copies, and bounded JSON/base64 worker RPC remain available. When a configured public controller origin, payload threshold, and worker capability permit it, large copies use a private resumable HTTP gateway without adding a public ticket tool.
+
+The URL contains only a non-secret object identifier. A separate short-lived Authorization capability is stored only as a SHA-256 hash and is bound to the registered worker identity, upload/download direction, source and destination session ids, expected size and digest, cursor, expiry, nonce, and one active claim. The worker accepts only the controller's exact origin and rejects redirects, userinfo, query strings, fragments, malformed paths, and credential-bearing URLs. Capabilities and private absolute source paths are excluded from metadata, logs, exceptions, process arguments, and service definitions.
+
+Local sources are copied through a no-follow stable file handle into an owner-private immutable spool before they are served. Remote uploads use bounded `Content-Range` chunks and a per-chunk SHA-256; completed chunks are accepted again only as an exact durable replay. Downloads require bounded `Range` requests and read only the immutable spool. Cursor, whole-object size and SHA-256, spool identity, and destination transaction metadata all validate before publication. Append/fsync failures truncate back to the last committed cursor.
+
+Controller transfer metadata and spools live under `state_dir/remote_transfers` with private permissions, active-count and aggregate-byte quotas, expiry cleanup, and no symlink following. Cross-worker copies stage through that controller spool instead of giving one worker network authority over the other. A restarted controller can discard a stale process claim and resume validated state; each successful authenticated request extends only the current short-lived grant.
+
+A file destination is never published until its transfer metadata, contiguous received ranges, final size, temporary-file identity, and SHA-256 all validate. `overwrite=false` is checked again at commit time, and a final symbolic link is replaced as a directory entry rather than followed to its target. Foreground failure and cancellation revoke capabilities and remove private partial state. A managed job failure revokes capabilities but retains validated progress for the same durable job id; retry rotates fresh capabilities and resumes from the authoritative cursor.
 
 Directory copies are packed without symbolic links or special files, validated before extraction, and expanded into a sibling staging directory. The archive entry count is limited by `max_transfer_archive_entries`, while declared regular-file bytes are limited by `max_transfer_unpacked_bytes`. Only after staging succeeds is the old destination moved to a backup and the staged tree committed; commit failure restores the backup. Cleanup failures after a successful commit are reported separately and do not misreport the copy as rolled back.
 
-Cancellation and failures trigger best-effort destination abort plus source/destination scratch cleanup. Temporary archives are subject to the general count/byte budgets only after a 24-hour grace period, so a concurrent active transfer is not removed merely because another transfer starts. Per-path mutation locks use a bounded in-memory registry and a fixed set of cross-process lock shards under `state_dir`.
-
 Operational notes:
 
-- Keep the archive entry and unpacked-byte limits appropriate for the available disk space and inode budget.
+- Keep the archive, active-transfer, and spool-byte limits appropriate for available disk space and inode budget.
 - A directory replacement is transactional with rollback, but it is not an atomic exchange on every supported platform; concurrent readers can briefly observe the rename boundary.
-- The HTTP streaming protocol used by upstream is intentionally not exposed. The fork retains its authenticated worker control channel and explicit-session chunk RPCs.
-- Treat a compromised remote worker as able to provide malicious transfer data; the control side still validates offsets, sizes, checksums, archive paths, member types, and resource limits before commit.
+- Shared request-body buffering is bypassed only for the exact private transfer `PUT` route; the route enforces its own chunk limit and all other HTTP paths retain the generic request limit.
+- Treat a compromised remote worker as able to provide malicious transfer data; the control side still validates authorization, offsets, sizes, checksums, archive paths, member types, and resource limits before commit.
 
 ## Remote worker identity and user services
 
