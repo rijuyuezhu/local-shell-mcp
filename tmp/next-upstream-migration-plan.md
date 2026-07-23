@@ -1,0 +1,553 @@
+# Next upstream migration plan
+
+Status: approved implementation roadmap
+
+Temporary source of truth: this file is intentionally tracked by Git while the
+migration is in progress. Update its checkboxes and decisions in the same commits
+that implement each phase. Delete it only after every exit criterion is complete
+and the durable user/developer documentation contains the final architecture.
+
+## Audited baseline
+
+| Role | Ref | Commit |
+|---|---|---|
+| Fork branch | `feat/port-upstream-features-2026-07` | `c3bc8c6eb8087fd0bf4491c3ae81fc51207a5b25` |
+| Fork baseline | `main` | `c40067a` |
+| Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
+| Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
+
+The implementation should preserve fork-native sessions, jobs, security, remote
+worker upgrades, Windows support, and UI architecture. Upstream code is a
+behavioral reference, not a patch set to copy mechanically.
+
+## Confirmed product decisions
+
+These decisions are no longer pending:
+
+1. Keep the dynamic Agent Bridge and installed Skills as product features.
+2. Add managed static secrets and OAuth for bridged HTTP/SSE MCP servers.
+   The primary interactive command will be `local-shell-mcp mcp auth <server>`.
+3. Keep controller-authorized automatic remote-worker runtime upgrades.
+4. Keep raw authenticated local and remote browser terminals.
+5. Keep all three UI clients: browser-native Human UI, native OpenTUI, and the
+   browser OpenTUI Console.
+6. Keep bundled tmux binaries in supported frozen Linux release archives.
+7. Port real browser E2E, worker user-service management, embedded OpenTUI
+   platform wheels, public MCP `audit_tail`, HTTP large-file transfer, and full
+   recovery of retained oversized audit payloads.
+8. Integrate structured environment information into `session_start` and
+   `session_change_cwd`; do not add a standalone `environment_info` tool.
+9. Remove the stale-tool diagnostic/tombstone compatibility layer completely.
+   Unknown or removed tool names must receive the normal MCP unknown-tool error.
+   Do not add aliases or hidden migration fallbacks.
+
+## Cross-cutting rules
+
+- Every workspace- or machine-scoped MCP capability uses an explicit
+  `session_id`. Do not restore optional `machine` arguments across ordinary
+  tools.
+- New remote behavior must work through the existing worker identity, capability,
+  and automatic-upgrade model. Protocol capability fallback is allowed; removed
+  tool-name compatibility is not.
+- Secrets, OAuth tokens, worker credentials, transfer authorization values, and
+  approval data must never appear in argv, manifest plaintext, URLs, logs,
+  generated docs, public status responses, or unredacted audit records.
+- Audit redaction runs before any value is externalized to payload storage.
+- New large-body routes must stream and enforce their own limits; they must not
+  cause the shared request-limit middleware to buffer an entire transfer.
+- Local and remote outputs use the same typed result models where the semantics
+  are the same.
+- Each phase should be independently reviewable and leave the full repository
+  testable. Prefer one feature family per commit series rather than one final
+  monolithic change.
+- Update `upstream-commit-review.md`, `fork-upstream-differences.md`, generated
+  references, security docs, and coverage baselines in the phase that changes
+  their truth.
+- No phase is complete until pre-commit, Pyright, the relevant focused tests, and
+  the applicable cross-platform CI jobs pass.
+
+## Delivery order
+
+The sequence below is dependency-driven. In particular, browser E2E becomes the
+UI regression harness, Agent Bridge authentication is established before it is
+reported by session orientation, and the recoverable audit store is implemented
+before `audit_tail` exposes full details.
+
+### Phase 0 — Track and maintain this plan
+
+- [x] Record approved scope and architecture in this tracked temporary file.
+- [ ] Update phase status and any reviewed contract changes as implementation
+      proceeds.
+- [ ] Keep the branch synchronized with `upstream/main` and append newly reviewed
+      upstream commits before claiming final parity.
+
+Exit criterion: this file is committed and is the only temporary migration plan.
+
+### Phase 1 — Remove stale-tool diagnostics and compatibility tombstones
+
+Implementation:
+
+- Delete `src/local_shell_mcp/deprecated_tools.py`.
+- Replace `DeprecatedToolFastMCP` with the SDK `FastMCP` in
+  `src/local_shell_mcp/server/mcp/app.py`.
+- Delete `tests/test_deprecated_tools.py` and remove the module from the coverage
+  baseline.
+- Remove all stale-tool, replacement-name, refresh/re-add, and tombstone wording
+  from server instructions, generated references, permanent docs, maintenance
+  reports, and tests.
+- Remove `relaxed_client_tool_hints` if its only remaining purpose is obsolete
+  compatibility behavior; otherwise rename/document its actual semantics rather
+  than retaining a deprecated flag.
+- Do not retain a name map, compatibility subclass, hidden alias, or custom
+  unknown-tool response anywhere else.
+
+Public contract:
+
+- Current tools remain unchanged.
+- Removed names are absent from `tools/list` and fail through the standard MCP
+  unknown-tool path.
+- `environment_info` is not restored as a tool or tombstone; structured
+  environment data arrives later through `session_start`.
+
+Tests:
+
+- Exact public tool-surface tests.
+- A protocol-level assertion that an unknown tool receives the SDK-standard
+  error and no replacement guidance.
+- Generated tool-reference and server-instruction checks.
+
+Exit criterion: repository search finds no `DeprecatedTool`, `DEPRECATED_TOOLS`,
+`stale_tool_snapshot`, or compatibility-diagnostic implementation.
+
+### Phase 2 — Add real Chromium browser E2E
+
+Implementation:
+
+- Add Playwright as a development/CI dependency only; do not restore public
+  browser automation tools in this phase.
+- Add a fork-native browser harness under `tests/browser/` with a small launcher
+  script under `scripts/`. Reuse test helpers rather than copying upstream's
+  monolithic `scripts/ui-smoke.py` verbatim.
+- Start a real loopback HTTP server with isolated workspace/state, complete OAuth
+  authorization with S256 PKCE, and launch headless Chromium.
+- Add a dedicated Ubuntu CI job that installs the pinned Chromium runtime. Keep
+  ordinary route/API tests on Linux, macOS, and Windows.
+- Upload Playwright trace, screenshot, browser console, server log, and worker log
+  artifacts on failure.
+
+Required scenarios:
+
+1. unauthenticated `/ui` and API access, login redirect, authorization approval,
+   callback, and connected state;
+2. dashboard/version/capability rendering;
+3. Files navigation, preview/edit/write, stale-response protection, copy/move/
+   rename, and local/remote machine isolation;
+4. Todos local/remote isolation;
+5. Audit list/detail filtering and scope reauthorization;
+6. local terminal create, input, output, resize, reconnect, stop, and scroll;
+7. real remote-worker enrollment, machine switching, remote Files, and remote
+   terminal input/output/resize;
+8. browser OpenTUI Console start, authenticated WebSocket, resize, intentional
+   stop, and abnormal-process reconnect behavior;
+9. responsive desktop and narrow viewport layouts, keyboard focus, mouse/wheel,
+   and no uncaught browser-console errors.
+
+The native OpenTUI continues to use Bun/Node tests; browser E2E covers only the
+browser-hosted clients.
+
+Exit criterion: the browser job is required in CI and fails reproducibly on an
+OAuth, Human UI, raw PTY, remote-machine, or browser Console regression.
+
+### Phase 3 — Add Agent Bridge secret storage and OAuth client authentication
+
+Configuration contract:
+
+- Extend the existing Agent Bridge manifest schema rather than adding a second
+  MCP configuration file.
+- Keep literal `headers` and `env` for non-secret static values.
+- Add structured secret references for HTTP headers and stdio environment
+  variables. Secret values live only in a private credential store and are
+  resolved at connection time.
+- Add per-server authentication metadata with modes `none`, `secret`, and
+  `oauth`. OAuth is valid only for HTTP/SSE transports.
+- Status and registry payloads report only auth mode, authorization state,
+  expiry/status metadata, and redacted key names.
+
+Credential storage:
+
+- Add a dedicated private state subtree, separate from the read-oriented Agent
+  Bridge manifest, for example `state_dir/agent_auth/`.
+- Use owner-only directories/files, cross-process locking, atomic replace,
+  bounded JSON, schema versions, and corruption errors rather than silent reset.
+- Store OAuth tokens and dynamic client information through an implementation of
+  the MCP SDK `TokenStorage` protocol.
+- Do not put secrets or tokens in environment variables unless they are being
+  injected into the lifetime of an explicitly configured stdio child process.
+
+CLI contract:
+
+```text
+local-shell-mcp mcp auth <server> [--no-open]
+local-shell-mcp mcp auth <server> --status
+local-shell-mcp mcp auth <server> --logout
+local-shell-mcp mcp secret set <server> <name> --stdin
+local-shell-mcp mcp secret list <server>
+local-shell-mcp mcp secret delete <server> <name>
+```
+
+- `mcp auth` uses the MCP SDK `OAuthClientProvider`, a loopback callback on
+  `127.0.0.1` with an ephemeral port, PKCE/state validation, dynamic client
+  registration when required, token refresh, and an optional printed URL when a
+  browser cannot be opened.
+- Secret values are read from stdin or an interactive no-echo prompt, never from
+  positional argv.
+- Successful auth immediately probes `tools/list`, persists the resulting state,
+  and refreshes the Agent Bridge registry without restarting the server.
+- Logout deletes local token/client state and attempts remote revocation only
+  when supported; failure to revoke remotely must be reported explicitly.
+
+Runtime integration:
+
+- Inject the SDK OAuth auth provider into the existing `httpx.AsyncClient` used
+  by `streamable_http_client`/SSE.
+- Resolve secret references immediately before opening the configured transport.
+- Preserve current timeout, redaction, dynamic-tool hot reload, and short-lived
+  client-session behavior.
+
+Tests:
+
+- Private/atomic credential store, concurrent writers, corruption, permission,
+  and redaction tests.
+- Fake OAuth protected-resource/authorization-server integration covering
+  discovery, registration, PKCE/state, callback, token refresh, logout, and
+  denied/expired flows.
+- Static secret injection tests proving values are absent from argv, status,
+  logs, exceptions, audit, and generated schemas.
+- Hot reload and dynamic tool invocation after auth without process restart.
+
+Exit criterion: an HTTP MCP server requiring OAuth and a stdio/HTTP server
+requiring a stored secret can both be configured and called without plaintext
+credentials in the manifest.
+
+### Phase 4 — Merge structured environment information into sessions
+
+Do not add `environment_info`. Extend the current `SessionStartOutput` with one
+nested, typed `environment` object returned by both `session_start` and
+`session_change_cwd`.
+
+Planned environment groups:
+
+- `runtime`: local-shell-mcp version, Python implementation/version, source/
+  frozen runtime, OS, release, architecture, and process bitness;
+- `workspace`: workspace root, canonical workdir, target, machine, and remote
+  worker runtime identity/version;
+- `tools`: allowlisted executable availability and bounded version probes for
+  shell, Git, ripgrep, tmux, curl, Bun, Chromium/Playwright, and OpenTUI;
+- `capabilities`: remote worker, raw PTY, ConPTY, browser UI, native OpenTUI,
+  browser Console, Agent Bridge, OAuth-backed MCP clients, HTTP transfer, audit
+  full-payload recovery, and worker service kind/status;
+- `policy`: safe non-secret limits and modes relevant to tool choice, including
+  authentication mode, full-control mode, shell/file/output limits, transfer
+  limits, and remote enablement;
+- existing Git orientation and nearby instruction-file discovery remain top-level
+  or are nested consistently, but are not duplicated.
+
+Implementation rules:
+
+- Use Python/platform APIs and bounded executable probes, not an assembled shell
+  command such as `uname; id; ...`.
+- Cache machine-static probes briefly, while refreshing workdir-specific Git and
+  instruction orientation on `session_change_cwd`.
+- A remote worker's session-start response must carry the worker's own
+  environment, Git orientation, instruction files, and workspace root. The
+  controller must not replace them with local placeholders.
+- Return only an allowlisted environment model; never return arbitrary process
+  environment variables or credentials.
+
+Tests:
+
+- Typed schema and generated reference tests.
+- Local source/frozen and Linux/macOS/Windows-normalized unit tests.
+- Real remote-worker E2E proving remote metadata is produced on the worker.
+- Capability changes after Agent Bridge auth, OpenTUI installation, and service
+  installation are reflected correctly.
+
+Exit criterion: clients can choose tools and understand local/remote runtime
+capabilities from `session_start` alone, with no standalone environment tool.
+
+### Phase 5 — Add recoverable oversized audit payloads and public `audit_tail`
+
+#### Phase 5A — Recoverable payload store
+
+Storage contract:
+
+- Sanitize/redact a value first. Only the sanitized representation may be
+  externalized.
+- Keep small sanitized values inline. Store larger accepted values as
+  deterministic gzip-compressed JSON objects addressed by SHA-256 under a
+  private audit payload directory.
+- Inline references contain a schema version, digest, original encoded byte
+  count, and bounded preview.
+- Verify digest and decompression bounds on every full read.
+- Use no-follow/private file creation, atomic replace, owner-only permissions,
+  and the same cross-process audit transaction boundary as JSONL retention.
+- Retention accounts for JSONL plus referenced payload bytes, preserves paired
+  tool lifecycle units, and garbage-collects unreferenced/corrupt/expired
+  payloads after a grace period.
+
+Settings to add with validated bounds:
+
+- `audit_payloads_enabled` (default `true`);
+- `audit_inline_value_bytes` (default 16 KiB);
+- `max_audit_payload_bytes` (default 64 MiB per sanitized value);
+- `max_audit_payload_store_bytes` (default 256 MiB total payload storage);
+- `audit_payload_retention_s` (default seven days, also bounded by references and
+  total quota).
+
+“Full recovery” means byte-for-byte JSON recovery of the sanitized value while
+its payload remains within these configured retention limits. Values above the
+per-value limit remain explicit bounded omission records rather than causing an
+unbounded write.
+
+#### Phase 5B — Session-bound MCP `audit_tail`
+
+Public tool contract:
+
+```text
+audit_tail(
+  session_id,
+  limit=100,
+  event=None,
+  operation=None,
+  audit_session=None,
+  search=None,
+  start_ts=None,
+  end_ts=None,
+  sort="desc",
+  entry_id=None,
+  include_full_payloads=False,
+)
+```
+
+- Reuse `query_audit` and `get_audit_entry`; do not copy upstream's raw backwards
+  JSONL reader.
+- Route local and remote sessions through the existing session/worker dispatch.
+- Default responses expose coalesced bounded previews. `entry_id` selects one
+  detail record. `include_full_payloads=true` resolves retained payload objects.
+- Introduce dedicated OAuth scopes `audit:read` and `audit:full`; full payloads
+  require both. Human UI detail access must use the same policy.
+- Prevent recursive/noisy self-reporting by reading a stable snapshot and hiding
+  the current `audit_tail` lifecycle record from its own result.
+- Preserve all fork redaction and machine/session isolation.
+
+Tests:
+
+- Payload integrity, deterministic compression, concurrency, crash cleanup,
+  corruption, decompression bombs, quota/expiry/pruning, lifecycle pairing, and
+  secret-redaction-before-storage.
+- Local/remote `audit_tail`, filters, stable ordering, detail, scope denial, full
+  recovery, missing/corrupt payload behavior, and self-call exclusion.
+- Browser E2E verifies preview/detail/full-payload authorization paths.
+
+Exit criterion: an authorized client can recover a retained oversized sanitized
+input/output locally or remotely, while an ordinary audit reader receives only
+bounded previews.
+
+### Phase 6 — Add remote-worker user-service management
+
+CLI contract (intentional breaking cleanup; no hidden legacy parser):
+
+```text
+local-shell-mcp worker enroll --server URL (--invite VALUE | --invite-stdin) [--name NAME] [--workdir PATH]
+local-shell-mcp worker connect --server URL (--invite VALUE | --invite-stdin) [--name NAME] [--workdir PATH]
+local-shell-mcp worker run
+local-shell-mcp worker install-service [--no-start]
+local-shell-mcp worker uninstall-service
+local-shell-mcp worker start
+local-shell-mcp worker stop
+local-shell-mcp worker restart
+local-shell-mcp worker status
+local-shell-mcp worker logs [--lines N] [--follow]
+local-shell-mcp worker update [--force]
+```
+
+- `enroll` stores identity and exits; `connect` enrolls/resumes and runs in the
+  foreground; `run` requires stored identity.
+- Remove the reserved `--persist` flag and the old flat `worker --server ...`
+  parser form rather than keeping aliases.
+- Implement Linux `systemd --user` and macOS launchd first. Windows service
+  installation remains an explicit unsupported result until a separate safe
+  design is approved; do not emulate it with an untracked detached process.
+- Units/plists invoke a stable launcher plus `worker run`, contain no invite,
+  bearer token, or server credential, and use the existing private identity file.
+- Install/uninstall/start/stop/restart are idempotent and return typed JSON status.
+- `logs` uses `journalctl --user` for systemd and the managed private log for
+  launchd, with bounded non-follow output and interrupt-safe follow mode.
+- Integrate existing single-instance lock and cross-reexec handoff. A managed
+  worker waits for an upgrade/restart handoff; a competing manual worker fails.
+- `update` uses the existing digest/same-origin/rollback runtime updater and
+  restarts the service only when it was running.
+
+Tests:
+
+- Unit/plist generation, quoting, private state, no credentials, idempotence,
+  unavailable manager, command failures, status/log parsing, install/start/stop/
+  restart/uninstall, and update-restart behavior.
+- Existing POSIX and Windows worker lock/reexec tests remain required.
+- Linux service smoke in a controlled user-systemd environment when CI supports
+  it; launchd behavior is covered by command/plist tests plus macOS CI-safe
+  probes.
+
+Exit criterion: an enrolled Linux/macOS worker survives terminal exit and reboot
+through an installed user service, and all lifecycle commands report truthful
+state without widening the MCP tool surface.
+
+### Phase 7 — Publish platform wheels with embedded OpenTUI
+
+Packaging architecture:
+
+- Keep `uv_build`; do not switch the entire project to Hatchling merely to copy
+  upstream's hook.
+- Add a deterministic platform-wheel builder that:
+  1. builds the existing OpenTUI executable with pinned Bun;
+  2. gzip-compresses it with deterministic metadata (`mtime=0`);
+  3. stages it as `local_shell_mcp/ui_runtime/<executable>.gz`;
+  4. builds the wheel with `uv build`;
+  5. rewrites/verifies the wheel `WHEEL` metadata as non-pure and assigns the
+     explicit platform tag; and
+  6. removes all staging files even on failure.
+- Add build-only `wheel`/packaging tooling; do not add it to runtime dependencies.
+- Continue publishing one universal `py3-none-any` wheel without a payload as the
+  fallback for unsupported platforms and server-only installations.
+- Publish same-version platform wheels for Linux x86_64/aarch64, macOS x86_64/
+  arm64, and Windows x86_64. Do not claim a manylinux compatibility tag until the
+  Bun binary is built and audited in an appropriate manylinux environment;
+  initially use truthful platform tags.
+- Reuse the fork's bounded/private/concurrency-safe `materialize_embedded_tui`.
+  Sidecar and Bun-source fallback remain supported, not as old-name
+  compatibility, but as supported installation modes.
+
+Release/CI gates:
+
+- Inspect wheel contents, filename tag, `Root-Is-Purelib`, executable digest, and
+  absence of payload in the universal wheel.
+- Install each platform wheel in a clean environment with Bun absent and no
+  sidecar on `PATH`; verify `local-shell-mcp tui` resolves the embedded runtime
+  and the native executable reports the expected version.
+- Test concurrent first materialization, Windows replace races, corrupt/empty/
+  oversized gzip, private permissions, and version-isolated cache paths.
+- Update release-matrix checks and publish all wheel artifacts atomically with
+  the sdist/universal wheel.
+
+Exit criterion: `pip install` chooses a matching platform wheel and launches the
+native OpenTUI without Bun or a release archive, while unsupported platforms can
+still install the universal server wheel.
+
+### Phase 8 — Add internal HTTP streaming for large `session_copy` transfers
+
+Public API rule:
+
+- Keep `session_copy` as the only public copy API. Do not expose ticket creation,
+  upload, download, or transport-selection tools through MCP.
+- Extend the result with a truthful transport indicator such as `local`,
+  `same_worker`, `worker_rpc`, or `http_stream` and resumable byte progress where
+  applicable.
+
+Transport architecture:
+
+- Add controller transfer-gateway routes under `/remote/transfer/`.
+- URLs contain only a non-secret ticket identifier. A separate high-entropy
+  transfer authorization value is sent in a header, is bound to one worker
+  identity/direction/object, and is never logged or returned to MCP clients.
+- Persist private, atomic, versioned ticket/spool metadata so a durable copy job
+  can resume after controller restart. Enforce TTL, one active claim, offset,
+  expected size, SHA-256, worker binding, and explicit revoke/abort/commit.
+- Download tickets use an immutable private snapshot. Upload tickets write into
+  an existing transactional destination or a private controller spool.
+- Upload supports bounded `Content-Range` chunks and a status endpoint for
+  resume. Download supports validated range resume and never follows a changed
+  source path after ticket creation.
+- Stream request/response chunks with independent byte, time, concurrency, and
+  spool quotas. Exempt only these routes from shared body buffering and enforce
+  all limits inside the route.
+
+Routing behavior:
+
+- local to local: existing direct transactional copy;
+- same remote worker: existing worker-local fast path;
+- local to remote: worker pulls an immutable controller download ticket and
+  commits locally;
+- remote to local: worker pushes to a controller upload ticket tied to the local
+  transaction;
+- different remote workers: source pushes to a private controller spool, then
+  destination pulls the immutable spool; the controller brokers metadata and
+  disk-backed streaming, not base64 JSON chunks;
+- directories: continue bounded pack/stream/unpack semantics and clean all
+  source/destination/spool archives on success, failure, cancellation, or expiry.
+
+Selection and fallback:
+
+- Add validated settings for enablement, large-file threshold (initial default
+  8 MiB), ticket TTL (initial default five minutes), maximum active transfers,
+  and spool bytes.
+- Select HTTP only above the threshold and only when the worker advertises the
+  capability. Keep RPC chunks for small transfers and as an explicit fallback
+  when the gateway is unavailable.
+- Capability fallback is protocol negotiation, not a removed-tool compatibility
+  layer. Automatic upgrade should normally bring workers to the HTTP-capable
+  bundle before selection.
+- Background `session_copy` jobs persist enough arguments/progress to retry or
+  resume safely; completed chunks are never silently duplicated.
+
+Tests and measurements:
+
+- Ticket entropy/header secrecy, auth, worker binding, TTL, claim races,
+  revoke/abort, malformed ranges, offset conflicts, digest/size mismatch,
+  immutable snapshots, symlink/source replacement, spool quotas, restart
+  recovery, cancellation, and cleanup.
+- Real worker E2E for local/remote, remote/local, same-worker, and two-worker
+  routes with files and directories, including interrupted/resumed transfers.
+- Verify generic request-body limits still protect every non-transfer route.
+- Add repeatable RPC-vs-HTTP benchmarks at representative file sizes. Keep the
+  feature only if HTTP materially reduces controller CPU/memory or transfer time;
+  correctness tests remain mandatory regardless of benchmark outcome.
+
+Exit criterion: large cross-machine `session_copy` avoids base64 control-channel
+relay, resumes safely, preserves transactional semantics, and automatically
+falls back for small or non-capable routes.
+
+### Phase 9 — Final integration and permanent documentation
+
+- Run the complete Linux/macOS/Windows suite, browser E2E, real remote-worker E2E,
+  package smoke, platform-wheel smoke, OpenTUI matrix, VS Code jobs, Docker/
+  Compose checks, release matrix, branch coverage ratchet, and bundled tmux smoke.
+- Threat-model and document Agent Bridge credentials/OAuth, audit full-payload
+  access, transfer tickets/spools, worker services, raw terminals, and embedded
+  native wheel payloads.
+- Update the product-difference report so all requested gaps are recorded as
+  implemented/adapted, and document intentional remaining differences.
+- Re-audit every upstream commit after the baseline ref and append it to the
+  single chronological upstream review table.
+- Generate final tool/config/instruction references and verify no removed
+  compatibility names return.
+- Record native artifact provenance, source version, licenses, hashes, supported
+  platforms, and rebuild procedure for OpenTUI and bundled tmux.
+- Replace temporary implementation notes with durable docs and delete this file
+  in the final migration commit.
+
+Exit criterion: this file has no unchecked implementation item, permanent docs
+are authoritative, the branch is clean/synchronized, all required CI is green,
+and deleting this temporary plan does not remove unique operational knowledge.
+
+## Planned phase checklist
+
+- [ ] Phase 1: remove stale-tool diagnostics/tombstones.
+- [ ] Phase 2: real Chromium browser E2E.
+- [ ] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
+- [ ] Phase 4: structured environment in `session_start`.
+- [ ] Phase 5A: recoverable oversized audit payload store.
+- [ ] Phase 5B: session-bound MCP `audit_tail`.
+- [ ] Phase 6: Linux/macOS worker user-service management.
+- [ ] Phase 7: platform wheels with embedded OpenTUI.
+- [ ] Phase 8: internal resumable HTTP large-file transfer.
+- [ ] Phase 9: full integration, permanent docs, and plan deletion.
