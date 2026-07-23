@@ -6,15 +6,19 @@ Use it when the control server should provide a stable set of additional tools o
 
 ## Directory layout
 
-The bridge reads from `agent_config` under `LOCAL_SHELL_MCP_STATE_DIR`:
+The bridge reads public configuration from `agent_config` and keeps credentials in a separate private `agent_auth` directory under `LOCAL_SHELL_MCP_STATE_DIR`:
 
 ```text
-/path/to/workspace/.local-shell-mcp/agent_config/
-  config.json
-  skills/
-    paper-writer/
-      SKILL.md
-      template.md
+/path/to/workspace/.local-shell-mcp/
+  agent_config/
+    config.json
+    skills/
+      paper-writer/
+        SKILL.md
+        template.md
+  agent_auth/
+    credentials.json
+    credentials.lock
 ```
 
 For the default workspace state directory, the server path is:
@@ -56,14 +60,16 @@ Example with stdio MCP, HTTP MCP, skills, and dynamic tools:
       "command": "github-mcp-server",
       "args": ["stdio"],
       "env": {
-        "EXAMPLE_ENV_VALUE": "replace-me"
-      }
+        "GITHUB_PERSONAL_ACCESS_TOKEN": {"secret": "github_token"}
+      },
+      "auth": {"mode": "secret"}
     },
     "docs": {
       "type": "http",
       "url": "https://docs.example.com/mcp",
-      "headers": {
-        "X-Example-Header": "replace-me"
+      "auth": {
+        "mode": "oauth",
+        "scopes": ["tools.read"]
       },
       "enabled": true
     }
@@ -81,7 +87,38 @@ Example with stdio MCP, HTTP MCP, skills, and dynamic tools:
 
 Supported MCP server `type` values are `stdio`, `http`, and `sse`.
 
-Values in `env`, `headers`, status output, and error payloads are redacted on a best-effort basis, but the config directory should still be protected like sensitive application configuration.
+Strings in `env` and `headers` remain literal values for backward compatibility. An object such as `{"secret": "github_token"}` is resolved from the private credential store only immediately before the stdio, HTTP, or SSE transport is opened. Do not place new credentials directly in `config.json`.
+
+## Credentials and OAuth
+
+Each server can set `auth.mode` to `none`, `secret`, or `oauth`:
+
+- `none` uses no Agent Bridge authentication. Literal headers and environment variables still work.
+- `secret` requires at least one structured secret reference in `env` or `headers`.
+- `oauth` is valid only for HTTP and SSE servers. Optional `auth.scopes` are sent to the authorization server.
+
+Store and inspect static secrets without placing values in shell history or process arguments:
+
+```bash
+printf '%s\n' "$GITHUB_TOKEN" | local-shell-mcp mcp secret set github github_token --stdin
+local-shell-mcp mcp secret list github
+local-shell-mcp mcp secret delete github github_token
+```
+
+Authorize an OAuth server with a random loopback callback port:
+
+```bash
+local-shell-mcp mcp auth docs
+local-shell-mcp mcp auth docs --no-open
+local-shell-mcp mcp auth docs --status
+local-shell-mcp mcp auth docs --logout
+```
+
+Authorization reuses the MCP SDK flow: protected-resource and authorization-server discovery, PKCE and state validation, optional dynamic client registration, token refresh, and persisted client/token metadata. A successful authorization performs a real `tools/list` probe. `--logout` attempts the advertised token revocation endpoint before removing local OAuth credentials and reports whether remote revocation succeeded, was unsupported, or failed.
+
+The private store is a versioned, bounded JSON file protected by a cross-process lock and atomic replacement. On POSIX systems its directory is mode `0700` and its files are mode `0600`. Invalid, oversized, or corrupt state produces an explicit error and is never silently reset. Status and MCP payloads expose only auth mode, authorization state, expiry/status metadata, counts, and redacted errors; secret names are available only through the local administrative `mcp secret list` command.
+
+Changing the private credential file participates in Agent Bridge registry fingerprinting, so secret updates, authorization, refresh, and logout become visible to dynamic tools without restarting the server.
 
 ## Skills
 
@@ -141,7 +178,7 @@ Disable dynamic tools when the client should use only the fixed bridge tools ins
 | Setting | Default | Meaning |
 |---|---:|---|
 | `LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED` | `true` | Enable agent bridge tools |
-| `LOCAL_SHELL_MCP_STATE_DIR` | `/workspace/.local-shell-mcp` | Runtime state root; `agent_config` is read from this directory |
+| `LOCAL_SHELL_MCP_STATE_DIR` | `/workspace/.local-shell-mcp` | Runtime state root; public `agent_config` and private `agent_auth` are derived from this directory |
 | `LOCAL_SHELL_MCP_AGENT_MCP_PROBE_TIMEOUT_S` | `5` | Probe timeout for external MCP servers |
 | `LOCAL_SHELL_MCP_AGENT_MCP_CALL_TIMEOUT_S` | `60` | External MCP tool-call timeout |
 | `LOCAL_SHELL_MCP_AGENT_DYNAMIC_MCP_TOOLS` | `true` | Register dynamic upstream MCP tools |
@@ -152,3 +189,5 @@ Disable dynamic tools when the client should use only the fixed bridge tools ins
 - Stdio MCP server commands run in the server environment. In Docker, that means inside the container. In local source/binary deployments, that means on the host running `local-shell-mcp`.
 - Network MCP servers use the server's network path, not the ChatGPT client's network path.
 - Review tool names and descriptions before exposing dynamic tools to a client.
+- OAuth authorization is interactive only in the CLI. Normal server operation uses stored access/refresh credentials and never launches a browser.
+- Secret values are injected into child-process environments or HTTP headers by design; an upstream MCP server can use or exfiltrate them. Configure only trusted servers and grant the narrowest scopes or tokens possible.

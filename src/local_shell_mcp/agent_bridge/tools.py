@@ -6,6 +6,7 @@ from contextlib import suppress
 from typing import Any
 
 from ..server.mcp.metadata import tool_safety_annotations
+from .auth import manager_redaction_maps
 from .models import AgentCapabilityRegistry
 from .registry import build_agent_registry
 from .service import (
@@ -42,9 +43,17 @@ class AgentBridgeToolReloader:
         self.skill_limits = dict(skill_limits or {})
         self._dynamic_tool_names: set[str] = set()
         self._fingerprint = agent_registry_fingerprint(
-            registry.config_dir, registry.skill_sources
+            registry.config_dir,
+            registry.skill_sources,
+            self._private_state_paths(),
         )
         self._lock = threading.RLock()
+
+    def _private_state_paths(self) -> tuple[Any, ...]:
+        store = getattr(self.registry.client_manager, "auth_store", None)
+        if store is None:
+            return ()
+        return tuple(store.fingerprint_paths())
 
     def current_registry(self) -> AgentCapabilityRegistry:
         """Return the latest bridge registry, refreshing dynamic tools if the config fingerprint changed."""
@@ -54,13 +63,17 @@ class AgentBridgeToolReloader:
     def refresh_if_needed(self) -> None:
         """Rebuild the registry and dynamic tool set when bridge config files change on disk."""
         fingerprint = agent_registry_fingerprint(
-            self.registry.config_dir, self.registry.skill_sources
+            self.registry.config_dir,
+            self.registry.skill_sources,
+            self._private_state_paths(),
         )
         if fingerprint == self._fingerprint:
             return
         with self._lock:
             fingerprint = agent_registry_fingerprint(
-                self.registry.config_dir, self.registry.skill_sources
+                self.registry.config_dir,
+                self.registry.skill_sources,
+                self._private_state_paths(),
             )
             if fingerprint == self._fingerprint:
                 return
@@ -104,15 +117,20 @@ class AgentBridgeToolReloader:
                 for candidate in server_record.tools
                 if str(tool_value(candidate, "name", "")) == record.tool_name
             )
+            env, headers = manager_redaction_maps(
+                self.registry.client_manager,
+                record.server_name,
+                server_record.config,
+            )
             tool_description = redact_configured_value_tree(
                 str(tool_value(tool, "description", "") or record.tool_name),
-                server_record.config.env,
-                server_record.config.headers,
+                env,
+                headers,
             )
             description = redact_configured_value_tree(
                 f"[agent mcp: {record.server_name}] {tool_description}",
-                server_record.config.env,
-                server_record.config.headers,
+                env,
+                headers,
             )
             self.mcp.add_tool(
                 make_mcp_handler(self, record.server_name, record.tool_name),

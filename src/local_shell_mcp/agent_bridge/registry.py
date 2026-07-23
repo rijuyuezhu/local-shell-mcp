@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from .auth import manager_redaction_maps
 from .models import (
     AgentCapabilityRegistry,
     AgentMcpServerRecord,
@@ -192,20 +193,15 @@ def build_agent_registry(
         for server_name, record in mcp_servers.items():
             if not record.available:
                 continue
+            env, headers = manager_redaction_maps(
+                client_manager, server_name, record.config
+            )
             for tool in record.tools:
                 display_server_name = str(
-                    redact_configured_value_tree(
-                        server_name,
-                        record.config.env,
-                        record.config.headers,
-                    )
+                    redact_configured_value_tree(server_name, env, headers)
                 )
                 display_tool_name = str(
-                    redact_configured_value_tree(
-                        tool.name,
-                        record.config.env,
-                        record.config.headers,
-                    )
+                    redact_configured_value_tree(tool.name, env, headers)
                 )
                 dynamic_name = make_unique_tool_name(
                     f"agent_mcp__{display_server_name}",

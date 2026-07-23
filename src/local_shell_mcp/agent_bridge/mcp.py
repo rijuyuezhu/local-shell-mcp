@@ -14,6 +14,13 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.types import PaginatedRequestParams
 
 from ..utils.serialization import to_jsonable
+from .auth import (
+    OAuthProviderFactory,
+    build_stored_oauth_provider,
+    oauth_status,
+    resolve_config_mapping,
+)
+from .auth_store import AgentAuthStore
 from .models import AgentMcpServerConfig
 
 
@@ -82,14 +89,62 @@ def normalize_tool_result(result: Any) -> dict[str, Any]:
 class AgentMcpClientManager:
     """Create short-lived MCP client sessions for stdio, HTTP, and SSE upstream servers."""
 
-    def __init__(self, call_timeout_s: float = 60) -> None:
+    def __init__(
+        self,
+        call_timeout_s: float = 60,
+        auth_store: AgentAuthStore | None = None,
+        oauth_provider_factory: OAuthProviderFactory | None = None,
+    ) -> None:
         self.call_timeout_s = call_timeout_s
+        self.auth_store = auth_store
+        self.oauth_provider_factory = oauth_provider_factory
+
+    def resolved_maps(
+        self, name: str, server: AgentMcpServerConfig
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """Resolve transport env/headers immediately before opening a connection."""
+        return (
+            resolve_config_mapping(self.auth_store, name, server.env),
+            resolve_config_mapping(self.auth_store, name, server.headers),
+        )
+
+    def redaction_maps(
+        self, name: str, server: AgentMcpServerConfig
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """Resolve configured values solely for error/payload redaction."""
+        return self.resolved_maps(name, server)
+
+    def auth_status(
+        self, name: str, server: AgentMcpServerConfig
+    ) -> dict[str, Any]:
+        """Return public authorization status for registry payloads."""
+        return oauth_status(self.auth_store, name, server)
+
+    def _oauth_auth(
+        self, name: str, server: AgentMcpServerConfig
+    ) -> httpx.Auth | None:
+        if server.auth.mode != "oauth":
+            return None
+        if self.oauth_provider_factory is not None:
+            return self.oauth_provider_factory(name, server)
+        if self.auth_store is None:
+            raise ValueError(
+                f"OAuth authorization required for {name}; run local-shell-mcp mcp auth {name}"
+            )
+        status = self.auth_status(name, server)
+        if not status["authorized"]:
+            raise ValueError(
+                f"OAuth authorization required for {name}; run local-shell-mcp mcp auth {name}"
+            )
+        return build_stored_oauth_provider(self.auth_store, name, server)
 
     @asynccontextmanager
     async def _session(
         self, name: str, server: AgentMcpServerConfig
     ) -> AsyncGenerator[ClientSession]:
         """Open and initialize the transport-specific MCP client session for one configured server."""
+        env, headers = self.resolved_maps(name, server)
+        auth = self._oauth_auth(name, server)
         match server.type:
             case "stdio":
                 if not server.command:
@@ -97,7 +152,7 @@ class AgentMcpClientManager:
                 params = StdioServerParameters(
                     command=server.command,
                     args=server.args,
-                    env=server.env or None,
+                    env=env or None,
                 )
                 async with (
                     stdio_client(params) as (read_stream, write_stream),
@@ -109,7 +164,9 @@ class AgentMcpClientManager:
                 if not server.url:
                     raise ValueError("http MCP server requires url")
                 async with (
-                    httpx.AsyncClient(headers=server.headers or None) as client,
+                    httpx.AsyncClient(
+                        headers=headers or None, auth=auth
+                    ) as client,
                     streamable_http_client(server.url, http_client=client) as (
                         read_stream,
                         write_stream,
@@ -123,7 +180,9 @@ class AgentMcpClientManager:
                 if not server.url:
                     raise ValueError("sse MCP server requires url")
                 async with (
-                    sse_client(server.url, headers=server.headers or None) as (
+                    sse_client(
+                        server.url, headers=headers or None, auth=auth
+                    ) as (
                         read_stream,
                         write_stream,
                     ),

@@ -61,6 +61,18 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 - Bearer tokens are not proof-of-possession tokens. Anyone who obtains a valid token can use it until expiry.
 - Metadata is unsigned. Clients should use HTTPS and validate the metadata resource value and issuer before trusting it.
 
+## Agent Bridge credentials and upstream OAuth
+
+Agent Bridge authentication is separate from the built-in OAuth server that protects this `local-shell-mcp` deployment. It authenticates the control server as a client of configured upstream MCP servers.
+
+- Public manifest files may contain literal `env` and `headers` for compatibility, but new credentials should use structured secret references and `auth.mode="secret"`. Secret references are resolved only immediately before transport startup.
+- Private values, OAuth tokens, dynamic client information, absolute expiry timestamps, and discovered authorization-server metadata are stored under `state_dir/agent_auth`. The store is versioned and size-bounded, uses a cross-process lock and atomic replacement, and is owner-only (`0700` directory and `0600` files on POSIX). Corrupt or unsupported data fails explicitly and is not reset automatically.
+- `local-shell-mcp mcp secret set ... --stdin` is the only secret-value input surface. Values are not accepted as command arguments, printed by list/status commands, serialized into the public manifest, or returned through MCP tools.
+- Upstream OAuth uses the MCP SDK's protected-resource and authorization-server discovery, PKCE, state validation, dynamic client registration, refresh, and HTTP authentication. The interactive CLI binds a one-shot callback to a random `127.0.0.1` port. Normal server operation is noninteractive: it may refresh stored credentials, but a new authorization requirement fails immediately with instructions to run the CLI.
+- OAuth logout attempts the advertised revocation endpoint before deleting local credentials. The command distinguishes successful, unsupported, and failed remote revocation; local state is cleared even when revocation is unsupported or fails.
+- Agent Bridge status exposes only mode, authorization state, expiry/status metadata, counts, and redacted errors. Administrative secret names are available only to the local `mcp secret list` command. Credential-store changes participate in the dynamic registry fingerprint so updates become visible without restart.
+- Secret-based stdio servers receive values in their child environment; HTTP/SSE servers receive them in request headers. OAuth and static secrets therefore grant the upstream server access to those credentials. Configure only trusted upstreams and use narrowly scoped, revocable credentials.
+
 ## Inbound HTTP request limits
 
 All HTTP-mode applications apply `max_http_request_bytes` before REST, MCP, OAuth, download, or remote-worker route parsing. The default is 16,000,000 bytes; set it to `0` only when another trusted front end enforces an equivalent or stricter limit. The middleware rejects oversized requests with HTTP 413 and a stable JSON error before buffering more than the configured budget.

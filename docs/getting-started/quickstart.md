@@ -50,7 +50,7 @@ Notes:
 - `LOCAL_SHELL_MCP_BASE_URL` is the public origin only, without `/mcp`.
 - `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` gates the local approval page. Use a long random value.
 - `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false` keeps built-in workspace and command restrictions active.
-- `LOCAL_SHELL_MCP_STATE_DIR` stores audit logs, temporary files, OAuth signing state, private download snapshots/link state, and agent bridge config.
+- `LOCAL_SHELL_MCP_STATE_DIR` stores audit logs, temporary files, OAuth signing state, private download snapshots/link state, and Agent Bridge public config plus private credentials.
 
 ## 3. Start locally for a smoke test
 

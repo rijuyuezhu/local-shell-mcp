@@ -1,10 +1,14 @@
 import argparse
+import json
 import textwrap
 
 import pytest
+from mcp.shared.auth import OAuthToken
 
+import local_shell_mcp.agent_bridge.cli as agent_cli
 import local_shell_mcp.main as cli
 from local_shell_mcp import __version__
+from local_shell_mcp.agent_bridge.auth_store import AgentAuthStore
 from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     cli_overrides_from_args,
@@ -278,3 +282,322 @@ def test_server_overrides_include_only_explicit_values():
         "mode": "stdio",
         "remote_enabled": False,
     }
+
+
+def _write_agent_manifest(state_dir, server):
+    config_dir = state_dir / "agent_config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "config.json").write_text(
+        json.dumps({"version": 1, "mcpServers": {"docs": server}}),
+        encoding="utf-8",
+    )
+
+
+def test_mcp_credential_subcommands_parse_to_public_handler():
+    parser = cli._build_parser()
+
+    auth = parser.parse_args(["mcp", "auth", "docs", "--status"])
+    no_open = parser.parse_args(["mcp", "auth", "docs", "--no-open"])
+    secret_set = parser.parse_args(
+        ["mcp", "secret", "set", "docs", "token", "--stdin"]
+    )
+    secret_list = parser.parse_args(["mcp", "secret", "list", "docs"])
+    secret_delete = parser.parse_args(
+        ["mcp", "secret", "delete", "docs", "token"]
+    )
+
+    assert auth.handler is agent_cli.run_mcp_cli_from_args
+    assert auth.status is True
+    assert no_open.no_open is True
+    assert secret_set.stdin is True
+    assert secret_list.server == "docs"
+    assert secret_delete.name == "token"
+
+
+def test_mcp_auth_actions_are_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        cli._build_parser().parse_args(
+            ["mcp", "auth", "docs", "--status", "--no-open"]
+        )
+
+
+def test_mcp_secret_set_list_delete_never_print_values(
+    monkeypatch, tmp_path, capsys
+):
+    state_dir = tmp_path / "state"
+    _write_agent_manifest(
+        state_dir,
+        {
+            "type": "http",
+            "url": "https://example.test/mcp",
+            "enabled": False,
+            "headers": {"Authorization": {"secret": "token"}},
+            "auth": {"mode": "secret"},
+        },
+    )
+    parser = cli._build_parser()
+    monkeypatch.setattr(
+        agent_cli, "_read_secret_stdin", lambda: "private-value"
+    )
+
+    set_args = parser.parse_args(
+        [
+            "--state-dir",
+            str(state_dir),
+            "mcp",
+            "secret",
+            "set",
+            "docs",
+            "token",
+            "--stdin",
+        ]
+    )
+    set_args.handler(set_args)
+    set_output = capsys.readouterr().out
+    assert "private-value" not in set_output
+    assert json.loads(set_output)["stored"] is True
+    store = AgentAuthStore(state_dir / "agent_auth")
+    assert store.get_secret("docs", "token") == "private-value"
+
+    list_args = parser.parse_args(
+        ["--state-dir", str(state_dir), "mcp", "secret", "list", "docs"]
+    )
+    list_args.handler(list_args)
+    list_output = capsys.readouterr().out
+    assert "private-value" not in list_output
+    assert json.loads(list_output) == {"secrets": {"docs": ["token"]}}
+
+    delete_args = parser.parse_args(
+        [
+            "--state-dir",
+            str(state_dir),
+            "mcp",
+            "secret",
+            "delete",
+            "docs",
+            "token",
+        ]
+    )
+    delete_args.handler(delete_args)
+    assert json.loads(capsys.readouterr().out)["deleted"] is True
+    assert store.list_secrets("docs") == {}
+
+
+def test_mcp_auth_status_reports_only_safe_metadata(tmp_path, capsys):
+    state_dir = tmp_path / "state"
+    _write_agent_manifest(
+        state_dir,
+        {
+            "type": "http",
+            "url": "https://example.test/mcp",
+            "enabled": False,
+            "auth": {"mode": "oauth", "scopes": ["tools.read"]},
+        },
+    )
+    args = cli._build_parser().parse_args(
+        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--status"]
+    )
+
+    args.handler(args)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "authorized": False,
+        "client_registered": False,
+        "expires_at": None,
+        "mode": "oauth",
+        "server": "docs",
+        "status": "unauthorized",
+    }
+
+
+def test_mcp_auth_no_open_runs_interactive_authorization(
+    monkeypatch, tmp_path, capsys
+):
+    state_dir = tmp_path / "state"
+    _write_agent_manifest(
+        state_dir,
+        {
+            "type": "http",
+            "url": "https://example.test/mcp",
+            "enabled": False,
+            "auth": {"mode": "oauth"},
+        },
+    )
+    calls = []
+
+    async def fake_authorize(settings, server_name, server, *, no_open):
+        calls.append((settings.state_dir, server_name, server.url, no_open))
+        return {"server": server_name, "authorized": True}
+
+    monkeypatch.setattr(agent_cli, "authorize_server", fake_authorize)
+    args = cli._build_parser().parse_args(
+        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--no-open"]
+    )
+
+    args.handler(args)
+
+    assert calls == [
+        (state_dir.resolve(), "docs", "https://example.test/mcp", True)
+    ]
+    assert json.loads(capsys.readouterr().out)["authorized"] is True
+
+
+def test_mcp_logout_reports_revocation_and_clears_local_credentials(
+    monkeypatch, tmp_path, capsys
+):
+    state_dir = tmp_path / "state"
+    _write_agent_manifest(
+        state_dir,
+        {
+            "type": "http",
+            "url": "https://example.test/mcp",
+            "enabled": False,
+            "auth": {"mode": "oauth"},
+        },
+    )
+    store = AgentAuthStore(state_dir / "agent_auth")
+    store.set_tokens(
+        "docs",
+        OAuthToken.model_validate(
+            {"access_token": "access", "token_type": "Bearer"}
+        ),
+    )
+
+    async def fake_revoke(_store, server_name, server):
+        assert server_name == "docs"
+        assert server.url == "https://example.test/mcp"
+        return agent_cli.RevocationResult(
+            "unsupported", "no revocation endpoint advertised"
+        )
+
+    monkeypatch.setattr(agent_cli, "revoke_stored_oauth", fake_revoke)
+    args = cli._build_parser().parse_args(
+        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--logout"]
+    )
+
+    args.handler(args)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["remote_revocation"] == "unsupported"
+    assert payload["local_credentials_cleared"] is True
+    assert store.get_tokens("docs") is None
+
+
+def test_secret_stdin_reader_validates_tty_size_encoding_and_newlines(
+    monkeypatch,
+):
+    import io
+    from types import SimpleNamespace
+
+    def install(data: bytes, *, tty: bool = False):
+        monkeypatch.setattr(
+            agent_cli.sys,
+            "stdin",
+            SimpleNamespace(isatty=lambda: tty, buffer=io.BytesIO(data)),
+        )
+
+    install(b"ignored", tty=True)
+    with pytest.raises(ValueError, match="interactive terminal"):
+        agent_cli._read_secret_stdin()
+
+    install(b"x" * 65_537)
+    with pytest.raises(ValueError, match="exceeds"):
+        agent_cli._read_secret_stdin()
+
+    install(b"\xff")
+    with pytest.raises(ValueError, match="UTF-8"):
+        agent_cli._read_secret_stdin()
+
+    install(b"value\r\n")
+    assert agent_cli._read_secret_stdin() == "value"
+    install(b"value\n")
+    assert agent_cli._read_secret_stdin() == "value"
+    install(b"")
+    with pytest.raises(ValueError, match="must not be empty"):
+        agent_cli._read_secret_stdin()
+
+
+def test_mcp_cli_reports_manifest_and_server_errors(tmp_path, capsys):
+    state_dir = tmp_path / "state"
+    parser = cli._build_parser()
+    missing_manifest = parser.parse_args(
+        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--status"]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        missing_manifest.handler(missing_manifest)
+    assert "manifest is unavailable" in capsys.readouterr().err
+
+    _write_agent_manifest(
+        state_dir,
+        {
+            "type": "http",
+            "url": "https://example.test/mcp",
+            "enabled": False,
+        },
+    )
+    unknown = parser.parse_args(
+        ["--state-dir", str(state_dir), "mcp", "auth", "unknown", "--status"]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        unknown.handler(unknown)
+    assert "Unknown Agent Bridge MCP server" in capsys.readouterr().err
+
+    non_oauth = parser.parse_args(
+        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--status"]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        non_oauth.handler(non_oauth)
+    assert "not configured for OAuth" in capsys.readouterr().err
+
+
+def test_mcp_cli_failed_remote_revocation_exits_one(
+    monkeypatch, tmp_path, capsys
+):
+    state_dir = tmp_path / "state"
+    _write_agent_manifest(
+        state_dir,
+        {
+            "type": "http",
+            "url": "https://example.test/mcp",
+            "enabled": False,
+            "auth": {"mode": "oauth"},
+        },
+    )
+
+    async def fake_revoke(*_args):
+        return agent_cli.RevocationResult("failed", "remote unavailable")
+
+    monkeypatch.setattr(agent_cli, "revoke_stored_oauth", fake_revoke)
+    args = cli._build_parser().parse_args(
+        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--logout"]
+    )
+    with pytest.raises(SystemExit, match="1"):
+        args.handler(args)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["remote_revocation"] == "failed"
+    assert payload["detail"] == "remote unavailable"
+
+
+def test_mcp_cli_rejects_unknown_secret_dispatch(monkeypatch, tmp_path, capsys):
+    from argparse import Namespace
+
+    state_dir = tmp_path / "state"
+    args = Namespace(
+        config=None,
+        state_dir=str(state_dir),
+        mcp_command="secret",
+        secret_command="unknown",
+        server="docs",
+        name="token",
+    )
+    monkeypatch.setattr(
+        agent_cli,
+        "_settings_from_args",
+        lambda _args: agent_cli.load_settings(
+            None, {"state_dir": str(state_dir)}
+        ),
+    )
+    with pytest.raises(SystemExit, match="2"):
+        agent_cli.run_mcp_cli_from_args(args)
+    assert "unsupported secret command" in capsys.readouterr().err

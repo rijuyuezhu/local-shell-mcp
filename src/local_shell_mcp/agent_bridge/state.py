@@ -104,9 +104,11 @@ def agent_config_fingerprint(config_dir: Path) -> str:
 
 
 def agent_registry_fingerprint(
-    config_dir: Path, sources: tuple[SkillSource, ...]
+    config_dir: Path,
+    sources: tuple[SkillSource, ...],
+    private_state_paths: tuple[Path, ...] = (),
 ) -> str:
-    """Fingerprint the managed manifest tree plus all ordered Skill source roots."""
+    """Fingerprint manifest/Skill roots plus bounded private auth state files."""
     digest = hashlib.sha256()
     digest.update(agent_config_fingerprint(config_dir).encode("ascii"))
     for source in sources:
@@ -115,6 +117,16 @@ def agent_registry_fingerprint(
         digest.update(str(source.path).encode("utf-8", errors="replace"))
         digest.update(b"\0")
         digest.update(agent_config_fingerprint(source.path).encode("ascii"))
+    for path in private_state_paths:
+        digest.update(str(path).encode("utf-8", errors="replace"))
+        digest.update(b"\0")
+        try:
+            payload = path.read_bytes()
+        except FileNotFoundError:
+            payload = b"<missing>"
+        except OSError as exc:
+            payload = f"<error:{type(exc).__name__}>".encode("ascii")
+        digest.update(hashlib.sha256(payload).digest())
     return digest.hexdigest()
 
 

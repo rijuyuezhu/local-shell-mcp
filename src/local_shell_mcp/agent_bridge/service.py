@@ -16,6 +16,8 @@ from ..schemas.result_models.agent import (
 )
 from ..tool_session.store import get_tool_session_store
 from ..utils.serialization import to_jsonable
+from .auth import manager_redaction_maps
+from .auth_store import AgentAuthStore
 from .mcp import AgentMcpClientManager
 from .models import AgentCapabilityRegistry, AgentMcpServerRecord, SkillRecord
 from .redaction import (
@@ -47,9 +49,18 @@ def build_agent_registry_from_settings(
                 "remote agent Skill registries must be dispatched to the worker"
             )
         active_project_root = Path(session.workdir)
+    if client_manager_factory is AgentMcpClientManager:
+        client_manager = AgentMcpClientManager(
+            active_settings.agent_mcp_call_timeout_s,
+            AgentAuthStore(active_settings.agent_auth_dir),
+        )
+    else:
+        client_manager = client_manager_factory(
+            active_settings.agent_mcp_call_timeout_s
+        )
     return build_agent_registry(
         active_settings.agent_config_dir,
-        client_manager_factory(active_settings.agent_mcp_call_timeout_s),
+        client_manager,
         active_settings.agent_mcp_probe_timeout_s,
         None if active_settings.agent_dynamic_mcp_tools else False,
         None if active_settings.agent_dynamic_skill_tools else False,
@@ -242,31 +253,36 @@ def list_agent_mcp_tools_payload(
         (record.server_name, record.tool_name): dynamic_name
         for dynamic_name, record in registry.dynamic_mcp_tool_map.items()
     }
-    rows = [
-        agent_mcp_tool_row(
-            server_name,
-            tool,
-            record.config.env,
-            record.config.headers,
-            dynamic_names.get((server_name, str(tool_value(tool, "name", "")))),
+    rows = []
+    for server_name, record in records:
+        env, headers = manager_redaction_maps(
+            registry.client_manager, server_name, record.config
         )
-        for server_name, record in records
-        for tool in record.tools
-    ]
+        rows.extend(
+            agent_mcp_tool_row(
+                server_name,
+                tool,
+                env,
+                headers,
+                dynamic_names.get(
+                    (server_name, str(tool_value(tool, "name", "")))
+                ),
+            )
+            for tool in record.tools
+        )
     return ListAgentMcpToolsOutput(tools=rows)
 
 
-def _agent_mcp_unavailable_error(record: AgentMcpServerRecord) -> str:
+def _agent_mcp_unavailable_error(
+    registry: AgentCapabilityRegistry, record: AgentMcpServerRecord
+) -> str:
     """Return the redacted availability error for an unreachable MCP server."""
     if not record.error:
         return "unknown error"
-    return _redact_text(
-        redact_configured_values(
-            record.error,
-            record.config.env,
-            record.config.headers,
-        )
+    env, headers = manager_redaction_maps(
+        registry.client_manager, record.name, record.config
     )
+    return _redact_text(redact_configured_values(record.error, env, headers))
 
 
 async def call_agent_mcp_tool_payload(
@@ -284,19 +300,18 @@ async def call_agent_mcp_tool_payload(
     if not record.available:
         raise ValueError(
             f"MCP server {server} is unavailable: "
-            f"{_agent_mcp_unavailable_error(record)}"
+            f"{_agent_mcp_unavailable_error(registry, record)}"
         )
+    env, headers = manager_redaction_maps(
+        registry.client_manager, server, record.config
+    )
     try:
         data = await registry.client_manager.call_tool(
             server, record.config, tool, args or {}
         )
     except Exception as exc:
-        raise redacted_mcp_call_error(
-            exc, record.config.env, record.config.headers
-        ) from None
-    output = redact_mcp_error_payload(
-        data, record.config.env, record.config.headers
-    )
+        raise redacted_mcp_call_error(exc, env, headers) from None
+    output = redact_mcp_error_payload(data, env, headers)
     if not isinstance(output, dict):
         output = {"result": output}
     return CallAgentMcpToolOutput(**output)

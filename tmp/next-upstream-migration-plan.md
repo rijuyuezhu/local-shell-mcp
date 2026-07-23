@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-2 complete; Phase 3 pending
+Status: implementation in progress — Phases 1-2 complete; Phase 3 in progress
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `083d3e8a5e02905a3346212839060596751c3c62` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `553161ddfa1ac7c85e72ec349a33d69060d8692c` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -289,6 +289,24 @@ passed. Phase 2 has no unresolved design, implementation, test, or CI issue; Pha
 
 ### Phase 3 — Add Agent Bridge secret storage and OAuth client authentication
 
+Status: implementation and local validation complete; remote CI pending (started 2026-07-23).
+
+Actual baseline: branch HEAD and
+`origin/feat/port-upstream-features-2026-07` both point to `553161d`; fetched
+`upstream/main` remains `f72164a`, so no new upstream commit requires review
+before this phase.
+
+Initial audit: the existing manifest supports only literal `env` and `headers`;
+there is no private Agent Bridge credential store or per-server auth metadata.
+The installed MCP SDK is 1.28.0 and already provides `OAuthClientProvider` plus
+the asynchronous `TokenStorage` protocol, including discovery, PKCE/state,
+dynamic registration, refresh, and HTTPX integration. The implementation will
+reuse those primary SDK interfaces. Existing cross-platform private file locks
+and atomic owner-only writes in `utils/private_files.py` will back a dedicated
+`state_dir/agent_auth` store. Dynamic Agent Bridge tool reload currently
+fingerprints only manifest/Skill files, so auth-store changes must join that
+fingerprint to make successful secret/auth changes visible without restart.
+
 Configuration contract:
 
 - Extend the existing Agent Bridge manifest schema rather than adding a second
@@ -328,8 +346,8 @@ local-shell-mcp mcp secret delete <server> <name>
   `127.0.0.1` with an ephemeral port, PKCE/state validation, dynamic client
   registration when required, token refresh, and an optional printed URL when a
   browser cannot be opened.
-- Secret values are read from stdin or an interactive no-echo prompt, never from
-  positional argv.
+- Secret values are read only from bounded UTF-8 stdin, never from positional or
+  option argv. Interactive terminal stdin is refused.
 - Successful auth immediately probes `tools/list`, persists the resulting state,
   and refreshes the Agent Bridge registry without restarting the server.
 - Logout deletes local token/client state and attempts remote revocation only
@@ -343,6 +361,32 @@ Runtime integration:
 - Preserve current timeout, redaction, dynamic-tool hot reload, and short-lived
   client-session behavior.
 
+Implementation result:
+
+- Manifest version 1 now accepts literal values or `{"secret": "name"}` references
+  and validates mutually coherent `none`, `secret`, and `oauth` modes. Secret
+  references are allowed only in `secret` mode; OAuth is limited to HTTP/SSE.
+- `state_dir/agent_auth/credentials.json` is a versioned 1 MiB-bounded private
+  store with 64 KiB per-secret limits, cross-process locking, atomic owner-only
+  writes, explicit corruption/schema errors, concurrent mutation support, and no
+  silent reset. It persists static secrets, SDK tokens/client information,
+  absolute expiry, and discovered public authorization-server metadata.
+- The MCP SDK provider is reused for discovery, DCR, PKCE/state, token exchange,
+  HTTP auth, and refresh. Persisted expiry/metadata make refresh work after process
+  restart; failed refresh removes stale tokens while preserving client/metadata.
+  Normal server operation is fail-fast and noninteractive when reauthorization is
+  required.
+- CLI commands implement secret set/list/delete and OAuth authorize/status/logout.
+  Authorization uses a bounded one-shot random `127.0.0.1` callback and verifies
+  success with `tools/list`; logout discovers and attempts token revocation before
+  clearing local credentials and reports the remote result.
+- Stdio/HTTP/SSE transports resolve credentials only at connection time. Public
+  status, dynamic descriptions, errors, and tool payloads use resolved redaction
+  maps but expose no secret values or reference names. Credential file changes are
+  included in the dynamic registry fingerprint for no-restart reload.
+- Permanent Agent Bridge, configuration, quickstart, security, and fork-difference
+  documentation now describes the workflow and upstream-server trust boundary.
+
 Tests:
 
 - Private/atomic credential store, concurrent writers, corruption, permission,
@@ -353,6 +397,30 @@ Tests:
 - Static secret injection tests proving values are absent from argv, status,
   logs, exceptions, audit, and generated schemas.
 - Hot reload and dynamic tool invocation after auth without process restart.
+
+Final local validation:
+
+- The focused Agent Bridge/auth/CLI suite passes 121 tests. It covers private
+  permissions and corruption, concurrent writers, size/schema bounds, all auth
+  status modes, secret injection/redaction, CLI lifecycle/errors, loopback
+  callback validation, SDK discovery/DCR/PKCE/state, restart refresh, failed
+  refresh, revocation, noninteractive runtime, and existing bridge regressions.
+- The full branch-coverage suite passes `830 passed, 2 skipped`; total branch
+  coverage is 84.23% versus the unchanged 82.60% baseline. New modules are
+  individually above the required 90% (`auth.py` 97.01%, `auth_store.py` 98.14%,
+  `cli.py` 92.59%); `models.py` improves to 97.07%. The 181-file ratchet accepts
+  the three high-coverage new modules with no existing baseline reduction.
+- The real Chromium Human UI scenario passes in 20.47 seconds. Repository-wide
+  ruff format/check, pyright, lockfile, generated configuration/tool/instruction,
+  public-docstring, `git diff --check`, strict MkDocs, and all three generated
+  reference-asset checks pass. The Phase 2 raw tmux integration test also passes
+  80 consecutive stress iterations after its terminal-emulator handshake was
+  made deterministic with a fresh-prompt input barrier.
+- Secret scanning reports zero findings in every Phase 3 source and test file.
+  Existing simulated fixtures elsewhere remain unchanged.
+
+Repository-wide pre-commit, implementation commit/push, and remote CI remain
+pending.
 
 Exit criterion: an HTTP MCP server requiring OAuth and a stdio/HTTP server
 requiring a stored secret can both be configured and called without plaintext

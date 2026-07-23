@@ -9,7 +9,59 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from .sources import SkillSource
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
+
+
+class AgentSecretReference(BaseModel):
+    """Reference to a value held in the private Agent Bridge credential store."""
+
+    model_config = ConfigDict(extra="forbid")
+    """Reject unknown secret-reference fields."""
+
+    secret: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+        description="Private credential-store key resolved for this server.",
+    )
+
+
+class AgentMcpAuthConfig(BaseModel):
+    """Authentication mode and OAuth scopes for one upstream MCP server."""
+
+    model_config = ConfigDict(extra="forbid")
+    """Reject unknown authentication-policy fields."""
+
+    mode: Literal["none", "secret", "oauth"] = "none"
+    """Authentication mode applied to this upstream MCP server."""
+    scopes: list[str] = Field(
+        default_factory=list,
+        description="OAuth scopes requested during interactive authorization.",
+    )
+
+    @field_validator("scopes")
+    @classmethod
+    def normalize_scopes(cls, value: list[str]) -> list[str]:
+        """Trim, validate, and deduplicate OAuth scope tokens in order."""
+        normalized = []
+        for scope in value:
+            scope = scope.strip()
+            if not scope or any(character.isspace() for character in scope):
+                raise ValueError(
+                    "OAuth scopes must be non-empty tokens without whitespace"
+                )
+            if scope not in normalized:
+                normalized.append(scope)
+        return normalized
+
+
+AgentConfigValue = str | AgentSecretReference
 
 
 class AgentMcpServerConfig(BaseModel):
@@ -23,12 +75,14 @@ class AgentMcpServerConfig(BaseModel):
     """Executable command for stdio MCP servers."""
     args: list[str] = Field(default_factory=list)
     """Command-line arguments passed to a stdio MCP server."""
-    env: dict[str, str] = Field(default_factory=dict)
+    env: dict[str, AgentConfigValue] = Field(default_factory=dict)
     """Environment variables injected into a stdio MCP server process."""
     url: str | None = None
     """HTTP or SSE endpoint URL for network MCP servers."""
-    headers: dict[str, str] = Field(default_factory=dict)
+    headers: dict[str, AgentConfigValue] = Field(default_factory=dict)
     """HTTP headers sent when connecting to network MCP servers."""
+    auth: AgentMcpAuthConfig = Field(default_factory=AgentMcpAuthConfig)
+    """Authentication policy for this upstream server."""
 
     @field_validator("command")
     @classmethod
@@ -45,6 +99,27 @@ class AgentMcpServerConfig(BaseModel):
         if value is not None and not value.strip():
             raise ValueError("url must not be empty")
         return value
+
+    @model_validator(mode="after")
+    def validate_auth_transport(self) -> AgentMcpServerConfig:
+        """Enforce transport and secret-reference consistency for auth modes."""
+        secret_references = any(
+            isinstance(value, AgentSecretReference)
+            for value in (*self.env.values(), *self.headers.values())
+        )
+        if self.auth.mode == "oauth" and self.type not in {"http", "sse"}:
+            raise ValueError(
+                "OAuth authentication is valid only for HTTP or SSE MCP servers"
+            )
+        if self.auth.mode == "secret" and not secret_references:
+            raise ValueError(
+                "secret authentication requires at least one env or header secret reference"
+            )
+        if self.auth.mode != "secret" and secret_references:
+            raise ValueError(
+                "env or header secret references require auth.mode='secret'"
+            )
+        return self
 
 
 class AgentSkillsConfig(BaseModel):
@@ -213,6 +288,7 @@ class AgentCapabilityRegistry:
 
     def config_status(self) -> dict[str, Any]:
         """Return a redacted status payload suitable for diagnostics and public tool responses."""
+        from .auth import manager_auth_status, manager_redaction_maps
         from .redaction import _redact_text, redact_configured_values
 
         return {
@@ -237,8 +313,9 @@ class AgentCapabilityRegistry:
                         _redact_text(
                             redact_configured_values(
                                 record.error,
-                                record.config.env,
-                                record.config.headers,
+                                *manager_redaction_maps(
+                                    self.client_manager, name, record.config
+                                ),
                             )
                         )
                         if record.error
@@ -250,6 +327,9 @@ class AgentCapabilityRegistry:
                     "headers": {
                         str(key): "<redacted>" for key in record.config.headers
                     },
+                    "auth": manager_auth_status(
+                        self.client_manager, name, record.config
+                    ),
                 }
                 for name, record in self.mcp_servers.items()
             },

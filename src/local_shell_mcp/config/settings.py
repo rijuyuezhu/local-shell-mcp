@@ -13,6 +13,7 @@ DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
 AUDIT_LOG_STATE_DIR_NAME = "audit_log"
 AGENT_CONFIG_STATE_DIR_NAME = "agent_config"
+AGENT_AUTH_STATE_DIR_NAME = "agent_auth"
 ENV_PREFIX = "LOCAL_SHELL_MCP_"
 _RESERVED_UI_PATHS = (
     "/api",
@@ -285,6 +286,11 @@ class Settings(BaseSettings):
     def agent_config_dir(self) -> Path:
         """Read-only capability config directory, derived from state_dir."""
         return self.state_dir / AGENT_CONFIG_STATE_DIR_NAME
+
+    @property
+    def agent_auth_dir(self) -> Path:
+        """Private Agent Bridge credential directory, derived from state_dir."""
+        return self.state_dir / AGENT_AUTH_STATE_DIR_NAME
 
     @property
     def resolved_base_url(self) -> str:

@@ -307,8 +307,24 @@ async def test_real_terminal_bridge_streams_raw_bytes_and_preserves_tmux_session
     try:
         opened = await open_terminal_bridge_execute(shell_id, 90, 28)
         bridge_id = opened["bridge_id"]
-        # The test prompt is emitted only after tmux completes attach-side
-        # terminal initialization, so it is a deterministic input barrier.
+        # The raw bridge normally connects to xterm.js, which answers tmux's
+        # bounded capability, color, and size queries. Reproduce that handshake,
+        # then clear any unrecognized queued input and submit an empty line. The
+        # fresh Bash prompt proves attach initialization can accept application
+        # input before the real assertion command is written.
+        terminal_responses = (
+            b"\x1b[?62;4;9;22c"
+            b"\x1b[>0;276;0c"
+            b"\x1b]10;rgb:d8d8/e9e9/f5f5\x1b\\"
+            b"\x1b]11;rgb:0707/1111/1f1f\x1b\\"
+            b"\x1b[8;28;90t"
+            b"\x1b[4;532;738t"
+            b"\x15\r"
+        )
+        await write_terminal_bridge_execute(
+            bridge_id,
+            base64.b64encode(terminal_responses).decode("ascii"),
+        )
         await read_until(ready_marker)
 
         command = b"printf '\\033[31mBRIDGE_RAW_OK\\033[0m\\n'\r"
