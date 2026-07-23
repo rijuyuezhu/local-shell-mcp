@@ -619,8 +619,8 @@ Final local validation:
   worker E2E. Direct failure-injection coverage validates malformed references,
   invalid roots/objects, open races, byte-count/digest/JSON/UTF-8 mismatches,
   bounded gzip bombs, recursive lists, quota pruning, and GC error paths.
-- The full branch-coverage suite passes `872 passed, 2 skipped`; total branch
-  coverage is 84.78% against the unchanged 82.60% baseline. The new
+- The full branch-coverage suite passes `874 passed, 2 skipped`; total branch
+  coverage is 84.82% against the unchanged 82.60% baseline. The new
   `audit_payloads.py` module is 98.12%; the new operation, input schema, result
   schema, and registry modules are 100%. The ratchet passes across 181 tracked
   files and all nine new modules without reducing any existing baseline.
@@ -630,13 +630,29 @@ Final local validation:
   and operation-sensitive authorization behavior.
 - Repository-wide ruff format/check, pyright, lockfile, generated config/tool/
   instruction checks, strict MkDocs, all three reference assets, and
-  `git diff --check` pass. Secret scanning reports zero findings in all 26
+  `git diff --check` pass. Secret scanning reports zero findings in all 28
   modified Phase 5 source and test files.
 
 Repository-wide pre-commit passed. Implementation commit
 `4bc64c527908758a48de2c4695cdda284a0dc2ee`
-(`feat(audit): add recoverable payloads and audit tail`) is complete; push and
-remote CI remain pending.
+(`feat(audit): add recoverable payloads and audit tail`) and checkpoint commit
+`0c5dfd11cccf553b3b18073744cae6a44813ffe6` were pushed. Docs run
+`29998811896` completed successfully. Initial CI run `29998811993` passed
+Chromium, macOS, pre-commit, pyright, package, ConPTY, OpenTUI, VS Code, Docker,
+bundled tmux, and release checks, but Ubuntu exposed a real startup boundary in
+the periodic payload sweep: when process uptime was below 60 seconds, a missing
+last-sweep timestamp was treated as zero and the first orphan cleanup was delayed.
+The implementation now treats an absent timestamp as immediately due; the
+regression fixes monotonic time at one second so it cannot depend on host uptime.
+The same run's Windows pytest exposed a separate shared-lock contention issue:
+`msvcrt.LK_LOCK` exhausted its internal retry and returned `EDEADLK` under four
+spawned writers. The Windows private-file helper now uses explicit nonblocking
+lock attempts and retries only contention errno values, matching POSIX blocking
+semantics while propagating unrelated I/O failures immediately. Deterministic
+unit tests cover both paths. The post-fix full local suite passes
+`874 passed, 2 skipped`; total branch coverage is 84.82%, the new payload module
+remains 98.12%, and the shared private-file module is 100%. A clean CI rerun
+remains pending.
 
 #### Phase 5A — Recoverable payload store
 

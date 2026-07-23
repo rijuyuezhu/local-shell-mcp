@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+import local_shell_mcp.audit as audit_module
 import local_shell_mcp.audit_payloads as audit_payload_module
 from local_shell_mcp.audit import (
     _AUDIT_BINARY_KEY,
@@ -620,6 +621,8 @@ def test_audit_payload_orphan_gc_and_symlink_replacement(tmp_path, monkeypatch):
         payload_retention_s=60,
     )
     settings = get_settings()
+    audit_module._AUDIT_PAYLOAD_SWEEP_TIMES.clear()
+    monkeypatch.setattr(audit_module.time, "monotonic", lambda: 1.0)
     settings.audit_payload_dir.mkdir(parents=True, exist_ok=True)
     orphan = settings.audit_payload_dir / f"{'a' * 64}.json.gz"
     orphan.write_bytes(b"orphan")

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import os
+import time
 import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -20,7 +22,20 @@ def _lock_handle(handle: BinaryIO) -> None:
     if os.name == "nt":
         import msvcrt
 
-        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        contention_errors = {
+            errno.EACCES,
+            errno.EAGAIN,
+            getattr(errno, "EDEADLK", errno.EACCES),
+            getattr(errno, "EDEADLOCK", errno.EACCES),
+        }
+        while True:
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except OSError as exc:
+                if exc.errno not in contention_errors:
+                    raise
+                time.sleep(0.01)
     else:
         import fcntl
 

@@ -447,10 +447,10 @@ def _enforce_audit_retention(
     payload_root_exists = settings.audit_payload_dir.exists()
     sweep_key = str(path)
     monotonic_now = time.monotonic()
-    last_sweep = _AUDIT_PAYLOAD_SWEEP_TIMES.get(sweep_key, 0.0)
-    periodic_sweep_due = (
-        payload_root_exists
-        and monotonic_now - last_sweep >= _AUDIT_PAYLOAD_SWEEP_INTERVAL_S
+    last_sweep = _AUDIT_PAYLOAD_SWEEP_TIMES.get(sweep_key)
+    periodic_sweep_due = payload_root_exists and (
+        last_sweep is None
+        or monotonic_now - last_sweep >= _AUDIT_PAYLOAD_SWEEP_INTERVAL_S
     )
     if not payload_changed and not log_changed and not periodic_sweep_due:
         return
