@@ -11,6 +11,7 @@ import sys
 import tarfile
 import zlib
 from pathlib import Path
+from zipfile import ZIP_STORED
 
 import pytest
 from wheel.wheelfile import WheelFile
@@ -485,6 +486,7 @@ def test_rewrite_and_inspect_platform_wheel(tmp_path: Path) -> None:
     assert inspection.platform_tag == "linux_x86_64"
     assert inspection.executable_size == len(executable)
     with WheelFile(output, "r") as wheel:
+        assert wheel.getinfo(target.payload_path).compress_type == ZIP_STORED
         assert wheel.read(target.payload_path) == payload
         wheel_metadata = wheel.read("local_shell_mcp-1.0.dist-info/WHEEL")
         assert b"Root-Is-Purelib: false" in wheel_metadata
@@ -561,6 +563,22 @@ def test_inspect_platform_wheel_rejects_extra_or_corrupt_payload(
     )
     with pytest.raises(pw.PlatformWheelError, match="valid gzip"):
         pw.inspect_wheel(corrupt, target=target)
+
+
+def test_inspect_platform_wheel_requires_stored_payload(tmp_path: Path) -> None:
+    target = pw.target_for_tag("linux_x86_64")
+    platform_metadata = (
+        b"Wheel-Version: 1.0\nRoot-Is-Purelib: false\n"
+        b"Tag: py3-none-linux_x86_64\n"
+    )
+    executable = _executable(target)
+    wheel = _make_wheel(
+        tmp_path / "local_shell_mcp-1.0-py3-none-linux_x86_64.whl",
+        wheel_metadata=platform_metadata,
+        payloads={target.payload_path: pw.deterministic_gzip(executable)},
+    )
+    with pytest.raises(pw.PlatformWheelError, match="ZIP_STORED"):
+        pw.inspect_wheel(wheel, target=target)
 
 
 def test_inspect_wheel_rejects_filename_metadata_disagreement(

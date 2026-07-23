@@ -31,7 +31,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from io import StringIO
 from pathlib import Path
-from zipfile import BadZipFile, ZipFile, ZipInfo
+from zipfile import ZIP_STORED, BadZipFile, ZipFile, ZipInfo
 
 from packaging.tags import Tag
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
@@ -666,6 +666,7 @@ def inspect_wheel(
     filename_tags = _parse_wheel_tags(path)
     members, wheel_path, _record_path = _wheel_members(path)
     member_map = {info.filename: data for info, data in members}
+    member_info = {info.filename: info for info, _data in members}
     if any(
         not name.endswith("/") and name.rsplit("/", 1)[-1] == _LOCK_NAME
         for name in member_map
@@ -711,6 +712,10 @@ def inspect_wheel(
     payload = member_map[target.payload_path]
     executable = _decompress_payload(payload)
     executable_sha256 = verify_executable(executable, target)
+    if member_info[target.payload_path].compress_type != ZIP_STORED:
+        raise PlatformWheelError(
+            "platform wheel OpenTUI payload must use ZIP_STORED"
+        )
     return WheelInspection(
         path=str(path),
         platform_tag=target.tag,
@@ -781,7 +786,10 @@ def rewrite_platform_wheel(
             for info, data in members:
                 if info.filename == wheel_path:
                     data = _rewrite_wheel_metadata(data, target)
-                output.writestr(_normalise_zip_info(info), data)
+                normalised = _normalise_zip_info(info)
+                if info.filename == target.payload_path:
+                    normalised.compress_type = ZIP_STORED
+                output.writestr(normalised, data)
         os.replace(temporary_path, output_path)
         inspection = inspect_wheel(output_path, target=target)
         if inspection.payload_sha256 != expected_payload_sha256:
