@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-5 complete; Phase 6 pending
+Status: implementation in progress — Phases 1-5 complete; Phase 6 implementation in progress
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `9e05caa9ee8c01f0426cadadddb4f5145f6c3517` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `8a80d024a0fc78aab4c265365dc0c135cce560d5` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -745,6 +745,71 @@ input/output locally or remotely, while an ordinary audit reader receives only
 bounded previews.
 
 ### Phase 6 — Add remote-worker user-service management
+
+Status: implementation in progress (started 2026-07-23).
+
+Actual baseline: branch HEAD and
+`origin/feat/port-upstream-features-2026-07` both point to `be689fb`; fetched
+`upstream/main` remains `f72164a`, so no new upstream commit requires review.
+Phase 5 closure CI run `30003551128` completed successfully.
+
+Implementation result so far:
+
+- The old flat `worker --server ...` parser and reserved `--persist` flag are
+  removed. The shared CLI and source-only entrypoint now use explicit
+  `enroll`, `connect`, `run`, service lifecycle, logs, and update subcommands.
+- Enrollment/resume is factored from the poll loop. `enroll` stores the existing
+  private identity and exits, `connect` enters the foreground loop, and `run`
+  requires the complete stored server/name/access/workdir identity. Invite stdin
+  is bounded UTF-8, rejects TTY input, and is never printed.
+- A stable private launcher under the worker state directory prefers the verified
+  installed runtime and invokes only `worker run`. Generated systemd units and
+  launchd plists contain no invite, access token, server URL, or other identity
+  credential.
+- Linux systemd-user and macOS launchd managers implement typed JSON status,
+  idempotent install/uninstall/start/stop/restart, manager-unavailable errors,
+  bounded logs, private launchd output, and interrupt-safe follow mode. Windows
+  status is explicitly unsupported and no detached-process emulation is added.
+- Manual `worker update` reuses the existing same-origin, digest-qualified,
+  bounded, rollback-capable runtime installer. It supports `--force` and restarts
+  the user service only when a new runtime was installed and the service was
+  running before the update.
+- Controller-directed reexec is credential-free and uses only `worker run` plus
+  persisted identity. The existing inherited single-instance lock remains in
+  place; the worker lock now reuses hardened pre-lock file initialization so
+  managed restart/upgrade handoff cannot race on an empty lock file.
+- The join script invokes the new `connect` subcommand and no longer advertises
+  or passes `--persist`.
+
+Final local validation:
+
+- The complete repository suite passes `916 passed, 2 skipped`; total branch
+  coverage is 85.23% against the unchanged 82.60% baseline. The new
+  `remote_worker/cli.py` and `remote_worker/service.py` modules are 98.86% and
+  97.35%; existing `lifecycle.py` and `runtime.py` remain above their stored
+  baselines at 80.83% and 83.08%. The ratchet passes across 181 tracked files and
+  11 new files.
+- The focused worker/service/lifecycle/updater/CLI/remote/environment/public-
+  surface group passes 222 tests, including the real controller/worker E2E,
+  dependency-light source-only CLI, safe native systemd-user status probe, and
+  strict no-new-MCP-tool checks. Direct tests cover systemd/launchd generation
+  and quoting, private permissions, credential exclusion, launcher change
+  reloads, lifecycle idempotence, status/PID/error parsing, bounded logs and
+  same-size rotation, unavailable managers, Windows unsupported behavior,
+  invite stdin, enroll-only/stored-run behavior, verified force update,
+  POSIX/Windows reexec, and managed-service PID failure fallback.
+- Real Chromium passes after its worker harness was migrated to the explicit
+  `connect` subcommand. Repository-wide ruff format/check, pyright, lockfile,
+  generated config/tool/instruction checks, strict MkDocs, all three reference
+  assets, and `git diff --check` pass.
+- Secret scanning reports zero findings across every changed Phase 6 source and
+  test file. The worker CLI/service/runtime source contains no literal bearer
+  header, `access_token=` assignment, or `invite=` credential serialization.
+
+Repository-wide pre-commit passed. Implementation commit
+`8a80d024a0fc78aab4c265365dc0c135cce560d5`
+(`feat(worker): add user service management`) is complete; push and remote CI
+remain pending.
 
 CLI contract (intentional breaking cleanup; no hidden legacy parser):
 
