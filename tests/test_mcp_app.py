@@ -25,6 +25,11 @@ class _DummyMcp:
         self.transports.append(transport)
 
 
+class _DummySseMcp:
+    def sse_app(self):
+        return Starlette(routes=[Route("/sse", _ok)])
+
+
 def _route_paths(app: Starlette) -> list[str]:
     return [getattr(route, "path", "") for route in app.routes]
 
@@ -46,6 +51,17 @@ def test_build_mcp_http_app_wraps_mcp_with_oauth_route_app():
     )
     assert "/oauth/token" in paths
     assert paths[-1] == ""
+
+
+def test_build_mcp_http_app_supports_sdk_sse_fallback():
+    configure_settings(
+        Settings(mode="mcp", auth_mode="none", remote_enabled=False)
+    )
+
+    app = mcp_app.build_mcp_http_app(cast(Any, _DummySseMcp()))
+
+    assert app is not None
+    assert _route_paths(app)[-1] == ""
 
 
 def test_build_mcp_http_app_includes_remote_routes_when_enabled():

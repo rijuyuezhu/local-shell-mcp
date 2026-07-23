@@ -79,8 +79,6 @@ oauth_registration_max_client_name_chars: 200
 # Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP
 # safety annotations remain conservative in this mode.
 allow_full_control: false
-# Deprecated compatibility flag. MCP safety annotations remain semantic and mode-independent.
-relaxed_client_tool_hints: false
 # Base MCP/HTTP tool watchdog timeout in seconds. Shell execution tools receive additional bounded
 # cleanup time beyond run_shell_max_timeout_s.
 tool_timeout_s: 60

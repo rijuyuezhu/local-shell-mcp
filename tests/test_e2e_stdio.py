@@ -33,22 +33,23 @@ async def test_stdio_process_exercises_core_tool_categories(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_stdio_process_diagnoses_stale_tool_snapshot(tmp_path):
+async def test_stdio_process_uses_sdk_unknown_tool_error(tmp_path):
     async with stdio_tool_client(tmp_path) as (client, _workspace):
-        listed = await client.list_tools()
-        assert "remote_run_shell_tool" not in listed
+        removed_name = "remote_run_shell_tool"
+        assert removed_name not in await client.list_tools()
 
-        result = await client.call_tool(
-            "remote_run_shell_tool", {"machine": "worker"}
+        result = await client.call_tool_result(
+            removed_name, {"machine": "worker"}
         )
 
-        assert result["ok"] is False
-        assert result["data"]["status"] == "stale_tool_snapshot"
-        assert result["data"]["replacement"] == "bash"
-        assert (
-            "session_start(target='remote'"
-            in result["data"]["assistant_instruction"]
-        )
+        assert result.isError is True
+        assert result.structuredContent is None
+        assert len(result.content) == 1
+        error_text = getattr(result.content[0], "text", "")
+        assert error_text == f"Unknown tool: {removed_name}"
+        assert "replacement" not in error_text.lower()
+        assert "refresh" not in error_text.lower()
+        assert "session_start" not in error_text.lower()
 
 
 @pytest.mark.asyncio

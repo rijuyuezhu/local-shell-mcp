@@ -85,11 +85,6 @@
       "num_statements": 159,
       "percent_covered": 65.024631
     },
-    "src/local_shell_mcp/deprecated_tools.py": {
-      "num_branches": 2,
-      "num_statements": 24,
-      "percent_covered": 100.0
-    },
     "src/local_shell_mcp/image_preview.py": {
       "num_branches": 6,
       "num_statements": 51,

@@ -585,23 +585,15 @@ def _assert_tool_annotations(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("allow_full_control", "relaxed_client_tool_hints"),
-    [(False, False), (True, False), (False, True)],
-)
+@pytest.mark.parametrize("allow_full_control", [False, True])
 async def test_tool_safety_annotations_are_mode_independent(
     tmp_path,
     monkeypatch,
     allow_full_control,
-    relaxed_client_tool_hints,
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", str(allow_full_control).lower()
-    )
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS",
-        str(relaxed_client_tool_hints).lower(),
     )
     clear_settings_cache()
 
@@ -734,7 +726,6 @@ async def test_agent_bridge_annotations_remain_conservative(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS", "true")
     monkeypatch.setattr(
         tools_module,
         "AgentMcpClientManager",

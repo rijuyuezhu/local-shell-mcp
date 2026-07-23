@@ -57,11 +57,6 @@ The Docker entrypoint normally creates the runtime `agent` user from that owner.
 docker compose restart local-shell-mcp
 ```
 
-## Client calls a removed tool
-
-A client with a stale MCP tool snapshot may call a tool that no longer appears in `tools/list`. The server returns `status: stale_tool_snapshot` with the current replacement instead of exposing the removed name again.
-
-Refresh the App's tools. When the client has no refresh action, remove and re-add the App. Do not repeatedly retry the removed tool name; after refreshing, use the replacement reported by the server. Legacy `remote_*` calls must first create a remote session with `session_start(target="remote", machine="...")`, then call the unified session-bound tool.
 
 ## Tool call times out
 

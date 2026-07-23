@@ -59,6 +59,28 @@ def test_shell_command_args_are_native_for_supported_shells():
     ]
 
 
+def test_command_with_env_uses_powershell_assignments(monkeypatch):
+    monkeypatch.setattr(
+        shell_ops, "_effective_shell_executable", lambda: "pwsh.exe"
+    )
+
+    command = shell_ops._command_with_env(
+        "Write-Output ok", {"TOKEN": "O'Reilly"}
+    )
+
+    assert command == "$env:TOKEN='O''Reilly'; Write-Output ok"
+
+
+def test_command_with_env_uses_cmd_assignments(monkeypatch):
+    monkeypatch.setattr(
+        shell_ops, "_effective_shell_executable", lambda: "cmd.exe"
+    )
+
+    command = shell_ops._command_with_env("echo ok", {"TOKEN": "a b"})
+
+    assert command == 'set "TOKEN=a b" && echo ok'
+
+
 def test_command_denylist_matching_is_case_insensitive(monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_COMMAND_DENYLIST", "RM -RF")
     clear_settings_cache()
@@ -438,6 +460,27 @@ def test_shared_tail_bytes_uses_idle_stream_capacity_and_preserves_tails():
     assert len(stderr) == 300
     assert stdout == b"o" * 700
     assert stderr == b"e" * 300
+
+
+def test_shared_tail_bytes_gives_remaining_capacity_to_stderr():
+    stdout, stderr, truncated = _shared_tail_bytes(
+        b"o" * 300,
+        b"prefix-" + b"e" * 900,
+        1000,
+    )
+
+    assert truncated is True
+    assert stdout == b"o" * 300
+    assert stderr == b"e" * 700
+
+
+def test_tail_buffer_ignores_empty_chunks():
+    tail = shell_ops.TailBuffer(keep_bytes=4, data=bytearray(b"ok"))
+
+    tail.append(b"")
+
+    assert tail.data == bytearray(b"ok")
+    assert tail.total_bytes == 0
 
 
 @pytest.mark.asyncio

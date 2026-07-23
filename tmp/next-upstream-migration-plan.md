@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: approved implementation roadmap
+Status: implementation in progress — Phase 1 complete; Phase 2 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `c3bc8c6eb8087fd0bf4491c3ae81fc51207a5b25` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `2710cdb33ced490d65ff9c6c170d6cea1b19eb30` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -85,6 +85,18 @@ Exit criterion: this file is committed and is the only temporary migration plan.
 
 ### Phase 1 — Remove stale-tool diagnostics and compatibility tombstones
 
+Status: complete (2026-07-23); implementation commit pending creation.
+
+Actual baseline: branch HEAD and
+`origin/feat/port-upstream-features-2026-07` both point to `2710cdb`; fetched
+`upstream/main` remains `f72164a`, so no post-baseline upstream commits require
+review before this phase. Code audit confirms the compatibility layer is
+implemented only by `deprecated_tools.py` plus `DeprecatedToolFastMCP` and its
+documentation/tests. `relaxed_client_tool_hints` has no runtime consumer: it is
+only a no-op settings/surface entry with generated-reference and test coverage,
+so Phase 1 removes it rather than renaming it. Existing exact tool-surface tests
+remain authoritative; the stdio E2E test will cover the SDK protocol error.
+
 Implementation:
 
 - Delete `src/local_shell_mcp/deprecated_tools.py`.
@@ -115,6 +127,30 @@ Tests:
 - A protocol-level assertion that an unknown tool receives the SDK-standard
   error and no replacement guidance.
 - Generated tool-reference and server-instruction checks.
+
+Implementation result (2026-07-23): the custom module/subclass and its dedicated
+tests were deleted; `build_mcp()` now constructs the SDK `FastMCP` directly.
+The no-op `relaxed_client_tool_hints` field was removed from settings, the
+configuration surface, examples, generated configuration reference, tests, and
+permanent security documentation. The coverage baseline and maintenance reports
+now reflect the removal. Current tool schemas and names were not changed, and
+`environment_info` remains absent.
+
+Validation: the original 18-test Phase 1 group passed. Five added regression
+tests for the SDK SSE fallback, PowerShell/cmd environment assignment rendering,
+empty output chunks, and shared stderr tail capacity also passed. The final full
+Linux branch-coverage run passed with `773 passed, 1 skipped`, 83.70% total
+coverage against the unchanged 82.60% baseline, 181
+tracked modules, and zero new untracked coverage modules. The initially exposed
+`server/mcp/app.py` and `ops/shell.py` module gaps were closed without weakening
+production behavior or the coverage baseline.
+
+Ruff format/check, Pyright, generated configuration/reference byte comparison,
+`git diff --check`, strict MkDocs, and all three generated reference asset checks
+passed. Repository search has zero matches for the Phase 1 implementation
+identifiers. Secret scan findings are limited to pre-existing fake fixtures in
+unchanged files. The staged repository-wide pre-commit suite passed every hook.
+Phase implementation commit: pending creation.
 
 Exit criterion: repository search finds no `DeprecatedTool`, `DEPRECATED_TOOLS`,
 `stale_tool_snapshot`, or compatibility-diagnostic implementation.
