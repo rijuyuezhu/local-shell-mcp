@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-3 complete; Phase 4 pending
+Status: implementation in progress — Phases 1-3 complete; Phase 4 local validation complete, remote CI pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `553161ddfa1ac7c85e72ec349a33d69060d8692c` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `5537c05cd226365c8e48d898c7c77c7705dbe297` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -435,7 +435,7 @@ credentials in the manifest.
 
 ### Phase 4 — Merge structured environment information into sessions
 
-Status: implementation in progress (started 2026-07-23).
+Status: implementation and local validation complete; remote CI pending (started 2026-07-23).
 
 Actual baseline: branch HEAD and `origin/feat/port-upstream-features-2026-07` both point to `509ccc4`; fetched `upstream/main` remains `f72164a`, so no new upstream commit requires review before this phase.
 
@@ -536,8 +536,10 @@ Final local validation:
   files. Generated schemas confirm both session tools share exactly the same five
   environment groups and that no standalone `environment_info` tool exists.
 
-Repository-wide pre-commit, implementation commit/push, and remote CI remain
-pending.
+Repository-wide pre-commit passed. Implementation commit
+`5537c05cd226365c8e48d898c7c77c7705dbe297`
+(`feat(session): add structured environment orientation`) is complete; push and
+remote CI remain pending.
 
 Exit criterion: clients can choose tools and understand local/remote runtime
 capabilities from `session_start` alone, with no standalone environment tool.
