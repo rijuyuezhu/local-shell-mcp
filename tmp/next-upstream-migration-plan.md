@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-6 complete; Phase 7 implementation in progress
+Status: implementation in progress — Phases 1-7 complete; Phase 8 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -878,7 +878,7 @@ state without widening the MCP tool surface.
 
 ### Phase 7 — Publish platform wheels with embedded OpenTUI
 
-Status: implementation in progress (started 2026-07-23).
+Status: complete (started 2026-07-23; completed 2026-07-24).
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to
@@ -1036,6 +1036,15 @@ First remote CI checkpoints (2026-07-23):
   tracked plus `12` new files. Repository-wide Ruff, Pyright,
   lock/generated-contract, release-matrix, whitespace, secret-scan, and
   all-files pre-commit gates passed.
+- Exact-head CI run `30027732274` for checkpoint
+  `4e0e7c99434422137b5b366fe7ac296b804f3d27` completed successfully with all
+  24 jobs green. This includes Ubuntu/macOS/Windows pytest, real Chromium,
+  Windows ConPTY, pre-commit, Pyright, package smoke, all OpenTUI and VS Code
+  jobs, Docker/Compose, both bundled-tmux architectures, release-matrix checks,
+  and native wheels for Linux x86_64/aarch64, macOS x86_64/arm64, and Windows
+  x86_64. Phase 7 has no unresolved design, implementation, test, security,
+  documentation, packaging, or CI issue. Phase 8 is next and must not begin
+  without a new user instruction.
 
 Packaging architecture:
 
@@ -1183,6 +1192,6 @@ and deleting this temporary plan does not remove unique operational knowledge.
 - [x] Phase 5A: recoverable oversized audit payload store.
 - [x] Phase 5B: session-bound MCP `audit_tail`.
 - [x] Phase 6: Linux/macOS worker user-service management.
-- [ ] Phase 7: platform wheels with embedded OpenTUI (implementation in progress).
+- [x] Phase 7: platform wheels with embedded OpenTUI.
 - [ ] Phase 8: internal resumable HTTP large-file transfer.
 - [ ] Phase 9: full integration, permanent docs, and plan deletion.
