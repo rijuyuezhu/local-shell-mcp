@@ -1,7 +1,5 @@
 """Explicit agent session tool registry."""
 
-import asyncio
-
 from ...ops.session import (
     session_change_cwd_execute,
     session_copy_execute,
@@ -39,11 +37,11 @@ session_tool = SessionToolRegistry.get_tool_decorator()
 
 
 def _session_start_description(_context: McpToolContext) -> str:
-    return """Start an explicit agent/workspace session and bind it to a required workdir. Use target="local" for the control-server workspace, or target="remote" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."""
+    return """Start an explicit agent/workspace session and bind it to a required workdir. Use target="local" for the control-server workspace, or target="remote" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. The response includes structured target runtime, tool, capability, policy, Git, and instruction-file orientation; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."""
 
 
 def _session_change_cwd_description(_context: McpToolContext) -> str:
-    return """Change an existing local agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed orientation metadata including instruction file paths. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits."""
+    return """Change an existing local or remote agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed Git, instruction-file, runtime, tool, capability, and policy orientation. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits."""
 
 
 def _session_copy_description(_context: McpToolContext) -> str:
@@ -77,9 +75,7 @@ async def session_change_cwd(
     workdir: SessionWorkdirArg,
 ) -> SessionStartOutput:
     """Change an explicit agent/workspace session workdir."""
-    return await asyncio.to_thread(
-        session_change_cwd_execute, session_id, workdir
-    )
+    return await session_change_cwd_execute(session_id, workdir)
 
 
 @session_tool(

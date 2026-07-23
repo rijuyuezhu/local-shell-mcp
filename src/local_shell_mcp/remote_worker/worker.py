@@ -726,6 +726,7 @@ def add_worker_cli_args(parser: argparse.ArgumentParser) -> None:
 
 def run_worker_from_args(args: argparse.Namespace) -> None:
     """Run a remote worker from parsed CLI arguments."""
+    os.environ.setdefault("LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME", "1")
     try:
         asyncio.run(
             run_worker(

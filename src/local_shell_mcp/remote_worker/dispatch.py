@@ -26,6 +26,15 @@ async def _session_start(args: dict[str, Any]) -> Any:
     )
 
 
+async def _session_change_cwd(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.session import session_change_cwd_execute
+
+    return await session_change_cwd_execute(
+        str(args.get("session_id") or ""),
+        str(args.get("workdir") or "."),
+    )
+
+
 async def _query_audit(args: dict[str, Any]) -> Any:
     from local_shell_mcp.audit import query_audit
 
@@ -493,6 +502,7 @@ async def _transfer_delete_temp_path(args: dict[str, Any]) -> Any:
 
 _HANDLERS: dict[str, WorkerHandler] = {
     "session_start": _session_start,
+    "session_change_cwd": _session_change_cwd,
     "dashboard_snapshot": _dashboard_snapshot,
     "query_audit": _query_audit,
     "get_audit_entry": _get_audit_entry,

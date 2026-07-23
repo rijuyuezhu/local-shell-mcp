@@ -332,6 +332,60 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert first_class_session["target"] == "remote"
             assert first_class_session["machine"] == machine
             assert "worker_session_id" not in first_class_session
+            environment = first_class_session["environment"]
+            assert environment["workspace"]["workspace_root"] == str(
+                remote_workspace
+            )
+            assert environment["workspace"]["workdir"] == str(remote_workspace)
+            assert environment["workspace"]["target"] == "remote"
+            assert environment["workspace"]["machine"] == machine
+            assert environment["workspace"]["worker_runtime"]["active"] is True
+            assert (
+                environment["workspace"]["worker_runtime"]["service_status"]
+                == "running"
+            )
+            assert environment["runtime"]["python_version"]
+            assert set(environment["tools"]) == {
+                "shell",
+                "git",
+                "ripgrep",
+                "tmux",
+                "curl",
+                "bun",
+                "chromium",
+                "playwright",
+                "opentui",
+            }
+            assert environment["capabilities"]["oauth_mcp_clients"] is False
+
+            orientation_dir = remote_workspace / "orientation"
+            orientation_dir.mkdir()
+            (orientation_dir / "AGENTS.md").write_text(
+                "remote orientation instructions\n", encoding="utf-8"
+            )
+            changed = await client.call_tool(
+                "session_change_cwd",
+                {
+                    "session_id": first_class_session_id,
+                    "workdir": "orientation",
+                },
+            )
+            assert changed["session_id"] == first_class_session_id
+            assert changed["workdir"] == str(orientation_dir)
+            assert changed["instruction_files"] == ["orientation/AGENTS.md"]
+            assert changed["environment"]["workspace"]["workdir"] == str(
+                orientation_dir
+            )
+            assert changed["environment"]["workspace"]["target"] == "remote"
+            assert changed["environment"]["workspace"]["machine"] == machine
+            restored = await client.call_tool(
+                "session_change_cwd",
+                {
+                    "session_id": first_class_session_id,
+                    "workdir": str(remote_workspace),
+                },
+            )
+            assert restored["workdir"] == str(remote_workspace)
 
             remote_skills = await client.call_tool(
                 "list_agent_skills", {"session_id": first_class_session_id}

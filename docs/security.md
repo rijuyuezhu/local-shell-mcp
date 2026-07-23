@@ -73,6 +73,16 @@ Agent Bridge authentication is separate from the built-in OAuth server that prot
 - Agent Bridge status exposes only mode, authorization state, expiry/status metadata, counts, and redacted errors. Administrative secret names are available only to the local `mcp secret list` command. Credential-store changes participate in the dynamic registry fingerprint so updates become visible without restart.
 - Secret-based stdio servers receive values in their child environment; HTTP/SSE servers receive them in request headers. OAuth and static secrets therefore grant the upstream server access to those credentials. Configure only trusted upstreams and use narrowly scoped, revocable credentials.
 
+## Session environment disclosure boundary
+
+`session_start` and `session_change_cwd` return a bounded `environment` object so clients can choose tools without arbitrary shell inspection. It is an explicit allowlist, not a serialization of `Settings`, `os.environ`, process arguments, or executable paths.
+
+- Runtime fields contain normalized versions/platform tokens only. Worker identity contains package/bundle versions and a normalized service kind/status, never bundle digests, join tokens, service definitions, or command lines.
+- Tool probes run only allowlisted version commands, concurrently, with independent 1.5-second timeouts and bounded output. Responses expose an extracted version token and safe source category, not full executable paths, stdout/stderr, or exception text. Missing, timed-out, and failed probes are not marked available.
+- Capability and policy fields include only values needed for tool selection. They exclude environment-variable values, OAuth/admin secrets, Agent Bridge server names, command/path denylists, state/config directories, audit contents, and other private configuration. OAuth capability changes are represented only as configured/authorized server counts.
+- Remote orientation is produced by the worker and validated as the same typed response before the controller rebinds its public session id and machine name. Remote cwd changes refresh worker-side Git, instructions, environment, and canonical workdir instead of substituting controller-local information.
+- Tool probes are briefly cached, but cwd-sensitive orientation and dynamic capability/policy fields are rebuilt for each session response. Collection failures degrade to normalized unavailable/error fields rather than failing session creation or returning raw diagnostics.
+
 ## Inbound HTTP request limits
 
 All HTTP-mode applications apply `max_http_request_bytes` before REST, MCP, OAuth, download, or remote-worker route parsing. The default is 16,000,000 bytes; set it to `0` only when another trusted front end enforces an equivalent or stricter limit. The middleware rejects oversized requests with HTTP 413 and a stable JSON error before buffering more than the configured budget.

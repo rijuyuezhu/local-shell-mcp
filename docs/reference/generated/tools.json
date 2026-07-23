@@ -922,7 +922,7 @@
               }
             ]
           },
-          "Change an existing local agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed orientation metadata including instruction file paths. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits."
+          "Change an existing local or remote agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed Git, instruction-file, runtime, tool, capability, and policy orientation. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits."
         ],
         [
           {
@@ -1026,7 +1026,7 @@
               }
             ]
           },
-          "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."
+          "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. The response includes structured target runtime, tool, capability, policy, Git, and instruction-file orientation; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session."
         ]
       ]
     },
@@ -6160,7 +6160,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Change an existing local agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed orientation metadata including instruction file paths. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits.",
+      "description": "Change an existing local or remote agent/workspace session to a new required workdir, clear stale grounding snapshots for that session, and return refreshed Git, instruction-file, runtime, tool, capability, and policy orientation. Use this when the user redirects you to a different project/subdirectory or you infer the original workdir was wrong; then read any relevant AGENTS.md/CLAUDE.md/config files before continuing edits.",
       "inputSchema": {
         "properties": {
           "session_id": {
@@ -6250,6 +6250,549 @@
             ],
             "title": "GitSessionInfo",
             "type": "object"
+          },
+          "SessionCapabilitiesEnvironment": {
+            "description": "Effective feature support relevant to choosing session tools.",
+            "properties": {
+              "agent_bridge": {
+                "description": "Whether Agent Bridge is enabled.",
+                "title": "Agent Bridge",
+                "type": "boolean"
+              },
+              "audit_full_payload": {
+                "description": "Whether protected full audit-entry recovery is supported.",
+                "title": "Audit Full Payload",
+                "type": "boolean"
+              },
+              "browser_console": {
+                "description": "Whether the browser terminal console can be used.",
+                "title": "Browser Console",
+                "type": "boolean"
+              },
+              "browser_ui": {
+                "description": "Whether the authenticated browser Human UI is mounted.",
+                "title": "Browser Ui",
+                "type": "boolean"
+              },
+              "conpty": {
+                "description": "Whether Windows ConPTY is available.",
+                "title": "Conpty",
+                "type": "boolean"
+              },
+              "http_transfer": {
+                "description": "Whether authenticated HTTP file transfer links are available.",
+                "title": "Http Transfer",
+                "type": "boolean"
+              },
+              "native_opentui": {
+                "description": "Whether native OpenTUI can be started.",
+                "title": "Native Opentui",
+                "type": "boolean"
+              },
+              "oauth_authorized_mcp_servers": {
+                "description": "Number of OAuth upstream MCP servers with usable stored authorization.",
+                "title": "Oauth Authorized Mcp Servers",
+                "type": "integer"
+              },
+              "oauth_configured_mcp_servers": {
+                "description": "Number of configured OAuth upstream MCP servers.",
+                "title": "Oauth Configured Mcp Servers",
+                "type": "integer"
+              },
+              "oauth_mcp_clients": {
+                "description": "Whether OAuth-backed upstream MCP clients are supported.",
+                "title": "Oauth Mcp Clients",
+                "type": "boolean"
+              },
+              "raw_pty": {
+                "description": "Whether a raw persistent-terminal backend is available.",
+                "title": "Raw Pty",
+                "type": "boolean"
+              },
+              "remote_worker": {
+                "description": "Whether remote-worker routing is enabled.",
+                "title": "Remote Worker",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "remote_worker",
+              "raw_pty",
+              "conpty",
+              "browser_ui",
+              "native_opentui",
+              "browser_console",
+              "agent_bridge",
+              "oauth_mcp_clients",
+              "oauth_configured_mcp_servers",
+              "oauth_authorized_mcp_servers",
+              "http_transfer",
+              "audit_full_payload"
+            ],
+            "title": "SessionCapabilitiesEnvironment",
+            "type": "object"
+          },
+          "SessionEnvironment": {
+            "description": "Structured, bounded environment orientation for one session target.",
+            "properties": {
+              "capabilities": {
+                "$ref": "#/$defs/SessionCapabilitiesEnvironment",
+                "description": "Effective capabilities."
+              },
+              "policy": {
+                "$ref": "#/$defs/SessionPolicyEnvironment",
+                "description": "Safe effective policy and limits."
+              },
+              "runtime": {
+                "$ref": "#/$defs/SessionRuntimeEnvironment",
+                "description": "Runtime identity."
+              },
+              "tools": {
+                "$ref": "#/$defs/SessionToolsEnvironment",
+                "description": "Allowlisted tool probes."
+              },
+              "workspace": {
+                "$ref": "#/$defs/SessionWorkspaceEnvironment",
+                "description": "Workspace identity."
+              }
+            },
+            "required": [
+              "runtime",
+              "workspace",
+              "tools",
+              "capabilities",
+              "policy"
+            ],
+            "title": "SessionEnvironment",
+            "type": "object"
+          },
+          "SessionPolicyEnvironment": {
+            "description": "Safe effective limits and modes that influence tool selection.",
+            "properties": {
+              "authentication_mode": {
+                "description": "Inbound server authentication mode.",
+                "enum": [
+                  "none",
+                  "oauth"
+                ],
+                "title": "Authentication Mode",
+                "type": "string"
+              },
+              "full_control": {
+                "description": "Whether full-control mode is active.",
+                "title": "Full Control",
+                "type": "boolean"
+              },
+              "max_audit_event_bytes": {
+                "description": "Maximum retained bytes for one audit event.",
+                "title": "Max Audit Event Bytes",
+                "type": "integer"
+              },
+              "max_concurrent_commands": {
+                "description": "Concurrent command limit.",
+                "title": "Max Concurrent Commands",
+                "type": "integer"
+              },
+              "max_file_read_bytes": {
+                "description": "Maximum bytes read from one file.",
+                "title": "Max File Read Bytes",
+                "type": "integer"
+              },
+              "max_file_write_bytes": {
+                "description": "Maximum bytes written to one file.",
+                "title": "Max File Write Bytes",
+                "type": "integer"
+              },
+              "max_http_request_bytes": {
+                "description": "Inbound HTTP request-body limit.",
+                "title": "Max Http Request Bytes",
+                "type": "integer"
+              },
+              "max_output_bytes": {
+                "description": "Maximum bounded command output bytes.",
+                "title": "Max Output Bytes",
+                "type": "integer"
+              },
+              "max_persistent_shells": {
+                "description": "Persistent-shell session limit.",
+                "title": "Max Persistent Shells",
+                "type": "integer"
+              },
+              "max_search_results": {
+                "description": "Maximum search result count.",
+                "title": "Max Search Results",
+                "type": "integer"
+              },
+              "max_transfer_archive_entries": {
+                "description": "Maximum entries accepted from one transfer archive.",
+                "title": "Max Transfer Archive Entries",
+                "type": "integer"
+              },
+              "max_transfer_unpacked_bytes": {
+                "description": "Maximum unpacked regular-file bytes for one transfer.",
+                "title": "Max Transfer Unpacked Bytes",
+                "type": "integer"
+              },
+              "network_policy": {
+                "const": "tool_scoped",
+                "description": "Network access policy; network use remains tool-scoped.",
+                "title": "Network Policy",
+                "type": "string"
+              },
+              "remote_job_timeout_s": {
+                "description": "Remote job result timeout in seconds.",
+                "title": "Remote Job Timeout S",
+                "type": "integer"
+              },
+              "remote_max_pending_jobs": {
+                "description": "Pending or in-flight remote jobs allowed per worker.",
+                "title": "Remote Max Pending Jobs",
+                "type": "integer"
+              },
+              "server_mode": {
+                "description": "Configured server transport mode.",
+                "enum": [
+                  "mcp",
+                  "http",
+                  "both",
+                  "stdio"
+                ],
+                "title": "Server Mode",
+                "type": "string"
+              },
+              "shell_default_timeout_s": {
+                "description": "Default bounded shell timeout in seconds.",
+                "title": "Shell Default Timeout S",
+                "type": "integer"
+              },
+              "shell_max_timeout_s": {
+                "description": "Maximum bounded shell timeout in seconds.",
+                "title": "Shell Max Timeout S",
+                "type": "integer"
+              },
+              "tool_timeout_s": {
+                "description": "Base tool watchdog timeout in seconds.",
+                "title": "Tool Timeout S",
+                "type": "number"
+              }
+            },
+            "required": [
+              "server_mode",
+              "authentication_mode",
+              "full_control",
+              "network_policy",
+              "tool_timeout_s",
+              "shell_default_timeout_s",
+              "shell_max_timeout_s",
+              "max_output_bytes",
+              "max_file_read_bytes",
+              "max_file_write_bytes",
+              "max_search_results",
+              "max_concurrent_commands",
+              "max_persistent_shells",
+              "max_http_request_bytes",
+              "max_audit_event_bytes",
+              "max_transfer_archive_entries",
+              "max_transfer_unpacked_bytes",
+              "remote_job_timeout_s",
+              "remote_max_pending_jobs"
+            ],
+            "title": "SessionPolicyEnvironment",
+            "type": "object"
+          },
+          "SessionRuntimeEnvironment": {
+            "description": "Runtime identity safe to expose for tool selection.",
+            "properties": {
+              "architecture": {
+                "description": "Normalized machine architecture.",
+                "title": "Architecture",
+                "type": "string"
+              },
+              "local_shell_mcp_version": {
+                "description": "Running local-shell-mcp source version.",
+                "title": "Local Shell Mcp Version",
+                "type": "string"
+              },
+              "os": {
+                "description": "Normalized operating-system family.",
+                "title": "Os",
+                "type": "string"
+              },
+              "package_version": {
+                "description": "Installed local-shell-mcp distribution version.",
+                "title": "Package Version",
+                "type": "string"
+              },
+              "process_bits": {
+                "description": "Python process pointer width in bits.",
+                "enum": [
+                  32,
+                  64
+                ],
+                "title": "Process Bits",
+                "type": "integer"
+              },
+              "python_implementation": {
+                "description": "Python implementation name, such as CPython.",
+                "title": "Python Implementation",
+                "type": "string"
+              },
+              "python_version": {
+                "description": "Python language runtime version.",
+                "title": "Python Version",
+                "type": "string"
+              },
+              "release": {
+                "description": "Bounded operating-system release string.",
+                "title": "Release",
+                "type": "string"
+              },
+              "runtime_kind": {
+                "description": "Whether this process runs from source or a frozen executable.",
+                "enum": [
+                  "source",
+                  "frozen"
+                ],
+                "title": "Runtime Kind",
+                "type": "string"
+              }
+            },
+            "required": [
+              "local_shell_mcp_version",
+              "package_version",
+              "python_implementation",
+              "python_version",
+              "runtime_kind",
+              "os",
+              "release",
+              "architecture",
+              "process_bits"
+            ],
+            "title": "SessionRuntimeEnvironment",
+            "type": "object"
+          },
+          "SessionToolProbe": {
+            "description": "Bounded availability and version result for one allowlisted tool.",
+            "properties": {
+              "available": {
+                "description": "Whether the tool can be selected.",
+                "title": "Available",
+                "type": "boolean"
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Safe resolution source such as configured, system, or bundled.",
+                "title": "Source"
+              },
+              "status": {
+                "description": "Normalized probe status without raw exception text.",
+                "enum": [
+                  "available",
+                  "missing",
+                  "timeout",
+                  "error",
+                  "unsupported"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Extracted bounded version token, when available.",
+                "title": "Version"
+              }
+            },
+            "required": [
+              "available",
+              "status"
+            ],
+            "title": "SessionToolProbe",
+            "type": "object"
+          },
+          "SessionToolsEnvironment": {
+            "description": "Allowlisted executable and runtime probes relevant to tool choice.",
+            "properties": {
+              "bun": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Bun probe."
+              },
+              "chromium": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Chromium runtime probe."
+              },
+              "curl": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "curl probe."
+              },
+              "git": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Git probe."
+              },
+              "opentui": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Native OpenTUI runtime probe."
+              },
+              "playwright": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Python Playwright probe."
+              },
+              "ripgrep": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "ripgrep probe."
+              },
+              "shell": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Configured shell probe."
+              },
+              "tmux": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "tmux backend probe."
+              }
+            },
+            "required": [
+              "shell",
+              "git",
+              "ripgrep",
+              "tmux",
+              "curl",
+              "bun",
+              "chromium",
+              "playwright",
+              "opentui"
+            ],
+            "title": "SessionToolsEnvironment",
+            "type": "object"
+          },
+          "SessionWorkerRuntime": {
+            "description": "Remote-worker runtime identity without tokens, paths, or digests.",
+            "properties": {
+              "active": {
+                "description": "Whether this environment was collected inside a remote worker.",
+                "title": "Active",
+                "type": "boolean"
+              },
+              "bundle_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Installed source-bundle version, when available.",
+                "title": "Bundle Version"
+              },
+              "service_kind": {
+                "description": "Remote-worker process or service kind.",
+                "enum": [
+                  "none",
+                  "manual",
+                  "systemd",
+                  "launchd",
+                  "windows_startup",
+                  "managed"
+                ],
+                "title": "Service Kind",
+                "type": "string"
+              },
+              "service_status": {
+                "description": "Normalized remote-worker service status.",
+                "enum": [
+                  "not_applicable",
+                  "running",
+                  "unknown"
+                ],
+                "title": "Service Status",
+                "type": "string"
+              },
+              "worker_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Remote worker local-shell-mcp version, when active.",
+                "title": "Worker Version"
+              }
+            },
+            "required": [
+              "active",
+              "service_kind",
+              "service_status"
+            ],
+            "title": "SessionWorkerRuntime",
+            "type": "object"
+          },
+          "SessionWorkspaceEnvironment": {
+            "description": "Workspace orientation for the runtime that owns the session.",
+            "properties": {
+              "machine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Configured remote-worker name, when remote.",
+                "title": "Machine"
+              },
+              "target": {
+                "description": "Execution target represented by this environment.",
+                "enum": [
+                  "local",
+                  "remote"
+                ],
+                "title": "Target",
+                "type": "string"
+              },
+              "workdir": {
+                "description": "Canonical workdir on the execution target.",
+                "title": "Workdir",
+                "type": "string"
+              },
+              "worker_runtime": {
+                "$ref": "#/$defs/SessionWorkerRuntime",
+                "description": "Worker runtime and service identity for this environment."
+              },
+              "workspace_root": {
+                "description": "Canonical workspace root on the execution target.",
+                "title": "Workspace Root",
+                "type": "string"
+              }
+            },
+            "required": [
+              "workspace_root",
+              "workdir",
+              "target",
+              "worker_runtime"
+            ],
+            "title": "SessionWorkspaceEnvironment",
+            "type": "object"
           }
         },
         "description": "Explicit agent/workspace session orientation.",
@@ -6258,6 +6801,10 @@
             "description": "Unix timestamp when the session was created.",
             "title": "Created At",
             "type": "number"
+          },
+          "environment": {
+            "$ref": "#/$defs/SessionEnvironment",
+            "description": "Bounded runtime, workspace, tool, capability, and policy orientation."
           },
           "expires_at": {
             "anyOf": [
@@ -6354,6 +6901,7 @@
           "workspace_root",
           "git",
           "instruction_files",
+          "environment",
           "message"
         ],
         "title": "SessionStartOutput",
@@ -6885,7 +7433,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. For local sessions, the response includes discovered instruction file paths; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session.",
+      "description": "Start an explicit agent/workspace session and bind it to a required workdir. Use target=\"local\" for the control-server workspace, or target=\"remote\" with machine set to an online remote worker name and workdir set to the worker-side directory. Before calling, ask the user which project directory or remote worker to use when unclear; otherwise infer the most specific safe workdir from the task, repository, or paths the user mentioned. The response includes structured target runtime, tool, capability, policy, Git, and instruction-file orientation; read relevant AGENTS.md/CLAUDE.md/config files before editing. Pass the returned 8-character session_id to read, search, hashline_edit, edit_lines, bash, job, and other session-bound tools; remote sessions dispatch those normal tools to their paired worker session.",
       "inputSchema": {
         "properties": {
           "label": {
@@ -7004,6 +7552,549 @@
             ],
             "title": "GitSessionInfo",
             "type": "object"
+          },
+          "SessionCapabilitiesEnvironment": {
+            "description": "Effective feature support relevant to choosing session tools.",
+            "properties": {
+              "agent_bridge": {
+                "description": "Whether Agent Bridge is enabled.",
+                "title": "Agent Bridge",
+                "type": "boolean"
+              },
+              "audit_full_payload": {
+                "description": "Whether protected full audit-entry recovery is supported.",
+                "title": "Audit Full Payload",
+                "type": "boolean"
+              },
+              "browser_console": {
+                "description": "Whether the browser terminal console can be used.",
+                "title": "Browser Console",
+                "type": "boolean"
+              },
+              "browser_ui": {
+                "description": "Whether the authenticated browser Human UI is mounted.",
+                "title": "Browser Ui",
+                "type": "boolean"
+              },
+              "conpty": {
+                "description": "Whether Windows ConPTY is available.",
+                "title": "Conpty",
+                "type": "boolean"
+              },
+              "http_transfer": {
+                "description": "Whether authenticated HTTP file transfer links are available.",
+                "title": "Http Transfer",
+                "type": "boolean"
+              },
+              "native_opentui": {
+                "description": "Whether native OpenTUI can be started.",
+                "title": "Native Opentui",
+                "type": "boolean"
+              },
+              "oauth_authorized_mcp_servers": {
+                "description": "Number of OAuth upstream MCP servers with usable stored authorization.",
+                "title": "Oauth Authorized Mcp Servers",
+                "type": "integer"
+              },
+              "oauth_configured_mcp_servers": {
+                "description": "Number of configured OAuth upstream MCP servers.",
+                "title": "Oauth Configured Mcp Servers",
+                "type": "integer"
+              },
+              "oauth_mcp_clients": {
+                "description": "Whether OAuth-backed upstream MCP clients are supported.",
+                "title": "Oauth Mcp Clients",
+                "type": "boolean"
+              },
+              "raw_pty": {
+                "description": "Whether a raw persistent-terminal backend is available.",
+                "title": "Raw Pty",
+                "type": "boolean"
+              },
+              "remote_worker": {
+                "description": "Whether remote-worker routing is enabled.",
+                "title": "Remote Worker",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "remote_worker",
+              "raw_pty",
+              "conpty",
+              "browser_ui",
+              "native_opentui",
+              "browser_console",
+              "agent_bridge",
+              "oauth_mcp_clients",
+              "oauth_configured_mcp_servers",
+              "oauth_authorized_mcp_servers",
+              "http_transfer",
+              "audit_full_payload"
+            ],
+            "title": "SessionCapabilitiesEnvironment",
+            "type": "object"
+          },
+          "SessionEnvironment": {
+            "description": "Structured, bounded environment orientation for one session target.",
+            "properties": {
+              "capabilities": {
+                "$ref": "#/$defs/SessionCapabilitiesEnvironment",
+                "description": "Effective capabilities."
+              },
+              "policy": {
+                "$ref": "#/$defs/SessionPolicyEnvironment",
+                "description": "Safe effective policy and limits."
+              },
+              "runtime": {
+                "$ref": "#/$defs/SessionRuntimeEnvironment",
+                "description": "Runtime identity."
+              },
+              "tools": {
+                "$ref": "#/$defs/SessionToolsEnvironment",
+                "description": "Allowlisted tool probes."
+              },
+              "workspace": {
+                "$ref": "#/$defs/SessionWorkspaceEnvironment",
+                "description": "Workspace identity."
+              }
+            },
+            "required": [
+              "runtime",
+              "workspace",
+              "tools",
+              "capabilities",
+              "policy"
+            ],
+            "title": "SessionEnvironment",
+            "type": "object"
+          },
+          "SessionPolicyEnvironment": {
+            "description": "Safe effective limits and modes that influence tool selection.",
+            "properties": {
+              "authentication_mode": {
+                "description": "Inbound server authentication mode.",
+                "enum": [
+                  "none",
+                  "oauth"
+                ],
+                "title": "Authentication Mode",
+                "type": "string"
+              },
+              "full_control": {
+                "description": "Whether full-control mode is active.",
+                "title": "Full Control",
+                "type": "boolean"
+              },
+              "max_audit_event_bytes": {
+                "description": "Maximum retained bytes for one audit event.",
+                "title": "Max Audit Event Bytes",
+                "type": "integer"
+              },
+              "max_concurrent_commands": {
+                "description": "Concurrent command limit.",
+                "title": "Max Concurrent Commands",
+                "type": "integer"
+              },
+              "max_file_read_bytes": {
+                "description": "Maximum bytes read from one file.",
+                "title": "Max File Read Bytes",
+                "type": "integer"
+              },
+              "max_file_write_bytes": {
+                "description": "Maximum bytes written to one file.",
+                "title": "Max File Write Bytes",
+                "type": "integer"
+              },
+              "max_http_request_bytes": {
+                "description": "Inbound HTTP request-body limit.",
+                "title": "Max Http Request Bytes",
+                "type": "integer"
+              },
+              "max_output_bytes": {
+                "description": "Maximum bounded command output bytes.",
+                "title": "Max Output Bytes",
+                "type": "integer"
+              },
+              "max_persistent_shells": {
+                "description": "Persistent-shell session limit.",
+                "title": "Max Persistent Shells",
+                "type": "integer"
+              },
+              "max_search_results": {
+                "description": "Maximum search result count.",
+                "title": "Max Search Results",
+                "type": "integer"
+              },
+              "max_transfer_archive_entries": {
+                "description": "Maximum entries accepted from one transfer archive.",
+                "title": "Max Transfer Archive Entries",
+                "type": "integer"
+              },
+              "max_transfer_unpacked_bytes": {
+                "description": "Maximum unpacked regular-file bytes for one transfer.",
+                "title": "Max Transfer Unpacked Bytes",
+                "type": "integer"
+              },
+              "network_policy": {
+                "const": "tool_scoped",
+                "description": "Network access policy; network use remains tool-scoped.",
+                "title": "Network Policy",
+                "type": "string"
+              },
+              "remote_job_timeout_s": {
+                "description": "Remote job result timeout in seconds.",
+                "title": "Remote Job Timeout S",
+                "type": "integer"
+              },
+              "remote_max_pending_jobs": {
+                "description": "Pending or in-flight remote jobs allowed per worker.",
+                "title": "Remote Max Pending Jobs",
+                "type": "integer"
+              },
+              "server_mode": {
+                "description": "Configured server transport mode.",
+                "enum": [
+                  "mcp",
+                  "http",
+                  "both",
+                  "stdio"
+                ],
+                "title": "Server Mode",
+                "type": "string"
+              },
+              "shell_default_timeout_s": {
+                "description": "Default bounded shell timeout in seconds.",
+                "title": "Shell Default Timeout S",
+                "type": "integer"
+              },
+              "shell_max_timeout_s": {
+                "description": "Maximum bounded shell timeout in seconds.",
+                "title": "Shell Max Timeout S",
+                "type": "integer"
+              },
+              "tool_timeout_s": {
+                "description": "Base tool watchdog timeout in seconds.",
+                "title": "Tool Timeout S",
+                "type": "number"
+              }
+            },
+            "required": [
+              "server_mode",
+              "authentication_mode",
+              "full_control",
+              "network_policy",
+              "tool_timeout_s",
+              "shell_default_timeout_s",
+              "shell_max_timeout_s",
+              "max_output_bytes",
+              "max_file_read_bytes",
+              "max_file_write_bytes",
+              "max_search_results",
+              "max_concurrent_commands",
+              "max_persistent_shells",
+              "max_http_request_bytes",
+              "max_audit_event_bytes",
+              "max_transfer_archive_entries",
+              "max_transfer_unpacked_bytes",
+              "remote_job_timeout_s",
+              "remote_max_pending_jobs"
+            ],
+            "title": "SessionPolicyEnvironment",
+            "type": "object"
+          },
+          "SessionRuntimeEnvironment": {
+            "description": "Runtime identity safe to expose for tool selection.",
+            "properties": {
+              "architecture": {
+                "description": "Normalized machine architecture.",
+                "title": "Architecture",
+                "type": "string"
+              },
+              "local_shell_mcp_version": {
+                "description": "Running local-shell-mcp source version.",
+                "title": "Local Shell Mcp Version",
+                "type": "string"
+              },
+              "os": {
+                "description": "Normalized operating-system family.",
+                "title": "Os",
+                "type": "string"
+              },
+              "package_version": {
+                "description": "Installed local-shell-mcp distribution version.",
+                "title": "Package Version",
+                "type": "string"
+              },
+              "process_bits": {
+                "description": "Python process pointer width in bits.",
+                "enum": [
+                  32,
+                  64
+                ],
+                "title": "Process Bits",
+                "type": "integer"
+              },
+              "python_implementation": {
+                "description": "Python implementation name, such as CPython.",
+                "title": "Python Implementation",
+                "type": "string"
+              },
+              "python_version": {
+                "description": "Python language runtime version.",
+                "title": "Python Version",
+                "type": "string"
+              },
+              "release": {
+                "description": "Bounded operating-system release string.",
+                "title": "Release",
+                "type": "string"
+              },
+              "runtime_kind": {
+                "description": "Whether this process runs from source or a frozen executable.",
+                "enum": [
+                  "source",
+                  "frozen"
+                ],
+                "title": "Runtime Kind",
+                "type": "string"
+              }
+            },
+            "required": [
+              "local_shell_mcp_version",
+              "package_version",
+              "python_implementation",
+              "python_version",
+              "runtime_kind",
+              "os",
+              "release",
+              "architecture",
+              "process_bits"
+            ],
+            "title": "SessionRuntimeEnvironment",
+            "type": "object"
+          },
+          "SessionToolProbe": {
+            "description": "Bounded availability and version result for one allowlisted tool.",
+            "properties": {
+              "available": {
+                "description": "Whether the tool can be selected.",
+                "title": "Available",
+                "type": "boolean"
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Safe resolution source such as configured, system, or bundled.",
+                "title": "Source"
+              },
+              "status": {
+                "description": "Normalized probe status without raw exception text.",
+                "enum": [
+                  "available",
+                  "missing",
+                  "timeout",
+                  "error",
+                  "unsupported"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Extracted bounded version token, when available.",
+                "title": "Version"
+              }
+            },
+            "required": [
+              "available",
+              "status"
+            ],
+            "title": "SessionToolProbe",
+            "type": "object"
+          },
+          "SessionToolsEnvironment": {
+            "description": "Allowlisted executable and runtime probes relevant to tool choice.",
+            "properties": {
+              "bun": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Bun probe."
+              },
+              "chromium": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Chromium runtime probe."
+              },
+              "curl": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "curl probe."
+              },
+              "git": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Git probe."
+              },
+              "opentui": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Native OpenTUI runtime probe."
+              },
+              "playwright": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Python Playwright probe."
+              },
+              "ripgrep": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "ripgrep probe."
+              },
+              "shell": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "Configured shell probe."
+              },
+              "tmux": {
+                "$ref": "#/$defs/SessionToolProbe",
+                "description": "tmux backend probe."
+              }
+            },
+            "required": [
+              "shell",
+              "git",
+              "ripgrep",
+              "tmux",
+              "curl",
+              "bun",
+              "chromium",
+              "playwright",
+              "opentui"
+            ],
+            "title": "SessionToolsEnvironment",
+            "type": "object"
+          },
+          "SessionWorkerRuntime": {
+            "description": "Remote-worker runtime identity without tokens, paths, or digests.",
+            "properties": {
+              "active": {
+                "description": "Whether this environment was collected inside a remote worker.",
+                "title": "Active",
+                "type": "boolean"
+              },
+              "bundle_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Installed source-bundle version, when available.",
+                "title": "Bundle Version"
+              },
+              "service_kind": {
+                "description": "Remote-worker process or service kind.",
+                "enum": [
+                  "none",
+                  "manual",
+                  "systemd",
+                  "launchd",
+                  "windows_startup",
+                  "managed"
+                ],
+                "title": "Service Kind",
+                "type": "string"
+              },
+              "service_status": {
+                "description": "Normalized remote-worker service status.",
+                "enum": [
+                  "not_applicable",
+                  "running",
+                  "unknown"
+                ],
+                "title": "Service Status",
+                "type": "string"
+              },
+              "worker_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Remote worker local-shell-mcp version, when active.",
+                "title": "Worker Version"
+              }
+            },
+            "required": [
+              "active",
+              "service_kind",
+              "service_status"
+            ],
+            "title": "SessionWorkerRuntime",
+            "type": "object"
+          },
+          "SessionWorkspaceEnvironment": {
+            "description": "Workspace orientation for the runtime that owns the session.",
+            "properties": {
+              "machine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Configured remote-worker name, when remote.",
+                "title": "Machine"
+              },
+              "target": {
+                "description": "Execution target represented by this environment.",
+                "enum": [
+                  "local",
+                  "remote"
+                ],
+                "title": "Target",
+                "type": "string"
+              },
+              "workdir": {
+                "description": "Canonical workdir on the execution target.",
+                "title": "Workdir",
+                "type": "string"
+              },
+              "worker_runtime": {
+                "$ref": "#/$defs/SessionWorkerRuntime",
+                "description": "Worker runtime and service identity for this environment."
+              },
+              "workspace_root": {
+                "description": "Canonical workspace root on the execution target.",
+                "title": "Workspace Root",
+                "type": "string"
+              }
+            },
+            "required": [
+              "workspace_root",
+              "workdir",
+              "target",
+              "worker_runtime"
+            ],
+            "title": "SessionWorkspaceEnvironment",
+            "type": "object"
           }
         },
         "description": "Explicit agent/workspace session orientation.",
@@ -7012,6 +8103,10 @@
             "description": "Unix timestamp when the session was created.",
             "title": "Created At",
             "type": "number"
+          },
+          "environment": {
+            "$ref": "#/$defs/SessionEnvironment",
+            "description": "Bounded runtime, workspace, tool, capability, and policy orientation."
           },
           "expires_at": {
             "anyOf": [
@@ -7108,6 +8203,7 @@
           "workspace_root",
           "git",
           "instruction_files",
+          "environment",
           "message"
         ],
         "title": "SessionStartOutput",

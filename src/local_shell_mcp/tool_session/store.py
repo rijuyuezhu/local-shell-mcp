@@ -196,6 +196,33 @@ class ToolSessionStore:
             }
             return updated
 
+    def update_remote_session_workdir(
+        self, session_id: str, workdir: str
+    ) -> AgentSession:
+        """Cache a worker-validated remote workdir and clear stale snapshots."""
+        if not workdir:
+            raise ValueError("remote workdir must not be empty")
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise UnknownAgentSessionError(
+                    f"unknown session_id {session_id!r}; call session_start first"
+                )
+            if session.target != "remote":
+                raise ValueError("session is not remote")
+            updated = replace(
+                session,
+                workdir=workdir,
+                updated_at=time.time(),
+            )
+            self._sessions[session_id] = updated
+            self._snapshots = {
+                key: value
+                for key, value in self._snapshots.items()
+                if key[0] != session_id
+            }
+            return updated
+
     def end_session(self, session_id: str) -> AgentSession:
         """Remove one session and all snapshots owned by it."""
         with self._lock:

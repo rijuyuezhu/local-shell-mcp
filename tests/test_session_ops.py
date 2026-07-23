@@ -49,3 +49,41 @@ async def test_local_session_start_offloads_orientation(tmp_path, monkeypatch):
     ]
     assert result.workdir == str(tmp_path)
     assert result.label == "test"
+
+
+@pytest.mark.asyncio
+async def test_session_change_cwd_refreshes_environment_git_and_instructions(
+    tmp_path, monkeypatch
+):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (second / "AGENTS.md").write_text("instructions\n", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    get_tool_session_store().clear()
+
+    started = await session_ops.session_start_execute(str(first))
+    changed = await session_ops.session_change_cwd_execute(
+        started.session_id, str(second)
+    )
+
+    assert changed.session_id == started.session_id
+    assert changed.workdir == str(second)
+    assert changed.environment.workspace.workdir == str(second)
+    assert changed.environment.workspace.workspace_root == str(tmp_path)
+    assert changed.instruction_files == ["second/AGENTS.md"]
+    assert changed.environment.runtime.python_version
+    assert changed.environment.policy.max_output_bytes > 0
+    assert set(changed.environment.tools.model_dump()) == {
+        "shell",
+        "git",
+        "ripgrep",
+        "tmux",
+        "curl",
+        "bun",
+        "chromium",
+        "playwright",
+        "opentui",
+    }

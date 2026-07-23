@@ -435,6 +435,12 @@ credentials in the manifest.
 
 ### Phase 4 — Merge structured environment information into sessions
 
+Status: implementation in progress (started 2026-07-23).
+
+Actual baseline: branch HEAD and `origin/feat/port-upstream-features-2026-07` both point to `509ccc4`; fetched `upstream/main` remains `f72164a`, so no new upstream commit requires review before this phase.
+
+Initial audit: local sessions already compute Git/instruction orientation off the event loop, but remote `session_start` discards the worker's structured payload and rebuilds placeholders on the controller; `session_change_cwd` is synchronous and rejects remote sessions. Phase 4 will preserve worker-generated orientation/environment, add remote cwd changes through the existing worker session, and cache only the worker-returned canonical workdir on the controller. Tool/version probes will run concurrently with independent bounded subprocess timeouts and expose only normalized status/version/source fields.
+
 Do not add `environment_info`. Extend the current `SessionStartOutput` with one
 nested, typed `environment` object returned by both `session_start` and
 `session_change_cwd`.
@@ -456,6 +462,37 @@ Planned environment groups:
 - existing Git orientation and nearby instruction-file discovery remain top-level
   or are nested consistently, but are not duplicated.
 
+Implementation result:
+
+- `SessionStartOutput` now contains one required typed `environment` object with
+  fixed `runtime`, `workspace`, `tools`, `capabilities`, and `policy` groups.
+  `session_start` and `session_change_cwd` return the same contract; no
+  `environment_info` tool or alias was added.
+- Tool probes are allowlisted, concurrent, independently limited to 1.5 seconds,
+  output-bounded, version-token-only, and briefly cached. `available` is true only
+  after a successful probe; missing, timeout, error, and unsupported states are
+  normalized without executable paths, stdout/stderr, or exception text.
+- Environment collection exposes only safe runtime/platform tokens, canonical
+  session workspace/workdir, tool status/version/source categories, capability
+  booleans/counts, and tool-selection limits. It excludes environment values,
+  OAuth/admin secrets, Agent Bridge server names, denylists, state/config paths,
+  worker digests, process arguments, and full executable paths. Collection errors
+  degrade to normalized unavailable/error fields instead of failing sessions.
+- OAuth capability changes are visible as configured/authorized upstream counts;
+  the private auth store is not created when no enabled OAuth upstream exists.
+- Remote `session_start` now validates and preserves the worker-generated Git,
+  instruction, workspace, runtime, tool, capability, and policy payload instead
+  of rebuilding controller-local placeholders. The controller rebinds only its
+  public session id, target, machine, and lifecycle timestamps.
+- `session_change_cwd` is now asynchronous and supports local and remote sessions.
+  Remote changes execute through the paired worker session, cache only the
+  worker-validated canonical workdir on the controller, and clear stale grounding
+  snapshots. The source-only worker bundle includes the collector and internal
+  cwd dispatch without adding public worker tools.
+- Permanent workflow, remote-worker, security, quickstart, generated tool-schema,
+  and fork-difference documentation describes the session-bound contract and
+  disclosure boundary.
+
 Implementation rules:
 
 - Use Python/platform APIs and bounded executable probes, not an assembled shell
@@ -475,6 +512,32 @@ Tests:
 - Real remote-worker E2E proving remote metadata is produced on the worker.
 - Capability changes after Agent Bridge auth, OpenTUI installation, and service
   installation are reflected correctly.
+
+Final local validation:
+
+- Focused session/environment/worker suites pass 97 tests across normalized
+  probes, deterministic concurrency, brief cache behavior, failure fallback and
+  redaction, OAuth authorization counts, local/remote cwd refresh, snapshot
+  invalidation, source-only worker bootstrap, public schemas/docstrings, and the
+  real controller/worker E2E.
+- The real remote fixture passes in 7.48 seconds and proves worker-generated
+  workspace root, canonical workdir, instruction files, runtime/tool/capability/
+  policy data, private worker session routing, public session-id rebinding, remote
+  cwd refresh, restoration, and later remote tools all work in one live flow.
+- The full branch-coverage suite passes `846 passed, 2 skipped`; total branch
+  coverage is 84.46% against the unchanged 82.60% baseline. The new internal
+  `tool_session/environment.py` module is 93.63% and the expanded typed session
+  schema is 100%; the 181-file ratchet passes with no existing baseline reduction.
+- The real Chromium Human UI scenario passes in 31.39 seconds. Repository-wide
+  ruff format/check, pyright, lockfile, generated configuration/tool/instruction,
+  public tool-family alignment, strict MkDocs, all three generated reference
+  assets, and `git diff --check` pass.
+- Secret scanning reports zero findings in all 14 modified Phase 4 source and test
+  files. Generated schemas confirm both session tools share exactly the same five
+  environment groups and that no standalone `environment_info` tool exists.
+
+Repository-wide pre-commit, implementation commit/push, and remote CI remain
+pending.
 
 Exit criterion: clients can choose tools and understand local/remote runtime
 capabilities from `session_start` alone, with no standalone environment tool.

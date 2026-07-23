@@ -24,6 +24,19 @@ Use local-shell-mcp to implement this change. Keep the diff focused, run the rel
 
 For code changes, start with `session_start(workdir=...)`, then pass the returned `session_id` to session-bound tools. Use `read` for file or directory context, `search(pattern, paths=...)` for content discovery, `hashline_edit` as the default edit tool for existing files, `write_file` for new files or intentional whole-file replacement, and `bash(session_id=...)` for terminal work such as tests, builds, package managers, git inspection, and scripts. Prefer `read` selectors such as `src/foo.py:50-80`, `src/foo.py:50+20`, and `src/foo.py:raw`; hashline output and search snippets carry `[path#snapshot_id]` plus `line:text` rows. Copy those rows into `hashline_edit`, write only `+` final-content rows, keep ranges tight, and re-read after each successful edit or stale/surprising result. Use `edit_lines` only when exact structured path/start/end/replacement arguments are already available. The intended default surface should stay small and semantic. Use `apply_patch(session_id=..., patch=..., cwd=...)` when a caller already has a portable unified diff or an `*** Begin Patch` compatibility envelope spanning one or more files. The tool validates the complete envelope, resolves paths inside the explicit session workdir, runs `git apply --check`, and invokes Git through native argument vectors before applying; it is not a replacement for grounded `hashline_edit` during ordinary model-driven editing.
 
+
+### Session environment orientation
+
+Both `session_start` and `session_change_cwd` return the same nested `environment` object. Use it before choosing a tool instead of assuming that Git, tmux, Chromium, Bun, Playwright, OpenTUI, ConPTY, remote workers, HTTP transfer, or Agent Bridge OAuth are available. The groups are:
+
+- `runtime`: local-shell-mcp and Python versions, source/frozen runtime, normalized OS release, architecture, and process width;
+- `workspace`: the canonical target workspace/workdir, local or remote target, configured machine name, and normalized remote-worker runtime/service identity;
+- `tools`: bounded allowlisted probes with `available`, `status`, extracted `version`, and a safe source category;
+- `capabilities`: effective raw terminal, browser UI, OpenTUI, remote-worker, Agent Bridge/OAuth, transfer, and audit support;
+- `policy`: safe limits and modes that affect tool choice, including timeouts, output/file/request budgets, concurrency, transfer limits, and full-control state.
+
+Probe status is one of `available`, `missing`, `timeout`, `error`, or `unsupported`. A timeout/error does not expose raw stderr or exception text and does not mark the tool available. Probes run concurrently with independent bounds and are briefly cached; `session_change_cwd` still recomputes workspace, Git, instruction-file, capability, and policy orientation. The response never contains environment-variable values, OAuth tokens, admin PINs, command/path denylists, state/config paths, full executable paths, or worker runtime digests. There is intentionally no separate `environment_info` tool.
+
 ## Run tests and checks
 
 ```text

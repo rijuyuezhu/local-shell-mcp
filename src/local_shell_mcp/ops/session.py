@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Literal, overload
 
+from ..config.settings import get_settings
 from ..ops.utils.path import relative_display, workspace_root
 from ..schemas.result_models.jobs import JobStartOutput
 from ..schemas.result_models.session import (
@@ -12,6 +13,7 @@ from ..schemas.result_models.session import (
     SessionCopyOutput,
     SessionStartOutput,
 )
+from ..tool_session.environment import collect_session_environment
 from ..tool_session.store import AgentSession, get_tool_session_store
 
 _INSTRUCTION_FILE_NAMES = (
@@ -95,8 +97,9 @@ def _instruction_files(workdir: Path) -> list[str]:
 
 
 def _session_output(session: AgentSession) -> SessionStartOutput:
-    """Return a structured session_start payload for an agent session."""
+    """Return a structured session payload for a locally owned agent session."""
     workdir = Path(session.workdir)
+    settings = get_settings()
     return SessionStartOutput(
         session_id=session.session_id,
         target=session.target,
@@ -106,14 +109,45 @@ def _session_output(session: AgentSession) -> SessionStartOutput:
         updated_at=session.updated_at,
         expires_at=session.expires_at,
         label=session.label,
-        workspace_root=str(workspace_root()),
-        git=_git_info(workdir)
-        if session.target == "local"
-        else GitSessionInfo(is_repo=False),
-        instruction_files=_instruction_files(workdir)
-        if session.target == "local"
-        else [],
+        workspace_root=str(settings.workspace_root),
+        git=_git_info(workdir),
+        instruction_files=_instruction_files(workdir),
+        environment=collect_session_environment(
+            settings,
+            workdir=session.workdir,
+            target=session.target,
+            machine=session.machine,
+        ),
         message="Use this session_id in subsequent workspace tool calls.",
+    )
+
+
+def _rebind_remote_output(
+    worker_output: SessionStartOutput,
+    control_session: AgentSession,
+) -> SessionStartOutput:
+    """Bind worker-generated orientation to the controller's public session id."""
+    workspace = worker_output.environment.workspace.model_copy(
+        update={
+            "target": "remote",
+            "machine": control_session.machine,
+            "workdir": worker_output.workdir,
+        }
+    )
+    environment = worker_output.environment.model_copy(
+        update={"workspace": workspace}
+    )
+    return worker_output.model_copy(
+        update={
+            "session_id": control_session.session_id,
+            "target": "remote",
+            "machine": control_session.machine,
+            "created_at": control_session.created_at,
+            "updated_at": control_session.updated_at,
+            "expires_at": control_session.expires_at,
+            "label": control_session.label,
+            "environment": environment,
+        }
     )
 
 
@@ -152,30 +186,64 @@ async def session_start_execute(
     worker_session = await start_worker_session(
         machine=machine, workdir=workdir, label=label
     )
-    worker_session_id = worker_session.get("session_id")
-    if not isinstance(worker_session_id, str) or not worker_session_id:
+    try:
+        worker_output = SessionStartOutput.model_validate(worker_session)
+    except Exception as exc:
+        raise RuntimeError(
+            "remote session_start returned invalid structured orientation"
+        ) from exc
+    worker_session_id = worker_output.session_id
+    if not worker_session_id:
         raise RuntimeError(
             "remote session_start did not return worker session_id"
         )
-    remote_workdir = worker_session.get("workdir")
     session = get_tool_session_store().create_session(
         target="remote",
-        workdir=str(remote_workdir or workdir),
+        workdir=worker_output.workdir,
         machine=machine,
         worker_session_id=worker_session_id,
         label=label,
     )
-    return _session_output(session)
+    return _rebind_remote_output(worker_output, session)
 
 
-def session_change_cwd_execute(
+def _change_local_session_cwd(
     session_id: str, workdir: str
 ) -> SessionStartOutput:
-    """Change a local session workdir and return refreshed orientation metadata."""
+    """Change and orient one local session outside the async transport loop."""
     session = get_tool_session_store().change_session_workdir(
         session_id, workdir
     )
     return _session_output(session)
+
+
+async def session_change_cwd_execute(
+    session_id: str, workdir: str
+) -> SessionStartOutput:
+    """Change a local or remote session workdir and refresh target orientation."""
+    store = get_tool_session_store()
+    session = store.require_session(session_id)
+    if session.target == "local":
+        return await asyncio.to_thread(
+            _change_local_session_cwd, session_id, workdir
+        )
+    from .utils.remote_session import call_remote_session_tool
+
+    payload = await call_remote_session_tool(
+        session,
+        "session_change_cwd",
+        {"workdir": workdir},
+    )
+    try:
+        worker_output = SessionStartOutput.model_validate(payload)
+    except Exception as exc:
+        raise RuntimeError(
+            "remote session_change_cwd returned invalid structured orientation"
+        ) from exc
+    updated = store.update_remote_session_workdir(
+        session_id, worker_output.workdir
+    )
+    return _rebind_remote_output(worker_output, updated)
 
 
 @overload
