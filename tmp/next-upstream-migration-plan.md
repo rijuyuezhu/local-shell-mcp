@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phase 4 final CI test stabilization pending; Phase 5 not started
+Status: implementation in progress — Phases 1-4 complete; Phase 5 pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `4adce7c16d7f7825f317fd22bbcaf7e1ab9e8551` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `fc3d313ffd0c4585b5b8e1974a8aae9b11b915c0` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -157,7 +157,7 @@ Exit criterion: repository search finds no `DeprecatedTool`, `DEPRECATED_TOOLS`,
 
 ### Phase 2 — Add real Chromium browser E2E
 
-Status: implementation complete; final CI test stabilization in progress (started 2026-07-23).
+Status: complete (started and completed 2026-07-23).
 
 Actual baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both point to `3af7166`; fetched
@@ -555,8 +555,16 @@ polling observed the output marker before Playwright's WebSocket receive event w
 recorded, and the helper asserted immediately. The helper now waits within the
 same existing 15-second bound until both independent signals have arrived; a
 regular unit regression reproduces the original ordering deterministically. No
-production behavior changed. A clean final CI rerun remains pending; Phase 5 has
-not started.
+production behavior changed. Stabilization commit
+`fc3d313ffd0c4585b5b8e1974a8aae9b11b915c0`
+(`test(browser): wait for terminal websocket event`) was pushed. Because GitHub
+did not create a push check for that head, the complete workflow was explicitly
+dispatched against the same branch head. Final CI run `29991510147` completed
+successfully with all 19 jobs green: Ubuntu coverage, Linux/macOS/Windows pytest,
+Chromium, pyright, pre-commit, package smoke, ConPTY, all OpenTUI and VS Code jobs,
+Docker/Compose, both bundled-tmux architectures, and release-matrix checks. Phase
+4 has no unresolved design, implementation, test, security, documentation, or CI
+issue; Phase 5 is the next pending phase.
 
 Exit criterion: clients can choose tools and understand local/remote runtime
 capabilities from `session_start` alone, with no standalone environment tool.
@@ -830,7 +838,7 @@ and deleting this temporary plan does not remove unique operational knowledge.
 - [x] Phase 1: remove stale-tool diagnostics/tombstones.
 - [x] Phase 2: real Chromium browser E2E.
 - [x] Phase 3: Agent Bridge secrets and OAuth CLI/runtime.
-- [ ] Phase 4: structured environment in `session_start` (implementation complete; final CI rerun pending).
+- [x] Phase 4: structured environment in `session_start`.
 - [ ] Phase 5A: recoverable oversized audit payload store.
 - [ ] Phase 5B: session-bound MCP `audit_tail`.
 - [ ] Phase 6: Linux/macOS worker user-service management.
