@@ -54,7 +54,11 @@ async def _query_audit(args: dict[str, Any]) -> Any:
 async def _get_audit_entry(args: dict[str, Any]) -> Any:
     from local_shell_mcp.audit import get_audit_entry
 
-    return await asyncio.to_thread(get_audit_entry, str(args.get("id") or ""))
+    return await asyncio.to_thread(
+        get_audit_entry,
+        str(args.get("id") or ""),
+        include_full_payloads=bool(args.get("include_full_payloads", False)),
+    )
 
 
 async def _dashboard_snapshot(args: dict[str, Any]) -> Any:  # noqa: ARG001

@@ -12,6 +12,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
 AUDIT_LOG_STATE_DIR_NAME = "audit_log"
+AUDIT_PAYLOAD_STATE_DIR_NAME = "payloads"
 AGENT_CONFIG_STATE_DIR_NAME = "agent_config"
 AGENT_AUTH_STATE_DIR_NAME = "agent_auth"
 ENV_PREFIX = "LOCAL_SHELL_MCP_"
@@ -192,6 +193,24 @@ class Settings(BaseSettings):
     """Maximum active audit JSONL bytes before atomic recent-record retention."""
     max_audit_event_bytes: int = 1_000_000
     """Maximum encoded bytes retained for one audit event before preview truncation."""
+    audit_payloads_enabled: bool = True
+    """Store large sanitized audit field values as private content-addressed payloads."""
+    audit_inline_value_bytes: int = Field(
+        default=16 * 1024, ge=256, le=16_000_000
+    )
+    """Maximum canonical JSON bytes kept inline for one sanitized audit field value."""
+    max_audit_payload_bytes: int = Field(
+        default=64 * 1024 * 1024, ge=1_024, le=1_000_000_000
+    )
+    """Maximum canonical JSON bytes accepted for one recoverable sanitized audit payload."""
+    max_audit_payload_store_bytes: int = Field(
+        default=256 * 1024 * 1024, ge=1_024, le=4_000_000_000
+    )
+    """Maximum compressed bytes retained in the private audit payload store."""
+    audit_payload_retention_s: int = Field(
+        default=7 * 24 * 60 * 60, ge=0, le=366 * 24 * 60 * 60
+    )
+    """Recovery lifetime and orphan grace period for private audit payload objects."""
     max_tmp_files: int = 500
     """Temporary-file count limit. When exceeded, old files are deleted."""
     max_tmp_bytes: int = 50_000_000
@@ -283,6 +302,11 @@ class Settings(BaseSettings):
         return self.state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl"
 
     @property
+    def audit_payload_dir(self) -> Path:
+        """Private content-addressed audit payload directory."""
+        return self.audit_log_path.parent / AUDIT_PAYLOAD_STATE_DIR_NAME
+
+    @property
     def agent_config_dir(self) -> Path:
         """Read-only capability config directory, derived from state_dir."""
         return self.state_dir / AGENT_CONFIG_STATE_DIR_NAME
@@ -344,6 +368,19 @@ class Settings(BaseSettings):
     def split_csv_fields(cls, value: str | list[str] | None) -> list[str]:
         """Normalize comma-delimited restriction lists supplied through environment variables."""
         return _split_csv(value)
+
+    @model_validator(mode="after")
+    def validate_audit_payload_limits(self) -> Settings:
+        """Keep nested audit payload limits internally consistent."""
+        if self.audit_inline_value_bytes > self.max_audit_payload_bytes:
+            raise ValueError(
+                "audit_inline_value_bytes must not exceed max_audit_payload_bytes"
+            )
+        if self.max_audit_payload_bytes > self.max_audit_payload_store_bytes:
+            raise ValueError(
+                "max_audit_payload_bytes must not exceed max_audit_payload_store_bytes"
+            )
+        return self
 
     @model_validator(mode="after")
     def disable_builtin_restrictions_in_full_container_mode(self) -> Settings:

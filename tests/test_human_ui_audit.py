@@ -11,9 +11,10 @@ import local_shell_mcp.server.http.ui_audit as ui_audit_module
 from local_shell_mcp.audit import audit
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.oauth.core.scopes import (
+    SCOPE_AUDIT_FULL,
+    SCOPE_AUDIT_READ,
     SCOPE_REMOTE_USE,
     SCOPE_SHELL_EXECUTE,
-    SCOPE_SHELL_READ,
     SCOPE_SHELL_WRITE,
 )
 from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
@@ -163,8 +164,8 @@ def test_audit_detail_enforces_operation_sensitive_scopes(
         output={"path": "notes.txt"},
     )
 
-    read_only = _headers(SCOPE_SHELL_READ)
-    read_write = _headers(f"{SCOPE_SHELL_READ} {SCOPE_SHELL_WRITE}")
+    read_only = _headers(SCOPE_AUDIT_READ)
+    read_write = _headers(f"{SCOPE_AUDIT_READ} {SCOPE_SHELL_WRITE}")
 
     listing = client.get("/api/ui/audit", headers=read_only)
     denied = client.get(
@@ -182,6 +183,38 @@ def test_audit_detail_enforces_operation_sensitive_scopes(
     assert denied.status_code == 403
     assert SCOPE_SHELL_WRITE in denied.text
     assert allowed.status_code == 200
+
+
+def test_audit_detail_full_payloads_require_audit_full(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path, auth_mode="oauth")
+    audit(
+        "job_started",
+        job_id="large-job",
+        command="x" * 20_000,
+    )
+    entry_id = client.get(
+        "/api/ui/audit",
+        headers=_headers(SCOPE_AUDIT_READ),
+    ).json()["data"]["entries"][0]["id"]
+
+    denied = client.get(
+        "/api/ui/audit/detail",
+        params={"id": entry_id, "include_full_payloads": "true"},
+        headers=_headers(f"{SCOPE_AUDIT_READ} {SCOPE_SHELL_EXECUTE}"),
+    )
+    allowed = client.get(
+        "/api/ui/audit/detail",
+        params={"id": entry_id, "include_full_payloads": "true"},
+        headers=_headers(
+            f"{SCOPE_AUDIT_READ} {SCOPE_AUDIT_FULL} {SCOPE_SHELL_EXECUTE}"
+        ),
+    )
+
+    assert denied.status_code == 403
+    assert SCOPE_AUDIT_FULL in denied.text
+    assert allowed.status_code == 200
+    command = allowed.json()["data"]["entry"]["command"]
+    assert command == "x" * 20_000
 
 
 class _FakeManager:
@@ -244,7 +277,10 @@ class _FakeRemoteAudit:
                 },
             }
         assert tool == "get_audit_entry"
-        assert args == {"id": "call:remote-shell"}
+        assert args == {
+            "id": "call:remote-shell",
+            "include_full_payloads": False,
+        }
         return {"ok": True, "data": entry}
 
 
@@ -311,10 +347,10 @@ def test_remote_audit_scopes_offline_and_malformed_returns(
         fake,
         auth_mode="oauth",
     )
-    read_only = _headers(SCOPE_SHELL_READ)
-    remote_read = _headers(f"{SCOPE_SHELL_READ} {SCOPE_REMOTE_USE}")
+    read_only = _headers(SCOPE_AUDIT_READ)
+    remote_read = _headers(f"{SCOPE_AUDIT_READ} {SCOPE_REMOTE_USE}")
     remote_execute = _headers(
-        f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE} {SCOPE_REMOTE_USE}"
+        f"{SCOPE_AUDIT_READ} {SCOPE_SHELL_EXECUTE} {SCOPE_REMOTE_USE}"
     )
 
     missing_remote = client.get(

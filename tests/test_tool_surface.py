@@ -33,6 +33,7 @@ from local_shell_mcp.tools.local_handlers import (
 from tests.helpers import mcp_text
 
 LOCAL_MCP_TOOL_NAMES = {
+    "audit_tail",
     "bash",
     "read",
     "search",

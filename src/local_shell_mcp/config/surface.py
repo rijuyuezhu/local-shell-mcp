@@ -299,6 +299,25 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec(
         "max_audit_event_bytes", "Safety and resource limits", metavar="BYTES"
     ),
+    SettingSpec("audit_payloads_enabled", "Safety and resource limits"),
+    SettingSpec(
+        "audit_inline_value_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
+    SettingSpec(
+        "max_audit_payload_bytes", "Safety and resource limits", metavar="BYTES"
+    ),
+    SettingSpec(
+        "max_audit_payload_store_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
+    SettingSpec(
+        "audit_payload_retention_s",
+        "Safety and resource limits",
+        metavar="SECONDS",
+    ),
     SettingSpec("max_tmp_files", "Safety and resource limits", metavar="COUNT"),
     SettingSpec("max_tmp_bytes", "Safety and resource limits", metavar="BYTES"),
     SettingSpec(

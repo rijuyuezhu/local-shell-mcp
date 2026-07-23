@@ -15,11 +15,12 @@ from ...audit import get_audit_entry, query_audit
 from ...config.settings import get_settings
 from ...oauth.core.context import MissingOAuthScopeError, require_oauth_scopes
 from ...oauth.core.scopes import (
+    SCOPE_AUDIT_FULL,
+    SCOPE_AUDIT_READ,
     SCOPE_FILE_SHARE,
     SCOPE_GIT_WRITE,
     SCOPE_REMOTE_USE,
     SCOPE_SHELL_EXECUTE,
-    SCOPE_SHELL_READ,
     SCOPE_SHELL_WRITE,
     SUPPORTED_OAUTH_SCOPES,
 )
@@ -415,20 +416,26 @@ async def _query(machine: str, args: dict[str, Any]) -> dict[str, Any]:
     return _normalize_query_result(machine, value)
 
 
-async def _detail(machine: str, entry_id: str) -> dict[str, Any]:
+async def _detail(
+    machine: str, entry_id: str, *, include_full_payloads: bool = False
+) -> dict[str, Any]:
     if machine == "local":
-        value = await asyncio.to_thread(get_audit_entry, entry_id)
+        value = await asyncio.to_thread(
+            get_audit_entry,
+            entry_id,
+            include_full_payloads=include_full_payloads,
+        )
     else:
         value = await _remote_audit_call(
             machine,
             "get_audit_entry",
-            {"id": entry_id},
+            {"id": entry_id, "include_full_payloads": include_full_payloads},
         )
     return _normalize_entry(machine, value)
 
 
 def _detail_scopes(machine: str, entry: dict[str, Any]) -> tuple[str, ...]:
-    required = {SCOPE_SHELL_READ}
+    required = {SCOPE_AUDIT_READ}
     tool = str(entry.get("tool") or "")
     operation = str(entry.get("operation") or "").casefold()
     if tool in _AUDIT_FILE_WRITE_TOOLS:
@@ -442,7 +449,11 @@ def _detail_scopes(machine: str, entry: dict[str, Any]) -> tuple[str, ...]:
     if machine != "local" or operation == "remote":
         required.add(SCOPE_REMOTE_USE)
     if operation == "other":
-        required.update(SUPPORTED_OAUTH_SCOPES)
+        required.update(
+            scope
+            for scope in SUPPORTED_OAUTH_SCOPES
+            if scope != SCOPE_AUDIT_FULL
+        )
     return tuple(scope for scope in SUPPORTED_OAUTH_SCOPES if scope in required)
 
 
@@ -463,7 +474,7 @@ async def api_audit(request: Request) -> Response:
     """Return a bounded filtered list from one machine's private Audit log."""
     try:
         machine = _machine_arg(request.query_params.get("machine"))
-        required = [SCOPE_SHELL_READ]
+        required = [SCOPE_AUDIT_READ]
         if machine != "local":
             required.append(SCOPE_REMOTE_USE)
         _require_scopes(*required)
@@ -490,12 +501,18 @@ async def api_audit_detail(request: Request) -> Response:
             max_bytes=UI_AUDIT_ENTRY_ID_MAX_BYTES,
             allow_empty=False,
         )
-        base_scopes = [SCOPE_SHELL_READ]
+        base_scopes = [SCOPE_AUDIT_READ]
         if machine != "local":
             base_scopes.append(SCOPE_REMOTE_USE)
         _require_scopes(*base_scopes)
         entry = await _detail(machine, entry_id)
         _require_scopes(*_detail_scopes(machine, entry))
+        include_full_payloads = str(
+            request.query_params.get("include_full_payloads") or ""
+        ).casefold() in {"1", "true", "yes"}
+        if include_full_payloads:
+            _require_scopes(SCOPE_AUDIT_READ, SCOPE_AUDIT_FULL)
+            entry = await _detail(machine, entry_id, include_full_payloads=True)
         preview_request = image_preview_request(request.query_params)
         entry = await asyncio.to_thread(
             _audit_view_image_detail, entry, preview_request

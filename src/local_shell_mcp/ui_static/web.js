@@ -1768,7 +1768,11 @@
     elements.auditDetailMeta.textContent = "Loading details";
     elements.auditDetailBody.textContent = `Loading ${requestedMachine}:${entryId}`;
     try {
-      const params = new URLSearchParams({ machine: requestedMachine, id: entryId });
+      const params = new URLSearchParams({
+        machine: requestedMachine,
+        id: entryId,
+        include_full_payloads: "true",
+      });
       const payload = await request(`/audit/detail?${params.toString()}`);
       if (
         generation !== auditDetailGeneration ||

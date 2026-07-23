@@ -1,11 +1,11 @@
 {
-  "count": 39,
+  "count": 40,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "39"
+          "code": "40"
         },
         "."
       ],
@@ -154,6 +154,105 @@
             ]
           },
           "Read a bounded related file from the same selected Skill source; activate the Skill first."
+        ]
+      ]
+    },
+    {
+      "body": "Register session-bound audit tools.",
+      "headers": [
+        "Tool",
+        "Parameters",
+        "Description"
+      ],
+      "heading": "Audit",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "audit_tail"
+          },
+          {
+            "items": [
+              {
+                "description": "Optional audit-record session identifier filter.",
+                "head": {
+                  "code": "audit_session"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Optional Unix timestamp boundary.",
+                "head": {
+                  "code": "end_ts"
+                },
+                "note": "(number / null, optional)"
+              },
+              {
+                "description": "Stable logical audit entry id to retrieve.",
+                "head": {
+                  "code": "entry_id"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Optional case-insensitive event-name filter.",
+                "head": {
+                  "code": "event"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Resolve retained sanitized payload objects. Requires audit:full and entry_id.",
+                "head": {
+                  "code": "include_full_payloads"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
+                "description": "Maximum logical audit entries to return.",
+                "head": {
+                  "code": "limit"
+                },
+                "note": "(integer, optional)"
+              },
+              {
+                "description": "Optional normalized operation-category filter.",
+                "head": {
+                  "code": "operation"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "Optional metadata-only case-insensitive search text.",
+                "head": {
+                  "code": "search"
+                },
+                "note": "(string / null, optional)"
+              },
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              },
+              {
+                "description": "Timestamp sort order.",
+                "head": {
+                  "code": "sort"
+                },
+                "note": "(asc / desc, optional)"
+              },
+              {
+                "description": "Optional Unix timestamp boundary.",
+                "head": {
+                  "code": "start_ts"
+                },
+                "note": "(number / null, optional)"
+              }
+            ]
+          },
+          "Read bounded, coalesced audit history for the local or remote target selected by an explicit agent session. Listing and previews require audit:read. Set entry_id to retrieve one logical entry; set include_full_payloads=true only with entry_id to resolve retained sanitized payloads, which additionally requires audit:full. Searches cover metadata rather than stored payload bodies. The current audit_tail lifecycle is excluded from its own stable read snapshot."
         ]
       ]
     },
@@ -1483,7 +1582,9 @@
               "shell:execute",
               "git:write",
               "file:share",
-              "remote:use"
+              "remote:use",
+              "audit:read",
+              "audit:full"
             ],
             "type": "oauth2"
           }
@@ -1573,7 +1674,9 @@
               "shell:execute",
               "git:write",
               "file:share",
-              "remote:use"
+              "remote:use",
+              "audit:read",
+              "audit:full"
             ],
             "type": "oauth2"
           }
@@ -1776,6 +1879,240 @@
           "applied"
         ],
         "title": "ApplyPatchOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read bounded, coalesced audit history for the local or remote target selected by an explicit agent session. Listing and previews require audit:read. Set entry_id to retrieve one logical entry; set include_full_payloads=true only with entry_id to resolve retained sanitized payloads, which additionally requires audit:full. Searches cover metadata rather than stored payload bodies. The current audit_tail lifecycle is excluded from its own stable read snapshot.",
+      "inputSchema": {
+        "properties": {
+          "audit_session": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional audit-record session identifier filter.",
+            "title": "Audit Session"
+          },
+          "end_ts": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional Unix timestamp boundary.",
+            "title": "End Ts"
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Stable logical audit entry id to retrieve.",
+            "title": "Entry Id"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional case-insensitive event-name filter.",
+            "title": "Event"
+          },
+          "include_full_payloads": {
+            "default": false,
+            "description": "Resolve retained sanitized payload objects. Requires audit:full and entry_id.",
+            "title": "Include Full Payloads",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 100,
+            "description": "Maximum logical audit entries to return.",
+            "maximum": 2000,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional normalized operation-category filter.",
+            "title": "Operation"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional metadata-only case-insensitive search text.",
+            "title": "Search"
+          },
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "sort": {
+            "default": "desc",
+            "description": "Timestamp sort order.",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Sort",
+            "type": "string"
+          },
+          "start_ts": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional Unix timestamp boundary.",
+            "title": "Start Ts"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "audit_tailArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "audit:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "audit_tail",
+      "outputSchema": {
+        "description": "Bounded logical audit query result for one local or remote target.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entry Id"
+          },
+          "failed_matched": {
+            "title": "Failed Matched",
+            "type": "integer"
+          },
+          "full_payloads": {
+            "default": false,
+            "title": "Full Payloads",
+            "type": "boolean"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Machine"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "total_matched": {
+            "title": "Total Matched",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_id",
+          "target",
+          "count",
+          "total_matched",
+          "failed_matched"
+        ],
+        "title": "AuditTailOutput",
         "type": "object"
       }
     },
@@ -1999,7 +2336,9 @@
               "shell:execute",
               "git:write",
               "file:share",
-              "remote:use"
+              "remote:use",
+              "audit:read",
+              "audit:full"
             ],
             "type": "oauth2"
           }
@@ -3851,7 +4190,9 @@
               "shell:execute",
               "git:write",
               "file:share",
-              "remote:use"
+              "remote:use",
+              "audit:read",
+              "audit:full"
             ],
             "type": "oauth2"
           }
@@ -3901,7 +4242,9 @@
               "shell:execute",
               "git:write",
               "file:share",
-              "remote:use"
+              "remote:use",
+              "audit:read",
+              "audit:full"
             ],
             "type": "oauth2"
           }
@@ -3964,7 +4307,9 @@
               "shell:execute",
               "git:write",
               "file:share",
-              "remote:use"
+              "remote:use",
+              "audit:read",
+              "audit:full"
             ],
             "type": "oauth2"
           }
@@ -4893,7 +5238,9 @@
               "shell:execute",
               "git:write",
               "file:share",
-              "remote:use"
+              "remote:use",
+              "audit:read",
+              "audit:full"
             ],
             "type": "oauth2"
           }

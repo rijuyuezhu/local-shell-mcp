@@ -145,4 +145,4 @@ Default audit log path:
 tail -F /path/to/your/workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
 ```
 
-The audit log retains non-sensitive tool inputs and outputs within configured byte limits, while credential-like fields and text are redacted on a best-effort basis. Treat it as sensitive and do not publish it without review.
+Audit state retains bounded references/previews and may retain complete sanitized tool inputs or outputs in private content-addressed payload objects. Credential-like fields and text are redacted on a best-effort basis before storage. Treat the whole audit directory as sensitive and do not publish it without review.

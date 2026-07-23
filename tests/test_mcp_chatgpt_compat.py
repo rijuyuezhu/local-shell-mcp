@@ -61,6 +61,8 @@ def test_oauth_supported_scopes_include_feature_scopes():
         "git:write",
         "file:share",
         "remote:use",
+        "audit:read",
+        "audit:full",
     ]
 
 
@@ -206,6 +208,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "file:share",
     ]
     assert tool_oauth_scopes("remote_admin") == ["remote:use"]
+    assert tool_oauth_scopes("audit_tail") == ["audit:read"]
     assert all(tool.outputSchema is not None for tool in tools.values())
     bash_schema = tools["bash"].outputSchema
     assert bash_schema is not None
@@ -661,6 +664,7 @@ async def test_read_only_tools_are_annotated(tmp_path, monkeypatch):
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
     read_only_tool_names = {
+        "audit_tail",
         "fetch",
         "glob_search",
         "list_file_links",

@@ -12,6 +12,7 @@ import time
 import uuid
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import fields, is_dataclass
 from enum import Enum
 from pathlib import Path
@@ -25,7 +26,15 @@ from .agent_bridge.redaction import (
     _redact_text,
     redact_configured_values,
 )
-from .config.settings import get_settings
+from .audit_payloads import (
+    externalize_sanitized_value,
+    payload_file_sizes,
+    payload_reference_digests,
+    payload_reference_metadata,
+    prune_payload_files,
+    resolve_payload_references,
+)
+from .config.settings import Settings, get_settings
 from .utils.private_files import (
     append_private_bytes,
     atomic_write_private_bytes,
@@ -37,6 +46,11 @@ DOWNLOAD_URL_TOKEN_RE = re.compile(
 )
 
 _AUDIT_THREAD_LOCK = threading.RLock()
+_CURRENT_AUDIT_CALL_ID: ContextVar[str | None] = ContextVar(
+    "local_shell_mcp_audit_call_id", default=None
+)
+_AUDIT_PAYLOAD_SWEEP_INTERVAL_S = 60.0
+_AUDIT_PAYLOAD_SWEEP_TIMES: dict[str, float] = {}
 _AUDIT_MAX_DEPTH = 12
 _AUDIT_MAX_ITEMS = 200
 _AUDIT_MAX_STRING_CHARS = 16_000
@@ -339,6 +353,21 @@ def _audit_transaction(path: Path) -> Generator[None]:
         yield
 
 
+def current_audit_call_id() -> str | None:
+    """Return the current public tool lifecycle id when called inside a tool."""
+    return _CURRENT_AUDIT_CALL_ID.get()
+
+
+@contextmanager
+def audit_call_context(call_id: str) -> Generator[None]:
+    """Bind one lifecycle id while its public tool implementation executes."""
+    token = _CURRENT_AUDIT_CALL_ID.set(call_id)
+    try:
+        yield
+    finally:
+        _CURRENT_AUDIT_CALL_ID.reset(token)
+
+
 def _retention_units(lines: list[bytes]) -> list[list[tuple[int, bytes]]]:
     """Group tool-call start/end records so retention never splits completed pairs."""
     units: list[list[tuple[int, bytes]]] = []
@@ -365,10 +394,10 @@ def _retention_units(lines: list[bytes]) -> list[list[tuple[int, bytes]]]:
     return units
 
 
-def _enforce_audit_log_limit(path: Path, max_bytes: int) -> None:
+def _enforce_audit_log_limit(path: Path, max_bytes: int) -> bool:
     """Atomically retain recent complete records within the configured log budget."""
     if max_bytes <= 0 or not path.exists() or path.stat().st_size <= max_bytes:
-        return
+        return False
     lines = path.read_bytes().splitlines(keepends=True)
     target_bytes = max(1, max_bytes // 2)
     selected: list[tuple[int, bytes]] = []
@@ -385,6 +414,98 @@ def _enforce_audit_log_limit(path: Path, max_bytes: int) -> None:
             break
     selected.sort(key=lambda item: item[0])
     atomic_write_private_bytes(path, b"".join(line for _, line in selected))
+    return True
+
+
+def _record_payload_activity(
+    records: list[dict[str, Any]], settings: Settings
+) -> tuple[set[str], set[str]]:
+    referenced: set[str] = set()
+    active: set[str] = set()
+    now = time.time()
+    for record in records:
+        for metadata in payload_reference_metadata(record):
+            digest = str(metadata["sha256"])
+            referenced.add(digest)
+            created_at = metadata.get("created_at")
+            with contextlib.suppress(TypeError, ValueError):
+                if created_at is None:
+                    raise ValueError("missing created_at")
+                age = max(0.0, now - float(created_at))
+                if settings.audit_payload_retention_s > 0 and (
+                    age <= settings.audit_payload_retention_s
+                ):
+                    active.add(digest)
+    return referenced, active
+
+
+def _enforce_audit_retention(
+    path: Path, settings: Settings, *, payload_changed: bool
+) -> None:
+    """Retain paired JSONL units and referenced payloads without rescanning every event."""
+    log_changed = _enforce_audit_log_limit(path, settings.max_audit_log_bytes)
+    payload_root_exists = settings.audit_payload_dir.exists()
+    sweep_key = str(path)
+    monotonic_now = time.monotonic()
+    last_sweep = _AUDIT_PAYLOAD_SWEEP_TIMES.get(sweep_key, 0.0)
+    periodic_sweep_due = (
+        payload_root_exists
+        and monotonic_now - last_sweep >= _AUDIT_PAYLOAD_SWEEP_INTERVAL_S
+    )
+    if not payload_changed and not log_changed and not periodic_sweep_due:
+        return
+    _AUDIT_PAYLOAD_SWEEP_TIMES[sweep_key] = monotonic_now
+    if not path.exists():
+        prune_payload_files(settings, referenced=set(), active_references=set())
+        return
+
+    lines = path.read_bytes().splitlines(keepends=True)
+    units = _retention_units(lines)
+    sizes = payload_file_sizes(settings)
+
+    def unit_digests(unit: list[tuple[int, bytes]]) -> set[str]:
+        found: set[str] = set()
+        for _, raw_line in unit:
+            with contextlib.suppress(json.JSONDecodeError, UnicodeDecodeError):
+                value = json.loads(raw_line)
+                found.update(payload_reference_digests(value))
+        return found
+
+    selected = list(units)
+    referenced = (
+        set().union(*(unit_digests(unit) for unit in selected))
+        if selected
+        else set()
+    )
+    while (
+        selected
+        and sum(sizes.get(digest, 0) for digest in referenced)
+        > settings.max_audit_payload_store_bytes
+    ):
+        selected.pop(0)
+        referenced = (
+            set().union(*(unit_digests(unit) for unit in selected))
+            if selected
+            else set()
+        )
+    if len(selected) != len(units):
+        kept = sorted(
+            (item for unit in selected for item in unit),
+            key=lambda item: item[0],
+        )
+        atomic_write_private_bytes(path, b"".join(raw for _, raw in kept))
+        lines = [raw for _, raw in kept]
+
+    records: list[dict[str, Any]] = []
+    for raw_line in lines:
+        with contextlib.suppress(json.JSONDecodeError, UnicodeDecodeError):
+            value = json.loads(raw_line)
+            if isinstance(value, dict):
+                records.append(value)
+    referenced, active = _record_payload_activity(records, settings)
+    prune_payload_files(
+        settings, referenced=referenced, active_references=active
+    )
 
 
 _AUDIT_SOURCE_INDEXES = "_source_indexes"
@@ -714,6 +835,7 @@ def query_audit(
     start_ts: float | None = None,
     end_ts: float | None = None,
     sort: str = "desc",
+    exclude_call_id: str | None = None,
 ) -> dict[str, Any]:
     """Read, pair, filter, and sort bounded audit rows for a Human UI client."""
     bounded_limit = max(1, min(int(limit), _AUDIT_QUERY_MAX_ENTRIES))
@@ -730,6 +852,8 @@ def query_audit(
     session_filter = (session or "").casefold().strip()
     matched: list[dict[str, Any]] = []
     for row in rows:
+        if exclude_call_id and str(row.get("call_id") or "") == exclude_call_id:
+            continue
         timestamp = _audit_timestamp(row.get("ts"))
         if start_ts is not None and timestamp < start_ts:
             continue
@@ -767,22 +891,33 @@ def query_audit(
         for row in matched
     )
     selected = matched[:bounded_limit]
+    entries = [_public_audit_entry(row) for row in selected]
     return {
-        "entries": [_public_audit_entry(row) for row in selected],
+        "entries": entries,
         "count": len(selected),
         "total_matched": total,
         "failed_matched": failed_matched,
     }
 
 
-def get_audit_entry(entry_id: str) -> dict[str, Any]:
-    """Return one full coalesced audit entry by stable identifier."""
+def get_audit_entry(
+    entry_id: str,
+    *,
+    include_full_payloads: bool = False,
+    exclude_call_id: str | None = None,
+) -> dict[str, Any]:
+    """Return one coalesced audit entry, optionally resolving sanitized payloads."""
     normalized = str(entry_id).strip()
     if not normalized:
         raise ValueError("audit entry id is required")
     for row in _coalesce_audit_records(_read_audit_records()):
+        if exclude_call_id and str(row.get("call_id") or "") == exclude_call_id:
+            continue
         if str(row.get("id") or "") == normalized:
-            return _public_audit_entry(row)
+            entry = _public_audit_entry(row)
+            if include_full_payloads:
+                return resolve_payload_references(entry, get_settings())
+            return entry
     raise ValueError(f"Unknown audit entry: {normalized}")
 
 
@@ -794,25 +929,51 @@ def audit(event: str, **fields: Any) -> None:
         event_limit = min(
             event_limit, max(512, int(settings.max_audit_log_bytes))
         )
-    record = {
-        "id": uuid.uuid4().hex,
-        "ts": time.time(),
-        "event": _bounded_text(str(event), 256),
-        **{
-            str(name): _sanitize_audit_value(value, field_name=str(name))
-            for name, value in fields.items()
-        },
-    }
-    encoded = _fit_record(record, event_limit)
-    if not encoded:
-        raise RuntimeError(
-            "Audit event byte limit is too small to retain event identity"
+    created_at = time.time()
+    recoverable_string_chars = (
+        settings.max_audit_payload_bytes
+        if settings.audit_payloads_enabled
+        else event_limit
+    )
+    full_string_chars = max(
+        _AUDIT_MAX_STRING_CHARS, int(recoverable_string_chars)
+    )
+    sanitized = {
+        str(name): _sanitize_audit_value(
+            value,
+            field_name=str(name),
+            max_string_chars=full_string_chars,
         )
-
+        for name, value in fields.items()
+    }
     path: Path = settings.audit_log_path
     with _audit_transaction(path):
+        externalized = {
+            name: externalize_sanitized_value(
+                value,
+                settings=settings,
+                preview=_preview_audit_value(value),
+                created_at=created_at,
+            )
+            for name, value in sanitized.items()
+        }
+        record = {
+            "id": uuid.uuid4().hex,
+            "ts": created_at,
+            "event": _bounded_text(str(event), 256),
+            **externalized,
+        }
+        encoded = _fit_record(record, event_limit)
+        if not encoded:
+            raise RuntimeError(
+                "Audit event byte limit is too small to retain event identity"
+            )
         append_private_bytes(path, encoded)
-        _enforce_audit_log_limit(path, settings.max_audit_log_bytes)
+        _enforce_audit_retention(
+            path,
+            settings,
+            payload_changed=bool(payload_reference_digests(externalized)),
+        )
 
 
 def new_audit_call_id() -> str:

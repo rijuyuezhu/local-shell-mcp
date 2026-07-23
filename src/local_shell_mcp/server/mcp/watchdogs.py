@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ...audit import (
     audit,
+    audit_call_context,
     audit_tool_call_end,
     audit_tool_call_start,
     new_audit_call_id,
@@ -63,9 +64,10 @@ def _mcp_tool_audit_watchdog_wrapper(
         )
         timeout_s = tool_timeout_s(tool_name)
         try:
-            result = await asyncio.wait_for(
-                original(*args, **kwargs), timeout=timeout_s
-            )
+            with audit_call_context(call_id):
+                result = await asyncio.wait_for(
+                    original(*args, **kwargs), timeout=timeout_s
+                )
         except TimeoutError:
             exc = PublicToolTimeoutError(
                 f"{tool_name} exceeded {timeout_s} second tool timeout"

@@ -53,7 +53,11 @@ async def _query_audit_handler(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _get_audit_entry_handler(args: dict[str, Any]) -> dict[str, Any]:
-    return await asyncio.to_thread(get_audit_entry, str(args.get("id") or ""))
+    return await asyncio.to_thread(
+        get_audit_entry,
+        str(args.get("id") or ""),
+        include_full_payloads=bool(args.get("include_full_payloads", False)),
+    )
 
 
 async def _dashboard_snapshot_handler(

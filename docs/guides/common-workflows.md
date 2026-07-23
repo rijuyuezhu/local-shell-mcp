@@ -121,4 +121,4 @@ Watch the audit log from the host or container:
 docker compose exec local-shell-mcp tail -f /workspace/.local-shell-mcp/audit_log/audit.jsonl
 ```
 
-Each routed MCP or REST tool call should produce paired `tool_call_start` and `tool_call_end` records linked by `call_id`.
+Each routed MCP or REST tool call should produce paired `tool_call_start` and `tool_call_end` records linked by `call_id`. For agent-visible review, start an explicit session and call `audit_tail(session_id=..., limit=...)`; use `entry_id` plus `include_full_payloads=true` only when the caller has `audit:full` and needs one retained sanitized payload. Local and remote sessions use the same tool contract.

@@ -1193,6 +1193,106 @@
         ],
         [
           {
+            "code": "audit_payloads_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--audit-payloads-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AUDIT_PAYLOADS_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Store large sanitized audit field values as private content-addressed payloads."
+        ],
+        [
+          {
+            "code": "audit_inline_value_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--audit-inline-value-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES"
+          },
+          "integer",
+          {
+            "code": "16384"
+          },
+          "Maximum canonical JSON bytes kept inline for one sanitized audit field value."
+        ],
+        [
+          {
+            "code": "max_audit_payload_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-audit-payload-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES"
+          },
+          "integer",
+          {
+            "code": "67108864"
+          },
+          "Maximum canonical JSON bytes accepted for one recoverable sanitized audit payload."
+        ],
+        [
+          {
+            "code": "max_audit_payload_store_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-audit-payload-store-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES"
+          },
+          "integer",
+          {
+            "code": "268435456"
+          },
+          "Maximum compressed bytes retained in the private audit payload store."
+        ],
+        [
+          {
+            "code": "audit_payload_retention_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--audit-payload-retention-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AUDIT_PAYLOAD_RETENTION_S"
+          },
+          "integer",
+          {
+            "code": "604800"
+          },
+          "Recovery lifetime and orphan grace period for private audit payload objects."
+        ],
+        [
+          {
             "code": "max_tmp_files"
           },
           {
@@ -2588,6 +2688,74 @@
       "description": "Maximum encoded bytes retained for one audit event before preview truncation.",
       "env": "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES",
       "name": "max_audit_event_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--audit-payloads-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Store large sanitized audit field values as private content-addressed payloads.",
+      "env": "LOCAL_SHELL_MCP_AUDIT_PAYLOADS_ENABLED",
+      "name": "audit_payloads_enabled",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--audit-inline-value-bytes",
+      "default": 16384,
+      "default_display": "16384",
+      "description": "Maximum canonical JSON bytes kept inline for one sanitized audit field value.",
+      "env": "LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES",
+      "name": "audit_inline_value_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-audit-payload-bytes",
+      "default": 67108864,
+      "default_display": "67108864",
+      "description": "Maximum canonical JSON bytes accepted for one recoverable sanitized audit payload.",
+      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES",
+      "name": "max_audit_payload_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-audit-payload-store-bytes",
+      "default": 268435456,
+      "default_display": "268435456",
+      "description": "Maximum compressed bytes retained in the private audit payload store.",
+      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES",
+      "name": "max_audit_payload_store_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--audit-payload-retention-s",
+      "default": 604800,
+      "default_display": "604800",
+      "description": "Recovery lifetime and orphan grace period for private audit payload objects.",
+      "env": "LOCAL_SHELL_MCP_AUDIT_PAYLOAD_RETENTION_S",
+      "name": "audit_payload_retention_s",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

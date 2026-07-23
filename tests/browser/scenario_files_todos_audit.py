@@ -90,7 +90,7 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         body={
             "session_id": session_id,
             "path": "audit-scope.txt",
-            "content": "scope protected\n",
+            "content": "scope protected\n" + "payload-e2e-" * 2_000,
             "overwrite": True,
         },
     )
@@ -104,12 +104,13 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     expect(page.locator("#audit-detail-body")).to_contain_text(
         "audit-scope.txt"
     )
+    expect(page.locator("#audit-detail-body")).to_contain_text("payload-e2e-")
 
     full_token = page.evaluate(
         "key => sessionStorage.getItem(key)", TOKEN_STORAGE_KEY
     )
     assert isinstance(full_token, str) and full_token
-    read_only_token = harness.issue_token("shell:read remote:use")
+    read_only_token = harness.issue_token("audit:read shell:read remote:use")
     harness.set_token(read_only_token)
     page.reload(wait_until="domcontentloaded")
     expect(page.locator("#connection-state")).to_have_text("Connected")

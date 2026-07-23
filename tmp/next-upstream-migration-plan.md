@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-4 complete; Phase 5 pending
+Status: implementation in progress — Phases 1-4 complete; Phase 5 local validation complete, remote CI pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `fc3d313ffd0c4585b5b8e1974a8aae9b11b915c0` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `2ba7f7b3de14a0d4611dc4ebed70d62b944b4f58` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -570,6 +570,71 @@ Exit criterion: clients can choose tools and understand local/remote runtime
 capabilities from `session_start` alone, with no standalone environment tool.
 
 ### Phase 5 — Add recoverable oversized audit payloads and public `audit_tail`
+
+Status: implementation and local validation complete; remote CI pending (started 2026-07-23).
+
+Actual baseline: branch HEAD and `origin/feat/port-upstream-features-2026-07`
+both point to `2ba7f7b`; fetched `upstream/main` remains `f72164a`, so no new
+upstream commit requires review before this phase. Phase 4 branch-head CI run
+`29992872968` is complete/success.
+
+Implementation result:
+
+- Audit values are redacted/normalized first. The complete sanitized value keeps
+  strings up to `max_audit_payload_bytes`, while JSONL previews retain the
+  existing smaller display bounds. Large accepted values become canonical,
+  deterministic-gzip, SHA-256-addressed objects under the private audit payload
+  directory; small values remain inline and over-limit values become explicit
+  omission records.
+- References contain version, digest, canonical JSON byte count, creation time,
+  and bounded preview. Full reads use no-follow regular-file opens and validate
+  retention, compressed/read/decompression bounds, canonical byte count, digest,
+  UTF-8, and JSON before returning data. Missing, corrupt, and expired objects
+  remain explicit unresolved references rather than raw exceptions.
+- Payload creation, JSONL append, lifecycle-pair retention, combined payload
+  quota accounting, atomic JSONL rewrite, and payload pruning share the existing
+  cross-process audit transaction. Repeated content repairs/replaces corrupt or
+  symlinked objects atomically and does not follow the link target.
+- Five bounded settings and generated config examples are implemented. Setting
+  validation enforces inline <= per-value <= store quota; setting retention to
+  zero disables recovery while leaving bounded references/omission behavior.
+- Public `audit_tail` is a read-only, typed, explicit-session tool. Local reads
+  reuse `query_audit`/`get_audit_entry`; remote reads use the paired worker
+  session and existing internal audit RPCs. Full payload resolution is permitted
+  only in stable `entry_id` detail mode.
+- Dedicated `audit:read` and `audit:full` scopes are part of the supported OAuth
+  set. The public tool requires `audit:read` and conditionally enforces
+  `audit:full`; Human UI list/detail uses the same scopes while preserving the
+  existing operation-sensitive write/execute/share/Git/remote checks.
+- MCP/REST lifecycle wrappers bind the exact current call id. Local `audit_tail`
+  excludes only its own in-progress lifecycle, so older audit queries remain
+  visible and no broad event-family suppression is required.
+- The source-only worker bundle includes the payload module; remote query/detail
+  handlers preserve preview/full behavior without adding public worker tools.
+
+Final local validation:
+
+- The complete focused audit/config/UI/worker/remote/public-surface suite passes
+  133 tests, including source-only worker bootstrap and the real controller/
+  worker E2E. Direct failure-injection coverage validates malformed references,
+  invalid roots/objects, open races, byte-count/digest/JSON/UTF-8 mismatches,
+  bounded gzip bombs, recursive lists, quota pruning, and GC error paths.
+- The full branch-coverage suite passes `872 passed, 2 skipped`; total branch
+  coverage is 84.78% against the unchanged 82.60% baseline. The new
+  `audit_payloads.py` module is 98.12%; the new operation, input schema, result
+  schema, and registry modules are 100%. The ratchet passes across 181 tracked
+  files and all nine new modules without reducing any existing baseline.
+- Real Chromium passes with an approximately 24 KiB write payload that is actually
+  externalized; the Audit detail recovers the full sanitized `payload-e2e-`
+  content, then scope downgrade/restore still proves `audit:read`, `audit:full`,
+  and operation-sensitive authorization behavior.
+- Repository-wide ruff format/check, pyright, lockfile, generated config/tool/
+  instruction checks, strict MkDocs, all three reference assets, and
+  `git diff --check` pass. Secret scanning reports zero findings in all 26
+  modified Phase 5 source and test files.
+
+Repository-wide pre-commit, implementation commit/push, and remote CI remain
+pending.
 
 #### Phase 5A — Recoverable payload store
 

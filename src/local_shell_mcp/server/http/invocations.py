@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from ...audit import (
+    audit_call_context,
     audit_tool_call_end,
     audit_tool_call_start,
     new_audit_call_id,
@@ -27,7 +28,8 @@ async def call_http_tool(
         input=payload,
     )
     try:
-        result = await call_local_tool(tool_name, payload)
+        with audit_call_context(call_id):
+            result = await call_local_tool(tool_name, payload)
     except BaseException as exc:
         duration_ms = int((time.time() - start) * 1000)
         audit_tool_call_end(

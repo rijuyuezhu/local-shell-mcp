@@ -95,7 +95,7 @@ Audit log:
 tail -F /workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
 ```
 
-The audit log can contain prompts, tool inputs, tool outputs, file contents, and bounded previews of large payloads. Credential-like values are redacted on a best-effort basis, but the log must still be treated as sensitive.
+Audit state can contain prompts, tool inputs, tool outputs, file contents, bounded JSONL previews, and recoverable sanitized payload objects. Credential-like values are redacted on a best-effort basis before storage, but both JSONL and the payload directory must still be treated as sensitive.
 
 ## Run checks before committing
 

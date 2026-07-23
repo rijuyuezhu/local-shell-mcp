@@ -3,16 +3,17 @@ from __future__ import annotations
 import json
 import multiprocessing
 import os
+import random
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import local_shell_mcp.audit_payloads as audit_payload_module
 from local_shell_mcp.audit import (
     _AUDIT_BINARY_KEY,
     _AUDIT_CYCLE_KEY,
-    _AUDIT_TRUNCATED_KEY,
     _coalesce_audit_records,
     audit,
     audit_tool_call_end,
@@ -20,6 +21,7 @@ from local_shell_mcp.audit import (
     get_audit_entry,
     query_audit,
 )
+from local_shell_mcp.audit_payloads import AUDIT_PAYLOAD_KEY
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 
 
@@ -29,6 +31,11 @@ def _configure_audit(
     *,
     max_log_bytes: int = 20_000_000,
     max_event_bytes: int = 1_000_000,
+    inline_bytes: int = 16 * 1024,
+    max_payload_bytes: int = 64 * 1024 * 1024,
+    max_payload_store_bytes: int = 256 * 1024 * 1024,
+    payload_retention_s: int = 7 * 24 * 60 * 60,
+    payloads_enabled: bool = True,
 ) -> Path:
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
@@ -37,6 +44,23 @@ def _configure_audit(
     )
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES", str(max_event_bytes)
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_AUDIT_PAYLOADS_ENABLED",
+        "true" if payloads_enabled else "false",
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES", str(inline_bytes)
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES", str(max_payload_bytes)
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES",
+        str(max_payload_store_bytes),
+    )
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_AUDIT_PAYLOAD_RETENTION_S", str(payload_retention_s)
     )
     clear_settings_cache()
     return get_settings().audit_log_path
@@ -60,6 +84,23 @@ def _audit_process(
     clear_settings_cache()
     for index in range(events):
         audit("process_event", worker=worker, index=index)
+
+
+def _audit_payload_process(workspace: str, state_dir: str, worker: int) -> None:
+    os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] = workspace
+    os.environ["LOCAL_SHELL_MCP_STATE_DIR"] = state_dir
+    os.environ["LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES"] = "256"
+    os.environ["LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES"] = "100000"
+    os.environ["LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES"] = "200000"
+    clear_settings_cache()
+    audit(
+        "process_payload",
+        worker=worker,
+        payload={
+            "token": "cross-process-secret",
+            "body": "shared-process-payload-" * 1_000,
+        },
+    )
 
 
 def test_audit_uniformly_redacts_secrets_but_retains_fingerprints(
@@ -150,8 +191,11 @@ def test_audit_event_is_bounded_without_losing_identity(tmp_path, monkeypatch):
     assert record["event"] == "large_event"
     assert record["call_id"] == "call-large"
     assert record["tool"] == "read"
-    assert record[_AUDIT_TRUNCATED_KEY]["reason"] == "event_byte_limit"
-    assert record[_AUDIT_TRUNCATED_KEY]["original_bytes"] > len(raw)
+    payload_reference = record["payload"]
+    assert "$local_shell_mcp_audit_payload" in payload_reference
+    assert payload_reference["$local_shell_mcp_audit_payload"][
+        "json_bytes"
+    ] > len(raw)
 
 
 def test_audit_preserves_nested_error_details(tmp_path, monkeypatch):
@@ -424,3 +468,286 @@ def test_coalesce_audit_records_supports_legacy_calls_without_ids():
     assert rows[0]["status"] == "failed"
     assert rows[0]["paired"] is True
     assert rows[0]["error"] == {"message": "missing"}
+
+
+def test_audit_payload_round_trip_is_deduplicated_private_and_redacted(
+    tmp_path, monkeypatch
+):
+    _configure_audit(
+        tmp_path,
+        monkeypatch,
+        inline_bytes=256,
+        max_payload_bytes=100_000,
+        max_payload_store_bytes=200_000,
+    )
+    payload = {
+        "token": "top-secret-token",
+        "body": "recoverable-" * 1_000,
+    }
+
+    audit("large_payload", payload=payload)
+    audit("large_payload", payload=payload)
+
+    listing = query_audit(event="large_payload", sort="asc")
+    assert listing["count"] == 2
+    reference = listing["entries"][0]["payload"]
+    assert AUDIT_PAYLOAD_KEY in reference
+    assert "top-secret-token" not in json.dumps(reference)
+    full = get_audit_entry(
+        listing["entries"][0]["id"], include_full_payloads=True
+    )
+    assert full["payload"] == {
+        "token": "<redacted>",
+        "body": payload["body"],
+    }
+
+    files = list(get_settings().audit_payload_dir.glob("*.json.gz"))
+    assert len(files) == 1
+    if os.name != "nt":
+        assert files[0].stat().st_mode & 0o777 == 0o600
+
+
+def test_audit_payload_resolution_reports_corrupt_missing_and_expired(
+    tmp_path, monkeypatch
+):
+    _configure_audit(
+        tmp_path,
+        monkeypatch,
+        inline_bytes=256,
+        max_payload_bytes=100_000,
+        max_payload_store_bytes=200_000,
+        payload_retention_s=60,
+    )
+    audit("payload_state", payload={"body": "state-" * 1_000})
+    preview = query_audit(event="payload_state")["entries"][0]
+    reference = preview["payload"][AUDIT_PAYLOAD_KEY]
+    path = get_settings().audit_payload_dir / f"{reference['sha256']}.json.gz"
+
+    path.write_bytes(b"not-gzip")
+    corrupt = get_audit_entry(preview["id"], include_full_payloads=True)
+    assert corrupt["payload"][AUDIT_PAYLOAD_KEY]["status"] == "corrupt"
+
+    path.unlink()
+    missing = get_audit_entry(preview["id"], include_full_payloads=True)
+    assert missing["payload"][AUDIT_PAYLOAD_KEY]["status"] == "missing"
+
+    monkeypatch.setattr(
+        audit_payload_module.time,
+        "time",
+        lambda: float(reference["created_at"]) + 61,
+    )
+    expired = get_audit_entry(preview["id"], include_full_payloads=True)
+    assert expired["payload"][AUDIT_PAYLOAD_KEY]["status"] == "expired"
+
+
+def test_audit_payload_above_per_value_limit_is_explicitly_omitted(
+    tmp_path, monkeypatch
+):
+    path = _configure_audit(
+        tmp_path,
+        monkeypatch,
+        inline_bytes=256,
+        max_payload_bytes=1_024,
+        max_payload_store_bytes=4_096,
+    )
+
+    audit("oversized_payload", payload={"body": "z" * 5_000})
+
+    record = _records(path)[0]
+    omitted = record["payload"]["$local_shell_mcp_audit_truncated"]
+    assert omitted["reason"] == "payload_byte_limit"
+    assert omitted["original_bytes"] > 1_024
+    assert list(get_settings().audit_payload_dir.glob("*.json.gz")) == []
+
+
+def test_audit_payload_store_quota_drops_complete_lifecycle_units(
+    tmp_path, monkeypatch
+):
+    path = _configure_audit(
+        tmp_path,
+        monkeypatch,
+        max_log_bytes=100_000,
+        inline_bytes=256,
+        max_payload_bytes=8_000,
+        max_payload_store_bytes=10_000,
+    )
+    for index in range(6):
+        payload = random.Random(index).randbytes(4_000).hex()
+        audit_tool_call_start(
+            call_id=f"quota-{index}",
+            transport="mcp",
+            tool="read",
+            input={"payload": payload},
+        )
+        audit_tool_call_end(
+            call_id=f"quota-{index}",
+            transport="mcp",
+            tool="read",
+            ok=True,
+            duration_ms=index,
+            output={"ok": True},
+        )
+
+    records = _records(path)
+    by_call: dict[str, set[str]] = {}
+    for record in records:
+        call_id = str(record.get("call_id") or "")
+        if call_id:
+            by_call.setdefault(call_id, set()).add(str(record["event"]))
+    assert by_call
+    assert all(
+        events == {"tool_call_start", "tool_call_end"}
+        for events in by_call.values()
+    )
+    assert (
+        sum(
+            item.stat().st_size
+            for item in get_settings().audit_payload_dir.glob("*.json.gz")
+        )
+        <= 10_000
+    )
+
+
+def test_audit_payload_orphan_gc_and_symlink_replacement(tmp_path, monkeypatch):
+    if os.name == "nt":
+        pytest.skip("symlink creation is not reliably available on Windows")
+    _configure_audit(
+        tmp_path,
+        monkeypatch,
+        inline_bytes=256,
+        max_payload_bytes=100_000,
+        max_payload_store_bytes=200_000,
+        payload_retention_s=60,
+    )
+    settings = get_settings()
+    settings.audit_payload_dir.mkdir(parents=True, exist_ok=True)
+    orphan = settings.audit_payload_dir / f"{'a' * 64}.json.gz"
+    orphan.write_bytes(b"orphan")
+    os.utime(orphan, (0, 0))
+
+    audit("gc-trigger", value="small")
+    assert not orphan.exists()
+
+    value = {"body": "safe-" * 2_000}
+    from local_shell_mcp.audit_payloads import canonical_json_bytes
+
+    digest = (
+        __import__("hashlib").sha256(canonical_json_bytes(value)).hexdigest()
+    )
+    target = tmp_path / "symlink-target"
+    target.write_bytes(b"must-not-change")
+    payload_path = settings.audit_payload_dir / f"{digest}.json.gz"
+    payload_path.symlink_to(target)
+
+    audit("symlink-replacement", payload=value)
+
+    assert not payload_path.is_symlink()
+    assert target.read_bytes() == b"must-not-change"
+    entry = query_audit(event="symlink-replacement")["entries"][0]
+    assert (
+        get_audit_entry(entry["id"], include_full_payloads=True)["payload"]
+        == value
+    )
+
+
+def test_audit_payload_cross_process_deduplicates_and_recovers(
+    tmp_path, monkeypatch
+):
+    _configure_audit(
+        tmp_path,
+        monkeypatch,
+        inline_bytes=256,
+        max_payload_bytes=100_000,
+        max_payload_store_bytes=200_000,
+    )
+    context = multiprocessing.get_context("spawn")
+    processes = [
+        context.Process(
+            target=_audit_payload_process,
+            args=(str(tmp_path), str(tmp_path / ".state"), worker),
+        )
+        for worker in range(4)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=20)
+        assert process.exitcode == 0
+
+    listing = query_audit(event="process_payload", sort="asc")
+    assert listing["count"] == 4
+    assert len(list(get_settings().audit_payload_dir.glob("*.json.gz"))) == 1
+    for entry in listing["entries"]:
+        full = get_audit_entry(entry["id"], include_full_payloads=True)
+        assert full["payload"] == {
+            "token": "<redacted>",
+            "body": "shared-process-payload-" * 1_000,
+        }
+
+
+def test_disabling_audit_payloads_falls_back_to_bounded_jsonl(
+    tmp_path, monkeypatch
+):
+    path = _configure_audit(
+        tmp_path,
+        monkeypatch,
+        max_event_bytes=1_200,
+        inline_bytes=256,
+        max_payload_bytes=100_000,
+        max_payload_store_bytes=200_000,
+        payloads_enabled=False,
+    )
+
+    audit("disabled_payload_store", payload={"body": "x" * 20_000})
+
+    record = _records(path)[0]
+    assert record["$local_shell_mcp_audit_truncated"]["reason"] == (
+        "event_byte_limit"
+    )
+    assert not get_settings().audit_payload_dir.exists()
+
+
+def test_audit_payload_rejects_symlinked_store_root(tmp_path, monkeypatch):
+    if os.name == "nt":
+        pytest.skip("symlink creation is not reliably available on Windows")
+    _configure_audit(
+        tmp_path,
+        monkeypatch,
+        inline_bytes=256,
+        max_payload_bytes=100_000,
+        max_payload_store_bytes=200_000,
+    )
+    settings = get_settings()
+    target = tmp_path / "outside-payload-root"
+    target.mkdir()
+    settings.audit_payload_dir.parent.mkdir(parents=True, exist_ok=True)
+    settings.audit_payload_dir.symlink_to(target, target_is_directory=True)
+
+    audit("symlinked-payload-root", payload={"body": "x" * 10_000})
+
+    entry = query_audit(event="symlinked-payload-root")["entries"][0]
+    assert entry["payload"]["$local_shell_mcp_audit_truncated"]["reason"] == (
+        "payload_store_error"
+    )
+    assert list(target.iterdir()) == []
+
+
+def test_audit_payload_decompression_bomb_is_bounded(tmp_path, monkeypatch):
+    import gzip
+
+    _configure_audit(
+        tmp_path,
+        monkeypatch,
+        inline_bytes=256,
+        max_payload_bytes=4_096,
+        max_payload_store_bytes=8_192,
+    )
+    audit("decompression-bomb", payload={"body": "small-" * 300})
+    preview = query_audit(event="decompression-bomb")["entries"][0]
+    reference = preview["payload"][AUDIT_PAYLOAD_KEY]
+    path = get_settings().audit_payload_dir / f"{reference['sha256']}.json.gz"
+    path.write_bytes(gzip.compress(b'"' + b"z" * 20_000 + b'"', mtime=0))
+
+    full = get_audit_entry(preview["id"], include_full_payloads=True)
+
+    assert full["payload"][AUDIT_PAYLOAD_KEY]["status"] == "corrupt"

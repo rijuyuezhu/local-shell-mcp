@@ -138,9 +138,13 @@ Operational notes:
 
 ## Audit log handling
 
-Audit records preserve non-sensitive tool inputs, outputs, nested errors, file contents, and command output within the configured per-event budget. Credential-like keys and free-form text are redacted on a best-effort basis, tokenized download URLs are masked, and oversized events become marked previews. Unknown secret formats and sensitive application data can still remain.
+Audit records preserve non-sensitive tool inputs, outputs, nested errors, file contents, and command output within configured bounds. Credential-like keys and free-form text are redacted on a best-effort basis before any externalization, and tokenized download URLs are masked. Small sanitized values remain inline; larger accepted values are stored as deterministic gzip-compressed canonical JSON under the private `audit_log/payloads` directory and represented in JSONL by bounded content-addressed references. Values above the per-value limit remain explicit omissions.
 
-Treat `/workspace/.local-shell-mcp/audit_log/audit.jsonl` as sensitive session state, not as a sanitized telemetry stream. Keep it in the controlled workspace/state directory, rely on `max_audit_event_bytes` and `max_audit_log_bytes` for short-term retention, and avoid uploading it to third-party log aggregation unless that system is trusted for the same secrets.
+Payload objects use private atomic replacement and are read through no-follow regular-file handles. Full recovery verifies retention, compressed/decompressed bounds, canonical byte count, digest, UTF-8, and JSON. JSONL and referenced payload quotas are enforced inside the same cross-process transaction while preserving completed tool-call pairs. Corrupt, missing, or expired payloads never return raw path or decompression diagnostics.
+
+The session-bound `audit_tail` tool and Human UI lists require `audit:read`. Resolving one retained reference additionally requires `audit:full` and a stable entry id; Human UI detail retains operation-sensitive shell/file/share/Git/remote checks. The current `audit_tail` call is excluded by exact lifecycle id rather than hiding all audit-query history.
+
+Treat `/workspace/.local-shell-mcp/audit_log/` as sensitive session state, not as a sanitized telemetry stream. Best-effort redaction does not prove that unknown secret formats or application-sensitive data are absent. Keep JSONL and payload objects in the controlled state directory, use the event/log/payload/retention limits for short-term retention, and avoid uploading either to third-party systems unless they are trusted for the same data.
 
 ## Threats considered
 

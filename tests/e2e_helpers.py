@@ -182,6 +182,7 @@ def unwrap_tool_payload(value: Any) -> Any:
 
 
 REST_ROUTES: dict[str, tuple[str, str]] = {
+    "audit_tail": ("GET", "/tools/audit_tail"),
     "agent_config_status": ("GET", "/tools/agent_config_status"),
     "list_agent_skills": ("GET", "/tools/list_agent_skills"),
     "activate_agent_skill": ("POST", "/tools/activate_agent_skill"),

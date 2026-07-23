@@ -42,4 +42,4 @@ Docker Compose is still supported. Published Docker images support `linux/amd64`
 
 This project intentionally gives an AI client access to real shell and filesystem tools. Keep public deployments behind OAuth, set a long random approval PIN, review the configured workspace root, and leave full-control mode disabled unless the server runs in a disposable container or VM.
 
-Audit logs include full tool inputs and outputs. Treat the state directory as sensitive session data.
+Audit state may retain complete sanitized tool inputs and outputs inline or in private content-addressed payload objects. Treat the entire state directory as sensitive session data.
