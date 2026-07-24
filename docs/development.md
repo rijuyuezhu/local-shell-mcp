@@ -97,6 +97,39 @@ tail -F /workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
 
 Audit state can contain prompts, tool inputs, tool outputs, file contents, bounded JSONL previews, and recoverable sanitized payload objects. Credential-like values are redacted on a best-effort basis before storage, but both JSONL and the payload directory must still be treated as sensitive.
 
+## Architecture boundaries
+
+The package is layered around transport-neutral tool behavior. Keep dependency
+direction explicit when adding features or moving code:
+
+- `config`, `schemas`, and small `utils` modules provide dependency-leaf
+  settings, contracts, serialization, and filesystem primitives.
+- `agent_bridge`, `remote`, `remote_worker`, and `tool_session` own their domain
+  state and protocols. Source-only worker modules must remain usable without the
+  controller's full dependency stack.
+- `ops` implements transport-neutral use cases. It may use domain services and
+  schemas, but it must not depend on HTTP, MCP, or Human UI adapters.
+- `tools` owns public tool contracts, discovery, metadata, and registration.
+- `server/http` and `server/mcp` are transport adapters. They may compose tools,
+  operations, OAuth, remote routes, and middleware; lower layers must not import
+  them.
+- `server/shared` contains HTTP/MCP server composition that is genuinely shared,
+  not general business logic.
+- `main` is the process-composition entry point and is allowed to select server
+  transports.
+
+Human UI route handlers should validate transport input and delegate reusable
+behavior to `ops` or domain services. MCP-facing annotations and OAuth security
+metadata are tool presentation contracts, not transport implementation details.
+Avoid generic service locators: extract small dependency-leaf contracts and
+explicit facades instead.
+
+`tests/test_architecture.py` enforces the current dependency cycles and the exact
+set of non-server imports of `server`. Its allowlists are visible technical debt,
+not extension points: when a cycle or reversed import is removed, shrink the
+allowlist in the same change. New entries require an explicit architecture
+review.
+
 ## Run checks before committing
 
 ```bash
