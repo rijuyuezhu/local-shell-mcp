@@ -4,6 +4,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from local_shell_mcp.ui.contracts import (
+    POSIX_TUI_EXECUTABLE_NAME,
+    WINDOWS_TUI_EXECUTABLE_NAME,
+)
+
 REPO = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = REPO / ".github" / "workflows" / "ci.yml"
 RELEASE_WORKFLOW = REPO / ".github" / "workflows" / "release.yml"
@@ -165,8 +170,8 @@ def main() -> int:
             "oven-sh/setup-bun@v2",
             "bun install --frozen-lockfile",
             "bun run build:tui",
-            "ui-opentui/dist/local-shell-mcp-tui.exe",
-            "ui-opentui/dist/local-shell-mcp-tui",
+            f"ui-opentui/dist/{WINDOWS_TUI_EXECUTABLE_NAME}",
+            f"ui-opentui/dist/{POSIX_TUI_EXECUTABLE_NAME}",
             "helper_platform: linux/amd64",
             "helper_platform: linux/arm64",
             "helper_tag: linux-x86_64",
@@ -211,7 +216,11 @@ def main() -> int:
         ),
         (
             "scripts/check-native-provenance.py",
+            "scripts/generate-tui-executable-contract.py",
             "tests/test_native_provenance.py",
+            "src/local_shell_mcp/ui/contracts.py",
+            "ui-opentui/scripts/executable-contract.ts",
+            'generate-tui-executable-contract.py" --check',
             "src/local_shell_mcp/helpers/opentui.NOTICES",
             "src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md",
         ),
@@ -249,7 +258,7 @@ def main() -> int:
             "FROM oven/bun:1.3.14 AS opentui-build",
             "bun install --frozen-lockfile",
             "bun run build:tui",
-            "/usr/local/bin/local-shell-mcp-tui",
+            f"/usr/local/bin/{POSIX_TUI_EXECUTABLE_NAME}",
         ),
     )
     if any(

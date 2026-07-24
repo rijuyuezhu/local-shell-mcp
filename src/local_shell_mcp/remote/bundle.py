@@ -57,6 +57,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "terminal/*.py",
     "tool_session/*.py",
     "ui/__init__.py",
+    "ui/contracts.py",
     "ui/dashboard.py",
     "utils/*.py",
 )

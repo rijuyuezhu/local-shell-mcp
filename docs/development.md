@@ -123,6 +123,10 @@ direction explicit when adding features or moving code:
 - `main` is the process-composition entry point and is allowed to select
   executors.
 
+The canonical OpenTUI executable names live in `ui/contracts.py`. After changing
+that contract, run `uv run python scripts/generate-tui-executable-contract.py` to
+refresh the Bun-side mirror; pre-commit rejects stale generated output.
+
 Human UI route handlers should validate transport input and delegate reusable
 behavior to `ops` or domain services. MCP-facing annotations and OAuth security
 metadata are tool presentation contracts, not transport implementation details.

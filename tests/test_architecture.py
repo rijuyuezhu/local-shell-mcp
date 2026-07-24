@@ -24,6 +24,14 @@ _ALLOWED_NON_EXECUTOR_TO_EXECUTOR_IMPORTS = frozenset(
         ("local_shell_mcp.main", "local_shell_mcp.executors.mcp.app"),
     }
 )
+_ALLOWED_RELEASE_IMPORTS = frozenset(
+    {
+        (
+            "local_shell_mcp.release.platform_wheel",
+            "local_shell_mcp.ui.contracts",
+        ),
+    }
+)
 
 # Keep existing cycles visible and prevent new ones. Each set must shrink when the
 # corresponding hardening phase extracts a dependency-leaf contract.
@@ -359,15 +367,25 @@ def test_patch_mechanics_stay_below_delivery_layers() -> None:
     assert not (_PACKAGE_ROOT / "patch_ops.py").exists()
 
 
-def test_release_does_not_depend_on_runtime_layers() -> None:
+def test_release_uses_only_the_ui_artifact_contract() -> None:
     actual = frozenset(
         (importer, target)
         for importer, target in _local_imports()
         if importer.startswith(f"{_PACKAGE_NAME}.release")
     )
 
-    assert actual == frozenset()
+    assert actual == _ALLOWED_RELEASE_IMPORTS
     assert not (_PACKAGE_ROOT / "platform_wheel.py").exists()
+
+
+def test_ui_artifact_contract_is_a_dependency_leaf() -> None:
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer == f"{_PACKAGE_NAME}.ui.contracts"
+    )
+
+    assert actual == frozenset()
 
 
 def test_terminal_uses_only_explicit_low_level_ops_helpers() -> None:

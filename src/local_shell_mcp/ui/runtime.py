@@ -16,15 +16,13 @@ from urllib.parse import urlsplit
 
 from .. import __version__
 from ..config.settings import Settings, get_settings
+from .contracts import TUI_EXECUTABLE_NAME
 from .security import (
     UI_API_PREFIX,
     UI_LOCAL_TOKEN_ENV,
     get_or_create_ui_local_token,
 )
 
-TUI_EXECUTABLE_NAME = (
-    "local-shell-mcp-tui.exe" if os.name == "nt" else "local-shell-mcp-tui"
-)
 MAX_EMBEDDED_TUI_BYTES = 256 * 1024 * 1024
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 _SOURCE_TREE_ROOT = _PACKAGE_ROOT.parents[1]

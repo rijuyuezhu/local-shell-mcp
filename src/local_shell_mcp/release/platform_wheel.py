@@ -37,6 +37,11 @@ from packaging.tags import Tag
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from wheel.wheelfile import WheelError, WheelFile
 
+from ..ui.contracts import (
+    POSIX_TUI_EXECUTABLE_NAME,
+    WINDOWS_TUI_EXECUTABLE_NAME,
+)
+
 BUN_VERSION = "1.3.14"
 MAX_EXECUTABLE_BYTES = 256 * 1024 * 1024
 MAX_COMPRESSED_BYTES = 192 * 1024 * 1024
@@ -146,21 +151,21 @@ _TARGETS = {
         tag="linux_x86_64",
         system="Linux",
         architecture="x86_64",
-        executable_name="local-shell-mcp-tui",
+        executable_name=POSIX_TUI_EXECUTABLE_NAME,
         executable_magics=(b"\x7fELF",),
     ),
     "linux_aarch64": PlatformWheelTarget(
         tag="linux_aarch64",
         system="Linux",
         architecture="aarch64",
-        executable_name="local-shell-mcp-tui",
+        executable_name=POSIX_TUI_EXECUTABLE_NAME,
         executable_magics=(b"\x7fELF",),
     ),
     "macosx_10_15_x86_64": PlatformWheelTarget(
         tag="macosx_10_15_x86_64",
         system="Darwin",
         architecture="x86_64",
-        executable_name="local-shell-mcp-tui",
+        executable_name=POSIX_TUI_EXECUTABLE_NAME,
         executable_magics=(
             b"\xfe\xed\xfa\xce",
             b"\xfe\xed\xfa\xcf",
@@ -174,7 +179,7 @@ _TARGETS = {
         tag="macosx_11_0_arm64",
         system="Darwin",
         architecture="aarch64",
-        executable_name="local-shell-mcp-tui",
+        executable_name=POSIX_TUI_EXECUTABLE_NAME,
         executable_magics=(
             b"\xfe\xed\xfa\xce",
             b"\xfe\xed\xfa\xcf",
@@ -188,14 +193,14 @@ _TARGETS = {
         tag="win_amd64",
         system="Windows",
         architecture="x86_64",
-        executable_name="local-shell-mcp-tui.exe",
+        executable_name=WINDOWS_TUI_EXECUTABLE_NAME,
         executable_magics=(b"MZ",),
     ),
     "win_arm64": PlatformWheelTarget(
         tag="win_arm64",
         system="Windows",
         architecture="aarch64",
-        executable_name="local-shell-mcp-tui.exe",
+        executable_name=WINDOWS_TUI_EXECUTABLE_NAME,
         executable_magics=(b"MZ",),
     ),
 }

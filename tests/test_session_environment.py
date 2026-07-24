@@ -164,7 +164,7 @@ def test_opentui_probe_configured_and_missing(monkeypatch, tmp_path):
     configured = _settings(tmp_path, ui_tui_command="trusted-tui")
     assert env_ops._opentui_probe(configured).source == "configured"
 
-    monkeypatch.setattr(env_ops, "_TUI_EXECUTABLE_NAME", "missing-tui-fixture")
+    monkeypatch.setattr(env_ops, "TUI_EXECUTABLE_NAME", "missing-tui-fixture")
     monkeypatch.setattr(env_ops.shutil, "which", lambda _name: None)
     missing = env_ops._opentui_probe(_settings(tmp_path))
     assert missing.available is False

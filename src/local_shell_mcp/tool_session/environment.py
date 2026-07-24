@@ -33,14 +33,12 @@ from ..schemas.result_models.session import (
 )
 from ..terminal.conpty import is_available as conpty_available
 from ..terminal.tmux import resolve_tmux
+from ..ui.contracts import TUI_EXECUTABLE_NAME
 from ..version import package_version
 
 _REMOTE_WORKER_RUNTIME_ENV = "LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME"
 _WORKER_MANAGED_ENV = "LOCAL_SHELL_MCP_WORKER_MANAGED"
 
-_TUI_EXECUTABLE_NAME = (
-    "local-shell-mcp-tui.exe" if os.name == "nt" else "local-shell-mcp-tui"
-)
 _PROBE_TIMEOUT_S = 1.5
 _CACHE_TTL_S = 5.0
 _VERSION_RE = re.compile(
@@ -203,14 +201,14 @@ def _opentui_probe(settings: Settings) -> SessionToolProbe:
         )
     repository_root = Path(__file__).resolve().parents[2]
     candidates = (
-        Path(sys.executable).resolve().parent / _TUI_EXECUTABLE_NAME,
-        Path(sys.argv[0]).resolve().parent / _TUI_EXECUTABLE_NAME,
-        repository_root / "ui-opentui" / "dist" / _TUI_EXECUTABLE_NAME,
-        Path.cwd() / "ui-opentui" / "dist" / _TUI_EXECUTABLE_NAME,
-        Path("/app/ui-opentui/dist") / _TUI_EXECUTABLE_NAME,
+        Path(sys.executable).resolve().parent / TUI_EXECUTABLE_NAME,
+        Path(sys.argv[0]).resolve().parent / TUI_EXECUTABLE_NAME,
+        repository_root / "ui-opentui" / "dist" / TUI_EXECUTABLE_NAME,
+        Path.cwd() / "ui-opentui" / "dist" / TUI_EXECUTABLE_NAME,
+        Path("/app/ui-opentui/dist") / TUI_EXECUTABLE_NAME,
     )
     if any(candidate.is_file() for candidate in candidates) or shutil.which(
-        _TUI_EXECUTABLE_NAME
+        TUI_EXECUTABLE_NAME
     ):
         return SessionToolProbe(
             available=True,
@@ -220,7 +218,7 @@ def _opentui_probe(settings: Settings) -> SessionToolProbe:
     embedded = (
         Path(__file__).resolve().parents[1]
         / "ui_runtime"
-        / f"{_TUI_EXECUTABLE_NAME}.gz"
+        / f"{TUI_EXECUTABLE_NAME}.gz"
     )
     if embedded.is_file():
         return SessionToolProbe(

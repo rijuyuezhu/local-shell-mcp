@@ -58,6 +58,7 @@ source-include = [
     "ui-terminal/**",
     "ui-opentui/**",
     "scripts/build-platform-wheel.py",
+    "scripts/generate-tui-executable-contract.py",
     "scripts/check-coverage.py",
     "scripts/check-native-provenance.py",
     "scripts/check-release-matrix.py",

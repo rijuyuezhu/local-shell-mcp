@@ -11,7 +11,10 @@ PROVENANCE = REPO / "docs" / "maintenance" / "native-artifact-provenance.md"
 EXPECTED_HASHES = {
     "ui-opentui/package.json": "dac1801bc8f6ae034ba092bb780a173f30cd47f343d626f43bb3895df1920238",
     "ui-opentui/bun.lock": "5412a17ab4bbd8695c361f944bf5286302c8635a548643cf7ad2a4653b0ef8b3",
-    "ui-opentui/scripts/compile-tui.ts": "5ee587bbf98dbf1023191ea6a256e3693db46cf5173bbe6e52941076808c47ae",
+    "src/local_shell_mcp/ui/contracts.py": "7938a33666c851a66450973dddb6b4d04ef29078bc7e338ddaa310d7392a3f29",
+    "scripts/generate-tui-executable-contract.py": "01a56205d02dccf56f14258cdc1d6e0ae97399e8d4f2583fb3b9a8ae087bbaf8",
+    "ui-opentui/scripts/executable-contract.ts": "c1a026f2db8511d4e0809558cf6a6ef24b89a953f6022aee97c406fec62c3b0e",
+    "ui-opentui/scripts/compile-tui.ts": "2a51b3ccc85a5823d3ad28676ebadcce951651c517b9f15c6d77e00778d4abb8",
     "scripts/build-platform-wheel.py": "93968eb5af540f686cb83dc572b8c8445603b0ff0a540dafd676d3c1fa8010a5",
     "scripts/smoke-platform-wheel.py": "8c4b48d29850bfd532636c4afd11d747bd671cee3d696c41f3b4533198a3f653",
     "scripts/tmux-helper.Dockerfile": "b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693",
@@ -43,6 +46,8 @@ def main() -> int:
             )
 
     required_fragments = {
+        "scripts/generate-tui-executable-contract.py": "render_contract",
+        "ui-opentui/scripts/compile-tui.ts": 'from "./executable-contract"',
         "pyproject.toml": '"src/local_shell_mcp/helpers/opentui.NOTICES"',
         ".github/workflows/release.yml": "BUN-1.3.14-LICENSE.md",
         "scripts/check-release-matrix.py": '"BUN-1.3.14-LICENSE.md"',

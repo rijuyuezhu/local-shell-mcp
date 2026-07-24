@@ -27,6 +27,7 @@ from playwright.sync_api import (
     expect,
 )
 
+from local_shell_mcp.ui.contracts import POSIX_TUI_EXECUTABLE_NAME
 from tests.e2e_helpers import PROJECT_ROOT, SRC_ROOT, free_tcp_port, server_env
 
 TOKEN_STORAGE_KEY = "local-shell-mcp-ui-access-token"
@@ -171,7 +172,7 @@ class BrowserHarness:
         opentui_crash_marker = root / "opentui-crash-next"
         opentui_wrapper = root / "opentui-wrapper.py"
         opentui_binary = (
-            PROJECT_ROOT / "ui-opentui" / "dist" / "local-shell-mcp-tui"
+            PROJECT_ROOT / "ui-opentui" / "dist" / POSIX_TUI_EXECUTABLE_NAME
         )
         opentui_wrapper.write_text(
             "#!/usr/bin/env python3\n"

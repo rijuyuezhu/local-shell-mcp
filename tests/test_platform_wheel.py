@@ -17,6 +17,10 @@ import pytest
 from wheel.wheelfile import WheelFile
 
 from local_shell_mcp.release import platform_wheel as pw
+from local_shell_mcp.ui.contracts import (
+    POSIX_TUI_EXECUTABLE_NAME,
+    WINDOWS_TUI_EXECUTABLE_NAME,
+)
 
 
 def _executable(
@@ -63,12 +67,12 @@ def _make_repo(tmp_path: Path) -> Path:
 @pytest.mark.parametrize(
     ("tag", "system", "architecture", "executable"),
     [
-        ("linux_x86_64", "Linux", "x86_64", "local-shell-mcp-tui"),
-        ("linux_aarch64", "Linux", "aarch64", "local-shell-mcp-tui"),
-        ("macosx_10_15_x86_64", "Darwin", "x86_64", "local-shell-mcp-tui"),
-        ("macosx_11_0_arm64", "Darwin", "aarch64", "local-shell-mcp-tui"),
-        ("win_amd64", "Windows", "x86_64", "local-shell-mcp-tui.exe"),
-        ("win_arm64", "Windows", "aarch64", "local-shell-mcp-tui.exe"),
+        ("linux_x86_64", "Linux", "x86_64", POSIX_TUI_EXECUTABLE_NAME),
+        ("linux_aarch64", "Linux", "aarch64", POSIX_TUI_EXECUTABLE_NAME),
+        ("macosx_10_15_x86_64", "Darwin", "x86_64", POSIX_TUI_EXECUTABLE_NAME),
+        ("macosx_11_0_arm64", "Darwin", "aarch64", POSIX_TUI_EXECUTABLE_NAME),
+        ("win_amd64", "Windows", "x86_64", WINDOWS_TUI_EXECUTABLE_NAME),
+        ("win_arm64", "Windows", "aarch64", WINDOWS_TUI_EXECUTABLE_NAME),
     ],
 )
 def test_target_for_tag(

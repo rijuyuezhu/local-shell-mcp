@@ -238,6 +238,7 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/telemetry/__init__.py" in names
     assert "local_shell_mcp/telemetry/system.py" in names
     assert "local_shell_mcp/ui/__init__.py" in names
+    assert "local_shell_mcp/ui/contracts.py" in names
     assert "local_shell_mcp/ui/dashboard.py" in names
     assert "local_shell_mcp/terminal/bridge.py" in names
     assert "local_shell_mcp/terminal/contracts.py" in names

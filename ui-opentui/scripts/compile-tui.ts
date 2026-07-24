@@ -1,11 +1,16 @@
 import { chmod, mkdir, rm } from "node:fs/promises"
 import { resolve } from "node:path"
 import { gzipSync } from "node:zlib"
+import {
+  POSIX_TUI_EXECUTABLE_NAME,
+  WINDOWS_TUI_EXECUTABLE_NAME,
+} from "./executable-contract"
 import { nonCurrentOpenTuiNativePackages } from "./platform"
 
 const root = resolve(import.meta.dir, "..")
 const repository = resolve(root, "..")
-const executableName = process.platform === "win32" ? "local-shell-mcp-tui.exe" : "local-shell-mcp-tui"
+const executableName =
+  process.platform === "win32" ? WINDOWS_TUI_EXECUTABLE_NAME : POSIX_TUI_EXECUTABLE_NAME
 const outdir = process.env.LSM_UI_BINARY_OUTDIR
   ? resolve(process.env.LSM_UI_BINARY_OUTDIR)
   : resolve(root, "dist")

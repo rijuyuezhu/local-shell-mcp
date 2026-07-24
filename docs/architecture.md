@@ -181,6 +181,7 @@ internal rather than public tools.
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
 | `ui/__init__.py` | Declares the Human UI core boundary independently of HTTP delivery. | It prevents UI behavior from appearing to be part of the REST executor and allows browser and native clients to share core contracts. |
+| `ui/contracts.py` | Defines the stable POSIX and Windows OpenTUI executable filenames and resolves the current-platform name. | Runtime discovery, source-only session probes, release wheel construction, and generated Bun build inputs need one dependency-leaf naming contract without importing each other. |
 | `ui/dashboard.py` | Combines neutral system telemetry with metadata-only audit summaries, alerts, activity rows, health state, and version data for local or remote Dashboard clients. | The output is a Dashboard view model with UI labels and disclosure policy. Remote-worker support only transports this internal UI capability; it does not make the projection a generic telemetry or public tool contract. |
 | `ui/image_preview.py` | Decodes validated image bytes into bounded, orientation-corrected RGBA thumbnails and terminal-cell dimensions for native UI rendering. | The output is a UI view model tied to terminal rendering constraints. It contains no HTTP request parsing or response construction, so browser/HTTP adapters consume it rather than own it. |
 | `ui/runtime.py` | Resolves configured or trusted OpenTUI executables, finds source-mode entrypoints, materializes bounded embedded payloads into private state, validates loopback API bases, and launches the native client with credentials confined to its environment. | These operations are the native Human UI runtime boundary. Release tooling creates the payload and HTTP adapters may request a launch, but neither owns client discovery, extraction, or execution policy. |
@@ -206,6 +207,9 @@ Rejected ownership alternatives:
   runtime contract.
 - `release`: release code builds and embeds the sidecar, but runtime resolution
   and extraction policy belongs to the client that consumes it.
+- duplicated runtime/release literals: executable names are a cross-layer artifact
+  contract, so `ui/contracts.py` owns them and the Bun-side mirror is generated and
+  checked rather than maintained as an independent source of truth.
 - `oauth`: OAuth middleware consumes the UI trust decision, but credential
   creation and loopback UI namespace rules must remain owned by the UI domain.
 
@@ -314,8 +318,9 @@ Rejected ownership alternatives:
 ## `release`: artifact construction and verification
 
 The `release` package owns build-time artifact assembly and validation. It is
-outside runtime execution paths and must not depend on executors, HTTP/UI layers,
-terminal runtime state, remote workers, or tool operations.
+outside runtime execution paths and must not depend on executors, HTTP adapters,
+terminal runtime state, remote workers, or tool operations. Its only project-local
+dependency is the dependency-leaf OpenTUI filename contract in `ui/contracts.py`.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
