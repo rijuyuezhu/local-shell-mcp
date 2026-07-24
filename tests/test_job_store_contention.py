@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -283,7 +284,11 @@ def test_managed_updates_defer_in_order_and_replay_once(
         json.loads(path.read_text(encoding="utf-8"))["operation"]
         for path in deferred_paths
     ] == ["append_log", "update_progress", "finish"]
-    assert all((path.stat().st_mode & 0o077) == 0 for path in deferred_paths)
+    if os.name != "nt":
+        # Windows does not expose POSIX owner/group/other permission semantics.
+        assert all(
+            (path.stat().st_mode & 0o077) == 0 for path in deferred_paths
+        )
 
     monkeypatch.setattr(jobs_ops, "_store_transaction", original_transaction)
     original_remove = jobs_ops._remove_managed_deferred_updates

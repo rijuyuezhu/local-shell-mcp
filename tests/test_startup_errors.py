@@ -283,6 +283,9 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
         "list_persistent_shells_execute",
         lambda: _async_value(ListPersistentShellsOutput(shells=[])),
     )
+    monkeypatch.setattr(
+        shell_ops.shutil, "which", lambda executable, **_kwargs: executable
+    )
     calls: list[tuple[list[str], int]] = []
 
     async def fake_tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
@@ -329,6 +332,9 @@ async def test_persistent_tmux_rejects_default_shell_that_exits(
         shell_ops,
         "list_persistent_shells_execute",
         lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+    )
+    monkeypatch.setattr(
+        shell_ops.shutil, "which", lambda executable, **_kwargs: executable
     )
     calls: list[list[str]] = []
 
@@ -623,6 +629,10 @@ async def test_persistent_tmux_creation_and_send_errors_are_reported(
         shell_ops,
         "list_persistent_shells_execute",
         lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+    )
+
+    monkeypatch.setattr(
+        shell_ops.shutil, "which", lambda executable, **_kwargs: executable
     )
 
     async def failed_tmux(
