@@ -333,7 +333,7 @@ jobs:
           /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp --version
           /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp version
           /tmp/local-shell-mcp-wheel-venv/bin/python -c \
-            "from local_shell_mcp.tui_runtime import embedded_tui_payload; assert embedded_tui_payload() is None"
+            "from local_shell_mcp.ui.runtime import embedded_tui_payload; assert embedded_tui_payload() is None"
 
   bundled-tmux:
     name: Bundled tmux (${{ matrix.label }})

@@ -13,7 +13,7 @@ EXPECTED_HASHES = {
     "ui-opentui/bun.lock": "5412a17ab4bbd8695c361f944bf5286302c8635a548643cf7ad2a4653b0ef8b3",
     "ui-opentui/scripts/compile-tui.ts": "5ee587bbf98dbf1023191ea6a256e3693db46cf5173bbe6e52941076808c47ae",
     "scripts/build-platform-wheel.py": "66a3140811c42f1596f1e895a8d4550c1343abaaad8747fa5b419e8ce4c48446",
-    "scripts/smoke-platform-wheel.py": "b935d6552d38d20614a9e1ef0c4042181fbedd2d9cf1d48dbdbcd4d1bb06414d",
+    "scripts/smoke-platform-wheel.py": "8c4b48d29850bfd532636c4afd11d747bd671cee3d696c41f3b4533198a3f653",
     "scripts/tmux-helper.Dockerfile": "b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693",
     "scripts/build-tmux-helper.sh": "9147408366451272afe90396e63dd76f1809e641e48fc7861a8a2fd2304d825a",
     "src/local_shell_mcp/helpers/tmux.LICENSE": "c031bd37f464c534277814f6aa38686fa023d094261d57fd2545ad592bb53ccd",

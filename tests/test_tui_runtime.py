@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import local_shell_mcp.tui_runtime as runtime
+import local_shell_mcp.ui.runtime as runtime
 from local_shell_mcp.config.settings import Settings
 
 
@@ -20,6 +20,35 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
             **overrides,
         }
     )
+
+
+def test_runtime_roots_match_package_and_source_tree() -> None:
+    package_root = Path(runtime.__file__).resolve().parents[1]
+
+    assert package_root == runtime._PACKAGE_ROOT
+    assert package_root.parents[1] == runtime._SOURCE_TREE_ROOT
+
+
+def test_runtime_discovery_uses_explicit_package_and_source_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    package_root = tmp_path / "src" / "local_shell_mcp"
+    source_root = tmp_path
+    payload = package_root / "ui_runtime" / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
+    source = source_root / "ui-opentui" / "src" / "tui.tsx"
+    sidecar = source_root / "ui-opentui" / "dist" / runtime.TUI_EXECUTABLE_NAME
+    payload.parent.mkdir(parents=True)
+    source.parent.mkdir(parents=True)
+    payload.write_bytes(b"payload")
+    source.write_text("export {}", encoding="utf-8")
+    monkeypatch.setattr(runtime, "_PACKAGE_ROOT", package_root)
+    monkeypatch.setattr(runtime, "_SOURCE_TREE_ROOT", source_root)
+    monkeypatch.setattr(runtime.shutil, "which", lambda _name: None)
+
+    assert runtime.embedded_tui_payload() == payload
+    assert runtime.tui_source_path() == source
+    assert sidecar in runtime._tui_sidecar_candidates()
 
 
 def test_materialize_embedded_tui_is_atomic_executable_and_idempotent(

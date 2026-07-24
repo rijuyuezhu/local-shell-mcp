@@ -14,9 +14,9 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import __version__
-from .config.settings import Settings, get_settings
-from .ui.security import (
+from .. import __version__
+from ..config.settings import Settings, get_settings
+from .security import (
     UI_API_PREFIX,
     UI_LOCAL_TOKEN_ENV,
     get_or_create_ui_local_token,
@@ -26,15 +26,13 @@ TUI_EXECUTABLE_NAME = (
     "local-shell-mcp-tui.exe" if os.name == "nt" else "local-shell-mcp-tui"
 )
 MAX_EMBEDDED_TUI_BYTES = 256 * 1024 * 1024
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+_SOURCE_TREE_ROOT = _PACKAGE_ROOT.parents[1]
 
 
 def embedded_tui_payload() -> Path | None:
     """Return the packaged compressed OpenTUI executable for this platform."""
-    payload = (
-        Path(__file__).resolve().parent
-        / "ui_runtime"
-        / f"{TUI_EXECUTABLE_NAME}.gz"
-    )
+    payload = _PACKAGE_ROOT / "ui_runtime" / f"{TUI_EXECUTABLE_NAME}.gz"
     return payload if payload.is_file() else None
 
 
@@ -99,7 +97,7 @@ def materialize_embedded_tui(
 def tui_source_path() -> Path | None:
     """Find the source-mode OpenTUI entry without consulting arbitrary paths."""
     candidates = (
-        Path(__file__).resolve().parents[2] / "ui-opentui" / "src" / "tui.tsx",
+        _SOURCE_TREE_ROOT / "ui-opentui" / "src" / "tui.tsx",
         Path.cwd() / "ui-opentui" / "src" / "tui.tsx",
         Path("/app/ui-opentui/src/tui.tsx"),
     )
@@ -124,11 +122,10 @@ def split_tui_command(value: str, *, windows: bool | None = None) -> list[str]:
 
 def _tui_sidecar_candidates() -> tuple[Path, ...]:
     """Return trusted platform sidecar locations in resolution order."""
-    repository_root = Path(__file__).resolve().parents[2]
     candidates = [
         Path(sys.executable).resolve().parent / TUI_EXECUTABLE_NAME,
         Path(sys.argv[0]).resolve().parent / TUI_EXECUTABLE_NAME,
-        repository_root / "ui-opentui" / "dist" / TUI_EXECUTABLE_NAME,
+        _SOURCE_TREE_ROOT / "ui-opentui" / "dist" / TUI_EXECUTABLE_NAME,
         Path.cwd() / "ui-opentui" / "dist" / TUI_EXECUTABLE_NAME,
         Path("/app/ui-opentui/dist") / TUI_EXECUTABLE_NAME,
     ]

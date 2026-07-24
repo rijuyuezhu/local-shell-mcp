@@ -14,7 +14,7 @@ from pathlib import Path
 
 from local_shell_mcp import __version__
 from local_shell_mcp.config.settings import Settings
-from local_shell_mcp.tui_runtime import (
+from local_shell_mcp.ui.runtime import (
     embedded_tui_payload,
     resolve_tui_command,
 )

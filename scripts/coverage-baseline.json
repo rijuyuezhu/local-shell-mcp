@@ -855,15 +855,15 @@
       "num_statements": 14,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/tui_runtime.py": {
-      "num_branches": 38,
-      "num_statements": 121,
-      "percent_covered": 82.389937
-    },
     "src/local_shell_mcp/ui/image_preview.py": {
       "num_branches": 6,
       "num_statements": 51,
       "percent_covered": 91.22807
+    },
+    "src/local_shell_mcp/ui/runtime.py": {
+      "num_branches": 38,
+      "num_statements": 121,
+      "percent_covered": 82.389937
     },
     "src/local_shell_mcp/ui/security.py": {
       "num_branches": 14,

@@ -177,6 +177,7 @@ internal rather than public tools.
 | `ui/__init__.py` | Declares the Human UI core boundary independently of HTTP delivery. | It prevents UI behavior from appearing to be part of the REST executor and allows browser and native clients to share core contracts. |
 | `ui/dashboard.py` | Combines neutral system telemetry with metadata-only audit summaries, alerts, activity rows, health state, and version data for local or remote Dashboard clients. | The output is a Dashboard view model with UI labels and disclosure policy. Remote-worker support only transports this internal UI capability; it does not make the projection a generic telemetry or public tool contract. |
 | `ui/image_preview.py` | Decodes validated image bytes into bounded, orientation-corrected RGBA thumbnails and terminal-cell dimensions for native UI rendering. | The output is a UI view model tied to terminal rendering constraints. It contains no HTTP request parsing or response construction, so browser/HTTP adapters consume it rather than own it. |
+| `ui/runtime.py` | Resolves configured or trusted OpenTUI executables, finds source-mode entrypoints, materializes bounded embedded payloads into private state, validates loopback API bases, and launches the native client with credentials confined to its environment. | These operations are the native Human UI runtime boundary. Release tooling creates the payload and HTTP adapters may request a launch, but neither owns client discovery, extraction, or execution policy. |
 | `ui/security.py` | Owns the Human UI API namespace, private loopback-client credential lifecycle, constant-time token verification, and direct-peer loopback classification. | These rules define the Human UI trust boundary used by OAuth middleware, browser/native adapters, and the native launcher. They are UI policy rather than general OAuth, HTTP, or filesystem helpers. |
 
 Rejected ownership alternatives:
@@ -194,6 +195,11 @@ Rejected ownership alternatives:
 - top-level `ui_security.py`: the old location obscured that the local-token
   bypass is narrowly scoped Human UI policy, not a general authentication or
   transport-security facility.
+- top-level `tui_runtime.py`: package-root placement hid that executable
+  discovery, embedded-payload extraction, and process launch are one native UI
+  runtime contract.
+- `release`: release code builds and embeds the sidecar, but runtime resolution
+  and extraction policy belongs to the client that consumes it.
 - `oauth`: OAuth middleware consumes the UI trust decision, but credential
   creation and loopback UI namespace rules must remain owned by the UI domain.
 

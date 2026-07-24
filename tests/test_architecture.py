@@ -277,7 +277,12 @@ def test_ui_core_does_not_depend_on_executors_or_http_adapters() -> None:
     )
 
     assert actual == frozenset()
-    for migrated_name in ("dashboard.py", "image_preview.py", "ui_security.py"):
+    for migrated_name in (
+        "dashboard.py",
+        "image_preview.py",
+        "tui_runtime.py",
+        "ui_security.py",
+    ):
         assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
