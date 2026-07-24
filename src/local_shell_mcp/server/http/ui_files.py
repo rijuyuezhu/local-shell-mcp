@@ -34,6 +34,7 @@ from ...ops.files import (
 from ...ops.utils.path import relative_display, resolve_path, workspace_root
 from ...tool_session.store import file_sha256
 from ...utils.path_locks import path_locks
+from .ui_common import json_error as _json_error
 from .ui_image_preview import (
     UiImagePreviewRequest,
     image_preview_request,
@@ -65,17 +66,6 @@ UI_FILE_INLINE_IMAGE_TYPES = frozenset(
 
 def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
     return JSONResponse({"ok": True, "message": message, "data": data})
-
-
-def _json_error(exc: Exception, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
-        {
-            "ok": False,
-            "error": type(exc).__name__,
-            "message": str(exc),
-        },
-        status_code=status_code,
-    )
 
 
 def _require_scopes(*required: str) -> None:

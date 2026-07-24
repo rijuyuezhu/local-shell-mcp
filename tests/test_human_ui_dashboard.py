@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import local_shell_mcp.dashboard as dashboard_module
+import local_shell_mcp.server.http.ui_common as ui_common_module
 import local_shell_mcp.server.http.ui_dashboard as ui_dashboard_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ
@@ -208,7 +209,7 @@ def _remote_client(
         remote_enabled=True,
     )
     monkeypatch.setattr(
-        ui_dashboard_module,
+        ui_common_module,
         "remote_manager",
         lambda: _FakeManager(status=status),
     )

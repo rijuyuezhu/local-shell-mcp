@@ -29,6 +29,7 @@ from ...tool_session.store import (
     UnknownAgentSessionError,
     get_tool_session_store,
 )
+from .ui_common import json_error as _json_error
 from .ui_remote_files import call_remote_ui_workspace_tool
 
 UI_TODO_MACHINE_MAX_BYTES = 255
@@ -49,17 +50,6 @@ def clear_ui_todo_sessions() -> None:
 
 def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
     return JSONResponse({"ok": True, "message": message, "data": data})
-
-
-def _json_error(exc: Exception, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
-        {
-            "ok": False,
-            "error": type(exc).__name__,
-            "message": str(exc),
-        },
-        status_code=status_code,
-    )
 
 
 def _require_scopes(*required: str) -> None:

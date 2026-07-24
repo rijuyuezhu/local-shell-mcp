@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
+import local_shell_mcp.server.http.ui_common as ui_common_module
 import local_shell_mcp.server.http.ui_terminals as terminal_module
 from local_shell_mcp.config.settings import Settings, clear_settings_cache
 from local_shell_mcp.oauth.core.scopes import (
@@ -703,7 +704,7 @@ def _remote_terminal_client(
         remote_enabled=True,
     )
     monkeypatch.setattr(
-        terminal_module,
+        ui_common_module,
         "remote_manager",
         lambda: _RemoteTerminalManager(status),
     )
@@ -925,7 +926,7 @@ def test_remote_terminal_websocket_raw_bridge_is_sessionless(
         remote_enabled=True,
     )
     monkeypatch.setattr(
-        terminal_module,
+        ui_common_module,
         "remote_manager",
         lambda: _RemoteTerminalManager("online"),
     )
@@ -997,7 +998,7 @@ def test_remote_terminal_auto_falls_back_for_older_worker(
         remote_enabled=True,
     )
     monkeypatch.setattr(
-        terminal_module,
+        ui_common_module,
         "remote_manager",
         lambda: _RemoteTerminalManager("online"),
     )

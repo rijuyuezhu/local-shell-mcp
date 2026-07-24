@@ -42,7 +42,6 @@ from ...ops.shell import (
     send_persistent_shell_input_execute,
     start_persistent_shell_execute,
 )
-from ...remote.manager import remote_manager
 from ...remote.service import call_remote_worker_tool
 from ...schemas.result_models.shell import (
     KillPersistentShellOutput,
@@ -63,6 +62,15 @@ from ...terminal_bridge import (
     read_terminal_bridge_execute,
     resize_terminal_bridge_execute,
     write_terminal_bridge_execute,
+)
+from .ui_common import (
+    bounded_text as _bounded_text,
+)
+from .ui_common import (
+    json_error as _json_error,
+)
+from .ui_common import (
+    require_remote_machine as _require_remote_machine,
 )
 
 UI_TERMINAL_SUBPROTOCOL = "lsm-ui-terminal"
@@ -97,17 +105,6 @@ class _TerminalBridgeHandle:
 
 def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
     return JSONResponse({"ok": True, "message": message, "data": data})
-
-
-def _json_error(exc: Exception, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
-        {
-            "ok": False,
-            "error": type(exc).__name__,
-            "message": str(exc),
-        },
-        status_code=status_code,
-    )
 
 
 def _terminal_error(exc: Exception) -> JSONResponse:
@@ -152,22 +149,6 @@ def _bounded_int(
     if not minimum <= value <= maximum:
         raise ValueError(f"{label} must be between {minimum} and {maximum}")
     return value
-
-
-def _bounded_text(
-    value: Any,
-    *,
-    field: str,
-    max_bytes: int,
-    default: str = "",
-    allow_empty: bool = True,
-) -> str:
-    normalized = str(value if value is not None else default).strip()
-    if not normalized and not allow_empty:
-        raise ValueError(f"{field} is required")
-    if len(normalized.encode("utf-8")) > max_bytes:
-        raise ValueError(f"{field} exceeds {max_bytes} encoded bytes")
-    return normalized
 
 
 def _optional_text(value: Any, *, field: str) -> str | None:
@@ -215,20 +196,6 @@ def _remote_timeout_s() -> int:
             UI_TERMINAL_REMOTE_TIMEOUT_S,
         ),
     )
-
-
-def _require_remote_machine(machine: str) -> None:
-    settings = get_settings()
-    if not settings.remote_enabled:
-        raise ValueError("Remote workers are disabled")
-    inventory = remote_manager().list_machines()
-    row = next(
-        (item for item in inventory.machines if item.name == machine), None
-    )
-    if row is None:
-        raise ValueError(f"Unknown remote machine: {machine}")
-    if row.status != "online":
-        raise ConnectionError(f"Remote machine {machine} is {row.status}")
 
 
 def _remote_error_text(value: Any, *, fallback: str) -> str:

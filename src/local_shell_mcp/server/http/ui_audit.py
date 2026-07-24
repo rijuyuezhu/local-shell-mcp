@@ -25,8 +25,19 @@ from ...oauth.core.scopes import (
     SUPPORTED_OAUTH_SCOPES,
 )
 from ...ops.image import detect_image_type
-from ...remote.manager import remote_manager
 from ...remote.service import call_remote_worker_tool
+from .ui_common import (
+    bounded_int as _bounded_int,
+)
+from .ui_common import (
+    bounded_text as _bounded_text,
+)
+from .ui_common import (
+    json_error as _json_error,
+)
+from .ui_common import (
+    require_remote_machine as _require_remote_machine,
+)
 from .ui_image_preview import (
     UiImagePreviewRequest,
     image_preview_request,
@@ -66,38 +77,11 @@ def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
     return JSONResponse({"ok": True, "message": message, "data": data})
 
 
-def _json_error(exc: Exception, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
-        {
-            "ok": False,
-            "error": type(exc).__name__,
-            "message": str(exc),
-        },
-        status_code=status_code,
-    )
-
-
 def _require_scopes(*required: str) -> None:
     try:
         require_oauth_scopes(tuple(dict.fromkeys(required)))
     except MissingOAuthScopeError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-
-def _bounded_text(
-    value: Any,
-    *,
-    field: str,
-    max_bytes: int,
-    default: str = "",
-    allow_empty: bool = True,
-) -> str:
-    normalized = str(value if value is not None else default).strip()
-    if not normalized and not allow_empty:
-        raise ValueError(f"{field} is required")
-    if len(normalized.encode("utf-8")) > max_bytes:
-        raise ValueError(f"{field} exceeds {max_bytes} encoded bytes")
-    return normalized
 
 
 def _machine_arg(value: Any) -> str:
@@ -108,27 +92,6 @@ def _machine_arg(value: Any) -> str:
         default="local",
         allow_empty=False,
     )
-
-
-def _bounded_int(
-    value: Any,
-    *,
-    field: str,
-    default: int,
-    minimum: int,
-    maximum: int,
-) -> int:
-    if value in {None, ""}:
-        return default
-    if isinstance(value, bool):
-        raise ValueError(f"{field} must be an integer")
-    try:
-        normalized = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field} must be an integer") from exc
-    if not minimum <= normalized <= maximum:
-        raise ValueError(f"{field} must be between {minimum} and {maximum}")
-    return normalized
 
 
 def _bounded_float(value: Any, *, field: str) -> float | None:
@@ -203,20 +166,6 @@ def _remote_timeout_s() -> int:
             UI_AUDIT_REMOTE_TIMEOUT_S,
         ),
     )
-
-
-def _require_remote_machine(machine: str) -> None:
-    settings = get_settings()
-    if not settings.remote_enabled:
-        raise ValueError("Remote workers are disabled")
-    inventory = remote_manager().list_machines()
-    row = next(
-        (item for item in inventory.machines if item.name == machine), None
-    )
-    if row is None:
-        raise ValueError(f"Unknown remote machine: {machine}")
-    if row.status != "online":
-        raise ConnectionError(f"Remote machine {machine} is {row.status}")
 
 
 def _remote_result_data(

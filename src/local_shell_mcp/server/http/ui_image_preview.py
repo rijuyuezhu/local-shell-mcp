@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...image_preview import make_image_preview
+from .ui_common import bounded_int as _bounded_int
 
 
 @dataclass(frozen=True)
@@ -20,27 +21,6 @@ class UiImagePreviewRequest:
     """Maximum terminal rows available to the preview."""
     cell_aspect: float
     """Terminal cell height-to-width ratio."""
-
-
-def _bounded_int(
-    value: Any,
-    *,
-    field: str,
-    default: int,
-    minimum: int,
-    maximum: int,
-) -> int:
-    if value in {None, ""}:
-        return default
-    if isinstance(value, bool):
-        raise ValueError(f"{field} must be an integer")
-    try:
-        normalized = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field} must be an integer") from exc
-    if not minimum <= normalized <= maximum:
-        raise ValueError(f"{field} must be between {minimum} and {maximum}")
-    return normalized
 
 
 def _bounded_float(
