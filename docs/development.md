@@ -214,7 +214,10 @@ native host and executable magic, creates deterministic gzip metadata, rewrites
 and verifies `WHEEL` plus `RECORD`, and removes staging files on success or
 failure. Release CI installs every platform wheel in an isolated environment
 with Bun and sidecars absent, then runs `scripts/smoke-platform-wheel.py` before
-all Python package artifacts are published together.
+all Python package artifacts are published together. Native source, license,
+platform, rebuild, and checksum ownership is recorded in
+[Native artifact provenance](maintenance/native-artifact-provenance.md). Run
+`uv run python scripts/check-native-provenance.py` whenever those inputs change.
 
 Also test the Docker image or binary artifact and at least one real MCP connection path before publishing.
 

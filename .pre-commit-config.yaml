@@ -43,3 +43,10 @@ repos:
         language: system
         pass_filenames: false
         files: ^(ui-terminal/(src/.*\.js|scripts/.*\.mjs|package(-lock)?\.json)|src/local_shell_mcp/ui_static/xterm(_bundle\.js|\.css|\.LICENSE\.txt))$
+
+      - id: native-artifact-provenance
+        name: native artifact provenance
+        entry: uv run python scripts/check-native-provenance.py
+        language: system
+        pass_filenames: false
+        files: ^(ui-opentui/(package\.json|bun\.lock|scripts/compile-tui\.ts)|scripts/(build-platform-wheel\.py|smoke-platform-wheel\.py|tmux-helper\.Dockerfile|build-tmux-helper\.sh|check-native-provenance\.py|check-release-matrix\.py)|src/local_shell_mcp/helpers/(tmux\.LICENSE|opentui\.NOTICES|bun-1\.3\.14\.LICENSE\.md)|docs/maintenance/native-artifact-provenance\.md|pyproject\.toml|mkdocs\.yml|\.github/workflows/release\.yml)$

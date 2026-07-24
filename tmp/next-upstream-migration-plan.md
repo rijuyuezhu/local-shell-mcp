@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: Phases 1-8 complete; Phase 9 pending.
+Status: Phases 1-8 complete; Phase 9 implementation and local validation complete. Final plan deletion, push, and exact-head CI remain.
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `ddf57bfb1093b57525074e9b57afc65d947fc845` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `10b645cbebf8e0f22e8004e62896549f31206326` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `9f1484e880c01b64b320ce0105de6bee831821e7` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -1402,6 +1402,66 @@ falls back for small or non-capable routes.
 
 ### Phase 9 — Final integration and permanent documentation
 
+Status: implementation and local validation complete (started 2026-07-24); final plan deletion, push, and exact-head CI remain.
+
+Actual baseline: branch HEAD and
+`origin/feat/port-upstream-features-2026-07` both point to
+`10b645cbebf8e0f22e8004e62896549f31206326`; divergence is `0/0` and the
+worktree is clean after fetching both remotes. `upstream/main` remains
+`9f1484e880c01b64b320ce0105de6bee831821e7`, so there are no post-Phase-8
+upstream commits to append before the final parity audit.
+
+Final integration findings and durable migration:
+
+- The chronological upstream review now includes functional commit `889a7a1`,
+  merge `9f1484e`, and four previously omitted reachable merge-only nodes
+  (`fbcf4d3`, `e74cb73`, `67b61e1`, `00dbc32`). Mechanical reconciliation from
+  the shared fork point finds `544` review rows covering every one of the current
+  `463` reachable upstream commits with `missing=[]` and `duplicates=[]`; `81`
+  historical rows for previously reviewed but later rewritten refs are retained
+  explicitly as audit evidence. `889a7a1` is an independent installer
+  `User-Agent` parity candidate and is intentionally not pulled into this
+  completed migration.
+- The permanent difference report now records large HTTP transfer, bounded full
+  audit recovery, structured session orientation, worker services, native
+  OpenTUI wheels, and real Chromium E2E as implemented/adapted. The intentional
+  remaining differences are public structured browser automation, maintained
+  non-English documentation, Windows worker services, and Windows arm64 native
+  OpenTUI wheels.
+- New permanent native-artifact provenance documents Bun/OpenTUI/tmux versions,
+  licenses, locked source/build hashes, supported platforms, truthful wheel tags,
+  checksum authority, and rebuild procedures. OpenTUI dependency notices and the
+  verbatim official `bun-v1.3.14/LICENSE.md` are included in universal/platform
+  wheels, source archives, and frozen executable archives. The Bun record pins
+  tag commit `0d9b296af33f2b851fcbf4df3e9ec89751734ba4` and accurately surfaces its
+  MIT, LGPL-2/LGPL-2.1, linked-library, corresponding-source, and relink
+  obligations. `scripts/check-native-provenance.py`, its pytest regression, the
+  release-matrix checker, and pre-commit prevent silent source/license drift.
+- Final clean local branch coverage marker `/tmp/phase9-final3-coverage.exit` is
+  `0`: `1027 passed, 2 skipped`, total branch coverage `86.19%`, and the 82.60%
+  per-module ratchet passes. One earlier run overlapped the full Docker build and
+  saw a single transient local `/mcp` 502; the isolated MCP HTTP E2E then passed
+  five consecutive runs, and the final non-concurrent full suite is green. Real
+  Chromium E2E marker is `0` with `1 passed`;
+  focused real remote-worker/HTTP transfer/service/upgrade validation is `98
+  passed`; removed-name/tool-surface validation is `33 passed` and the generated
+  public MCP surface remains exactly 40 tools with no restored compatibility or
+  browser automation names.
+- OpenTUI typecheck, all `91` Bun tests, native build, and sidecar smoke pass.
+  VS Code format/lint/compile and actual VSIX packaging pass; terminal UI checks
+  pass. The universal wheel/sdist package smoke, sdist self-verification/rebuild,
+  clean install, Linux x86_64 platform-wheel build/smoke, and notice placement all
+  pass. Static tmux 3.5a builds and completes a real create/capture/kill smoke.
+  Docker Compose validation passes. Full local Docker image build marker
+  `/tmp/phase9-docker.exit` is `0`; the built image starts through the real
+  entrypoint and reports `local-shell-mcp 3.9.1`.
+- Strict MkDocs, generated reference assets, config/tool/instruction generation,
+  Ruff, Pyright, lock validation, release matrix, and changed-file secret scan
+  all pass; the final secret scan covers exactly the 16 changed/untracked Phase 9
+  files and returns zero findings. Final full-repository pre-commit marker
+  `/tmp/phase9-final4-precommit.exit` is `0`, including the native provenance
+  hook and all generated config/tool/VS Code/OpenTUI checks.
+
 - Run the complete Linux/macOS/Windows suite, browser E2E, real remote-worker E2E,
   package smoke, platform-wheel smoke, OpenTUI matrix, VS Code jobs, Docker/
   Compose checks, release matrix, branch coverage ratchet, and bundled tmux smoke.
@@ -1434,4 +1494,4 @@ and deleting this temporary plan does not remove unique operational knowledge.
 - [x] Phase 6: Linux/macOS worker user-service management.
 - [x] Phase 7: platform wheels with embedded OpenTUI.
 - [x] Phase 8: internal resumable HTTP large-file transfer.
-- [ ] Phase 9: full integration, permanent docs, and plan deletion.
+- [x] Phase 9: full integration and permanent docs complete; this tracked plan is ready for deletion in the final migration commit.

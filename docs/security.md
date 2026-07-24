@@ -97,6 +97,25 @@ When OAuth authentication is enabled, protected MCP and REST routes authenticate
 
 In the Docker image, the entrypoint normally creates a non-root `agent` user at container startup. By default, its UID/GID are detected from the mounted `/workspace` owner so bind-mounted files stay writable by the host user. Set `DOCKER_AGENT_UID` or `DOCKER_AGENT_GID` only to override that detection. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
 
+## Raw terminal streaming
+
+Raw PTY/ConPTY access is equivalent to interactive shell control with the server
+or selected worker account. Browser terminal WebSockets therefore require both
+`shell:read` and `shell:execute`, plus `remote:use` for remote machines; the
+private loopback OpenTUI token is never accepted from a browser. Remote bridges
+use an opaque controller-only capability and allowlisted worker RPCs rather than
+exposing a worker address, credential, or direct WebSocket.
+
+One raw bridge is allowed per `(machine, shell_id)`. Frames, dimensions, waits,
+connection counts, subscriber buffers, and idle lifetime are bounded; snapshot
+fallback remains available. Terminal output is rendered as terminal data, never
+HTML or script. Plain-text reads remove terminal controls, while the Human UI's
+ANSI/image path uses pinned xterm assets, bounded Sixel/iTerm decoding, inert
+nodes/canvas output, and no navigable OSC 8 links. Closing a raw attachment
+releases only that bridge and deliberately leaves the persistent tmux/ConPTY
+shell alive. See [Human interface](guides/human-interface.md#terminals) for the
+protocol and resource limits.
+
 ## Browser Human UI policy
 
 The browser Human UI loads scripts only from the configured origin. Its Content Security Policy permits inline styles required by xterm's runtime layout and narrowly permits `wasm-unsafe-eval` for the bundled xterm Image Addon Sixel decoder; it never enables general `unsafe-eval` or external script origins. OAuth `401` responses clear an invalid tab token, while `403` scope failures preserve the valid token and expose only the bounded missing-scope error.
@@ -151,6 +170,25 @@ Linux systemd-user units and macOS launchd plists invoke a stable private launch
 Service lifecycle commands are local CLI operations, not MCP tools. A controller can still request a verified idle-time runtime upgrade through the existing authenticated worker channel, so a trusted controller has authority to replace worker code. Automatic and manual updates enforce same-origin URLs and redirects, bounded downloads/extraction, version/digest checks, safe archive members, atomic replacement, rollback, and credential-free re-exec. The single-instance lock is retained across re-exec so a competing manual process cannot consume jobs during handoff.
 
 `worker logs` can contain tool diagnostics, paths, and application output. Systemd reads the user journal; launchd writes an owner-private bounded file. Treat both as sensitive and avoid forwarding them to systems that are not trusted for worker command output.
+
+## Embedded native UI payloads
+
+Platform wheels may embed one compressed OpenTUI executable selected by an exact
+wheel platform tag. The universal wheel and sdist remain native-payload-free.
+Build and smoke checks validate host platform/architecture, executable magic,
+wheel purity/tag metadata, deterministic-gzip metadata, compressed and expanded
+limits, and embedded SHA-256 before installation or execution. Runtime extraction
+uses an owner-private versioned directory, a cross-process lock, digest checks,
+atomic replacement, and executable-permission validation; a caller-supplied
+`ui_tui_command` remains an explicit administrator-controlled override.
+
+Frozen release archives carry the same compiled UI as a sidecar and Linux
+archives additionally carry a pinned static tmux helper. Release checksums,
+third-party notices, source/toolchain pins, supported platforms, and rebuild
+commands are authoritative in [Native artifact provenance](maintenance/native-artifact-provenance.md).
+Treat every native payload as code executing with the local server account, not
+as passive data; do not replace embedded or extracted binaries outside the
+verified build/update path.
 
 ## Audit log handling
 

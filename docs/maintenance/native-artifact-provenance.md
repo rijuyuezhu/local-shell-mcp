@@ -1,0 +1,119 @@
+# Native artifact provenance
+
+This page is the durable supply-chain record for native artifacts maintained by
+this fork. The source tree and lockfiles are authoritative; release artifacts
+are always accompanied by SHA-256 checksum files because compiled output hashes
+vary by platform and release build.
+
+## OpenTUI executable
+
+The optional native terminal client is maintained in `ui-opentui/`. It was
+adapted from upstream OpenTUI work through upstream commit `54f246e` and then
+integrated with the fork's session-, machine-, OAuth-, audit-, and terminal APIs.
+It has no independent product version: `local-shell-mcp-tui --version` reports
+the enclosing `local-shell-mcp` release version.
+
+### Locked inputs
+
+| Input | Version or SHA-256 |
+|---|---|
+| Bun compiler/runtime | `1.3.14`; tag commit `0d9b296af33f2b851fcbf4df3e9ec89751734ba4` |
+| `@opentui/core` / native core packages | `0.4.3` |
+| `@opentui/react` | `0.4.3` |
+| React | `19.2.0` |
+| React reconciler | `0.33.0` |
+| `ui-opentui/package.json` | `dac1801bc8f6ae034ba092bb780a173f30cd47f343d626f43bb3895df1920238` |
+| `ui-opentui/bun.lock` | `5412a17ab4bbd8695c361f944bf5286302c8635a548643cf7ad2a4653b0ef8b3` |
+| `ui-opentui/scripts/compile-tui.ts` | `5ee587bbf98dbf1023191ea6a256e3693db46cf5173bbe6e52941076808c47ae` |
+| `scripts/build-platform-wheel.py` | `66a3140811c42f1596f1e895a8d4550c1343abaaad8747fa5b419e8ce4c48446` |
+| `scripts/smoke-platform-wheel.py` | `b935d6552d38d20614a9e1ef0c4042181fbedd2d9cf1d48dbdbcd4d1bb06414d` |
+| `src/local_shell_mcp/helpers/opentui.NOTICES` | `73d026453521d235c1df46f2dcf90943661258695e8eed87ba2c91e7caa03e61` |
+| `src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md` | `2c6160ec8fb853f7e8f97d9b249e756c9b0ac44860a68b6bf4f1b0bcbc5c3741` |
+
+The lockfile is installed with `bun install --frozen-lockfile`. CI and release
+jobs pin Bun independently and fail if the lockfile, host architecture, output
+magic, wheel tag, embedded digest, or clean-install smoke does not match.
+
+### Platforms and packaging
+
+Native OpenTUI is built on the matching runner for:
+
+- Linux x86_64 and aarch64;
+- macOS x86_64 and arm64;
+- Windows x86_64.
+
+Each runner produces both a release sidecar and a same-version Python platform
+wheel containing one deterministic-gzip payload. The universal wheel and sdist
+remain payload-free. Windows arm64 is intentionally absent until a native runner
+and smoke path exist. Linux wheels use truthful `linux_*` tags rather than an
+unverified manylinux claim.
+
+The project source is MIT-licensed. Locked JavaScript/runtime dependency notices
+are shipped as `src/local_shell_mcp/helpers/opentui.NOTICES` and copied into
+executable archives as `OPENTUI-NOTICES.txt`. The notice records the locked MIT
+packages and BSD-3-Clause `diff`; TypeScript is an Apache-2.0 build-time tool.
+
+The compiled sidecar embeds Bun 1.3.14. Its verbatim tag `LICENSE.md` is shipped
+as `src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md` and as
+`BUN-1.3.14-LICENSE.md` beside frozen executables. That record identifies Bun as
+MIT, JavaScriptCore/WebKit as LGPL-2, tinycc as LGPL-2.1, and the remaining linked
+libraries and polyfills under their listed terms. It also gives the patched
+WebKit source and relink procedure. Redistributors must satisfy the LGPL
+object/relink and corresponding-source obligations; these provenance files make
+the exact runtime/tag visible but are not a substitute for legal review.
+
+### Rebuild and verify
+
+```bash
+cd ui-opentui
+bun install --frozen-lockfile
+bun run typecheck
+bun test --coverage
+bun run build:tui
+cd ..
+uv run python scripts/build-platform-wheel.py \
+  --platform-tag linux_x86_64 \
+  --output-dir dist
+uv run python scripts/smoke-platform-wheel.py \
+  --state-dir /tmp/local-shell-mcp-wheel-state
+```
+
+Use the platform tag matching the native runner. Release workflow artifacts are
+covered by the top-level `SHA256SUMS.txt`; executable archives and the VSIX also
+have per-artifact `.sha256` files. Do not treat a digest from one OS, architecture,
+or release as valid for another.
+
+## Bundled tmux helper
+
+Frozen Linux executable archives bundle a static tmux helper so persistent shells
+work without a host tmux installation. Python wheels and source distributions do
+not carry generated tmux binaries.
+
+| Input | Version or SHA-256 |
+|---|---|
+| Alpine builder image | `3.22` |
+| tmux source release | `3.5a` |
+| tmux source archive SHA-256 | `16216bd0877170dfcc64157085ba9013610b12b082548c7c9542cc0103198951` |
+| `scripts/tmux-helper.Dockerfile` | `b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693` |
+| `scripts/build-tmux-helper.sh` | `9147408366451272afe90396e63dd76f1809e641e48fc7861a8a2fd2304d825a` |
+| `src/local_shell_mcp/helpers/tmux.LICENSE` | `c031bd37f464c534277814f6aa38686fa023d094261d57fd2545ad592bb53ccd` |
+
+The Docker build downloads the exact tmux release archive and verifies the pinned
+source digest before extraction. It statically links the Alpine-provided libevent
+and ncurses libraries, strips the result, and executes `tmux -V` before export.
+CI then starts a detached session, captures expected output, and kills the server.
+The helper is built only for Linux amd64 and arm64. tmux's ISC notice is shipped
+inside Linux executable archives as `TMUX-LICENSE.txt`.
+
+Rebuild on a matching Linux host, or use Docker Buildx for cross-architecture
+output:
+
+```bash
+scripts/build-tmux-helper.sh /tmp/local-shell-mcp-tmux linux/amd64
+/tmp/local-shell-mcp-tmux -V
+scripts/build-tmux-helper.sh /tmp/local-shell-mcp-tmux-arm64 linux/arm64
+```
+
+Release checksums are the authority for generated helper and archive bytes.
+Changing any source version, checksum, toolchain pin, supported platform, or
+license notice requires updating this page and `scripts/check-native-provenance.py`.

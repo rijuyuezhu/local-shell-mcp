@@ -176,6 +176,8 @@ def main() -> int:
             "pyi-archive_viewer",
             "local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux",
             "TMUX-LICENSE.txt",
+            "OPENTUI-NOTICES.txt",
+            "BUN-1.3.14-LICENSE.md",
         ),
     )
     platform_wheel_release_status = _require_fragments(
@@ -199,6 +201,20 @@ def main() -> int:
             r"^  [A-Za-z0-9_-]+:\n",
         ),
         _platform_wheel_fragments(),
+    )
+    package_smoke_status = _require_fragments(
+        "CI source package provenance",
+        _section(
+            ci_text,
+            r"^  package-smoke:\n",
+            r"^  [A-Za-z0-9_-]+:\n",
+        ),
+        (
+            "scripts/check-native-provenance.py",
+            "tests/test_native_provenance.py",
+            "src/local_shell_mcp/helpers/opentui.NOTICES",
+            "src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md",
+        ),
     )
     universal_package_status = _require_fragments(
         "universal Python package validation",
@@ -245,6 +261,7 @@ def main() -> int:
             opentui_release_status,
             platform_wheel_release_status,
             platform_wheel_ci_status,
+            package_smoke_status,
             universal_package_status,
             atomic_release_status,
             opentui_docker_status,
