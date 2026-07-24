@@ -299,7 +299,7 @@ class Settings(BaseSettings):
 
     # Tool executables.
     shell_executable: str = "/bin/bash"
-    """Shell executable; the POSIX default maps to COMSPEC on Windows."""
+    """Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows."""
     tmux_bin: str = "tmux"
     """tmux executable."""
     rg_bin: str = "rg"

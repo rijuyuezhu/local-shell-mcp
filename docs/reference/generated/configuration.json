@@ -1931,7 +1931,7 @@
           {
             "code": "/bin/bash"
           },
-          "Shell executable; the POSIX default maps to COMSPEC on Windows."
+          "Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows."
         ],
         [
           {
@@ -3299,7 +3299,7 @@
       "cli": "--shell-executable",
       "default": "/bin/bash",
       "default_display": "/bin/bash",
-      "description": "Shell executable; the POSIX default maps to COMSPEC on Windows.",
+      "description": "Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows.",
       "env": "LOCAL_SHELL_MCP_SHELL_EXECUTABLE",
       "name": "shell_executable",
       "nullable": false,

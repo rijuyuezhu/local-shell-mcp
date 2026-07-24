@@ -220,7 +220,7 @@ agent_dynamic_mcp_tools: true
 agent_dynamic_skill_tools: true
 
 # Tool executables.
-# Shell executable; the POSIX default maps to COMSPEC on Windows.
+# Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows.
 shell_executable: "/bin/bash"
 # tmux executable.
 tmux_bin: "tmux"

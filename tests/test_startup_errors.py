@@ -26,8 +26,14 @@ from local_shell_mcp.ops.utils.remote_session import _remote_result_data
 from local_shell_mcp.remote.bundle import worker_bundle_bytes
 from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
 from local_shell_mcp.remote_worker.worker import _handled_remote_exception
+from local_shell_mcp.schemas.result_models.shell import (
+    CommandResult,
+    ListPersistentShellsOutput,
+    PersistentShellInfo,
+)
 from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.tmux_helper import TmuxSelection
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 
@@ -196,8 +202,155 @@ async def test_posix_persistent_shell_preflights_default_executable(
     with pytest.raises(ShellExecutableNotFoundError) as raised:
         await shell_ops.start_persistent_shell_execute(cwd=str(tmp_path))
 
-    assert raised.value.executable == executable
+    assert raised.value.executable == str(tmp_path / executable)
     assert raised.value.cwd == str(tmp_path)
+
+
+def _tmux_result(*, ok: bool, stderr: str = "") -> CommandResult:
+    return CommandResult(
+        ok=ok,
+        exit_code=0 if ok else 1,
+        timed_out=False,
+        duration_ms=1,
+        cwd=".",
+        command="tmux",
+        stdout="",
+        stderr=stderr,
+        truncated=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_tmux_exec_uses_configured_shell_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    shell = tmp_path / "bin" / "custom-shell"
+    shell.parent.mkdir()
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    shell.chmod(0o700)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", "bin/custom-shell")
+    clear_settings_cache()
+    monkeypatch.setattr(
+        shell_ops,
+        "require_tmux",
+        lambda: TmuxSelection("/opt/local-shell-mcp/tmux", "bundled", "tmux"),
+    )
+    calls: list[tuple[list[str], str, int | None, dict[str, str] | None]] = []
+
+    async def fake_run_exec(
+        argv: list[str],
+        *,
+        cwd: str = ".",
+        timeout_s: int | None = None,
+        env: dict[str, str] | None = None,
+    ) -> CommandResult:
+        calls.append((argv, cwd, timeout_s, env))
+        return _tmux_result(ok=True)
+
+    monkeypatch.setattr(shell_ops, "_run_exec", fake_run_exec)
+
+    result = await shell_ops.tmux(
+        ["new-session", "-c", str(tmp_path)], timeout_s=5
+    )
+
+    assert result.ok is True
+    assert calls == [
+        (
+            ["/opt/local-shell-mcp/tmux", "new-session", "-c", str(tmp_path)],
+            ".",
+            5,
+            {"SHELL": str(shell)},
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_persistent_tmux_default_shell_is_verified_alive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    shell = tmp_path / "custom-shell"
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    shell.chmod(0o700)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    clear_settings_cache()
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "list_persistent_shells_execute",
+        lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+    )
+    calls: list[tuple[list[str], int]] = []
+
+    async def fake_tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
+        calls.append((args, timeout_s))
+        return _tmux_result(ok=True)
+
+    monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+
+    started = await shell_ops.start_persistent_shell_execute(
+        cwd=str(tmp_path), name="configured-shell"
+    )
+
+    assert started.command == str(shell)
+    assert calls == [
+        (
+            [
+                "new-session",
+                "-d",
+                "-s",
+                "configured-shell",
+                "-c",
+                str(tmp_path),
+            ],
+            10,
+        ),
+        (["has-session", "-t", "=configured-shell"], 5),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_persistent_tmux_rejects_default_shell_that_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    shell = tmp_path / "exiting-shell"
+    shell.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    shell.chmod(0o700)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    clear_settings_cache()
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "list_persistent_shells_execute",
+        lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+    )
+    calls: list[list[str]] = []
+
+    async def fake_tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
+        del timeout_s
+        calls.append(args)
+        if args[0] == "has-session":
+            return _tmux_result(ok=False, stderr="session vanished")
+        return _tmux_result(ok=True)
+
+    monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+
+    with pytest.raises(RuntimeError, match="exited during startup"):
+        await shell_ops.start_persistent_shell_execute(
+            cwd=str(tmp_path), name="exiting-shell"
+        )
+
+    assert calls[-1] == ["kill-session", "-t", "=exiting-shell"]
+
+
+async def _async_value(value):  # noqa: ANN001, ANN202
+    return value
 
 
 @pytest.mark.asyncio
@@ -316,3 +469,252 @@ async def test_mcp_shell_error_uses_standard_tool_error(
             "bash",
             {"session_id": session.session_id, "command": "echo ok"},
         )
+
+
+@pytest.mark.asyncio
+async def test_direct_exec_rejects_empty_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="argv must not be empty"):
+        await shell_ops._run_exec([])
+
+
+@pytest.mark.asyncio
+async def test_direct_exec_classifies_missing_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    executable = str(tmp_path / "missing-direct-exec")
+
+    async def fail_spawn(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        raise FileNotFoundError(2, "missing", executable)
+
+    monkeypatch.setattr(shell_ops.asyncio, "create_subprocess_exec", fail_spawn)
+
+    with pytest.raises(ShellExecutableNotFoundError) as raised:
+        await shell_ops._spawn_exec_process([executable], str(tmp_path))
+
+    assert raised.value.executable == executable
+
+
+@pytest.mark.asyncio
+async def test_direct_exec_times_out_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+
+    class BlockingSemaphore:
+        async def acquire(self) -> None:
+            await asyncio.Event().wait()
+
+        def release(self) -> None:
+            raise AssertionError("unacquired semaphore must not be released")
+
+    monkeypatch.setattr(shell_ops, "_command_semaphore", BlockingSemaphore)
+    monkeypatch.setattr(shell_ops, "clamp_timeout", lambda _timeout: 0.01)
+
+    result = await shell_ops._run_exec(["unused"], cwd=str(tmp_path))
+
+    assert result.timed_out is True
+    assert result.exit_code is None
+    assert "Timed out while starting subprocess" in result.stderr
+
+
+@pytest.mark.asyncio
+async def test_direct_exec_terminates_running_process_on_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+
+    class FakeProcess:
+        stdout = None
+        stderr = None
+        returncode: int | None = None
+        pid = 123
+
+        async def wait(self) -> None:
+            await asyncio.Event().wait()
+
+    process = FakeProcess()
+
+    async def fake_spawn(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        return process
+
+    async def fake_terminate(candidate) -> str:  # noqa: ANN001
+        assert candidate is process
+        process.returncode = -15
+        return "forced stop"
+
+    monkeypatch.setattr(shell_ops, "_spawn_exec_process", fake_spawn)
+    monkeypatch.setattr(shell_ops, "_terminate_process_group", fake_terminate)
+    monkeypatch.setattr(shell_ops, "clamp_timeout", lambda _timeout: 0.01)
+
+    result = await shell_ops._run_exec(["fake"], cwd=str(tmp_path))
+
+    assert result.timed_out is True
+    assert result.exit_code == -15
+    assert "forced stop" in result.stderr
+
+
+def test_tmux_cwd_and_absolute_shell_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    absolute = str(tmp_path / "missing-absolute-shell")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", absolute)
+    clear_settings_cache()
+    monkeypatch.setattr(shell_ops.shutil, "which", lambda *args, **kwargs: None)
+
+    assert shell_ops._tmux_session_cwd(["new-session"]) == "."
+    assert shell_ops._tmux_session_cwd(["list-sessions"]) == "."
+    assert shell_ops._resolved_tmux_shell(str(tmp_path)) == absolute
+
+
+@pytest.mark.asyncio
+async def test_persistent_shell_enforces_capacity_and_conpty_availability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS", "1")
+    clear_settings_cache()
+    monkeypatch.setattr(
+        shell_ops,
+        "list_persistent_shells_execute",
+        lambda: _async_value(
+            ListPersistentShellsOutput(
+                shells=[PersistentShellInfo(shell_id="busy")]
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="more than 1"):
+        await shell_ops.start_persistent_shell_execute(cwd=str(tmp_path))
+
+    monkeypatch.setattr(
+        shell_ops,
+        "list_persistent_shells_execute",
+        lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+    )
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+    monkeypatch.setattr(conpty, "is_available", lambda: False)
+
+    with pytest.raises(RuntimeError, match="pywinpty is required"):
+        await shell_ops.start_persistent_shell_execute(cwd=str(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_persistent_tmux_creation_and_send_errors_are_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    shell = tmp_path / "shell"
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    shell.chmod(0o700)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    clear_settings_cache()
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "list_persistent_shells_execute",
+        lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+    )
+
+    async def failed_tmux(
+        args: list[str], timeout_s: int = 10
+    ) -> CommandResult:
+        del timeout_s
+        return _tmux_result(ok=False, stderr=f"failed {args[0]}")
+
+    monkeypatch.setattr(shell_ops, "tmux", failed_tmux)
+    with pytest.raises(RuntimeError, match="failed new-session"):
+        await shell_ops.start_persistent_shell_execute(
+            cwd=str(tmp_path), command="echo ok"
+        )
+    with pytest.raises(RuntimeError, match="failed send-keys"):
+        await shell_ops.send_persistent_shell_input_execute(
+            "shell-1", "echo ok", enter=False
+        )
+    with pytest.raises(RuntimeError, match="failed send-keys"):
+        await shell_ops.send_persistent_shell_input_execute(
+            "shell-1", "", enter=True
+        )
+
+
+@pytest.mark.asyncio
+async def test_direct_exec_uses_windows_process_group_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    captured: dict[str, object] = {}
+    expected = object()
+
+    async def fake_create(*args, **kwargs):  # noqa: ANN002, ANN003
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return expected
+
+    monkeypatch.setattr(shell_ops.os, "name", "nt")
+    monkeypatch.setattr(
+        shell_ops.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False
+    )
+    monkeypatch.setattr(
+        shell_ops.asyncio, "create_subprocess_exec", fake_create
+    )
+
+    result = await shell_ops._spawn_exec_process(
+        ["tmux.exe", "list-sessions"], str(tmp_path), {"SHELL": "cmd.exe"}
+    )
+
+    assert result is expected
+    kwargs = captured["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["creationflags"] == 512
+    assert "start_new_session" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_direct_exec_cancellation_terminates_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    spawned = asyncio.Event()
+    terminated = asyncio.Event()
+
+    class FakeProcess:
+        stdout = None
+        stderr = None
+        returncode: int | None = None
+        pid = 321
+
+        async def wait(self) -> None:
+            spawned.set()
+            await asyncio.Event().wait()
+
+    process = FakeProcess()
+
+    async def fake_spawn(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        return process
+
+    async def fake_terminate(candidate) -> str:  # noqa: ANN001
+        assert candidate is process
+        process.returncode = -15
+        terminated.set()
+        return ""
+
+    monkeypatch.setattr(shell_ops, "_spawn_exec_process", fake_spawn)
+    monkeypatch.setattr(shell_ops, "_terminate_process_group", fake_terminate)
+    task = asyncio.create_task(
+        shell_ops._run_exec(["fake"], cwd=str(tmp_path), timeout_s=10)
+    )
+    await asyncio.wait_for(spawned.wait(), timeout=1)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert terminated.is_set()

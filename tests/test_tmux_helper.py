@@ -177,7 +177,7 @@ async def test_shell_tmux_uses_resolved_executable(
     from local_shell_mcp.ops import shell
 
     expected = object()
-    calls: list[tuple[str, str, int]] = []
+    calls: list[tuple[list[str], str, int | None, dict[str, str] | None]] = []
     monkeypatch.setattr(
         shell,
         "require_tmux",
@@ -185,14 +185,25 @@ async def test_shell_tmux_uses_resolved_executable(
             "/bundle path/tmux", "bundled", "tmux"
         ),
     )
+    monkeypatch.setattr(
+        shell, "_resolved_tmux_shell", lambda _cwd=".": "/bin/bash"
+    )
 
-    async def fake_run_shell(command: str, cwd: str, timeout_s: int):
-        calls.append((command, cwd, timeout_s))
+    async def fake_run_exec(
+        argv: list[str],
+        *,
+        cwd: str = ".",
+        timeout_s: int | None = None,
+        env: dict[str, str] | None = None,
+    ):
+        calls.append((argv, cwd, timeout_s, env))
         return expected
 
-    monkeypatch.setattr(shell, "run_shell", fake_run_shell)
+    monkeypatch.setattr(shell, "_run_exec", fake_run_exec)
     assert await shell.tmux(["list-sessions"], timeout_s=7) is expected
-    assert calls == [("'/bundle path/tmux' list-sessions", ".", 7)]
+    assert calls == [
+        (["/bundle path/tmux", "list-sessions"], ".", 7, {"SHELL": "/bin/bash"})
+    ]
 
 
 @pytest.mark.asyncio

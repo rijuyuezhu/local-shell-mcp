@@ -113,6 +113,8 @@ When done:
 
 ```text
 Use local-shell-mcp to list persistent shells and kill the development server shell by shell_id. For async bash jobs or background session copies, use job with the owning agent session to poll, cancel, or retry them.
+
+On POSIX, `shell_executable` controls both bounded commands and tmux-backed persistent sessions. The controller resolves a relative executable against the session workdir, starts tmux directly with that executable in `$SHELL`, and verifies that a default interactive session remains alive before returning its `shell_id`; the account database's login shell is not trusted for this choice.
 ```
 
 ## Debug tool behavior
