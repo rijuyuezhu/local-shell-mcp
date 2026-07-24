@@ -138,7 +138,7 @@ def test_linux_proc_readers_parse_and_filter_rows(monkeypatch) -> None:
     }
 
     def fake_read_text(path: Path, encoding: str = "utf-8") -> str:  # noqa: ARG001
-        return payloads[str(path)]
+        return payloads[path.as_posix()]
 
     monkeypatch.setattr(telemetry_module.Path, "read_text", fake_read_text)
 
