@@ -8,7 +8,6 @@ from mcp.server.fastmcp import FastMCP
 
 from ...audit import get_audit_entry, query_audit
 from ...config.settings import Settings
-from ...dashboard import dashboard_snapshot
 from ...ops.remote import (
     remote_admin_execute,
     remote_worker_tool_execute,
@@ -30,6 +29,7 @@ from ...terminal_bridge import (
     resize_terminal_bridge_execute,
     write_terminal_bridge_execute,
 )
+from ...ui.dashboard import dashboard_snapshot
 from ..contracts import HttpToolRoute, McpToolContext, ToolHandler
 from ..declarative import DeclarativeToolRegistry
 

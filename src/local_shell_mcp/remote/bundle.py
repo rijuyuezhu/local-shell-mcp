@@ -24,7 +24,6 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "audit_payloads.py",
     "patch_ops.py",
     "conpty.py",
-    "dashboard.py",
     "errors.py",
     "terminal_bridge.py",
     "tmux_helper.py",
@@ -59,7 +58,10 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "schemas/input_models/__init__.py",
     "schemas/input_models/files.py",
     "schemas/result_models/*.py",
+    "telemetry/*.py",
     "tool_session/*.py",
+    "ui/__init__.py",
+    "ui/dashboard.py",
     "utils/*.py",
 )
 _WORKER_BUNDLE_EXCLUDE_PATTERNS = (

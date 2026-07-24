@@ -80,11 +80,6 @@
       "num_statements": 414,
       "percent_covered": 73.320896
     },
-    "src/local_shell_mcp/dashboard.py": {
-      "num_branches": 44,
-      "num_statements": 159,
-      "percent_covered": 65.024631
-    },
     "src/local_shell_mcp/executors/http/app.py": {
       "num_branches": 2,
       "num_statements": 41,

@@ -62,7 +62,7 @@ async def _get_audit_entry(args: dict[str, Any]) -> Any:
 
 
 async def _dashboard_snapshot(args: dict[str, Any]) -> Any:  # noqa: ARG001
-    from local_shell_mcp.dashboard import dashboard_snapshot
+    from local_shell_mcp.ui.dashboard import dashboard_snapshot
 
     return await asyncio.to_thread(dashboard_snapshot)
 

@@ -229,7 +229,10 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/remote_worker/worker.py" in names
     assert "local_shell_mcp/version.py" in names
     assert "local_shell_mcp/conpty.py" in names
-    assert "local_shell_mcp/dashboard.py" in names
+    assert "local_shell_mcp/telemetry/__init__.py" in names
+    assert "local_shell_mcp/telemetry/system.py" in names
+    assert "local_shell_mcp/ui/__init__.py" in names
+    assert "local_shell_mcp/ui/dashboard.py" in names
     assert "local_shell_mcp/terminal_bridge.py" in names
     assert "local_shell_mcp/ops/agent.py" in names
     assert "local_shell_mcp/agent_bridge/skills.py" in names
@@ -259,7 +262,8 @@ def test_worker_bundle_imports_without_checkout_fallback(tmp_path):
     modules = [
         "local_shell_mcp.remote_worker.__main__",
         "local_shell_mcp.audit",
-        "local_shell_mcp.dashboard",
+        "local_shell_mcp.telemetry.system",
+        "local_shell_mcp.ui.dashboard",
         "local_shell_mcp.terminal_bridge",
         "local_shell_mcp.ops.session",
         "local_shell_mcp.ops.agent",

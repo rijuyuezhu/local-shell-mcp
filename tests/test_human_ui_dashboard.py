@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.dashboard as dashboard_module
 import local_shell_mcp.server.http.ui_common as ui_common_module
 import local_shell_mcp.server.http.ui_dashboard as ui_dashboard_module
+import local_shell_mcp.ui.dashboard as dashboard_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ

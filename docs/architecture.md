@@ -142,6 +142,50 @@ Rejected ownership alternatives:
 - `executors/http` or `executors/mcp`: both executors consume the behavior, so
   either location would reverse the other executor's dependency direction.
 
+
+## `telemetry`: transport-neutral host and process observations
+
+The `telemetry` package collects best-effort runtime observations without
+choosing how they are displayed. It may depend on configuration and operating
+system APIs, but it must not import UI projections, protocol executors, HTTP
+adapters, audit presentation, or remote-controller services.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `telemetry/__init__.py` | Declares the transport-neutral telemetry capability boundary. | It gives host observations explicit ownership instead of hiding them in a Dashboard-named module or generic utilities. |
+| `telemetry/system.py` | Samples process uptime and host CPU, memory, disk, load, and network metrics with portable fallbacks and bounded values. | The observations can support UI, diagnostics, or future health policy. They contain no Dashboard labels, audit projection, route handling, or executor logic. |
+
+Rejected ownership alternatives:
+
+- `ui/dashboard.py`: sampling is useful independently of a particular view model
+  and should not force non-UI consumers to depend on Dashboard semantics.
+- `utils`: sampling owns process-wide state and a coherent telemetry contract;
+  it is not a small stateless helper.
+- `ops`: collecting observations is a capability, not a user-triggered tool use
+  case or command workflow.
+
+## `ui`: transport-neutral Human UI core
+
+The `ui` package owns Human UI view models, native-client runtime contracts, and
+UI-specific security behavior. UI core must not import protocol executors or
+HTTP route adapters. Controller and source-only worker adapters may invoke UI
+core capabilities when serving a Human UI, but those capabilities remain
+internal rather than public tools.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `ui/__init__.py` | Declares the Human UI core boundary independently of HTTP delivery. | It prevents UI behavior from appearing to be part of the REST executor and allows browser and native clients to share core contracts. |
+| `ui/dashboard.py` | Combines neutral system telemetry with metadata-only audit summaries, alerts, activity rows, health state, and version data for local or remote Dashboard clients. | The output is a Dashboard view model with UI labels and disclosure policy. Remote-worker support only transports this internal UI capability; it does not make the projection a generic telemetry or public tool contract. |
+
+Rejected ownership alternatives:
+
+- top-level `dashboard.py`: the name exposes no package boundary and previously
+  mixed generic host sampling with UI projection.
+- `telemetry`: audit activity labels, alerts, health presentation, and redaction
+  choices are view-model policy rather than raw observations.
+- `server/http`: the same Dashboard projection is used locally and through a
+  source-only worker before any HTTP response is built.
+
 ## Ownership review status
 
 The following areas still require the same file-by-file ownership review:

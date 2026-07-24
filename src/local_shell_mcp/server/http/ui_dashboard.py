@@ -11,10 +11,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from ...config.settings import get_settings
-from ...dashboard import dashboard_snapshot
 from ...oauth.core.context import MissingOAuthScopeError, require_oauth_scopes
 from ...oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ
 from ...remote.service import call_remote_worker_tool
+from ...ui.dashboard import dashboard_snapshot
 from .ui_common import (
     bounded_text as _bounded_text,
 )

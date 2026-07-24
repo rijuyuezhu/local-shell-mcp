@@ -246,6 +246,40 @@ def test_http_infrastructure_does_not_depend_on_executors_or_ui() -> None:
     assert not (_PACKAGE_ROOT / "server" / "shared").exists()
 
 
+def test_telemetry_does_not_depend_on_ui_or_transport_adapters() -> None:
+    forbidden_prefixes = (
+        f"{_PACKAGE_NAME}.executors.",
+        f"{_PACKAGE_NAME}.http.",
+        f"{_PACKAGE_NAME}.server.",
+        f"{_PACKAGE_NAME}.ui.",
+    )
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.telemetry")
+        and target.startswith(forbidden_prefixes)
+    )
+
+    assert actual == frozenset()
+
+
+def test_ui_core_does_not_depend_on_executors_or_http_adapters() -> None:
+    forbidden_prefixes = (
+        f"{_PACKAGE_NAME}.executors.",
+        f"{_PACKAGE_NAME}.server.",
+    )
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.ui")
+        and not importer.startswith(f"{_PACKAGE_NAME}.ui.http")
+        and target.startswith(forbidden_prefixes)
+    )
+
+    assert actual == frozenset()
+    assert not (_PACKAGE_ROOT / "dashboard.py").exists()
+
+
 def _assert_ownership_map_covers(paths: set[str]) -> None:
     documentation = _ARCHITECTURE_DOC.read_text(encoding="utf-8")
 
@@ -266,6 +300,16 @@ def test_executor_ownership_map_covers_every_file() -> None:
             for path in (_PACKAGE_ROOT / "executors").rglob("*.py")
         }
     )
+
+
+def test_telemetry_and_ui_ownership_maps_cover_every_file() -> None:
+    for package in ("telemetry", "ui"):
+        _assert_ownership_map_covers(
+            {
+                str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
+                for path in (_PACKAGE_ROOT / package).rglob("*.py")
+            }
+        )
 
 
 def test_dependency_cycles_match_explicit_architecture_debt() -> None:
