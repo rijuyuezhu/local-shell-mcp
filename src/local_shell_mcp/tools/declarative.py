@@ -18,7 +18,6 @@ from ..oauth.core.context import (
     require_oauth_scopes,
 )
 from ..oauth.core.scopes import SUPPORTED_OAUTH_SCOPES
-from ..server.mcp.metadata import oauth_security_meta
 from .contracts import (
     HttpMethod,
     HttpToolRoute,
@@ -26,6 +25,7 @@ from .contracts import (
     ToolHandler,
     ToolRegistry,
 )
+from .metadata import oauth_security_meta
 
 McpSecurityProfile = Literal["oauth", "connector_compatible"]
 ToolAnnotation = Literal["read_only"]

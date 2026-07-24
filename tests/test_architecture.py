@@ -8,23 +8,10 @@ _PACKAGE_ROOT = Path(__file__).parents[1] / "src" / "local_shell_mcp"
 _PACKAGE_NAME = "local_shell_mcp"
 
 # `main` is the process-composition entry point and may import transport adapters.
-# The three metadata imports are known debt removed in the next hardening phase.
 _ALLOWED_NON_SERVER_TO_SERVER_IMPORTS = frozenset(
     {
-        (
-            "local_shell_mcp.agent_bridge.tools",
-            "local_shell_mcp.server.mcp.metadata",
-        ),
         ("local_shell_mcp.main", "local_shell_mcp.server.http.app"),
         ("local_shell_mcp.main", "local_shell_mcp.server.mcp.app"),
-        (
-            "local_shell_mcp.tools.declarative",
-            "local_shell_mcp.server.mcp.metadata",
-        ),
-        (
-            "local_shell_mcp.tools.registry.agent",
-            "local_shell_mcp.server.mcp.metadata",
-        ),
     }
 )
 

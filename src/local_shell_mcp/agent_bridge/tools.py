@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any
 
-from ..server.mcp.metadata import tool_safety_annotations
+from ..tools.metadata import tool_safety_annotations
 from .auth import manager_redaction_maps
 from .models import AgentCapabilityRegistry
 from .registry import build_agent_registry

@@ -1,11 +1,11 @@
-"""Client-facing tool metadata and approval-hint helpers."""
+"""Transport-neutral client-facing tool metadata and safety annotations."""
 
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from ...oauth.core.scopes import dedupe_scopes
+from ..oauth.core.scopes import dedupe_scopes
 
 
 def oauth_security_scheme(

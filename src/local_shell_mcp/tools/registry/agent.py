@@ -35,9 +35,9 @@ from ...schemas.result_models.agent import (
     ListAgentSkillsOutput,
     ReadAgentSkillFileOutput,
 )
-from ...server.mcp.metadata import oauth_security_meta
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
+from ..metadata import oauth_security_meta
 
 
 def _agent_registry() -> AgentCapabilityRegistry:
