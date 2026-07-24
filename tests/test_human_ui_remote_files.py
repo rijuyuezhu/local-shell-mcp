@@ -28,6 +28,15 @@ VALID_PNG_1X1 = base64.b64decode(
 )
 
 
+@pytest.mark.parametrize(
+    ("path", "message"),
+    [("", "path is required"), ("bad\x00path", "NUL")],
+)
+def test_remote_path_rejects_empty_and_nul(path: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        remote_files_module.normalize_remote_ui_path(path)
+
+
 class _FakeManager:
     def __init__(self, status: str = "online") -> None:
         self.status = status

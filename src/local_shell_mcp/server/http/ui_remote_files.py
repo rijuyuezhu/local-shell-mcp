@@ -23,6 +23,7 @@ from ...schemas.result_models.transfer import (
     TransferReadChunkOutput,
     TransferStatOutput,
 )
+from .ui_common import sorted_entry_payloads
 from .ui_image_preview import UiImagePreviewRequest, terminal_image_fields
 
 UI_REMOTE_FILE_TIMEOUT_S = 60
@@ -252,18 +253,6 @@ def _entry_payload(entry: Any) -> dict[str, Any]:
     return data
 
 
-def _sorted_entries(entries: list[Any]) -> list[dict[str, Any]]:
-    rows = [_entry_payload(entry) for entry in entries]
-    rows.sort(
-        key=lambda item: (
-            0 if item["type"] == "dir" else 1,
-            str(item["name"]).casefold(),
-            str(item["name"]),
-        )
-    )
-    return rows
-
-
 async def remote_list_payload(machine: str, path: str) -> dict[str, Any]:
     """Return one bounded directory listing from a remote worker session."""
     normalized = normalize_remote_ui_path(path)
@@ -286,7 +275,7 @@ async def remote_list_payload(machine: str, path: str) -> dict[str, Any]:
         "count": result.count,
         "limit_count": result.limit_count,
         "is_truncated": result.is_truncated,
-        "entries": _sorted_entries(result.entries),
+        "entries": sorted_entry_payloads(result.entries, _entry_payload),
         "mutations": {
             "write": True,
             "delete": True,

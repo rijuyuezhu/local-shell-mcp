@@ -1,5 +1,6 @@
 """Shared stateless validation and response helpers for Human UI adapters."""
 
+from collections.abc import Callable
 from typing import Any
 
 from starlette.responses import JSONResponse
@@ -57,6 +58,22 @@ def bounded_int(
     if not minimum <= normalized <= maximum:
         raise ValueError(f"{field} must be between {minimum} and {maximum}")
     return normalized
+
+
+def sorted_entry_payloads(
+    entries: list[Any],
+    payload_factory: Callable[[Any], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Convert file entries to UI payloads and sort directories first."""
+    rows = [payload_factory(entry) for entry in entries]
+    rows.sort(
+        key=lambda item: (
+            0 if item["type"] == "dir" else 1,
+            str(item["name"]).casefold(),
+            str(item["name"]),
+        )
+    )
+    return rows
 
 
 def require_remote_machine(machine: str) -> None:

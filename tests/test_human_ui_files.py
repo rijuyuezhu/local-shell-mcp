@@ -620,6 +620,12 @@ def test_file_api_rejects_invalid_paths(monkeypatch, tmp_path, path, message):
     assert message in response.json()["message"]
 
 
+def test_file_machine_arg_normalizes_blank_and_rejects_oversized() -> None:
+    assert ui_files_module._machine_arg("   ") == "local"
+    with pytest.raises(ValueError, match="machine exceeds 255 encoded bytes"):
+        ui_files_module._machine_arg("x" * 256)
+
+
 def test_opentui_image_preview_editor_revision_and_mkdir(monkeypatch, tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()

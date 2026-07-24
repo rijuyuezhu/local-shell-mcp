@@ -34,7 +34,12 @@ from ...ops.files import (
 from ...ops.utils.path import relative_display, resolve_path, workspace_root
 from ...tool_session.store import file_sha256
 from ...utils.path_locks import path_locks
-from .ui_common import json_error as _json_error
+from .ui_common import (
+    json_error as _json_error,
+)
+from .ui_common import (
+    sorted_entry_payloads,
+)
 from .ui_image_preview import (
     UiImagePreviewRequest,
     image_preview_request,
@@ -148,18 +153,6 @@ def _entry_payload(entry: Any) -> dict[str, Any]:
     return data
 
 
-def _sorted_entries(entries: list[Any]) -> list[dict[str, Any]]:
-    rows = [_entry_payload(entry) for entry in entries]
-    rows.sort(
-        key=lambda item: (
-            0 if item["type"] == "dir" else 1,
-            str(item["name"]).casefold(),
-            str(item["name"]),
-        )
-    )
-    return rows
-
-
 def _list_payload(path: str, *, max_entries: int) -> dict[str, Any]:
     resolved = _workspace_path(path, must_exist=True)
     if not resolved.is_dir():
@@ -179,7 +172,7 @@ def _list_payload(path: str, *, max_entries: int) -> dict[str, Any]:
         "count": result.count,
         "limit_count": result.limit_count,
         "is_truncated": result.is_truncated,
-        "entries": _sorted_entries(result.entries),
+        "entries": sorted_entry_payloads(result.entries, _entry_payload),
         "mutations": {
             "write": True,
             "delete": True,

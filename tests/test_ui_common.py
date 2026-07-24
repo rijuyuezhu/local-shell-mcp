@@ -78,6 +78,24 @@ def test_bounded_int_rejects_out_of_range_value() -> None:
         )
 
 
+def test_sorted_entry_payloads_places_directories_first() -> None:
+    entries = [
+        {"name": "beta", "type": "file"},
+        {"name": "Zoo", "type": "dir"},
+        {"name": "alpha", "type": "dir"},
+        {"name": "Alpha", "type": "file"},
+    ]
+
+    rows = ui_common.sorted_entry_payloads(entries, dict)
+
+    assert [(row["type"], row["name"]) for row in rows] == [
+        ("dir", "alpha"),
+        ("dir", "Zoo"),
+        ("file", "Alpha"),
+        ("file", "beta"),
+    ]
+
+
 def _patch_remote_inventory(
     monkeypatch: pytest.MonkeyPatch,
     *,
