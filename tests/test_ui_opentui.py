@@ -11,7 +11,7 @@ from starlette.websockets import WebSocketDisconnect
 
 import local_shell_mcp.server.http.ui_opentui as opentui
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.http.app import build_http_app
+from local_shell_mcp.executors.http.app import build_http_app
 
 
 @pytest.fixture(autouse=True)

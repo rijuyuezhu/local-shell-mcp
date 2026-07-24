@@ -10,6 +10,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.http.downloads import (
     _token_fingerprint,
@@ -24,7 +25,6 @@ from local_shell_mcp.ops.downloads import (
 )
 from local_shell_mcp.ops.utils.download_snapshot import snapshot_directory
 from local_shell_mcp.ops.utils.download_store import backup_path
-from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 

@@ -114,9 +114,12 @@ direction explicit when adding features or moving code:
   MCP-over-HTTP. It must not import an executor or Human UI implementation.
 - `executors/mcp` owns MCP composition, MCP-specific middleware, and stdio or
   MCP-over-HTTP runtime selection.
-- `server/http` is the remaining transitional REST/UI location while the package
-  restructure moves REST execution to `executors/http` and UI delivery to `ui`.
-  Lower layers must not import executors or the transitional package.
+- `executors/http` owns REST tool routes, REST error and timeout policy, and the
+  runnable FastAPI application.
+- `server/http` is now only the transitional Human UI HTTP adapter location while
+  UI delivery moves to `ui/http`. The REST executor's one import of its route
+  contribution is explicit architecture debt. Lower layers must not import
+  executors or the transitional package.
 - `main` is the process-composition entry point and is allowed to select
   executors.
 

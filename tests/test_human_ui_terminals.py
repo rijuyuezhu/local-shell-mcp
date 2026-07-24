@@ -11,6 +11,7 @@ from starlette.websockets import WebSocketDisconnect
 import local_shell_mcp.server.http.ui_common as ui_common_module
 import local_shell_mcp.server.http.ui_terminals as terminal_module
 from local_shell_mcp.config.settings import Settings, clear_settings_cache
+from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.oauth.core.scopes import (
     SCOPE_REMOTE_USE,
     SCOPE_SHELL_EXECUTE,
@@ -26,7 +27,6 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
-from local_shell_mcp.server.http.app import build_http_app
 
 BASE_URL = "https://local-shell-mcp.example"
 

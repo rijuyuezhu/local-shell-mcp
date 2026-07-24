@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 import local_shell_mcp.server.http.ui_remote_files as remote_files_module
 import local_shell_mcp.server.http.ui_todos as ui_todos_module
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.oauth.core.scopes import (
     SCOPE_REMOTE_USE,
     SCOPE_SHELL_READ,
@@ -28,7 +29,6 @@ from local_shell_mcp.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
 )
-from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 BASE_URL = "https://local-shell-mcp.example"

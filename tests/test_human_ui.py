@@ -13,8 +13,8 @@ from pydantic import ValidationError
 
 import local_shell_mcp.server.http.human_ui as human_ui_module
 from local_shell_mcp.config.settings import Settings, clear_settings_cache
+from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES
-from local_shell_mcp.server.http.app import build_http_app
 from local_shell_mcp.ui_security import (
     UI_LOCAL_TOKEN_HEADER,
     get_or_create_ui_local_token,

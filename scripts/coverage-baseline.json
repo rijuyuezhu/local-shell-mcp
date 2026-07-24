@@ -85,6 +85,26 @@
       "num_statements": 159,
       "percent_covered": 65.024631
     },
+    "src/local_shell_mcp/executors/http/app.py": {
+      "num_branches": 2,
+      "num_statements": 41,
+      "percent_covered": 100.0
+    },
+    "src/local_shell_mcp/executors/http/errors.py": {
+      "num_branches": 0,
+      "num_statements": 20,
+      "percent_covered": 95.0
+    },
+    "src/local_shell_mcp/executors/http/invocations.py": {
+      "num_branches": 0,
+      "num_statements": 19,
+      "percent_covered": 100.0
+    },
+    "src/local_shell_mcp/executors/http/tool_routes.py": {
+      "num_branches": 12,
+      "num_statements": 55,
+      "percent_covered": 100.0
+    },
     "src/local_shell_mcp/executors/mcp/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
@@ -660,30 +680,10 @@
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/server/http/app.py": {
-      "num_branches": 2,
-      "num_statements": 41,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/http/errors.py": {
-      "num_branches": 0,
-      "num_statements": 20,
-      "percent_covered": 95.0
-    },
     "src/local_shell_mcp/server/http/human_ui.py": {
       "num_branches": 12,
       "num_statements": 75,
       "percent_covered": 90.804598
-    },
-    "src/local_shell_mcp/server/http/invocations.py": {
-      "num_branches": 0,
-      "num_statements": 19,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/http/tool_routes.py": {
-      "num_branches": 12,
-      "num_statements": 55,
-      "percent_covered": 100.0
     },
     "src/local_shell_mcp/server/http/ui_audit.py": {
       "num_branches": 86,

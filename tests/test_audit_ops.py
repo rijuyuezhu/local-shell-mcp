@@ -169,12 +169,12 @@ async def test_audit_tail_remote_maps_session_filter_and_forwards_detail(
 def test_http_audit_tail_enforces_read_and_full_scopes(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
+    from local_shell_mcp.executors.http.app import build_http_app
     from local_shell_mcp.oauth.core.scopes import (
         SCOPE_AUDIT_FULL,
         SCOPE_AUDIT_READ,
     )
     from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
-    from local_shell_mcp.server.http.app import build_http_app
 
     base_url = "https://audit-tool.example"
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "oauth")

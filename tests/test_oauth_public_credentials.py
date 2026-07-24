@@ -5,8 +5,8 @@ from typing import Literal
 
 import pytest
 
+import local_shell_mcp.executors.http.app as http_app
 import local_shell_mcp.executors.mcp.app as mcp_app
-import local_shell_mcp.server.http.app as http_app
 from local_shell_mcp.config.settings import Settings, configure_settings
 from local_shell_mcp.oauth.core.security import (
     MIN_OAUTH_SIGNING_SECRET_BYTES,

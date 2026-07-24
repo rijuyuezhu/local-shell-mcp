@@ -13,8 +13,8 @@ from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
 from ...remote.http import remote_routes
 from ...remote.transfer_gateway import build_transfer_gateway_router
+from ...server.http.human_ui import human_ui_routes
 from .errors import install_error_handlers
-from .human_ui import human_ui_routes
 from .tool_routes import (
     install_tool_cache_control_middleware,
     install_tools_timeout_middleware,

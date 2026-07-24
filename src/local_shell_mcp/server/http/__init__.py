@@ -1,1 +1,1 @@
-"""FastAPI HTTP transport for REST-style local tool endpoints."""
+"""Transitional Human UI HTTP adapters pending migration to ``ui.http``."""

@@ -15,11 +15,11 @@ from local_shell_mcp.config.settings import (
     clear_settings_cache,
     configure_settings,
 )
+from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.executors.mcp.app import build_mcp_http_app
 from local_shell_mcp.http.request_limits import (
     RequestBodyLimitMiddleware,
 )
-from local_shell_mcp.server.http.app import build_http_app
 
 
 @pytest.fixture(autouse=True)

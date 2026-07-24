@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.http.app import build_http_app
+from local_shell_mcp.executors.http.app import build_http_app
 
 
 def test_http_missing_required_argument_returns_validation_error(

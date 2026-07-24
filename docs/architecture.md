@@ -31,10 +31,10 @@ local_shell_mcp/
   utils/                   small dependency-leaf technical primitives
 ```
 
-The repository is being migrated to this structure incrementally. The MCP
-executor now lives in its final `executors/mcp` package. `server/http` remains a
-transitional REST/UI location until the later executor and UI moves complete.
-New domain code must not depend on the transitional package.
+The MCP and REST/tool HTTP executors now live in their final `executors/mcp` and
+`executors/http` packages. `server/http` is now only a transitional Human UI HTTP
+adapter location until the UI package move completes. New domain code must not
+depend on the transitional package.
 
 General rules:
 
@@ -80,6 +80,39 @@ Rejected ownership alternatives:
 - `tools`: tool declarations are transport-neutral; FastMCP registration and
   MCP-specific presentation must depend on tools, not the reverse.
 
+## `executors/http`: REST/tool HTTP executor
+
+The `executors/http` package owns the FastAPI application that exposes local tool
+registries as REST endpoints. It defines the REST error representation, applies
+tool-route timeout and cache policy, records HTTP-routed tool invocations, and
+composes public route contributions and authentication into one runnable app.
+
+Allowed dependencies include tools, operations, OAuth adapters, remote route
+contributions, executor-neutral `http` infrastructure, and framework-specific
+FastAPI/Starlette types. The app currently imports one transitional Human UI
+route contribution from `server/http/human_ui.py`; that exact dependency is
+temporary and will move to `ui/http` in the UI phase. Lower-level packages must
+not import this executor.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `executors/http/__init__.py` | Declares the REST/tool HTTP executor boundary. | It distinguishes FastAPI execution from shared HTTP infrastructure and Human UI route ownership. |
+| `executors/http/app.py` | Builds and runs the authenticated FastAPI application, composes public and feature-gated routes, registers REST tools, installs limits and error policy, and consumes the Human UI route contribution. | It is the application-composition root for this executor; shared route factories stay in their owning domains and UI behavior remains outside the executor. |
+| `executors/http/errors.py` | Installs the REST JSON error envelope and maps validation, operating-system, unknown-tool, HTTP, and unexpected exceptions to public responses. | The response schema and status mapping are REST executor presentation policy, not generic exception utilities. |
+| `executors/http/invocations.py` | Invokes transport-neutral local tool handlers from REST routes while recording HTTP transport audit start/end events and serializing audit output. | It is the REST transport boundary around tool execution; the actual handler and result conversion remain reusable lower-layer services. |
+| `executors/http/tool_routes.py` | Registers tool definitions as FastAPI `GET`/`POST` routes and installs REST-specific timeout and no-store middleware. | Route methods, URL interpretation, HTTP timeouts, and response cache headers are executor behavior rather than tool definitions or shared ASGI infrastructure. |
+
+Rejected ownership alternatives:
+
+- `server/http`: “server” conflates executable REST composition with Human UI
+  delivery and shared HTTP infrastructure.
+- top-level `http`: generic request limits, health, and download response
+  mechanics are shared; REST tool registration and error envelopes are not.
+- `tools`: REST route generation consumes transport-neutral tool registries;
+  putting it in `tools` would make the domain layer own a specific executor.
+- `ui/http`: the executor consumes UI route contributions, but it also runs
+  correctly without Human UI and owns all non-UI REST tool behavior.
+
 ## `http`: executor-neutral HTTP infrastructure
 
 The `http` package contains ASGI and HTTP behavior needed by more than one
@@ -113,7 +146,6 @@ Rejected ownership alternatives:
 
 The following areas still require the same file-by-file ownership review:
 
-- REST executor package.
 - Human UI core and HTTP adapters.
 - Terminal, audit, release/build, and patch implementation modules currently at
   package root.
