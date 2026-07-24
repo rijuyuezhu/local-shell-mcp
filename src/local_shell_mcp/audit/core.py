@@ -20,13 +20,13 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .agent_bridge.redaction import (
+from ..agent_bridge.redaction import (
     SENSITIVE_FLAG_RE,
     SENSITIVE_KEY_RE,
     _redact_text,
     redact_configured_values,
 )
-from .audit_payloads import (
+from ..audit_payloads import (
     externalize_sanitized_value,
     payload_file_sizes,
     payload_reference_digests,
@@ -34,8 +34,8 @@ from .audit_payloads import (
     prune_payload_files,
     resolve_payload_references,
 )
-from .config.settings import Settings, get_settings
-from .utils.private_files import (
+from ..config.settings import Settings, get_settings
+from ..utils.private_files import (
     append_private_bytes,
     atomic_write_private_bytes,
     private_file_lock,

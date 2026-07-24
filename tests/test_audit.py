@@ -23,6 +23,7 @@ from local_shell_mcp.audit import (
     get_audit_entry,
     query_audit,
 )
+from local_shell_mcp.audit import core as audit_core
 from local_shell_mcp.audit_payloads import AUDIT_PAYLOAD_KEY
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 
@@ -126,6 +127,24 @@ def _join_processes(processes: list[Any], *, timeout_s: float = 90.0) -> None:
                 process.terminate()
                 process.join(timeout=5)
     assert failures == []
+
+
+def test_audit_package_facade_preserves_public_and_legacy_attributes() -> None:
+    assert audit_module.audit is audit_core.audit
+    assert audit_module.query_audit is audit_core.query_audit
+    assert audit_module._AUDIT_BINARY_KEY == audit_core._AUDIT_BINARY_KEY
+    assert (
+        audit_module._AUDIT_PAYLOAD_SWEEP_TIMES
+        is audit_core._AUDIT_PAYLOAD_SWEEP_TIMES
+    )
+    assert audit_module.time is audit_core.time
+    assert "audit" in dir(audit_module)
+    assert "_AUDIT_BINARY_KEY" in dir(audit_module)
+
+
+def test_audit_package_facade_rejects_unknown_attributes() -> None:
+    with pytest.raises(AttributeError):
+        audit_module.__getattr__("not_an_audit_attribute")
 
 
 def test_audit_uniformly_redacts_secrets_but_retains_fingerprints(

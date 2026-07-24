@@ -305,6 +305,25 @@ def test_terminal_does_not_depend_on_transports_or_ui() -> None:
         assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
+def test_audit_does_not_depend_on_delivery_or_terminal_layers() -> None:
+    forbidden_prefixes = (
+        f"{_PACKAGE_NAME}.executors.",
+        f"{_PACKAGE_NAME}.http.",
+        f"{_PACKAGE_NAME}.server.",
+        f"{_PACKAGE_NAME}.terminal.",
+        f"{_PACKAGE_NAME}.ui.",
+    )
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.audit")
+        and target.startswith(forbidden_prefixes)
+    )
+
+    assert actual == frozenset()
+    assert not (_PACKAGE_ROOT / "audit.py").exists()
+
+
 def test_terminal_uses_only_explicit_low_level_ops_helpers() -> None:
     actual = frozenset(
         (importer, target)
@@ -346,7 +365,7 @@ def test_executor_ownership_map_covers_every_file() -> None:
 
 
 def test_owned_domain_maps_cover_every_file() -> None:
-    for package in ("telemetry", "terminal", "ui"):
+    for package in ("audit", "telemetry", "terminal", "ui"):
         _assert_ownership_map_covers(
             {
                 str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")

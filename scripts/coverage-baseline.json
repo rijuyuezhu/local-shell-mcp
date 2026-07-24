@@ -55,7 +55,7 @@
       "num_statements": 80,
       "percent_covered": 97.777778
     },
-    "src/local_shell_mcp/audit.py": {
+    "src/local_shell_mcp/audit/core.py": {
       "num_branches": 188,
       "num_statements": 434,
       "percent_covered": 82.154341

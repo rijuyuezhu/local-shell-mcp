@@ -20,7 +20,7 @@ from .constants import REMOTE_WORKER_BUNDLE_PATH
 # worker-runtime manifest, not a general local_shell_mcp package snapshot.
 _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "__init__.py",
-    "audit.py",
+    "audit/*.py",
     "audit_payloads.py",
     "patch_ops.py",
     "errors.py",

@@ -230,12 +230,33 @@ Rejected ownership alternatives:
 - `ui/http`: Human UI adapters consume raw bridges, but the same lifecycle is
   also used by local tools and source-only remote workers before HTTP delivery.
 
+## `audit`: redacted event persistence and query
+
+The `audit` package owns the transport-neutral lifecycle of bounded, redacted
+audit events. It may consume configuration, private-file primitives, redaction,
+and the current payload store, but it must not depend on protocol executors, HTTP
+route adapters, Human UI presentation, or terminal implementations.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `audit/__init__.py` | Preserves the stable `local_shell_mcp.audit` import contract, explicitly exports supported operations, and forwards legacy read-only diagnostic attributes to the implementation. | Callers should depend on one audit-domain facade rather than the physical location of a large implementation module. |
+| `audit/core.py` | Sanitizes arbitrary values, redacts credentials and download capabilities, bounds and encodes events, coordinates private JSONL transactions, enforces rotation and retention, externalizes payloads, coalesces tool-call records, and serves bounded query and detail views. | These responsibilities form one transport-neutral audit-event lifecycle shared by MCP, REST, Human UI, jobs, workers, OAuth, downloads, and shell operations. |
+
+Rejected ownership alternatives:
+
+- top-level `audit.py`: it mixed a stable public contract with a 1,000-line
+  implementation and made package-root placement look intentional.
+- `utils`: audit policy includes redaction, retention, event semantics, payload
+  references, and public query behavior rather than generic serialization.
+- `executors` or `ui/http`: those layers emit and present audit events, but the
+  same event store is shared across every delivery surface.
+
 ## Ownership review status
 
 The following areas still require the same file-by-file ownership review:
 
 - Human UI core and HTTP adapters.
-- Remaining audit, release/build, and patch implementation modules currently
-  at package root.
+- Remaining audit payload, release/build, and patch implementation modules
+  currently at package root.
 - Large stateful modules, which will be split only after package ownership is
   stable and each split has an independent test and CI closure.
