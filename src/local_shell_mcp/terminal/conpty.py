@@ -14,11 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .audit import audit
-from .config.settings import get_settings
-from .errors import process_start_not_found_error
-from .ops.utils.path import relative_display
-from .schemas.result_models.shell import (
+from ..audit import audit
+from ..config.settings import get_settings
+from ..errors import process_start_not_found_error
+from ..ops.utils.path import relative_display
+from ..schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     PersistentShellInfo,

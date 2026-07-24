@@ -14,7 +14,6 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from .. import conpty
 from ..audit import audit
 from ..config.settings import get_settings
 from ..errors import (
@@ -33,6 +32,7 @@ from ..schemas.result_models.shell import (
     ShellExecutionOutput,
     StartPersistentShellOutput,
 )
+from ..terminal import conpty
 from ..tmux_helper import require_tmux, resolve_tmux
 from ..tool_session.store import (
     get_tool_session_store,

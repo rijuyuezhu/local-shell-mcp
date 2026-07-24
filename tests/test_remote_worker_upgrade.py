@@ -228,7 +228,8 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/remote_worker/lifecycle.py" in names
     assert "local_shell_mcp/remote_worker/worker.py" in names
     assert "local_shell_mcp/version.py" in names
-    assert "local_shell_mcp/conpty.py" in names
+    assert "local_shell_mcp/terminal/__init__.py" in names
+    assert "local_shell_mcp/terminal/conpty.py" in names
     assert "local_shell_mcp/telemetry/__init__.py" in names
     assert "local_shell_mcp/telemetry/system.py" in names
     assert "local_shell_mcp/ui/__init__.py" in names

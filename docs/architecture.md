@@ -203,12 +203,33 @@ Rejected ownership alternatives:
 - `oauth`: OAuth middleware consumes the UI trust decision, but credential
   creation and loopback UI namespace rules must remain owned by the UI domain.
 
+## `terminal`: interactive terminal backends and lifecycle
+
+The `terminal` package owns terminal-emulation backends and the bounded lifecycle
+operations needed by local tools, source-only workers, and Human UI adapters. It
+may depend on configuration, audit, schemas, and low-level operation helpers, but
+it must not depend on protocol executors, HTTP route adapters, or UI presentation.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `terminal/__init__.py` | Declares the cross-platform interactive-terminal capability boundary. | It gives ConPTY, raw attachment, and tmux helper code one explicit domain rather than leaving platform implementations at package root. |
+| `terminal/conpty.py` | Implements Windows ConPTY availability, process spawning, persistent-shell state, bounded reads/writes/resizes, raw attachment handles, cleanup, and startup-error classification. | This is a terminal backend consumed by shell operations and the raw terminal bridge. It is not a generic Windows utility, UI route, or executor concern. |
+
+Rejected ownership alternatives:
+
+- top-level `conpty.py`: package-root placement exposed an implementation detail
+  without identifying the interactive-terminal capability it serves.
+- `utils`: ConPTY owns stateful process and stream lifecycles, not reusable
+  stateless platform helpers.
+- `ops/shell.py`: shell operations select and orchestrate backends; they should
+  not own the Windows terminal-emulation implementation.
+
 ## Ownership review status
 
 The following areas still require the same file-by-file ownership review:
 
 - Human UI core and HTTP adapters.
-- Terminal, audit, release/build, and patch implementation modules currently at
-  package root.
+- Remaining terminal bridge/tmux, audit, release/build, and patch implementation
+  modules currently at package root.
 - Large stateful modules, which will be split only after package ownership is
   stable and each split has an independent test and CI closure.

@@ -24,7 +24,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from . import conpty
 from .config.settings import get_settings
 from .ops.shell import (
     PERSISTENT_SHELL_MAX_COLUMNS,
@@ -32,6 +31,7 @@ from .ops.shell import (
     PERSISTENT_SHELL_MIN_COLUMNS,
     PERSISTENT_SHELL_MIN_ROWS,
 )
+from .terminal import conpty
 from .tmux_helper import require_tmux
 
 TERMINAL_BRIDGE_MAX_CHUNK_BYTES = 65_536

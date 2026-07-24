@@ -75,11 +75,6 @@
       "num_statements": 142,
       "percent_covered": 92.857143
     },
-    "src/local_shell_mcp/conpty.py": {
-      "num_branches": 122,
-      "num_statements": 414,
-      "percent_covered": 73.320896
-    },
     "src/local_shell_mcp/executors/http/app.py": {
       "num_branches": 2,
       "num_statements": 41,
@@ -719,6 +714,11 @@
       "num_branches": 36,
       "num_statements": 136,
       "percent_covered": 91.860465
+    },
+    "src/local_shell_mcp/terminal/conpty.py": {
+      "num_branches": 122,
+      "num_statements": 414,
+      "percent_covered": 73.320896
     },
     "src/local_shell_mcp/terminal_bridge.py": {
       "num_branches": 86,

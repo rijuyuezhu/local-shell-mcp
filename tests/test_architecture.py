@@ -284,6 +284,24 @@ def test_ui_core_does_not_depend_on_executors_or_http_adapters() -> None:
         "ui_security.py",
     ):
         assert not (_PACKAGE_ROOT / migrated_name).exists()
+    assert not (_PACKAGE_ROOT / "conpty.py").exists()
+
+
+def test_terminal_does_not_depend_on_transports_or_ui() -> None:
+    forbidden_prefixes = (
+        f"{_PACKAGE_NAME}.executors.",
+        f"{_PACKAGE_NAME}.http.",
+        f"{_PACKAGE_NAME}.server.",
+        f"{_PACKAGE_NAME}.ui.",
+    )
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.terminal")
+        and target.startswith(forbidden_prefixes)
+    )
+
+    assert actual == frozenset()
 
 
 def _assert_ownership_map_covers(paths: set[str]) -> None:
@@ -308,8 +326,8 @@ def test_executor_ownership_map_covers_every_file() -> None:
     )
 
 
-def test_telemetry_and_ui_ownership_maps_cover_every_file() -> None:
-    for package in ("telemetry", "ui"):
+def test_owned_domain_maps_cover_every_file() -> None:
+    for package in ("telemetry", "terminal", "ui"):
         _assert_ownership_map_covers(
             {
                 str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")

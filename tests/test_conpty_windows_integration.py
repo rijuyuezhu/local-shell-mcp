@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-import local_shell_mcp.conpty as conpty
+import local_shell_mcp.terminal.conpty as conpty
 from local_shell_mcp.config.settings import clear_settings_cache
 
 pytestmark = pytest.mark.skipif(

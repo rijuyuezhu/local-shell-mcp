@@ -20,7 +20,6 @@ from typing import Literal
 
 from .. import __version__
 from ..config.settings import Settings
-from ..conpty import is_available as conpty_available
 from ..remote_worker.runtime import current_runtime_identity
 from ..schemas.result_models.session import (
     SessionCapabilitiesEnvironment,
@@ -32,6 +31,7 @@ from ..schemas.result_models.session import (
     SessionWorkerRuntime,
     SessionWorkspaceEnvironment,
 )
+from ..terminal.conpty import is_available as conpty_available
 from ..tmux_helper import resolve_tmux
 from ..version import package_version
 

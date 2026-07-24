@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
-import local_shell_mcp.conpty as conpty
 import local_shell_mcp.ops.shell as shell_ops
+import local_shell_mcp.terminal.conpty as conpty
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.errors import (
     PathNotFoundError,
