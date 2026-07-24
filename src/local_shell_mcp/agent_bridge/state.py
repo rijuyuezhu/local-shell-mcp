@@ -7,14 +7,10 @@ import json
 import os
 import stat
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .sources import SkillSource
 
 from pydantic import ValidationError
 
-from .models import AgentBridgeManifest, LoadedAgentManifest
+from .models import AgentBridgeManifest, LoadedAgentManifest, SkillSource
 
 
 def agent_config_fingerprint(config_dir: Path) -> str:

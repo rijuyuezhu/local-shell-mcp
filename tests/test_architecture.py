@@ -39,14 +39,6 @@ _ALLOWED_DEPENDENCY_CYCLES = frozenset(
     {
         frozenset(
             {
-                "local_shell_mcp.agent_bridge.auth",
-                "local_shell_mcp.agent_bridge.models",
-                "local_shell_mcp.agent_bridge.skills",
-                "local_shell_mcp.agent_bridge.sources",
-            }
-        ),
-        frozenset(
-            {
                 "local_shell_mcp.ops.jobs",
                 "local_shell_mcp.ops.shell",
             }
@@ -436,6 +428,75 @@ def test_owned_domain_maps_cover_every_file() -> None:
                 for path in (_PACKAGE_ROOT / package).rglob("*.py")
             }
         )
+
+
+def test_agent_bridge_data_dependencies_are_acyclic() -> None:
+    modules = {
+        f"{_PACKAGE_NAME}.agent_bridge.auth",
+        f"{_PACKAGE_NAME}.agent_bridge.models",
+        f"{_PACKAGE_NAME}.agent_bridge.redaction",
+        f"{_PACKAGE_NAME}.agent_bridge.skills",
+        f"{_PACKAGE_NAME}.agent_bridge.sources",
+        f"{_PACKAGE_NAME}.agent_bridge.status",
+    }
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer in modules and target in modules
+    )
+
+    assert actual == frozenset(
+        {
+            (
+                f"{_PACKAGE_NAME}.agent_bridge.auth",
+                f"{_PACKAGE_NAME}.agent_bridge.models",
+            ),
+            (
+                f"{_PACKAGE_NAME}.agent_bridge.skills",
+                f"{_PACKAGE_NAME}.agent_bridge.models",
+            ),
+            (
+                f"{_PACKAGE_NAME}.agent_bridge.sources",
+                f"{_PACKAGE_NAME}.agent_bridge.models",
+            ),
+            (
+                f"{_PACKAGE_NAME}.agent_bridge.sources",
+                f"{_PACKAGE_NAME}.agent_bridge.skills",
+            ),
+            (
+                f"{_PACKAGE_NAME}.agent_bridge.status",
+                f"{_PACKAGE_NAME}.agent_bridge.auth",
+            ),
+            (
+                f"{_PACKAGE_NAME}.agent_bridge.status",
+                f"{_PACKAGE_NAME}.agent_bridge.models",
+            ),
+            (
+                f"{_PACKAGE_NAME}.agent_bridge.status",
+                f"{_PACKAGE_NAME}.agent_bridge.redaction",
+            ),
+        }
+    )
+
+
+def test_agent_bridge_models_are_a_dependency_leaf() -> None:
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer == f"{_PACKAGE_NAME}.agent_bridge.models"
+    )
+
+    assert actual == frozenset()
+
+
+def test_agent_bridge_cycle_break_ownership_is_documented() -> None:
+    _assert_ownership_map_covers(
+        {
+            "agent_bridge/models.py",
+            "agent_bridge/sources.py",
+            "agent_bridge/status.py",
+        }
+    )
 
 
 def test_remote_worker_process_dependencies_are_one_way() -> None:

@@ -315,6 +315,29 @@ Rejected ownership alternatives:
   rendering are cohesive patch-domain policy rather than generally reusable
   helpers.
 
+## Agent Bridge data and status boundaries
+
+Agent Bridge configuration and discovery follow a one-way data dependency graph.
+`models.py` is the pure contract leaf; auth, Skill scanning, and source discovery
+consume those contracts. Public status projection sits above those domains so
+models never import credential or presentation behavior.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `agent_bridge/models.py` | Defines validated manifest models and immutable registry records, including the ordered `SkillSource` path contract. | Auth, Skill parsing, source discovery, registry construction, and public adapters all share these shapes. The module must remain free of project-local imports. |
+| `agent_bridge/sources.py` | Enumerates project, managed, and global Skill roots, re-exports the shared `SkillSource` type, and merges bounded scans in priority order. | It owns discovery policy and scan orchestration, while source data itself remains in the model leaf. |
+| `agent_bridge/status.py` | Projects an `AgentCapabilityRegistry` into the redacted public configuration status, including auth state and sanitized probe errors. | Credential lookup and redaction are presentation concerns; moving them above models prevents the model layer from importing auth and recreating a cycle. |
+
+Rejected ownership alternatives:
+
+- `AgentCapabilityRegistry.config_status()`: placing auth-aware redaction on the
+  data object forced `models.py` to import `auth.py`, reversing the intended
+  dependency direction.
+- defining `SkillSource` in `sources.py`: model and fingerprint annotations then
+  had to point back into discovery policy.
+- `utils`: these contracts and projections are specific to the Agent Bridge
+  product surface rather than generic serialization helpers.
+
 ## `remote_worker/state.py`: worker process path contract
 
 The source-only worker keeps persistent installation paths separate from bundle

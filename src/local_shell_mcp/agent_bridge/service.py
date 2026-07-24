@@ -28,6 +28,7 @@ from .redaction import (
 )
 from .registry import build_agent_registry
 from .skills import activate_skill, read_agent_skill_file
+from .status import registry_config_status
 
 type AgentMcpClientManagerFactory = Callable[[float], Any]
 
@@ -150,7 +151,7 @@ def agent_config_status_payload(
     registry: AgentCapabilityRegistry,
 ) -> AgentConfigStatusOutput:
     """Return a public, redacted agent bridge configuration status payload."""
-    return AgentConfigStatusOutput(**registry.config_status())
+    return AgentConfigStatusOutput(**registry_config_status(registry))
 
 
 def list_agent_skills_payload(
@@ -229,7 +230,7 @@ def list_agent_mcp_servers_payload(
 ) -> ListAgentMcpServersOutput:
     """Return configured agent MCP server status rows."""
     return ListAgentMcpServersOutput(
-        root=registry.config_status()["mcp_servers"]
+        root=registry_config_status(registry)["mcp_servers"]
     )
 
 

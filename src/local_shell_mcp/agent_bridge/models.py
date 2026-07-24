@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
-
-if TYPE_CHECKING:
-    from .sources import SkillSource
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -232,6 +229,29 @@ class AgentMcpServerRecord:
 
 
 @dataclass(frozen=True)
+class SkillSource:
+    """One ordered Skill registry root."""
+
+    name: str
+    """Stable source identifier returned to clients."""
+    config_dir: Path
+    """Root directory against which the relative Skill directory is resolved."""
+    directory: str
+    """Portable relative Skill directory under ``config_dir``."""
+
+    @property
+    def path(self) -> Path:
+        """Return the normalized absolute Skill root without requiring it to exist."""
+        return (
+            self.config_dir.expanduser().resolve() / self.directory
+        ).resolve()
+
+    def public_row(self) -> dict[str, str]:
+        """Return bounded source metadata suitable for public tool responses."""
+        return {"source": self.name, "path": str(self.path)}
+
+
+@dataclass(frozen=True)
 class DynamicSkillToolRecord:
     """Association between a generated tool name and the skill it activates."""
 
@@ -285,56 +305,3 @@ class AgentCapabilityRegistry:
     """Public MCP tool names mapped to upstream tools."""
     client_manager: Any
     """MCP client-session manager used to call upstream tools."""
-
-    def config_status(self) -> dict[str, Any]:
-        """Return a redacted status payload suitable for diagnostics and public tool responses."""
-        from .auth import manager_auth_status, manager_redaction_maps
-        from .redaction import _redact_text, redact_configured_values
-
-        return {
-            "config_dir": str(self.config_dir),
-            "config_path": str(self.config_path),
-            "manifest_status": self.manifest_status,
-            "manifest_errors": self.manifest_errors,
-            "skills": {
-                "count": len(self.skills),
-                "warnings": self.skill_warnings,
-                "sources": [
-                    source.public_row() for source in self.skill_sources
-                ],
-            },
-            "mcp_servers": {
-                name: {
-                    "type": record.config.type,
-                    "enabled": record.config.enabled,
-                    "available": record.available,
-                    "tool_count": len(record.tools),
-                    "error": (
-                        _redact_text(
-                            redact_configured_values(
-                                record.error,
-                                *manager_redaction_maps(
-                                    self.client_manager, name, record.config
-                                ),
-                            )
-                        )
-                        if record.error
-                        else None
-                    ),
-                    "env": {
-                        str(key): "<redacted>" for key in record.config.env
-                    },
-                    "headers": {
-                        str(key): "<redacted>" for key in record.config.headers
-                    },
-                    "auth": manager_auth_status(
-                        self.client_manager, name, record.config
-                    ),
-                }
-                for name, record in self.mcp_servers.items()
-            },
-            "dynamic_tools": {
-                "mcp": self.dynamic_mcp_tools,
-                "skills": self.dynamic_skill_tools,
-            },
-        }

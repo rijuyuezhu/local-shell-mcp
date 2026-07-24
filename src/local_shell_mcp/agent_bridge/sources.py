@@ -4,40 +4,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
 
-from .models import SkillRecord, SkillScanResult
+from .models import SkillRecord, SkillScanResult, SkillSource
 from .skills import scan_agent_skills
 
 PROJECT_SKILLS_DIRECTORY = ".agents/skills"
 GLOBAL_SKILLS_DIRECTORY = "agents/skills"
 MAX_SOURCE_WARNINGS = 100
-
-
-@dataclass(frozen=True)
-class SkillSource:
-    """One ordered Skill registry root."""
-
-    name: str
-    """Stable source identifier returned to clients."""
-
-    config_dir: Path
-    """Root directory against which the relative Skill directory is resolved."""
-
-    directory: str
-    """Portable relative Skill directory under ``config_dir``."""
-
-    @property
-    def path(self) -> Path:
-        """Return the normalized absolute Skill root without requiring it to exist."""
-        return (
-            self.config_dir.expanduser().resolve() / self.directory
-        ).resolve()
-
-    def public_row(self) -> dict[str, str]:
-        """Return bounded source metadata suitable for public tool responses."""
-        return {"source": self.name, "path": str(self.path)}
 
 
 def _global_config_home(environ: Mapping[str, str] | None = None) -> Path:

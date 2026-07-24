@@ -5,14 +5,19 @@ from typing import Any
 
 import pytest
 
+import local_shell_mcp.agent_bridge.sources as source_module
 import local_shell_mcp.ops.agent as agent_ops
+from local_shell_mcp.agent_bridge.models import SkillSource as ModelSkillSource
 from local_shell_mcp.agent_bridge.registry import build_agent_registry
 from local_shell_mcp.agent_bridge.sources import (
     SkillSource,
     scan_skill_sources,
     skill_sources,
 )
-from local_shell_mcp.agent_bridge.state import agent_registry_fingerprint
+from local_shell_mcp.agent_bridge.state import (
+    agent_config_fingerprint,
+    agent_registry_fingerprint,
+)
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
 from local_shell_mcp.tool_session.store import get_tool_session_store
@@ -48,6 +53,49 @@ def _configure(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config_home))
     clear_settings_cache()
     get_tool_session_store().clear()
+
+
+def test_sources_reexport_the_model_skill_source_contract() -> None:
+    assert SkillSource is ModelSkillSource
+
+
+def test_skill_sources_deduplicate_equivalent_roots(tmp_path: Path) -> None:
+    root = tmp_path / "shared"
+    xdg = tmp_path / "xdg"
+
+    sources = skill_sources(
+        project_root=root,
+        managed_config_dir=root,
+        managed_directory=".agents/skills",
+        environ={"XDG_CONFIG_HOME": str(xdg)},
+    )
+
+    assert [source.name for source in sources] == ["project", "global"]
+
+
+def test_source_warning_limit_adds_one_omission_marker() -> None:
+    warnings = [
+        f"warning-{index}" for index in range(source_module.MAX_SOURCE_WARNINGS)
+    ]
+
+    source_module._append_warning(warnings, "first omitted warning")
+    source_module._append_warning(warnings, "second omitted warning")
+
+    assert warnings[-1] == "Additional Skill source warnings were omitted"
+    assert len(warnings) == source_module.MAX_SOURCE_WARNINGS + 1
+
+
+def test_agent_config_fingerprint_accepts_regular_file_root(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "config.json"
+    root.write_text("{}", encoding="utf-8")
+
+    first = agent_config_fingerprint(root)
+    second = agent_config_fingerprint(root)
+
+    assert first == second
+    assert len(first) == 64
 
 
 def test_skill_sources_use_project_managed_global_order_and_ignore_relative_xdg(

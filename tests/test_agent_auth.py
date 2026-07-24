@@ -29,6 +29,7 @@ from local_shell_mcp.agent_bridge.cli import (
 from local_shell_mcp.agent_bridge.mcp import AgentMcpClientManager
 from local_shell_mcp.agent_bridge.models import AgentMcpServerConfig
 from local_shell_mcp.agent_bridge.state import agent_registry_fingerprint
+from local_shell_mcp.agent_bridge.status import registry_config_status
 
 
 def _client_info() -> OAuthClientInformationFull:
@@ -359,7 +360,7 @@ def test_public_registry_status_hides_secret_reference_names_and_values(
     store.set_secret("docs", "private_token_name", "Bearer private-value")
     registry = build_agent_registry(config_dir, AgentMcpClientManager(1, store))
 
-    status = registry.config_status()["mcp_servers"]["docs"]
+    status = registry_config_status(registry)["mcp_servers"]["docs"]
     serialized = json.dumps(status)
     assert status["auth"] == {
         "mode": "secret",
