@@ -288,6 +288,8 @@ def _open_private_transfer_file(path: Path) -> BinaryIO:
 
 
 def _open_transfer_source(path: Path) -> BinaryIO:
+    if os.name == "nt":
+        return _open_windows_transfer_file(path, update=False)
     flags = os.O_RDONLY
     flags |= int(getattr(os, "O_BINARY", 0))
     flags |= int(getattr(os, "O_NOFOLLOW", 0))
@@ -319,12 +321,8 @@ class _ByHandleFileInformation(ctypes.Structure):
     ]
 
 
-def _windows_file_identity(descriptor: int) -> tuple[int, int]:
-    """Return the stable Windows volume and file index for an open descriptor."""
-    msvcrt = importlib.import_module("msvcrt")
-    native_handle = int(msvcrt.get_osfhandle(descriptor))
-    if native_handle == -1:
-        raise OSError("invalid Windows file handle")
+def _windows_file_information(native_handle: int) -> _ByHandleFileInformation:
+    """Read stable identity and attribute fields from one Windows handle."""
     windows_ctypes: Any = ctypes
     kernel32 = windows_ctypes.WinDLL("kernel32", use_last_error=True)
     get_information = kernel32.GetFileInformationByHandle
@@ -339,10 +337,82 @@ def _windows_file_identity(descriptor: int) -> tuple[int, int]:
     ):
         error_code = int(windows_ctypes.get_last_error())
         raise OSError(error_code, "GetFileInformationByHandle failed")
+    return information
+
+
+def _windows_file_identity(descriptor: int) -> tuple[int, int]:
+    """Return the stable Windows volume and file index for an open descriptor."""
+    msvcrt = importlib.import_module("msvcrt")
+    native_handle = int(msvcrt.get_osfhandle(descriptor))
+    if native_handle == -1:
+        raise OSError("invalid Windows file handle")
+    information = _windows_file_information(native_handle)
     file_index = (int(information.nFileIndexHigh) << 32) | int(
         information.nFileIndexLow
     )
     return int(information.dwVolumeSerialNumber), file_index
+
+
+def _open_windows_transfer_file(path: Path, *, update: bool) -> BinaryIO:
+    """Open one Windows path entry without following a reparse point."""
+    windows_ctypes: Any = ctypes
+    kernel32 = windows_ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    create_file.restype = wintypes.HANDLE
+    desired_access = 0x80000000 | (0x40000000 if update else 0)
+    share_mode = 0x00000001 | 0x00000002 | 0x00000004
+    flags_and_attributes = 0x00200000 | 0x02000000
+    native_handle = create_file(
+        str(path),
+        desired_access,
+        share_mode,
+        None,
+        3,
+        flags_and_attributes,
+        None,
+    )
+    invalid_handle = wintypes.HANDLE(-1).value
+    if native_handle == invalid_handle:
+        error_code = int(windows_ctypes.get_last_error())
+        raise OSError(error_code, "CreateFileW failed", str(path))
+    native_value = int(native_handle)
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = [wintypes.HANDLE]
+    close_handle.restype = wintypes.BOOL
+    try:
+        information = _windows_file_information(native_value)
+        if int(information.dwFileAttributes) & 0x00000400:
+            raise ValueError(
+                "transfer path must not be a symlink or reparse point"
+            )
+        msvcrt = importlib.import_module("msvcrt")
+        descriptor = int(
+            msvcrt.open_osfhandle(
+                native_value,
+                int(getattr(os, "O_BINARY", 0))
+                | (os.O_RDWR if update else os.O_RDONLY),
+            )
+        )
+    except Exception:
+        close_handle(wintypes.HANDLE(native_value))
+        raise
+    try:
+        file_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise ValueError("transfer path is not a regular file")
+        return os.fdopen(descriptor, "r+b" if update else "rb")
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 def _transfer_handle_identity(
@@ -587,6 +657,8 @@ def transfer_begin_write(
 
 
 def _open_transfer_for_update(path: Path) -> BinaryIO:
+    if os.name == "nt":
+        return _open_windows_transfer_file(path, update=True)
     if path.is_symlink():
         raise ValueError("transfer temporary path must not be a symlink")
     flags = os.O_RDWR

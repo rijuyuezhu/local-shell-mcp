@@ -1284,7 +1284,38 @@ Focused validation and defects found so far:
   return zero findings. Final full-repository pre-commit durable marker
   `/tmp/local-shell-mcp-phase8-precommit.exit` is `0`; Ruff check/format,
   generated config and tool references, VS Code format/lint/compile, and OpenTUI
-  generated assets all pass. Push and exact-head CI gates remain pending.
+  generated assets all pass.
+- Main implementation `b9e649e627e3b70e457fa9936a5e92faa231f472` and
+  checkpoint `371c97aeab73af7195b1f002f619592897b0c0d0` were pushed with
+  origin divergence `0/0`. Exact-head Docs run `30059640530` passed. Exact-head
+  CI run `30059640559` completed with `22/24` jobs successful; every non-test
+  gate, Chromium, macOS tests, ConPTY, OpenTUI, VS Code, Docker, package smoke,
+  platform wheel, bundled tmux, and release-matrix job passed. Ubuntu test job
+  `89378494517` failed because unlink/recreate reused the same Linux inode and
+  the replacement was safely rejected as `transfer spool size changed` before
+  the test's narrower `identity changed` assertion. This exposed a real residual
+  risk for a same-inode, same-size replacement, so the fix persists a third spool
+  generation component derived from native ctime/mtime and refreshes it after
+  every durable append or rollback. Windows test job `89378494518` showed that
+  the prior CRT opener followed file symlinks: snapshot symlink rejection did
+  not fire, while spool symlink replacement was only rejected after opening the
+  target and comparing identity. Windows now opens path entries with
+  `CreateFileW` plus `FILE_FLAG_OPEN_REPARSE_POINT`, rejects every reparse point
+  before converting the native handle to a Python fd, and retains post-open
+  identity/generation validation for TOCTOU. Focused fix validation passes
+  `59 passed` with Ruff/Pyright clean. The final clean full-suite durable marker
+  `/tmp/local-shell-mcp-phase8-ci-fix-full.exit` is `0`: `1026 passed, 2
+  skipped`, total branch-mode coverage `86.19%`, and every module ratchet passes.
+  Key coverage is `ops/transfer.py` 78.56%, `remote/transfer_gateway.py` 93.81%,
+  `remote_worker/http_transfer.py` 96.80%, and `ops/utils/session_copy.py`
+  98.21%; the gateway's separate pure branch check is again `148/164 = 90.24%`.
+  Targeted secret scans of the changed transfer/gateway/test files are zero-findings;
+  the only full-`src` heuristic match is the pre-existing runtime-generated worker
+  token assignment in `remote/manager.py`, outside this fix. Strict MkDocs and
+  generated reference checks pass. Final pre-commit durable marker
+  `/tmp/local-shell-mcp-phase8-ci-fix-precommit.exit` is `0`, including Ruff,
+  config/tool generation, VS Code, and OpenTUI asset hooks. Push and replacement
+  exact-head CI remain pending.
 
 Public API rule:
 

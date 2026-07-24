@@ -93,6 +93,8 @@ class TransferObject:
     """First platform-native spool identity component."""
     identity_b: int
     """Second platform-native spool identity component."""
+    identity_c: int
+    """Latest native change/write generation bound to the current spool contents."""
 
 
 def _token_hash(token: str) -> str:
@@ -103,6 +105,14 @@ def _json_bytes(value: dict[str, Any]) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode(
         "utf-8"
     )
+
+
+def _spool_handle_identity(handle: BinaryIO) -> tuple[int, int, int]:
+    """Return stable file identity plus a refreshable content generation."""
+    identity_a, identity_b = _transfer_handle_identity(handle)
+    file_stat = os.fstat(handle.fileno())
+    generation = max(int(file_stat.st_ctime_ns), int(file_stat.st_mtime_ns))
+    return identity_a, identity_b, generation
 
 
 class TransferGatewayStore:
@@ -126,9 +136,13 @@ class TransferGatewayStore:
         return self.root / f"{transfer_id}.spool"
 
     @staticmethod
-    def _spool_identity(data: dict[str, Any]) -> tuple[int, int]:
+    def _spool_identity(data: dict[str, Any]) -> tuple[int, int, int]:
         try:
-            return int(data["spool_identity_a"]), int(data["spool_identity_b"])
+            return (
+                int(data["spool_identity_a"]),
+                int(data["spool_identity_b"]),
+                int(data["spool_identity_c"]),
+            )
         except (KeyError, TypeError, ValueError) as exc:
             raise TransferGatewayError(
                 "transfer spool identity is missing"
@@ -145,12 +159,17 @@ class TransferGatewayStore:
                 if update
                 else _open_transfer_source(path)
             )
-        except (FileNotFoundError, IsADirectoryError, OSError) as exc:
+        except (
+            FileNotFoundError,
+            IsADirectoryError,
+            OSError,
+            ValueError,
+        ) as exc:
             raise TransferGatewayError(
                 "transfer spool is missing or unsafe"
             ) from exc
         expected_identity = self._spool_identity(data)
-        actual_identity = _transfer_handle_identity(handle)
+        actual_identity = _spool_handle_identity(handle)
         if actual_identity != expected_identity:
             handle.close()
             raise TransferGatewayError("transfer spool identity changed")
@@ -336,7 +355,7 @@ class TransferGatewayStore:
                     offset = expected
                     state = "ready"
                 with _open_transfer_for_update(spool) as handle:
-                    spool_identity = _transfer_handle_identity(handle)
+                    spool_identity = _spool_handle_identity(handle)
                     if os.fstat(handle.fileno()).st_size != offset:
                         spool.unlink(missing_ok=True)
                         raise TransferGatewayError(
@@ -354,6 +373,7 @@ class TransferGatewayStore:
                     "state": state,
                     "spool_identity_a": spool_identity[0],
                     "spool_identity_b": spool_identity[1],
+                    "spool_identity_c": spool_identity[2],
                     "created_at": now,
                     "updated_at": now,
                     "expires_at": now
@@ -390,6 +410,7 @@ class TransferGatewayStore:
             state=str(data.get("state") or ""),
             identity_a=int(data["spool_identity_a"]),
             identity_b=int(data["spool_identity_b"]),
+            identity_c=int(data["spool_identity_c"]),
         )
         return (
             obj,
@@ -432,7 +453,18 @@ class TransferGatewayStore:
         digest = hashlib.sha256()
         copied = 0
         try:
-            with _open_transfer_source(source) as src:
+            source_handle = _open_transfer_source(source)
+        except (
+            FileNotFoundError,
+            IsADirectoryError,
+            OSError,
+            ValueError,
+        ) as exc:
+            raise TransferGatewayError(
+                "snapshot source is missing or unsafe"
+            ) from exc
+        try:
+            with source_handle as src:
                 before = os.fstat(src.fileno())
                 out_descriptor = os.open(
                     destination,
@@ -618,6 +650,13 @@ class TransferGatewayStore:
                             destination.truncate(offset)
                             destination.flush()
                             os.fsync(destination.fileno())
+                            rollback_identity = _spool_handle_identity(
+                                destination
+                            )
+                            data["spool_identity_a"] = rollback_identity[0]
+                            data["spool_identity_b"] = rollback_identity[1]
+                            data["spool_identity_c"] = rollback_identity[2]
+                            self._save(data)
                         except Exception as rollback_exc:
                             raise TransferGatewayError(
                                 "transfer spool rollback failed"
@@ -627,6 +666,10 @@ class TransferGatewayStore:
                         raise TransferGatewayError(
                             "transfer spool write failed"
                         ) from exc
+                    committed_identity = _spool_handle_identity(destination)
+                    data["spool_identity_a"] = committed_identity[0]
+                    data["spool_identity_b"] = committed_identity[1]
+                    data["spool_identity_c"] = committed_identity[2]
                     data["offset"] = end_exclusive
                     data["last_chunk"] = {
                         "start": start,
@@ -675,6 +718,7 @@ class TransferGatewayStore:
                 state=state,
                 identity_a=identity[0],
                 identity_b=identity[1],
+                identity_c=identity[2],
             )
 
     def consume(self, transfer_id: str) -> None:
@@ -794,11 +838,15 @@ def _open_transfer_object(obj: TransferObject) -> BinaryIO:
     """Open one spool without following replacement links and verify identity."""
     try:
         handle = _open_transfer_source(obj.path)
-    except (FileNotFoundError, IsADirectoryError, OSError) as exc:
+    except (FileNotFoundError, IsADirectoryError, OSError, ValueError) as exc:
         raise TransferGatewayError(
             "transfer spool is missing or unsafe"
         ) from exc
-    if _transfer_handle_identity(handle) != (obj.identity_a, obj.identity_b):
+    if _spool_handle_identity(handle) != (
+        obj.identity_a,
+        obj.identity_b,
+        obj.identity_c,
+    ):
         handle.close()
         raise TransferGatewayError("transfer spool identity changed")
     return handle

@@ -280,7 +280,7 @@ def test_quota_resume_metadata_and_traversal_are_rejected(monkeypatch) -> None:
     clear_settings_cache()
     store = TransferGatewayStore(get_settings())
     payload = b"12345678"
-    store.prepare(
+    obj, _upload, _download = store.prepare(
         expected_bytes=len(payload),
         expected_sha256=hashlib.sha256(payload).hexdigest(),
         upload_worker="one",
@@ -310,6 +310,36 @@ def test_quota_resume_metadata_and_traversal_are_rejected(monkeypatch) -> None:
         )
     with pytest.raises(TransferGatewayError, match="identifier"):
         store.status("../escape")
+
+    terminal = store._load(obj.transfer_id)
+    terminal["state"] = "consumed"
+    store._save(terminal)
+    store._reserve_locked(1)
+    store.release_claim(obj.transfer_id, "x" * 24)
+
+
+def test_prepare_rotates_a_colliding_transfer_identifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = TransferGatewayStore()
+    colliding = "c" * 24
+    rotated = "r" * 24
+    store._metadata_path(colliding).write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        store, "_new_transfer_id", lambda _resume_key: colliding
+    )
+    monkeypatch.setattr(
+        gateway_module.secrets, "token_urlsafe", lambda _size: rotated
+    )
+    obj, _upload, _download = store.prepare(
+        expected_bytes=1,
+        expected_sha256=hashlib.sha256(b"x").hexdigest(),
+        upload_worker="worker",
+        download_worker=None,
+        source_session_id="source",
+        destination_session_id="destination",
+    )
+    assert obj.transfer_id == rotated
 
 
 def test_transaction_writer_resumes_contiguous_partial_file() -> None:
@@ -413,10 +443,12 @@ def test_spool_symlink_replacement_is_rejected(tmp_path) -> None:
 
 def test_spool_regular_file_replacement_is_identity_rejected() -> None:
     payload = b"payload"
+    replacement = b"attack!"
+    assert len(replacement) == len(payload)
     store, upload, _download = _prepare_upload(payload)
     spool = store.root / f"{upload.transfer_id}.spool"
     spool.unlink()
-    spool.write_bytes(b"attacker")
+    spool.write_bytes(replacement)
     with pytest.raises(TransferGatewayError, match="identity changed"):
         store.object(upload.transfer_id, require_ready=False)
 
@@ -432,7 +464,7 @@ def test_spool_regular_file_replacement_is_identity_rejected() -> None:
             len(payload),
             hashlib.sha256(payload).hexdigest(),
         )
-    assert spool.read_bytes() == b"attacker"
+    assert spool.read_bytes() == replacement
     store.release_claim(upload.transfer_id, claim)
 
 
@@ -558,7 +590,7 @@ def test_store_cleanup_quota_and_resume_spool_integrity(
 
     spool = obj.path
     spool.write_bytes(b"x")
-    with pytest.raises(TransferGatewayError, match="size changed"):
+    with pytest.raises(TransferGatewayError, match="identity changed"):
         store.prepare(
             expected_bytes=len(payload),
             expected_sha256=hashlib.sha256(payload).hexdigest(),
@@ -729,7 +761,7 @@ def test_final_digest_failure_and_object_state_checks() -> None:
 
     other_store, other_upload, _download = _prepare_upload(b"abc")
     other_store._spool_path(other_upload.transfer_id).write_bytes(b"wrong-size")
-    with pytest.raises(TransferGatewayError, match="size changed"):
+    with pytest.raises(TransferGatewayError, match="identity changed"):
         other_store.object(other_upload.transfer_id, require_ready=False)
 
 
@@ -836,7 +868,7 @@ def test_private_chunk_reader_iterator_and_local_transaction_cleanup(
     short_path = get_settings().remote_transfer_dir / "short.spool"
     short_path.write_bytes(b"x")
     with gateway_module._open_transfer_source(short_path) as handle:
-        short_identity = gateway_module._transfer_handle_identity(handle)
+        short_identity = gateway_module._spool_handle_identity(handle)
     short_obj = gateway_module.TransferObject(
         transfer_id="t" * 24,
         path=short_path,
@@ -846,6 +878,7 @@ def test_private_chunk_reader_iterator_and_local_transaction_cleanup(
         state="ready",
         identity_a=short_identity[0],
         identity_b=short_identity[1],
+        identity_c=short_identity[2],
     )
     iterator = gateway_module._download_iterator(
         cast(Any, fake_store),
@@ -864,7 +897,7 @@ def test_private_chunk_reader_iterator_and_local_transaction_cleanup(
     source = get_settings().remote_transfer_dir / "local-ready.spool"
     source.write_bytes(payload)
     with gateway_module._open_transfer_source(source) as handle:
-        source_identity = gateway_module._transfer_handle_identity(handle)
+        source_identity = gateway_module._spool_handle_identity(handle)
     obj = gateway_module.TransferObject(
         transfer_id="r" * 24,
         path=source,
@@ -874,6 +907,7 @@ def test_private_chunk_reader_iterator_and_local_transaction_cleanup(
         state="ready",
         identity_a=source_identity[0],
         identity_b=source_identity[1],
+        identity_c=source_identity[2],
     )
     from local_shell_mcp.ops import transfer as transfer_module
 
