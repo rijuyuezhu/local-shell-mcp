@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: closure in progress — Phases 1-7 complete; Phase 8 implementation/local validation complete, push and exact-head CI pending
+Status: Phases 1-8 complete; Phase 9 pending. Phase 8 closure commit CI remains to be verified.
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `b9e649e627e3b70e457fa9936a5e92faa231f472` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `3e0e75a65f9b34f88385825ebd917c1347250a9e` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `9f1484e880c01b64b320ce0105de6bee831821e7` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -1093,7 +1093,7 @@ still install the universal server wheel.
 
 ### Phase 8 — Add internal HTTP streaming for large `session_copy` transfers
 
-Status: implementation and local validation complete (started 2026-07-24); push and exact-head CI closure in progress. Main implementation commit: `b9e649e627e3b70e457fa9936a5e92faa231f472` (`feat(remote): stream large session copies`).
+Status: complete (started and closed 2026-07-24). Main implementation commit: `b9e649e627e3b70e457fa9936a5e92faa231f472` (`feat(remote): stream large session copies`); cross-platform security fix: `3e0e75a65f9b34f88385825ebd917c1347250a9e` (`fix(remote): harden transfer file identity`).
 
 Actual implementation baseline: branch HEAD and
 `origin/feat/port-upstream-features-2026-07` both pointed to
@@ -1314,8 +1314,14 @@ Focused validation and defects found so far:
   token assignment in `remote/manager.py`, outside this fix. Strict MkDocs and
   generated reference checks pass. Final pre-commit durable marker
   `/tmp/local-shell-mcp-phase8-ci-fix-precommit.exit` is `0`, including Ruff,
-  config/tool generation, VS Code, and OpenTUI asset hooks. Push and replacement
-  exact-head CI remain pending.
+  config/tool generation, VS Code, and OpenTUI asset hooks. Security fix
+  `3e0e75a65f9b34f88385825ebd917c1347250a9e` was pushed with HEAD/origin
+  divergence `0/0`. Exact-head Docs run `30061358592` passed. Exact-head CI run
+  `30061358594` passed all `24/24` jobs, including the original Ubuntu and
+  Windows failure platforms, macOS, Chromium, ConPTY, OpenTUI, VS Code, Docker,
+  package smoke, every platform wheel, bundled tmux, and release matrix. Phase 8
+  exit criteria are satisfied; only this closure documentation commit and its
+  exact-head CI verification remain.
 
 Public API rule:
 
@@ -1421,5 +1427,5 @@ and deleting this temporary plan does not remove unique operational knowledge.
 - [x] Phase 5B: session-bound MCP `audit_tail`.
 - [x] Phase 6: Linux/macOS worker user-service management.
 - [x] Phase 7: platform wheels with embedded OpenTUI.
-- [ ] Phase 8: internal resumable HTTP large-file transfer.
+- [x] Phase 8: internal resumable HTTP large-file transfer.
 - [ ] Phase 9: full integration, permanent docs, and plan deletion.
