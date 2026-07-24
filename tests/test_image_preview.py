@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from PIL import Image
 
-import local_shell_mcp.image_preview as preview_module
+import local_shell_mcp.ui.image_preview as preview_module
 
 
 class _OversizedImage:

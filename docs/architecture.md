@@ -176,6 +176,7 @@ internal rather than public tools.
 | --- | --- | --- |
 | `ui/__init__.py` | Declares the Human UI core boundary independently of HTTP delivery. | It prevents UI behavior from appearing to be part of the REST executor and allows browser and native clients to share core contracts. |
 | `ui/dashboard.py` | Combines neutral system telemetry with metadata-only audit summaries, alerts, activity rows, health state, and version data for local or remote Dashboard clients. | The output is a Dashboard view model with UI labels and disclosure policy. Remote-worker support only transports this internal UI capability; it does not make the projection a generic telemetry or public tool contract. |
+| `ui/image_preview.py` | Decodes validated image bytes into bounded, orientation-corrected RGBA thumbnails and terminal-cell dimensions for native UI rendering. | The output is a UI view model tied to terminal rendering constraints. It contains no HTTP request parsing or response construction, so browser/HTTP adapters consume it rather than own it. |
 
 Rejected ownership alternatives:
 
@@ -184,7 +185,11 @@ Rejected ownership alternatives:
 - `telemetry`: audit activity labels, alerts, health presentation, and redaction
   choices are view-model policy rather than raw observations.
 - `server/http`: the same Dashboard projection is used locally and through a
-  source-only worker before any HTTP response is built.
+  source-only worker before any HTTP response is built. Image decoding likewise
+  belongs below the HTTP adapter because it is independent of query parameters
+  and JSON response construction.
+- top-level `image_preview.py`: a package-root file hid that thumbnail generation
+  is a Human UI rendering capability rather than a project-wide utility.
 
 ## Ownership review status
 

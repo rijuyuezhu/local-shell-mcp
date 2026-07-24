@@ -277,7 +277,8 @@ def test_ui_core_does_not_depend_on_executors_or_http_adapters() -> None:
     )
 
     assert actual == frozenset()
-    assert not (_PACKAGE_ROOT / "dashboard.py").exists()
+    for migrated_name in ("dashboard.py", "image_preview.py"):
+        assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
 def _assert_ownership_map_covers(paths: set[str]) -> None:
