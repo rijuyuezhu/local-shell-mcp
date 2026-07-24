@@ -30,6 +30,10 @@ the enclosing `local-shell-mcp` release version.
 | `src/local_shell_mcp/helpers/opentui.NOTICES` | `73d026453521d235c1df46f2dcf90943661258695e8eed87ba2c91e7caa03e61` |
 | `src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md` | `2c6160ec8fb853f7e8f97d9b249e756c9b0ac44860a68b6bf4f1b0bcbc5c3741` |
 
+All source and notice digests in this table are SHA-256 over UTF-8 text after
+universal-newline normalization to LF. This keeps the lock stable when Git uses
+CRLF working-tree checkouts on Windows without ignoring substantive text changes.
+
 The lockfile is installed with `bun install --frozen-lockfile`. CI and release
 jobs pin Bun independently and fail if the lockfile, host architecture, output
 magic, wheel tag, embedded digest, or clean-install smoke does not match.

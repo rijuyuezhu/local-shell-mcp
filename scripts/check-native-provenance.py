@@ -23,7 +23,11 @@ EXPECTED_HASHES = {
 
 
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    # Git may check text files out as CRLF on Windows. Hash the canonical UTF-8
+    # text with universal-newline normalization so one locked source has the
+    # same digest on every supported runner.
+    normalized = path.read_text(encoding="utf-8").encode("utf-8")
+    return hashlib.sha256(normalized).hexdigest()
 
 
 def main() -> int:
