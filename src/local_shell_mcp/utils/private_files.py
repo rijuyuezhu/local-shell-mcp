@@ -13,9 +13,12 @@ from pathlib import Path
 from typing import BinaryIO
 
 
-def _ensure_lock_file(path: Path) -> None:
+def _ensure_lock_file(path: Path, timeout_s: float | None = None) -> None:
     """Create or repair the one-byte lock file before any process opens it."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = (
+        None if timeout_s is None else time.monotonic() + max(0.0, timeout_s)
+    )
     while True:
         try:
             descriptor = os.open(
@@ -27,9 +30,17 @@ def _ensure_lock_file(path: Path) -> None:
                     return
                 descriptor = os.open(path, os.O_WRONLY | os.O_APPEND)
             except FileNotFoundError, PermissionError:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        "timed out preparing private lock file"
+                    ) from None
                 time.sleep(0.01)
                 continue
         except PermissionError:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(
+                    "timed out preparing private lock file"
+                ) from None
             time.sleep(0.01)
             continue
         try:
@@ -41,29 +52,58 @@ def _ensure_lock_file(path: Path) -> None:
         return
 
 
-def _lock_handle(handle: BinaryIO) -> None:
+def _is_lock_contention_error(exc: OSError, *, windows: bool) -> bool:
+    """Return whether one non-blocking lock error means ordinary contention."""
+    contention_errors = {
+        errno.EACCES,
+        errno.EAGAIN,
+        getattr(errno, "EDEADLK", errno.EACCES),
+        getattr(errno, "EDEADLOCK", errno.EACCES),
+    }
+    return (
+        isinstance(exc, BlockingIOError)
+        or exc.errno in contention_errors
+        or (windows and getattr(exc, "winerror", None) in {32, 33})
+    )
+
+
+def _try_lock_handle(handle: BinaryIO) -> bool:
+    """Attempt one non-blocking cross-platform file-lock acquisition."""
     handle.seek(0)
-    if os.name == "nt":
-        import msvcrt
+    try:
+        if os.name == "nt":
+            import msvcrt
 
-        contention_errors = {
-            errno.EACCES,
-            errno.EAGAIN,
-            getattr(errno, "EDEADLK", errno.EACCES),
-            getattr(errno, "EDEADLOCK", errno.EACCES),
-        }
-        while True:
-            try:
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                break
-            except OSError as exc:
-                if exc.errno not in contention_errors:
-                    raise
-                time.sleep(0.01)
-    else:
-        import fcntl
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
 
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        if _is_lock_contention_error(exc, windows=os.name == "nt"):
+            return False
+        raise
+    return True
+
+
+def _lock_handle(
+    handle: BinaryIO,
+    *,
+    timeout_s: float | None = None,
+    retry_interval_s: float = 0.01,
+) -> None:
+    """Acquire one file lock, optionally bounding contention wait time."""
+    deadline = (
+        None if timeout_s is None else time.monotonic() + max(0.0, timeout_s)
+    )
+    while not _try_lock_handle(handle):
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("timed out acquiring private file lock")
+            time.sleep(min(max(0.0, retry_interval_s), remaining))
+        else:
+            time.sleep(max(0.0, retry_interval_s))
 
 
 def _unlock_handle(handle: BinaryIO) -> None:
@@ -79,13 +119,28 @@ def _unlock_handle(handle: BinaryIO) -> None:
 
 
 @contextmanager
-def private_file_lock(path: Path) -> Generator[BinaryIO]:
+def private_file_lock(
+    path: Path,
+    *,
+    timeout_s: float | None = None,
+    retry_interval_s: float = 0.01,
+) -> Generator[BinaryIO]:
     """Hold one private cross-process file lock for the context lifetime."""
-    _ensure_lock_file(path)
+    started = time.monotonic()
+    _ensure_lock_file(path, timeout_s=timeout_s)
     with path.open("r+b") as handle:
         with contextlib.suppress(OSError):
             path.chmod(0o600)
-        _lock_handle(handle)
+        remaining = (
+            None
+            if timeout_s is None
+            else max(0.0, timeout_s - (time.monotonic() - started))
+        )
+        _lock_handle(
+            handle,
+            timeout_s=remaining,
+            retry_interval_s=retry_interval_s,
+        )
         try:
             yield handle
         finally:

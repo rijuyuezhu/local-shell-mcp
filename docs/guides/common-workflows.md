@@ -101,6 +101,8 @@ Remote-session job snapshots merge shell jobs running on the worker with control
 
 Use `bash(session_id=...)` for terminal work. By default it runs bounded one-shot commands in the session workdir; set `async_=true` for tracked long-running non-interactive shell work. The same `job(session_id=...)` companion manages both shell jobs and controller-managed transfer jobs. Shell jobs persist exit status and bounded output under `state_dir`, so polling continues after command exit or server restart. Managed jobs persist their payload, progress, result, and bounded log, but their live task is process-local; a missing task is marked `lost` instead of being reported as still running. `max_job_log_bytes` limits retained output per attempt, while `max_jobs` bounds retained terminal records without pruning active jobs.
 
+Job-store transactions use one bounded process lock plus a bounded cross-process file lock. Ordinary operations fail with an actionable `job store is busy` error instead of waiting forever. Managed-job log, progress, and terminal updates retry briefly; if contention persists, the controller writes an owner-private session/job-bound journal and replays it in creation order during the next successful transaction. Applied update ids are committed before journal cleanup, so a restart or cleanup failure does not duplicate output bytes, progress, or terminal state.
+
 Set `pty=true` for dev servers, REPLs, and interactive processes:
 
 ```text

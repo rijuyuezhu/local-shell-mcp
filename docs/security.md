@@ -161,6 +161,12 @@ Operational notes:
 - Shared request-body buffering is bypassed only for the exact private transfer `PUT` route; the route enforces its own chunk limit and all other HTTP paths retain the generic request limit.
 - Treat a compromised remote worker as able to provide malicious transfer data; the control side still validates authorization, offsets, sizes, checksums, archive paths, member types, and resource limits before commit.
 
+## Durable job metadata and contention journals
+
+Tracked shell and controller-managed jobs persist metadata under `state_dir` with owner-private files and atomic primary/backup replacement. Job-store thread and file locks share a bounded acquisition budget; public contention errors do not reveal the private lock path, while local audit records retain enough detail for diagnosis.
+
+Managed-job logs are appended before metadata accounting. If bounded lock retries cannot commit log bytes, progress, or terminal state, the controller writes a bounded `0600` JSON record under the `0700` `state_dir/jobs/deferred` directory. Records use opaque ids, are bound to both the owning session and job, accept only the fixed update operations, reject links/non-regular files, and are replayed in creation order. Applied ids are saved inside the job row before cleanup, making replay idempotent across process loss or failed journal deletion. Invalid rows are audited and removed; rows that cannot be read are retained rather than silently discarded.
+
 ## Remote worker identity and user services
 
 Remote enrollment invitations are one-time bearer capabilities. Prefer `worker enroll/connect --invite-stdin` or the generated join command, avoid copying invites into durable scripts, and revoke a worker whose state directory may be compromised. The private worker identity stores the controller origin, assigned name, access token, and canonical workdir; keep the entire worker state directory owner-private.
