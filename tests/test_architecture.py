@@ -58,12 +58,6 @@ _ALLOWED_DEPENDENCY_CYCLES = frozenset(
                 "local_shell_mcp.remote_worker.worker",
             }
         ),
-        frozenset(
-            {
-                "local_shell_mcp.remote_worker.lifecycle",
-                "local_shell_mcp.remote_worker.runtime",
-            }
-        ),
     }
 )
 
@@ -442,6 +436,50 @@ def test_owned_domain_maps_cover_every_file() -> None:
                 for path in (_PACKAGE_ROOT / package).rglob("*.py")
             }
         )
+
+
+def test_remote_worker_process_dependencies_are_one_way() -> None:
+    modules = {
+        f"{_PACKAGE_NAME}.remote_worker.lifecycle",
+        f"{_PACKAGE_NAME}.remote_worker.runtime",
+        f"{_PACKAGE_NAME}.remote_worker.state",
+    }
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer in modules and target in modules
+    )
+
+    assert actual == frozenset(
+        {
+            (
+                f"{_PACKAGE_NAME}.remote_worker.lifecycle",
+                f"{_PACKAGE_NAME}.remote_worker.state",
+            ),
+            (
+                f"{_PACKAGE_NAME}.remote_worker.runtime",
+                f"{_PACKAGE_NAME}.remote_worker.lifecycle",
+            ),
+            (
+                f"{_PACKAGE_NAME}.remote_worker.runtime",
+                f"{_PACKAGE_NAME}.remote_worker.state",
+            ),
+        }
+    )
+
+
+def test_remote_worker_state_contract_is_a_dependency_leaf() -> None:
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer == f"{_PACKAGE_NAME}.remote_worker.state"
+    )
+
+    assert actual == frozenset()
+
+
+def test_remote_worker_state_ownership_is_documented() -> None:
+    _assert_ownership_map_covers({"remote_worker/state.py"})
 
 
 def test_dependency_cycles_match_explicit_architecture_debt() -> None:

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from ..utils.private_files import _ensure_lock_file
-from .runtime import worker_state_dir
+from .state import worker_lock_path
 
 _SERVICE_NAME = "local-shell-mcp-worker"
 _LAUNCHD_LABEL = "com.fwerkor.local-shell-mcp-worker"
@@ -29,11 +29,6 @@ _active_worker_lock_handle: BinaryIO | None = None
 
 class WorkerAlreadyRunningError(RuntimeError):
     """Raised when a manual worker attempts to start beside an active worker."""
-
-
-def worker_lock_path() -> Path:
-    """Return the persistent file used to serialize worker processes."""
-    return worker_state_dir() / "worker.lock"
 
 
 def _user_home() -> Path:

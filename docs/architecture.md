@@ -315,6 +315,28 @@ Rejected ownership alternatives:
   rendering are cohesive patch-domain policy rather than generally reusable
   helpers.
 
+## `remote_worker/state.py`: worker process path contract
+
+The source-only worker keeps persistent installation paths separate from bundle
+installation and process-lock policy. Dependency direction is intentionally
+one-way: `remote_worker/lifecycle.py` and `remote_worker/runtime.py` consume the
+state contract; runtime may request lifecycle lock handoff during re-exec, but
+lifecycle must not import runtime.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `remote_worker/state.py` | Resolves the configured, XDG, or home-relative worker state root and derives the runtime directory, metadata file, and single-instance lock file. | These paths are shared by installation and process lifecycle code, use only stdlib/environment state, and form a dependency leaf suitable for the source-only worker bundle. |
+
+Rejected ownership alternatives:
+
+- `remote_worker/runtime.py`: owning shared paths there forced lifecycle locking
+  to depend on bundle installation and created a cycle when runtime requested a
+  lock-preserving re-exec.
+- `remote_worker/lifecycle.py`: runtime installation, service generation, and
+  capability probes also consume the same persistent root.
+- general `utils`: the environment names and derived layout are a worker product
+  contract rather than a reusable filesystem primitive.
+
 ## `release`: artifact construction and verification
 
 The `release` package owns build-time artifact assembly and validation. It is

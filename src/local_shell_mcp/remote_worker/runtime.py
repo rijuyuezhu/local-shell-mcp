@@ -24,44 +24,28 @@ from ..remote.constants import (
     REMOTE_WORKER_MANIFEST_PATH,
     REMOTE_WORKER_POLL_PROTOCOL_VERSION,
 )
+from .state import (
+    runtime_metadata_path,
+    worker_runtime_dir,
+    worker_state_dir,
+)
 
 POLL_PROTOCOL_VERSION = REMOTE_WORKER_POLL_PROTOCOL_VERSION
 MANIFEST_SCHEMA_VERSION = 1
 MAX_BUNDLE_BYTES = 64 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 128 * 1024 * 1024
 MAX_ARCHIVE_FILES = 4_096
-_RUNTIME_METADATA_FILE_NAME = "runtime.json"
 _REQUIRED_RUNTIME_FILES = (
     "local_shell_mcp/__init__.py",
     "local_shell_mcp/remote_worker/__init__.py",
     "local_shell_mcp/remote_worker/__main__.py",
     "local_shell_mcp/remote_worker/compat.py",
     "local_shell_mcp/remote_worker/lifecycle.py",
+    "local_shell_mcp/remote_worker/state.py",
     "local_shell_mcp/remote_worker/worker.py",
 )
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _RELEASE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
-
-
-def worker_state_dir() -> Path:
-    """Return the persistent state directory for one worker installation."""
-    configured = os.getenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR")
-    if configured:
-        return Path(configured).expanduser()
-    xdg_state_home = os.getenv("XDG_STATE_HOME")
-    if xdg_state_home:
-        return Path(xdg_state_home).expanduser() / "local-shell-mcp-worker"
-    return Path.home() / ".local" / "state" / "local-shell-mcp-worker"
-
-
-def worker_runtime_dir() -> Path:
-    """Return the atomically replaceable worker runtime directory."""
-    return worker_state_dir() / "runtime"
-
-
-def runtime_metadata_path() -> Path:
-    """Return the persisted worker-runtime metadata path."""
-    return worker_state_dir() / _RUNTIME_METADATA_FILE_NAME
 
 
 def read_runtime_metadata() -> dict[str, Any]:
