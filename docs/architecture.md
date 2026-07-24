@@ -216,12 +216,13 @@ it must not depend on protocol executors, HTTP route adapters, or UI presentatio
 | `terminal/bridge.py` | Owns opaque raw-attachment capabilities, exclusive per-shell bridge leases, bounded base64 stream reads/writes, resize/close behavior, idle expiry, POSIX tmux-attach PTYs, and Windows ConPTY subscriptions. | This lifecycle is shared by local tools, remote-worker RPC adapters, and Human UI HTTP/WebSocket adapters before transport-specific normalization. It belongs with terminal backends rather than UI or worker dispatch. |
 | `terminal/contracts.py` | Defines the shared minimum and maximum rows/columns accepted by persistent shells, raw bridges, and terminal UI adapters. | The limits constrain the terminal domain itself. Keeping them below `ops.shell` prevents backends and adapters from depending on a high-level operation module while preserving `ops.shell` compatibility re-exports. |
 | `terminal/conpty.py` | Implements Windows ConPTY availability, process spawning, persistent-shell state, bounded reads/writes/resizes, raw attachment handles, cleanup, and startup-error classification. | This is a terminal backend consumed by shell operations and the raw terminal bridge. It is not a generic Windows utility, UI route, or executor concern. |
+| `terminal/tmux.py` | Resolves configured or system tmux executables, selects the pinned Linux bundled helper from the package root, validates regular/executable helper files, reports backend diagnostics, and raises actionable persistent-shell errors. | tmux selection is a terminal-backend capability shared by shell operations, raw attachments, tool-session probes, source-only workers, and frozen Linux releases. Release workflows build the helper, but runtime selection belongs to the terminal domain. |
 
 Rejected ownership alternatives:
 
-- top-level `conpty.py` and `terminal_bridge.py`: package-root placement exposed
-  implementation details without identifying the interactive-terminal capability
-  they serve.
+- top-level `conpty.py`, `terminal_bridge.py`, and `tmux_helper.py`: package-root
+  placement exposed implementation details without identifying the interactive-
+  terminal capability they serve.
 - `utils`: ConPTY and bridge registries own stateful process, capability, and
   stream lifecycles rather than reusable stateless helpers.
 - `ops/shell.py`: shell operations select and orchestrate terminal backends; they
@@ -234,7 +235,7 @@ Rejected ownership alternatives:
 The following areas still require the same file-by-file ownership review:
 
 - Human UI core and HTTP adapters.
-- Remaining tmux, audit, release/build, and patch implementation modules
-  currently at package root.
+- Remaining audit, release/build, and patch implementation modules currently
+  at package root.
 - Large stateful modules, which will be split only after package ownership is
   stable and each split has an independent test and CI closure.

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp import tmux_helper
+from local_shell_mcp.terminal import tmux as tmux_helper
 
 
 @pytest.mark.parametrize(
@@ -36,6 +36,23 @@ def _install_helper(root: Path, tag: str = "linux-x86_64") -> Path:
     helper.write_bytes(b"tmux")
     helper.chmod(0o755)
     return helper
+
+
+def test_tmux_package_root_matches_parent_package() -> None:
+    assert (
+        Path(tmux_helper.__file__).resolve().parents[1]
+        == tmux_helper._PACKAGE_ROOT
+    )
+
+
+def test_bundled_tmux_path_uses_explicit_default_package_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _install_helper(tmp_path)
+    monkeypatch.setattr(tmux_helper, "_PACKAGE_ROOT", tmp_path)
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
+
+    assert tmux_helper.bundled_tmux_path() == helper
 
 
 def test_bundled_tmux_path_returns_matching_regular_executable(

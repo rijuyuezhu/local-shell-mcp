@@ -39,7 +39,7 @@ from ..terminal.contracts import (
     PERSISTENT_SHELL_MIN_COLUMNS,
     PERSISTENT_SHELL_MIN_ROWS,
 )
-from ..tmux_helper import require_tmux, resolve_tmux
+from ..terminal.tmux import require_tmux, resolve_tmux
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,

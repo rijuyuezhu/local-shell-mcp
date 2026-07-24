@@ -33,7 +33,7 @@ from local_shell_mcp.schemas.result_models.shell import (
     ListPersistentShellsOutput,
     PersistentShellInfo,
 )
-from local_shell_mcp.tmux_helper import TmuxSelection
+from local_shell_mcp.terminal.tmux import TmuxSelection
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 

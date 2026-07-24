@@ -32,7 +32,7 @@ from ..schemas.result_models.session import (
     SessionWorkspaceEnvironment,
 )
 from ..terminal.conpty import is_available as conpty_available
-from ..tmux_helper import resolve_tmux
+from ..terminal.tmux import resolve_tmux
 from ..version import package_version
 
 _REMOTE_WORKER_RUNTIME_ENV = "LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME"

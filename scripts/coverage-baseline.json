@@ -725,7 +725,7 @@
       "num_statements": 414,
       "percent_covered": 73.320896
     },
-    "src/local_shell_mcp/tmux_helper.py": {
+    "src/local_shell_mcp/terminal/tmux.py": {
       "num_branches": 22,
       "num_statements": 68,
       "percent_covered": 100.0

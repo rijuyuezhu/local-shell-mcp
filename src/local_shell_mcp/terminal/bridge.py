@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from ..config.settings import get_settings
-from ..tmux_helper import require_tmux
 from . import conpty
 from .contracts import (
     PERSISTENT_SHELL_MAX_COLUMNS,
@@ -33,6 +32,7 @@ from .contracts import (
     PERSISTENT_SHELL_MIN_COLUMNS,
     PERSISTENT_SHELL_MIN_ROWS,
 )
+from .tmux import require_tmux
 
 TERMINAL_BRIDGE_MAX_CHUNK_BYTES = 65_536
 TERMINAL_BRIDGE_MAX_WAIT_MS = 1_000

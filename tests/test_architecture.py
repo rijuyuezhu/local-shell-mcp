@@ -301,7 +301,7 @@ def test_terminal_does_not_depend_on_transports_or_ui() -> None:
     )
 
     assert actual == frozenset()
-    for migrated_name in ("conpty.py", "terminal_bridge.py"):
+    for migrated_name in ("conpty.py", "terminal_bridge.py", "tmux_helper.py"):
         assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 

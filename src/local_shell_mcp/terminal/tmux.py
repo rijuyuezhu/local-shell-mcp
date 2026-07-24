@@ -9,9 +9,10 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config.settings import get_settings
+from ..config.settings import get_settings
 
 TMUX_HELPER_VERSION = "3.5a"
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,7 @@ def bundled_tmux_path(*, package_root: Path | None = None) -> Path | None:
     tag = _platform_tag()
     if tag is None:
         return None
-    root = package_root or Path(__file__).resolve().parent
+    root = package_root or _PACKAGE_ROOT
     candidate = root / "helpers" / tag / "tmux"
     try:
         mode = candidate.lstat().st_mode
