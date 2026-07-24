@@ -25,7 +25,7 @@ the enclosing `local-shell-mcp` release version.
 | `ui-opentui/package.json` | `dac1801bc8f6ae034ba092bb780a173f30cd47f343d626f43bb3895df1920238` |
 | `ui-opentui/bun.lock` | `5412a17ab4bbd8695c361f944bf5286302c8635a548643cf7ad2a4653b0ef8b3` |
 | `ui-opentui/scripts/compile-tui.ts` | `5ee587bbf98dbf1023191ea6a256e3693db46cf5173bbe6e52941076808c47ae` |
-| `scripts/build-platform-wheel.py` | `66a3140811c42f1596f1e895a8d4550c1343abaaad8747fa5b419e8ce4c48446` |
+| `scripts/build-platform-wheel.py` | `93968eb5af540f686cb83dc572b8c8445603b0ff0a540dafd676d3c1fa8010a5` |
 | `scripts/smoke-platform-wheel.py` | `8c4b48d29850bfd532636c4afd11d747bd671cee3d696c41f3b4533198a3f653` |
 | `src/local_shell_mcp/helpers/opentui.NOTICES` | `73d026453521d235c1df46f2dcf90943661258695e8eed87ba2c91e7caa03e61` |
 | `src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md` | `2c6160ec8fb853f7e8f97d9b249e756c9b0ac44860a68b6bf4f1b0bcbc5c3741` |

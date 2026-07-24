@@ -117,7 +117,7 @@ jobs:
           uv run python - <<'PY'
           from pathlib import Path
 
-          from local_shell_mcp.platform_wheel import inspect_sdist, inspect_wheel
+          from local_shell_mcp.release.platform_wheel import inspect_sdist, inspect_wheel
 
           wheels = list(Path("dist").glob("*.whl"))
           sdists = list(Path("dist").glob("*.tar.gz"))

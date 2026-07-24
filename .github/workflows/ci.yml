@@ -264,7 +264,7 @@ jobs:
           uv run python - <<'PY'
           from pathlib import Path
 
-          from local_shell_mcp.platform_wheel import inspect_sdist, inspect_wheel
+          from local_shell_mcp.release.platform_wheel import inspect_sdist, inspect_wheel
 
           wheels = list(Path("dist").glob("*.whl"))
           sdists = list(Path("dist").glob("*.tar.gz"))
@@ -321,7 +321,7 @@ jobs:
           import os
           from pathlib import Path
 
-          from local_shell_mcp.platform_wheel import inspect_wheel
+          from local_shell_mcp.release.platform_wheel import inspect_wheel
 
           inspect_wheel(Path(os.environ["REBUILT_WHEEL"]), target=None)
           PY

@@ -343,6 +343,17 @@ def test_patch_mechanics_stay_below_delivery_layers() -> None:
     assert not (_PACKAGE_ROOT / "patch_ops.py").exists()
 
 
+def test_release_does_not_depend_on_runtime_layers() -> None:
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.release")
+    )
+
+    assert actual == frozenset()
+    assert not (_PACKAGE_ROOT / "platform_wheel.py").exists()
+
+
 def test_terminal_uses_only_explicit_low_level_ops_helpers() -> None:
     actual = frozenset(
         (importer, target)
@@ -390,7 +401,7 @@ def test_executor_ownership_map_covers_every_file() -> None:
 
 
 def test_owned_domain_maps_cover_every_file() -> None:
-    for package in ("audit", "telemetry", "terminal", "ui"):
+    for package in ("audit", "release", "telemetry", "terminal", "ui"):
         _assert_ownership_map_covers(
             {
                 str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")

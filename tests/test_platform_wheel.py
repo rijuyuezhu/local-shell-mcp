@@ -16,7 +16,7 @@ from zipfile import ZIP_STORED
 import pytest
 from wheel.wheelfile import WheelFile
 
-from local_shell_mcp import platform_wheel as pw
+from local_shell_mcp.release import platform_wheel as pw
 
 
 def _executable(

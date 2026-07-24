@@ -270,11 +270,30 @@ Rejected ownership alternatives:
   rendering are cohesive patch-domain policy rather than generally reusable
   helpers.
 
+## `release`: artifact construction and verification
+
+The `release` package owns build-time artifact assembly and validation. It is
+outside runtime execution paths and must not depend on executors, HTTP/UI layers,
+terminal runtime state, remote workers, or tool operations.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `release/__init__.py` | Declares the release/build infrastructure boundary. | It distinguishes artifact construction code from runtime package APIs and leaves room for future release-only helpers without returning them to package root. |
+| `release/platform_wheel.py` | Maps platform tags to native targets, verifies host and executable formats, compiles or stages OpenTUI payloads, rewrites deterministic wheels and metadata, regenerates RECORD, inspects wheels/sdists, serializes concurrent builds, and exposes the platform-wheel CLI. | These operations create and validate distributable artifacts; they are not runtime UI, terminal, packaging utility, or executor behavior. |
+
+Rejected ownership alternatives:
+
+- top-level `platform_wheel.py`: package-root placement made release tooling look
+  like a runtime capability.
+- `ui` or `terminal`: those packages consume the native assets at runtime, while
+  release code constructs and proves the distributable payloads.
+- `utils`: wheel metadata, binary format validation, deterministic archives, and
+  release locking form one build-time domain rather than general helpers.
+
 ## Ownership review status
 
 The following areas still require the same file-by-file ownership review:
 
 - Human UI core and HTTP adapters.
-- Remaining release/build implementation currently at package root.
 - Large stateful modules, which will be split only after package ownership is
   stable and each split has an independent test and CI closure.
