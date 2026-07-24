@@ -200,7 +200,7 @@ async def test_worker_dispatches_persistent_shell_start(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_worker_dispatches_terminal_bridge_lifecycle(monkeypatch):
-    import local_shell_mcp.terminal_bridge as bridge_ops
+    import local_shell_mcp.terminal.bridge as bridge_ops
     from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
 
     calls = []

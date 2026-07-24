@@ -24,7 +24,6 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "audit_payloads.py",
     "patch_ops.py",
     "errors.py",
-    "terminal_bridge.py",
     "tmux_helper.py",
     "version.py",
     "agent_bridge/__init__.py",

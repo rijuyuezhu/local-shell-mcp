@@ -213,23 +213,28 @@ it must not depend on protocol executors, HTTP route adapters, or UI presentatio
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
 | `terminal/__init__.py` | Declares the cross-platform interactive-terminal capability boundary. | It gives ConPTY, raw attachment, and tmux helper code one explicit domain rather than leaving platform implementations at package root. |
+| `terminal/bridge.py` | Owns opaque raw-attachment capabilities, exclusive per-shell bridge leases, bounded base64 stream reads/writes, resize/close behavior, idle expiry, POSIX tmux-attach PTYs, and Windows ConPTY subscriptions. | This lifecycle is shared by local tools, remote-worker RPC adapters, and Human UI HTTP/WebSocket adapters before transport-specific normalization. It belongs with terminal backends rather than UI or worker dispatch. |
+| `terminal/contracts.py` | Defines the shared minimum and maximum rows/columns accepted by persistent shells, raw bridges, and terminal UI adapters. | The limits constrain the terminal domain itself. Keeping them below `ops.shell` prevents backends and adapters from depending on a high-level operation module while preserving `ops.shell` compatibility re-exports. |
 | `terminal/conpty.py` | Implements Windows ConPTY availability, process spawning, persistent-shell state, bounded reads/writes/resizes, raw attachment handles, cleanup, and startup-error classification. | This is a terminal backend consumed by shell operations and the raw terminal bridge. It is not a generic Windows utility, UI route, or executor concern. |
 
 Rejected ownership alternatives:
 
-- top-level `conpty.py`: package-root placement exposed an implementation detail
-  without identifying the interactive-terminal capability it serves.
-- `utils`: ConPTY owns stateful process and stream lifecycles, not reusable
-  stateless platform helpers.
-- `ops/shell.py`: shell operations select and orchestrate backends; they should
-  not own the Windows terminal-emulation implementation.
+- top-level `conpty.py` and `terminal_bridge.py`: package-root placement exposed
+  implementation details without identifying the interactive-terminal capability
+  they serve.
+- `utils`: ConPTY and bridge registries own stateful process, capability, and
+  stream lifecycles rather than reusable stateless helpers.
+- `ops/shell.py`: shell operations select and orchestrate terminal backends; they
+  should not own backend implementations or shared terminal-dimension contracts.
+- `ui/http`: Human UI adapters consume raw bridges, but the same lifecycle is
+  also used by local tools and source-only remote workers before HTTP delivery.
 
 ## Ownership review status
 
 The following areas still require the same file-by-file ownership review:
 
 - Human UI core and HTTP adapters.
-- Remaining terminal bridge/tmux, audit, release/build, and patch implementation
-  modules currently at package root.
+- Remaining tmux, audit, release/build, and patch implementation modules
+  currently at package root.
 - Large stateful modules, which will be split only after package ownership is
   stable and each split has an independent test and CI closure.

@@ -100,7 +100,7 @@ async def _run_python_code(args: dict[str, Any]) -> Any:
 
 
 async def _open_terminal_bridge(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.terminal_bridge import open_terminal_bridge_execute
+    from local_shell_mcp.terminal.bridge import open_terminal_bridge_execute
 
     return await open_terminal_bridge_execute(
         str(args["shell_id"]),
@@ -110,7 +110,7 @@ async def _open_terminal_bridge(args: dict[str, Any]) -> Any:
 
 
 async def _read_terminal_bridge(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.terminal_bridge import read_terminal_bridge_execute
+    from local_shell_mcp.terminal.bridge import read_terminal_bridge_execute
 
     return await read_terminal_bridge_execute(
         str(args["bridge_id"]),
@@ -120,7 +120,7 @@ async def _read_terminal_bridge(args: dict[str, Any]) -> Any:
 
 
 async def _write_terminal_bridge(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.terminal_bridge import write_terminal_bridge_execute
+    from local_shell_mcp.terminal.bridge import write_terminal_bridge_execute
 
     return await write_terminal_bridge_execute(
         str(args["bridge_id"]),
@@ -129,7 +129,7 @@ async def _write_terminal_bridge(args: dict[str, Any]) -> Any:
 
 
 async def _resize_terminal_bridge(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.terminal_bridge import resize_terminal_bridge_execute
+    from local_shell_mcp.terminal.bridge import resize_terminal_bridge_execute
 
     return await resize_terminal_bridge_execute(
         str(args["bridge_id"]),
@@ -139,7 +139,7 @@ async def _resize_terminal_bridge(args: dict[str, Any]) -> Any:
 
 
 async def _close_terminal_bridge(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.terminal_bridge import close_terminal_bridge_execute
+    from local_shell_mcp.terminal.bridge import close_terminal_bridge_execute
 
     return await close_terminal_bridge_execute(str(args["bridge_id"]))
 

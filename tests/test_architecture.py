@@ -284,7 +284,6 @@ def test_ui_core_does_not_depend_on_executors_or_http_adapters() -> None:
         "ui_security.py",
     ):
         assert not (_PACKAGE_ROOT / migrated_name).exists()
-    assert not (_PACKAGE_ROOT / "conpty.py").exists()
 
 
 def test_terminal_does_not_depend_on_transports_or_ui() -> None:
@@ -302,6 +301,26 @@ def test_terminal_does_not_depend_on_transports_or_ui() -> None:
     )
 
     assert actual == frozenset()
+    for migrated_name in ("conpty.py", "terminal_bridge.py"):
+        assert not (_PACKAGE_ROOT / migrated_name).exists()
+
+
+def test_terminal_uses_only_explicit_low_level_ops_helpers() -> None:
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.terminal")
+        and target.startswith(f"{_PACKAGE_NAME}.ops.")
+    )
+
+    assert actual == frozenset(
+        {
+            (
+                f"{_PACKAGE_NAME}.terminal.conpty",
+                f"{_PACKAGE_NAME}.ops.utils.path",
+            )
+        }
+    )
 
 
 def _assert_ownership_map_covers(paths: set[str]) -> None:

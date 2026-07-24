@@ -22,7 +22,7 @@ from ...schemas.result_models.remote import (
     RemoteAdminOutput,
     RemoteWorkerToolOutput,
 )
-from ...terminal_bridge import (
+from ...terminal.bridge import (
     close_terminal_bridge_execute,
     open_terminal_bridge_execute,
     read_terminal_bridge_execute,

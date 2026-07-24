@@ -715,15 +715,15 @@
       "num_statements": 136,
       "percent_covered": 91.860465
     },
+    "src/local_shell_mcp/terminal/bridge.py": {
+      "num_branches": 86,
+      "num_statements": 320,
+      "percent_covered": 77.093596
+    },
     "src/local_shell_mcp/terminal/conpty.py": {
       "num_branches": 122,
       "num_statements": 414,
       "percent_covered": 73.320896
-    },
-    "src/local_shell_mcp/terminal_bridge.py": {
-      "num_branches": 86,
-      "num_statements": 320,
-      "percent_covered": 77.093596
     },
     "src/local_shell_mcp/tmux_helper.py": {
       "num_branches": 22,

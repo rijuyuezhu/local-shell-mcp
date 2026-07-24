@@ -33,6 +33,12 @@ from ..schemas.result_models.shell import (
     StartPersistentShellOutput,
 )
 from ..terminal import conpty
+from ..terminal.contracts import (
+    PERSISTENT_SHELL_MAX_COLUMNS,
+    PERSISTENT_SHELL_MAX_ROWS,
+    PERSISTENT_SHELL_MIN_COLUMNS,
+    PERSISTENT_SHELL_MIN_ROWS,
+)
 from ..tmux_helper import require_tmux, resolve_tmux
 from ..tool_session.store import (
     get_tool_session_store,
@@ -60,10 +66,6 @@ SHELL_TIMEOUT_CLEANUP_GRACE_S = (
 SHELL_TIMEOUT_CLEANUP_TOOL_NAMES = frozenset({"bash", "run_python_code"})
 INTERNAL_SHELL_DEFAULT_TIMEOUT_S = 60
 INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
-PERSISTENT_SHELL_MIN_COLUMNS = 20
-PERSISTENT_SHELL_MAX_COLUMNS = 1600
-PERSISTENT_SHELL_MIN_ROWS = 3
-PERSISTENT_SHELL_MAX_ROWS = 500
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
 _COMMAND_SEMAPHORE_SIZE: int | None = None
 

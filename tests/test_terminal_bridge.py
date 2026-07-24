@@ -10,9 +10,9 @@ from typing import Any, cast
 
 import pytest
 
-import local_shell_mcp.terminal_bridge as bridge_module
+import local_shell_mcp.terminal.bridge as bridge_module
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.terminal_bridge import (
+from local_shell_mcp.terminal.bridge import (
     TERMINAL_BRIDGE_BACKEND,
     TerminalBridgeBusyError,
     TerminalBridgeNotFoundError,

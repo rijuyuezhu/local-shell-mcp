@@ -31,10 +31,6 @@ from ...oauth.core.scopes import (
 )
 from ...oauth.protocol.token_codec import validate_bearer_token
 from ...ops.shell import (
-    PERSISTENT_SHELL_MAX_COLUMNS,
-    PERSISTENT_SHELL_MAX_ROWS,
-    PERSISTENT_SHELL_MIN_COLUMNS,
-    PERSISTENT_SHELL_MIN_ROWS,
     kill_persistent_shell_execute,
     list_persistent_shells_execute,
     read_persistent_shell_output_execute,
@@ -51,7 +47,7 @@ from ...schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
-from ...terminal_bridge import (
+from ...terminal.bridge import (
     TERMINAL_BRIDGE_BACKENDS,
     TERMINAL_BRIDGE_MAX_CHUNK_BYTES,
     TerminalBridgeBusyError,
@@ -62,6 +58,12 @@ from ...terminal_bridge import (
     read_terminal_bridge_execute,
     resize_terminal_bridge_execute,
     write_terminal_bridge_execute,
+)
+from ...terminal.contracts import (
+    PERSISTENT_SHELL_MAX_COLUMNS,
+    PERSISTENT_SHELL_MAX_ROWS,
+    PERSISTENT_SHELL_MIN_COLUMNS,
+    PERSISTENT_SHELL_MIN_ROWS,
 )
 from .ui_common import (
     bounded_text as _bounded_text,
