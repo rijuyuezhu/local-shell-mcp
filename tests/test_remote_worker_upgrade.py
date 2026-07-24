@@ -389,6 +389,9 @@ def test_fetch_bytes_bypasses_cache_and_rejects_cross_origin(monkeypatch):
     assert result == b"ok"
     assert request.get_header("Cache-control") == "no-cache"
     assert request.get_header("Pragma") == "no-cache"
+    assert request.get_header("User-agent") == (
+        f"local-shell-mcp-worker/{runtime.__version__}"
+    )
     assert captured["read_size"] == 3
 
     with pytest.raises(ValueError, match="controller origin"):
@@ -397,6 +400,39 @@ def test_fetch_bytes_bypasses_cache_and_rejects_cross_origin(monkeypatch):
             server="https://controller.test",
             timeout=12,
             max_bytes=2,
+        )
+
+
+def test_worker_update_redirect_preserves_user_agent_and_origin():
+    from local_shell_mcp.remote_worker import runtime
+
+    user_agent = f"local-shell-mcp-worker/{runtime.__version__}"
+    request = urllib.request.Request(
+        "https://controller.test/manifest",
+        headers={"User-Agent": user_agent},
+    )
+    handler = runtime._SameOriginRedirectHandler("https://controller.test")
+
+    redirected = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        {},
+        "/bundle",
+    )
+    assert redirected is not None
+    assert redirected.full_url == "https://controller.test/bundle"
+    assert redirected.get_header("User-agent") == user_agent
+
+    with pytest.raises(ValueError, match="controller origin"):
+        handler.redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://attacker.test/bundle",
         )
 
 

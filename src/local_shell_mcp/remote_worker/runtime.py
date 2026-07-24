@@ -19,6 +19,7 @@ import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .. import __version__
 from ..remote.constants import (
     REMOTE_WORKER_MANIFEST_PATH,
     REMOTE_WORKER_POLL_PROTOCOL_VERSION,
@@ -173,7 +174,11 @@ def _fetch_bytes(
         raise ValueError("worker upgrade URL must remain on controller origin")
     request = urllib.request.Request(
         url,
-        headers={"Cache-Control": "no-cache", "Pragma": "no-cache"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "User-Agent": f"local-shell-mcp-worker/{__version__}",
+        },
     )
     opener = urllib.request.build_opener(_SameOriginRedirectHandler(server))
     with opener.open(request, timeout=timeout) as response:
