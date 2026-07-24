@@ -112,9 +112,11 @@ direction explicit when adding features or moving code:
 - `tools` owns public tool contracts, discovery, metadata, and registration.
 - `http` owns executor-neutral Starlette/ASGI infrastructure shared by REST and
   MCP-over-HTTP. It must not import an executor or Human UI implementation.
-- `server/http` and `server/mcp` are transitional executor locations while the
-  package restructure moves them to `executors/http` and `executors/mcp`.
-  Lower layers must not import either location.
+- `executors/mcp` owns MCP composition, MCP-specific middleware, and stdio or
+  MCP-over-HTTP runtime selection.
+- `server/http` is the remaining transitional REST/UI location while the package
+  restructure moves REST execution to `executors/http` and UI delivery to `ui`.
+  Lower layers must not import executors or the transitional package.
 - `main` is the process-composition entry point and is allowed to select
   executors.
 

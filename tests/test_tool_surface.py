@@ -8,13 +8,13 @@ from mcp.server.fastmcp.exceptions import ToolError
 import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp import __version__
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_NAMES,
     REMOTE_WORKER_TOOL_SPECS,
 )
 from local_shell_mcp.remote_worker.worker import WORKER_TOOL_NAMES
 from local_shell_mcp.server.http.app import build_http_app
-from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tools.contracts import (
     HttpMethod,
     HttpToolRoute,

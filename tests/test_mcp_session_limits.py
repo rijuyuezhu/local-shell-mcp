@@ -5,8 +5,10 @@ from fastapi.testclient import TestClient
 from starlette.types import Message, Receive, Scope, Send
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp, build_mcp_http_app
-from local_shell_mcp.server.mcp.session_limits import McpSessionLimitMiddleware
+from local_shell_mcp.executors.mcp.app import build_mcp, build_mcp_http_app
+from local_shell_mcp.executors.mcp.session_limits import (
+    McpSessionLimitMiddleware,
+)
 
 
 def _initialize_payload() -> dict[str, object]:

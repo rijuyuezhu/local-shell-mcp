@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.server.http.app import build_http_app
-from local_shell_mcp.server.mcp.app import build_mcp
 from tests.helpers import mcp_text
 
 

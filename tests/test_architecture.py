@@ -8,11 +8,16 @@ _PACKAGE_ROOT = Path(__file__).parents[1] / "src" / "local_shell_mcp"
 _PACKAGE_NAME = "local_shell_mcp"
 _ARCHITECTURE_DOC = Path(__file__).parents[1] / "docs" / "architecture.md"
 
-# `main` is the process-composition entry point and may import transport adapters.
+# `main` is the process-composition entry point and may import executors and the
+# transitional REST/UI package while the server restructure is incomplete.
 _ALLOWED_NON_SERVER_TO_SERVER_IMPORTS = frozenset(
     {
         ("local_shell_mcp.main", "local_shell_mcp.server.http.app"),
-        ("local_shell_mcp.main", "local_shell_mcp.server.mcp.app"),
+    }
+)
+_ALLOWED_NON_EXECUTOR_TO_EXECUTOR_IMPORTS = frozenset(
+    {
+        ("local_shell_mcp.main", "local_shell_mcp.executors.mcp.app"),
     }
 )
 
@@ -173,6 +178,33 @@ def test_server_transport_imports_match_explicit_architecture_debt() -> None:
     )
 
     assert actual == _ALLOWED_NON_SERVER_TO_SERVER_IMPORTS
+    assert not (_PACKAGE_ROOT / "server" / "mcp").exists()
+
+
+def test_executor_imports_match_explicit_process_composition() -> None:
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if target.startswith(f"{_PACKAGE_NAME}.executors.")
+        and not importer.startswith(f"{_PACKAGE_NAME}.executors.")
+    )
+
+    assert actual == _ALLOWED_NON_EXECUTOR_TO_EXECUTOR_IMPORTS
+
+
+def test_mcp_executor_does_not_depend_on_transitional_server_or_ui() -> None:
+    forbidden_prefixes = (
+        f"{_PACKAGE_NAME}.server.",
+        f"{_PACKAGE_NAME}.ui.",
+    )
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.executors.mcp")
+        and target.startswith(forbidden_prefixes)
+    )
+
+    assert actual == frozenset()
 
 
 def test_http_infrastructure_does_not_depend_on_executors_or_ui() -> None:
@@ -192,16 +224,26 @@ def test_http_infrastructure_does_not_depend_on_executors_or_ui() -> None:
     assert not (_PACKAGE_ROOT / "server" / "shared").exists()
 
 
-def test_http_module_ownership_map_covers_every_file() -> None:
+def _assert_ownership_map_covers(paths: set[str]) -> None:
     documentation = _ARCHITECTURE_DOC.read_text(encoding="utf-8")
-    expected_paths = {
-        f"http/{path.name}" for path in (_PACKAGE_ROOT / "http").glob("*.py")
-    }
 
-    assert expected_paths
-    assert {
-        path for path in expected_paths if f"`{path}`" not in documentation
-    } == set()
+    assert paths
+    assert {path for path in paths if f"`{path}`" not in documentation} == set()
+
+
+def test_http_module_ownership_map_covers_every_file() -> None:
+    _assert_ownership_map_covers(
+        {f"http/{path.name}" for path in (_PACKAGE_ROOT / "http").glob("*.py")}
+    )
+
+
+def test_mcp_executor_ownership_map_covers_every_file() -> None:
+    paths = {"executors/__init__.py"}
+    paths.update(
+        f"executors/mcp/{path.name}"
+        for path in (_PACKAGE_ROOT / "executors" / "mcp").glob("*.py")
+    )
+    _assert_ownership_map_covers(paths)
 
 
 def test_dependency_cycles_match_explicit_architecture_debt() -> None:

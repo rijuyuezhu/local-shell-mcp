@@ -31,10 +31,10 @@ local_shell_mcp/
   utils/                   small dependency-leaf technical primitives
 ```
 
-The repository is being migrated to this structure incrementally. Until the
-package moves are complete, `server/http` and `server/mcp` remain transitional
-executor locations. New domain code must not depend on those transitional
-packages.
+The repository is being migrated to this structure incrementally. The MCP
+executor now lives in its final `executors/mcp` package. `server/http` remains a
+transitional REST/UI location until the later executor and UI moves complete.
+New domain code must not depend on the transitional package.
 
 General rules:
 
@@ -48,6 +48,37 @@ General rules:
   executors or UI HTTP adapters.
 - `utils` is for small dependency-leaf technical primitives, not a holding area
   for domain algorithms or large workflows.
+
+## `executors/mcp`: MCP protocol executor
+
+The `executors/mcp` package owns framework-specific MCP composition and runtime
+policy. It converts transport-neutral tool registries and shared services into a
+FastMCP server, then runs that server over stdio or wraps the MCP SDK's ASGI app
+for HTTP delivery.
+
+Allowed dependencies include tools, operations, OAuth adapters, remote route
+contributions, executor-neutral `http` infrastructure, audit recording, and MCP
+SDK types. Lower-level packages must not import this executor. The process entry
+point is the only production module outside `executors` that imports it.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `executors/__init__.py` | Declares protocol executors as the application boundary that exposes local capabilities. | It names the layer without exporting a global executor registry or service locator. |
+| `executors/mcp/__init__.py` | Declares the MCP executor and MCP-specific adapter boundary. | The marker separates protocol execution from transport-neutral tools and shared HTTP infrastructure. |
+| `executors/mcp/app.py` | Registers tool registries with FastMCP, installs MCP policies, builds authenticated MCP-over-HTTP ASGI wrappers, and launches stdio or HTTP execution. | These decisions compose the MCP SDK and choose MCP runtime modes; they are executor behavior, not reusable HTTP infrastructure or tool business logic. |
+| `executors/mcp/instructions.py` | Stores the exact server instructions advertised to MCP clients and exported to generated reference documentation. | The text is an MCP presentation contract. It is not a generic application prompt and should change only with MCP-facing workflow semantics. |
+| `executors/mcp/session_limits.py` | Limits creation of stateful Streamable HTTP MCP sessions and audits capacity rejection. | The middleware understands MCP session IDs and SDK session-manager internals, so it is MCP-specific rather than general ASGI infrastructure. |
+| `executors/mcp/transport_security.py` | Derives MCP SDK Host/Origin allowlists and DNS-rebinding protection from configured public URLs. | It adapts application settings to the MCP SDK's transport-security model; generic OAuth and HTTP security remain in their own packages. |
+| `executors/mcp/watchdogs.py` | Wraps MCP tool functions with audit context, timeout enforcement, structured timeout behavior, and result/error recording. | The wrapper targets FastMCP tool objects and MCP error presentation while delegating timeout values and handler behavior to transport-neutral layers. |
+
+Rejected ownership alternatives:
+
+- `server/mcp`: “server” obscures that this is one selectable executor beside
+  REST/tool HTTP execution and Human UI delivery.
+- `http`: stdio execution, FastMCP registration, MCP sessions, and MCP tool
+  wrappers are protocol-executor concerns, not shared HTTP infrastructure.
+- `tools`: tool declarations are transport-neutral; FastMCP registration and
+  MCP-specific presentation must depend on tools, not the reverse.
 
 ## `http`: executor-neutral HTTP infrastructure
 
@@ -82,7 +113,7 @@ Rejected ownership alternatives:
 
 The following areas still require the same file-by-file ownership review:
 
-- MCP and REST executor packages.
+- REST executor package.
 - Human UI core and HTTP adapters.
 - Terminal, audit, release/build, and patch implementation modules currently at
   package root.

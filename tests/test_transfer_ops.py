@@ -13,6 +13,7 @@ import pytest
 
 import local_shell_mcp.ops.transfer as transfer_ops
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.ops.transfer import (
     transfer_abort_write,
     transfer_alloc_temp_path,
@@ -24,7 +25,6 @@ from local_shell_mcp.ops.transfer import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
-from local_shell_mcp.server.mcp.app import build_mcp
 
 
 def _workspace(tmp_path, monkeypatch):

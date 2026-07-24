@@ -8,10 +8,10 @@ from fastapi.testclient import TestClient
 from starlette.applications import Starlette
 
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.mcp.app import _add_public_routes_to_mcp_http_app
 from local_shell_mcp.oauth.core import service as oauth_service
 from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES, OAuthClient
 from local_shell_mcp.oauth.core.requests import RegistrationRequest
-from local_shell_mcp.server.mcp.app import _add_public_routes_to_mcp_http_app
 
 BASE_URL = "https://local-shell-mcp.example.com"
 REDIRECT_A = "https://client.example/callback-a"

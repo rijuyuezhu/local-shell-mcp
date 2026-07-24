@@ -9,7 +9,7 @@ from mcp.types import CallToolResult, ImageContent, TextContent
 
 import local_shell_mcp.ops.image as image_ops
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 PNG_BYTES = base64.b64decode(

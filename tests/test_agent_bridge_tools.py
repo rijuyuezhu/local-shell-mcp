@@ -6,7 +6,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.tools.registry import agent as tools_module
 from tests.helpers import mcp_text
 

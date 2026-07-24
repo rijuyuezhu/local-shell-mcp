@@ -5,7 +5,7 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-import local_shell_mcp.server.mcp.app as mcp_app
+import local_shell_mcp.executors.mcp.app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
 from local_shell_mcp.oauth.http.middleware import AuthMiddleware
 

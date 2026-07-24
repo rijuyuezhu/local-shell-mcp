@@ -9,6 +9,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 import local_shell_mcp.ops.shell as shell_ops
 import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.ops.shell import (
     SHELL_TIMEOUT_CLEANUP_GRACE_S,
     _shared_tail_bytes,
@@ -26,7 +27,6 @@ from local_shell_mcp.ops.shell import (
 )
 from local_shell_mcp.schemas.result_models.shell import CommandResult
 from local_shell_mcp.server.http.app import build_http_app
-from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import files as fs_tools_module
 from tests.helpers import (

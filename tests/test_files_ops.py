@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.ops.files import (
     delete_file_or_dir_execute,
     edit_file_execute,
@@ -22,7 +23,6 @@ from local_shell_mcp.ops.files import (
 from local_shell_mcp.ops.shell import check_command_policy
 from local_shell_mcp.ops.utils.path import resolve_path
 from local_shell_mcp.schemas.input_models.files import ReadFileRequest
-from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from tests.helpers import nested_mcp_text
 

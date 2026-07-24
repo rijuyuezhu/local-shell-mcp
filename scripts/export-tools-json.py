@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp
-from local_shell_mcp.server.mcp.instructions import SERVER_INSTRUCTIONS
+from local_shell_mcp.executors.mcp.app import build_mcp
+from local_shell_mcp.executors.mcp.instructions import SERVER_INSTRUCTIONS
 from local_shell_mcp.tools.declarative import DeclarativeToolRegistry
 from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.utils.serialization import to_jsonable

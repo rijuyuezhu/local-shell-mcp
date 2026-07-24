@@ -85,6 +85,36 @@
       "num_statements": 159,
       "percent_covered": 65.024631
     },
+    "src/local_shell_mcp/executors/mcp/__init__.py": {
+      "num_branches": 0,
+      "num_statements": 0,
+      "percent_covered": 100.0
+    },
+    "src/local_shell_mcp/executors/mcp/app.py": {
+      "num_branches": 16,
+      "num_statements": 72,
+      "percent_covered": 92.045455
+    },
+    "src/local_shell_mcp/executors/mcp/instructions.py": {
+      "num_branches": 0,
+      "num_statements": 1,
+      "percent_covered": 100.0
+    },
+    "src/local_shell_mcp/executors/mcp/session_limits.py": {
+      "num_branches": 14,
+      "num_statements": 42,
+      "percent_covered": 94.642857
+    },
+    "src/local_shell_mcp/executors/mcp/transport_security.py": {
+      "num_branches": 12,
+      "num_statements": 38,
+      "percent_covered": 90.0
+    },
+    "src/local_shell_mcp/executors/mcp/watchdogs.py": {
+      "num_branches": 16,
+      "num_statements": 59,
+      "percent_covered": 92.0
+    },
     "src/local_shell_mcp/http/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
@@ -699,41 +729,6 @@
       "num_branches": 36,
       "num_statements": 136,
       "percent_covered": 91.860465
-    },
-    "src/local_shell_mcp/server/mcp/__init__.py": {
-      "num_branches": 0,
-      "num_statements": 0,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/mcp/app.py": {
-      "num_branches": 16,
-      "num_statements": 72,
-      "percent_covered": 92.045455
-    },
-    "src/local_shell_mcp/server/mcp/instructions.py": {
-      "num_branches": 0,
-      "num_statements": 1,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/mcp/metadata.py": {
-      "num_branches": 4,
-      "num_statements": 23,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/mcp/session_limits.py": {
-      "num_branches": 14,
-      "num_statements": 42,
-      "percent_covered": 94.642857
-    },
-    "src/local_shell_mcp/server/mcp/transport_security.py": {
-      "num_branches": 12,
-      "num_statements": 38,
-      "percent_covered": 90.0
-    },
-    "src/local_shell_mcp/server/mcp/watchdogs.py": {
-      "num_branches": 16,
-      "num_statements": 59,
-      "percent_covered": 92.0
     },
     "src/local_shell_mcp/terminal_bridge.py": {
       "num_branches": 86,

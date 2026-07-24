@@ -20,6 +20,7 @@ from local_shell_mcp.errors import (
     tool_error_payload,
     workspace_path_not_found_error,
 )
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.ops.session import session_start_execute
 from local_shell_mcp.ops.utils.path import resolve_path
 from local_shell_mcp.ops.utils.remote_session import _remote_result_data
@@ -32,7 +33,6 @@ from local_shell_mcp.schemas.result_models.shell import (
     PersistentShellInfo,
 )
 from local_shell_mcp.server.http.app import build_http_app
-from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tmux_helper import TmuxSelection
 from local_shell_mcp.tool_session.store import get_tool_session_store
 

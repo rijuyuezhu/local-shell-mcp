@@ -8,7 +8,7 @@ import local_shell_mcp.ops.search as search_ops
 import local_shell_mcp.ops.session as session_ops
 import local_shell_mcp.ops.shell as shell_ops
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from tests.helpers import mcp_structured
 
