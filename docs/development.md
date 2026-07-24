@@ -116,10 +116,10 @@ direction explicit when adding features or moving code:
   MCP-over-HTTP runtime selection.
 - `executors/http` owns REST tool routes, REST error and timeout policy, and the
   runnable FastAPI application.
-- `server/http` is now only the transitional Human UI HTTP adapter location while
-  UI delivery moves to `ui/http`. The REST executor's one import of its route
-  contribution is explicit architecture debt. Lower layers must not import
-  executors or the transitional package.
+- `ui/http` owns Human UI HTTP and WebSocket adapters. The REST executor may
+  import only its explicit route-composition contract; lower layers must not
+  import executors or UI delivery adapters. The obsolete `server` package has
+  been removed and must not be restored.
 - `main` is the process-composition entry point and is allowed to select
   executors.
 
@@ -130,9 +130,9 @@ Avoid generic service locators: extract small dependency-leaf contracts and
 explicit facades instead. See [Architecture and module ownership](architecture.md)
 for the file-by-file ownership map and rejected placement alternatives.
 
-`tests/test_architecture.py` enforces current dependency cycles, transitional
-executor imports, and dependency-leaf package boundaries. Its allowlists are
-visible technical debt, not extension points: when a cycle or reversed import is
+`tests/test_architecture.py` enforces current dependency cycles, explicit
+executor/UI composition imports, and dependency-leaf package boundaries. Its
+allowlists are visible technical debt, not extension points: when a cycle or reversed import is
 removed, shrink the allowlist in the same change. New entries require an explicit
 architecture review.
 

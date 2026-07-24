@@ -10,7 +10,6 @@ _ARCHITECTURE_DOC = Path(__file__).parents[1] / "docs" / "architecture.md"
 
 # `main` is the process-composition entry point and may import executors. The
 # REST executor consumes exactly one Human UI HTTP route-composition contract.
-_ALLOWED_NON_SERVER_TO_SERVER_IMPORTS = frozenset()
 _ALLOWED_HTTP_EXECUTOR_UI_IMPORTS = frozenset(
     {
         (
@@ -174,18 +173,25 @@ def _dependency_cycles() -> frozenset[frozenset[str]]:
     return frozenset(cycles)
 
 
-def test_server_transport_imports_match_explicit_architecture_debt() -> None:
+def test_server_package_is_removed_and_cannot_be_imported() -> None:
     actual = frozenset(
         (importer, target)
         for importer, target in _local_imports()
-        if target.startswith(f"{_PACKAGE_NAME}.server.")
-        and not importer.startswith(f"{_PACKAGE_NAME}.server.")
+        if target == f"{_PACKAGE_NAME}.server"
+        or target.startswith(f"{_PACKAGE_NAME}.server.")
     )
 
-    assert actual == _ALLOWED_NON_SERVER_TO_SERVER_IMPORTS
-    assert not (_PACKAGE_ROOT / "server" / "mcp").exists()
-    for name in ("app.py", "errors.py", "invocations.py", "tool_routes.py"):
-        assert not (_PACKAGE_ROOT / "server" / "http" / name).exists()
+    assert actual == frozenset()
+    assert not (_PACKAGE_ROOT / "server").exists()
+
+
+def test_package_root_contains_only_process_contracts() -> None:
+    assert {path.name for path in _PACKAGE_ROOT.glob("*.py")} == {
+        "__init__.py",
+        "errors.py",
+        "main.py",
+        "version.py",
+    }
 
 
 def test_executor_imports_match_explicit_process_composition() -> None:
@@ -199,7 +205,7 @@ def test_executor_imports_match_explicit_process_composition() -> None:
     assert actual == _ALLOWED_NON_EXECUTOR_TO_EXECUTOR_IMPORTS
 
 
-def test_mcp_executor_does_not_depend_on_transitional_server_or_ui() -> None:
+def test_mcp_executor_does_not_depend_on_ui_delivery() -> None:
     forbidden_prefixes = (
         f"{_PACKAGE_NAME}.server.",
         f"{_PACKAGE_NAME}.ui.",
@@ -285,21 +291,15 @@ def test_ui_core_does_not_depend_on_executors_or_http_adapters() -> None:
         assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
-def test_ui_http_does_not_depend_on_executors_or_transitional_server() -> None:
-    forbidden_prefixes = (
-        f"{_PACKAGE_NAME}.executors.",
-        f"{_PACKAGE_NAME}.server.",
-    )
+def test_ui_http_does_not_depend_on_executors() -> None:
     actual = frozenset(
         (importer, target)
         for importer, target in _local_imports()
         if importer.startswith(f"{_PACKAGE_NAME}.ui.http")
-        and target.startswith(forbidden_prefixes)
+        and target.startswith(f"{_PACKAGE_NAME}.executors.")
     )
 
     assert actual == frozenset()
-    residual = _PACKAGE_ROOT / "server" / "http"
-    assert {path.name for path in residual.glob("*.py")} == {"__init__.py"}
 
 
 def test_terminal_does_not_depend_on_transports_or_ui() -> None:

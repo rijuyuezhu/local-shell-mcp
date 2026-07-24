@@ -31,10 +31,14 @@ local_shell_mcp/
   utils/                   small dependency-leaf technical primitives
 ```
 
-The MCP and REST/tool HTTP executors now live in their final `executors/mcp` and
-`executors/http` packages. `server/http` is now only a transitional Human UI HTTP
-adapter location until the UI package move completes. New domain code must not
-depend on the transitional package.
+The MCP and REST/tool HTTP executors live in their final `executors/mcp` and
+`executors/http` packages. Human UI delivery adapters live in `ui/http`, and
+executor-neutral ASGI infrastructure lives in `http`. The obsolete `server`
+package has been removed and must not be restored.
+
+The package root is frozen to `__init__.py`, `main.py`, `errors.py`, and
+`version.py`. Every other implementation must live in an explicitly owned
+subpackage; `tests/test_architecture.py` enforces this allowlist.
 
 General rules:
 
@@ -88,11 +92,9 @@ tool-route timeout and cache policy, records HTTP-routed tool invocations, and
 composes public route contributions and authentication into one runnable app.
 
 Allowed dependencies include tools, operations, OAuth adapters, remote route
-contributions, executor-neutral `http` infrastructure, and framework-specific
-FastAPI/Starlette types. The app currently imports one transitional Human UI
-route contribution from `server/http/human_ui.py`; that exact dependency is
-temporary and will move to `ui/http` in the UI phase. Lower-level packages must
-not import this executor.
+contributions, executor-neutral `http` infrastructure, framework-specific
+FastAPI/Starlette types, and the explicit `ui.http.routes.human_ui_routes`
+composition contract. Lower-level packages must not import this executor.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
@@ -122,8 +124,8 @@ Human UI workflows.
 
 Allowed dependencies include configuration contracts, audit recording,
 transport-neutral operations, version reporting, and Starlette ASGI types.
-The package must not import `executors`, transitional `server` executor modules,
-or UI modules.
+The package must not import `executors` or UI modules, and no removed `server`
+namespace may be reintroduced as an intermediary.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
@@ -131,6 +133,10 @@ or UI modules.
 | `http/health.py` | Builds `/healthz`, `/readyz`, and `/version` Starlette routes and their responses. | These endpoints are HTTP infrastructure shared by REST and MCP-over-HTTP, not behavior of either executor. |
 | `http/downloads.py` | Adapts claimed tokenized download snapshots into bounded HTTP `GET`/`HEAD` responses, safe content-disposition headers, streaming cleanup, and audit events. | Download claiming remains in `ops`; this file owns only the HTTP representation and lifecycle of a public download response. It therefore does not belong in generic utilities or a specific executor. |
 | `http/public_routes.py` | Composes the public non-OAuth health and download route set shared by HTTP-capable executors. | It is a small route contribution contract consumed by executors. OAuth and feature-specific remote routes remain owned by their domains and are composed at the executor/application layer. |
+
+`tests/test_http_route_parity.py` locks the shared `/healthz`, `/readyz`,
+`/version`, and `/download/{token}` route signatures, order, installation, and
+public-matcher classification across both REST and MCP-over-HTTP executors.
 | `http/request_limits.py` | Implements and installs the shared ASGI request-body size limit, including streaming-transfer exemptions and rejection auditing. | The middleware applies to REST, MCP-over-HTTP, OAuth, and remote routes. It is ASGI infrastructure rather than REST or MCP protocol behavior. |
 
 Rejected ownership alternatives:
@@ -208,9 +214,9 @@ Rejected ownership alternatives:
 The `ui/http` package owns Starlette request parsing, authorization checks,
 response normalization, route composition, and WebSocket delivery for the Human
 UI. It may consume transport-neutral UI core and domain capabilities, but it must
-not depend on either protocol executor or the transitional `server` package. The
-REST executor consumes only `ui.http.routes.human_ui_routes` during application
-composition.
+not depend on either protocol executor. The REST executor consumes only
+`ui.http.routes.human_ui_routes` during application composition; no intermediate
+`server` namespace remains.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |

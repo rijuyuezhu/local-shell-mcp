@@ -655,16 +655,6 @@
       "num_statements": 14,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/server/__init__.py": {
-      "num_branches": 0,
-      "num_statements": 0,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/http/__init__.py": {
-      "num_branches": 0,
-      "num_statements": 0,
-      "percent_covered": 100.0
-    },
     "src/local_shell_mcp/terminal/bridge.py": {
       "num_branches": 86,
       "num_statements": 320,
