@@ -665,56 +665,6 @@
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/server/http/human_ui.py": {
-      "num_branches": 12,
-      "num_statements": 75,
-      "percent_covered": 90.804598
-    },
-    "src/local_shell_mcp/server/http/ui_audit.py": {
-      "num_branches": 86,
-      "num_statements": 249,
-      "percent_covered": 81.791045
-    },
-    "src/local_shell_mcp/server/http/ui_dashboard.py": {
-      "num_branches": 72,
-      "num_statements": 174,
-      "percent_covered": 77.642276
-    },
-    "src/local_shell_mcp/server/http/ui_files.py": {
-      "num_branches": 112,
-      "num_statements": 363,
-      "percent_covered": 85.263158
-    },
-    "src/local_shell_mcp/server/http/ui_image_preview.py": {
-      "num_branches": 16,
-      "num_statements": 47,
-      "percent_covered": 77.777778
-    },
-    "src/local_shell_mcp/server/http/ui_opentui.py": {
-      "num_branches": 58,
-      "num_statements": 255,
-      "percent_covered": 45.047923
-    },
-    "src/local_shell_mcp/server/http/ui_remote_files.py": {
-      "num_branches": 76,
-      "num_statements": 257,
-      "percent_covered": 85.585586
-    },
-    "src/local_shell_mcp/server/http/ui_remotes.py": {
-      "num_branches": 60,
-      "num_statements": 195,
-      "percent_covered": 86.666667
-    },
-    "src/local_shell_mcp/server/http/ui_terminals.py": {
-      "num_branches": 212,
-      "num_statements": 689,
-      "percent_covered": 77.358491
-    },
-    "src/local_shell_mcp/server/http/ui_todos.py": {
-      "num_branches": 36,
-      "num_statements": 136,
-      "percent_covered": 91.860465
-    },
     "src/local_shell_mcp/terminal/bridge.py": {
       "num_branches": 86,
       "num_statements": 320,
@@ -854,6 +804,56 @@
       "num_branches": 0,
       "num_statements": 14,
       "percent_covered": 100.0
+    },
+    "src/local_shell_mcp/ui/http/audit.py": {
+      "num_branches": 86,
+      "num_statements": 249,
+      "percent_covered": 81.791045
+    },
+    "src/local_shell_mcp/ui/http/dashboard.py": {
+      "num_branches": 72,
+      "num_statements": 174,
+      "percent_covered": 77.642276
+    },
+    "src/local_shell_mcp/ui/http/files.py": {
+      "num_branches": 112,
+      "num_statements": 363,
+      "percent_covered": 85.263158
+    },
+    "src/local_shell_mcp/ui/http/image_preview.py": {
+      "num_branches": 16,
+      "num_statements": 47,
+      "percent_covered": 77.777778
+    },
+    "src/local_shell_mcp/ui/http/opentui.py": {
+      "num_branches": 58,
+      "num_statements": 255,
+      "percent_covered": 45.047923
+    },
+    "src/local_shell_mcp/ui/http/remote_files.py": {
+      "num_branches": 76,
+      "num_statements": 257,
+      "percent_covered": 85.585586
+    },
+    "src/local_shell_mcp/ui/http/remotes.py": {
+      "num_branches": 60,
+      "num_statements": 195,
+      "percent_covered": 86.666667
+    },
+    "src/local_shell_mcp/ui/http/routes.py": {
+      "num_branches": 12,
+      "num_statements": 75,
+      "percent_covered": 90.804598
+    },
+    "src/local_shell_mcp/ui/http/terminals.py": {
+      "num_branches": 212,
+      "num_statements": 689,
+      "percent_covered": 77.358491
+    },
+    "src/local_shell_mcp/ui/http/todos.py": {
+      "num_branches": 36,
+      "num_statements": 136,
+      "percent_covered": 91.860465
     },
     "src/local_shell_mcp/ui/image_preview.py": {
       "num_branches": 6,

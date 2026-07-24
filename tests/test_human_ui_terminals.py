@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
-import local_shell_mcp.server.http.ui_common as ui_common_module
-import local_shell_mcp.server.http.ui_terminals as terminal_module
+import local_shell_mcp.ui.http.common as ui_common_module
+import local_shell_mcp.ui.http.terminals as terminal_module
 from local_shell_mcp.config.settings import Settings, clear_settings_cache
 from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.oauth.core.scopes import (

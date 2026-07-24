@@ -21,26 +21,26 @@ from ...config.settings import Settings, get_settings
 from ...oauth.core.scopes import default_scope
 from ...oauth.core.urls import issuer_url, resource_url
 from ...remote.manager import remote_manager
-from ...ui.runtime import tui_runtime_available
-from ...ui.security import UI_API_PREFIX
 from ...version import version_info
-from .ui_audit import api_audit, api_audit_detail
-from .ui_dashboard import api_dashboard
-from .ui_files import (
+from ..runtime import tui_runtime_available
+from ..security import UI_API_PREFIX
+from .audit import api_audit, api_audit_detail
+from .dashboard import api_dashboard
+from .files import (
     api_file_action,
     api_file_content,
     api_file_preview,
     api_files,
 )
-from .ui_opentui import ui_opentui_websocket
-from .ui_remotes import api_remote_action, api_remotes
-from .ui_terminals import (
+from .opentui import ui_opentui_websocket
+from .remotes import api_remote_action, api_remotes
+from .terminals import (
     api_terminal_action,
     api_terminal_read,
     api_terminals,
     ui_terminal_websocket,
 )
-from .ui_todos import api_todos
+from .todos import api_todos
 
 
 def _json_ok(data: Any = None, message: str = "") -> JSONResponse:

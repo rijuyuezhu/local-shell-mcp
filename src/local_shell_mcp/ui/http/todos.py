@@ -29,8 +29,8 @@ from ...tool_session.store import (
     UnknownAgentSessionError,
     get_tool_session_store,
 )
-from .ui_common import json_error as _json_error
-from .ui_remote_files import call_remote_ui_workspace_tool
+from .common import json_error as _json_error
+from .remote_files import call_remote_ui_workspace_tool
 
 UI_TODO_MACHINE_MAX_BYTES = 255
 UI_TODO_ID_MAX_BYTES = 256

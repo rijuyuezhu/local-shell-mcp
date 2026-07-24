@@ -17,13 +17,13 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from ... import __version__
 from ...config.settings import get_settings
-from ...ui.runtime import resolve_tui_command
-from ...ui.security import (
+from ..runtime import resolve_tui_command
+from ..security import (
     UI_API_PREFIX,
     UI_LOCAL_TOKEN_ENV,
     get_or_create_ui_local_token,
 )
-from .ui_terminals import (
+from .terminals import (
     UI_TERMINAL_SUBPROTOCOL,
     _authorize_websocket,
     _release_connection,

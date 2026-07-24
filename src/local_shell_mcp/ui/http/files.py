@@ -34,18 +34,18 @@ from ...ops.files import (
 from ...ops.utils.path import relative_display, resolve_path, workspace_root
 from ...tool_session.store import file_sha256
 from ...utils.path_locks import path_locks
-from .ui_common import (
+from .common import (
     json_error as _json_error,
 )
-from .ui_common import (
+from .common import (
     sorted_entry_payloads,
 )
-from .ui_image_preview import (
+from .image_preview import (
     UiImagePreviewRequest,
     image_preview_request,
     terminal_image_fields,
 )
-from .ui_remote_files import (
+from .remote_files import (
     remote_delete_file,
     remote_file_content,
     remote_file_preview,

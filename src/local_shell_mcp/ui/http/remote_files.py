@@ -23,8 +23,8 @@ from ...schemas.result_models.transfer import (
     TransferReadChunkOutput,
     TransferStatOutput,
 )
-from .ui_common import sorted_entry_payloads
-from .ui_image_preview import UiImagePreviewRequest, terminal_image_fields
+from .common import sorted_entry_payloads
+from .image_preview import UiImagePreviewRequest, terminal_image_fields
 
 UI_REMOTE_FILE_TIMEOUT_S = 60
 UI_REMOTE_FILE_SAMPLE_BYTES = 4_096

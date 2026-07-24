@@ -65,13 +65,13 @@ from ...terminal.contracts import (
     PERSISTENT_SHELL_MIN_COLUMNS,
     PERSISTENT_SHELL_MIN_ROWS,
 )
-from .ui_common import (
+from .common import (
     bounded_text as _bounded_text,
 )
-from .ui_common import (
+from .common import (
     json_error as _json_error,
 )
-from .ui_common import (
+from .common import (
     require_remote_machine as _require_remote_machine,
 )
 

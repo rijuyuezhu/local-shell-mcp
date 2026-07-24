@@ -203,6 +203,41 @@ Rejected ownership alternatives:
 - `oauth`: OAuth middleware consumes the UI trust decision, but credential
   creation and loopback UI namespace rules must remain owned by the UI domain.
 
+### `ui/http`: Human UI delivery adapters
+
+The `ui/http` package owns Starlette request parsing, authorization checks,
+response normalization, route composition, and WebSocket delivery for the Human
+UI. It may consume transport-neutral UI core and domain capabilities, but it must
+not depend on either protocol executor or the transitional `server` package. The
+REST executor consumes only `ui.http.routes.human_ui_routes` during application
+composition.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `ui/http/__init__.py` | Declares the browser/native Human UI HTTP and WebSocket adapter boundary. | It separates delivery-specific code from transport-neutral UI view models, security, and native runtime behavior. |
+| `ui/http/routes.py` | Serves the packaged browser shell and traversal-safe static assets, builds bootstrap and machine inventory responses, and composes the complete/public Human UI route sets. | This is the single route contribution consumed by the REST executor; it owns UI delivery composition rather than executor assembly. |
+| `ui/http/common.py` | Provides shared JSON error envelopes, bounded text/integer validation, stable file-entry sorting, and remote-machine lookup for UI adapters. | These helpers encode Human UI HTTP response and input conventions used by several routes, not project-wide utility behavior. |
+| `ui/http/audit.py` | Parses audit query/detail parameters and scopes, dispatches local or remote audit reads, normalizes bounded summaries/details, and projects payload or image metadata into UI responses. | Audit storage remains in `audit`; this module owns only its Human UI HTTP representation. |
+| `ui/http/dashboard.py` | Authorizes and dispatches local/remote Dashboard snapshots and normalizes system, version, alert, activity, and health values into stable JSON. | The transport-neutral Dashboard projection lives in `ui/dashboard.py`; this file owns request and response adaptation. |
+| `ui/http/files.py` | Implements local workspace list, preview, content, write, mkdir, delete, copy, move, and rename HTTP actions while delegating remote requests to the remote-file adapter. | Filesystem operations and remote RPC stay in their domains; this module owns Human UI file semantics, scope checks, and response envelopes. |
+| `ui/http/image_preview.py` | Validates preview dimensions and converts core RGBA preview results into JSON-safe terminal-image fields. | Core decoding belongs in `ui/image_preview.py`; query/body normalization and response fields are HTTP adapter concerns. |
+| `ui/http/opentui.py` | Wraps Unix and Windows OpenTUI child processes and bridges one authenticated native-console WebSocket with bounded idle and cleanup behavior. | Native executable discovery remains in `ui/runtime.py`; this module owns WebSocket/process delivery for an HTTP-hosted UI session. |
+| `ui/http/remote_files.py` | Normalizes remote UI paths, caches bounded worker sessions, dispatches workspace RPCs, reads/decodes chunks, and implements remote preview/content/mutation payloads. | It is the Human UI adapter over remote-worker workspace tools, not the worker control plane or generic remote manager. |
+| `ui/http/remotes.py` | Presents worker inventory and validates invite, rename, and revoke HTTP actions with scope and mutation-policy checks. | Remote lifecycle remains in `remote`; this file owns the Human UI administration representation. |
+| `ui/http/terminals.py` | Adapts local/remote persistent-shell list/start/send/read/resize/kill operations and raw terminal bridges to REST and WebSocket protocols with bounded validation and cleanup. | Terminal backends and bridge capabilities remain in `terminal`; this large module owns their Human UI delivery contract and is a later split candidate. |
+| `ui/http/todos.py` | Maps authenticated local or remote UI sessions to revisioned todo reads/writes and stable JSON responses. | Todo state belongs to tool sessions; this module owns its Human UI HTTP semantics and remote dispatch. |
+
+Rejected ownership alternatives:
+
+- `server/http`: that path mixed one product surface with a generic “server”
+  namespace and obscured the separation between MCP and REST executors.
+- `executors/http`: the executor assembles middleware and route contributions;
+  it should not own Human UI feature adapters or static assets.
+- transport-neutral `ui` core modules: Starlette requests, responses, scopes, and
+  WebSockets are delivery details and must not leak into reusable UI contracts.
+- `utils`: validation and normalization here implement the Human UI HTTP schema,
+  not generally reusable primitives.
+
 ## `terminal`: interactive terminal backends and lifecycle
 
 The `terminal` package owns terminal-emulation backends and the bounded lifecycle

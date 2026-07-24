@@ -9,12 +9,13 @@ _PACKAGE_NAME = "local_shell_mcp"
 _ARCHITECTURE_DOC = Path(__file__).parents[1] / "docs" / "architecture.md"
 
 # `main` is the process-composition entry point and may import executors. The
-# REST executor temporarily consumes the Human UI route contribution until S5.
-_ALLOWED_NON_SERVER_TO_SERVER_IMPORTS = frozenset(
+# REST executor consumes exactly one Human UI HTTP route-composition contract.
+_ALLOWED_NON_SERVER_TO_SERVER_IMPORTS = frozenset()
+_ALLOWED_HTTP_EXECUTOR_UI_IMPORTS = frozenset(
     {
         (
             "local_shell_mcp.executors.http.app",
-            "local_shell_mcp.server.http.human_ui",
+            "local_shell_mcp.ui.http.routes",
         ),
     }
 )
@@ -213,9 +214,7 @@ def test_mcp_executor_does_not_depend_on_transitional_server_or_ui() -> None:
     assert actual == frozenset()
 
 
-def test_http_executor_has_only_the_explicit_transitional_ui_dependency() -> (
-    None
-):
+def test_http_executor_has_only_the_explicit_ui_route_dependency() -> None:
     actual = frozenset(
         (importer, target)
         for importer, target in _local_imports()
@@ -226,7 +225,7 @@ def test_http_executor_has_only_the_explicit_transitional_ui_dependency() -> (
         )
     )
 
-    assert actual == _ALLOWED_NON_SERVER_TO_SERVER_IMPORTS
+    assert actual == _ALLOWED_HTTP_EXECUTOR_UI_IMPORTS
 
 
 def test_http_infrastructure_does_not_depend_on_executors_or_ui() -> None:
@@ -284,6 +283,23 @@ def test_ui_core_does_not_depend_on_executors_or_http_adapters() -> None:
         "ui_security.py",
     ):
         assert not (_PACKAGE_ROOT / migrated_name).exists()
+
+
+def test_ui_http_does_not_depend_on_executors_or_transitional_server() -> None:
+    forbidden_prefixes = (
+        f"{_PACKAGE_NAME}.executors.",
+        f"{_PACKAGE_NAME}.server.",
+    )
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.ui.http")
+        and target.startswith(forbidden_prefixes)
+    )
+
+    assert actual == frozenset()
+    residual = _PACKAGE_ROOT / "server" / "http"
+    assert {path.name for path in residual.glob("*.py")} == {"__init__.py"}
 
 
 def test_terminal_does_not_depend_on_transports_or_ui() -> None:

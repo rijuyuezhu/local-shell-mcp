@@ -26,19 +26,19 @@ from ...oauth.core.scopes import (
 )
 from ...ops.image import detect_image_type
 from ...remote.service import call_remote_worker_tool
-from .ui_common import (
+from .common import (
     bounded_int as _bounded_int,
 )
-from .ui_common import (
+from .common import (
     bounded_text as _bounded_text,
 )
-from .ui_common import (
+from .common import (
     json_error as _json_error,
 )
-from .ui_common import (
+from .common import (
     require_remote_machine as _require_remote_machine,
 )
-from .ui_image_preview import (
+from .image_preview import (
     UiImagePreviewRequest,
     image_preview_request,
     terminal_image_fields,

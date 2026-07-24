@@ -14,14 +14,14 @@ from ...config.settings import get_settings
 from ...oauth.core.context import MissingOAuthScopeError, require_oauth_scopes
 from ...oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ
 from ...remote.service import call_remote_worker_tool
-from ...ui.dashboard import dashboard_snapshot
-from .ui_common import (
+from ..dashboard import dashboard_snapshot
+from .common import (
     bounded_text as _bounded_text,
 )
-from .ui_common import (
+from .common import (
     json_error as _json_error,
 )
-from .ui_common import (
+from .common import (
     require_remote_machine as _require_remote_machine,
 )
 

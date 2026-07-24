@@ -5,7 +5,7 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.server.http.ui_files as ui_files_module
+import local_shell_mcp.ui.http.files as ui_files_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.oauth.core.scopes import (
