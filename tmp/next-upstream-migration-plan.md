@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: Phases 1-8 complete; Phase 9 pending. Phase 8 closure CI is recorded; this record commit's exact-head CI remains to be verified.
+Status: Phases 1-8 complete; Phase 9 pending.
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,7 +11,7 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `9697a5b9727316a93acf838bf77ff4eada7455fe` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `ddf57bfb1093b57525074e9b57afc65d947fc845` |
 | Fork baseline | `main` | `c40067a` |
 | Upstream reference | `upstream/main` | `9f1484e880c01b64b320ce0105de6bee831821e7` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
@@ -1324,7 +1324,10 @@ Focused validation and defects found so far:
   `9697a5b9727316a93acf838bf77ff4eada7455fe` was pushed with divergence `0/0`;
   exact-head CI run `30061677680` passed all `24/24` jobs. The commit changed only
   the temporary migration plan, so the Docs workflow was not triggered by its
-  path filters. This final record commit now only requires its own exact-head CI.
+  path filters. Closure-CI record commit
+  `ddf57bfb1093b57525074e9b57afc65d947fc845` was pushed with divergence `0/0`;
+  exact-head CI run `30061954275` also passed all `24/24` jobs. Phase 8 is fully
+  closed. Phase 9 remains pending and has not started.
 
 Public API rule:
 
