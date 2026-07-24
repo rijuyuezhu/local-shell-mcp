@@ -128,8 +128,10 @@ def _connect_from_args(args: argparse.Namespace) -> None:
 
 
 def _run_stored_from_args(_args: argparse.Namespace) -> None:
+    from .service import prepare_worker_service_environment
     from .worker import run_stored_worker
 
+    prepare_worker_service_environment()
     _mark_worker_runtime()
     _run_async(run_stored_worker())
 
@@ -188,15 +190,20 @@ def _logs_from_args(args: argparse.Namespace) -> None:
 
 def _update_from_args(args: argparse.Namespace) -> None:
     from .runtime import update_installed_runtime
-    from .service import restart_service, service_status
+    from .service import (
+        refresh_installed_service_definition,
+        restart_service,
+        service_status,
+    )
 
     identity = _load_identity()
     before = service_status()
     result = update_installed_runtime(
         str(identity["server"]), force=bool(args.force)
     )
+    definition_changed = refresh_installed_service_definition(identity)
     restarted = False
-    if result.get("updated") and before.running:
+    if before.running and (result.get("updated") or definition_changed):
         restart_service()
         restarted = True
     _print_json(

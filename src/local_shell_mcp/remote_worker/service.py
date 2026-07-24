@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import plistlib
+import posixpath
 import re
 import shutil
 import subprocess
@@ -26,6 +27,19 @@ from . import runtime
 _SERVICE_NAME = "local-shell-mcp-worker"
 _LAUNCHD_LABEL = "com.fwerkor.local-shell-mcp-worker"
 _WORKER_MANAGED_ENV = "LOCAL_SHELL_MCP_WORKER_MANAGED"
+_LAUNCHD_PATH_SEPARATOR = ":"
+_LAUNCHD_HOMEBREW_DIRS = (
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+)
+_LAUNCHD_SYSTEM_DIRS = (
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+)
 _MAX_LOG_BYTES = 4 * 1024 * 1024
 _MAX_LOG_LINES = 2_000
 
@@ -196,6 +210,42 @@ def _manager_executable(manager: ServiceManager) -> str | None:
     return None
 
 
+def _launchd_session_path_entries() -> tuple[str, ...]:
+    """Return sanitized absolute PATH entries exported by the GUI launchd domain."""
+    if platform.system() != "Darwin":
+        return ()
+    executable = shutil.which("launchctl")
+    if executable is None:
+        return ()
+    try:
+        result = _run([executable, "getenv", "PATH"])
+    except OSError, subprocess.SubprocessError:
+        return ()
+    if result.returncode:
+        return ()
+    entries = []
+    for raw in result.stdout.split(_LAUNCHD_PATH_SEPARATOR):
+        entry = raw.strip()
+        if entry and posixpath.isabs(entry):
+            entries.append(entry)
+    return tuple(dict.fromkeys(entries))
+
+
+def _launchd_path() -> str:
+    """Build the explicit tool search path inherited by launchd workers."""
+    candidates = (
+        str(Path(sys.executable).expanduser().resolve().parent),
+        str(launcher_path().parent),
+        *_LAUNCHD_HOMEBREW_DIRS,
+        *_launchd_session_path_entries(),
+        *_LAUNCHD_SYSTEM_DIRS,
+    )
+    entries = tuple(
+        dict.fromkeys(entry for entry in candidates if posixpath.isabs(entry))
+    )
+    return _LAUNCHD_PATH_SEPARATOR.join(entries)
+
+
 def _launcher_text() -> str:
     return """\
 from __future__ import annotations
@@ -274,7 +324,7 @@ def systemd_unit_text(workdir: str) -> str:
 
 
 def launchd_plist_bytes(workdir: str) -> bytes:
-    """Generate one deterministic credential-free per-user launchd plist."""
+    """Generate one credential-free plist with an explicit sanitized tool PATH."""
     launcher = launcher_path()
     log_path = launchd_log_path()
     log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -287,6 +337,7 @@ def launchd_plist_bytes(workdir: str) -> bytes:
         "EnvironmentVariables": {
             "LOCAL_SHELL_MCP_WORKER_STATE_DIR": str(runtime.worker_state_dir()),
             _WORKER_MANAGED_ENV: "1",
+            "PATH": _launchd_path(),
         },
         "RunAtLoad": True,
         "KeepAlive": True,
@@ -296,6 +347,61 @@ def launchd_plist_bytes(workdir: str) -> bytes:
         "Umask": 0o077,
     }
     return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=True)
+
+
+def _write_launchd_plist(workdir: str) -> tuple[Path, bool]:
+    path = launchd_plist_path()
+    content = launchd_plist_bytes(workdir)
+    changed = path.is_symlink() or not path.is_file()
+    if not changed:
+        try:
+            changed = path.read_bytes() != content
+        except OSError:
+            changed = True
+    if changed:
+        atomic_write_private_bytes(path, content)
+    return path, changed
+
+
+def _installed_launchd_workdir() -> str | None:
+    path = launchd_plist_path()
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        payload = plistlib.loads(path.read_bytes())
+    except OSError, TypeError, ValueError, plistlib.InvalidFileException:
+        return None
+    workdir = payload.get("WorkingDirectory")
+    return workdir if isinstance(workdir, str) and workdir else None
+
+
+def refresh_installed_service_definition(identity: dict[str, Any]) -> bool:
+    """Refresh an installed launchd definition without changing service state."""
+    path = launchd_plist_path()
+    if service_manager() != "launchd" or not path.is_file():
+        return False
+    workdir = _identity_workdir(identity)
+    _launcher, launcher_changed = ensure_launcher()
+    _path, definition_changed = _write_launchd_plist(workdir)
+    return launcher_changed or definition_changed
+
+
+def prepare_worker_service_environment() -> Path | None:
+    """Repair PATH for one managed launchd worker and refresh its next launch."""
+    path = launchd_plist_path()
+    if (
+        platform.system() != "Darwin"
+        or os.getenv(_WORKER_MANAGED_ENV) != "1"
+        or not path.is_file()
+    ):
+        return None
+    workdir = _installed_launchd_workdir()
+    if workdir is None:
+        return None
+    os.environ["PATH"] = _launchd_path()
+    ensure_launcher()
+    refreshed, _changed = _write_launchd_plist(workdir)
+    return refreshed
 
 
 def _parse_systemd_show(output: str) -> dict[str, str]:
@@ -535,15 +641,8 @@ def install_service(
                 [executable, "--user", "restart", f"{_SERVICE_NAME}.service"]
             )
     else:
-        path = launchd_plist_path()
-        content = launchd_plist_bytes(workdir)
-        changed = (
-            launcher_changed
-            or not path.is_file()
-            or path.read_bytes() != content
-        )
-        if changed:
-            atomic_write_private_bytes(path, content)
+        path, definition_changed = _write_launchd_plist(workdir)
+        changed = launcher_changed or definition_changed
         _run_checked([executable, "enable", _launchd_target()])
         if start:
             current = _launchd_status()

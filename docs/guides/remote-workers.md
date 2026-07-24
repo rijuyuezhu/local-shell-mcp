@@ -108,6 +108,8 @@ Foreground failures and cancellation revoke capabilities and clean partial priva
 
 On Linux with a working `systemd --user` session, or on macOS with launchd, install and start a reboot/session-persistent worker with:
 
+On macOS, the generated launchd plist uses an explicit sanitized `PATH` that includes standard Homebrew locations and absolute entries exported by the GUI launchd session. `worker run` and `worker update` repair older installed definitions without embedding credentials or inheriting a one-off installer shell `PATH`.
+
 ```bash
 local-shell-mcp worker install-service
 local-shell-mcp worker status

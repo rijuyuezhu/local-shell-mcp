@@ -270,9 +270,20 @@ def test_launchd_plist_lifecycle_and_private_log(
         str(service.launcher_path()),
     ]
     assert plist["WorkingDirectory"] == identity["workdir"]
-    assert (
-        plist["EnvironmentVariables"]["LOCAL_SHELL_MCP_WORKER_MANAGED"] == "1"
-    )
+    environment = plist["EnvironmentVariables"]
+    assert environment["LOCAL_SHELL_MCP_WORKER_MANAGED"] == "1"
+    path_entries = environment["PATH"].split(":")
+    for required in (
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ):
+        assert required in path_entries
     serialized = json.dumps(plist)
     assert identity["access"] not in serialized
     assert identity["server"] not in serialized
@@ -293,6 +304,114 @@ def test_launchd_plist_lifecycle_and_private_log(
     stopped = service.stop_service()
     assert stopped.status.running is False
     assert service.uninstall_service().status.installed is False
+
+
+def test_launchd_path_uses_sanitized_session_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(service.sys, "executable", "/custom/python/bin/python")
+    monkeypatch.setattr(
+        service,
+        "launcher_path",
+        lambda: Path("/private/worker/bin/launcher.py"),
+    )
+    monkeypatch.setattr(service.shutil, "which", lambda name: "/bin/launchctl")
+    monkeypatch.setattr(
+        service,
+        "_run",
+        lambda command, timeout=15: subprocess.CompletedProcess(
+            command,
+            0,
+            "/nix/bin:relative::/opt/local/bin:/usr/bin:/nix/bin\n",
+            "",
+        ),
+    )
+
+    entries = service._launchd_path().split(":")
+
+    assert entries[:2] == ["/custom/python/bin", "/private/worker/bin"]
+    assert "/opt/homebrew/bin" in entries
+    assert "/nix/bin" in entries
+    assert "/opt/local/bin" in entries
+    assert "relative" not in entries
+    assert entries.count("/nix/bin") == 1
+    assert entries.count("/usr/bin") == 1
+
+
+def test_launchd_plist_does_not_inherit_installer_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_launchd(monkeypatch)
+    identity = _identity(tmp_path)
+    first = service.launchd_plist_bytes(identity["workdir"])
+    monkeypatch.setenv("PATH", "/tmp/transient-bin:/usr/bin")
+    second = service.launchd_plist_bytes(identity["workdir"])
+
+    assert second == first
+    assert (
+        "/tmp/transient-bin"
+        not in plistlib.loads(second)["EnvironmentVariables"]["PATH"]
+    )
+
+
+def test_prepare_launchd_environment_repairs_running_worker_and_plist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_launchd(monkeypatch)
+    identity = _identity(tmp_path)
+    service.install_service(identity, start=False)
+    path = service.launchd_plist_path()
+    payload = plistlib.loads(path.read_bytes())
+    payload["EnvironmentVariables"].pop("PATH")
+    path.write_bytes(plistlib.dumps(payload))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    monkeypatch.setattr(
+        service, "_launchd_session_path_entries", lambda: ("/opt/local/bin",)
+    )
+
+    assert service.prepare_worker_service_environment() == path
+    entries = os.environ["PATH"].split(":")
+    assert "/opt/homebrew/bin" in entries
+    assert "/opt/local/bin" in entries
+    refreshed = plistlib.loads(path.read_bytes())
+    assert refreshed["EnvironmentVariables"]["PATH"] == os.environ["PATH"]
+
+
+def test_prepare_launchd_environment_rejects_symlinked_plist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_launchd(monkeypatch)
+    identity = _identity(tmp_path)
+    path = service.launchd_plist_path()
+    path.parent.mkdir(parents=True)
+    target = tmp_path / "foreign.plist"
+    target.write_bytes(service.launchd_plist_bytes(identity["workdir"]))
+    try:
+        path.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink unavailable")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    original_path = os.environ.get("PATH")
+
+    assert service.prepare_worker_service_environment() is None
+    assert path.is_symlink()
+    assert os.environ.get("PATH") == original_path
+
+
+def test_refresh_stopped_launchd_definition_without_lifecycle_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_launchd(monkeypatch)
+    identity = _identity(tmp_path)
+    service.install_service(identity, start=False)
+    path = service.launchd_plist_path()
+    path.write_bytes(b"stale")
+    fake.commands.clear()
+
+    assert service.refresh_installed_service_definition(identity) is True
+    assert plistlib.loads(path.read_bytes())["EnvironmentVariables"]["PATH"]
+    assert fake.commands == [["/bin/launchctl", "getenv", "PATH"]]
 
 
 def test_service_status_and_install_are_explicitly_unsupported_on_windows(
@@ -502,14 +621,21 @@ def test_update_restarts_only_previously_running_service(
     )
     monkeypatch.setattr(service, "service_status", lambda: running)
     restarts: list[bool] = []
+    refreshes: list[dict[str, str]] = []
     monkeypatch.setattr(
         service, "restart_service", lambda: restarts.append(True)
+    )
+    monkeypatch.setattr(
+        service,
+        "refresh_installed_service_definition",
+        lambda identity: refreshes.append(identity) or False,
     )
 
     worker_cli._update_from_args(argparse.Namespace(force=True))
     result = json.loads(capsys.readouterr().out)
     assert result["service_restarted"] is True
     assert restarts == [True]
+    assert refreshes == [{"server": "https://controller.test"}]
 
     stopped = service.WorkerServiceStatus(
         1,
@@ -529,6 +655,10 @@ def test_update_restarts_only_previously_running_service(
     worker_cli._update_from_args(argparse.Namespace(force=False))
     assert json.loads(capsys.readouterr().out)["service_restarted"] is False
     assert restarts == []
+    assert refreshes == [
+        {"server": "https://controller.test"},
+        {"server": "https://controller.test"},
+    ]
 
 
 def test_update_fetches_latest_manifest_and_propagates_force(
@@ -693,8 +823,15 @@ def test_worker_connect_and_run_handlers_mark_runtime(
         run_calls.append(True)
 
     monkeypatch.setattr(worker, "run_stored_worker", run_stored)
+    prepared: list[bool] = []
+    monkeypatch.setattr(
+        service,
+        "prepare_worker_service_environment",
+        lambda: prepared.append(True),
+    )
     run_args = _build_parser().parse_args(["worker", "run"])
     run_args.handler(run_args)
+    assert prepared == [True]
     assert run_calls == [True]
 
 
@@ -1033,8 +1170,15 @@ def test_update_no_change_does_not_restart(
         "restart_service",
         lambda: pytest.fail("restarted unchanged runtime"),
     )
+    refreshed: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        service,
+        "refresh_installed_service_definition",
+        lambda identity: refreshed.append(identity) or False,
+    )
     worker_cli._update_from_args(argparse.Namespace(force=False))
     assert json.loads(capsys.readouterr().out)["service_restarted"] is False
+    assert refreshed == [{"server": "https://controller.test"}]
 
 
 def test_real_systemd_user_status_smoke_when_available(monkeypatch):
