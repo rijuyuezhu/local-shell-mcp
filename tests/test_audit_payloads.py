@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.audit_payloads as payloads
-from local_shell_mcp.audit_payloads import AUDIT_PAYLOAD_KEY
+import local_shell_mcp.audit.payloads as payloads
+from local_shell_mcp.audit.payloads import AUDIT_PAYLOAD_KEY
 from local_shell_mcp.config.settings import Settings
 
 

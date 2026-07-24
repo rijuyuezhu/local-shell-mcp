@@ -241,11 +241,13 @@ route adapters, Human UI presentation, or terminal implementations.
 | --- | --- | --- |
 | `audit/__init__.py` | Preserves the stable `local_shell_mcp.audit` import contract, explicitly exports supported operations, and forwards legacy read-only diagnostic attributes to the implementation. | Callers should depend on one audit-domain facade rather than the physical location of a large implementation module. |
 | `audit/core.py` | Sanitizes arbitrary values, redacts credentials and download capabilities, bounds and encodes events, coordinates private JSONL transactions, enforces rotation and retention, externalizes payloads, coalesces tool-call records, and serves bounded query and detail views. | These responsibilities form one transport-neutral audit-event lifecycle shared by MCP, REST, Human UI, jobs, workers, OAuth, downloads, and shell operations. |
+| `audit/payloads.py` | Canonically encodes sanitized values, stores oversized content as private content-addressed gzip objects, validates no-follow regular files, resolves bounded references, and prunes expired or unreferenced payloads. | Payload objects are an internal persistence extension of audit events. Their digest, retention, integrity, and disclosure rules belong beside the event store rather than at package root or in generic file utilities. |
 
 Rejected ownership alternatives:
 
-- top-level `audit.py`: it mixed a stable public contract with a 1,000-line
-  implementation and made package-root placement look intentional.
+- top-level `audit.py` and `audit_payloads.py`: they split one audit persistence
+  domain across unrelated package-root files and made implementation paths look
+  like supported public APIs.
 - `utils`: audit policy includes redaction, retention, event semantics, payload
   references, and public query behavior rather than generic serialization.
 - `executors` or `ui/http`: those layers emit and present audit events, but the
@@ -256,7 +258,7 @@ Rejected ownership alternatives:
 The following areas still require the same file-by-file ownership review:
 
 - Human UI core and HTTP adapters.
-- Remaining audit payload, release/build, and patch implementation modules
-  currently at package root.
+- Remaining release/build and patch implementation modules currently at package
+  root.
 - Large stateful modules, which will be split only after package ownership is
   stable and each split has an independent test and CI closure.

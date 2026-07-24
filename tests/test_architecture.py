@@ -321,7 +321,8 @@ def test_audit_does_not_depend_on_delivery_or_terminal_layers() -> None:
     )
 
     assert actual == frozenset()
-    assert not (_PACKAGE_ROOT / "audit.py").exists()
+    for migrated_name in ("audit.py", "audit_payloads.py"):
+        assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
 def test_terminal_uses_only_explicit_low_level_ops_helpers() -> None:

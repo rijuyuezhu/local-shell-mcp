@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 import local_shell_mcp.audit as audit_module
-import local_shell_mcp.audit_payloads as audit_payload_module
+import local_shell_mcp.audit.payloads as audit_payload_module
 from local_shell_mcp.audit import (
     _AUDIT_BINARY_KEY,
     _AUDIT_CYCLE_KEY,
@@ -24,7 +24,7 @@ from local_shell_mcp.audit import (
     query_audit,
 )
 from local_shell_mcp.audit import core as audit_core
-from local_shell_mcp.audit_payloads import AUDIT_PAYLOAD_KEY
+from local_shell_mcp.audit.payloads import AUDIT_PAYLOAD_KEY
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 
 
@@ -673,7 +673,7 @@ def test_audit_payload_orphan_gc_and_symlink_replacement(tmp_path, monkeypatch):
     assert not orphan.exists()
 
     value = {"body": "safe-" * 2_000}
-    from local_shell_mcp.audit_payloads import canonical_json_bytes
+    from local_shell_mcp.audit.payloads import canonical_json_bytes
 
     digest = (
         __import__("hashlib").sha256(canonical_json_bytes(value)).hexdigest()

@@ -14,8 +14,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .config.settings import Settings
-from .utils.private_files import atomic_write_private_bytes
+from ..config.settings import Settings
+from ..utils.private_files import atomic_write_private_bytes
 
 AUDIT_PAYLOAD_KEY = "$local_shell_mcp_audit_payload"
 AUDIT_PAYLOAD_VERSION = 1
