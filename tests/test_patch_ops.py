@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.patch_ops import git_apply_command, normalize_patch_text
+from local_shell_mcp.ops.patch.envelope import (
+    git_apply_command,
+    normalize_patch_text,
+)
 
 
 def _git_apply(root: Path, patch: str) -> None:

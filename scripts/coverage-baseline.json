@@ -305,10 +305,15 @@
       "num_statements": 846,
       "percent_covered": 83.58349
     },
-    "src/local_shell_mcp/ops/patch.py": {
+    "src/local_shell_mcp/ops/patch/__init__.py": {
       "num_branches": 12,
       "num_statements": 67,
       "percent_covered": 84.810127
+    },
+    "src/local_shell_mcp/ops/patch/envelope.py": {
+      "num_branches": 110,
+      "num_statements": 214,
+      "percent_covered": 97.530864
     },
     "src/local_shell_mcp/ops/read.py": {
       "num_branches": 8,
@@ -394,11 +399,6 @@
       "num_branches": 8,
       "num_statements": 45,
       "percent_covered": 64.150943
-    },
-    "src/local_shell_mcp/patch_ops.py": {
-      "num_branches": 110,
-      "num_statements": 214,
-      "percent_covered": 97.530864
     },
     "src/local_shell_mcp/remote/__init__.py": {
       "num_branches": 0,

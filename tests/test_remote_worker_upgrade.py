@@ -230,6 +230,8 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/audit/__init__.py" in names
     assert "local_shell_mcp/audit/core.py" in names
     assert "local_shell_mcp/audit/payloads.py" in names
+    assert "local_shell_mcp/ops/patch/__init__.py" in names
+    assert "local_shell_mcp/ops/patch/envelope.py" in names
     assert "local_shell_mcp/version.py" in names
     assert "local_shell_mcp/terminal/__init__.py" in names
     assert "local_shell_mcp/terminal/conpty.py" in names

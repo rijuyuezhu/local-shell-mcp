@@ -253,12 +253,28 @@ Rejected ownership alternatives:
 - `executors` or `ui/http`: those layers emit and present audit events, but the
   same event store is shared across every delivery surface.
 
+## Patch operation ownership
+
+Patch application is split into orchestration and domain mechanics inside `ops`:
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `ops/patch/__init__.py` | Resolves local or remote sessions, bounds patch input, materializes temporary files, runs `git apply --check` and apply phases with timeouts, audits execution, and returns typed results. | This is an application operation coordinating sessions, subprocesses, remote dispatch, audit, and result models. |
+| `ops/patch/envelope.py` | Parses apply-patch envelopes, validates cwd-contained paths and UTF-8 targets, applies deterministic hunks, preserves newline and executable-mode semantics, and renders portable unified diffs. | These mechanics implement the patch operation's domain syntax and safety rules. They are not generic utilities and have no transport or session ownership. |
+
+Rejected ownership alternatives:
+
+- top-level `patch_ops.py`: package-root placement obscured that the parser exists
+  solely to support the apply-patch operation.
+- `utils`: envelope grammar, hunk matching, cwd containment, and Git diff
+  rendering are cohesive patch-domain policy rather than generally reusable
+  helpers.
+
 ## Ownership review status
 
 The following areas still require the same file-by-file ownership review:
 
 - Human UI core and HTTP adapters.
-- Remaining release/build and patch implementation modules currently at package
-  root.
+- Remaining release/build implementation currently at package root.
 - Large stateful modules, which will be split only after package ownership is
   stable and each split has an independent test and CI closure.

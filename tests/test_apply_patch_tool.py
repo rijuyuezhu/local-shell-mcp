@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import local_shell_mcp.patch_ops as patch_ops
+import local_shell_mcp.ops.patch.envelope as patch_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.patch import (
     APPLY_PATCH_PHASE_TIMEOUT_S,

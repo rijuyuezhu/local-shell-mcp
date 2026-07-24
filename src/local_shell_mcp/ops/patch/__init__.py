@@ -9,13 +9,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..config.settings import get_settings
-from ..patch_ops import git_apply_prefix, normalize_patch_text
-from ..schemas.result_models.patch import ApplyPatchOutput
-from ..tool_session.store import get_tool_session_store, resolve_session_path
-from .utils.path import assert_text_input_size, relative_display
-from .utils.remote_session import call_remote_session_tool
-from .utils.temp_file import write_temp_text_file
+from ...config.settings import get_settings
+from ...schemas.result_models.patch import ApplyPatchOutput
+from ...tool_session.store import get_tool_session_store, resolve_session_path
+from ..utils.path import assert_text_input_size, relative_display
+from ..utils.remote_session import call_remote_session_tool
+from ..utils.temp_file import write_temp_text_file
+from .envelope import git_apply_prefix, normalize_patch_text
 
 APPLY_PATCH_PHASE_TIMEOUT_S = 20
 APPLY_PATCH_WATCHDOG_TIMEOUT_S = 45

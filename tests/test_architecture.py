@@ -325,6 +325,24 @@ def test_audit_does_not_depend_on_delivery_or_terminal_layers() -> None:
         assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
+def test_patch_mechanics_stay_below_delivery_layers() -> None:
+    forbidden_prefixes = (
+        f"{_PACKAGE_NAME}.executors.",
+        f"{_PACKAGE_NAME}.http.",
+        f"{_PACKAGE_NAME}.server.",
+        f"{_PACKAGE_NAME}.ui.",
+    )
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer == f"{_PACKAGE_NAME}.ops.patch.envelope"
+        and target.startswith(forbidden_prefixes)
+    )
+
+    assert actual == frozenset()
+    assert not (_PACKAGE_ROOT / "patch_ops.py").exists()
+
+
 def test_terminal_uses_only_explicit_low_level_ops_helpers() -> None:
     actual = frozenset(
         (importer, target)
@@ -348,6 +366,12 @@ def _assert_ownership_map_covers(paths: set[str]) -> None:
 
     assert paths
     assert {path for path in paths if f"`{path}`" not in documentation} == set()
+
+
+def test_patch_operation_ownership_map_is_documented() -> None:
+    _assert_ownership_map_covers(
+        {"ops/patch/__init__.py", "ops/patch/envelope.py"}
+    )
 
 
 def test_http_module_ownership_map_covers_every_file() -> None:
