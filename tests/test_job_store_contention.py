@@ -129,6 +129,21 @@ def test_private_lock_file_preparation_timeouts(
     with pytest.raises(TimeoutError, match="preparing private lock"):
         private_files._ensure_lock_file(denied, timeout_s=0)
 
+    monkeypatch.setattr(
+        private_files.os,
+        "open",
+        lambda path, flags, mode=0o777: real_open(path, flags, mode),
+    )
+    opened = tmp_path / "opened.lock"
+    private_files._ensure_lock_file(opened)
+    monkeypatch.setattr(
+        type(opened),
+        "open",
+        lambda self, *args, **kwargs: (_ for _ in ()).throw(PermissionError()),
+    )
+    with pytest.raises(TimeoutError, match="opening private lock"):
+        private_files._open_lock_handle(opened, timeout_s=0)
+
 
 def test_windows_lock_contention_error_is_classified() -> None:
     class WindowsBusyError(OSError):

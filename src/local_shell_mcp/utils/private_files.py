@@ -13,12 +13,29 @@ from pathlib import Path
 from typing import BinaryIO
 
 
+def _retry_private_lock_io(
+    deadline: float | None,
+    *,
+    timeout_message: str,
+    retry_interval_s: float = 0.01,
+) -> None:
+    """Sleep before retrying one transient private-lock file operation."""
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(timeout_message) from None
+        time.sleep(min(max(0.0, retry_interval_s), remaining))
+    else:
+        time.sleep(max(0.0, retry_interval_s))
+
+
 def _ensure_lock_file(path: Path, timeout_s: float | None = None) -> None:
     """Create or repair the one-byte lock file before any process opens it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     deadline = (
         None if timeout_s is None else time.monotonic() + max(0.0, timeout_s)
     )
+    timeout_message = "timed out preparing private lock file"
     while True:
         try:
             descriptor = os.open(
@@ -30,26 +47,44 @@ def _ensure_lock_file(path: Path, timeout_s: float | None = None) -> None:
                     return
                 descriptor = os.open(path, os.O_WRONLY | os.O_APPEND)
             except FileNotFoundError, PermissionError:
-                if deadline is not None and time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        "timed out preparing private lock file"
-                    ) from None
-                time.sleep(0.01)
+                _retry_private_lock_io(
+                    deadline, timeout_message=timeout_message
+                )
                 continue
         except PermissionError:
-            if deadline is not None and time.monotonic() >= deadline:
-                raise TimeoutError(
-                    "timed out preparing private lock file"
-                ) from None
-            time.sleep(0.01)
+            _retry_private_lock_io(deadline, timeout_message=timeout_message)
             continue
         try:
             os.write(descriptor, b"\0")
+        except PermissionError:
+            _retry_private_lock_io(deadline, timeout_message=timeout_message)
+            continue
         finally:
             os.close(descriptor)
         with contextlib.suppress(OSError):
             path.chmod(0o600)
         return
+
+
+def _open_lock_handle(
+    path: Path,
+    *,
+    timeout_s: float | None = None,
+    retry_interval_s: float = 0.01,
+) -> BinaryIO:
+    """Open an initialized lock file despite transient Windows sharing races."""
+    deadline = (
+        None if timeout_s is None else time.monotonic() + max(0.0, timeout_s)
+    )
+    while True:
+        try:
+            return path.open("r+b")
+        except FileNotFoundError, PermissionError:
+            _retry_private_lock_io(
+                deadline,
+                timeout_message="timed out opening private lock file",
+                retry_interval_s=retry_interval_s,
+            )
 
 
 def _is_lock_contention_error(exc: OSError, *, windows: bool) -> bool:
@@ -128,7 +163,16 @@ def private_file_lock(
     """Hold one private cross-process file lock for the context lifetime."""
     started = time.monotonic()
     _ensure_lock_file(path, timeout_s=timeout_s)
-    with path.open("r+b") as handle:
+    remaining = (
+        None
+        if timeout_s is None
+        else max(0.0, timeout_s - (time.monotonic() - started))
+    )
+    with _open_lock_handle(
+        path,
+        timeout_s=remaining,
+        retry_interval_s=retry_interval_s,
+    ) as handle:
         with contextlib.suppress(OSError):
             path.chmod(0o600)
         remaining = (
