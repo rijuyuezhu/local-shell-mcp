@@ -761,8 +761,12 @@ def test_final_digest_failure_and_object_state_checks() -> None:
 
     other_store, other_upload, _download = _prepare_upload(b"abc")
     other_store._spool_path(other_upload.transfer_id).write_bytes(b"wrong-size")
-    with pytest.raises(TransferGatewayError, match="identity changed"):
+    with pytest.raises(TransferGatewayError) as raised:
         other_store.object(other_upload.transfer_id, require_ready=False)
+    assert str(raised.value) in {
+        "transfer spool identity changed",
+        "transfer spool size changed",
+    }
 
 
 def test_gateway_route_malformed_headers_and_range_errors() -> None:
