@@ -38,6 +38,7 @@ from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
 )
+from ..utils.processes import new_process_group_kwargs
 from ..utils.serialization import to_jsonable
 from .utils.path import (
     relative_display,
@@ -302,13 +303,7 @@ async def _spawn_process(
     shell = _effective_shell_executable()
     child_env = _subprocess_env()
     child_env.update(_validated_env_overrides(env))
-    process_group: dict[str, Any]
-    if os.name == "nt":
-        process_group = {
-            "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP,
-        }
-    else:
-        process_group = {"start_new_session": True}
+    process_group = new_process_group_kwargs()
     common: dict[str, Any] = {
         "cwd": cwd,
         "env": child_env,
@@ -676,13 +671,7 @@ async def _spawn_exec_process(
     """Start one direct executable without routing through the configured shell."""
     child_env = _subprocess_env()
     child_env.update(_validated_env_overrides(env))
-    process_group: dict[str, Any]
-    if os.name == "nt":
-        process_group = {
-            "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP,
-        }
-    else:
-        process_group = {"start_new_session": True}
+    process_group = new_process_group_kwargs()
     command = _shell_join_argv(argv)
     try:
         return await asyncio.create_subprocess_exec(

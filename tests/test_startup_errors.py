@@ -669,9 +669,10 @@ async def test_direct_exec_uses_windows_process_group_flags(
         captured["kwargs"] = kwargs
         return expected
 
-    monkeypatch.setattr(shell_ops.os, "name", "nt")
     monkeypatch.setattr(
-        shell_ops.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False
+        shell_ops,
+        "new_process_group_kwargs",
+        lambda: {"creationflags": 512},
     )
     monkeypatch.setattr(
         shell_ops.asyncio, "create_subprocess_exec", fake_create
