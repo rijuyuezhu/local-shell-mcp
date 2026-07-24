@@ -1,6 +1,6 @@
 # Next upstream migration plan
 
-Status: implementation in progress — Phases 1-7 complete; Phase 8 pending
+Status: closure in progress — Phases 1-7 complete; Phase 8 implementation/local validation complete, push and exact-head CI pending
 
 Temporary source of truth: this file is intentionally tracked by Git while the
 migration is in progress. Update its checkboxes and decisions in the same commits
@@ -11,9 +11,9 @@ and the durable user/developer documentation contains the final architecture.
 
 | Role | Ref | Commit |
 |---|---|---|
-| Fork branch | `feat/port-upstream-features-2026-07` | `c5b7d27ed07f7161b43f18cca84ab2a1cd5138b7` |
+| Fork branch | `feat/port-upstream-features-2026-07` | `b9e649e627e3b70e457fa9936a5e92faa231f472` |
 | Fork baseline | `main` | `c40067a` |
-| Upstream reference | `upstream/main` | `f72164a3d1883f83e22599c7e22e8e07fa6c77a8` |
+| Upstream reference | `upstream/main` | `9f1484e880c01b64b320ce0105de6bee831821e7` |
 | Shared historical fork point | merge base | `e1f2dc0aa43ebcc72b5b47470daac446d7d02c8e` |
 
 The implementation should preserve fork-native sessions, jobs, security, remote
@@ -1093,6 +1093,199 @@ still install the universal server wheel.
 
 ### Phase 8 — Add internal HTTP streaming for large `session_copy` transfers
 
+Status: implementation and local validation complete (started 2026-07-24); push and exact-head CI closure in progress. Main implementation commit: `b9e649e627e3b70e457fa9936a5e92faa231f472` (`feat(remote): stream large session copies`).
+
+Actual implementation baseline: branch HEAD and
+`origin/feat/port-upstream-features-2026-07` both pointed to
+`cefbfec8fe65fe4e468b0f7a528e6d81c7fccda9`; the worktree was clean and
+divergence was `0/0` after fetching both remotes. The completed implementation
+commit is `b9e649e627e3b70e457fa9936a5e92faa231f472`; before checkpoint/push the
+branch is `1/0` ahead of origin with only this migration-plan update unstaged.
+On 2026-07-24, `upstream/main` advanced from
+`f72164a3d1883f83e22599c7e22e8e07fa6c77a8` to
+`9f1484e880c01b64b320ce0105de6bee831821e7` via merge `9f1484e` and functional
+commit `889a7a1ddd4f7933e761564f4ed4f8a4822896a9` (`fix(worker): set product user
+agent for updates`). The commit only adds a versioned `User-Agent` to
+`remote_worker_installer.py` downloads and one installer test; it has no file or
+semantic overlap with the Phase 8 gateway, copy routing, worker HTTP client,
+session/worker authorization, or service lifecycle. It is recorded for Phase 9
+parity review and is not transplanted in Phase 8.
+
+Initial upstream/fork audit:
+
+- Upstream's transfer ticket is itself a bearer secret embedded in
+  `/remote/transfer/{direction}/{token}`; transfer routes bypass ordinary auth,
+  tickets live only in memory, downloads have no Range resume, and upload
+  request chunks are accumulated in memory. Tickets are not bound to the
+  registered worker identity or fork session ids. These choices are rejected.
+- The fork already has session-bound path authorization, same-worker direct
+  copy, source digest/stat checks, transactional destination writes, durable
+  background jobs, persisted worker identities/capabilities, and a source-only
+  worker bundle. Phase 8 will extend these primitives rather than replace them.
+- The accepted fork-native design keeps `session_copy` as the only public API,
+  adds private controller routes with a non-secret route id plus a separate
+  Authorization capability, persists hashed capability/ticket/spool state,
+  binds every grant to worker, direction, session, size, digest, cursor, expiry,
+  and nonce, and reuses the existing destination transaction for atomic commit.
+- Cross-worker copies stage through a private controller spool. Direct worker
+  callbacks, URL credentials, broad request-limit exemptions, mutable live
+  source reads, public ticket tools, and in-memory whole-transfer buffering are
+  explicitly not being ported.
+
+Pre-implementation measurement used a real loopback controller process and a
+separate enrolled worker process. Each size was transferred twice by current
+`session_copy` RPC and twice by a worker-side 1 MiB-chunk raw HTTP prototype;
+all outputs were size/SHA-256 verified. Best observed times were:
+
+| Bytes | Current RPC | Raw HTTP prototype | Speedup |
+|---:|---:|---:|---:|
+| 262,144 | 0.1292 s | 0.00271 s | 47.6x |
+| 1,048,576 | 1.1524 s | 0.00257 s | 449.1x |
+| 8,388,608 | 8.4851 s | 0.00592 s | 1433.1x |
+
+The prototype intentionally measures transport overhead before final ticket,
+digest, and fsync costs; it is not a correctness substitute. The large-file
+threshold is therefore set conservatively to 1 MiB: 256 KiB remains on the
+simpler RPC path, while the measured base64/control-channel cost is already
+material at 1 MiB. The completed gateway will be benchmarked again before
+closure.
+
+Initial implementation/test plan: isolate durable gateway state and HTTP route
+handling from `session_copy`; add source-only worker upload/download helpers and
+an explicit `http-transfer-v1` capability; exempt only the exact transfer PUT
+route from shared request buffering; add focused ticket/range/replay/snapshot/
+quota/restart/cancellation/security tests; then run real one-worker and
+two-worker E2E, full branch coverage, secret scan, cross-platform static gates,
+pre-commit, push, and exact-head CI. Phase 9 remains out of scope.
+
+Implementation checkpoint (2026-07-24):
+
+- Added a private durable transfer store, Starlette-native controller routes,
+  separate hashed header capabilities, worker/direction binding, TTL/claim/
+  cursor state, immutable controller snapshots, disk-backed cross-worker spools,
+  chunk and whole-object SHA-256 checks, exact durable replay handling, bounded
+  Range/Content-Range, quota settings, and existing transactional destination
+  commit/resume. No public MCP tool was added.
+- Added source-only worker HTTP upload/download code using Python's standard
+  library only, strict same-origin URL validation, status-based retry/resume,
+  source identity verification, partial destination persistence, and explicit
+  abort cleanup. Workers advertise `http-transfer-v1`; non-capable workers and
+  sub-threshold files retain the RPC path, while same-worker copies keep their
+  direct path.
+- `SessionCopyOutput` now reports the truthful transport and resumed byte count.
+  Managed background jobs use their durable job id as the private resume key;
+  directory copies continue pack/copy/unpack and inherit the selected transport.
+- Added validated config/CLI surface for enablement, 1 MiB threshold, 1 MiB
+  chunks, five-minute grant TTL, active-transfer count, and total spool bytes.
+  Shared request buffering is bypassed only for an exact validated private PUT
+  route; every other route keeps the generic body limit.
+
+Focused validation and defects found so far:
+
+- Existing affected tests initially failed before server startup with
+  `Setting spec mismatch` because the new settings were not registered in the
+  config surface. The settings were added to the canonical config/CLI registry;
+  the corrected existing focused set now passes `98 passed`.
+- New gateway tests found that an unauthenticated HEAD request was classified as
+  a missing direction (`422`) before authentication, and that the body-limit
+  exemption also matched an empty transfer id. Authentication now fails first
+  with `401`, and the exemption uses the exact 24-80 character identifier
+  grammar. Gateway security/recovery tests now pass `11 passed`.
+- The first real one-worker and two-worker E2E run reached the HTTP path but both
+  failed with `HTTP 500`. The exact controller traceback was
+  `AssertionError: fastapi_middleware_astack not found in request scope`; the
+  root cause was inserting FastAPI `APIRoute` objects directly into the outer
+  Starlette route table. The gateway was converted to native Starlette `Route`
+  objects. The rerun passes both real-process tests, covering local-to-remote,
+  remote-to-local, same-worker direct copy, and different-worker spool transfer.
+- Targeted Ruff and full Pyright currently pass (`0 errors, 0 warnings`). The
+  expanded focused set now passes `135 passed`; branch coverage is `98.21%` for
+  `session_copy.py`, `95.72%` for `remote/transfer_gateway.py`, and `96.80%` for
+  `remote_worker/http_transfer.py`.
+- A retry-specific worker test exposed a real interrupted-upload defect: after a
+  failed PUT, when controller status still reported the original cursor, the
+  source file handle remained advanced and the next iteration falsely reported
+  an early EOF. The worker now seeks to every authoritative controller cursor,
+  including an unchanged cursor, before retrying the chunk. The worker HTTP set
+  passes `6 passed`, gateway security/recovery/rollback tests pass `18 passed`,
+  and session-copy selection/error/resume tests pass `11 passed`.
+- Real-process E2E was extended to verify the measured threshold and directory
+  path: large local/remote and two-worker file/directory copies use
+  `http_stream`, sub-threshold files use `worker_rpc`, and same-worker copies use
+  `same_worker`. Durable logs/exit markers are under
+  `/tmp/local-shell-mcp-phase8-*`.
+- The completed implementation was benchmarked again using separate real
+  controller/worker runs with HTTP forced off versus normal transport
+  selection, two verified copies per size. At 256 KiB the selected RPC path was
+  0.1261 s versus 0.1078 s forced RPC (same transport/no claimed win). At 1 MiB
+  final `http_stream` was 0.1491 s versus 1.1357 s forced RPC (7.62x), and at
+  8 MiB it was 0.2688 s versus 8.5226 s (31.71x). This confirms the measured
+  1 MiB default after authentication, snapshot, digest, fsync, spool, and atomic
+  destination costs are included. Durable marker
+  `/tmp/local-shell-mcp-phase8-final-benchmark.exit` is `0`.
+- Permanent remote-worker, security, upstream-review, and fork-difference docs
+  now describe the implemented transport and rejected upstream choices.
+  Generated config examples and MCP references were refreshed; the public tool
+  list remains exactly 40 tools before and after.
+- Final static/document gates pass from a clean invocation: Ruff format/check,
+  Pyright (`0 errors, 0 warnings`), `uv lock --check`, config/reference checks,
+  release matrix, strict MkDocs, generated reference assets, and
+  `git diff --check`.
+- Repository secret scan reported one existing runtime-generated worker token
+  assignment in `remote/manager.py` and existing fake-secret fixtures in
+  unrelated secret-scan/agent-bridge tests. Targeted scans of all changed
+  transfer/HTTP production and test files returned zero findings. Manual diff
+  audit confirmed that plaintext transfer capabilities are neither persisted
+  nor logged, never appear in URLs, argv, or service definitions, and exist only
+  in the in-memory authenticated worker job payload needed to deliver the
+  header. Persisted gateway metadata contains only hashes, session ids, bounded
+  sizes/digests/cursors/timestamps/claims; no source absolute path or controller
+  URL is stored. No service lifecycle or credential-bearing CLI was modified.
+- The first clean full-suite attempt completed pytest but failed three repository
+  contract tests: `3 failed, 1018 passed, 2 skipped`. Exact causes were missing
+  public method/attribute docstrings on the new gateway dataclasses/store and
+  missing local-private handler declarations for the three worker HTTP actions.
+  No transfer behavior test failed. The dataclass/store documentation was added,
+  and matching local-private handlers now delegate to the same source-only
+  stdlib client without entering the public MCP registry. Contract/focused/E2E
+  rerun passes `70 passed`; the public tool list remains exactly `40 -> 40` with
+  identical names.
+- A final manual TOCTOU pass found that a controller spool was no-follow checked
+  but not persistently identity-bound across later append/download/publish opens.
+  Gateway metadata now stores the platform-native spool identity created under
+  the private lock; every resume, append, Range response, and local transaction
+  reopens through the existing cross-platform secure file helpers and validates
+  that identity before reading or writing. Symlink and same-user regular-file
+  replacement are both rejected, and an attacker replacement file is proven
+  unchanged. Open failures, write/fsync failures, and rollback failures now have
+  distinct stable internal errors. Focused coverage after hardening passes
+  `168 passed`: `session_copy.py` 98.21% branch,
+  `remote/transfer_gateway.py` 93.22%, and
+  `remote_worker/http_transfer.py` 96.80%.
+  The subsequent full pytest run passed `1022 passed, 2 skipped`, and total
+  branch coverage reached `86.03%`, but the per-module coverage ratchet rejected
+  two precisely attributable gaps: `config/settings.py` was `96.97%` versus its
+  `98.20%` floor, and the newly extended private
+  `tools/registry/transfer.py` was `90.14%` versus `98.31%`. Direct tests now
+  cover every new transfer-limit validation/config-file branch plus the three
+  local-private HTTP handlers and existing abort wrapper; the focused correction
+  passes `15 passed` with Ruff/Pyright clean. This was a coverage-policy failure,
+  not a pytest behavior failure.
+- The final clean rerun passes `1024 passed, 2 skipped`; durable marker
+  `/tmp/local-shell-mcp-phase8-full-coverage.exit` is `0`. Total branch-mode
+  coverage is `86.17%` against the `82.60%` baseline, and every module ratchet
+  passes. Key final module coverage is: `config/settings.py` 100%,
+  `tools/registry/transfer.py` 100%, `ops/utils/session_copy.py` 98.21%,
+  `remote/transfer_gateway.py` 94.19%, and
+  `remote_worker/http_transfer.py` 96.80%. A separate branch-only check for the
+  new gateway is `148/164 = 90.24%`, satisfying the explicit Phase 8 branch
+  target.
+- Final targeted secret scans of changed transfer/HTTP production and test files
+  return zero findings. Final full-repository pre-commit durable marker
+  `/tmp/local-shell-mcp-phase8-precommit.exit` is `0`; Ruff check/format,
+  generated config and tool references, VS Code format/lint/compile, and OpenTUI
+  generated assets all pass. Push and exact-head CI gates remain pending.
+
 Public API rule:
 
 - Keep `session_copy` as the only public copy API. Do not expose ticket creation,
@@ -1135,8 +1328,8 @@ Routing behavior:
 
 Selection and fallback:
 
-- Add validated settings for enablement, large-file threshold (initial default
-  8 MiB), ticket TTL (initial default five minutes), maximum active transfers,
+- Add validated settings for enablement, large-file threshold (measured default
+  1 MiB), ticket TTL (initial default five minutes), maximum active transfers,
   and spool bytes.
 - Select HTTP only above the threshold and only when the worker advertises the
   capability. Keep RPC chunks for small transfers and as an explicit fallback
