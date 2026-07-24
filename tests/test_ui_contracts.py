@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -60,3 +62,14 @@ def test_python_executable_name_literal_has_one_owner() -> None:
         if "local-shell-mcp-tui" in path.read_text(encoding="utf-8")
     }
     assert owners == {"ui/contracts.py"}
+
+
+def test_release_matrix_checker_uses_contract_without_project_install() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-S", "scripts/check-release-matrix.py"],
+        cwd=_REPO,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr

@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-
-from local_shell_mcp.ui.contracts import (
-    POSIX_TUI_EXECUTABLE_NAME,
-    WINDOWS_TUI_EXECUTABLE_NAME,
-)
+from runpy import run_path
 
 REPO = Path(__file__).resolve().parents[1]
+_TUI_CONTRACT = run_path(
+    str(REPO / "src" / "local_shell_mcp" / "ui" / "contracts.py")
+)
+POSIX_TUI_EXECUTABLE_NAME = str(_TUI_CONTRACT["POSIX_TUI_EXECUTABLE_NAME"])
+WINDOWS_TUI_EXECUTABLE_NAME = str(_TUI_CONTRACT["WINDOWS_TUI_EXECUTABLE_NAME"])
 CI_WORKFLOW = REPO / ".github" / "workflows" / "ci.yml"
 RELEASE_WORKFLOW = REPO / ".github" / "workflows" / "release.yml"
 DOCKERFILE = REPO / "Dockerfile"
