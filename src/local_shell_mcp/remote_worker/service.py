@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import MutableMapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -231,11 +232,17 @@ def _launchd_session_path_entries() -> tuple[str, ...]:
     return tuple(dict.fromkeys(entries))
 
 
+def _launchd_parent(path: str | Path) -> str:
+    """Return one POSIX parent directory without consulting the host path flavor."""
+    value = path.as_posix() if isinstance(path, Path) else path
+    return posixpath.dirname(value)
+
+
 def _launchd_path() -> str:
     """Build the explicit tool search path inherited by launchd workers."""
     candidates = (
-        str(Path(sys.executable).expanduser().resolve().parent),
-        str(launcher_path().parent),
+        _launchd_parent(sys.executable),
+        _launchd_parent(launcher_path()),
         *_LAUNCHD_HOMEBREW_DIRS,
         *_launchd_session_path_entries(),
         *_LAUNCHD_SYSTEM_DIRS,
@@ -386,7 +393,9 @@ def refresh_installed_service_definition(identity: dict[str, Any]) -> bool:
     return launcher_changed or definition_changed
 
 
-def prepare_worker_service_environment() -> Path | None:
+def prepare_worker_service_environment(
+    environ: MutableMapping[str, str] | None = None,
+) -> Path | None:
     """Repair PATH for one managed launchd worker and refresh its next launch."""
     path = launchd_plist_path()
     if (
@@ -398,7 +407,8 @@ def prepare_worker_service_environment() -> Path | None:
     workdir = _installed_launchd_workdir()
     if workdir is None:
         return None
-    os.environ["PATH"] = _launchd_path()
+    active_environ = os.environ if environ is None else environ
+    active_environ["PATH"] = _launchd_path()
     ensure_launcher()
     refreshed, _changed = _write_launchd_plist(workdir)
     return refreshed

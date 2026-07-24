@@ -370,12 +370,13 @@ def test_prepare_launchd_environment_repairs_running_worker_and_plist(
         service, "_launchd_session_path_entries", lambda: ("/opt/local/bin",)
     )
 
-    assert service.prepare_worker_service_environment() == path
-    entries = os.environ["PATH"].split(":")
+    environment = {"PATH": "/transient"}
+    assert service.prepare_worker_service_environment(environment) == path
+    entries = environment["PATH"].split(":")
     assert "/opt/homebrew/bin" in entries
     assert "/opt/local/bin" in entries
     refreshed = plistlib.loads(path.read_bytes())
-    assert refreshed["EnvironmentVariables"]["PATH"] == os.environ["PATH"]
+    assert refreshed["EnvironmentVariables"]["PATH"] == environment["PATH"]
 
 
 def test_prepare_launchd_environment_rejects_symlinked_plist(
@@ -392,11 +393,11 @@ def test_prepare_launchd_environment_rejects_symlinked_plist(
     except OSError:
         pytest.skip("symlink unavailable")
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
-    original_path = os.environ.get("PATH")
+    environment = {"PATH": "/unchanged"}
 
-    assert service.prepare_worker_service_environment() is None
+    assert service.prepare_worker_service_environment(environment) is None
     assert path.is_symlink()
-    assert os.environ.get("PATH") == original_path
+    assert environment == {"PATH": "/unchanged"}
 
 
 def test_refresh_stopped_launchd_definition_without_lifecycle_commands(
