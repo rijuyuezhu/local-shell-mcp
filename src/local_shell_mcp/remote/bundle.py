@@ -25,6 +25,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "patch_ops.py",
     "conpty.py",
     "dashboard.py",
+    "errors.py",
     "terminal_bridge.py",
     "tmux_helper.py",
     "version.py",

@@ -2,6 +2,7 @@
 
 from typing import Any, cast
 
+from ...errors import exception_from_tool_error
 from ...tool_session.store import AgentSession
 
 
@@ -38,12 +39,12 @@ def _remote_result_data(
         )
         raise RuntimeError(message)
     data = result.get("data")
-    if isinstance(data, dict) and data.get("status") == "error":
-        message = str(
-            data.get("message") or f"remote {tool} failed on {machine}"
-        )
-        error_type = str(data.get("error_type") or "remote_error")
-        raise RuntimeError(f"{error_type}: {message}")
+    if isinstance(data, dict) and data.get("status") in {
+        "error",
+        "not_found",
+        "executable_not_found",
+    }:
+        raise exception_from_tool_error(data)
     if isinstance(data, dict):
         return cast(dict[str, Any], data)
     return {"result": data}

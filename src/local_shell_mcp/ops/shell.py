@@ -4,6 +4,7 @@ import asyncio
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -15,6 +16,10 @@ from typing import Any
 from .. import conpty
 from ..audit import audit
 from ..config.settings import get_settings
+from ..errors import (
+    ShellExecutableNotFoundError,
+    process_start_not_found_error,
+)
 from ..schemas.result_models.shell import (
     CommandResult,
     KillPersistentShellOutput,
@@ -312,16 +317,24 @@ async def _spawn_process(
         **process_group,
     }
     shell_name = os.path.basename(shell).lower()
-    if shell_name in {"cmd", "cmd.exe"}:
-        return await asyncio.create_subprocess_shell(
-            command,
-            executable=shell,
+    try:
+        if shell_name in {"cmd", "cmd.exe"}:
+            return await asyncio.create_subprocess_shell(
+                command,
+                executable=shell,
+                **common,
+            )
+        return await asyncio.create_subprocess_exec(
+            *_shell_command_args(shell, command),
             **common,
         )
-    return await asyncio.create_subprocess_exec(
-        *_shell_command_args(shell, command),
-        **common,
-    )
+    except FileNotFoundError as exc:
+        raise process_start_not_found_error(
+            exc,
+            executable=shell,
+            command=command,
+            cwd=cwd,
+        ) from exc
 
 
 async def _read_stream_tail(
@@ -700,6 +713,16 @@ async def start_persistent_shell_execute(
 
     initial = command or get_settings().shell_executable
     check_command_policy(initial)
+    if (
+        command is None
+        and shutil.which(initial, path=_subprocess_env().get("PATH")) is None
+    ):
+        raise ShellExecutableNotFoundError(
+            initial,
+            initial,
+            resolved_cwd,
+            "configured shell executable was not found on PATH",
+        )
     cmd = [
         "new-session",
         "-d",

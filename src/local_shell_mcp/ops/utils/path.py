@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ...config.settings import get_settings
+from ...errors import PathNotFoundError
 
 
 def workspace_root() -> Path:
@@ -110,9 +111,9 @@ def resolve_path(
         resolved.exists() if follow_final_symlink else os.path.lexists(resolved)
     )
     if must_exist and not exists:
-        raise FileNotFoundError(str(resolved))
+        raise PathNotFoundError(resolved)
     if not allow_missing_parent and not resolved.parent.exists():
-        raise FileNotFoundError(str(resolved.parent))
+        raise PathNotFoundError(resolved.parent)
     return resolved
 
 

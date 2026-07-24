@@ -18,6 +18,7 @@ from typing import Any, BinaryIO
 
 from ..audit import audit
 from ..config.settings import get_settings
+from ..errors import public_error_type
 from ..schemas.result_models.jobs import (
     JobInfo,
     JobListOutput,
@@ -782,7 +783,7 @@ async def _run_managed_job(
         )
         raise
     except Exception as exc:
-        error = f"{type(exc).__name__}: {exc}"
+        error = f"{public_error_type(exc)}: {exc}"
         with contextlib.suppress(Exception):
             await context.log(error)
         await asyncio.to_thread(
@@ -805,7 +806,7 @@ async def _run_managed_job(
                 result=result,
             )
         except Exception as exc:
-            error = f"{type(exc).__name__}: {exc}"
+            error = f"{public_error_type(exc)}: {exc}"
             with contextlib.suppress(Exception):
                 await context.log(error)
             await asyncio.to_thread(
@@ -991,7 +992,7 @@ async def job_start_execute(
                             "status": "failed",
                             "updated_at": completed,
                             "completed_at": completed,
-                            "error": f"start failed: {type(exc).__name__}: {exc}",
+                            "error": f"start failed: {public_error_type(exc)}: {exc}",
                         }
                     )
             raise
@@ -1213,7 +1214,9 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
                     completed = _utc()
                     job["status"] = "running" if still_active else "lost"
                     job["updated_at"] = completed
-                    job["error"] = f"stop failed: {type(exc).__name__}: {exc}"
+                    job["error"] = (
+                        f"stop failed: {public_error_type(exc)}: {exc}"
+                    )
                     if not still_active:
                         job["completed_at"] = completed
                     _clear_job_operation(job)
@@ -1347,7 +1350,7 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
                             "updated_at": completed,
                             "completed_at": completed,
                             "exit_code": None,
-                            "error": f"retry failed: {type(exc).__name__}: {exc}",
+                            "error": f"retry failed: {public_error_type(exc)}: {exc}",
                         }
                     )
                     _clear_pending_retry(current)
@@ -1438,7 +1441,7 @@ async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
                             "updated_at": completed,
                             "completed_at": completed,
                             "exit_code": None,
-                            "error": f"retry failed: {type(exc).__name__}: {exc}",
+                            "error": f"retry failed: {public_error_type(exc)}: {exc}",
                         }
                     )
             raise
@@ -1811,7 +1814,7 @@ def run_job_runner_from_args(args: Any) -> None:
             with contextlib.suppress(Exception):
                 process.kill()
                 process.wait(timeout=2)
-        error = f"{type(exc).__name__}: {exc}"
+        error = f"{public_error_type(exc)}: {exc}"
     finally:
         completed_at = _utc()
         atomic_write_private_text(

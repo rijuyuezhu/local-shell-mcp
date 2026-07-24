@@ -16,6 +16,7 @@ from typing import Any
 
 from .audit import audit
 from .config.settings import get_settings
+from .errors import process_start_not_found_error
 from .ops.utils.path import relative_display
 from .schemas.result_models.shell import (
     KillPersistentShellOutput,
@@ -431,13 +432,22 @@ async def start_shell(
                 f"Persistent shell session already exists: {shell_id}"
             )
     initial = initial_command(command)
-    process = await asyncio.to_thread(
-        _spawn_pty,
-        _persistent_shell_args(command),
-        cwd,
-        CONPTY_DEFAULT_COLUMNS,
-        CONPTY_DEFAULT_ROWS,
-    )
+    args = _persistent_shell_args(command)
+    try:
+        process = await asyncio.to_thread(
+            _spawn_pty,
+            args,
+            cwd,
+            CONPTY_DEFAULT_COLUMNS,
+            CONPTY_DEFAULT_ROWS,
+        )
+    except FileNotFoundError as exc:
+        raise process_start_not_found_error(
+            exc,
+            executable=str(args[0]),
+            command=initial,
+            cwd=cwd,
+        ) from exc
     session = _ConPtySession(
         shell_id=shell_id,
         process=process,

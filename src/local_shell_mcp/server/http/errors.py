@@ -3,6 +3,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from ...errors import public_error_type
 from ...tools.local_handlers import UnknownLocalToolError
 
 
@@ -23,7 +24,7 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(OSError)
     async def os_error_handler(request: Request, exc: OSError) -> JSONResponse:
-        exc_type = type(exc).__name__
+        exc_type = public_error_type(exc)
         return JSONResponse(
             status_code=400,
             content={

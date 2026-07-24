@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..agent_bridge.redaction import _redact_text
+from ..errors import tool_error_payload
 from ..remote.constants import (
     REMOTE_API_PREFIX,
     REMOTE_WORKER_IDENTITY_FILE_NAME,
@@ -43,7 +44,14 @@ class WorkerHttpError(RuntimeError):
 
 def _handled_remote_exception(exc: Exception) -> dict[str, Any]:
     """Convert local helper failures into serializable worker-side error payloads."""
-    return {"ok": False, "error": type(exc).__name__, "message": str(exc)}
+    workspace_root = os.getenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT") or "."
+    data = tool_error_payload(exc, workspace_root=workspace_root)
+    return {
+        "ok": False,
+        "error": str(data["error_type"]),
+        "message": str(data["message"]),
+        "data": data,
+    }
 
 
 WORKER_TOOL_NAMES = REMOTE_WORKER_TOOL_NAMES

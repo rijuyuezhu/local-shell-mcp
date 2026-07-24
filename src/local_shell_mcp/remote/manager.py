@@ -681,13 +681,14 @@ class RemoteManager:
                     self.pending.pop(job_id, None)
                     self.pending_machines.pop(job_id, None)
         if not result.get("ok", False):
-            return _ok(
-                {
+            data = result.get("data")
+            if not isinstance(data, dict):
+                data = {
                     "status": "error",
                     "error_type": result.get("error", "remote_error"),
                     "message": result.get("message", "remote job failed"),
                 }
-            )
+            return _ok(data)
         return _ok(result.get("data"))
 
     def supports(self, machine: str, capability: str) -> bool:

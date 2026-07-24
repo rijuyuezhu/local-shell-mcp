@@ -15,6 +15,7 @@ from ...audit import (
     audit_tool_call_start,
     new_audit_call_id,
 )
+from ...errors import public_error_type
 from ...ops.shell import tool_timeout_s
 from ...tools.declarative import mcp_handler_error_handler
 from ...utils.serialization import to_jsonable
@@ -91,7 +92,7 @@ def _mcp_tool_audit_watchdog_wrapper(
                 duration_ms=duration_ms,
                 output=to_jsonable(payload),
                 error={
-                    "type": type(exc).__name__,
+                    "type": public_error_type(exc),
                     "message": str(exc),
                     "repr": repr(exc),
                 },
@@ -108,7 +109,7 @@ def _mcp_tool_audit_watchdog_wrapper(
                 ok=False,
                 duration_ms=duration_ms,
                 error={
-                    "type": type(exc).__name__,
+                    "type": public_error_type(exc),
                     "message": str(exc),
                     "repr": repr(exc),
                 },
