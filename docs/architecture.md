@@ -177,6 +177,7 @@ internal rather than public tools.
 | `ui/__init__.py` | Declares the Human UI core boundary independently of HTTP delivery. | It prevents UI behavior from appearing to be part of the REST executor and allows browser and native clients to share core contracts. |
 | `ui/dashboard.py` | Combines neutral system telemetry with metadata-only audit summaries, alerts, activity rows, health state, and version data for local or remote Dashboard clients. | The output is a Dashboard view model with UI labels and disclosure policy. Remote-worker support only transports this internal UI capability; it does not make the projection a generic telemetry or public tool contract. |
 | `ui/image_preview.py` | Decodes validated image bytes into bounded, orientation-corrected RGBA thumbnails and terminal-cell dimensions for native UI rendering. | The output is a UI view model tied to terminal rendering constraints. It contains no HTTP request parsing or response construction, so browser/HTTP adapters consume it rather than own it. |
+| `ui/security.py` | Owns the Human UI API namespace, private loopback-client credential lifecycle, constant-time token verification, and direct-peer loopback classification. | These rules define the Human UI trust boundary used by OAuth middleware, browser/native adapters, and the native launcher. They are UI policy rather than general OAuth, HTTP, or filesystem helpers. |
 
 Rejected ownership alternatives:
 
@@ -190,6 +191,11 @@ Rejected ownership alternatives:
   and JSON response construction.
 - top-level `image_preview.py`: a package-root file hid that thumbnail generation
   is a Human UI rendering capability rather than a project-wide utility.
+- top-level `ui_security.py`: the old location obscured that the local-token
+  bypass is narrowly scoped Human UI policy, not a general authentication or
+  transport-security facility.
+- `oauth`: OAuth middleware consumes the UI trust decision, but credential
+  creation and loopback UI namespace rules must remain owned by the UI domain.
 
 ## Ownership review status
 

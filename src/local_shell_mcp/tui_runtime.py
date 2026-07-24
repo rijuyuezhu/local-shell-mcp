@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 from . import __version__
 from .config.settings import Settings, get_settings
-from .ui_security import (
+from .ui.security import (
     UI_API_PREFIX,
     UI_LOCAL_TOKEN_ENV,
     get_or_create_ui_local_token,

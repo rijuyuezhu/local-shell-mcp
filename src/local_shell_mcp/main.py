@@ -11,7 +11,7 @@ from .executors.mcp.app import run_mcp
 from .ops.jobs import run_job_runner_from_args
 from .remote_worker.cli import add_worker_cli_parser
 from .tui_runtime import run_tui
-from .ui_security import UI_API_PREFIX
+from .ui.security import UI_API_PREFIX
 from .version import format_version_info
 
 

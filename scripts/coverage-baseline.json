@@ -865,7 +865,7 @@
       "num_statements": 51,
       "percent_covered": 91.22807
     },
-    "src/local_shell_mcp/ui_security.py": {
+    "src/local_shell_mcp/ui/security.py": {
       "num_branches": 14,
       "num_statements": 75,
       "percent_covered": 64.044944

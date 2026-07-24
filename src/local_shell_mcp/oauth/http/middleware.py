@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from ...ui_security import (
+from ...ui.security import (
     has_valid_ui_local_token,
     is_loopback_connection,
     is_ui_api_path,

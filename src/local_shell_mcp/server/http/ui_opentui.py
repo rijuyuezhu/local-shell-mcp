@@ -18,7 +18,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from ... import __version__
 from ...config.settings import get_settings
 from ...tui_runtime import resolve_tui_command
-from ...ui_security import (
+from ...ui.security import (
     UI_API_PREFIX,
     UI_LOCAL_TOKEN_ENV,
     get_or_create_ui_local_token,

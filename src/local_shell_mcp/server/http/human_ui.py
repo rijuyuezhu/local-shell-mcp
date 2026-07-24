@@ -22,7 +22,7 @@ from ...oauth.core.scopes import default_scope
 from ...oauth.core.urls import issuer_url, resource_url
 from ...remote.manager import remote_manager
 from ...tui_runtime import tui_runtime_available
-from ...ui_security import UI_API_PREFIX
+from ...ui.security import UI_API_PREFIX
 from ...version import version_info
 from .ui_audit import api_audit, api_audit_detail
 from .ui_dashboard import api_dashboard

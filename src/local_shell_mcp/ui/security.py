@@ -11,7 +11,7 @@ from pathlib import Path
 
 from starlette.requests import HTTPConnection
 
-from .config.settings import get_settings
+from ..config.settings import get_settings
 
 UI_API_PREFIX = "/api/ui"
 UI_LOCAL_TOKEN_HEADER = "x-local-shell-mcp-ui-token"
