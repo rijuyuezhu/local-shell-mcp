@@ -110,25 +110,26 @@ direction explicit when adding features or moving code:
 - `ops` implements transport-neutral use cases. It may use domain services and
   schemas, but it must not depend on HTTP, MCP, or Human UI adapters.
 - `tools` owns public tool contracts, discovery, metadata, and registration.
-- `server/http` and `server/mcp` are transport adapters. They may compose tools,
-  operations, OAuth, remote routes, and middleware; lower layers must not import
-  them.
-- `server/shared` contains HTTP/MCP server composition that is genuinely shared,
-  not general business logic.
-- `main` is the process-composition entry point and is allowed to select server
-  transports.
+- `http` owns executor-neutral Starlette/ASGI infrastructure shared by REST and
+  MCP-over-HTTP. It must not import an executor or Human UI implementation.
+- `server/http` and `server/mcp` are transitional executor locations while the
+  package restructure moves them to `executors/http` and `executors/mcp`.
+  Lower layers must not import either location.
+- `main` is the process-composition entry point and is allowed to select
+  executors.
 
 Human UI route handlers should validate transport input and delegate reusable
 behavior to `ops` or domain services. MCP-facing annotations and OAuth security
 metadata are tool presentation contracts, not transport implementation details.
 Avoid generic service locators: extract small dependency-leaf contracts and
-explicit facades instead.
+explicit facades instead. See [Architecture and module ownership](architecture.md)
+for the file-by-file ownership map and rejected placement alternatives.
 
-`tests/test_architecture.py` enforces the current dependency cycles and the exact
-set of non-server imports of `server`. Its allowlists are visible technical debt,
-not extension points: when a cycle or reversed import is removed, shrink the
-allowlist in the same change. New entries require an explicit architecture
-review.
+`tests/test_architecture.py` enforces current dependency cycles, transitional
+executor imports, and dependency-leaf package boundaries. Its allowlists are
+visible technical debt, not extension points: when a cycle or reversed import is
+removed, shrink the allowlist in the same change. New entries require an explicit
+architecture review.
 
 ## Run checks before committing
 

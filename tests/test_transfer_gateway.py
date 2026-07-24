@@ -13,6 +13,9 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.http.request_limits import (
+    RequestBodyLimitMiddleware,
+)
 from local_shell_mcp.ops.transfer import (
     transfer_begin_write,
     transfer_finish_write,
@@ -28,9 +31,6 @@ from local_shell_mcp.remote.transfer_gateway import (
 from local_shell_mcp.remote_worker.http_transfer import (
     WorkerHTTPTransferError,
     _validate_url,
-)
-from local_shell_mcp.server.shared.request_limits import (
-    RequestBodyLimitMiddleware,
 )
 
 

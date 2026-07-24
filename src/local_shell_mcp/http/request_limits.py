@@ -10,7 +10,7 @@ from typing import Any
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from ...audit import audit
+from ..audit import audit
 
 
 @dataclass(frozen=True)

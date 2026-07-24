@@ -4,8 +4,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from ...config.settings import Settings
-from ...version import version_info
+from ..config.settings import Settings
+from ..version import version_info
 
 
 def health_response(request: Request) -> JSONResponse:

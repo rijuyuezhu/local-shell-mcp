@@ -2,7 +2,7 @@
 
 from starlette.routing import Route
 
-from ...config.settings import Settings
+from ..config.settings import Settings
 from .downloads import download_routes
 from .health import health_routes
 

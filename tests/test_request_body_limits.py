@@ -9,17 +9,17 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 from starlette.types import ASGIApp, Message, Scope
 
-import local_shell_mcp.server.shared.request_limits as request_limit_module
+import local_shell_mcp.http.request_limits as request_limit_module
 from local_shell_mcp.config.settings import (
     Settings,
     clear_settings_cache,
     configure_settings,
 )
-from local_shell_mcp.server.http.app import build_http_app
-from local_shell_mcp.server.mcp.app import build_mcp_http_app
-from local_shell_mcp.server.shared.request_limits import (
+from local_shell_mcp.http.request_limits import (
     RequestBodyLimitMiddleware,
 )
+from local_shell_mcp.server.http.app import build_http_app
+from local_shell_mcp.server.mcp.app import build_mcp_http_app
 
 
 @pytest.fixture(autouse=True)

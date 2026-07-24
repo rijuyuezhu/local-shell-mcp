@@ -78,6 +78,7 @@ nav:
       - MCP server instructions: reference/instructions.md
   - Security: security.md
   - Troubleshooting: troubleshooting.md
+  - Architecture: architecture.md
   - Development: development.md
   - Maintenance:
       - Fork and upstream differences: maintenance/fork-upstream-differences.md

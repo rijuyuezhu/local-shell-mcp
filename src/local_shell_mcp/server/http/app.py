@@ -6,13 +6,13 @@ from starlette.routing import BaseRoute
 
 from ... import __version__
 from ...config.settings import Settings, get_settings
+from ...http.public_routes import public_http_routes
+from ...http.request_limits import install_request_body_limit
 from ...oauth.core.security import validate_public_oauth_configuration
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
 from ...remote.http import remote_routes
 from ...remote.transfer_gateway import build_transfer_gateway_router
-from ..shared.public_routes import public_http_routes
-from ..shared.request_limits import install_request_body_limit
 from .errors import install_error_handlers
 from .human_ui import human_ui_routes
 from .tool_routes import (

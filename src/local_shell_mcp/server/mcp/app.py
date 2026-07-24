@@ -10,6 +10,8 @@ from starlette.applications import Starlette
 from starlette.routing import BaseRoute, Mount
 
 from ...config.settings import get_settings
+from ...http.public_routes import public_http_routes
+from ...http.request_limits import install_request_body_limit
 from ...oauth.core.security import validate_public_oauth_configuration
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
@@ -18,8 +20,6 @@ from ...remote.transfer_gateway import build_transfer_gateway_router
 from ...tools.contracts import McpToolContext
 from ...tools.discovery import discover_tool_registries
 from ...tools.metadata import install_tool_safety_annotations
-from ..shared.public_routes import public_http_routes
-from ..shared.request_limits import install_request_body_limit
 from .instructions import SERVER_INSTRUCTIONS
 from .session_limits import McpSessionLimitMiddleware
 from .transport_security import transport_security_settings

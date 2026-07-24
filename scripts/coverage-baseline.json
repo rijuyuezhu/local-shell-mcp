@@ -85,6 +85,31 @@
       "num_statements": 159,
       "percent_covered": 65.024631
     },
+    "src/local_shell_mcp/http/__init__.py": {
+      "num_branches": 0,
+      "num_statements": 0,
+      "percent_covered": 100.0
+    },
+    "src/local_shell_mcp/http/downloads.py": {
+      "num_branches": 8,
+      "num_statements": 45,
+      "percent_covered": 100.0
+    },
+    "src/local_shell_mcp/http/health.py": {
+      "num_branches": 2,
+      "num_statements": 18,
+      "percent_covered": 90.0
+    },
+    "src/local_shell_mcp/http/public_routes.py": {
+      "num_branches": 0,
+      "num_statements": 6,
+      "percent_covered": 100.0
+    },
+    "src/local_shell_mcp/http/request_limits.py": {
+      "num_branches": 28,
+      "num_statements": 93,
+      "percent_covered": 87.603306
+    },
     "src/local_shell_mcp/image_preview.py": {
       "num_branches": 6,
       "num_statements": 51,
@@ -709,31 +734,6 @@
       "num_branches": 16,
       "num_statements": 59,
       "percent_covered": 92.0
-    },
-    "src/local_shell_mcp/server/shared/__init__.py": {
-      "num_branches": 0,
-      "num_statements": 0,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/shared/downloads.py": {
-      "num_branches": 8,
-      "num_statements": 45,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/shared/health.py": {
-      "num_branches": 2,
-      "num_statements": 18,
-      "percent_covered": 90.0
-    },
-    "src/local_shell_mcp/server/shared/public_routes.py": {
-      "num_branches": 0,
-      "num_statements": 6,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/server/shared/request_limits.py": {
-      "num_branches": 28,
-      "num_statements": 93,
-      "percent_covered": 87.603306
     },
     "src/local_shell_mcp/terminal_bridge.py": {
       "num_branches": 86,

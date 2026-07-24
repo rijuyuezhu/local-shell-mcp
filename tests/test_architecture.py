@@ -6,6 +6,7 @@ from pathlib import Path
 
 _PACKAGE_ROOT = Path(__file__).parents[1] / "src" / "local_shell_mcp"
 _PACKAGE_NAME = "local_shell_mcp"
+_ARCHITECTURE_DOC = Path(__file__).parents[1] / "docs" / "architecture.md"
 
 # `main` is the process-composition entry point and may import transport adapters.
 _ALLOWED_NON_SERVER_TO_SERVER_IMPORTS = frozenset(
@@ -172,6 +173,35 @@ def test_server_transport_imports_match_explicit_architecture_debt() -> None:
     )
 
     assert actual == _ALLOWED_NON_SERVER_TO_SERVER_IMPORTS
+
+
+def test_http_infrastructure_does_not_depend_on_executors_or_ui() -> None:
+    forbidden_prefixes = (
+        f"{_PACKAGE_NAME}.executors.",
+        f"{_PACKAGE_NAME}.server.",
+        f"{_PACKAGE_NAME}.ui.",
+    )
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer.startswith(f"{_PACKAGE_NAME}.http")
+        and target.startswith(forbidden_prefixes)
+    )
+
+    assert actual == frozenset()
+    assert not (_PACKAGE_ROOT / "server" / "shared").exists()
+
+
+def test_http_module_ownership_map_covers_every_file() -> None:
+    documentation = _ARCHITECTURE_DOC.read_text(encoding="utf-8")
+    expected_paths = {
+        f"http/{path.name}" for path in (_PACKAGE_ROOT / "http").glob("*.py")
+    }
+
+    assert expected_paths
+    assert {
+        path for path in expected_paths if f"`{path}`" not in documentation
+    } == set()
 
 
 def test_dependency_cycles_match_explicit_architecture_debt() -> None:
