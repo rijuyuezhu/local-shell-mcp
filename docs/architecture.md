@@ -21,8 +21,10 @@ local_shell_mcp/
     ...                    transport-neutral Human UI core and runtimes
     http/                  Human UI HTTP adapters and routes
   tools/                   public tool contracts and registration
-  ops/                     transport-neutral use cases
-  schemas/                 input and result contracts
+    ops/                   audited tool-owned operation implementations
+    schemas/               audited tool-owned input and result contracts
+  ops/                     shared or not-yet-migrated use cases
+  schemas/                 shared or not-yet-migrated contracts
   config/                  settings and configuration surface
   agent_bridge/            external agent capability domain
   remote/                  controller-side remote-worker domain
@@ -49,7 +51,10 @@ General rules:
 - UI core must not import an executor. `ui/http` may depend on UI core and
   transport-neutral operations and domain services.
 - `ops`, `tools`, `schemas`, domain packages, and worker code must not import
-  executors or UI HTTP adapters.
+  executors or UI HTTP adapters. A module moves into `tools/{ops,schemas}` only
+  after its complete consumer graph is tool-owned; shared UI, worker, remote,
+  release, terminal, or infrastructure contracts remain in an explicit shared
+  domain until separately extracted.
 - `utils` is for small dependency-leaf technical primitives, not a holding area
   for domain algorithms or large workflows.
 
@@ -148,6 +153,36 @@ Rejected ownership alternatives:
 - `executors/http` or `executors/mcp`: both executors consume the behavior, so
   either location would reverse the other executor's dependency direction.
 
+
+## `tools`: public contracts and tool-owned implementations
+
+The `tools` package owns public tool registration, metadata, and implementation
+slices whose complete production consumer graph is tool-specific. Migration is
+incremental: top-level `ops` and `schemas` remain valid owners for shared or
+not-yet-audited capabilities, while each accepted slice moves operation and
+schema contracts together without compatibility wrappers.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `tools/ops/__init__.py` | Declares the namespace for audited tool-owned operation implementations. | It distinguishes tool business logic from shared domain capabilities and from registry adapters. |
+| `tools/ops/version.py` | Converts package/runtime version metadata into the typed version-tool result. | Its only production consumer is the version tool registry, so keeping it at top-level `ops` implied reuse that does not exist. |
+| `tools/schemas/__init__.py` | Declares the namespace for tool-owned input and result contracts. | It keeps tool-only schemas with their public tool surface while shared contracts remain at top-level `schemas`. |
+| `tools/schemas/input_models/__init__.py` | Declares tool-owned input contracts. | The marker establishes the final package shape even though the version tool currently accepts no arguments. |
+| `tools/schemas/input_models/version.py` | Documents the intentionally argument-free version tool input contract. | The contract exists only to keep the version tool's operation/registry/schema slice structurally complete. |
+| `tools/schemas/result_models/__init__.py` | Declares tool-owned structured result contracts. | It separates public tool response schemas from shared cross-domain result models. |
+| `tools/schemas/result_models/version.py` | Defines `VersionInfoOutput` for package, distribution, Python, and platform metadata. | Only the version operation and registry consume it; no UI, worker, remote, executor, release, or infrastructure module depends on it. |
+
+Rejected ownership alternatives:
+
+- top-level `ops/version.py` and `schemas/**/version.py`: their placement
+  advertised transport-neutral reuse despite an exclusively tool-owned consumer
+  graph.
+- `tools/registry/version.py`: registration adapts the operation to declarative
+  tool metadata; combining implementation and schemas into the adapter would
+  erase the operation/contract boundary.
+- source-only worker bundle: workers do not register or execute the version tool,
+  so controller-only version files must not be included incidentally by schema
+  wildcards.
 
 ## `telemetry`: transport-neutral host and process observations
 

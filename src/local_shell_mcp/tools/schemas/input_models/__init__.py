@@ -1,0 +1,1 @@
+"""Tool-owned input contracts."""

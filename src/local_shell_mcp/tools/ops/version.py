@@ -1,7 +1,7 @@
 """Version-reporting operation helpers."""
 
+from ...version import version_info
 from ..schemas.result_models.version import VersionInfoOutput
-from ..version import version_info
 
 
 def version_info_execute() -> VersionInfoOutput:

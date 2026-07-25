@@ -390,7 +390,7 @@
       "num_statements": 11,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/ops/version.py": {
+    "src/local_shell_mcp/tools/ops/version.py": {
       "num_branches": 0,
       "num_statements": 4,
       "percent_covered": 100.0
@@ -560,7 +560,7 @@
       "num_statements": 16,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/version.py": {
+    "src/local_shell_mcp/tools/schemas/input_models/version.py": {
       "num_branches": 0,
       "num_statements": 0,
       "percent_covered": 100.0
@@ -645,7 +645,7 @@
       "num_statements": 63,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/version.py": {
+    "src/local_shell_mcp/tools/schemas/result_models/version.py": {
       "num_branches": 0,
       "num_statements": 6,
       "percent_covered": 100.0

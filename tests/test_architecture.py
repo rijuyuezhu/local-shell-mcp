@@ -430,6 +430,49 @@ def test_owned_domain_maps_cover_every_file() -> None:
         )
 
 
+def test_version_tool_slice_has_one_explicit_owner() -> None:
+    migrated_paths = {
+        "tools/ops/__init__.py",
+        "tools/ops/version.py",
+        "tools/schemas/__init__.py",
+        "tools/schemas/input_models/__init__.py",
+        "tools/schemas/input_models/version.py",
+        "tools/schemas/result_models/__init__.py",
+        "tools/schemas/result_models/version.py",
+    }
+    _assert_ownership_map_covers(migrated_paths)
+
+    old_paths = {
+        "ops/version.py",
+        "schemas/input_models/version.py",
+        "schemas/result_models/version.py",
+    }
+    assert {
+        path for path in old_paths if (_PACKAGE_ROOT / path).exists()
+    } == set()
+
+    operation = f"{_PACKAGE_NAME}.tools.ops.version"
+    input_model = f"{_PACKAGE_NAME}.tools.schemas.input_models.version"
+    result_model = f"{_PACKAGE_NAME}.tools.schemas.result_models.version"
+    registry = f"{_PACKAGE_NAME}.tools.registry.version"
+    version_contract = f"{_PACKAGE_NAME}.version"
+    actual = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer in {operation, input_model, result_model}
+        or target in {operation, input_model, result_model}
+    )
+
+    assert actual == frozenset(
+        {
+            (operation, result_model),
+            (operation, version_contract),
+            (registry, operation),
+            (registry, result_model),
+        }
+    )
+
+
 def test_ui_static_assets_have_one_explicit_owner() -> None:
     static_root = _PACKAGE_ROOT / "ui" / "static"
     expected = {
