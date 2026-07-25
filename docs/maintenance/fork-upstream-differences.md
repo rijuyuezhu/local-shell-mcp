@@ -82,7 +82,7 @@ The important mappings and actual gaps are:
 | Preserve tool inputs without redaction | The fork intentionally redacts tokens, authorization headers, approval PINs, sensitive download URLs, and similar credentials. Debuggability does not justify raw credential retention. |
 | Restore every legacy local/remote tool name | Explicit `session_id` ownership is clearer and prevents schema duplication. Unregistered names use the SDK-standard unknown-tool path rather than expanding the public surface. |
 | Remove the dynamic Agent Bridge | It is an active fork feature, not dead plumbing. Removing it would eliminate installed Skill discovery, configured MCP-server bridging, and dynamic capability activation. |
-| Copy upstream release/version commits | The fork has an independent `3.9.1` release line and release matrix. Functional commits should be reviewed independently of upstream version metadata. |
+| Copy upstream release/version commits | The fork has an independent `4.0.0` release line and release matrix. Functional commits should be reviewed independently of upstream version metadata. |
 | Copy upstream WebUI/OpenTUI architecture verbatim | The fork deliberately keeps a browser-native Human UI as the default and treats OpenTUI as an optional client sharing the same APIs. |
 
 ## Capabilities where the fork leads upstream
