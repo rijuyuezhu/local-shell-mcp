@@ -24,8 +24,8 @@ local_shell_mcp/
     ops/                   audited tool-owned operation implementations
     schemas/               audited tool-owned input and result contracts
   jobs/                    shared durable background-job domain
-  ops/                     shared or not-yet-migrated use cases
-  schemas/                 shared or not-yet-migrated contracts
+  ops/                     shared transport-neutral operations
+  schemas/                 shared cross-domain contracts
   config/                  settings and configuration surface
   agent_bridge/            external agent capability domain
   remote/                  controller-side remote-worker domain
@@ -55,7 +55,8 @@ General rules:
   executors or UI HTTP adapters. A module moves into `tools/{ops,schemas}` only
   after its complete consumer graph is tool-owned; shared UI, worker, remote,
   release, terminal, or infrastructure contracts remain in an explicit shared
-  domain until separately extracted.
+  domain until separately extracted. Every remaining top-level `ops` family has
+  completed this audit and is a deliberate shared owner, not migration backlog.
 - `utils` is for small dependency-leaf technical primitives, not a holding area
   for domain algorithms or large workflows.
 
@@ -155,6 +156,53 @@ Rejected ownership alternatives:
   either location would reverse the other executor's dependency direction.
 
 
+## `ops`: shared transport-neutral operations
+
+The `ops` package is the shared application-operation layer. These modules back
+public tools, but they also serve source-only workers, Human UI adapters, generic
+HTTP routes, remote transfer services, the job runtime, or other operation
+families. Consequently, importing them from `tools` would reverse dependency
+direction: shared runtimes would depend on the public tool-registration layer.
+The current consumer graph has been fully audited; `ops` is no longer a staging
+area for unaudited moves.
+
+| File | Responsibility | Why it remains shared |
+| --- | --- | --- |
+| `ops/__init__.py` | Declares the shared operation namespace. | The package is consumed across tools, workers, UI, HTTP, remote services, and domain runtimes. |
+| `ops/agent.py` | Lists, activates, reads, and invokes Agent Bridge capabilities. | Both the public agent registry and source-only worker dispatch execute these operations. |
+| `ops/downloads.py` | Creates, lists, revokes, claims, and releases tokenized immutable file downloads. | The public download tools and executor-neutral HTTP download route share the same state and claim policy. |
+| `ops/files.py` | Implements contained, bounded workspace file listing, writing, editing, hashing, deletion, and link-safe path behavior. | Worker dispatch, Human UI files, remote transfer, read/search/secret-scan operations, and tool registries all reuse it. |
+| `ops/image.py` | Loads bounded local or remote image bytes and projects native MCP image results. | The image tool and Human UI audit image preview share staging and validation behavior. |
+| `ops/patch/__init__.py` | Dispatches session-bound unified diff and apply-patch operations locally or remotely. | The patch tool, worker dispatch, and shell patch-envelope mode consume the same operation. |
+| `ops/patch/envelope.py` | Parses patch envelopes, applies deterministic hunks, and renders portable Git diffs. | It is a dependency of the shared patch operation and shell execution path, not a registry-only adapter. |
+| `ops/read.py` | Resolves read selectors and projects files or directories into bounded model-facing output. | Both the read tool and source-only worker dispatch execute it. |
+| `ops/remote.py` | Adapts remote-manager service actions into typed remote administration and tool-call outputs. | Its operation consumer is the remote registry, but its result contract is shared by `remote/{manager,service,transfer}`; moving only the operation would violate the complete-family rule, while moving the family would invert remote-domain dependencies. |
+| `ops/search.py` | Implements bounded grep, glob, and directory-tree operations with local/remote session routing. | Worker dispatch, workspace connector orchestration, and public search tools share it. |
+| `ops/secret_scan.py` | Scans bounded workspace text for credential-like patterns with Git-ignore and remote-session behavior. | Both the public scanner and source-only worker dispatch execute it. |
+| `ops/session.py` | Creates and changes explicit sessions, collects environment/Git state, and starts session-copy jobs. | Both public session tools and source-only worker dispatch require the same lifecycle behavior. |
+| `ops/shell.py` | Runs bounded shell/Python commands and owns persistent shell lifecycle operations. | Worker dispatch, Human UI terminals, HTTP/MCP watchdog integration, remote tools, and the shared job runtime all depend on it. |
+| `ops/todo.py` | Persists revisioned, bounded agent todo lists. | Public todo tools, Human UI todos, and source-only worker dispatch share the state contract. |
+| `ops/transfer.py` | Provides binary-safe transactional file and directory transfer primitives. | Controller/worker transfer services, transfer gateway, image staging, session copy, download snapshots, and public transfer tools all reuse it. |
+| `ops/utils/__init__.py` | Declares operation-private shared helpers. | The helpers support multiple operation families without becoming general project utilities. |
+| `ops/utils/download_snapshot.py` | Creates and reads immutable private snapshots for tokenized downloads. | Download HTTP/tool policy and transfer primitives jointly consume the snapshot lifecycle. |
+| `ops/utils/download_store.py` | Persists and locks private tokenized-download metadata and claims. | The download operation and HTTP route share one durable claim store. |
+| `ops/utils/path.py` | Resolves workspace-contained paths, bounded text input, scratch files, and cleanup. | File, patch, shell, transfer, terminal, and other shared operations reuse these safety primitives. |
+| `ops/utils/remote_session.py` | Routes explicit sessions to remote workers and normalizes remote errors/results. | Many shared operations require the same controller-side dispatch seam; workers replace it through their compatibility layer. |
+| `ops/utils/session_copy.py` | Coordinates local/local, local/remote, and remote/remote session-copy workflows as managed jobs. | Session operations, transfer gateway, shared job runtime, and worker transfer primitives meet at this workflow. |
+| `ops/utils/temp_file.py` | Creates validated managed temporary text files for operation workflows. | Patch and shell operations share it, while its policy remains operation-specific. |
+
+Rejected ownership alternatives:
+
+- moving the complete `ops/` tree under `tools/ops`: this would make workers,
+  UI/HTTP adapters, remote services, and the job runtime depend on public tool
+  ownership and would require bundling controller-only `tools` code on workers.
+- treating top-level `ops` as unfinished migration: the current family graph is
+  explicitly locked by architecture tests; a future move requires first removing
+  every non-tool consumer or extracting a truthful shared domain.
+- moving only `ops/remote.py`: its shared result contracts keep the remote family
+  cross-domain, and partial family migration would weaken the registry/operation/
+  schema alignment contract.
+
 ## `jobs`: shared durable background-job domain
 
 The `jobs` package owns durable tracked-job state and execution that must work
@@ -183,10 +231,10 @@ Rejected ownership alternatives:
 ## `tools`: public contracts and tool-owned implementations
 
 The `tools` package owns public tool registration, metadata, and implementation
-slices whose complete production consumer graph is tool-specific. Migration is
-incremental: top-level `ops` and `schemas` remain valid owners for shared or
-not-yet-audited capabilities, while each accepted slice moves operation and
-schema contracts together without compatibility wrappers.
+slices whose complete production consumer graph is tool-specific. The current
+migration audit is complete: top-level `ops` and `schemas` are deliberate shared
+owners, while each accepted tool-only slice moves operation and schema contracts
+together without compatibility wrappers.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |

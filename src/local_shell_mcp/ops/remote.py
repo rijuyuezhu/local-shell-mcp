@@ -1,4 +1,4 @@
-"""Remote worker operation helpers used by the remote tool registry."""
+"""Typed remote-manager operation adapters over the shared remote domain."""
 
 from typing import Any, cast
 

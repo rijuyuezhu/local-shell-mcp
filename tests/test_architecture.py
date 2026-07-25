@@ -405,6 +405,93 @@ def test_patch_operation_ownership_map_is_documented() -> None:
     )
 
 
+def _top_level_operation_modules() -> set[str]:
+    modules: set[str] = set()
+    for path in (_PACKAGE_ROOT / "ops").iterdir():
+        if path.name in {"__init__.py", "__pycache__", "utils"}:
+            continue
+        if path.is_file() and path.suffix == ".py":
+            modules.add(_module_name(path))
+        elif path.is_dir() and (path / "__init__.py").is_file():
+            modules.add(_module_name(path / "__init__.py"))
+    return modules
+
+
+def test_shared_ops_ownership_map_covers_every_file() -> None:
+    _assert_ownership_map_covers(
+        {
+            str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
+            for path in (_PACKAGE_ROOT / "ops").rglob("*.py")
+        }
+    )
+
+
+def test_remaining_top_level_ops_families_have_shared_consumers() -> None:
+    required_shared_consumers = {
+        f"{_PACKAGE_NAME}.ops.agent": {
+            f"{_PACKAGE_NAME}.remote_worker.dispatch"
+        },
+        f"{_PACKAGE_NAME}.ops.downloads": {f"{_PACKAGE_NAME}.http.downloads"},
+        f"{_PACKAGE_NAME}.ops.files": {
+            f"{_PACKAGE_NAME}.remote.transfer",
+            f"{_PACKAGE_NAME}.remote_worker.dispatch",
+            f"{_PACKAGE_NAME}.ui.http.files",
+        },
+        f"{_PACKAGE_NAME}.ops.image": {f"{_PACKAGE_NAME}.ui.http.audit"},
+        f"{_PACKAGE_NAME}.ops.patch": {
+            f"{_PACKAGE_NAME}.ops.shell",
+            f"{_PACKAGE_NAME}.remote_worker.dispatch",
+        },
+        f"{_PACKAGE_NAME}.ops.read": {
+            f"{_PACKAGE_NAME}.remote_worker.dispatch"
+        },
+        f"{_PACKAGE_NAME}.ops.search": {
+            f"{_PACKAGE_NAME}.remote_worker.dispatch"
+        },
+        f"{_PACKAGE_NAME}.ops.secret_scan": {
+            f"{_PACKAGE_NAME}.remote_worker.dispatch"
+        },
+        f"{_PACKAGE_NAME}.ops.session": {
+            f"{_PACKAGE_NAME}.remote_worker.dispatch"
+        },
+        f"{_PACKAGE_NAME}.ops.shell": {
+            f"{_PACKAGE_NAME}.jobs.runtime",
+            f"{_PACKAGE_NAME}.remote_worker.dispatch",
+            f"{_PACKAGE_NAME}.ui.http.terminals",
+        },
+        f"{_PACKAGE_NAME}.ops.todo": {
+            f"{_PACKAGE_NAME}.remote_worker.dispatch",
+            f"{_PACKAGE_NAME}.ui.http.todos",
+        },
+        f"{_PACKAGE_NAME}.ops.transfer": {
+            f"{_PACKAGE_NAME}.remote.transfer_gateway",
+            f"{_PACKAGE_NAME}.remote_worker.dispatch",
+            f"{_PACKAGE_NAME}.remote_worker.http_transfer",
+        },
+    }
+    remote_operation = f"{_PACKAGE_NAME}.ops.remote"
+
+    assert _top_level_operation_modules() == (
+        set(required_shared_consumers) | {remote_operation}
+    )
+
+    imports = _local_imports()
+    for operation, consumers in required_shared_consumers.items():
+        assert {(consumer, operation) for consumer in consumers} <= imports
+
+    remote_result = f"{_PACKAGE_NAME}.schemas.result_models.remote"
+    assert (
+        f"{_PACKAGE_NAME}.tools.registry.remote",
+        remote_operation,
+    ) in imports
+    assert {
+        (f"{_PACKAGE_NAME}.remote.manager", remote_result),
+        (f"{_PACKAGE_NAME}.remote.service", remote_result),
+        (f"{_PACKAGE_NAME}.remote.transfer", remote_result),
+    } <= imports
+    assert not (_PACKAGE_ROOT / "tools" / "ops" / "remote.py").exists()
+
+
 def test_http_module_ownership_map_covers_every_file() -> None:
     _assert_ownership_map_covers(
         {f"http/{path.name}" for path in (_PACKAGE_ROOT / "http").glob("*.py")}

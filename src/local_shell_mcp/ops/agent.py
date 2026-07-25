@@ -1,4 +1,4 @@
-"""Agent bridge operation helpers used by the agent tool registry."""
+"""Agent Bridge operations shared by tools and source-only workers."""
 
 from __future__ import annotations
 
