@@ -46,7 +46,7 @@ owns installation and executable permissions for the container entrypoint.
 | `validation/coverage-baseline.json` | Stores aggregate minima, per-source observations, and the serialized risk classification consumed by the coverage checker. | The file is policy input for the checker, not generated package data or application configuration, so both validation artifacts move together. |
 | `validation/check-doc-reference-assets.py` | Validates that generated-reference widgets in a built MkDocs site resolve to local JSON assets without escaping the site root. | It is a post-build documentation validator and has no runtime or generation ownership. |
 | `validation/check-native-provenance.py` | Verifies locked OpenTUI/tmux source hashes, license notices, and required release/source-package wiring. | Native provenance is a repository validation policy; the checker must remain zero-install and separate from the builders whose inputs it audits. |
-| `validation/check-release-matrix.py` | Audits CI/release matrices, package-smoke fragments, Docker platforms, platform-wheel tags, native sidecars, and bundled tmux coverage. | It validates repository workflow completeness before installation and therefore belongs beside other zero-install validation gates rather than release builders. |
+| `validation/check-release-matrix.py` | Audits the project/release Python baseline, CI/release matrices, package-smoke fragments, Docker platforms, platform-wheel tags, native sidecars, and bundled tmux coverage. | It validates repository workflow completeness before installation and therefore belongs beside other zero-install validation gates rather than release builders. |
 
 ## `generation`
 

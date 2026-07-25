@@ -32,7 +32,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   IMAGE_NAME: rijuyuezhu/local-shell-mcp
-  PYTHON_VERSION: "3.12"
+  PYTHON_VERSION: "3.14"
   NODE_VERSION: "22"
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   PUSH_LATEST: ${{ github.event_name == 'push' || inputs.push_latest }}

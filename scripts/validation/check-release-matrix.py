@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 from runpy import run_path
 
@@ -14,6 +15,7 @@ WINDOWS_TUI_EXECUTABLE_NAME = str(_TUI_CONTRACT["WINDOWS_TUI_EXECUTABLE_NAME"])
 CI_WORKFLOW = REPO / ".github" / "workflows" / "ci.yml"
 RELEASE_WORKFLOW = REPO / ".github" / "workflows" / "release.yml"
 DOCKERFILE = REPO / "Dockerfile"
+PYPROJECT = REPO / "pyproject.toml"
 EXPECTED_BINARY_ARTIFACTS = {
     "linux-x86_64",
     "linux-aarch64",
@@ -121,6 +123,20 @@ def _require_fragments(kind: str, text: str, fragments: tuple[str, ...]) -> int:
     return 1
 
 
+def _project_minimum_python_version() -> str:
+    with PYPROJECT.open("rb") as stream:
+        requires_python = str(
+            tomllib.load(stream)["project"]["requires-python"]
+        )
+    match = re.fullmatch(r">=([0-9]+[.][0-9]+)", requires_python)
+    if match is None:
+        raise SystemExit(
+            "check-release-matrix.py requires a simple >=X.Y project Python floor, "
+            f"got {requires_python!r}"
+        )
+    return match.group(1)
+
+
 def _platform_wheel_fragments() -> tuple[str, ...]:
     return (
         "oven-sh/setup-bun@v2",
@@ -140,6 +156,12 @@ def main() -> int:
     ci_text = CI_WORKFLOW.read_text(encoding="utf-8")
     release_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    project_python = _project_minimum_python_version()
+    release_python_status = _require_fragments(
+        "Python baseline",
+        _section(release_text, r"^env:\n", r"^jobs:\n"),
+        (f'  PYTHON_VERSION: "{project_python}"',),
+    )
     binary_status = _report_mismatch(
         "binary matrix",
         EXPECTED_BINARY_ARTIFACTS,
@@ -264,6 +286,7 @@ def main() -> int:
     )
     if any(
         (
+            release_python_status,
             binary_status,
             release_wheel_status,
             ci_wheel_status,
@@ -279,9 +302,9 @@ def main() -> int:
     ):
         return 1
     print(
-        "Release workflow covers expected universal and platform wheels, binary "
-        "artifacts, Docker platforms, OpenTUI sidecars, and bundled Linux tmux "
-        "helpers."
+        "Release workflow matches the project Python baseline and covers expected "
+        "universal and platform wheels, binary artifacts, Docker platforms, "
+        "OpenTUI sidecars, and bundled Linux tmux helpers."
     )
     return 0
 
