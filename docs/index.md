@@ -1,102 +1,45 @@
-<div class="hero-shell" markdown>
-<span class="hero-eyebrow">ChatGPT-compatible MCP control plane</span>
-
 # local-shell-mcp
 
-Give your AI assistant a controlled shell, a real workspace, Git, browser automation, file sharing, and remote-worker access without leaving the chat.
+`local-shell-mcp` gives ChatGPT and other MCP clients controlled access to a machine you own. It exposes shell, filesystem, search, patch, audit, remote-worker, and agent-bridge capabilities through an MCP server with OAuth support.
 
-<div class="hero-actions" markdown>
-[Get started](getting-started/quickstart.md){ .hero-action .hero-action--primary }
-[Choose runtime](guides/deployment.md){ .hero-action .hero-action--secondary }
-[Tools reference](reference/tools.md){ .hero-action .hero-action--secondary }
-</div>
-</div>
+## Start here
 
-<div class="feature-grid" markdown>
-<div class="feature-card" markdown>
-### Real coding environment
-Run tests, inspect repositories, patch files, operate Git, and keep an audit trail from one MCP endpoint.
-</div>
+Most users should start with the local service path:
 
-<div class="feature-card" markdown>
-### Runtime and client layers
-Choose a runtime such as Docker, VS Code extension, binary, Python, or stdio, then connect ChatGPT or another MCP client separately.
-</div>
+1. Install or clone `local-shell-mcp` on the machine that should run commands.
+2. Copy `.env.example` to `.env` and set the public URL, OAuth mode, and approval PIN.
+3. Expose the server through Cloudflare Tunnel.
+4. Add the `/mcp` endpoint as a ChatGPT custom connector.
 
-<div class="feature-card" markdown>
-### Remote machine control
-Attach NAT, firewall, or HPC machines through outbound worker connections without opening SSH ports.
-</div>
-</div>
+See [Quickstart](getting-started/quickstart.md) for the complete flow.
 
-## What it provides
+Docker Compose is still supported. Published Docker images support `linux/amd64` and `linux/arm64`; use Compose when you specifically want the model-controlled tools inside a container.
 
-`local-shell-mcp` exposes a controlled local or container workspace to ChatGPT and other MCP clients. It provides shell, persistent shell, filesystem, search, patch, Git, Playwright, audit, todo, tokenized file-link, and remote-worker tools through a ChatGPT-compatible MCP server with OAuth support.
+## What you get
 
-Use it when the AI needs to inspect a repository, run tests, edit files, operate Git, collect browser evidence, produce downloadable artifacts, or control a remote machine that can only connect outbound to the control server.
+- A ChatGPT-compatible MCP endpoint at `/mcp`.
+- Built-in OAuth approval for public deployments.
+- Local shell, Python, file, search, patch, todo, audit, and download-link tools.
+- Optional remote workers for running the same tool categories on another machine.
+- Optional agent bridge for exposing external MCP servers and Markdown skills through this server.
+- A VS Code extension for starting the server against the current workspace.
 
-## Architecture
+## Important pages
 
-```text
-Runtime layer: Docker / VS Code extension / binary / Python / stdio
-Exposure layer: localhost / HTTPS proxy / tunnel / stdio pipe
-Client layer: ChatGPT / generic MCP client / editor helper
-Controlled workspace: /workspace or configured workspace root
-Optional remote workers: outbound machine connections
-```
+| Need | Page |
+|---|---|
+| Set up the service | [Quickstart](getting-started/quickstart.md) |
+| Expose the endpoint | [Cloudflare Tunnel](getting-started/cloudflare-tunnel.md) |
+| Add ChatGPT | [ChatGPT connector](getting-started/chatgpt-connector.md) |
+| Use Docker instead | [Docker Compose](getting-started/docker-compose.md) |
+| Run work on another machine | [Remote workers](guides/remote-workers.md) |
+| Add external MCP servers or skills | [Agent capability bridge](guides/agent-bridge.md) |
+| Check every setting | [Configuration reference](reference/configuration.md) |
+| Check every tool | [Tools reference](reference/tools.md) |
+| Debug a local checkout | [Development](development.md) |
 
-The intended isolation boundary is the container or VM running the service.
+## Safety model
 
-## Start by scenario
+This project intentionally gives an AI client access to real shell and filesystem tools. Keep public deployments behind OAuth, set a long random approval PIN, review the configured workspace root, and leave full-control mode disabled unless the server runs in a disposable container or VM.
 
-| Scenario | Start here | Why |
-|---|---|---|
-| First public ChatGPT deployment | [Quickstart](getting-started/quickstart.md) | Docker Compose path with OAuth and `/mcp` setup |
-| Choosing the runtime layer | [Runtime choices](guides/deployment.md) | Explains Docker, VS Code, binary, Python, and stdio as separate runtime options |
-| Adding ChatGPT as a client | [ChatGPT connector](getting-started/chatgpt-connector.md) | Endpoint, OAuth, first safe prompt, tool discovery |
-| Running from VS Code | [VS Code extension runtime](installation/vscode-extension.md) | Editor-launched runtime and host-safety notes |
-| Learning how to operate the toolset | [Usage patterns](guides/usage-patterns.md) | Prompt templates and tool-choice guidance |
-| Understanding every tool | [Tools reference](reference/tools.md) | Detailed purpose, inputs, returns, combinations, and notes for every tool |
-| Connecting an HPC, NPU/GPU, or server node | [Remote workers](guides/remote-workers.md) | Outbound worker join flow and remote tool usage |
-| Sharing generated files | [File links](guides/file-links.md) | Tokenized download URLs with TTL and revocation |
-| Hardening a deployment | [Security](security.md) | Isolation, OAuth, workspace scope, and audit logs |
-
-## Main tool families
-
-| Family | Examples | Use for |
-|---|---|---|
-| Shell and Python | `run_shell_tool`, `run_python_tool`, `shell_start` | Builds, tests, scripts, long-running processes |
-| Files and search | `tree_view`, `grep_search`, `read_file`, `apply_patch` | Repository inspection and precise edits |
-| Git | `run_shell_tool`, `run_shell_tool`, `run_shell_tool`, `run_shell_tool` | Reviewable source-control workflows |
-| Browser | `browser_capture_tool`, `browser_get_text_tool`, `playwright_run_script_tool` | UI checks, screenshots, rendered docs, page text |
-| File links | `create_file_link`, `revoke_file_link` | Downloading generated artifacts from chat |
-| Remote workers | `remote_invite`, `run_shell_tool`, `transfer_path` | Machines behind NAT, firewalls, or cluster login flows |
-
-## Typical workflows
-
-### Coding with ChatGPT
-
-1. Start a runtime such as Docker Compose, VS Code extension, binary, or Python in a dedicated workspace.
-2. Expose the HTTP runtime if ChatGPT needs network access.
-3. Add the public `/mcp` endpoint to ChatGPT.
-4. Ask ChatGPT to inspect the repository and run read-only checks first.
-5. Let it patch files, run tests, review diffs, commit, and push when approved.
-6. Review the audit log when the task involves file links or remote systems.
-
-### Remote HPC or accelerator host
-
-1. Create a one-time remote worker invite.
-2. Paste the generated command on the remote host.
-3. Use normal tools with `machine`; run Git through `run_shell_tool` and transfer paths with `transfer_path`.
-4. Revoke the worker after the task.
-
-### Artifact generation
-
-1. Let the AI generate a file under `/workspace`.
-2. Create a tokenized file link with TTL/download limits.
-3. Share the link in chat.
-4. Revoke it when done.
-
-## Language
-
-This site is built with the native MkDocs i18n plugin. Use the language selector in the header to switch between English and translated pages. Pages without a translated version fall back to English.
+Audit state may retain complete sanitized tool inputs and outputs inline or in private content-addressed payload objects. Treat the entire state directory as sensitive session data.

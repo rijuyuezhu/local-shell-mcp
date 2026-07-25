@@ -1,24 +1,78 @@
 import json
+import os
 import subprocess
 import sys
 
 
-def test_export_tools_json_script_outputs_current_tool_surface(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
+def test_export_tools_json_writes_wrapped_payload(tmp_path):
+    output = tmp_path / "tools.json"
+    env = os.environ.copy()
+    env.update(
+        {
+            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
+            "LOCAL_SHELL_MCP_REMOTE_ENABLED": "false",
+            "PYTHONPATH": "src",
+        }
+    )
 
     result = subprocess.run(
-        [sys.executable, "scripts/export-tools-json.py"],
+        [
+            sys.executable,
+            "scripts/generation/export-tools-json.py",
+            "--wrapped",
+            "--output",
+            str(output),
+        ],
         check=True,
+        cwd=".",
+        env=env,
         text=True,
         capture_output=True,
     )
 
-    tools = json.loads(result.stdout)
-    names = {tool["name"] for tool in tools}
-    shell_tool = next(tool for tool in tools if tool["name"] == "run_shell_tool")
+    assert result.stdout == ""
+    payload = json.loads(output.read_text())
+    assert payload["count"] == len(payload["tools"])
+    assert {tool["name"] for tool in payload["tools"]} >= {
+        "session_start",
+        "session_change_cwd",
+        "read",
+        "bash",
+    }
 
-    assert "run_shell_tool" in names
-    assert "remote_run_shell_tool" not in names
-    assert "For long-running" in shell_tool["description"]
-    assert shell_tool["outputSchema"]["title"] == "ToolResult"
+
+def test_export_tools_json_writes_instruction_markdown_section(tmp_path):
+    output = tmp_path / "tools.json"
+    instructions_output = tmp_path / "server-instructions.json"
+    env = os.environ.copy()
+    env.update(
+        {
+            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
+            "LOCAL_SHELL_MCP_REMOTE_ENABLED": "false",
+            "PYTHONPATH": "src",
+        }
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/generation/export-tools-json.py",
+            "--wrapped",
+            "--output",
+            str(output),
+            "--instructions-output",
+            str(instructions_output),
+        ],
+        check=True,
+        cwd=".",
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.stdout == ""
+    payload = json.loads(instructions_output.read_text())
+    assert payload["sections"][0]["kind"] == "markdown"
+    assert "markdown" in payload["sections"][0]
+    assert "heading" not in payload["sections"][0]
+    assert "code" not in payload["sections"][0]

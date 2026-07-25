@@ -1,59 +1,246 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
 
-from local_shell_mcp import tmux_helper
-from local_shell_mcp.settings import get_settings
+from local_shell_mcp.terminal import tmux as tmux_helper
 
 
-def test_platform_tag_normalizes_supported_linux_architectures(monkeypatch):
-    monkeypatch.setattr(tmux_helper.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(tmux_helper.platform, "machine", lambda: "AMD64")
-
-    assert tmux_helper._platform_tag() == "linux-x86_64"
-
-    monkeypatch.setattr(tmux_helper.platform, "machine", lambda: "arm64")
-    assert tmux_helper._platform_tag() == "linux-aarch64"
-
-
-def test_resolve_tmux_prefers_system_binary(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
-    monkeypatch.setattr(tmux_helper.shutil, "which", lambda name: "/usr/bin/tmux")
-    monkeypatch.setattr(tmux_helper, "bundled_tmux_path", lambda: Path("/bundled/tmux"))
-
-    selection = tmux_helper.resolve_tmux()
-
-    assert selection == tmux_helper.TmuxSelection("/usr/bin/tmux", "system")
+@pytest.mark.parametrize(
+    ("machine", "expected"),
+    [
+        ("x86_64", "linux-x86_64"),
+        ("amd64", "linux-x86_64"),
+        ("x64", "linux-x86_64"),
+        ("aarch64", "linux-aarch64"),
+        ("arm64", "linux-aarch64"),
+    ],
+)
+def test_platform_tag_normalizes_linux_architectures(
+    machine: str, expected: str
+):
+    assert (
+        tmux_helper._platform_tag(system="Linux", machine=machine) == expected
+    )
 
 
-def test_resolve_tmux_uses_bundled_helper_when_system_binary_is_missing(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
-    monkeypatch.setattr(tmux_helper.shutil, "which", lambda name: None)
-    monkeypatch.setattr(tmux_helper, "bundled_tmux_path", lambda: Path("/bundled/tmux"))
-
-    selection = tmux_helper.resolve_tmux()
-
-    assert selection == tmux_helper.TmuxSelection(str(Path("/bundled/tmux")), "bundled")
+def test_platform_tag_rejects_unsupported_platforms():
+    assert tmux_helper._platform_tag(system="Darwin", machine="arm64") is None
+    assert tmux_helper._platform_tag(system="Linux", machine="riscv64") is None
 
 
-def test_backend_info_reports_native_fallback(tmp_path, monkeypatch):
-    if os.name == "nt":
-        pytest.skip("Unix backend selection test")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    get_settings.cache_clear()
+def _install_helper(root: Path, tag: str = "linux-x86_64") -> Path:
+    helper = root / "helpers" / tag / "tmux"
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes(b"tmux")
+    helper.chmod(0o755)
+    return helper
+
+
+def test_tmux_package_root_matches_parent_package() -> None:
+    assert (
+        Path(tmux_helper.__file__).resolve().parents[1]
+        == tmux_helper._PACKAGE_ROOT
+    )
+
+
+def test_bundled_tmux_path_uses_explicit_default_package_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _install_helper(tmp_path)
+    monkeypatch.setattr(tmux_helper, "_PACKAGE_ROOT", tmp_path)
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
+
+    assert tmux_helper.bundled_tmux_path() == helper
+
+
+def test_bundled_tmux_path_returns_matching_regular_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    helper = _install_helper(tmp_path)
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
+    assert tmux_helper.bundled_tmux_path(package_root=tmp_path) == helper
+
+
+def test_bundled_tmux_path_repairs_user_execute_bit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    helper = _install_helper(tmp_path)
+    access_results = iter([False, True])
+    requested_modes = []
+    original_chmod = Path.chmod
+
+    def chmod(path: Path, mode: int):
+        requested_modes.append(mode)
+        original_chmod(path, mode)
+
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
+    monkeypatch.setattr(
+        tmux_helper.os, "access", lambda *_: next(access_results)
+    )
+    monkeypatch.setattr(Path, "chmod", chmod)
+    assert tmux_helper.bundled_tmux_path(package_root=tmp_path) == helper
+    assert requested_modes and requested_modes[-1] & 0o100
+
+
+def test_bundled_tmux_path_rejects_missing_unsupported_and_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: None)
+    assert tmux_helper.bundled_tmux_path(package_root=tmp_path) is None
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
+    assert tmux_helper.bundled_tmux_path(package_root=tmp_path) is None
+    target = _install_helper(tmp_path, "target")
+    link = tmp_path / "helpers" / "linux-x86_64" / "tmux"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    assert tmux_helper.bundled_tmux_path(package_root=tmp_path) is None
+
+
+def test_bundled_tmux_path_handles_chmod_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    helper = _install_helper(tmp_path)
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
+    monkeypatch.setattr(tmux_helper.os, "access", lambda *_: False)
+    monkeypatch.setattr(
+        Path, "chmod", lambda *_: (_ for _ in ()).throw(OSError())
+    )
+    assert tmux_helper.bundled_tmux_path(package_root=tmp_path) is None
+    assert helper.exists()
+
+
+def test_resolve_tmux_prefers_system_default(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        tmux_helper.shutil, "which", lambda value: "/usr/bin/tmux"
+    )
+    selected = tmux_helper.resolve_tmux("tmux")
+    assert selected == tmux_helper.TmuxSelection(
+        "/usr/bin/tmux", "system", "tmux"
+    )
+
+
+def test_resolve_tmux_preserves_explicit_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _install_helper(tmp_path)
+    monkeypatch.setattr(tmux_helper.shutil, "which", lambda value: None)
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
+    selected = tmux_helper.resolve_tmux(
+        "/missing/custom-tmux", package_root=tmp_path
+    )
+    assert selected.path is None
+    assert selected.source == "configured"
+    with pytest.raises(RuntimeError, match="Configured tmux executable"):
+        tmux_helper.require_tmux("/missing/custom-tmux", package_root=tmp_path)
+
+
+def test_resolve_tmux_falls_back_to_bundled_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    helper = _install_helper(tmp_path)
+    monkeypatch.setattr(tmux_helper.shutil, "which", lambda value: None)
+    monkeypatch.setattr(tmux_helper, "_platform_tag", lambda: "linux-x86_64")
+    selected = tmux_helper.require_tmux("", package_root=tmp_path)
+    assert selected == tmux_helper.TmuxSelection(str(helper), "bundled", "tmux")
+
+
+def test_require_tmux_reports_unavailable(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(tmux_helper.shutil, "which", lambda value: None)
+    monkeypatch.setattr(tmux_helper, "bundled_tmux_path", lambda **kwargs: None)
+    with pytest.raises(RuntimeError, match="tmux is unavailable"):
+        tmux_helper.require_tmux("tmux")
+
+
+def test_resolve_tmux_reads_settings_and_reports_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class Settings:
+        tmux_bin = "configured-tmux"
+
+    monkeypatch.setattr(tmux_helper, "get_settings", lambda: Settings())
+    monkeypatch.setattr(
+        tmux_helper.shutil,
+        "which",
+        lambda value: "/opt/tmux" if value == "configured-tmux" else None,
+    )
+    assert tmux_helper.tmux_backend_info() == {
+        "available": True,
+        "source": "configured",
+        "path": "/opt/tmux",
+        "bundled_version": None,
+    }
+
+
+def test_bundled_diagnostics_include_version(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         tmux_helper,
         "resolve_tmux",
-        lambda: tmux_helper.TmuxSelection(None, "native"),
+        lambda configured=None: tmux_helper.TmuxSelection(
+            "/bundle/tmux", "bundled", "tmux"
+        ),
+    )
+    assert tmux_helper.tmux_backend_info()["bundled_version"] == "3.5a"
+
+
+@pytest.mark.asyncio
+async def test_shell_tmux_uses_resolved_executable(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from local_shell_mcp.ops import shell
+
+    expected = object()
+    calls: list[tuple[list[str], str, int | None, dict[str, str] | None]] = []
+    monkeypatch.setattr(
+        shell,
+        "require_tmux",
+        lambda: tmux_helper.TmuxSelection(
+            "/bundle path/tmux", "bundled", "tmux"
+        ),
+    )
+    monkeypatch.setattr(
+        shell, "_resolved_tmux_shell", lambda _cwd=".": "/bin/bash"
     )
 
-    info = tmux_helper.persistent_shell_backend_info()
+    async def fake_run_exec(
+        argv: list[str],
+        *,
+        cwd: str = ".",
+        timeout_s: int | None = None,
+        env: dict[str, str] | None = None,
+    ):
+        calls.append((argv, cwd, timeout_s, env))
+        return expected
 
-    assert info["backend"] == "native"
-    assert info["durable_across_server_restart"] is False
-    assert "tmux is unavailable" in str(info["warning"])
+    monkeypatch.setattr(shell, "_run_exec", fake_run_exec)
+    assert await shell.tmux(["list-sessions"], timeout_s=7) is expected
+    assert calls == [
+        (["/bundle path/tmux", "list-sessions"], ".", 7, {"SHELL": "/bin/bash"})
+    ]
+
+
+@pytest.mark.asyncio
+async def test_list_persistent_shells_is_empty_when_default_tmux_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from local_shell_mcp.ops import shell
+
+    monkeypatch.setattr(
+        shell, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell,
+        "resolve_tmux",
+        lambda: tmux_helper.TmuxSelection(None, "unavailable", "tmux"),
+    )
+    monkeypatch.setattr(
+        shell,
+        "tmux",
+        lambda *args, **kwargs: pytest.fail("tmux must not be invoked"),
+    )
+    result = await shell.list_persistent_shells_execute()
+    assert result.shells == []

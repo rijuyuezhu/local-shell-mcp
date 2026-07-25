@@ -1,0 +1,232 @@
+# Full YAML config example.
+# Effective precedence: defaults < config file < LOCAL_SHELL_MCP_* environment variables < CLI arguments.
+
+# Server.
+# Server transport mode.
+# Choices: mcp, http, both, stdio.
+mode: "mcp"
+# Bind host for HTTP/MCP transports.
+host: "0.0.0.0"
+# Bind port for HTTP/MCP transports.
+port: 8765
+
+# Human interface.
+# Mount the browser Human UI and its authenticated API on the HTTP server.
+ui_enabled: true
+# Non-root URL path where the browser Human UI is mounted.
+ui_path: "/ui"
+# Optional administrator-supplied OpenTUI executable command.
+ui_tui_command: null
+# Idle timeout for authenticated Human UI terminal WebSockets; 0 disables idle expiry.
+ui_terminal_idle_timeout_s: 3600
+# Maximum concurrent Human UI terminal WebSocket connections.
+ui_terminal_max_connections: 8
+# Browser Human UI background treatment; no external network image is fetched.
+# Choices: aurora, grid, none.
+ui_wallpaper: "aurora"
+
+# Paths and state.
+# Root directory for workspace.
+workspace_root: "/workspace"
+# Directory for runtime state. Including audit logs, temporary files, and config
+state_dir: "/workspace/.local-shell-mcp"
+
+# Authentication and OAuth.
+# Authentication mode. Do not expose public services with none.
+# Choices: none, oauth.
+auth_mode: "oauth"
+# Allow localhost requests without bearer authentication. Keep disabled when exposing HTTP through
+# proxies or shared hosts.
+auth_bypass_localhost: false
+# Idle timeout for stateful Streamable HTTP MCP sessions in seconds.
+mcp_session_idle_timeout_s: 180
+# Maximum concurrent stateful Streamable HTTP MCP sessions.
+mcp_max_sessions: 1024
+# Externally reachable base URL used for OAuth metadata, callbacks, and generated links. If unset,
+# URLs fall back to the bind host and port; configure this before exposing the service behind a proxy
+# or public hostname.
+base_url: null
+# Override URL for OAuth issuer metadata; usually derived from base_url.
+oauth_issuer: null
+# Override URL for OAuth resource metadata; usually derived from base_url plus /mcp.
+oauth_resource: null
+# Admin PIN required to approve OAuth authorization. Public OAuth URLs require a non-placeholder value
+# of at least 8 characters.
+oauth_admin_pin: null
+# Bearer token lifetime in seconds. After this time, the token must be re-authorized and refreshed.
+oauth_access_token_ttl_s: 3600
+# OAuth authorization-code lifetime in seconds. The authorization must be done within this time.
+oauth_code_ttl_s: 300
+# Maximum unused, unexpired OAuth authorization codes kept in memory; set to 0 to disable this
+# capacity limit.
+oauth_max_pending_codes: 2048
+# Pending OAuth client registration lifetime in seconds. Approved clients are persisted without this
+# TTL; set to 0 to disable pending expiration.
+oauth_client_ttl_s: 86400
+# Maximum pending OAuth client registrations kept in memory. Approved clients do not count; set to 0
+# to disable this capacity limit.
+oauth_max_dynamic_clients: 256
+# Maximum JSON body size accepted by dynamic OAuth client registration.
+oauth_registration_max_body_bytes: 16384
+# Maximum redirect URIs accepted in one dynamic OAuth client registration.
+oauth_registration_max_redirect_uris: 10
+# Maximum length of each dynamic OAuth client redirect URI.
+oauth_registration_max_redirect_uri_chars: 2048
+# Maximum length of a dynamic OAuth client display name.
+oauth_registration_max_client_name_chars: 200
+
+# Safety and resource limits.
+# Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP
+# safety annotations remain conservative in this mode.
+allow_full_control: false
+# Base MCP/HTTP tool watchdog timeout in seconds. Shell execution tools receive additional bounded
+# cleanup time beyond run_shell_max_timeout_s.
+tool_timeout_s: 60
+# Default timeout for bounded shell command calls in seconds.
+run_shell_default_timeout_s: 10
+# Maximum timeout accepted by bounded shell command calls in seconds.
+run_shell_max_timeout_s: 120
+# Command output limit in bytes.
+max_output_bytes: 200000
+# Maximum retained output bytes for one tracked background-job attempt.
+max_job_log_bytes: 10000000
+# Maximum retained tracked-job records; active jobs are never pruned.
+max_jobs: 1000
+# Per-file read limit in bytes.
+max_file_read_bytes: 512000
+# Maximum raw bytes accepted by the native MCP image viewer.
+max_view_image_bytes: 20971520
+# Maximum number of discovered Skills across all configured sources.
+max_skills: 256
+# Maximum related files returned for one Skill.
+max_skill_related_files: 1000
+# Maximum filesystem entries inspected during one Skill registry scan.
+max_skill_scan_entries: 5000
+# Maximum UTF-8 bytes used by returned related Skill paths.
+max_skill_path_bytes: 200000
+# Per-file write/edit limit in bytes.
+max_file_write_bytes: 5000000
+# Maximum grep result count.
+max_grep_results: 200
+# Maximum listed directory entries.
+max_directory_entries: 5000
+# Maximum glob search results.
+max_glob_results: 5000
+# Maximum tree-view entries.
+max_tree_entries: 5000
+# Maximum files allowed in one internal multi-file read operation.
+max_read_many_files: 100
+# Maximum total byte limit for one internal multi-file read operation.
+max_read_many_total_bytes: 5000000
+# Todo-list item limit.
+max_todos: 1000
+# Todo-list total byte limit.
+max_todo_bytes: 1000000
+# Maximum inbound HTTP request-body bytes; 0 disables the shared limit.
+max_http_request_bytes: 16000000
+# Maximum active audit JSONL bytes before atomic recent-record retention.
+max_audit_log_bytes: 20000000
+# Maximum encoded bytes retained for one audit event before preview truncation.
+max_audit_event_bytes: 1000000
+# Store large sanitized audit field values as private content-addressed payloads.
+audit_payloads_enabled: true
+# Maximum canonical JSON bytes kept inline for one sanitized audit field value.
+audit_inline_value_bytes: 16384
+# Maximum canonical JSON bytes accepted for one recoverable sanitized audit payload.
+max_audit_payload_bytes: 67108864
+# Maximum compressed bytes retained in the private audit payload store.
+max_audit_payload_store_bytes: 268435456
+# Recovery lifetime and orphan grace period for private audit payload objects.
+audit_payload_retention_s: 604800
+# Temporary-file count limit. When exceeded, old files are deleted.
+max_tmp_files: 500
+# Temporary-file byte limit. When exceeded, old files are deleted.
+max_tmp_bytes: 50000000
+# Maximum entries accepted from one transferred archive.
+max_transfer_archive_entries: 100000
+# Maximum declared regular-file bytes accepted while unpacking an archive.
+max_transfer_unpacked_bytes: 10000000000
+# Concurrent command limit.
+max_concurrent_commands: 4
+# Persistent shell limit.
+max_tmux_sessions: 16
+# Enable download links created by protected tools.
+file_download_enabled: true
+# Default lifetime for file download links in seconds.
+file_download_default_ttl_s: 3600
+# Maximum lifetime accepted for file download links in seconds.
+file_download_max_ttl_s: 604800
+# Default download-count limit for file links; 0 means unlimited until expiry.
+file_download_default_max_downloads: 0
+# Maximum file size allowed for download links; 0 disables this size limit.
+file_download_max_file_bytes: 0
+# Comma-separated command denylist in env/CLI, or a YAML list in config files. Cleared when
+# full-control mode is enabled.
+command_denylist:
+  - "docker.sock"
+  - "/var/run/docker.sock"
+  - "mkfs"
+  - "mount"
+  - "umount"
+  - "shutdown"
+  - "reboot"
+  - "systemctl"
+  - "iptables"
+  - "nft"
+# Comma-separated path denylist in env/CLI, or a YAML list in config files. Cleared when full-control
+# mode is enabled.
+path_denylist:
+  - ".ssh/id_rsa"
+  - ".ssh/id_ed25519"
+  - ".env"
+  - "secrets"
+  - "credentials"
+  - ".git/config"
+
+# Remote workers.
+# Enable remote worker routes and MCP tools.
+remote_enabled: true
+# One-time remote worker invite lifetime in seconds.
+remote_invite_ttl_s: 600
+# Remote worker long-poll heartbeat timeout in seconds.
+remote_poll_timeout_s: 25
+# Control-side remote job result timeout in seconds.
+remote_job_timeout_s: 3600
+# Maximum queued or in-flight remote jobs allowed per worker.
+remote_max_pending_jobs: 64
+# Use the private resumable HTTP gateway for capable large session copies.
+remote_http_transfer_enabled: true
+# Minimum payload size selected for private HTTP streaming.
+remote_http_transfer_threshold_bytes: 1048576
+# Maximum request or response chunk size for private HTTP transfer routes.
+remote_http_transfer_chunk_bytes: 1048576
+# Lifetime of a private transfer grant before it must be renewed.
+remote_http_transfer_ticket_ttl_s: 300
+# Maximum non-terminal private transfer objects retained concurrently.
+remote_http_transfer_max_active: 16
+# Maximum aggregate bytes reserved by private controller transfer spools.
+remote_http_transfer_max_spool_bytes: 10737418240
+
+# Agent capability bridge.
+# Enable agent capability bridge tools.
+agent_bridge_enabled: true
+# Agent MCP server probe timeout in seconds.
+agent_mcp_probe_timeout_s: 5
+# Agent MCP tool-call timeout in seconds.
+agent_mcp_call_timeout_s: 60
+# Register dynamic MCP bridge tools.
+agent_dynamic_mcp_tools: true
+# Register dynamic skill bridge tools.
+agent_dynamic_skill_tools: true
+
+# Tool executables.
+# Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows.
+shell_executable: "/bin/bash"
+# tmux executable.
+tmux_bin: "tmux"
+# ripgrep executable.
+rg_bin: "rg"
+# Git executable used for patch validation and application.
+git_bin: "git"
+# Python executable; the POSIX default maps to the running interpreter on Windows.
+python_bin: "python3"

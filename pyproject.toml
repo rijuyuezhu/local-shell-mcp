@@ -1,70 +1,100 @@
-[build-system]
-requires = ["hatchling>=1.25"]
-build-backend = "hatchling.build"
-
 [project]
 name = "local-shell-mcp"
-version = "3.1.3"
-description = "A ChatGPT-compatible OAuth MCP server that gives AI coding agents controlled shell, filesystem, remote-worker, and Playwright access inside a local container."
+version = "3.9.1"
+description = "A ChatGPT-compatible OAuth MCP server that gives AI coding agents controlled shell, filesystem, and git access inside a local container."
 readme = "README.md"
-requires-python = ">=3.11"
-license = { text = "MIT" }
+requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "local-shell-mcp contributors" }]
-keywords = ["mcp", "chatgpt", "shell", "playwright", "coding-agent"]
+keywords = ["mcp", "chatgpt", "shell", "coding-agent"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Environment :: Web Environment",
-  "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "mcp>=1.27.0",
-  "fastapi>=0.111.0",
-  "uvicorn[standard]>=0.30.0",
-  "pydantic>=2.7.0",
-  "pydantic-settings>=2.3.0",
-  "PyYAML>=6.0.1",
-  "PyJWT>=2.8.0",
-  "httpx>=0.27.0",
-  "aiofiles>=23.2.1",
-  "python-multipart>=0.0.9",
-  "pathspec>=0.12.1",
-  "pillow>=10.3.0",
-  "playwright>=1.44.0",
-  "pywinpty>=2.0.13; platform_system == \"Windows\"",
+    "aiofiles>=25.1.0",
+    "authlib>=1.7.2",
+    "fastapi>=0.138.1",
+    "httpx>=0.28.1",
+    "mcp>=1.28.0",
+    "pathspec>=1.1.1",
+    "pillow>=12.1.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pyjwt>=2.13.0",
+    "python-multipart>=0.0.32",
+    "pywinpty>=2.0.13; platform_system == 'Windows'",
+    "pyyaml>=6.0.3",
+    "uvicorn[standard]>=0.49.0",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-  "coverage[toml]>=7.8.0",
-  "pytest>=8.2.0",
-  "pytest-asyncio>=0.23.0",
-  "ruff>=0.5.0",
+    "coverage[toml]>=7.15.2",
+    "packaging>=26.0",
+    "playwright>=1.61.0",
+    "pre-commit>=4.6.0",
+    "pyright>=1.1.411",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-timeout>=2.4.0",
+    "ruff>=0.15.20",
+    "wheel>=0.46.3",
 ]
 docs = [
-  "mkdocs-material>=9.5",
-  "mkdocs-static-i18n>=1.3",
+    "mkdocs-material>=9.7.6",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+source-include = [
+    "ui-terminal/**",
+    "ui-opentui/**",
+    "scripts/release/build-platform-wheel.py",
+    "scripts/generation/generate-tui-executable-contract.py",
+    "scripts/README.md",
+    "scripts/validation/check-coverage.py",
+    "scripts/validation/check-native-provenance.py",
+    "scripts/validation/check-release-matrix.py",
+    "scripts/release/smoke-platform-wheel.py",
+    "scripts/validation/coverage-baseline.json",
+    "tests/test_coverage_gate.py",
+    "tests/test_native_provenance.py",
+    "tests/test_tmux_helper.py",
+    "scripts/release/build-tmux-helper.sh",
+    "scripts/release/tmux-helper.Dockerfile",
+    "src/local_shell_mcp/helpers/README.md",
+    "src/local_shell_mcp/helpers/tmux.LICENSE",
+    "src/local_shell_mcp/helpers/opentui.NOTICES",
+    "src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md",
+    "docs/maintenance/native-artifact-provenance.md",
+]
+source-exclude = [
+    "/ui-terminal/node_modules",
+    "/ui-terminal/.build-check",
+    "/ui-opentui/node_modules",
+    "/ui-opentui/dist",
+    "/ui-opentui/coverage",
+    "/src/local_shell_mcp/helpers/linux-*/tmux",
 ]
 
 [project.urls]
-Homepage = "https://github.com/fwerkor/local-shell-mcp"
-Repository = "https://github.com/fwerkor/local-shell-mcp"
+Homepage = "https://github.com/rijuyuezhu/local-shell-mcp"
+Repository = "https://github.com/rijuyuezhu/local-shell-mcp"
 
 [project.scripts]
 local-shell-mcp = "local_shell_mcp.main:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/local_shell_mcp"]
-
-[tool.hatch.build.hooks.custom]
-path = "hatch_build.py"
-
 [tool.ruff]
-line-length = 100
-target-version = "py311"
+line-length = 80
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -72,27 +102,48 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 asyncio_mode = "auto"
+timeout = 120
+timeout_method = "thread"
+markers = [
+    "integration: tests that start real local-shell-mcp server processes",
+    "browser: real Chromium end-to-end tests run by the dedicated browser job",
+]
 
 [tool.coverage.run]
 branch = true
 parallel = true
+patch = ["subprocess"]
+relative_files = true
 sigterm = true
 source = ["local_shell_mcp"]
 
+[tool.coverage.paths]
+source = [
+    "src/local_shell_mcp",
+    "*/.local-shell-mcp-worker/runtime/local_shell_mcp",
+    "*/runtime/local_shell_mcp",
+]
+
 [tool.coverage.report]
-fail_under = 93
-precision = 1
+precision = 2
 show_missing = true
 skip_covered = true
 exclude_also = [
-  "if TYPE_CHECKING:",
-  "if __name__ == .__main__.:",
-  "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
 ]
+
+[tool.coverage.json]
+output = "coverage.json"
+pretty_print = true
 
 [tool.coverage.xml]
 output = "coverage.xml"
 
-[tool.coverage.json]
-output = "coverage.json"
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+reportDeprecated = "error"

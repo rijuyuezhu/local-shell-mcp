@@ -5,21 +5,31 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.patch_ops import git_apply_command, normalize_patch_text
+from local_shell_mcp.ops.patch.envelope import (
+    git_apply_command,
+    normalize_patch_text,
+)
 
 
 def _git_apply(root: Path, patch: str) -> None:
     patch_path = root / "change.diff"
     patch_path.write_bytes(patch.encode("utf-8"))
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    subprocess.run(["git", "apply", "--check", str(patch_path)], cwd=root, check=True)
+    subprocess.run(
+        ["git", "apply", "--check", str(patch_path)], cwd=root, check=True
+    )
     subprocess.run(["git", "apply", str(patch_path)], cwd=root, check=True)
 
 
 def test_git_apply_command_keeps_directory_as_separate_argument() -> None:
-    command = git_apply_command("git", "'patch file.diff'", "'nested dir'", check=True)
+    command = git_apply_command(
+        "git", "'patch file.diff'", "'nested dir'", check=True
+    )
 
-    assert command == "git apply --check --directory 'nested dir' 'patch file.diff'"
+    assert (
+        command
+        == "git apply --check --directory 'nested dir' 'patch file.diff'"
+    )
     assert "--directory=" not in command
 
 
@@ -29,7 +39,9 @@ def test_standard_unified_diff_passes_through() -> None:
 
 
 def test_envelope_update_add_and_delete(tmp_path: Path) -> None:
-    (tmp_path / "existing.txt").write_text("one\ntwo\nthree\n", encoding="utf-8")
+    (tmp_path / "existing.txt").write_text(
+        "one\ntwo\nthree\n", encoding="utf-8"
+    )
     (tmp_path / "obsolete.txt").write_text("remove me\n", encoding="utf-8")
     patch = """*** Begin Patch
 *** Update File: existing.txt
@@ -49,12 +61,18 @@ def test_envelope_update_add_and_delete(tmp_path: Path) -> None:
     assert normalized.startswith("diff --git a/existing.txt b/existing.txt\n")
     _git_apply(tmp_path, normalized)
 
-    assert (tmp_path / "existing.txt").read_text(encoding="utf-8") == "one\nTWO\nthree\n"
-    assert (tmp_path / "added.txt").read_text(encoding="utf-8") == "first\nsecond\n"
+    assert (tmp_path / "existing.txt").read_text(
+        encoding="utf-8"
+    ) == "one\nTWO\nthree\n"
+    assert (tmp_path / "added.txt").read_text(
+        encoding="utf-8"
+    ) == "first\nsecond\n"
     assert not (tmp_path / "obsolete.txt").exists()
 
 
-def test_envelope_supports_multiple_hunks_and_eof_append(tmp_path: Path) -> None:
+def test_envelope_supports_multiple_hunks_and_eof_append(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / "sample.txt"
     target.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
     patch = """*** Begin Patch
@@ -152,7 +170,9 @@ def test_envelope_rejects_ambiguous_context_anchor_without_touching_files(
     assert target.read_text(encoding="utf-8") == original
 
 
-def test_envelope_rejects_ambiguous_hunk_without_touching_files(tmp_path: Path) -> None:
+def test_envelope_rejects_ambiguous_hunk_without_touching_files(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / "sample.txt"
     original = "same\nvalue\nsame\nvalue\n"
     target.write_text(original, encoding="utf-8")
@@ -171,7 +191,9 @@ def test_envelope_rejects_ambiguous_hunk_without_touching_files(tmp_path: Path) 
     assert target.read_text(encoding="utf-8") == original
 
 
-def test_envelope_validates_all_actions_before_application(tmp_path: Path) -> None:
+def test_envelope_validates_all_actions_before_application(
+    tmp_path: Path,
+) -> None:
     first = tmp_path / "first.txt"
     second = tmp_path / "second.txt"
     first.write_text("old\n", encoding="utf-8")
@@ -262,19 +284,36 @@ def test_envelope_rejects_paths_outside_cwd(tmp_path: Path) -> None:
     [
         ("*** Begin Patch\n*** End Patch\n", "no file actions"),
         ("*** Begin Patch\n*** End Patch\nextra\n", "unexpected content"),
-        ("*** Begin Patch\n*** Rename File: x.txt\n*** End Patch\n", "expected file action"),
+        (
+            "*** Begin Patch\n*** Rename File: x.txt\n*** End Patch\n",
+            "expected file action",
+        ),
         ("*** Begin Patch\n*** Add File: x.txt\n+x\n", "missing"),
         (
             "*** Begin Patch\n*** Update File: x.txt\n*** Move to: y.txt\n*** End Patch\n",
             "not supported",
         ),
-        ("*** Begin Patch\n*** Add File:   \n+x\n*** End Patch\n", "invalid patch path"),
-        ("*** Begin Patch\n*** Add File: sub\\x.txt\n+x\n*** End Patch\n", "invalid patch path"),
-        ("*** Begin Patch\n*** Add File: .\n+x\n*** End Patch\n", "invalid patch path"),
-        ("*** Begin Patch\n*** Add File: ../x.txt\n+x\n*** End Patch\n", "stay within cwd"),
+        (
+            "*** Begin Patch\n*** Add File:   \n+x\n*** End Patch\n",
+            "invalid patch path",
+        ),
+        (
+            "*** Begin Patch\n*** Add File: sub\\x.txt\n+x\n*** End Patch\n",
+            "invalid patch path",
+        ),
+        (
+            "*** Begin Patch\n*** Add File: .\n+x\n*** End Patch\n",
+            "invalid patch path",
+        ),
+        (
+            "*** Begin Patch\n*** Add File: ../x.txt\n+x\n*** End Patch\n",
+            "stay within cwd",
+        ),
     ],
 )
-def test_envelope_rejects_malformed_input(tmp_path: Path, patch: str, message: str) -> None:
+def test_envelope_rejects_malformed_input(
+    tmp_path: Path, patch: str, message: str
+) -> None:
     with pytest.raises(ValueError, match=message):
         normalize_patch_text(patch, str(tmp_path))
 
@@ -287,7 +326,10 @@ def test_envelope_rejects_invalid_file_actions(tmp_path: Path) -> None:
             "*** Begin Patch\n*** Add File: existing.txt\n+new\n*** End Patch\n",
             "cannot add existing",
         ),
-        ("*** Begin Patch\n*** Delete File: missing.txt\n*** End Patch\n", "cannot delete missing"),
+        (
+            "*** Begin Patch\n*** Delete File: missing.txt\n*** End Patch\n",
+            "cannot delete missing",
+        ),
         (
             "*** Begin Patch\n*** Delete File: existing.txt\n-extra\n*** End Patch\n",
             "must not contain patch lines",
@@ -366,12 +408,16 @@ def test_envelope_rejects_invalid_targets(tmp_path: Path) -> None:
         normalize_patch_text(patch, str(tmp_path))
 
 
-def test_envelope_supports_empty_files_and_detects_net_noop(tmp_path: Path) -> None:
+def test_envelope_supports_empty_files_and_detects_net_noop(
+    tmp_path: Path,
+) -> None:
     add_empty = "*** Begin Patch\n*** Add File: empty.txt\n*** End Patch\n"
     _git_apply(tmp_path, normalize_patch_text(add_empty, str(tmp_path)))
     assert (tmp_path / "empty.txt").read_bytes() == b""
 
-    delete_empty = "*** Begin Patch\n*** Delete File: empty.txt\n*** End Patch\n"
+    delete_empty = (
+        "*** Begin Patch\n*** Delete File: empty.txt\n*** End Patch\n"
+    )
     _git_apply(tmp_path, normalize_patch_text(delete_empty, str(tmp_path)))
     assert not (tmp_path / "empty.txt").exists()
 

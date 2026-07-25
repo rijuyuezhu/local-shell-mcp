@@ -1,0 +1,59 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: generate-config-examples
+        name: generate config examples
+        entry: uv run python scripts/generation/generate-config-examples.py
+        language: system
+        pass_filenames: false
+        files: ^(src/local_shell_mcp/config/(settings|surface)\.py|scripts/generation/generate-config-examples\.py|\.env\.example|config\.example\.yaml|docs/reference/generated/configuration\.json)$
+      - id: generate-tools-reference
+        name: generate tools reference
+        entry: uv run python scripts/generation/export-tools-json.py --wrapped --output docs/reference/generated/tools.json --instructions-output docs/reference/generated/server-instructions.json
+        language: system
+        pass_filenames: false
+        files: ^(src/local_shell_mcp/(agent_bridge|config|ops|remote|schemas|server|tools|utils)/.*\.py|scripts/generation/export-tools-json\.py|docs/reference/generated/(tools|server-instructions)\.json)$
+      - id: vscode-extension-format
+        name: vscode-extension format
+        entry: bash -c 'cd vscode-extension && npm ci && npm run format:check'
+        language: system
+        pass_filenames: false
+        files: ^vscode-extension/(src/.*\.ts|.*\.(json|md|mjs)|package-lock\.json)$
+      - id: vscode-extension-lint
+        name: vscode-extension lint
+        entry: bash -c 'cd vscode-extension && npm ci && npm run lint'
+        language: system
+        pass_filenames: false
+        files: ^vscode-extension/(src/.*\.ts|eslint\.config\.mjs|package(-lock)?\.json|tsconfig\.json)$
+      - id: vscode-extension-compile
+        name: vscode-extension compile
+        entry: bash -c 'cd vscode-extension && npm ci && npm run compile'
+        language: system
+        pass_filenames: false
+        files: ^vscode-extension/(src/.*\.ts|package(-lock)?\.json|tsconfig\.json)$
+      - id: terminal-ui-build
+        name: terminal UI generated assets
+        entry: bash -c 'cd ui-terminal && npm ci && npm run check'
+        language: system
+        pass_filenames: false
+        files: ^(ui-terminal/(src/.*\.js|scripts/.*\.mjs|package(-lock)?\.json)|src/local_shell_mcp/ui/static/xterm(_bundle\.js|\.css|\.LICENSE\.txt))$
+
+      - id: generate-tui-executable-contract
+        name: generate TUI executable contract
+        entry: uv run python scripts/generation/generate-tui-executable-contract.py --check
+        language: system
+        pass_filenames: false
+        files: ^(src/local_shell_mcp/ui/contracts\.py|scripts/generation/generate-tui-executable-contract\.py|ui-opentui/scripts/(compile-tui|executable-contract)\.ts)$
+
+      - id: native-artifact-provenance
+        name: native artifact provenance
+        entry: uv run python scripts/validation/check-native-provenance.py
+        language: system
+        pass_filenames: false
+        files: ^(ui-opentui/(package\.json|bun\.lock|scripts/(compile-tui|executable-contract)\.ts)|scripts/(build-platform-wheel\.py|smoke-platform-wheel\.py|tmux-helper\.Dockerfile|build-tmux-helper\.sh)|scripts/generation/generate-tui-executable-contract\.py|scripts/validation/(check-native-provenance\.py|check-release-matrix\.py)|src/local_shell_mcp/(ui/contracts\.py|helpers/(tmux\.LICENSE|opentui\.NOTICES|bun-1\.3\.14\.LICENSE\.md))|docs/maintenance/native-artifact-provenance\.md|pyproject\.toml|mkdocs\.yml|\.github/workflows/(ci|release)\.yml)$

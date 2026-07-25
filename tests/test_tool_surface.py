@@ -1,191 +1,768 @@
+import json
+from typing import cast
+
 import pytest
+from fastapi.testclient import TestClient
+from mcp.server.fastmcp.exceptions import ToolError
 
-from local_shell_mcp.settings import get_settings
-from local_shell_mcp.tools import build_mcp
+import local_shell_mcp.executors.http.tool_routes as http_tool_routes_module
+from local_shell_mcp import __version__
+from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.http.app import build_http_app
+from local_shell_mcp.executors.mcp.app import build_mcp
+from local_shell_mcp.remote.tool_specs import (
+    REMOTE_WORKER_TOOL_NAMES,
+    REMOTE_WORKER_TOOL_SPECS,
+)
+from local_shell_mcp.remote_worker.worker import WORKER_TOOL_NAMES
+from local_shell_mcp.tools.contracts import (
+    HttpMethod,
+    HttpToolRoute,
+    ToolRegistry,
+)
+from local_shell_mcp.tools.declarative import (
+    DeclarativeToolRegistry,
+    _normalize_description,
+)
+from local_shell_mcp.tools.discovery import discover_tool_registries
+from local_shell_mcp.tools.local_handlers import (
+    UnknownLocalToolError,
+    call_local_tool,
+    local_tool_handlers,
+)
+from tests.helpers import mcp_text
 
-CORE_TOOL_NAMES = {
+LOCAL_MCP_TOOL_NAMES = {
+    "audit_tail",
+    "bash",
+    "read",
     "search",
+    "workspace_search",
     "fetch",
-    "environment_info",
-    "skills_list",
-    "skill_load",
-    "skill_read_file",
-    "run_shell_tool",
-    "run_python_tool",
-    "shell_start",
-    "shell_send",
-    "shell_read",
-    "shell_kill",
-    "shell_list",
-    "job_start",
-    "job_list",
-    "job_tail",
-    "job_stop",
-    "job_retry",
+    "session_start",
+    "session_change_cwd",
+    "session_copy",
+    "version",
+    "run_python_code",
+    "send_persistent_shell_input",
+    "resize_persistent_shell",
+    "read_persistent_shell_output",
+    "kill_persistent_shell",
+    "list_persistent_shells",
     "list_files",
     "tree_view",
     "glob_search",
-    "grep_search",
-    "read_file",
-    "view_image",
+    "write_file",
+    "edit_lines",
+    "hashline_edit",
+    "apply_patch",
+    "delete_file_or_dir",
     "create_file_link",
     "list_file_links",
     "revoke_file_link",
-    "write_file",
-    "edit_file",
-    "delete_file_or_dir",
-    "apply_patch",
     "secret_scan",
-    "todo_read_tool",
-    "todo_write_tool",
-    "browser_capture_tool",
-    "browser_get_text_tool",
-    "playwright_run_script_tool",
-    "audit_tail",
+    "read_todos",
+    "write_todos",
+    "job",
+    "view_image",
 }
 
-REMOTE_DEPENDENT_TOOL_NAMES = {
-    "transfer_path",
-    "remote_invite",
-    "remote_list_machines",
-    "remote_revoke_machine",
-    "remote_rename_machine",
-}
 
-REMOVED_TOOL_NAMES = {
-    "version_info",
-    "read_many_files",
-    "multi_edit_file",
-    "git_status_tool",
-    "git_commit_tool",
-    "remote_run_shell_tool",
-    "remote_read_file",
-    "remote_git_status_tool",
-    "remote_copy_file",
-    "remote_pull_file",
-    "remote_push_file",
-    "browser_screenshot_tool",
-    "browser_pdf_tool",
-    "browser_eval_tool",
-    "playwright_install_tool",
+def test_normalize_description_cleans_docstring_text():
+    assert _normalize_description(
+        """
+        First line with   extra   spaces.
+          Continued line.
+
+            Second paragraph
+            with tabs	and spaces.
+
+        """
+    ) == (
+        "First line with extra spaces. Continued line.\n\n"
+        "Second paragraph with tabs and spaces."
+    )
+
+
+REMOTE_MCP_TOOL_NAMES = {
+    "remote_admin",
 }
 
 
 @pytest.mark.asyncio
-async def test_mcp_tool_surface_is_stable(tmp_path, monkeypatch):
+async def test_mcp_local_and_remote_tool_surface_is_stable(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
-    get_settings.cache_clear()
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    names = {tool.name for tool in await build_mcp().list_tools()}
+
+    assert names == LOCAL_MCP_TOOL_NAMES | REMOTE_MCP_TOOL_NAMES
+
+
+@pytest.mark.asyncio
+async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "stdio")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    names = {tool.name for tool in await build_mcp().list_tools()}
+
+    assert names == LOCAL_MCP_TOOL_NAMES - {
+        "create_file_link",
+        "list_file_links",
+        "revoke_file_link",
+    }
+    assert names.isdisjoint(REMOTE_MCP_TOOL_NAMES)
+
+
+@pytest.mark.asyncio
+async def test_model_facing_tools_require_session_id_by_default(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-
-    assert set(tools) == CORE_TOOL_NAMES | REMOTE_DEPENDENT_TOOL_NAMES
-    assert set(tools).isdisjoint(REMOVED_TOOL_NAMES)
-    assert all(tool.outputSchema is not None for tool in tools.values())
-
-
-@pytest.mark.asyncio
-async def test_remote_admin_tools_can_be_disabled_from_surface(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
-    get_settings.cache_clear()
-
-    tools = {tool.name for tool in await build_mcp().list_tools()}
-
-    assert tools == CORE_TOOL_NAMES
-    assert tools.isdisjoint(REMOTE_DEPENDENT_TOOL_NAMES)
-
-
-@pytest.mark.asyncio
-async def test_machine_capable_tools_use_optional_machine_arguments(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
-    get_settings.cache_clear()
-
-    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    machine_capable = {
-        "environment_info",
-        "run_shell_tool",
-        "run_python_tool",
-        "shell_start",
-        "shell_send",
-        "shell_read",
-        "shell_kill",
-        "shell_list",
-        "job_start",
-        "job_list",
-        "job_tail",
-        "job_stop",
-        "job_retry",
-        "list_files",
-        "tree_view",
-        "glob_search",
-        "grep_search",
-        "read_file",
-        "view_image",
-        "write_file",
-        "edit_file",
-        "delete_file_or_dir",
-        "apply_patch",
-        "browser_capture_tool",
-        "browser_get_text_tool",
-        "playwright_run_script_tool",
+    sessionless_allowlist = {
+        "session_start",
+        "version",
+        "workspace_search",
+        "fetch",
+        "send_persistent_shell_input",
+        "resize_persistent_shell",
+        "read_persistent_shell_output",
+        "kill_persistent_shell",
+        "list_persistent_shells",
+        "remote_admin",
     }
 
-    for name in machine_capable:
-        assert "machine" in tools[name].inputSchema["properties"], name
-    transfer_properties = tools["transfer_path"].inputSchema["properties"]
-    assert {"source_machine", "destination_machine"} <= set(transfer_properties)
+    assert sessionless_allowlist <= set(tools)
 
-    edit_schema = tools["edit_file"].inputSchema
-    edit_definition = edit_schema["$defs"]["TextEdit"]
-    assert edit_schema["properties"]["edits"]["items"] == {"$ref": "#/$defs/TextEdit"}
-    assert edit_definition["additionalProperties"] is False
-    assert set(edit_definition["required"]) == {"old", "new"}
-    assert edit_definition["properties"]["old"]["minLength"] == 1
-    assert edit_definition["properties"]["replace_all"]["type"] == "boolean"
+    unexpected_sessionless = set()
+    for name, tool in tools.items():
+        required = set(tool.inputSchema.get("required", []))
+        has_single_session = "session_id" in required
+        has_copy_sessions = {"src_session_id", "dst_session_id"} <= required
+        if (
+            not (has_single_session or has_copy_sessions)
+            and name not in sessionless_allowlist
+        ):
+            unexpected_sessionless.add(name)
 
-
-@pytest.mark.asyncio
-async def test_key_tool_descriptions_guide_tool_choice(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
-    get_settings.cache_clear()
-
-    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-
-    assert "For long-running" in tools["run_shell_tool"].description
-    assert "purpose/explanation" in tools["run_shell_tool"].description
-    assert "Git" in tools["run_shell_tool"].description
-    assert "old must match exactly" in tools["edit_file"].description
-    assert "recursive=true is required" in tools["delete_file_or_dir"].description
-    assert "high-entropy token" in tools["create_file_link"].description
-    assert "native MCP image content" in tools["view_image"].description
-    assert "existing file-transfer protocol" in tools["view_image"].description
-    assert "tool surface stays fixed" in tools["skills_list"].description
-    assert "exact name returned from skills_list" in tools["skill_load"].description
+    assert unexpected_sessionless == set()
+    for name in sessionless_allowlist:
+        assert "session_id" not in set(
+            tools[name].inputSchema.get("required", [])
+        )
 
 
 @pytest.mark.asyncio
-async def test_risky_tools_accept_purpose_and_explanation(tmp_path, monkeypatch):
+async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    mcp = build_mcp()
+    assert mcp.instructions is not None
+    assert "`read` for file/directory context" in mcp.instructions
+    assert (
+        "`search(pattern, paths=...)` for content discovery" in mcp.instructions
+    )
+    assert "`[path#snapshot_id]` plus `line:text` rows" in mcp.instructions
+    assert "`hashline_edit` as the default edit tool" in mcp.instructions
+    assert "Body rows are final content only" in mcp.instructions
+    assert "never invent or reuse them from memory" in mcp.instructions
+    assert "new `read`/`search` after each edit" in mcp.instructions
+    assert "Use `edit_lines` only when" in mcp.instructions
+
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
+    descriptions = {
+        name: tools[name].description or ""
+        for name in (
+            "read",
+            "search",
+            "write_file",
+            "edit_lines",
+            "hashline_edit",
+            "bash",
+            "run_python_code",
+            "session_start",
+            "remote_admin",
+        )
+    }
+
+    assert "[path#snapshot_id]" in descriptions["read"]
+    assert "line:text" in descriptions["read"]
+    assert "copied directly into hashline_edit" in descriptions["read"]
+    assert "Use edit_lines only" in descriptions["read"]
+    assert "path:5-16,960-973" in descriptions["read"]
+    assert "ordered and non-overlapping" in descriptions["read"]
+    assert "instead of shell grep/ripgrep" in descriptions["search"]
+    assert "editable grounding" in descriptions["search"]
+    assert "copied into hashline_edit" in descriptions["search"]
+    assert "gitignore defaults to true" in descriptions["search"]
+    assert "gitignore=false" in descriptions["search"]
+    assert "use hashline_edit" in descriptions["write_file"]
+    assert "do not use it for partial edits" in descriptions["write_file"]
+    assert "Low-level structured line edit" in descriptions["edit_lines"]
+    assert "Default model-facing edit tool" in descriptions["hashline_edit"]
+    assert "never invent snapshot ids/tags" in descriptions["hashline_edit"]
+    assert "Body rows are final content only" in descriptions["hashline_edit"]
+    assert "After every edit" in descriptions["hashline_edit"]
+    assert (
+        "hashline_edit when editing copied read/search rows"
+        in descriptions["bash"]
+    )
+    assert "timeout default/cap: 10/120 seconds" in descriptions["bash"]
+    assert (
+        "read/search/hashline_edit/edit_lines/write_file"
+        in descriptions["run_python_code"]
+    )
+    assert (
+        "timeout default/cap: 10/120 seconds" in descriptions["run_python_code"]
+    )
+    assert (
+        "read, search, hashline_edit, edit_lines"
+        in descriptions["session_start"]
+    )
+    assert (
+        "read, search, hashline_edit, edit_lines"
+        in descriptions["remote_admin"]
+    )
+
+
+def test_remote_registry_declares_only_remote_admin(monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
-    get_settings.cache_clear()
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
 
-    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-    names = {
-        "run_shell_tool",
-        "run_python_tool",
-        "shell_start",
-        "job_start",
-        "job_retry",
-        "write_file",
-        "edit_file",
-        "delete_file_or_dir",
-        "apply_patch",
+    registry = cast(
+        DeclarativeToolRegistry,
+        next(
+            registry
+            for registry in discover_tool_registries()
+            if registry.name == "remote"
+        ),
+    )
+    names = {tool.name for tool in registry.tools}
+    route_names = {route.tool_name for route in registry.http_routes()}
+    handler_names = set(registry.http_handlers())
+    legacy_names = {
+        "remote_invite",
+        "remote_list_machines",
+        "remote_revoke_machine",
+        "remote_rename_machine",
+        "remote_copy_file",
+        "remote_copy_dir",
+        "remote_pull_file",
+        "remote_push_file",
+        "remote_pull_dir",
+        "remote_push_dir",
+    }
+
+    assert names == {"remote_admin"}
+    assert "remote_admin" in route_names
+    assert "remote_admin" in handler_names
+    assert "remote" not in route_names
+    assert "remote" not in handler_names
+    assert names.isdisjoint(legacy_names)
+    assert route_names.isdisjoint(legacy_names)
+    assert handler_names.isdisjoint(legacy_names)
+
+
+def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    exposed_specs = [
+        spec for spec in REMOTE_WORKER_TOOL_SPECS if spec.expose_http
+    ]
+    spec_names = {spec.public_name for spec in exposed_specs}
+    worker_tools = {spec.worker_tool for spec in REMOTE_WORKER_TOOL_SPECS}
+    route_by_name = {
+        route.tool_name: route
+        for registry in discover_tool_registries()
+        for route in registry.http_routes()
+    }
+    handler_names = set(local_tool_handlers())
+
+    assert len(spec_names) == len(exposed_specs)
+    assert worker_tools == REMOTE_WORKER_TOOL_NAMES
+    assert WORKER_TOOL_NAMES == REMOTE_WORKER_TOOL_NAMES
+    assert spec_names <= set(route_by_name)
+    assert spec_names <= handler_names
+    for spec in exposed_specs:
+        route = route_by_name[spec.public_name]
+        assert route.method == "POST"
+        assert route.path == spec.http_path
+
+
+def test_http_openapi_version_matches_package_version(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).get("/openapi.json")
+
+    assert response.status_code == 200
+    assert response.json()["info"]["version"] == __version__
+
+
+def test_http_public_version_endpoint_reports_package_version(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    response = TestClient(build_http_app()).get("/version")
+
+    assert response.status_code == 200
+    assert response.json()["version"] == __version__
+    assert response.json()["python"]
+
+
+@pytest.mark.asyncio
+async def test_http_version_matches_mcp_tool_payload(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    http_payload = TestClient(build_http_app()).get("/tools/version").json()
+    mcp_response = await build_mcp().call_tool("version", {})
+
+    assert http_payload == _mcp_payload_data(mcp_response)
+    assert http_payload["version"] == __version__
+
+
+def _mcp_payload_data(response):
+    return (
+        response[1]
+        if isinstance(response, tuple)
+        else json.loads(mcp_text(response))
+    )
+
+
+@pytest.mark.asyncio
+async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
+    (tmp_path / "alpha.txt").write_text("hello", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    args = {"session_id": session["session_id"], "path": "."}
+    http_payload = client.post("/tools/list_files", json=args).json()
+    mcp_response = await build_mcp().call_tool("list_files", args)
+    assert http_payload == _mcp_payload_data(mcp_response)
+
+
+@pytest.mark.asyncio
+async def test_http_read_todos_matches_mcp_tool_payload(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    args = {"session_id": session["session_id"]}
+    http_payload = client.get("/tools/todo", params=args).json()
+    mcp_response = await build_mcp().call_tool("read_todos", args)
+
+    assert http_payload == _mcp_payload_data(mcp_response)
+
+
+@pytest.mark.asyncio
+async def test_http_secret_scan_matches_mcp_tool_payload(tmp_path, monkeypatch):
+    (tmp_path / "safe.txt").write_text("hello\n", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    args = {"session_id": session["session_id"], "cwd": ".", "max_results": 10}
+    http_payload = client.post("/tools/secret_scan", json=args).json()
+    mcp_response = await build_mcp().call_tool("secret_scan", args)
+
+    assert http_payload == _mcp_payload_data(mcp_response)
+
+
+def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    response = client.get(
+        "/tools/todo",
+        params={
+            "session_id": session["session_id"],
+            "tool_name": "list_persistent_shells",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "todos" in response.json()
+
+
+def test_get_http_tools_disable_response_caching(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    response = client.get("/tools/version")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["expires"] == "0"
+
+
+def test_http_tool_missing_required_arg_returns_validation_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    for path, payload in (
+        ("/tools/read", {}),
+        ("/tools/bash", {"command": "echo ok"}),
+        ("/tools/job", {}),
+    ):
+        response = client.post(path, json=payload)
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "error": "validation_error",
+            "message": "Missing required argument: session_id",
         }
 
-    for name in names:
-        properties = tools[name].inputSchema["properties"]
-        assert "purpose" in properties, name
-        assert "explanation" in properties, name
+
+def test_http_get_query_params_are_type_coerced(tmp_path, monkeypatch):
+    (tmp_path / "artifact.txt").write_text("hello", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    from local_shell_mcp.ops import downloads as download_ops
+
+    clock = {"now": 1_000.0}
+    monkeypatch.setattr(download_ops, "now_s", lambda: clock["now"])
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    create_response = client.post(
+        "/tools/file_link/create",
+        json={
+            "session_id": session["session_id"],
+            "path": "artifact.txt",
+            "ttl_s": 10,
+        },
+    )
+    assert create_response.status_code == 200
+
+    clock["now"] = 1_020.0
+    include_response = client.get(
+        "/tools/file_link/list",
+        params={
+            "session_id": session["session_id"],
+            "include_expired": "true",
+        },
+    )
+    assert include_response.status_code == 200
+    assert len(include_response.json()["links"]) == 1
+
+    prune_response = client.get(
+        "/tools/file_link/list",
+        params={
+            "session_id": session["session_id"],
+            "include_expired": "false",
+        },
+    )
+    assert prune_response.status_code == 200
+    assert prune_response.json()["links"] == []
+
+
+def test_todos_are_session_scoped(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    from local_shell_mcp.ops.todo import read_todos_execute, write_todos_execute
+    from local_shell_mcp.tool_session.store import get_tool_session_store
+
+    store = get_tool_session_store()
+    store.clear()
+    first = store.create_session(workdir=".").session_id
+    second = store.create_session(workdir=".").session_id
+    first_items = [{"id": "first", "content": "one"}]
+    second_items = [{"id": "second", "content": "two"}]
+
+    write_todos_execute(first_items, first)
+    write_todos_execute(second_items, second)
+
+    assert read_todos_execute(first).todos[0].id == "first"
+    assert read_todos_execute(first).todos[0].content == "one"
+    assert read_todos_execute(second).todos[0].id == "second"
+    assert read_todos_execute(second).todos[0].content == "two"
+
+
+def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    client = TestClient(build_http_app())
+    session = client.post("/tools/session_start", json={"workdir": "."}).json()
+    response = client.post(
+        "/tools/read",
+        json={"session_id": session["session_id"], "path": "missing.txt"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "FileNotFoundError",
+        "message": f"FileNotFoundError: {tmp_path / 'missing.txt'}",
+    }
+
+
+def test_http_tool_unexpected_error_returns_json_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    async def broken_call_local_tool(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        http_tool_routes_module, "call_http_tool", broken_call_local_tool
+    )
+
+    response = TestClient(build_http_app(), raise_server_exceptions=False).post(
+        "/tools/read", json={"path": "a.txt"}
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": "internal_error",
+        "message": "Unhandled RuntimeError: boom",
+    }
+
+
+def test_http_mode_hides_remote_worker_routes(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    response = TestClient(build_http_app()).post(
+        "/tools/run_remote_shell_command", json={"command": "echo ok"}
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Not Found"}
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_missing_required_arg_uses_fastmcp_tool_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    with pytest.raises(ToolError, match="validation errors for readArguments"):
+        await build_mcp().call_tool("read", {})
+
+
+@pytest.mark.asyncio
+async def test_mcp_remote_facade_is_absent(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    tools = {tool.name for tool in await build_mcp().list_tools()}
+    assert "remote" not in tools
+
+    with pytest.raises(ToolError, match="Unknown tool: remote"):
+        await build_mcp().call_tool(
+            "remote",
+            {
+                "machine": "worker-a",
+                "op": "bash",
+                "args": {"command": "echo ok"},
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_mcp_unknown_tool_uses_fastmcp_tool_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    with pytest.raises(ToolError, match="Unknown tool: no_such_tool"):
+        await build_mcp().call_tool("no_such_tool", {})
+
+
+def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
+    class RegistryWithUnsupportedRoute:
+        def http_routes(self):
+            return [
+                HttpToolRoute(
+                    cast(HttpMethod, "PUT"), "/tools/example", "read_todos"
+                )
+            ]
+
+    monkeypatch.setattr(
+        "local_shell_mcp.executors.http.tool_routes.discover_tool_registries",
+        lambda: [RegistryWithUnsupportedRoute()],
+    )
+
+    with pytest.raises(ValueError, match="Unsupported HTTP tool method 'PUT'"):
+        build_http_app()
+
+
+@pytest.mark.asyncio
+async def test_local_handlers_report_unknown_tool(monkeypatch):
+    class EmptyRegistry(ToolRegistry):
+        pass
+
+    monkeypatch.setattr(
+        "local_shell_mcp.tools.local_handlers.discover_tool_registries",
+        lambda: [EmptyRegistry()],
+    )
+    local_tool_handlers.cache_clear()
+
+    try:
+        with pytest.raises(
+            UnknownLocalToolError, match="Unknown local tool: example_tool"
+        ):
+            await call_local_tool("example_tool", {})
+    finally:
+        local_tool_handlers.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_local_handlers_are_collected_from_discovered_registries(
+    monkeypatch,
+):
+    async def example_handler(args):
+        return {"from_registry": args["value"]}
+
+    class ExampleRegistry(ToolRegistry):
+        def http_handlers(self):
+            return {"example_tool": example_handler}
+
+    monkeypatch.setattr(
+        "local_shell_mcp.tools.local_handlers.discover_tool_registries",
+        lambda: [ExampleRegistry()],
+    )
+    local_tool_handlers.cache_clear()
+
+    try:
+        assert await call_local_tool("example_tool", {"value": 42}) == {
+            "from_registry": 42
+        }
+    finally:
+        local_tool_handlers.cache_clear()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("agent_bridge_enabled", ["false", "true"])
+async def test_mcp_tools_have_matching_http_routes_and_handlers(
+    tmp_path, monkeypatch, agent_bridge_enabled
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / "agents"))
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", agent_bridge_enabled
+    )
+    clear_settings_cache()
+    local_tool_handlers.cache_clear()
+
+    try:
+        mcp_tool_names = {tool.name for tool in await build_mcp().list_tools()}
+        route_tool_names = {
+            route.tool_name
+            for registry in discover_tool_registries()
+            for route in registry.http_routes()
+        }
+        handler_tool_names = set(local_tool_handlers())
+
+        internal_worker_handlers = REMOTE_WORKER_TOOL_NAMES - {
+            spec.worker_tool
+            for spec in REMOTE_WORKER_TOOL_SPECS
+            if spec.expose_http
+        }
+        if agent_bridge_enabled == "false":
+            internal_worker_handlers -= {
+                "list_agent_skills",
+                "activate_agent_skill",
+                "read_agent_skill_file",
+            }
+
+        assert route_tool_names == mcp_tool_names - {"view_image"}
+        assert handler_tool_names == mcp_tool_names | internal_worker_handlers
+    finally:
+        local_tool_handlers.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_run_python_code_creates_temp_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+
+    session = await call_local_tool("session_start", {"workdir": "."})
+    payload = await call_local_tool(
+        "run_python_code",
+        {
+            "session_id": session.session_id,
+            "code": "print('py314')",
+            "cwd": ".",
+        },
+    )
+
+    assert payload.mode == "command"
+    assert payload.cwd == str(tmp_path)
+    assert payload.result["ok"] is True
+    assert payload.result["stdout"].splitlines() == ["py314"]
+    assert payload.script_path.endswith(".py")

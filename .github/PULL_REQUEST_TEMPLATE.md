@@ -1,17 +1,19 @@
 ## Summary
 
-- 
+-
 
 ## Validation
 
-- [ ] `ruff check .`
-- [ ] `pytest -q`
-- [ ] `mkdocs build --strict` if docs changed
+- [ ] `uv run pre-commit run --all-files`
+- [ ] `uv run pyright`
+- [ ] `uv run pytest -q`
+- [ ] Branch-coverage ratchet passes if Python source changed
+- [ ] `uv run mkdocs build --strict` if docs changed
 - [ ] VS Code extension compile if extension files changed
 
 ## Safety checklist
 
-- [ ] No secrets, tunnel tokens, OAuth pins, private keys, or bearer file-link URLs are committed.
-- [ ] New or changed MCP tools are documented and tested.
-- [ ] Host-control, remote-worker, file-link, or credential behavior is explicitly described.
+- [ ] No credentials or private workspace data are committed.
+- [ ] New or changed MCP/REST tools are documented and tested.
+- [ ] Host-control, remote-worker, file-link, or credential behavior is described.
 - [ ] Backwards compatibility impact is noted.

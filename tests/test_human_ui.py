@@ -1,901 +1,426 @@
-from __future__ import annotations
-
-import asyncio
 import base64
-import importlib.util
+import hashlib
+import html
 import json
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+import re
+import stat
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.routing import Route
-from starlette.websockets import WebSocket
+from pydantic import ValidationError
 
-import local_shell_mcp.audit as audit_module
-from local_shell_mcp.audit import audit, query_audit, suppress_audit
-from local_shell_mcp.http_app import build_http_app
-from local_shell_mcp.human_ui import (
-    UI_FULL_SCOPES,
-    UI_MAX_COLUMNS,
-    UI_MAX_ROWS,
-    _authorize_websocket,
-    _bounded_int,
-    _idle_timeout_remaining,
-    _normalize_file_entries,
-    _parent_path,
-    _path_name,
-    _split_tui_command,
-    _UnixPtyProcess,
-    _validate_tui_api_base,
-    _WindowsPtyProcess,
-    api_files,
-    ui_asset,
+import local_shell_mcp.ui.http.routes as human_ui_module
+from local_shell_mcp.config.settings import Settings, clear_settings_cache
+from local_shell_mcp.executors.http.app import build_http_app
+from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES
+from local_shell_mcp.ui.security import (
+    UI_LOCAL_TOKEN_HEADER,
+    get_or_create_ui_local_token,
 )
-from local_shell_mcp.oauth import issue_access_token, public_base_url
-from local_shell_mcp.remote import execute_worker_tool
-from local_shell_mcp.settings import get_settings
-from local_shell_mcp.ui_security import UI_LOCAL_TOKEN_HEADER, get_or_create_ui_local_token
 
 
-def _configure(tmp_path, monkeypatch, *, auth_mode: str = "none") -> None:
+@pytest.fixture(autouse=True)
+def _reset_human_ui_state():
+    _CLIENTS.clear()
+    _CODES.clear()
+    clear_settings_cache()
+    yield
+    _CLIENTS.clear()
+    _CODES.clear()
+    clear_settings_cache()
+
+
+def _configure_ui(monkeypatch, tmp_path, *, auth_mode="none", **values):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUDIT_LOG_PATH", str(tmp_path / "audit.jsonl"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
-    get_settings.cache_clear()
+    monkeypatch.setenv("LOCAL_SHELL_MCP_UI_TUI_COMMAND", "test-opentui")
+    for name, value in values.items():
+        monkeypatch.setenv(
+            f"LOCAL_SHELL_MCP_{name.upper()}", str(value).lower()
+        )
+    clear_settings_cache()
 
 
+def test_ui_path_normalization_and_reserved_paths():
+    assert Settings(ui_path="/console/").ui_path == "/console"
+    assert Settings(ui_path="//human//ui//").ui_path == "/human/ui"
 
-def test_webui_shell_uses_available_viewport_without_fixed_desktop_cap():
-    css_path = Path(__file__).parents[1] / "src/local_shell_mcp/ui_static/web.css"
-    css = css_path.read_text(encoding="utf-8")
-
-    assert "1540px" not in css
-    assert "960px" not in css
-    assert ":fullscreen .shell" in css
-
-
-def test_webui_visual_regressions_are_packaged():
-    asset_root = Path(__file__).parents[1] / "src/local_shell_mcp/ui_static"
-    html = (asset_root / "index.html").read_text(encoding="utf-8")
-    css = (asset_root / "web.css").read_text(encoding="utf-8")
-    script = (asset_root / "web.js").read_text(encoding="utf-8")
-
-    assert "<strong>TUI</strong><small>Terminal interface</small>" in html
-    assert "<strong>OpenTUI</strong><small>Terminal interface</small>" not in html
-    assert "scrollbar-width:none!important" in css
-    assert "-ms-overflow-style:none" in css
-    scrollbar_rule = css.split("#terminal .xterm-viewport::-webkit-scrollbar{", 1)[1].split("}", 1)[0]
-    assert {"width:0", "height:0", "display:none"}.issubset(scrollbar_rule.split(";"))
-    dark_mode = "@media (prefers-color-scheme:dark)"
-    assert dark_mode in css
-    assert css.rindex(dark_mode) > css.rindex(".todo-row{display:grid")
-    assert "row-menu" not in script
+    for value in (
+        "ui",
+        "/",
+        "/../ui",
+        "/api",
+        "/api/custom",
+        "/ui?x=1",
+        '/ui"><script>',
+        "/控制台",
+    ):
+        with pytest.raises(ValidationError):
+            Settings(ui_path=value)
 
 
-def test_ui_assets_reject_symlinks_outside_asset_root(tmp_path, monkeypatch):
-    assets = tmp_path / "assets"
-    assets.mkdir()
-    outside = tmp_path / "outside.txt"
-    outside.write_text("outside-secret", encoding="utf-8")
-    link = assets / "escape.txt"
-    try:
-        link.symlink_to(outside)
-    except OSError:
-        pytest.skip("symlinks are not available in this environment")
-    monkeypatch.setattr("local_shell_mcp.human_ui._assets_dir", lambda: assets)
+def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
+    _configure_ui(monkeypatch, tmp_path, auth_mode="oauth")
+    client = TestClient(build_http_app(), client=("203.0.113.10", 50000))
 
-    app = Starlette(routes=[Route("/assets/{path:path}", ui_asset)])
-    response = TestClient(app).get("/assets/escape.txt")
+    index = client.get("/ui")
+    assert index.status_code == 200
+    assert "Human Interface" in index.text
+    assert 'id="dashboard-panel"' in index.text
+    assert 'id="dashboard-machine"' in index.text
+    assert 'id="dashboard-cpu-trend"' in index.text
+    assert 'id="dashboard-alerts"' in index.text
+    assert 'id="dashboard-activity"' in index.text
+    assert 'id="remotes-panel"' in index.text
+    assert 'id="remote-invite-dialog"' in index.text
+    assert 'id="remote-invite-result-dialog"' in index.text
+    assert 'id="remote-rename-dialog"' in index.text
+    assert 'id="remote-revoke-dialog"' in index.text
+    assert 'id="terminal-machine"' in index.text
+    assert 'id="terminal-xterm"' in index.text
+    assert 'id="terminal-latest"' in index.text
+    assert 'id="terminal-keyboard"' in index.text
+    assert 'data-terminal-key="ctrl-c"' in index.text
 
-    assert response.status_code == 404
-    assert "outside-secret" not in response.text
+    assert "assets/xterm.css" in index.text
+    assert "assets/xterm_bundle.js" in index.text
+    assert "assets/terminal_renderer.js" in index.text
+    assert "assets/opentui_console.js" in index.text
+    assert 'id="opentui-panel"' in index.text
+    assert 'id="opentui-terminal"' in index.text
+    assert 'id="file-panel"' in index.text
+    assert 'id="file-machine"' in index.text
+    assert 'id="file-editor-form"' in index.text
+    assert 'id="file-copy"' in index.text
+    assert 'id="file-move"' in index.text
+    assert 'id="file-rename"' in index.text
+    assert "__LSM_UI_PATH__" not in index.text
+    assert index.headers["cache-control"] == "no-store"
+    csp = index.headers["content-security-policy"]
+    assert "script-src 'self' 'wasm-unsafe-eval'" in csp
+    assert "'unsafe-eval'" not in csp
+    assert "style-src 'self' 'unsafe-inline'" in csp
+    assert "frame-ancestors 'none'" in csp
+    assert client.get("/ui/callback?code=example").status_code == 200
+    renderer = client.get("/ui/assets/terminal_renderer.js")
+    assert renderer.status_code == 200
+    assert renderer.headers["x-content-type-options"] == "nosniff"
+    assert "LsmTerminalRenderer" in renderer.text
+    assert "MAX_RUNS = 10_000" in renderer.text
+    assert "createTextNode" in renderer.text
+    assert "innerHTML" not in renderer.text
+
+    xterm_bundle = client.get("/ui/assets/xterm_bundle.js")
+    assert xterm_bundle.status_code == 200
+    assert xterm_bundle.headers["x-content-type-options"] == "nosniff"
+    assert "LsmXterm" in xterm_bundle.text
+    assert "createImageAddon" in xterm_bundle.text
+    assert "WEB_IMAGE_ADDON_OPTIONS" in xterm_bundle.text
+    assert "sourceMappingURL" not in xterm_bundle.text
+    assert client.get("/ui/assets/xterm.css").status_code == 200
+    web_css = client.get("/ui/assets/web.css")
+    assert web_css.status_code == 200
+    assert "scrollbar-width: none !important" in web_css.text
+    assert ".terminal-xterm .xterm-viewport::-webkit-scrollbar" in web_css.text
+    license_text = client.get("/ui/assets/xterm.LICENSE.txt")
+    assert license_text.status_code == 200
+    assert "Permission is hereby granted" in license_text.text
+    assert "@xterm/xterm 5.5.0" in license_text.text
+    assert "@xterm/addon-fit 0.10.0" in license_text.text
+    assert "@xterm/addon-image 0.8.0" in license_text.text
+    opentui_script = client.get("/ui/assets/opentui_console.js")
+    assert opentui_script.status_code == 200
+    assert opentui_script.headers["x-content-type-options"] == "nosniff"
+    assert "createImageAddon" in opentui_script.text
+    assert opentui_script.text.index("loadAddon(api.createImageAddon())") < (
+        opentui_script.text.index("fitAddon = new api.FitAddon()")
+    )
+    script = client.get("/ui/assets/web.js")
+    assert script.status_code == 200
+    assert script.headers["x-content-type-options"] == "nosniff"
+    assert 'code_challenge_method", "S256"' in script.text
+    assert "crypto.subtle.digest" in script.text
+    assert 'resource: String(oauth.resource || "")' in script.text
+    assert "pending.redirectUri === callbackUrl()" in script.text
+    assert "OAuth issuer verification failed" in script.text
+    assert "response.status === 401" in script.text
+    assert (
+        "response.status === 401 || response.status === 403" not in script.text
+    )
+    assert "payload.message || payload.detail" in script.text
+    assert "dashboardGeneration" in script.text
+    assert "requestedMachine !== dashboardMachine" in script.text
+    assert "refreshDashboardInBackground" in script.text
+    assert "request(dashboardQueryPath())" in script.text
+    assert "createElementNS" in script.text
+    assert "dashboardNumber" in script.text
+    assert "remoteGeneration" in script.text
+    assert "generation !== remoteGeneration" in script.text
+    assert "startRemotePolling" in script.text
+    assert "clearRemoteInviteResult" in script.text
+    assert "navigator.clipboard.writeText(remoteInviteCommand)" in script.text
+    assert 'remoteInviteCommand = ""' in script.text
+    assert "innerHTML" not in script.text
+    assert "terminalMachineStates" in script.text
+    assert "requestedMachine !== terminalMachine" in script.text
+    assert 'url.searchParams.set("machine", machine)' in script.text
+    assert 'url.searchParams.set("mode", "auto")' in script.text
+    assert 'socket.binaryType = "arraybuffer"' in script.text
+    assert "terminalReady" in script.text
+    assert "activateTerminalMode" in script.text
+    assert "sendTerminalBytes" in script.text
+    assert "offset += 65536" in script.text
+    assert "registerOscHandler(8" in script.text
+    assert "createImageAddon" in script.text
+    assert script.text.index("loadAddon(api.createImageAddon())") < (
+        script.text.index("terminalFitAddon = new api.FitAddon()")
+    )
+    assert "allowNonHttpProtocols: false" in script.text
+    assert "terminalSocketMachine === terminalMachine" in script.text
+    assert "bridge_id" not in script.text
+    assert "acceptTerminalSnapshot" in script.text
+    assert "terminalPendingOutput" in script.text
+    assert "terminalSpecialKeys" in script.text
+    assert "navigateTerminalHistory" in script.text
+    assert "LsmTerminalRenderer" in script.text
+    assert "filePreviewGeneration" in script.text
+    assert "generation !== filePreviewGeneration" in script.text
+    assert "fileListGeneration" in script.text
+    assert "requestedMachine !== fileMachine" in script.text
+    assert 'fileQuery("/files/preview"' in script.text
+    assert "machine: fileMachine" in script.text
+    assert "renderFileMachines" in script.text
+    assert "fileMutations" in script.text
+    assert 'fileAction("copy"' in script.text
+    assert 'fileAction("move"' in script.text
+    assert 'fileAction("rename"' in script.text
+    protected = client.get("/api/ui/bootstrap")
+    assert protected.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_local_file_api_does_not_block_event_loop(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
+def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
+    monkeypatch, tmp_path
+):
+    base_url = "https://local-shell-mcp.example"
+    admin_pin = "12345678"
+    _CLIENTS.clear()
+    _CODES.clear()
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        base_url=base_url,
+        oauth_admin_pin=admin_pin,
+    )
+    client = TestClient(
+        build_http_app(),
+        base_url=base_url,
+        client=("203.0.113.10", 50000),
+    )
 
-    def slow_list(*args, **kwargs):  # noqa: ANN002, ANN003
-        time.sleep(0.25)
-        return []
-
-    monkeypatch.setattr("local_shell_mcp.human_ui.list_dir", slow_list)
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": "/api/ui/files",
-        "raw_path": b"/api/ui/files",
-        "query_string": b"machine=local&path=.",
-        "headers": [],
-        "client": ("127.0.0.1", 4242),
-        "server": ("127.0.0.1", 8765),
+    index = client.get("/ui")
+    match = re.search(r'data-lsm-config="([^"]+)"', index.text)
+    assert match is not None
+    runtime = json.loads(html.unescape(match.group(1)))
+    assert runtime["oauth"] == {
+        "issuer": base_url,
+        "resource": f"{base_url}/mcp",
+        "scope": (
+            "shell:read shell:write shell:execute git:write "
+            "file:share remote:use audit:read audit:full"
+        ),
+        "registrationEndpoint": "/oauth/register",
+        "authorizationEndpoint": "/oauth/authorize",
+        "tokenEndpoint": "/oauth/token",
     }
-    request = Request(scope)
-    started = time.perf_counter()
-    task = asyncio.create_task(api_files(request))
-    await asyncio.sleep(0.05)
 
-    assert time.perf_counter() - started < 0.15
-    response = await task
-    assert response.status_code == 200
-
-def test_human_file_api_has_three_pane_directory_payload(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    (tmp_path / "folder").mkdir()
-    (tmp_path / "alpha.txt").write_text("alpha", encoding="utf-8")
-
-    client = TestClient(build_http_app())
-    response = client.get("/api/ui/files", params={"machine": "local", "path": "."})
-
-    assert response.status_code == 200
-    payload = response.json()["data"]
-    assert payload["machine"] == "local"
-    assert payload["path"] == "."
-    assert [entry["name"] for entry in payload["entries"]][:2] == [".state", "folder"]
-    assert any(entry["name"] == "alpha.txt" and entry["type"] == "file" for entry in payload["entries"])
-
-
-def test_human_file_api_renders_image_preview(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    png = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-    )
-    (tmp_path / "pixel.png").write_bytes(png)
-
-    client = TestClient(build_http_app())
-    response = client.get(
-        "/api/ui/files/preview",
-        params={"machine": "local", "path": "pixel.png", "columns": 20, "rows": 8},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()["data"]
-    assert payload["kind"] == "image"
-    assert payload["mime_type"] == "image/png"
-    assert (payload["width"], payload["height"]) == (1, 1)
-    assert (payload["cell_width"], payload["cell_height"]) == (2, 1)
-    assert len(base64.b64decode(payload["rgba"])) == 4
-
-
-def test_editor_content_reads_the_complete_bounded_file(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    content = "\n".join(f"line-{index}" for index in range(350))
-    (tmp_path / "long.txt").write_bytes(content.encode("utf-8"))
-    client = TestClient(build_http_app(), client=("127.0.0.1", 4242))
-
-    response = client.get(
-        "/api/ui/files/content",
-        params={"machine": "local", "path": "long.txt"},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()["data"]
-    assert payload["truncated"] is False
-    assert payload["content"] == content
-    assert "line-349" in payload["content"]
-
-
-def test_editor_rejects_stale_save_and_preserves_newer_file(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    path = tmp_path / "shared.txt"
-    path.write_text("opened", encoding="utf-8")
-    path.chmod(0o640)
-    client = TestClient(build_http_app())
-
-    loaded = client.get(
-        "/api/ui/files/content",
-        params={"machine": "local", "path": "shared.txt"},
-    ).json()["data"]
-    path.write_text("changed by MCP", encoding="utf-8")
-
-    conflict = client.post(
-        "/api/ui/files/write",
+    callback = f"{base_url}/ui/callback"
+    registration = client.post(
+        "/oauth/register",
         json={
-            "machine": "local",
-            "path": "shared.txt",
-            "content": "human edit",
-            "overwrite": True,
-            "expected_sha256": loaded["sha256"],
+            "client_name": "local-shell-mcp WebUI",
+            "redirect_uris": [callback],
         },
     )
+    assert registration.status_code == 201
+    client_id = registration.json()["client_id"]
 
-    assert conflict.status_code == 409
-    assert "reload before saving" in conflict.json()["message"]
-    assert path.read_text(encoding="utf-8") == "changed by MCP"
+    verifier = "browser-pkce-verifier-" + "x" * 48
+    challenge = (
+        base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode("ascii")).digest()
+        )
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+    state = "browser-oauth-state"
+    authorization = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": callback,
+        "scope": runtime["oauth"]["scope"],
+        "resource": runtime["oauth"]["resource"],
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "state": state,
+    }
+    approval_page = client.get("/oauth/authorize", params=authorization)
+    assert approval_page.status_code == 200
+    assert ">Approve<" in approval_page.text
 
-    current = client.get(
-        "/api/ui/files/content",
-        params={"machine": "local", "path": "shared.txt"},
-    ).json()["data"]
-    saved = client.post(
-        "/api/ui/files/write",
-        json={
-            "machine": "local",
-            "path": "shared.txt",
-            "content": "merged edit",
-            "overwrite": True,
-            "expected_sha256": current["sha256"],
+    approved = client.post(
+        "/oauth/authorize",
+        data={**authorization, "pin": admin_pin},
+        follow_redirects=False,
+    )
+    assert approved.status_code == 302
+    redirect = urlparse(approved.headers["location"])
+    query = parse_qs(redirect.query)
+    assert f"{redirect.scheme}://{redirect.netloc}{redirect.path}" == callback
+    assert query["state"] == [state]
+    assert query["iss"] == [runtime["oauth"]["issuer"]]
+    assert client.get(approved.headers["location"]).status_code == 200
+
+    exchange = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": query["code"][0],
+            "client_id": client_id,
+            "redirect_uri": callback,
+            "resource": runtime["oauth"]["resource"],
+            "code_verifier": verifier,
         },
     )
-    assert saved.status_code == 200
-    assert path.read_text(encoding="utf-8") == "merged edit"
+    assert exchange.status_code == 200
+    token = exchange.json()["access_token"]
+    bootstrap = client.get(
+        "/api/ui/bootstrap", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["data"]["machines"][0]["name"] == "local"
+
+
+def test_local_ui_token_bypasses_oauth_only_on_loopback(monkeypatch, tmp_path):
+    _configure_ui(monkeypatch, tmp_path, auth_mode="oauth")
+    token = get_or_create_ui_local_token()
+    headers = {UI_LOCAL_TOKEN_HEADER: token}
+
+    loopback = TestClient(build_http_app(), client=("127.0.0.1", 50000))
+    response = loopback.get("/api/ui/bootstrap", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["data"]["machines"][0]["name"] == "local"
+
+    unrelated = loopback.get("/tools/list_persistent_shells", headers=headers)
+    assert unrelated.status_code == 401
+
+    external = TestClient(build_http_app(), client=("203.0.113.10", 50000))
+    rejected = external.get("/api/ui/bootstrap", headers=headers)
+    assert rejected.status_code == 401
+
+    token_path = tmp_path / ".state" / "ui" / "local-token"
+    assert token_path.read_text(encoding="utf-8").strip() == token
     if os.name != "nt":
-        assert path.stat().st_mode & 0o777 == 0o640
-    assert not list(tmp_path.glob(".shared.txt.*.tmp"))
+        assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
 
 
-def test_editor_refuses_files_larger_than_the_read_limit(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES", "64")
-    get_settings.cache_clear()
-    original = "0123456789" * 20
-    (tmp_path / "too-large.txt").write_text(original, encoding="utf-8")
+def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
+    _configure_ui(monkeypatch, tmp_path, ui_path="/control")
     client = TestClient(build_http_app())
 
-    response = client.get(
-        "/api/ui/files/content",
-        params={"machine": "local", "path": "too-large.txt"},
-    )
+    assert client.get("/ui").status_code == 404
+    index = client.get("/control")
+    assert index.status_code == 200
+    assert 'href="/control/assets/web.css"' in index.text
+    assert 'src="/control/assets/syntax_highlight.js"' in index.text
+    match = re.search(r'data-lsm-config="([^"]+)"', index.text)
+    assert match is not None
+    runtime = json.loads(html.unescape(match.group(1)))
+    assert runtime["oauth"] is None
+    assert runtime["wallpaper"] == "aurora"
 
-    assert response.status_code == 400
-    assert "editor read limit" in response.json()["message"]
-    assert (tmp_path / "too-large.txt").read_text(encoding="utf-8") == original
-
-
-def test_file_manager_rejects_workspace_escape_and_recursive_self_copy(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    source = tmp_path / "source"
-    source.mkdir()
-    (source / "file.txt").write_text("data", encoding="utf-8")
-    client = TestClient(build_http_app())
-
-    escaped = client.post(
-        "/api/ui/files/mkdir",
-        json={"machine": "local", "path": "../escaped"},
-    )
-    recursive = client.post(
-        "/api/ui/files/copy",
-        json={"machine": "local", "path": "source", "destination": "source/nested"},
-    )
-
-    assert escaped.status_code == 400
-    assert "escapes workspace" in escaped.json()["message"]
-    assert recursive.status_code == 400
-    assert "inside the source directory" in recursive.json()["message"]
-    assert not (tmp_path.parent / "escaped").exists()
-    assert not (source / "nested").exists()
-
-
-@pytest.mark.asyncio
-async def test_remote_human_file_action_keeps_worker_workspace_policy(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-
-    with pytest.raises(ValueError, match="escapes workspace"):
-        await execute_worker_tool(
-            "human_file_action",
-            {"_human": True, "action": "touch", "path": "../escaped.txt"},
-        )
-
-    result = await execute_worker_tool(
-        "human_file_action",
-        {"_human": True, "action": "touch", "path": "safe.txt"},
-    )
-    assert result["path"] == "safe.txt"
-    assert (tmp_path / "safe.txt").is_file()
-
-
-def test_ui_path_rejects_reserved_and_ambiguous_mounts(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    for value in ["/", "/api/ui", "/oauth/panel", "/ui/../mcp", "ui"]:
-        monkeypatch.setenv("LOCAL_SHELL_MCP_UI_PATH", value)
-        get_settings.cache_clear()
-        with pytest.raises(ValueError):
-            get_settings()
-
-    monkeypatch.setenv("LOCAL_SHELL_MCP_UI_PATH", "/operator/console/")
-    get_settings.cache_clear()
-    assert get_settings().ui_path == "/operator/console"
-
-
-def test_remotes_api_honors_disabled_server_configuration(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
-    get_settings.cache_clear()
-    client = TestClient(build_http_app())
-
-    listing = client.get("/api/ui/remotes")
-    invite = client.post("/api/ui/remotes", json={"name": "disabled"})
-    rename = client.post(
-        "/api/ui/remotes/rename",
-        json={"machine": "missing", "new_name": "other"},
-    )
-
-    assert listing.status_code == 200
-    assert listing.json()["data"]["enabled"] is False
-    assert invite.status_code == 400
-    assert rename.status_code == 400
-    assert "disabled" in invite.json()["message"]
-
-
-def test_todo_api_rejects_stale_human_revision(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    client = TestClient(build_http_app())
-
-    initial = client.get("/api/ui/todos").json()["data"]
-    first = client.put(
-        "/api/ui/todos",
-        json={
-            "expected_revision": initial["revision"],
-            "todos": [{"id": "a", "content": "first", "status": "pending", "priority": "medium"}],
+    payload = client.get("/api/ui/bootstrap").json()["data"]
+    assert payload["ui"] == {
+        "path": "/control",
+        "api_prefix": "/api/ui",
+        "auth_mode": "none",
+        "features": {
+            "dashboard": True,
+            "remote_dashboard": True,
+            "machines": True,
+            "remotes": True,
+            "terminals": True,
+            "remote_terminals": True,
+            "terminal_websocket": True,
+            "files": True,
+            "file_preview": True,
+            "syntax_highlighting": True,
+            "audit_image_preview": True,
+            "wallpaper": "aurora",
+            "opentui": True,
+            "file_editor": True,
+            "file_copy": True,
+            "file_move": True,
+            "file_rename": True,
+            "remote_files": True,
+            "remote_file_editor": True,
+            "todos": True,
+            "remote_todos": True,
+            "audit": True,
+            "remote_audit": True,
         },
-    )
-    assert first.status_code == 200
-    assert first.json()["data"]["revision"] == 1
-
-    stale = client.put(
-        "/api/ui/todos",
-        json={
-            "expected_revision": initial["revision"],
-            "todos": [{"id": "b", "content": "stale", "status": "pending", "priority": "medium"}],
-        },
-    )
-    assert stale.status_code == 409
-    assert "changed from revision" in stale.json()["message"]
-
-    latest = client.get("/api/ui/todos").json()["data"]
-    assert latest["revision"] == 1
-    assert [item["id"] for item in latest["todos"]] == ["a"]
-    assert not list((tmp_path / ".state").glob(".todos.json.*.tmp"))
-
-
-def test_terminal_api_rejects_invalid_line_count(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    client = TestClient(build_http_app())
-
-    response = client.get(
-        "/api/ui/terminals/read",
-        params={"machine": "local", "session_id": "missing", "lines": "many"},
-    )
-
-    assert response.status_code == 400
-    assert response.json()["message"] == "lines must be an integer"
-
-
-def test_windows_tui_command_parser_preserves_backslashes_and_quotes():
-    assert _split_tui_command(
-        r'D:\a\local-shell-mcp\ui\dist\local-shell-mcp-tui.exe',
-        windows=True,
-    ) == [r'D:\a\local-shell-mcp\ui\dist\local-shell-mcp-tui.exe']
-    assert _split_tui_command(
-        r'"D:\Program Files\local-shell-mcp-tui.exe" --flag',
-        windows=True,
-    ) == [r'D:\Program Files\local-shell-mcp-tui.exe', "--flag"]
-
-
-def test_pyinstaller_entry_quotes_embedded_tui_paths():
-    entry_path = Path(__file__).resolve().parents[1] / "scripts" / "pyinstaller-entry.py"
-    spec = importlib.util.spec_from_file_location("pyinstaller_entry", entry_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    posix_path = Path("/tmp/local shell mcp/local-shell-mcp-tui")
-    windows_path = Path(r"C:\Users\Jane Doe\local-shell-mcp-tui.exe")
-    assert _split_tui_command(module._format_tui_command(posix_path, windows=False), windows=False) == [
-        str(posix_path)
-    ]
-    assert _split_tui_command(module._format_tui_command(windows_path, windows=True), windows=True) == [
-        str(windows_path)
-    ]
-
-
-def test_terminal_dimensions_are_clamped_to_safe_limits():
-    assert _bounded_int("2", default=120, minimum=20, maximum=500, label="cols") == 20
-    assert _bounded_int("99999", default=120, minimum=20, maximum=500, label="cols") == 500
-    assert (
-        _bounded_int(
-            "1200", default=120, minimum=20, maximum=UI_MAX_COLUMNS, label="cols"
-        )
-        == 1200
-    )
-    assert (
-        _bounded_int("400", default=36, minimum=8, maximum=UI_MAX_ROWS, label="rows")
-        == 400
-    )
-    with pytest.raises(ValueError, match="cols must be an integer"):
-        _bounded_int("wide", default=120, minimum=20, maximum=500, label="cols")
-
-
-def test_human_file_mutations_are_not_audited(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    client = TestClient(build_http_app())
-
-    response = client.post(
-        "/api/ui/files/write",
-        json={"machine": "local", "path": "manual.txt", "content": "human"},
-    )
-
-    assert response.status_code == 200
-    assert (tmp_path / "manual.txt").read_text(encoding="utf-8") == "human"
-    audit_path = tmp_path / "audit.jsonl"
-    assert not audit_path.exists() or audit_path.read_text(encoding="utf-8") == ""
-
-
-def test_suppress_audit_context_excludes_manual_activity(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-
-    audit("mcp_tool_call_start", tool="list_files", machine="worker-a")
-    with suppress_audit():
-        audit("shell_send", session="manual")
-    audit("mcp_tool_call_end", tool="list_files", ok=True, machine="worker-a")
-
-    records = [
-        json.loads(line)
-        for line in (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    assert [record["event"] for record in records] == [
-        "mcp_tool_call_start",
-        "mcp_tool_call_end",
-    ]
-
-
-def test_audit_storage_remains_valid_under_concurrent_trim_and_append(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES", "3000")
-    get_settings.cache_clear()
-
-    def write(index: int) -> None:
-        audit("mcp_tool_call_end", tool="read_file", index=index, detail="x" * 80)
-
-    with ThreadPoolExecutor(max_workers=12) as executor:
-        list(executor.map(write, range(240)))
-
-    path = tmp_path / "audit.jsonl"
-    lines = path.read_text(encoding="utf-8").splitlines()
-    records = [json.loads(line) for line in lines]
-    assert records
-    assert all(record["event"] == "mcp_tool_call_end" for record in records)
-    assert path.stat().st_size < 5000
-    assert not list(tmp_path.glob(".audit.jsonl.*.tmp"))
-
-
-def test_audit_large_payloads_are_previewed_and_loaded_on_demand(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AUDIT_TAIL_BYTES", "200000")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES", "200000")
-    get_settings.cache_clear()
-    large_input = "input:" + "x" * 30_000
-    large_output = "output:" + "y" * 40_000
-
-    audit(
-        "mcp_tool_call_start",
-        call_id="large-call",
-        tool="write_file",
-        arguments={"keyword_args": {"content": large_input}},
-    )
-    audit(
-        "mcp_tool_call_end",
-        call_id="large-call",
-        tool="write_file",
-        ok=True,
-        result={"stdout": large_output},
-    )
-
-    raw_records = [
-        json.loads(line)
-        for line in get_settings().audit_log_path.read_text(encoding="utf-8").splitlines()
-    ]
-    assert "$local_shell_mcp_audit_payload" in raw_records[0]["arguments"]
-    assert "$local_shell_mcp_audit_payload" in raw_records[1]["result"]
-    assert large_input not in get_settings().audit_log_path.read_text(encoding="utf-8")
-    assert len(list((get_settings().audit_log_path.parent / "audit-payloads").glob("*.json.gz"))) == 2
-
-    client = TestClient(build_http_app())
-    listing = client.get("/api/ui/audit").json()["data"]["entries"][0]
-    assert listing["id"] == "call:large-call"
-    assert listing["input"]["content"].endswith("…<preview>")
-    assert listing["output"]["stdout"].endswith("…<preview>")
-
-    detail = client.get(
-        "/api/ui/audit/detail", params={"id": listing["id"]}
-    ).json()["data"]
-    assert detail["input"]["content"] == large_input
-    assert detail["output"]["stdout"] == large_output
-
-
-def test_audit_trim_prunes_unreferenced_payload_files(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES", "3500")
-    get_settings.cache_clear()
-
-    audit("large_event", payload="z" * 30_000)
-    payloads = list((get_settings().audit_log_path.parent / "audit-payloads").glob("*.json.gz"))
-    assert len(payloads) == 1
-    stale = time.time() - audit_module._AUDIT_PAYLOAD_PRUNE_GRACE_S - 1
-    os.utime(payloads[0], (stale, stale))
-
-    audit("small_event", value="kept" * 300)
-
-    assert not payloads[0].exists()
-    assert query_audit()["entries"][0]["event"] == "small_event"
-
-
-def test_query_audit_pairs_calls_filters_compact_operations_and_hides_auth(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    path = tmp_path / "audit.jsonl"
-    path.write_text(
-        "\n".join(
-            json.dumps(record)
-            for record in [
-                {"ts": 5, "event": "auth_ok", "subject": "local-user"},
-                {
-                    "ts": 10,
-                    "event": "mcp_tool_call_start",
-                    "call_id": "files-call",
-                    "tool": "read_file",
-                    "machine": "worker-a",
-                    "arguments": {"keyword_args": {"path": "a.txt"}},
-                },
-                {
-                    "ts": 20,
-                    "event": "mcp_tool_call_start",
-                    "call_id": "shell-call",
-                    "tool": "run_shell_tool",
-                    "machine": "worker-b",
-                    "arguments": {"keyword_args": {"command": "true"}},
-                },
-                {
-                    "ts": 30,
-                    "event": "mcp_tool_call_end",
-                    "call_id": "shell-call",
-                    "tool": "run_shell_tool",
-                    "machine": "worker-b",
-                    "ok": True,
-                    "duration_ms": 12,
-                    "result": {"ok": True, "message": "", "data": {"exit_code": 0}},
-                },
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    result = query_audit(node="worker-b", operation="shell", sort="asc")
-
-    assert result["total_matched"] == 1
-    entry = result["entries"][0]
-    assert entry["id"] == "call:shell-call"
-    assert entry["node"] == "worker-b"
-    assert entry["operation"] == "shell"
-    assert entry["paired"] is True
-    assert entry["status"] == "success"
-    assert entry["input"] == {"command": "true"}
-    assert entry["output"]["data"]["exit_code"] == 0
-    assert entry["duration_ms"] == 12
-    assert all(item["event"] != "auth_ok" for item in query_audit()["entries"])
-
-
-
-def test_audit_node_and_session_filters_are_exact(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    path = get_settings().audit_log_path
-    path.write_text(
-        "\n".join(
-            [
-                json.dumps({"ts": 1, "event": "shell_send", "machine": "worker-a", "session": "term"}),
-                json.dumps({"ts": 2, "event": "shell_send", "machine": "worker-a2", "session": "term"}),
-                json.dumps({"ts": 3, "event": "shell_send", "machine": "worker-a", "session": "term-extra"}),
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    result = query_audit(node="worker-a", session="term")
-
-    assert result["total_matched"] == 1
-    assert result["entries"][0]["ts"] == 1
-
-def test_webui_shell_is_public_but_api_remains_oauth_protected(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST", "false")
-    get_settings.cache_clear()
-    client = TestClient(build_http_app())
-
-    page = client.get("/ui")
-    api = client.get("/api/ui/bootstrap")
-
-    assert page.status_code == 200
-    assert "Human Interface" in page.text
-    assert api.status_code == 401
-
-
-def test_native_tui_token_bypasses_oauth_without_weakening_browser_api(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST", "false")
-    get_settings.cache_clear()
-    token = get_or_create_ui_local_token()
-    client = TestClient(build_http_app(), client=("127.0.0.1", 4242))
-
-    response = client.get(
-        "/api/ui/bootstrap",
-        headers={UI_LOCAL_TOKEN_HEADER: token},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()["data"]
-    assert payload["machines"]["machines"][0]["name"] == "local"
-    assert payload["features"] == {"remote": False, "wallpaper": "bing"}
-
-
-
-def test_native_tui_token_is_rejected_from_non_loopback_peer(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST", "false")
-    get_settings.cache_clear()
-    token = get_or_create_ui_local_token()
-    client = TestClient(build_http_app(), client=("203.0.113.9", 4242))
-
-    response = client.get(
-        "/api/ui/bootstrap",
-        headers={UI_LOCAL_TOKEN_HEADER: token},
-    )
-
-    assert response.status_code == 401
-
-
-def test_human_ui_rejects_destructive_action_without_write_scope(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET", "scope-test-secret-which-is-at-least-32-bytes")
-    get_settings.cache_clear()
-    victim = tmp_path / "victim.txt"
-    victim.write_text("keep", encoding="utf-8")
-    token = issue_access_token(
-        client_id="read-only",
-        scope="shell:read",
-        resource="http://testserver",
-        issuer="http://testserver",
-    )
-    client = TestClient(build_http_app(), client=("203.0.113.9", 4242))
-
-    response = client.post(
-        "/api/ui/files/delete",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"machine": "local", "path": "victim.txt"},
-    )
-
-    assert response.status_code == 403
-    assert response.headers["www-authenticate"].startswith('Bearer error="insufficient_scope"')
-    assert victim.read_text(encoding="utf-8") == "keep"
-
-
-def test_native_tui_api_base_must_be_loopback():
-    assert _validate_tui_api_base("http://127.0.0.1:8765/api/ui/") == (
-        "http://127.0.0.1:8765/api/ui"
-    )
-    assert _validate_tui_api_base("https://localhost:8765/api/ui") == (
-        "https://localhost:8765/api/ui"
-    )
-    with pytest.raises(ValueError, match="loopback"):
-        _validate_tui_api_base("https://control.example.com/api/ui")
-
-def _websocket_for_test(*, client_host: str = "127.0.0.1", protocols: list[str] | None = None) -> WebSocket:
-    headers = [(b"host", b"control.example.com")]
-    if protocols:
-        headers.append((b"sec-websocket-protocol", ", ".join(protocols).encode()))
-    scope = {
-        "type": "websocket",
-        "asgi": {"version": "3.0"},
-        "scheme": "wss",
-        "path": "/ui/ws",
-        "raw_path": b"/ui/ws",
-        "query_string": b"",
-        "headers": headers,
-        "client": (client_host, 4242),
-        "server": ("control.example.com", 443),
-        "subprotocols": protocols or [],
     }
-
-    async def receive():
-        return {"type": "websocket.disconnect"}
-
-    async def send(message):  # noqa: ARG001
-        return None
-
-    return WebSocket(scope, receive, send)
+    assert payload["counts"] == {"online": 1, "offline": 0, "total": 1}
+    assert payload["machines"][0]["workdir"] == str(tmp_path)
 
 
+def test_human_ui_can_be_disabled(monkeypatch, tmp_path):
+    _configure_ui(monkeypatch, tmp_path, ui_enabled=False)
+    client = TestClient(build_http_app())
 
-def _bearer_protocol(token: str) -> str:
-    encoded = base64.urlsafe_b64encode(token.encode()).decode().rstrip("=")
-    return f"bearer.{encoded}"
+    assert client.get("/ui").status_code == 404
+    assert client.get("/api/ui/bootstrap").status_code == 404
 
 
-def test_websocket_requires_full_human_ui_scope_set(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET", "scope-test-secret-which-is-at-least-32-bytes")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_PUBLIC_BASE_URL", "https://control.example.com")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "long-random-test-pin")
-    get_settings.cache_clear()
-    read_only = issue_access_token(
-        client_id="read-only",
-        scope="shell:read",
-        resource="https://control.example.com",
-        issuer="https://control.example.com",
-    )
-    full = issue_access_token(
-        client_id="full-ui",
-        scope=" ".join(UI_FULL_SCOPES),
-        resource="https://control.example.com",
-        issuer="https://control.example.com",
-    )
+def test_machine_inventory_includes_remote_rows(monkeypatch, tmp_path):
+    _configure_ui(monkeypatch, tmp_path, remote_enabled=True)
 
-    assert (
-        _authorize_websocket(
-            _websocket_for_test(
-                client_host="203.0.113.9",
-                protocols=["lsm-ui", _bearer_protocol(read_only)],
-            )
-        )
-        is False
-    )
-    assert (
-        _authorize_websocket(
-            _websocket_for_test(
-                client_host="203.0.113.9",
-                protocols=["lsm-ui", _bearer_protocol(full)],
-            )
-        )
-        is True
+    class FakeInventory:
+        def model_dump(self, *, mode):
+            assert mode == "json"
+            return {
+                "machines": [
+                    {
+                        "name": "worker-a",
+                        "status": "offline",
+                        "workdir": "/srv/work",
+                        "last_seen": 0,
+                        "last_seen_age_s": None,
+                        "offline_after_s": 60,
+                        "queue_depth": 0,
+                        "capabilities": ["shell"],
+                        "info": {"platform": "linux"},
+                    }
+                ],
+                "counts": {"online": 0, "offline": 1, "total": 1},
+            }
+
+    class FakeManager:
+        def list_machines(self):
+            return FakeInventory()
+
+    monkeypatch.setattr(human_ui_module, "remote_manager", FakeManager)
+    payload = (
+        TestClient(build_http_app()).get("/api/ui/machines").json()["data"]
     )
 
-def test_oauth_websocket_does_not_trust_loopback_reverse_proxy(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST", "true")
-    get_settings.cache_clear()
-
-    assert _authorize_websocket(_websocket_for_test(client_host="127.0.0.1")) is False
-
-
-def test_none_auth_mode_allows_websocket_without_token(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="none")
-
-    assert _authorize_websocket(_websocket_for_test(client_host="203.0.113.9")) is True
-
-
-def test_websocket_origin_maps_to_http_oauth_resource(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="oauth")
-    websocket = _websocket_for_test(client_host="203.0.113.9")
-
-    assert public_base_url(websocket) == "https://control.example.com"
-
-
-def test_http_localhost_bypass_is_not_inherited_by_reverse_proxy(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch, auth_mode="oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST", "true")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_JWT_SECRET", "x" * 32)
-    get_settings.cache_clear()
-    client = TestClient(build_http_app(), client=("127.0.0.1", 4242))
-
-    direct = client.get("/tools/skills_list", headers={"Host": "127.0.0.1:8765"})
-    proxied = client.get(
-        "/tools/skills_list",
-        headers={
-            "Host": "public.example.test",
-            "X-Forwarded-For": "203.0.113.9",
-            "X-Forwarded-Proto": "https",
-        },
-    )
-
-    assert direct.status_code == 200
-    assert proxied.status_code == 401
-
-
-def test_invalid_ui_token_path_fails_without_recursion(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    token_path = tmp_path / ".state" / "ui" / "local-token"
-    token_path.mkdir(parents=True)
-
-    with pytest.raises(RuntimeError, match="invalid UI local token path"):
-        get_or_create_ui_local_token()
-
-
-def test_permission_error_for_existing_ui_token_path_is_reported(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    token_path = tmp_path / ".state" / "ui" / "local-token"
-    token_path.mkdir(parents=True)
-    real_open = os.open
-
-    def permission_denied(path, flags, mode=0o777):  # noqa: ANN001
-        if os.fspath(path) == os.fspath(token_path):
-            raise PermissionError(13, "Permission denied", os.fspath(path))
-        return real_open(path, flags, mode)
-
-    monkeypatch.setattr(os, "open", permission_denied)
-
-    with pytest.raises(RuntimeError, match="invalid UI local token path"):
-        get_or_create_ui_local_token()
-
-
-def test_terminal_idle_timeout_uses_latest_input_or_output_activity():
-    assert _idle_timeout_remaining(100.0, 60.0, 130.0) == 30.0
-    assert _idle_timeout_remaining(100.0, 60.0, 160.0) == 0.0
-    assert _idle_timeout_remaining(150.0, 60.0, 160.0) == 50.0
-
-
-@pytest.mark.asyncio
-async def test_unix_pty_write_retries_short_writes(monkeypatch):
-    process = _UnixPtyProcess.__new__(_UnixPtyProcess)
-    process.master_fd = 123
-    written = bytearray()
-
-    attempts = 0
-    waits = []
-
-    def short_write(fd, data):
-        nonlocal attempts
-        assert fd == 123
-        attempts += 1
-        if attempts == 2:
-            raise BlockingIOError
-        count = min(2, len(data))
-        written.extend(bytes(data[:count]))
-        return count
-
-    monkeypatch.setattr("local_shell_mcp.human_ui.os.write", short_write)
-    monkeypatch.setattr(
-        "local_shell_mcp.human_ui.select.select",
-        lambda read, write, error, timeout: waits.append((read, write, error, timeout)),
-    )
-    await process.write(b"abcdef")
-    assert bytes(written) == b"abcdef"
-    assert waits == [([], [123], [], 0.1)]
-
-
-@pytest.mark.asyncio
-async def test_windows_pty_write_accepts_zero_from_async_pywinpty():
-    process = _WindowsPtyProcess.__new__(_WindowsPtyProcess)
-    calls = []
-
-    class FakeProcess:
-        def write(self, text):
-            calls.append(text)
-            return 0
-
-    process.process = FakeProcess()
-    await process.write(b"\x1bOR")
-
-    assert calls == ["\x1bOR"]
-
-
-
-def test_windows_worker_paths_use_windows_semantics():
-    path = r"C:\Users\Alice\project\main.py"
-
-    assert _path_name(path, windows=True) == "main.py"
-    assert _parent_path(path, windows=True) == r"C:\Users\Alice\project"
-    assert _parent_path("C:\\", windows=True) == "C:\\"
-    assert _path_name("/home/alice/main.py", windows=False) == "main.py"
-    assert _parent_path("/home/alice/main.py", windows=False) == "/home/alice"
-
-    normalized = _normalize_file_entries(
-        [
-            {"path": r"C:\Users\Alice\.hidden", "type": "file"},
-            {"path": r"C:\Users\Alice\folder", "type": "dir"},
-        ],
-        windows=True,
-    )
-    assert [entry["name"] for entry in normalized] == ["folder", ".hidden"]
-    assert normalized[1]["hidden"] is True
+    assert [item["name"] for item in payload["machines"]] == [
+        "local",
+        "worker-a",
+    ]
+    assert payload["counts"] == {"online": 1, "offline": 1, "total": 2}

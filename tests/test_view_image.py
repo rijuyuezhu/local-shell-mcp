@@ -1,200 +1,238 @@
 from __future__ import annotations
 
 import base64
-from io import BytesIO
-from pathlib import Path
+import hashlib
+from typing import Any, cast
 
 import pytest
 from mcp.types import CallToolResult, ImageContent, TextContent
-from PIL import Image
 
-import local_shell_mcp.tools as tools
-from local_shell_mcp.image_ops import (
-    MAX_VIEW_IMAGE_BYTES,
-    assert_view_image_size,
-    detect_image_type,
-    make_image_preview,
-    read_image,
-)
-from local_shell_mcp.settings import get_settings
+import local_shell_mcp.ops.image as image_ops
+from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.mcp.app import build_mcp
+from local_shell_mcp.tool_session.store import get_tool_session_store
 
-PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lP7LAAAAAElFTkSuQmCC"
 )
 
 
-def _configure(tmp_path: Path, monkeypatch, *, remote_enabled: bool = True) -> None:
+def _configure(tmp_path, monkeypatch, *, max_bytes: int | None = None) -> None:
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUDIT_LOG_PATH", str(tmp_path / "audit.jsonl"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", str(remote_enabled).lower())
-    get_settings.cache_clear()
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    if max_bytes is not None:
+        monkeypatch.setenv(
+            "LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES", str(max_bytes)
+        )
+    clear_settings_cache()
+    get_tool_session_store().clear()
 
 
-@pytest.mark.parametrize(
-    ("header", "expected"),
-    [
-        (b"\x89PNG\r\n\x1a\nrest", ("png", "image/png")),
-        (b"\xff\xd8\xffrest", ("jpeg", "image/jpeg")),
-        (b"GIF87arest", ("gif", "image/gif")),
-        (b"GIF89arest", ("gif", "image/gif")),
-        (b"RIFF\x00\x00\x00\x00WEBPrest", ("webp", "image/webp")),
-    ],
-)
-def test_detect_image_type(header, expected):
-    assert detect_image_type(header) == expected
+def _local_session(tmp_path) -> str:
+    return get_tool_session_store().create_session(workdir=tmp_path).session_id
 
 
-def test_make_image_preview_returns_bounded_rgba(tmp_path, monkeypatch):
+def test_detect_image_type_supports_common_web_formats():
+    assert image_ops.detect_image_type(PNG_BYTES[:16]) == ("png", "image/png")
+    assert image_ops.detect_image_type(b"\xff\xd8\xff\xe0rest") == (
+        "jpeg",
+        "image/jpeg",
+    )
+    assert image_ops.detect_image_type(b"GIF89a-rest") == ("gif", "image/gif")
+    assert image_ops.detect_image_type(b"RIFF1234WEBPrest") == (
+        "webp",
+        "image/webp",
+    )
+    with pytest.raises(ValueError, match="Unsupported image format"):
+        image_ops.detect_image_type(b"plain text")
+
+
+@pytest.mark.asyncio
+async def test_local_image_is_session_bound_and_bounded(tmp_path, monkeypatch):
     _configure(tmp_path, monkeypatch)
-    buffer = BytesIO()
-    Image.new("RGB", (100, 50), (12, 34, 56)).save(buffer, format="PNG")
-    (tmp_path / "wide.png").write_bytes(buffer.getvalue())
+    image_path = tmp_path / "pixel.png"
+    image_path.write_bytes(PNG_BYTES)
+    session_id = _local_session(tmp_path)
 
-    preview = make_image_preview(read_image("wide.png"), max_columns=12, max_rows=4)
+    image = await image_ops.read_image_dispatch_execute("pixel.png", session_id)
 
-    assert (preview.original_width, preview.original_height) == (100, 50)
-    assert (preview.width, preview.height) == (24, 6)
-    assert (preview.cell_width, preview.cell_height) == (12, 3)
-    assert preview.cell_width <= 12
-    assert preview.cell_height <= 4
-    assert len(preview.rgba) == 24 * 6 * 4
+    assert image.data == PNG_BYTES
+    assert image.mime_type == "image/png"
+    assert image.size == len(PNG_BYTES)
+    assert image.path.endswith("pixel.png")
+
+    outside = tmp_path.parent / "outside.png"
+    outside.write_bytes(PNG_BYTES)
+    with pytest.raises(ValueError, match="escapes (session workdir|workspace)"):
+        await image_ops.read_image_dispatch_execute(
+            "../outside.png", session_id
+        )
 
 
-def test_make_image_preview_compensates_for_terminal_cell_aspect(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    buffer = BytesIO()
-    Image.new("RGB", (474, 316), (12, 34, 56)).save(buffer, format="WEBP")
-    (tmp_path / "landscape.webp").write_bytes(buffer.getvalue())
+@pytest.mark.asyncio
+async def test_local_image_rejects_empty_oversized_and_unsupported(
+    tmp_path, monkeypatch
+):
+    _configure(tmp_path, monkeypatch, max_bytes=len(PNG_BYTES) - 1)
+    session_id = _local_session(tmp_path)
+    (tmp_path / "large.png").write_bytes(PNG_BYTES)
+    (tmp_path / "empty.png").write_bytes(b"")
+    (tmp_path / "fake.png").write_bytes(b"not an image")
 
-    preview = make_image_preview(
-        read_image("landscape.webp"),
-        max_columns=61,
-        max_rows=34,
-        cell_height_to_width=2.75,
+    with pytest.raises(ValueError, match="max is"):
+        await image_ops.read_image_dispatch_execute("large.png", session_id)
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES", "1024")
+    clear_settings_cache()
+    with pytest.raises(ValueError, match="empty"):
+        await image_ops.read_image_dispatch_execute("empty.png", session_id)
+    with pytest.raises(ValueError, match="Unsupported image format"):
+        await image_ops.read_image_dispatch_execute("fake.png", session_id)
+
+
+def _chunk(data: bytes, *, offset: int = 0, size: int | None = None) -> Any:
+    return image_ops.TransferReadChunkOutput(
+        path="pixel.png",
+        offset=offset,
+        bytes=len(data),
+        size=len(data) if size is None else size,
+        eof=True,
+        sha256=hashlib.sha256(data).hexdigest(),
+        data_b64=base64.b64encode(data).decode("ascii"),
     )
 
-    assert (preview.width, preview.height) == (122, 29)
-    assert (preview.cell_width, preview.cell_height) == (61, 15)
-    rendered_ratio = preview.cell_width / (preview.cell_height * 2.75)
-    source_ratio = preview.original_width / preview.original_height
-    assert rendered_ratio == pytest.approx(source_ratio, rel=0.02)
 
+def test_remote_chunk_validation_rejects_corruption():
+    valid = _chunk(PNG_BYTES)
+    assert (
+        image_ops._decode_remote_chunk(
+            valid, expected_offset=0, expected_size=len(PNG_BYTES)
+        )
+        == PNG_BYTES
+    )
 
-def test_image_validation_errors(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    with pytest.raises(ValueError, match="empty"):
-        assert_view_image_size(0)
-    with pytest.raises(ValueError, match="max"):
-        assert_view_image_size(MAX_VIEW_IMAGE_BYTES + 1)
-    with pytest.raises(ValueError, match="Unsupported"):
-        detect_image_type(b"not an image")
+    with pytest.raises(RuntimeError, match="offset mismatch"):
+        image_ops._decode_remote_chunk(
+            valid, expected_offset=1, expected_size=len(PNG_BYTES)
+        )
 
-    (tmp_path / "folder").mkdir()
-    with pytest.raises(IsADirectoryError):
-        read_image("folder")
+    with pytest.raises(RuntimeError, match="size changed"):
+        image_ops._decode_remote_chunk(
+            valid, expected_offset=0, expected_size=len(PNG_BYTES) + 1
+        )
 
-    oversized = tmp_path / "oversized.png"
-    oversized.write_bytes(b"\x89PNG\r\n\x1a\n")
-    with oversized.open("r+b") as handle:
-        handle.truncate(MAX_VIEW_IMAGE_BYTES + 1)
-    with pytest.raises(ValueError, match="max"):
-        read_image("oversized.png")
+    invalid_base64 = valid.model_copy(update={"data_b64": "%%%"})
+    with pytest.raises(RuntimeError, match="valid base64"):
+        image_ops._decode_remote_chunk(
+            invalid_base64,
+            expected_offset=0,
+            expected_size=len(PNG_BYTES),
+        )
 
+    invalid_length = valid.model_copy(update={"bytes": len(PNG_BYTES) + 1})
+    with pytest.raises(RuntimeError, match="length mismatch"):
+        image_ops._decode_remote_chunk(
+            invalid_length,
+            expected_offset=0,
+            expected_size=len(PNG_BYTES),
+        )
 
-@pytest.mark.asyncio
-async def test_view_image_returns_native_mcp_image_content(tmp_path, monkeypatch):
-    _configure(tmp_path, monkeypatch)
-    (tmp_path / "pixel.png").write_bytes(PNG)
-
-    result = await tools.build_mcp().call_tool("view_image", {"path": "pixel.png"})
-
-    assert isinstance(result, CallToolResult)
-    assert result.isError is False
-    assert result.structuredContent == {
-        "ok": True,
-        "path": "pixel.png",
-        "machine": None,
-        "mime_type": "image/png",
-        "bytes": len(PNG),
-        "message": "",
-        "error_type": None,
-    }
-    image = next(item for item in result.content if isinstance(item, ImageContent))
-    text = next(item for item in result.content if isinstance(item, TextContent))
-    assert image.mimeType == "image/png"
-    assert base64.b64decode(image.data) == PNG
-    assert "pixel.png" in text.text
+    invalid_digest = valid.model_copy(update={"sha256": "0" * 64})
+    with pytest.raises(RuntimeError, match="SHA-256"):
+        image_ops._decode_remote_chunk(
+            invalid_digest,
+            expected_offset=0,
+            expected_size=len(PNG_BYTES),
+        )
 
 
 @pytest.mark.asyncio
-async def test_view_image_reuses_remote_transfer_protocol(tmp_path, monkeypatch):
+async def test_remote_image_reuses_transfer_protocol(tmp_path, monkeypatch):
     _configure(tmp_path, monkeypatch)
-    remote_calls = []
-    staged_paths = []
+    store = get_tool_session_store()
+    session = store.create_session(
+        target="remote",
+        machine="worker-a",
+        workdir="/remote/work",
+        worker_session_id="WORKER12",
+    )
+    split = len(PNG_BYTES) // 2
+    calls: list[tuple[str, dict[str, Any]]] = []
 
-    async def fake_remote_transfer_data(machine, tool, args, timeout_s=None):
-        remote_calls.append((machine, tool, args, timeout_s))
-        assert tool == "transfer_stat"
+    async def fake_remote(_session, tool: str, args: dict[str, Any]):
+        calls.append((tool, args))
+        if tool == "transfer_stat":
+            return {
+                "path": "pixel.png",
+                "type": "file",
+                "size": len(PNG_BYTES),
+                "modified": 1.0,
+                "sha256": None,
+            }
+        offset = int(args["offset"])
+        data = PNG_BYTES[:split] if offset == 0 else PNG_BYTES[split:]
         return {
-            "path": "images/remote.png",
-            "type": "file",
-            "size": len(PNG),
+            "path": "pixel.png",
+            "offset": offset,
+            "bytes": len(data),
+            "size": len(PNG_BYTES),
+            "eof": offset + len(data) == len(PNG_BYTES),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "data_b64": base64.b64encode(data).decode("ascii"),
         }
 
-    async def fake_copy_remote_file_to_local(
-        machine,
-        source_path,
-        destination_path,
-        overwrite=True,
-        chunk_size=None,
-    ):
-        assert machine == "node"
-        assert source_path == "images/remote.png"
-        assert overwrite is True
-        assert chunk_size is None
-        destination = tools.resolve_path(destination_path)
-        destination.write_bytes(PNG)
-        staged_paths.append(destination)
-        return {"bytes": len(PNG)}
+    monkeypatch.setattr(image_ops, "call_remote_session_tool", fake_remote)
+    monkeypatch.setattr(image_ops, "DEFAULT_TRANSFER_CHUNK_BYTES", split)
 
-    monkeypatch.setattr(tools, "_remote_transfer_data", fake_remote_transfer_data)
-    monkeypatch.setattr(
-        tools,
-        "_copy_remote_file_to_local",
-        fake_copy_remote_file_to_local,
+    result = await image_ops.view_image_dispatch_execute(
+        "pixel.png", session.session_id
     )
 
-    result = await tools.build_mcp().call_tool(
-        "view_image",
-        {"path": "images/remote.png", "machine": "node"},
-    )
-
-    assert isinstance(result, CallToolResult)
-    assert result.isError is False
-    assert result.structuredContent["machine"] == "node"
-    assert result.structuredContent["path"] == "images/remote.png"
-    assert [call[1] for call in remote_calls] == ["transfer_stat"]
-    assert staged_paths and all(not path.exists() for path in staged_paths)
+    assert isinstance(result.content[0], ImageContent)
+    assert base64.b64decode(result.content[0].data) == PNG_BYTES
+    assert isinstance(result.content[1], TextContent)
+    assert result.structuredContent == {
+        "session_id": session.session_id,
+        "target": "remote",
+        "machine": "worker-a",
+        "path": "pixel.png",
+        "mime_type": "image/png",
+        "bytes": len(PNG_BYTES),
+    }
+    assert [tool for tool, _args in calls] == [
+        "transfer_stat",
+        "transfer_read_chunk",
+        "transfer_read_chunk",
+    ]
 
 
 @pytest.mark.asyncio
-async def test_view_image_returns_structured_errors(tmp_path, monkeypatch):
+async def test_view_image_tool_returns_native_mcp_content(
+    tmp_path, monkeypatch
+):
     _configure(tmp_path, monkeypatch)
-    (tmp_path / "plain.txt").write_text("not an image", encoding="utf-8")
+    (tmp_path / "pixel.png").write_bytes(PNG_BYTES)
+    session_id = _local_session(tmp_path)
+    mcp = build_mcp()
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
 
-    invalid = await tools.build_mcp().call_tool("view_image", {"path": "plain.txt"})
-    assert isinstance(invalid, CallToolResult)
-    assert invalid.isError is True
-    assert invalid.structuredContent["ok"] is False
-    assert invalid.structuredContent["error_type"] == "ValueError"
-
-    _configure(tmp_path, monkeypatch, remote_enabled=False)
-    disabled = await tools.build_mcp().call_tool(
-        "view_image",
-        {"path": "remote.png", "machine": "node"},
+    assert "view_image" in tools
+    assert set(tools["view_image"].inputSchema["required"]) == {
+        "session_id",
+        "path",
+    }
+    response = cast(
+        CallToolResult,
+        await mcp.call_tool(
+            "view_image", {"session_id": session_id, "path": "pixel.png"}
+        ),
     )
-    assert isinstance(disabled, CallToolResult)
-    assert disabled.isError is True
-    assert "disabled" in disabled.structuredContent["message"]
+
+    assert isinstance(response.content[0], ImageContent)
+    assert base64.b64decode(response.content[0].data) == PNG_BYTES
+    assert isinstance(response.content[1], TextContent)
+    assert response.structuredContent is not None
+    assert response.structuredContent["target"] == "local"
+    assert response.structuredContent["mime_type"] == "image/png"
+    assert response.structuredContent["bytes"] == len(PNG_BYTES)

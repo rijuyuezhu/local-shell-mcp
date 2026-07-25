@@ -1,0 +1,19 @@
+{
+  "name": "local-shell-mcp-terminal-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test src/*.test.js",
+    "check": "npm test && node scripts/build.mjs --check"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.10.0",
+    "@xterm/addon-image": "0.8.0",
+    "@xterm/xterm": "5.5.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.8"
+  }
+}

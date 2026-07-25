@@ -2,16 +2,16 @@
   "name": "local-shell-mcp-vscode",
   "displayName": "local-shell-mcp",
   "description": "Start and manage local-shell-mcp from VS Code so ChatGPT can collaborate on the current workspace through MCP.",
-  "version": "2.3.1",
+  "version": "3.9.1",
   "publisher": "fwerkor",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/fwerkor/local-shell-mcp"
+    "url": "https://github.com/rijuyuezhu/local-shell-mcp"
   },
-  "homepage": "https://github.com/fwerkor/local-shell-mcp",
+  "homepage": "https://github.com/rijuyuezhu/local-shell-mcp",
   "bugs": {
-    "url": "https://github.com/fwerkor/local-shell-mcp/issues"
+    "url": "https://github.com/rijuyuezhu/local-shell-mcp/issues"
   },
   "engines": {
     "vscode": "^1.92.0"
@@ -101,7 +101,7 @@
           "default": "oauth",
           "description": "Authentication mode. Use oauth for ChatGPT connector usage; none is only for trusted local testing."
         },
-        "local-shell-mcp.publicBaseUrl": {
+        "local-shell-mcp.baseUrl": {
           "type": "string",
           "default": "",
           "description": "Externally reachable HTTPS origin, for example a tunnel URL. Empty uses the local http://host:port URL."
@@ -111,10 +111,10 @@
           "default": "",
           "description": "Optional OAuth admin PIN. Leave empty for local testing or set a value when exposing the server publicly."
         },
-        "local-shell-mcp.allowFullContainer": {
+        "local-shell-mcp.allowFullControl": {
           "type": "boolean",
           "default": false,
-          "description": "Set LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER. Keep disabled for direct host usage; enable only inside a disposable container."
+          "description": "Set LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL. Keep disabled for direct host usage; enable only inside a disposable container."
         },
         "local-shell-mcp.extraEnv": {
           "type": "object",
@@ -127,13 +127,20 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package:vsix": "node scripts/package-vsix.cjs",
-    "test": "npm run compile && node --test test/*.test.cjs"
+    "package:vsix": "node scripts/package-vsix.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20.14.10",
     "@types/vscode": "^1.92.0",
     "@vscode/vsce": "3.6.2",
-    "typescript": "^5.5.4"
+    "eslint": "^10.4.1",
+    "prettier": "^3.8.4",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.61.0"
   }
 }

@@ -1,5 +1,4 @@
 import * as cp from 'child_process';
-import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 import * as vscode from 'vscode';
@@ -7,82 +6,35 @@ import * as vscode from 'vscode';
 let output: vscode.OutputChannel;
 let serverProcess: cp.ChildProcessWithoutNullStreams | undefined;
 
-export function waitForExit(proc: cp.ChildProcessWithoutNullStreams, timeoutMs: number): Promise<boolean> {
-  if (proc.exitCode !== null || proc.signalCode !== null) {
-    return Promise.resolve(true);
-  }
+function stopProcessTree(proc: cp.ChildProcessWithoutNullStreams): Promise<void> {
   return new Promise((resolve) => {
-    const finish = (exited: boolean) => {
-      clearTimeout(timer);
-      proc.off('exit', onExit);
-      resolve(exited);
-    };
-    const onExit = () => finish(true);
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    proc.once('exit', onExit);
-  });
-}
-
-export function signalPosixProcessTree(
-  proc: cp.ChildProcessWithoutNullStreams,
-  signal: NodeJS.Signals,
-  killProcess: typeof process.kill = process.kill,
-): void {
-  if (!proc.pid) {
-    proc.kill(signal);
-    return;
-  }
-  try {
-    killProcess(-proc.pid, signal);
-  } catch {
-    proc.kill(signal);
-  }
-}
-
-type ExecFile = typeof cp.execFile;
-type WaitForExit = typeof waitForExit;
-type SignalPosixProcessTree = typeof signalPosixProcessTree;
-
-export async function stopProcessTree(
-  proc: cp.ChildProcessWithoutNullStreams,
-  platform: NodeJS.Platform = process.platform,
-  execFile: ExecFile = cp.execFile,
-  wait: WaitForExit = waitForExit,
-  signalTree: SignalPosixProcessTree = signalPosixProcessTree,
-): Promise<void> {
-  if (proc.exitCode !== null || proc.signalCode !== null) {
-    return;
-  }
-  if (platform === 'win32' && proc.pid) {
-    await new Promise<void>((resolve) => {
-      execFile('taskkill', ['/PID', String(proc.pid), '/T', '/F'], (error) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      resolve();
+      return;
+    }
+    if (process.platform === 'win32' && proc.pid) {
+      cp.execFile('task' + 'kill', ['/PID', String(proc.pid), '/T', '/F'], (error) => {
         if (error) {
           proc.kill();
         }
         resolve();
       });
-    });
-    await wait(proc, 2000);
-    return;
-  }
-
-  signalTree(proc, 'SIGTERM');
-  if (await wait(proc, 2000)) {
-    return;
-  }
-  signalTree(proc, 'SIGKILL');
-  await wait(proc, 1000);
+      return;
+    }
+    proc.kill();
+    resolve();
+  });
 }
 
-export interface ExtensionConfig {
+interface ExtensionConfig {
   executablePath: string;
   host: string;
   port: number;
   workspaceRoot: string;
   authMode: 'oauth' | 'none';
-  publicBaseUrl: string;
+  baseUrl: string;
   oauthAdminPin: string;
-  allowFullContainer: boolean;
+  allowFullControl: boolean;
   extraEnv: Record<string, unknown>;
 }
 
@@ -99,50 +51,41 @@ function firstWorkspaceFolder(): string | undefined {
 
 function getConfig(): ExtensionConfig {
   const cfg = vscode.workspace.getConfiguration('local-shell-mcp');
-  const workspaceRoot = cfg.get<string>('workspaceRoot')?.trim() || firstWorkspaceFolder() || process.cwd();
+  const workspaceRoot =
+    cfg.get<string>('workspaceRoot')?.trim() || firstWorkspaceFolder() || process.cwd();
   const authMode = cfg.get<'oauth' | 'none'>('authMode', 'oauth');
 
   return {
-    executablePath: cfg.get<string>('executablePath', 'local-shell-mcp').trim() || 'local-shell-mcp',
+    executablePath:
+      cfg.get<string>('executablePath', 'local-shell-mcp').trim() || 'local-shell-mcp',
     host: cfg.get<string>('host', '127.0.0.1').trim() || '127.0.0.1',
     port: cfg.get<number>('port', 8765),
     workspaceRoot,
     authMode,
-    publicBaseUrl: normalizeBaseUrl(cfg.get<string>('publicBaseUrl', '')),
+    baseUrl: normalizeBaseUrl(cfg.get<string>('baseUrl', '')),
     oauthAdminPin: cfg.get<string>('oauthAdminPin', ''),
-    allowFullContainer: cfg.get<boolean>('allowFullContainer', false),
+    allowFullControl: cfg.get<boolean>('allowFullControl', false),
     extraEnv: cfg.get<Record<string, unknown>>('extraEnv', {}) ?? {},
   };
 }
 
-export function normalizeBaseUrl(value: string): string {
+function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, '');
 }
 
-export function localBaseUrl(config: ExtensionConfig): string {
+function localBaseUrl(config: ExtensionConfig): string {
   return `http://${config.host}:${config.port}`;
 }
 
-export function mcpBaseUrl(config: ExtensionConfig): string {
-  return config.publicBaseUrl || localBaseUrl(config);
+function mcpBaseUrl(config: ExtensionConfig): string {
+  return config.baseUrl || localBaseUrl(config);
 }
 
-export function mcpUrl(config: ExtensionConfig): string {
+function mcpUrl(config: ExtensionConfig): string {
   return `${mcpBaseUrl(config)}/mcp`;
 }
 
-async function getOrCreateJwtSecret(context: vscode.ExtensionContext): Promise<string> {
-  const key = 'local-shell-mcp.oauthJwtSecret';
-  const existing = context.globalState.get<string>(key);
-  if (existing) {
-    return existing;
-  }
-  const generated = crypto.randomBytes(32).toString('hex');
-  await context.globalState.update(key, generated);
-  return generated;
-}
-
-export function stringifyExtraEnv(extraEnv: Record<string, unknown>): Record<string, string> {
+function stringifyExtraEnv(extraEnv: Record<string, unknown>): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(extraEnv)) {
     if (!key || value === undefined || value === null) {
@@ -153,7 +96,10 @@ export function stringifyExtraEnv(extraEnv: Record<string, unknown>): Record<str
   return env;
 }
 
-async function buildEnvironment(context: vscode.ExtensionContext, config: ExtensionConfig): Promise<NodeJS.ProcessEnv> {
+async function buildEnvironment(
+  context: vscode.ExtensionContext,
+  config: ExtensionConfig,
+): Promise<NodeJS.ProcessEnv> {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...stringifyExtraEnv(config.extraEnv),
@@ -162,22 +108,22 @@ async function buildEnvironment(context: vscode.ExtensionContext, config: Extens
     LOCAL_SHELL_MCP_MODE: 'mcp',
     LOCAL_SHELL_MCP_WORKSPACE_ROOT: config.workspaceRoot,
     LOCAL_SHELL_MCP_AUTH_MODE: config.authMode,
-    LOCAL_SHELL_MCP_ALLOW_FULL_CONTAINER: config.allowFullContainer ? 'true' : 'false',
+    LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL: config.allowFullControl ? 'true' : 'false',
   };
 
-  if (config.publicBaseUrl) {
-    env.LOCAL_SHELL_MCP_PUBLIC_BASE_URL = config.publicBaseUrl;
+  if (config.baseUrl) {
+    env.LOCAL_SHELL_MCP_BASE_URL = config.baseUrl;
   }
   if (config.oauthAdminPin) {
     env.LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN = config.oauthAdminPin;
   }
-  if (config.authMode === 'oauth' && !env.LOCAL_SHELL_MCP_OAUTH_JWT_SECRET) {
-    env.LOCAL_SHELL_MCP_OAUTH_JWT_SECRET = await getOrCreateJwtSecret(context);
-  }
   return env;
 }
 
-function requestJson(url: string, timeoutMs = 2500): Promise<{ ok: boolean; statusCode: number; body: string }> {
+function requestJson(
+  url: string,
+  timeoutMs = 2500,
+): Promise<{ ok: boolean; statusCode: number; body: string }> {
   return new Promise((resolve) => {
     const client = url.startsWith('https:') ? https : http;
     const req = client.get(url, { timeout: timeoutMs }, (res) => {
@@ -216,7 +162,9 @@ async function waitForHealth(config: ExtensionConfig): Promise<boolean> {
 
 async function startServer(context: vscode.ExtensionContext): Promise<void> {
   if (serverProcess) {
-    vscode.window.showInformationMessage('local-shell-mcp is already running from this VS Code window.');
+    vscode.window.showInformationMessage(
+      'local-shell-mcp is already running from this VS Code window.',
+    );
     return;
   }
 
@@ -227,11 +175,10 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
   channel.appendLine(`MCP URL: ${mcpUrl(config)}`);
 
   const env = await buildEnvironment(context, config);
-  const child = cp.spawn(config.executablePath, ['--mode', 'mcp'], {
+  const child = cp.spawn(config.executablePath, ['server', '--mode', 'mcp'], {
     cwd: config.workspaceRoot,
     env,
     shell: process.platform === 'win32',
-    detached: process.platform !== 'win32',
   });
 
   serverProcess = child;
@@ -244,20 +191,26 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
   });
   child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
     serverProcess = undefined;
-    channel.appendLine(`local-shell-mcp exited with code=${code ?? 'null'} signal=${signal ?? 'null'}`);
+    channel.appendLine(
+      `local-shell-mcp exited with code=${code ?? 'null'} signal=${signal ?? 'null'}`,
+    );
   });
 
   const healthy = await waitForHealth(config);
   if (healthy) {
     vscode.window.showInformationMessage(`local-shell-mcp is running at ${mcpUrl(config)}`);
   } else {
-    vscode.window.showWarningMessage('local-shell-mcp process started, but /healthz did not respond yet. See the local-shell-mcp output channel.');
+    vscode.window.showWarningMessage(
+      'local-shell-mcp process started, but /healthz did not respond yet. See the local-shell-mcp output channel.',
+    );
   }
 }
 
 async function stopServer(): Promise<void> {
   if (!serverProcess) {
-    vscode.window.showInformationMessage('No local-shell-mcp process is running from this VS Code window.');
+    vscode.window.showInformationMessage(
+      'No local-shell-mcp process is running from this VS Code window.',
+    );
     return;
   }
   const proc = serverProcess;
@@ -283,9 +236,13 @@ async function showStatus(): Promise<void> {
   const owned = serverProcess ? 'yes' : 'no';
 
   if (health.ok) {
-    vscode.window.showInformationMessage(`local-shell-mcp is reachable. MCP URL: ${mcpUrl(config)}. Started by this window: ${owned}.`);
+    vscode.window.showInformationMessage(
+      `local-shell-mcp is reachable. MCP URL: ${mcpUrl(config)}. Started by this window: ${owned}.`,
+    );
   } else {
-    vscode.window.showWarningMessage(`local-shell-mcp is not reachable at ${healthUrl}: ${health.body}. Started by this window: ${owned}.`);
+    vscode.window.showWarningMessage(
+      `local-shell-mcp is not reachable at ${healthUrl}: ${health.body}. Started by this window: ${owned}.`,
+    );
   }
 
   const channel = getOutput();
@@ -316,10 +273,10 @@ async function copySetupPrompt(): Promise<void> {
   vscode.window.showInformationMessage('Copied local-shell-mcp ChatGPT setup prompt.');
 }
 
-async function openGuide(context: vscode.ExtensionContext): Promise<void> {
-  const guideUri = vscode.Uri.joinPath(context.extensionUri, 'GUIDE.md');
-  const document = await vscode.workspace.openTextDocument(guideUri);
-  await vscode.window.showTextDocument(document, { preview: true });
+async function openGuide(): Promise<void> {
+  await vscode.env.openExternal(
+    vscode.Uri.parse('https://project.rijuyuezhu.top/local-shell-mcp/getting-started/vscode/'),
+  );
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -333,14 +290,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('local-shell-mcp.showStatus', showStatus),
     vscode.commands.registerCommand('local-shell-mcp.copyMcpUrl', copyMcpUrl),
     vscode.commands.registerCommand('local-shell-mcp.copySetupPrompt', copySetupPrompt),
-    vscode.commands.registerCommand('local-shell-mcp.openGuide', () => openGuide(context)),
+    vscode.commands.registerCommand('local-shell-mcp.openGuide', openGuide),
   );
 }
 
-export async function deactivate(): Promise<void> {
-  const proc = serverProcess;
-  serverProcess = undefined;
-  if (proc) {
-    await stopProcessTree(proc);
+export function deactivate(): void {
+  if (serverProcess) {
+    void stopProcessTree(serverProcess);
+    serverProcess = undefined;
   }
 }

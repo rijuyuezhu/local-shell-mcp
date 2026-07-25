@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Do not include secrets, OAuth pins, tunnel tokens, SSH keys, or bearer file-link URLs.
+        Redact credentials, local paths, and workspace data before posting.
   - type: textarea
     id: summary
     attributes:
@@ -19,10 +19,6 @@ body:
     attributes:
       label: Reproduction steps
       description: Provide a minimal sequence of commands or UI steps.
-      placeholder: |
-        1. Start with ...
-        2. Run ...
-        3. Observe ...
     validations:
       required: true
   - type: textarea
@@ -37,24 +33,11 @@ body:
       label: Logs and diagnostics
       description: Redact sensitive values before posting.
       render: text
-  - type: dropdown
-    id: deployment
-    attributes:
-      label: Deployment mode
-      options:
-        - Docker Compose
-        - Docker image without Compose
-        - Standalone binary
-        - VS Code extension
-        - Remote worker
-        - Other
-    validations:
-      required: true
   - type: input
     id: version
     attributes:
       label: Version or commit
-      placeholder: v2.5.0 or git SHA
+      placeholder: v3.6.0 or git SHA
   - type: textarea
     id: environment
     attributes:

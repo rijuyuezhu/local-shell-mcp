@@ -1,88 +1,59 @@
 # ChatGPT connector
 
-This page covers ChatGPT as a client connection. It does not choose the runtime. Before using this page, run the server with Docker, the VS Code extension, a binary, or a Python install.
+`local-shell-mcp` can be added to ChatGPT as a custom MCP connector. Public deployments should use the built-in OAuth flow.
 
-`local-shell-mcp` is designed for ChatGPT Developer Mode and full MCP clients. It also exposes read-only connector-style `search` and `fetch` tools for connector discovery.
+## Before adding the connector
 
-## Runtime prerequisites
+Confirm:
 
-Pick and start one runtime first:
+1. The public HTTPS origin routes to the server.
+2. `LOCAL_SHELL_MCP_BASE_URL` exactly matches that origin.
+3. `LOCAL_SHELL_MCP_AUTH_MODE=oauth` is set.
+4. `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` is set to a long random value.
+5. The health endpoint works:
 
-| Runtime | Page |
-|---|---|
-| Docker Compose | [Docker Compose runtime](../installation/docker.md) |
-| VS Code extension | [VS Code extension runtime](../installation/vscode-extension.md) |
-| Standalone binary | [Standalone binary runtime](../installation/binary.md) |
-| Python / pipx / source | [Python runtimes](../installation/python.md) |
+    ```bash
+    curl -i https://your-public-host.example.com/healthz
+    ```
 
-Then expose that runtime through a network path ChatGPT can reach. See [network connectivity](../clients/connectivity.md).
-
-## Public URL
-
-ChatGPT must reach the server over HTTPS. The MCP endpoint is:
+The MCP URL is:
 
 ```text
 https://your-public-host.example.com/mcp
 ```
 
-Make sure `LOCAL_SHELL_MCP_PUBLIC_BASE_URL` matches the public origin:
+## Add the connector
 
-```env
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
-```
+1. Open ChatGPT settings and find Connectors or custom MCP connectors.
+2. Add a custom MCP connector.
+3. Use the MCP URL ending in `/mcp`.
+4. Complete the OAuth approval flow with `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN`.
+5. Refresh the connector tool list after server or tool-surface changes.
 
-Do not include `/mcp` in `LOCAL_SHELL_MCP_PUBLIC_BASE_URL`.
+Regular connector-style clients may expose only `search` and `fetch`. ChatGPT Developer Mode and full MCP clients can expose the complete shell, filesystem, patch, remote-worker, and agent-bridge tools.
 
-## OAuth setup
-
-Recommended public settings:
-
-```env
-LOCAL_SHELL_MCP_AUTH_MODE=oauth
-LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=<long random value>
-LOCAL_SHELL_MCP_OAUTH_JWT_SECRET=<long random value>
-LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S=0
-```
-
-Access tokens do not expire by default because long coding sessions can exceed short token lifetimes. Revoke access by rotating the JWT secret or redeploying with a fresh state when needed.
-
-## Adding the connector
-
-1. Open ChatGPT connector or Developer Mode MCP settings.
-2. Add a custom MCP server.
-3. Enter the MCP URL: `https://your-public-host.example.com/mcp`.
-4. Complete OAuth.
-5. Approve the tool surface.
-
-## First prompt
+## Test prompt
 
 ```text
-Use local-shell-mcp. First call environment_info, then list the workspace root. Do not modify files yet.
+Use local-shell-mcp. Choose an explicit project workdir, then run session_start with that workdir and summarize the returned session_id, workdir, git status, instruction file paths, and the environment capabilities/policy that affect tool choice. Do not edit files yet.
 ```
 
-This verifies connectivity without making changes.
+Then:
 
-## Recommended operating rules
+```text
+Use local-shell-mcp to run pwd and tell me the output.
+```
 
-Give the model clear constraints:
+## OAuth behavior
 
-- Work inside `/workspace` unless explicitly told otherwise.
-- Run tests before committing.
-- Use `secret_scan` before pushing.
-- Use `create_file_link` only for files that are safe to share.
-- Prefer persistent shell sessions for long-running processes.
-- Summarize all commands that changed files.
+On first connection, ChatGPT opens `/oauth/authorize`. After approval, the client exchanges the authorization code for a bearer token and calls `/mcp` with `Authorization: Bearer ...`.
 
-## Tool discovery issues
+Bearer tokens expire after `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S`. Authorization codes expire after `LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S`.
 
-If ChatGPT can authenticate but does not show expected tools:
+## Common connector mistakes
 
-- Confirm the endpoint ends in `/mcp`.
-- Check `LOCAL_SHELL_MCP_REQUIRE_AUTH_FOR_MCP_DISCOVERY`.
-- Check reverse proxy headers and request body limits.
-- Inspect `docker compose logs --tail=200 local-shell-mcp`.
-- Confirm the service is in `mcp` or `both` mode.
-
-## Safety notes
-
-Public deployments must keep OAuth enabled. Do not expose unauthenticated full MCP tools on the public internet. Treat every approved tool as part of the connected model's effective authority.
+- The connector URL omits `/mcp`.
+- `LOCAL_SHELL_MCP_BASE_URL` includes `/mcp`; it should be the origin only.
+- The public hostname in Cloudflare does not match `LOCAL_SHELL_MCP_BASE_URL`.
+- The server was restarted with new tool settings, but the connector tool list was not refreshed.
+- `LOCAL_SHELL_MCP_AUTH_MODE=none` is used on a public hostname.

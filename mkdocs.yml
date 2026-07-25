@@ -1,653 +1,91 @@
 site_name: local-shell-mcp
-site_description: ChatGPT-compatible MCP server for controlled local shell, filesystem, git, browser, and remote-worker access.
-site_url: https://fwerkor.github.io/local-shell-mcp/
-repo_url: https://github.com/fwerkor/local-shell-mcp
-repo_name: fwerkor/local-shell-mcp
-nav:
-  - Home: index.md
-  - Getting started:
-      - Quickstart: getting-started/quickstart.md
-      - Runtime vs client model: guides/deployment.md
-  - Runtime installation:
-      - Choose a runtime: guides/deployment.md
-      - Docker Compose: installation/docker.md
-      - VS Code extension: installation/vscode-extension.md
-      - Standalone binary: installation/binary.md
-      - Python / pipx / source: installation/python.md
-      - Stdio mode: installation/stdio.md
-  - Client connections:
-      - ChatGPT connector: getting-started/chatgpt-connector.md
-      - Generic MCP clients: clients/generic-mcp.md
-      - Network connectivity: clients/connectivity.md
-  - Guides:
-      - Usage patterns: guides/usage-patterns.md
-      - Human interface: guides/human-interface.md
-      - Remote workers: guides/remote-workers.md
-      - File links: guides/file-links.md
-      - Git access: guides/git-access.md
-      - Browser automation: guides/browser-automation.md
-      - Audit log: guides/audit-log.md
-      - Skills: guides/skills.md
-  - Reference:
-      - Tools: reference/tools.md
-      - Configuration: reference/configuration.md
-      - REST API: reference/rest-api.md
-  - Security: security.md
-  - FAQ: faq.md
-  - Troubleshooting: troubleshooting.md
-markdown_extensions:
-  - admonition
-  - attr_list
-  - md_in_html
-  - pymdownx.details
-  - pymdownx.superfences
-  - pymdownx.tabbed:
-      alternate_style: true
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
-  - toc:
-      permalink: true
-plugins:
-  - search
-  - i18n:
-      docs_structure: suffix
-      fallback_to_default: true
-      reconfigure_material: true
-      reconfigure_search: true
-      languages:
-        - locale: en
-          name: English
-          build: true
-          default: true
-        - locale: zh
-          name: 简体中文
-          build: true
-          nav_translations:
-            Home: 首页
-            Getting started: 快速开始
-            Quickstart: 快速开始
-            Runtime vs client model: Runtime 与 Client 模型
-            Runtime installation: Runtime 安装
-            Choose a runtime: 选择 Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: VS Code 扩展
-            Standalone binary: 独立二进制
-            Python / pipx / source: Python / pipx / 源码
-            Stdio mode: stdio 模式
-            Client connections: Client 接入
-            ChatGPT connector: ChatGPT 连接器
-            Generic MCP clients: 通用 MCP Client
-            Network connectivity: 网络连通性
-            Guides: 指南
-            Usage patterns: 使用模式
-            Human interface: 人机界面
-            Remote workers: 远程 worker
-            File links: 文件链接
-            Git access: Git 访问
-            Browser automation: 浏览器自动化
-            Audit log: 审计日志
-            Skills: Agent Skills
-            Reference: 参考
-            Tools: 工具
-            Configuration: 配置
-            REST API: REST API
-            Security: 安全
-            FAQ: FAQ
-            Troubleshooting: 故障排查
-        - locale: zh-Hant
-          name: 繁體中文
-          build: true
-          nav_translations:
-            Home: 首頁
-            Getting started: 快速開始
-            Quickstart: 快速開始
-            Runtime vs client model: Runtime 與 Client 模型
-            Runtime installation: Runtime 安裝
-            Choose a runtime: 選擇 Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: VS Code 擴充
-            Standalone binary: 獨立二進位
-            Python / pipx / source: Python / pipx / 原始碼
-            Stdio mode: stdio 模式
-            Client connections: Client 連線
-            ChatGPT connector: ChatGPT 連接器
-            Generic MCP clients: 通用 MCP Client
-            Network connectivity: 網路連通性
-            Guides: 指南
-            Usage patterns: 使用模式
-            Human interface: 人機介面
-            Remote workers: 遠端 worker
-            File links: 檔案連結
-            Git access: Git 存取
-            Browser automation: 瀏覽器自動化
-            Audit log: 稽核日誌
-            Skills: Agent Skills
-            Reference: 參考
-            Tools: 工具
-            Configuration: 設定
-            REST API: REST API
-            Security: 安全
-            FAQ: FAQ
-            Troubleshooting: 疑難排解
-        - locale: ja
-          name: 日本語
-          build: true
-          nav_translations:
-            Home: ホーム
-            Getting started: はじめに
-            Quickstart: クイックスタート
-            Runtime vs client model: Runtime と Client のモデル
-            Runtime installation: Runtime のインストール
-            Choose a runtime: Runtime を選ぶ
-            Docker Compose: Docker Compose
-            VS Code extension: VS Code 拡張
-            Standalone binary: スタンドアロンバイナリ
-            Python / pipx / source: Python / pipx / ソース
-            Stdio mode: stdio モード
-            Client connections: Client 接続
-            ChatGPT connector: ChatGPT コネクタ
-            Generic MCP clients: 汎用 MCP Client
-            Network connectivity: ネットワーク接続
-            Guides: ガイド
-            Usage patterns: 利用パターン
-            Human interface: ヒューマンインターフェース
-            Remote workers: リモート worker
-            File links: ファイルリンク
-            Git access: Git アクセス
-            Browser automation: ブラウザー自動化
-            Audit log: 監査ログ
-            Skills: Skills
-            Reference: リファレンス
-            Tools: ツール
-            Configuration: 設定
-            REST API: REST API
-            Security: セキュリティ
-            FAQ: FAQ
-            Troubleshooting: トラブルシューティング
-        - locale: ko
-          name: 한국어
-          build: true
-          nav_translations:
-            Home: 홈
-            Getting started: 시작하기
-            Quickstart: 빠른 시작
-            Runtime vs client model: Runtime 및 Client 모델
-            Runtime installation: Runtime 설치
-            Choose a runtime: Runtime 선택
-            Docker Compose: Docker Compose
-            VS Code extension: VS Code 확장
-            Standalone binary: 독립 실행 바이너리
-            Python / pipx / source: Python / pipx / 소스
-            Stdio mode: stdio 모드
-            Client connections: Client 연결
-            ChatGPT connector: ChatGPT 커넥터
-            Generic MCP clients: 일반 MCP Client
-            Network connectivity: 네트워크 연결
-            Guides: 가이드
-            Usage patterns: 사용 패턴
-            Human interface: 사용자 인터페이스
-            Remote workers: 원격 worker
-            File links: 파일 링크
-            Git access: Git 접근
-            Browser automation: 브라우저 자동화
-            Audit log: 감사 로그
-            Skills: Skills
-            Reference: 참조
-            Tools: 도구
-            Configuration: 설정
-            REST API: REST API
-            Security: 보안
-            FAQ: FAQ
-            Troubleshooting: 문제 해결
-        - locale: es
-          name: Español
-          build: true
-          nav_translations:
-            Home: Inicio
-            Getting started: Primeros pasos
-            Quickstart: Inicio rápido
-            Runtime vs client model: Modelo de Runtime y Client
-            Runtime installation: Instalación del Runtime
-            Choose a runtime: Elegir un Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: Extensión de VS Code
-            Standalone binary: Binario independiente
-            Python / pipx / source: Python / pipx / código fuente
-            Stdio mode: Modo stdio
-            Client connections: Conexiones de Client
-            ChatGPT connector: Conector de ChatGPT
-            Generic MCP clients: Clientes MCP genéricos
-            Network connectivity: Conectividad de red
-            Guides: Guías
-            Usage patterns: Patrones de uso
-            Human interface: Interfaz humana
-            Remote workers: Workers remotos
-            File links: Enlaces de archivos
-            Git access: Acceso a Git
-            Browser automation: Automatización del navegador
-            Audit log: Registro de auditoría
-            Skills: Skills
-            Reference: Referencia
-            Tools: Herramientas
-            Configuration: Configuración
-            REST API: REST API
-            Security: Seguridad
-            FAQ: FAQ
-            Troubleshooting: Solución de problemas
-        - locale: fr
-          name: Français
-          build: true
-          nav_translations:
-            Home: Accueil
-            Getting started: Premiers pas
-            Quickstart: Démarrage rapide
-            Runtime vs client model: Modèle Runtime et Client
-            Runtime installation: Installation du Runtime
-            Choose a runtime: Choisir un Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: Extension VS Code
-            Standalone binary: Binaire autonome
-            Python / pipx / source: Python / pipx / source
-            Stdio mode: Mode stdio
-            Client connections: Connexions Client
-            ChatGPT connector: Connecteur ChatGPT
-            Generic MCP clients: Clients MCP génériques
-            Network connectivity: Connectivité réseau
-            Guides: Guides
-            Usage patterns: Modes d’utilisation
-            Human interface: Interface humaine
-            Remote workers: Workers distants
-            File links: Liens de fichiers
-            Git access: Accès Git
-            Browser automation: Automatisation du navigateur
-            Audit log: Journal d’audit
-            Skills: Skills
-            Reference: Référence
-            Tools: Outils
-            Configuration: Configuration
-            REST API: REST API
-            Security: Sécurité
-            FAQ: FAQ
-            Troubleshooting: Dépannage
-        - locale: de
-          name: Deutsch
-          build: true
-          nav_translations:
-            Home: Start
-            Getting started: Einstieg
-            Quickstart: Schnellstart
-            Runtime vs client model: Runtime- und Client-Modell
-            Runtime installation: Runtime-Installation
-            Choose a runtime: Runtime auswählen
-            Docker Compose: Docker Compose
-            VS Code extension: VS Code-Erweiterung
-            Standalone binary: Eigenständige Binärdatei
-            Python / pipx / source: Python / pipx / Quellcode
-            Stdio mode: stdio-Modus
-            Client connections: Client-Verbindungen
-            ChatGPT connector: ChatGPT-Connector
-            Generic MCP clients: Generische MCP-Clients
-            Network connectivity: Netzwerkverbindung
-            Guides: Anleitungen
-            Usage patterns: Nutzungsmuster
-            Human interface: Benutzeroberfläche
-            Remote workers: Remote-Worker
-            File links: Dateilinks
-            Git access: Git-Zugriff
-            Browser automation: Browser-Automatisierung
-            Audit log: Audit-Log
-            Skills: Skills
-            Reference: Referenz
-            Tools: Tools
-            Configuration: Konfiguration
-            REST API: REST API
-            Security: Sicherheit
-            FAQ: FAQ
-            Troubleshooting: Fehlerbehebung
-        - locale: ru
-          name: Русский
-          build: true
-          nav_translations:
-            Home: Главная
-            Getting started: Начало работы
-            Quickstart: Быстрый старт
-            Runtime vs client model: Модель Runtime и Client
-            Runtime installation: Установка Runtime
-            Choose a runtime: Выбор Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: Расширение VS Code
-            Standalone binary: Автономный бинарный файл
-            Python / pipx / source: Python / pipx / исходный код
-            Stdio mode: Режим stdio
-            Client connections: Подключения Client
-            ChatGPT connector: Коннектор ChatGPT
-            Generic MCP clients: Общие MCP-клиенты
-            Network connectivity: Сетевая доступность
-            Guides: Руководства
-            Usage patterns: Сценарии использования
-            Human interface: Пользовательский интерфейс
-            Remote workers: Удалённые worker
-            File links: Ссылки на файлы
-            Git access: Доступ к Git
-            Browser automation: Автоматизация браузера
-            Audit log: Журнал аудита
-            Skills: Skills
-            Reference: Справочник
-            Tools: Инструменты
-            Configuration: Конфигурация
-            REST API: REST API
-            Security: Безопасность
-            FAQ: FAQ
-            Troubleshooting: Диагностика
-        - locale: pt-BR
-          name: Português
-          build: true
-          nav_translations:
-            Home: Início
-            Getting started: Primeiros passos
-            Quickstart: Início rápido
-            Runtime vs client model: Modelo Runtime e Client
-            Runtime installation: Instalação do Runtime
-            Choose a runtime: Escolher um Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: Extensão do VS Code
-            Standalone binary: Binário independente
-            Python / pipx / source: Python / pipx / código-fonte
-            Stdio mode: Modo stdio
-            Client connections: Conexões Client
-            ChatGPT connector: Conector ChatGPT
-            Generic MCP clients: Clientes MCP genéricos
-            Network connectivity: Conectividade de rede
-            Guides: Guias
-            Usage patterns: Padrões de uso
-            Human interface: Interface humana
-            Remote workers: Workers remotos
-            File links: Links de arquivos
-            Git access: Acesso ao Git
-            Browser automation: Automação do navegador
-            Audit log: Log de auditoria
-            Skills: Skills
-            Reference: Referência
-            Tools: Ferramentas
-            Configuration: Configuração
-            REST API: REST API
-            Security: Segurança
-            FAQ: FAQ
-            Troubleshooting: Solução de problemas
-        - locale: it
-          name: Italiano
-          build: true
-          nav_translations:
-            Home: Home
-            Getting started: Per iniziare
-            Quickstart: Avvio rapido
-            Runtime vs client model: Modello Runtime e Client
-            Runtime installation: Installazione del Runtime
-            Choose a runtime: Scegliere un Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: Estensione VS Code
-            Standalone binary: Binario autonomo
-            Python / pipx / source: Python / pipx / sorgente
-            Stdio mode: Modalità stdio
-            Client connections: Connessioni Client
-            ChatGPT connector: Connettore ChatGPT
-            Generic MCP clients: Client MCP generici
-            Network connectivity: Connettività di rete
-            Guides: Guide
-            Usage patterns: Modelli di utilizzo
-            Human interface: Interfaccia umana
-            Remote workers: Worker remoti
-            File links: Link ai file
-            Git access: Accesso Git
-            Browser automation: Automazione del browser
-            Audit log: Log di audit
-            Skills: Skill
-            Reference: Riferimento
-            Tools: Strumenti
-            Configuration: Configurazione
-            REST API: REST API
-            Security: Sicurezza
-            FAQ: FAQ
-            Troubleshooting: Risoluzione dei problemi
-        - locale: ar
-          name: العربية
-          build: true
-          nav_translations:
-            Home: الرئيسية
-            Getting started: البدء
-            Quickstart: البدء السريع
-            Runtime vs client model: نموذج Runtime و Client
-            Runtime installation: تثبيت Runtime
-            Choose a runtime: اختيار Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: إضافة VS Code
-            Standalone binary: ملف تنفيذي مستقل
-            Python / pipx / source: Python / pipx / المصدر
-            Stdio mode: وضع stdio
-            Client connections: اتصالات Client
-            ChatGPT connector: موصل ChatGPT
-            Generic MCP clients: عملاء MCP عامون
-            Network connectivity: اتصال الشبكة
-            Guides: الأدلة
-            Usage patterns: أنماط الاستخدام
-            Human interface: واجهة المستخدم
-            Remote workers: Workers بعيدة
-            File links: روابط الملفات
-            Git access: الوصول إلى Git
-            Browser automation: أتمتة المتصفح
-            Audit log: سجل التدقيق
-            Skills: المهارات
-            Reference: المرجع
-            Tools: الأدوات
-            Configuration: الإعدادات
-            REST API: REST API
-            Security: الأمان
-            FAQ: FAQ
-            Troubleshooting: استكشاف الأخطاء
-        - locale: hi
-          name: हिन्दी
-          build: true
-          nav_translations:
-            Home: मुखपृष्ठ
-            Getting started: शुरुआत
-            Quickstart: त्वरित शुरुआत
-            Runtime vs client model: Runtime और Client मॉडल
-            Runtime installation: Runtime स्थापना
-            Choose a runtime: Runtime चुनें
-            Docker Compose: Docker Compose
-            VS Code extension: VS Code एक्सटेंशन
-            Standalone binary: स्वतंत्र बाइनरी
-            Python / pipx / source: Python / pipx / स्रोत
-            Stdio mode: stdio मोड
-            Client connections: Client कनेक्शन
-            ChatGPT connector: ChatGPT कनेक्टर
-            Generic MCP clients: सामान्य MCP Client
-            Network connectivity: नेटवर्क कनेक्टिविटी
-            Guides: मार्गदर्शिकाएँ
-            Usage patterns: उपयोग पैटर्न
-            Human interface: मानव इंटरफ़ेस
-            Remote workers: दूरस्थ worker
-            File links: फ़ाइल लिंक
-            Git access: Git पहुँच
-            Browser automation: ब्राउज़र स्वचालन
-            Audit log: ऑडिट लॉग
-            Skills: Skills
-            Reference: संदर्भ
-            Tools: टूल
-            Configuration: कॉन्फ़िगरेशन
-            REST API: REST API
-            Security: सुरक्षा
-            FAQ: FAQ
-            Troubleshooting: समस्या निवारण
-        - locale: id
-          name: Bahasa Indonesia
-          build: true
-          nav_translations:
-            Home: Beranda
-            Getting started: Mulai
-            Quickstart: Mulai cepat
-            Runtime vs client model: Model Runtime dan Client
-            Runtime installation: Instalasi Runtime
-            Choose a runtime: Pilih Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: Ekstensi VS Code
-            Standalone binary: Biner mandiri
-            Python / pipx / source: Python / pipx / sumber
-            Stdio mode: Mode stdio
-            Client connections: Koneksi Client
-            ChatGPT connector: Konektor ChatGPT
-            Generic MCP clients: Client MCP generik
-            Network connectivity: Konektivitas jaringan
-            Guides: Panduan
-            Usage patterns: Pola penggunaan
-            Human interface: Antarmuka pengguna
-            Remote workers: Worker jarak jauh
-            File links: Tautan file
-            Git access: Akses Git
-            Browser automation: Otomasi browser
-            Audit log: Log audit
-            Skills: Skills
-            Reference: Referensi
-            Tools: Alat
-            Configuration: Konfigurasi
-            REST API: REST API
-            Security: Keamanan
-            FAQ: FAQ
-            Troubleshooting: Pemecahan masalah
-        - locale: vi
-          name: Tiếng Việt
-          build: true
-          nav_translations:
-            Home: Trang chủ
-            Getting started: Bắt đầu
-            Quickstart: Bắt đầu nhanh
-            Runtime vs client model: Mô hình Runtime và Client
-            Runtime installation: Cài đặt Runtime
-            Choose a runtime: Chọn Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: Tiện ích VS Code
-            Standalone binary: Tệp nhị phân độc lập
-            Python / pipx / source: Python / pipx / mã nguồn
-            Stdio mode: Chế độ stdio
-            Client connections: Kết nối Client
-            ChatGPT connector: Trình kết nối ChatGPT
-            Generic MCP clients: Client MCP chung
-            Network connectivity: Kết nối mạng
-            Guides: Hướng dẫn
-            Usage patterns: Mẫu sử dụng
-            Human interface: Giao diện người dùng
-            Remote workers: Worker từ xa
-            File links: Liên kết tệp
-            Git access: Truy cập Git
-            Browser automation: Tự động hóa trình duyệt
-            Audit log: Nhật ký audit
-            Skills: Skills
-            Reference: Tham chiếu
-            Tools: Công cụ
-            Configuration: Cấu hình
-            REST API: REST API
-            Security: Bảo mật
-            FAQ: FAQ
-            Troubleshooting: Xử lý sự cố
-        - locale: tr
-          name: Türkçe
-          build: true
-          nav_translations:
-            Home: Ana sayfa
-            Getting started: Başlangıç
-            Quickstart: Hızlı başlangıç
-            Runtime vs client model: Runtime ve Client modeli
-            Runtime installation: Runtime kurulumu
-            Choose a runtime: Runtime seç
-            Docker Compose: Docker Compose
-            VS Code extension: VS Code eklentisi
-            Standalone binary: Bağımsız ikili
-            Python / pipx / source: Python / pipx / kaynak
-            Stdio mode: stdio modu
-            Client connections: Client bağlantıları
-            ChatGPT connector: ChatGPT bağlayıcısı
-            Generic MCP clients: Genel MCP Client
-            Network connectivity: Ağ bağlantısı
-            Guides: Kılavuzlar
-            Usage patterns: Kullanım kalıpları
-            Human interface: Kullanıcı arayüzü
-            Remote workers: Uzak worker
-            File links: Dosya bağlantıları
-            Git access: Git erişimi
-            Browser automation: Tarayıcı otomasyonu
-            Audit log: Denetim günlüğü
-            Skills: Skills
-            Reference: Başvuru
-            Tools: Araçlar
-            Configuration: Yapılandırma
-            REST API: REST API
-            Security: Güvenlik
-            FAQ: FAQ
-            Troubleshooting: Sorun giderme
-        - locale: pl
-          name: Polski
-          build: true
-          nav_translations:
-            Home: Strona główna
-            Getting started: Pierwsze kroki
-            Quickstart: Szybki start
-            Runtime vs client model: Model Runtime i Client
-            Runtime installation: Instalacja Runtime
-            Choose a runtime: Wybierz Runtime
-            Docker Compose: Docker Compose
-            VS Code extension: Rozszerzenie VS Code
-            Standalone binary: Samodzielny plik binarny
-            Python / pipx / source: Python / pipx / źródła
-            Stdio mode: Tryb stdio
-            Client connections: Połączenia Client
-            ChatGPT connector: Łącznik ChatGPT
-            Generic MCP clients: Ogólne klienty MCP
-            Network connectivity: Łączność sieciowa
-            Guides: Przewodniki
-            Usage patterns: Wzorce użycia
-            Human interface: Interfejs użytkownika
-            Remote workers: Zdalne worker
-            File links: Linki do plików
-            Git access: Dostęp Git
-            Browser automation: Automatyzacja przeglądarki
-            Audit log: Dziennik audytu
-            Skills: Skills
-            Reference: Dokumentacja referencyjna
-            Tools: Narzędzia
-            Configuration: Konfiguracja
-            REST API: REST API
-            Security: Bezpieczeństwo
-            FAQ: FAQ
-            Troubleshooting: Rozwiązywanie problemów
+site_description: ChatGPT-compatible OAuth MCP server for controlled local shell and filesystem access
+site_url: https://project.rijuyuezhu.top/local-shell-mcp/
+repo_url: https://github.com/rijuyuezhu/local-shell-mcp
+repo_name: rijuyuezhu/local-shell-mcp
+edit_uri: edit/main/docs/
+
 theme:
   name: material
   language: en
   features:
-    - navigation.tracking
-    - navigation.tabs
+    - navigation.instant
     - navigation.sections
-    - navigation.expand
     - navigation.top
-    - search.suggest
+    - navigation.tracking
     - search.highlight
+    - search.suggest
+    - content.action.edit
     - content.code.copy
     - content.tabs.link
   palette:
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: deep purple
-      accent: cyan
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: deep purple
-      accent: cyan
+    - scheme: default
+      primary: black
+      accent: indigo
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
-extra_css:
-  - assets/stylesheets/extra.css
+    - scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_javascript:
+  - assets/reference-renderer.js
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quickstart: getting-started/quickstart.md
+      - Cloudflare Tunnel: getting-started/cloudflare-tunnel.md
+      - ChatGPT connector: getting-started/chatgpt-connector.md
+      - Install options: getting-started/install-options.md
+      - Docker Compose: getting-started/docker-compose.md
+      - VS Code: getting-started/vscode.md
+  - Guides:
+      - Common workflows: guides/common-workflows.md
+      - Human interface: guides/human-interface.md
+      - Remote workers: guides/remote-workers.md
+      - Agent capability bridge: guides/agent-bridge.md
+      - Audit log: guides/audit-log.md
+      - Example prompts: guides/example-prompts.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - CLI: reference/cli.md
+      - Tools: reference/tools.md
+      - MCP server instructions: reference/instructions.md
+  - Security: security.md
+  - Troubleshooting: troubleshooting.md
+  - Architecture: architecture.md
+  - Development: development.md
+  - Maintenance:
+      - Fork and upstream differences: maintenance/fork-upstream-differences.md
+      - Upstream commit review: maintenance/upstream-commit-review.md
+      - Native artifact provenance: maintenance/native-artifact-provenance.md
+  - Community:
+      - Contributing: community/contributing.md
+      - Support: community/support.md
+      - Security policy: community/security-policy.md
+      - Code of conduct: community/code-of-conduct.md

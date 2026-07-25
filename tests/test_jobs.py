@@ -1,96 +1,39 @@
 import asyncio
 import json
 import os
-import shutil
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 
-import local_shell_mcp.jobs as jobs_module
-from local_shell_mcp.jobs import (
-    list_jobs,
-    register_managed_job_handler,
-    retry_job,
-    start_job,
-    start_managed_job,
-    stop_job,
-    tail_job,
+from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.jobs import runtime as jobs_ops
+from local_shell_mcp.schemas.result_models.jobs import (
+    JobInfo,
+    JobListOutput,
+    JobOutput,
+    JobRetryOutput,
+    JobStopOutput,
+    JobTailOutput,
 )
-from local_shell_mcp.settings import get_settings
+from local_shell_mcp.schemas.result_models.shell import (
+    KillPersistentShellOutput,
+    ListPersistentShellsOutput,
+    ReadPersistentShellOutput,
+    StartPersistentShellOutput,
+)
+from local_shell_mcp.tool_session.store import get_tool_session_store
+from local_shell_mcp.tools.ops import jobs as job_tool_ops
+from tests.helpers import python_shell_command
 
 
-def test_job_store_lock_retries_then_succeeds(tmp_path, monkeypatch):
-    lock_path = tmp_path / "jobs.lock"
-    attempts = 0
-
-    def fake_try_lock(handle):  # noqa: ARG001
-        nonlocal attempts
-        attempts += 1
-        return attempts == 3
-
-    monkeypatch.setattr(jobs_module, "_try_lock_store_file", fake_try_lock)
-    monkeypatch.setattr(jobs_module.time, "sleep", lambda _seconds: None)
-
-    with lock_path.open("a+b") as handle:
-        jobs_module._lock_store_file(handle, timeout_s=1)
-
-    assert attempts == 3
+def _create_session(workdir: str = ".") -> str:
+    store = get_tool_session_store()
+    return store.create_session(workdir=workdir).session_id
 
 
-def test_job_store_lock_timeout_is_actionable(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    monkeypatch.setattr(jobs_module, "JOB_STORE_LOCK_TIMEOUT_S", 0.0)
-    monkeypatch.setattr(jobs_module, "_try_lock_store_file", lambda _handle: False)
-    get_settings.cache_clear()
-
-    with (
-        pytest.raises(
-            TimeoutError, match="another local-shell-mcp operation or process"
-        ),
-        jobs_module._store_transaction(),
-    ):
-        raise AssertionError("transaction body must not run")
-
-
-def test_job_store_thread_lock_timeout_is_actionable(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    acquired = threading.Event()
-    release = threading.Event()
-
-    def hold_lock():
-        with jobs_module._JOB_STORE_THREAD_LOCK:
-            acquired.set()
-            release.wait(timeout=5)
-
-    holder = threading.Thread(target=hold_lock)
-    holder.start()
-    assert acquired.wait(timeout=1)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    monkeypatch.setattr(jobs_module, "JOB_STORE_LOCK_TIMEOUT_S", 0.01)
-    get_settings.cache_clear()
-
-    try:
-        with (
-            pytest.raises(
-                TimeoutError, match="another local-shell-mcp operation or process"
-            ),
-            jobs_module._store_transaction(),
-        ):
-            raise AssertionError("transaction body must not run")
-    finally:
-        release.set()
-        holder.join(timeout=1)
-
-    assert not holder.is_alive()
-
-
-def test_runner_command_invokes_powershell_executable_and_quotes_arguments():
-    command = jobs_module._runner_command(
+def test_runner_command_quotes_powershell_arguments():
+    command = jobs_ops._runner_command(
         [
             r"C:\Program Files\Python\python.exe",
             "-m",
@@ -108,468 +51,762 @@ def test_runner_command_invokes_powershell_executable_and_quotes_arguments():
     )
 
 
-def test_runner_environment_policy_is_shell_neutral_and_round_trips(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_ENV_BLOCKLIST", "TOKEN_ONE,TOKEN_TWO")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_ENV_BLOCKED_PREFIXES", "PRIVATE_,SERVICE_")
-    get_settings.cache_clear()
-
-    paths = jobs_module._attempt_paths("job_test", 1)
-    argv = jobs_module._runner_argv(paths, tmp_path)
-    blocklist_index = argv.index("--env-blocklist-b64") + 1
-    prefixes_index = argv.index("--env-blocked-prefixes-b64") + 1
-    blocklist_payload = argv[blocklist_index]
-    prefixes_payload = argv[prefixes_index]
-
-    assert '"' not in blocklist_payload
-    assert "'" not in blocklist_payload
-    assert '"' not in prefixes_payload
-    assert "'" not in prefixes_payload
-    assert jobs_module._parse_runner_env_policy(blocklist_payload, "env blocklist") == [
-        "TOKEN_ONE",
-        "TOKEN_TWO",
-    ]
-    assert jobs_module._parse_runner_env_policy(prefixes_payload, "env blocked prefixes") == [
-        "PRIVATE_",
-        "SERVICE_",
-    ]
-
-    powershell_command = jobs_module._runner_command(argv, "powershell.exe")
-    assert blocklist_payload in powershell_command
-    assert prefixes_payload in powershell_command
+def _job_info(job_id: str = "job_1", session_id: str = "ABC12345") -> JobInfo:
+    return JobInfo(
+        job_id=job_id,
+        name=job_id,
+        status="running",
+        command="echo ok",
+        cwd=".",
+        session_id=session_id,
+        created_at=1.0,
+        updated_at=1.0,
+        last_started_at=1.0,
+        attempts=1,
+    )
 
 
 @pytest.mark.asyncio
-async def test_jobs_track_tail_stop_and_retry(tmp_path, monkeypatch):
+async def test_job_execute_dispatches_companion_actions(monkeypatch):
+    calls = []
+    job = _job_info()
+
+    async def fake_list(session_id: str, include_finished=True):
+        calls.append(("list", session_id, include_finished))
+        return JobListOutput(jobs=[job], counts={"running": 1})
+
+    async def fake_tail(session_id: str, job_id: str, lines: int):
+        calls.append(("poll", session_id, job_id, lines))
+        return JobTailOutput(job=job, output=f"{job_id}:{lines}")
+
+    async def fake_stop(session_id: str, job_id: str):
+        calls.append(("cancel", session_id, job_id))
+        return JobStopOutput(job=job, killed=True, stderr="")
+
+    async def fake_retry(session_id: str, job_id: str):
+        calls.append(("retry", session_id, job_id))
+        data = job.model_dump()
+        data.update(job_id=job_id, attempts=2)
+        return JobRetryOutput.model_validate(data)
+
+    monkeypatch.setattr(jobs_ops, "job_list_execute", fake_list)
+    monkeypatch.setattr(jobs_ops, "job_tail_execute", fake_tail)
+    monkeypatch.setattr(jobs_ops, "job_stop_execute", fake_stop)
+    monkeypatch.setattr(jobs_ops, "job_retry_execute", fake_retry)
+
+    list_result = await job_tool_ops.job_execute(
+        "ABC12345", include_finished=False
+    )
+    assert list_result.operation == "list"
+    assert list_result.jobs == [job]
+    assert list_result.counts == {"running": 1}
+    assert calls == [("list", "ABC12345", False)]
+
+    calls.clear()
+    poll_result = await job_tool_ops.job_execute(
+        "ABC12345", poll=["job_1", "job_2"], lines=5
+    )
+    assert poll_result.operation == "poll"
+    assert [entry.output for entry in poll_result.outputs] == [
+        "job_1:5",
+        "job_2:5",
+    ]
+    assert calls == [
+        ("poll", "ABC12345", "job_1", 5),
+        ("poll", "ABC12345", "job_2", 5),
+    ]
+
+    calls.clear()
+    cancel_result = await job_tool_ops.job_execute("ABC12345", cancel=["job_1"])
+    assert cancel_result.operation == "cancel"
+    assert cancel_result.cancelled[0].killed is True
+    assert calls == [("cancel", "ABC12345", "job_1")]
+
+    calls.clear()
+    retry_result = await job_tool_ops.job_execute("ABC12345", retry=["job_1"])
+    assert retry_result.operation == "retry"
+    assert retry_result.retried[0].attempts == 2
+    assert calls == [("retry", "ABC12345", "job_1")]
+
+
+@pytest.mark.asyncio
+async def test_job_execute_rejects_combined_actions():
+    with pytest.raises(ValueError, match="list_jobs cannot be combined"):
+        await job_tool_ops.job_execute(
+            "ABC12345", list_jobs=True, poll=["job_1"]
+        )
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        await job_tool_ops.job_execute(
+            "ABC12345", poll=["job_1"], cancel=["job_2"]
+        )
+
+
+@pytest.mark.asyncio
+async def test_tracked_job_lifecycle_with_backing_shells(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
-    get_settings.cache_clear()
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session_id = _create_session()
 
-    active_sessions = set()
-    outputs = {}
+    active_sessions: set[str] = set()
+    session_counter = 0
 
-    async def fake_start_shell(cwd=".", name=None, command=None):
-        session_id = name or f"session-{len(active_sessions) + 1}"
-        active_sessions.add(session_id)
-        outputs[session_id] = f"started: {command}"
-        return {"session_id": session_id, "cwd": cwd, "command": command, "backend": "fake"}
+    async def fake_start_shell(cwd: str, name: str | None, command: str | None):
+        nonlocal session_counter
+        session_counter += 1
+        shell_id = f"shell_{session_counter}"
+        active_sessions.add(shell_id)
+        return StartPersistentShellOutput.model_validate(
+            {
+                "shell_id": shell_id,
+                "name": name,
+                "cwd": cwd,
+                "command": command,
+                "backend": "fake",
+            }
+        )
 
     async def fake_list_shells():
-        return {"sessions": [{"session_id": session_id} for session_id in sorted(active_sessions)]}
-
-    async def fake_read_shell(session_id, lines=200):  # noqa: ARG001
-        return {"session_id": session_id, "output": outputs[session_id]}
-
-    async def fake_kill_shell(session_id):
-        active_sessions.discard(session_id)
-        return {"session_id": session_id, "killed": True, "stderr": ""}
-
-    monkeypatch.setattr(jobs_module, "start_shell", fake_start_shell)
-    monkeypatch.setattr(jobs_module, "list_shells", fake_list_shells)
-    monkeypatch.setattr(jobs_module, "read_shell", fake_read_shell)
-    monkeypatch.setattr(jobs_module, "kill_shell", fake_kill_shell)
-
-    job = await start_job("python -m http.server", cwd=".", name="server")
-    assert job["status"] == "running"
-    assert job["attempts"] == 1
-
-    listed = await list_jobs()
-    assert listed["counts"] == {"running": 1}
-    assert listed["jobs"][0]["job_id"] == job["job_id"]
-
-    tail = await tail_job(job["job_id"], lines=20)
-    assert tail["job"]["status"] == "running"
-    assert "job-runner" in tail["output"]
-    assert tail["job"]["command"] == "python -m http.server"
-
-    stopped = await stop_job(job["job_id"])
-    assert stopped["killed"] is True
-    assert stopped["job"]["status"] == "stopped"
-
-    retried = await retry_job(job["job_id"])
-    assert retried["status"] == "running"
-    assert retried["attempts"] == 2
-    assert retried["session_id"] != job["session_id"]
-
-
-
-
-def test_managed_job_state_updates_retry_store_contention(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    runtime_dir = state_dir / "jobs"
-    runtime_dir.mkdir(parents=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    job_id = "job_managed_retry"
-    log_path = runtime_dir / f"{job_id}-attempt-1.log"
-    row = {
-        "job_id": job_id,
-        "kind": "managed",
-        "name": "managed-retry",
-        "status": "running",
-        "command": "managed retry",
-        "cwd": ".",
-        "created_at": time.time(),
-        "updated_at": time.time(),
-        "attempts": 1,
-        "log_path": str(log_path),
-        "output_bytes": 0,
-        "log_truncated": False,
-    }
-    (state_dir / jobs_module.JOB_STORE_FILE_NAME).write_text(
-        json.dumps({"version": jobs_module.JOB_STORE_VERSION, "jobs": [row]}),
-        encoding="utf-8",
-    )
-    original_transaction = jobs_module._store_transaction
-    failures = 0
-
-    @jobs_module.contextlib.contextmanager
-    def flaky_transaction():
-        nonlocal failures
-        if failures > 0:
-            failures -= 1
-            raise TimeoutError("busy")
-        with original_transaction() as store:
-            yield store
-
-    monkeypatch.setattr(jobs_module, "_store_transaction", flaky_transaction)
-    monkeypatch.setattr(jobs_module.time, "sleep", lambda _seconds: None)
-
-    failures = 1
-    jobs_module._append_managed_log(str(log_path), "hello")
-    failures = 1
-    jobs_module._update_managed_progress(job_id, {"phase": "copying"})
-    failures = 1
-    jobs_module._finish_managed_job(
-        job_id,
-        status="succeeded",
-        exit_code=0,
-        error=None,
-        result={"copied": True},
-    )
-
-    stored = json.loads(
-        (state_dir / jobs_module.JOB_STORE_FILE_NAME).read_text(encoding="utf-8")
-    )["jobs"][0]
-    assert stored["output_bytes"] == len(b"hello\n")
-    assert stored["progress"] == {"phase": "copying"}
-    assert stored["status"] == "succeeded"
-    assert stored["result"] == {"copied": True}
-
-
-def test_managed_job_state_updates_defer_after_bounded_contention(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    runtime_dir = state_dir / "jobs"
-    runtime_dir.mkdir(parents=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    job_id = "job_managed_deferred"
-    log_path = runtime_dir / f"{job_id}-attempt-1.log"
-    row = {
-        "job_id": job_id,
-        "kind": "managed",
-        "name": "managed-deferred",
-        "status": "running",
-        "command": "managed deferred",
-        "cwd": ".",
-        "created_at": time.time(),
-        "updated_at": time.time(),
-        "attempts": 1,
-        "log_path": str(log_path),
-        "output_bytes": 0,
-        "log_truncated": False,
-    }
-    (state_dir / jobs_module.JOB_STORE_FILE_NAME).write_text(
-        json.dumps({"version": jobs_module.JOB_STORE_VERSION, "jobs": [row]}),
-        encoding="utf-8",
-    )
-    original_transaction = jobs_module._store_transaction
-    attempts = 0
-
-    @jobs_module.contextlib.contextmanager
-    def busy_transaction():
-        nonlocal attempts
-        attempts += 1
-        raise TimeoutError("busy")
-        yield  # pragma: no cover
-
-    monkeypatch.setattr(jobs_module, "_store_transaction", busy_transaction)
-    monkeypatch.setattr(jobs_module.time, "sleep", lambda _seconds: None)
-    wall_clock = iter([3, 2, 1])
-    monkeypatch.setattr(jobs_module.time, "time_ns", lambda: next(wall_clock))
-
-    jobs_module._append_managed_log(str(log_path), "hello")
-    jobs_module._update_managed_progress(job_id, {"phase": "copying"})
-    jobs_module._finish_managed_job(
-        job_id,
-        status="succeeded",
-        exit_code=0,
-        error=None,
-        result={"copied": True},
-    )
-
-    assert attempts == jobs_module.MANAGED_JOB_STORE_RETRY_ATTEMPTS * 3
-    deferred_dir = runtime_dir / "deferred"
-    deferred_paths = sorted(deferred_dir.glob("*.json"))
-    assert len(deferred_paths) == 3
-    assert [
-        json.loads(path.read_text(encoding="utf-8"))["operation"]
-        for path in deferred_paths
-    ] == ["append_log", "update_progress", "finish"]
-
-    monkeypatch.setattr(jobs_module, "_store_transaction", original_transaction)
-    original_remove = jobs_module._remove_managed_deferred_updates
-    monkeypatch.setattr(
-        jobs_module,
-        "_remove_managed_deferred_updates",
-        lambda _paths: None,
-    )
-    with original_transaction():
-        pass
-    assert len(list(deferred_dir.glob("*.json"))) == 3
-
-    stored_after_interrupted_cleanup = json.loads(
-        (state_dir / jobs_module.JOB_STORE_FILE_NAME).read_text(encoding="utf-8")
-    )["jobs"][0]
-    assert stored_after_interrupted_cleanup["output_bytes"] == len(b"hello\n")
-
-    monkeypatch.setattr(
-        jobs_module,
-        "_remove_managed_deferred_updates",
-        original_remove,
-    )
-    with original_transaction():
-        pass
-    assert deferred_dir.is_dir()
-    assert not list(deferred_dir.iterdir())
-    with original_transaction():
-        pass
-
-    stored = json.loads((state_dir / jobs_module.JOB_STORE_FILE_NAME).read_text(encoding="utf-8"))[
-        "jobs"
-    ][0]
-    assert stored["output_bytes"] == len(b"hello\n")
-    assert stored["progress"] == {"phase": "copying"}
-    assert stored["status"] == "succeeded"
-    assert stored["result"] == {"copied": True}
-    assert jobs_module.MANAGED_DEFERRED_APPLIED_KEY not in stored
-
-
-def test_managed_deferred_update_records_are_validated(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    deferred_dir = state_dir / "jobs" / "deferred"
-    deferred_dir.mkdir(parents=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-
-    def write_record(name, record):
-        (deferred_dir / f"{name}.json").write_text(
-            json.dumps(record), encoding="utf-8"
+        return ListPersistentShellsOutput.model_validate(
+            {"shells": [{"shell_id": shell_id} for shell_id in active_sessions]}
         )
 
-    write_record("not-object", [])
-    write_record(
-        "bad-version",
-        {
-            "version": 99,
-            "update_id": "bad-version",
-            "job_id": "job_test",
-            "operation": "append_log",
-            "payload": {},
-        },
-    )
-    write_record(
-        "missing-update-id",
-        {
-            "version": jobs_module.MANAGED_DEFERRED_UPDATE_VERSION,
-            "job_id": "job_test",
-            "operation": "append_log",
-            "payload": {},
-        },
-    )
-    write_record(
-        "mismatched-update-id",
-        {
-            "version": jobs_module.MANAGED_DEFERRED_UPDATE_VERSION,
-            "update_id": "different-id",
-            "job_id": "job_test",
-            "operation": "append_log",
-            "payload": {},
-        },
-    )
-    write_record(
-        "missing-job-id",
-        {
-            "version": jobs_module.MANAGED_DEFERRED_UPDATE_VERSION,
-            "update_id": "missing-job-id",
-            "operation": "append_log",
-            "payload": {},
-        },
-    )
-    write_record(
-        "bad-operation",
-        {
-            "version": jobs_module.MANAGED_DEFERRED_UPDATE_VERSION,
-            "update_id": "bad-operation",
-            "job_id": "job_test",
-            "operation": "unknown",
-            "payload": {},
-        },
-    )
-    write_record(
-        "bad-payload",
-        {
-            "version": jobs_module.MANAGED_DEFERRED_UPDATE_VERSION,
-            "update_id": "bad-payload",
-            "job_id": "job_test",
-            "operation": "append_log",
-            "payload": [],
-        },
-    )
-    (deferred_dir / "invalid-json.json").write_text("{", encoding="utf-8")
-    (deferred_dir / "unreadable.json").mkdir()
+    async def fake_read_shell(shell_id: str, lines: int):
+        return ReadPersistentShellOutput(
+            shell_id=shell_id, output=f"tail {shell_id}\n", lines=lines
+        )
 
-    rows = jobs_module._read_managed_deferred_updates()
-    records = {path.name: (record, removable) for path, record, removable in rows}
+    async def fake_kill_shell(shell_id: str):
+        active_sessions.discard(shell_id)
+        return KillPersistentShellOutput(
+            shell_id=shell_id, killed=True, stderr=""
+        )
 
-    assert len(records) == 9
-    assert records["unreadable.json"] == (None, False)
-    assert all(
-        record is None and removable
-        for name, (record, removable) in records.items()
-        if name != "unreadable.json"
+    monkeypatch.setattr(
+        jobs_ops, "start_persistent_shell_execute", fake_start_shell
+    )
+    monkeypatch.setattr(
+        jobs_ops, "list_persistent_shells_execute", fake_list_shells
+    )
+    monkeypatch.setattr(
+        jobs_ops, "read_persistent_shell_output_execute", fake_read_shell
+    )
+    monkeypatch.setattr(
+        jobs_ops, "kill_persistent_shell_execute", fake_kill_shell
     )
 
+    started = await jobs_ops.job_start_execute(
+        session_id, "python -m http.server", ".", "serve"
+    )
 
-def test_managed_deferred_reconciliation_handles_stale_records(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    deferred_dir = state_dir / "jobs" / "deferred"
-    deferred_dir.mkdir(parents=True)
+    assert started.name == "serve"
+    assert started.status == "running"
+    assert started.session_id == session_id
+    assert started.cwd == str(tmp_path)
+    assert started.attempts == 1
+    assert started.kind == "shell"
+
+    listed = await jobs_ops.job_list_execute(session_id)
+    assert listed.counts == {"running": 1}
+    assert listed.jobs[0].job_id == started.job_id
+    assert listed.jobs[0].session_id == session_id
+
+    tailed = await jobs_ops.job_tail_execute(
+        session_id, started.job_id, lines=5
+    )
+    assert tailed.output == "tail shell_1\n"
+    assert tailed.job.status == "running"
+    assert tailed.job.session_id == session_id
+
+    stopped = await jobs_ops.job_stop_execute(session_id, started.job_id)
+    assert stopped.killed is True
+    assert stopped.job.status == "stopped"
+
+    running_only = await jobs_ops.job_list_execute(
+        session_id, include_finished=False
+    )
+    assert running_only.jobs == []
+    assert running_only.counts == {"stopped": 1}
+
+    retried = await jobs_ops.job_retry_execute(session_id, started.job_id)
+    assert retried.status == "running"
+    assert retried.attempts == 2
+    assert retried.session_id == session_id
+
+
+@pytest.mark.asyncio
+async def test_tracked_jobs_are_isolated_by_agent_session(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    job_id = "job_test"
-    duplicate_id = "00000000000000000001-00000000000000000001-duplicate"
-    job = {
-        "job_id": job_id,
-        "status": "running",
-        "output_bytes": 0,
-        jobs_module.MANAGED_DEFERRED_APPLIED_KEY: [duplicate_id],
-    }
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    first_session = _create_session()
+    second_session = _create_session()
 
-    def write_record(update_id, target_job_id, operation, payload):
-        (deferred_dir / f"{update_id}.json").write_text(
-            json.dumps(
+    async def fake_start_shell(cwd: str, name: str | None, command: str | None):
+        return StartPersistentShellOutput.model_validate(
+            {"shell_id": f"shell-{name}", "name": name, "cwd": cwd}
+        )
+
+    async def fake_list_shells():
+        return ListPersistentShellsOutput.model_validate(
+            {"shells": [{"shell_id": "shell-first-job"}]}
+        )
+
+    monkeypatch.setattr(
+        jobs_ops, "start_persistent_shell_execute", fake_start_shell
+    )
+    monkeypatch.setattr(
+        jobs_ops, "list_persistent_shells_execute", fake_list_shells
+    )
+
+    started = await jobs_ops.job_start_execute(
+        first_session, "sleep 60", ".", "first-job"
+    )
+
+    first_list = await jobs_ops.job_list_execute(first_session)
+    second_list = await jobs_ops.job_list_execute(second_session)
+
+    assert [job.job_id for job in first_list.jobs] == [started.job_id]
+    assert second_list.jobs == []
+    assert second_list.counts == {}
+
+    with pytest.raises(KeyError, match="job not found in session"):
+        await jobs_ops.job_tail_execute(second_session, started.job_id)
+    with pytest.raises(KeyError, match="job not found in session"):
+        await jobs_ops.job_stop_execute(second_session, started.job_id)
+    with pytest.raises(KeyError, match="job not found in session"):
+        await jobs_ops.job_retry_execute(second_session, started.job_id)
+
+
+@pytest.mark.asyncio
+async def test_tracked_job_is_lost_when_shell_disappears_without_status(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session_id = _create_session()
+
+    async def fake_start_shell(cwd: str, name: str | None, command: str | None):
+        return StartPersistentShellOutput(
+            shell_id="missing-shell", name=name, cwd=cwd, command=command
+        )
+
+    async def fake_list_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    monkeypatch.setattr(
+        jobs_ops, "start_persistent_shell_execute", fake_start_shell
+    )
+    monkeypatch.setattr(
+        jobs_ops, "list_persistent_shells_execute", fake_list_shells
+    )
+
+    started = await jobs_ops.job_start_execute(
+        session_id, "echo done", ".", None
+    )
+    listed = await jobs_ops.job_list_execute(session_id)
+
+    assert listed.jobs[0].job_id == started.job_id
+    assert listed.jobs[0].status == "lost"
+    assert listed.jobs[0].session_id == session_id
+    assert listed.counts == {"lost": 1}
+
+
+def _configure_job_state(tmp_path, monkeypatch, **overrides):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    for name, value in overrides.items():
+        monkeypatch.setenv(f"LOCAL_SHELL_MCP_{name.upper()}", str(value))
+    clear_settings_cache()
+    get_tool_session_store().clear()
+
+
+def test_job_runner_persists_bounded_output_and_terminal_status(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    paths = jobs_ops._attempt_paths("job_runner", 1)
+    command = (
+        "echo prefix-" + "x" * 100 + "-suffix"
+        if os.name == "nt"
+        else python_shell_command("print('prefix-' + 'x' * 100 + '-suffix')")
+    )
+    paths["command"].write_text(command, encoding="utf-8")
+    args = SimpleNamespace(
+        command_file=str(paths["command"]),
+        log_file=str(paths["log"]),
+        status_file=str(paths["status"]),
+        cwd=str(tmp_path),
+        shell=os.environ.get("COMSPEC", "cmd.exe")
+        if os.name == "nt"
+        else "/bin/bash",
+        max_log_bytes=32,
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        jobs_ops.run_job_runner_from_args(args)
+
+    status = json.loads(paths["status"].read_text(encoding="utf-8"))
+    output = paths["log"].read_text(encoding="utf-8")
+    assert exit_info.value.code == 0
+    assert status["exit_code"] == 0
+    assert status["error"] is None
+    assert status["log_truncated"] is True
+    assert status["output_bytes"] > len(output.encode())
+    assert output.rstrip().endswith("-suffix")
+    assert len(output.encode()) <= 32
+
+
+def test_job_runner_records_nonzero_exit(tmp_path, monkeypatch):
+    _configure_job_state(tmp_path, monkeypatch)
+    paths = jobs_ops._attempt_paths("job_failed", 1)
+    command = (
+        "echo failed-output & exit /b 7"
+        if os.name == "nt"
+        else python_shell_command(
+            "import sys; print('failed-output'); sys.exit(7)"
+        )
+    )
+    paths["command"].write_text(command, encoding="utf-8")
+    args = SimpleNamespace(
+        command_file=str(paths["command"]),
+        log_file=str(paths["log"]),
+        status_file=str(paths["status"]),
+        cwd=str(tmp_path),
+        shell=os.environ.get("COMSPEC", "cmd.exe")
+        if os.name == "nt"
+        else "/bin/bash",
+        max_log_bytes=1024,
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        jobs_ops.run_job_runner_from_args(args)
+
+    status = json.loads(paths["status"].read_text(encoding="utf-8"))
+    output_lines = paths["log"].read_text(encoding="utf-8").splitlines()
+    assert exit_info.value.code == 7
+    assert status["exit_code"] == 7
+    assert status["error"] is None
+    assert [line.rstrip() for line in output_lines] == ["failed-output"]
+
+
+@pytest.mark.asyncio
+async def test_terminal_job_output_remains_available_after_shell_exit(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session()
+    paths = jobs_ops._attempt_paths("job_done", 1)
+    paths["log"].write_text("durable output\n", encoding="utf-8")
+    paths["status"].write_text(
+        json.dumps(
+            {
+                "exit_code": 0,
+                "completed_at": 5.0,
+                "error": None,
+                "log_truncated": False,
+                "output_bytes": 15,
+            }
+        ),
+        encoding="utf-8",
+    )
+    jobs_ops._save_store(
+        {
+            "version": jobs_ops.JOB_STORE_VERSION,
+            "jobs": [
                 {
-                    "version": jobs_module.MANAGED_DEFERRED_UPDATE_VERSION,
-                    "update_id": update_id,
-                    "job_id": target_job_id,
-                    "operation": operation,
-                    "payload": payload,
+                    "job_id": "job_done",
+                    "name": "done",
+                    "status": "running",
+                    "command": "echo durable output",
+                    "cwd": str(tmp_path),
+                    "session_id": session_id,
+                    "shell_id": "gone-shell",
+                    "log_path": str(paths["log"]),
+                    "status_path": str(paths["status"]),
+                    "created_at": 1.0,
+                    "updated_at": 2.0,
+                    "last_started_at": 2.0,
+                    "attempts": 1,
                 }
-            ),
-            encoding="utf-8",
+            ],
+        }
+    )
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+
+    result = await jobs_ops.job_tail_execute(session_id, "job_done", lines=20)
+
+    assert result.job.status == "succeeded"
+    assert result.job.exit_code == 0
+    assert result.job.completed_at == 5.0
+    assert result.output == "durable output\n"
+    assert result.message == "job completed with exit code 0"
+
+
+def test_job_store_recovers_from_backup_and_migrates_v1(tmp_path, monkeypatch):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops._job_store_path().parent.mkdir(parents=True, exist_ok=True)
+    jobs_ops._job_store_path().write_text("{broken", encoding="utf-8")
+    jobs_ops._job_store_backup_path().write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "jobs": [
+                    {
+                        "job_id": "legacy",
+                        "status": "stopped",
+                        "session_id": "ABC12345",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    store = jobs_ops._load_store()
+
+    assert store["version"] == jobs_ops.JOB_STORE_VERSION
+    assert store["jobs"][0]["job_id"] == "legacy"
+
+
+def test_job_store_refuses_to_reset_when_main_and_backup_are_corrupt(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops._job_store_path().parent.mkdir(parents=True, exist_ok=True)
+    jobs_ops._job_store_path().write_text("{broken", encoding="utf-8")
+    jobs_ops._job_store_backup_path().write_text("[]", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="refusing to reset"):
+        jobs_ops._load_store()
+
+
+def test_job_store_retention_keeps_active_and_newest_finished(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch, max_jobs=2)
+    old_paths = jobs_ops._attempt_paths("old", 1)
+    new_paths = jobs_ops._attempt_paths("new", 1)
+    for path in [*old_paths.values(), *new_paths.values()]:
+        path.write_text("artifact", encoding="utf-8")
+    store = {
+        "version": jobs_ops.JOB_STORE_VERSION,
+        "jobs": [
+            {
+                "job_id": "active",
+                "status": "running",
+                "created_at": 1.0,
+                "updated_at": 1.0,
+            },
+            {
+                "job_id": "old",
+                "status": "failed",
+                "created_at": 2.0,
+                "updated_at": 2.0,
+            },
+            {
+                "job_id": "new",
+                "status": "succeeded",
+                "created_at": 3.0,
+                "updated_at": 3.0,
+            },
+        ],
+    }
+
+    jobs_ops._save_store(store)
+    persisted = jobs_ops._load_store()
+
+    assert {row["job_id"] for row in persisted["jobs"]} == {"active", "new"}
+    assert not any(path.exists() for path in old_paths.values())
+    assert all(path.exists() for path in new_paths.values())
+
+
+@pytest.mark.asyncio
+async def test_job_start_failure_is_persisted_as_failed(tmp_path, monkeypatch):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session()
+
+    async def fail_start(cwd: str, name: str | None, command: str | None):
+        raise RuntimeError("tmux unavailable")
+
+    monkeypatch.setattr(jobs_ops, "start_persistent_shell_execute", fail_start)
+
+    with pytest.raises(RuntimeError, match="tmux unavailable"):
+        await jobs_ops.job_start_execute(session_id, "echo hello")
+
+    rows = jobs_ops._load_store()["jobs"]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["completed_at"] is not None
+    assert rows[0]["error"] == "start failed: RuntimeError: tmux unavailable"
+
+
+@pytest.mark.asyncio
+async def test_interrupted_start_recovers_active_shell(tmp_path, monkeypatch):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session()
+    jobs_ops._save_store(
+        {
+            "version": jobs_ops.JOB_STORE_VERSION,
+            "jobs": [
+                {
+                    "job_id": "recover",
+                    "name": "recover",
+                    "status": "starting",
+                    "command": "sleep 1",
+                    "cwd": str(tmp_path),
+                    "session_id": session_id,
+                    "shell_id": "recover-shell",
+                    "created_at": 1.0,
+                    "updated_at": 1.0,
+                    "last_started_at": None,
+                    "attempts": 1,
+                    "operation_id": "stale-start",
+                    "operation_kind": "start",
+                }
+            ],
+        }
+    )
+
+    async def active_shell():
+        return ListPersistentShellsOutput.model_validate(
+            {"shells": [{"shell_id": "recover-shell"}]}
         )
 
-    write_record(duplicate_id, job_id, "append_log", {"bytes": 10})
-    write_record(
-        "00000000000000000002-00000000000000000002-missing",
-        "job_missing",
-        "update_progress",
-        {"progress": {"phase": "missing"}},
+    monkeypatch.setattr(
+        jobs_ops, "list_persistent_shells_execute", active_shell
     )
-    write_record(
-        "00000000000000000003-00000000000000000003-invalid",
-        job_id,
-        "append_log",
-        {"bytes": "invalid"},
+
+    result = await jobs_ops.job_list_execute(session_id)
+
+    assert result.jobs[0].status == "running"
+    assert result.jobs[0].last_started_at is not None
+    assert "recovered job start" in (result.jobs[0].error or "")
+
+
+@pytest.mark.asyncio
+async def test_job_retry_failure_is_persisted_and_clears_pending_state(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session()
+    jobs_ops._save_store(
+        {
+            "version": jobs_ops.JOB_STORE_VERSION,
+            "jobs": [
+                {
+                    "job_id": "retry-failure",
+                    "name": "retry-failure",
+                    "status": "failed",
+                    "command": "echo retry",
+                    "cwd": str(tmp_path),
+                    "session_id": session_id,
+                    "created_at": 1.0,
+                    "updated_at": 2.0,
+                    "last_started_at": 1.0,
+                    "completed_at": 2.0,
+                    "attempts": 1,
+                }
+            ],
+        }
     )
-    (deferred_dir / "invalid-json.json").write_text("{", encoding="utf-8")
 
-    removable = jobs_module._reconcile_managed_deferred_updates({"jobs": [job]})
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
 
-    assert {path.name for path in removable} == {
-        f"{duplicate_id}.json",
-        "00000000000000000002-00000000000000000002-missing.json",
-        "00000000000000000003-00000000000000000003-invalid.json",
-        "invalid-json.json",
+    async def fail_start(cwd: str, name: str | None, command: str | None):
+        raise RuntimeError("retry shell unavailable")
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(jobs_ops, "start_persistent_shell_execute", fail_start)
+
+    with pytest.raises(RuntimeError, match="retry shell unavailable"):
+        await jobs_ops.job_retry_execute(session_id, "retry-failure")
+
+    job = jobs_ops._load_store()["jobs"][0]
+    assert job["status"] == "failed"
+    assert job["attempts"] == 2
+    assert job["completed_at"] is not None
+    assert job["error"] == (
+        "retry failed: RuntimeError: retry shell unavailable"
+    )
+    assert not any(key.startswith("pending_") for key in job)
+    assert "operation_id" not in job
+
+
+@pytest.mark.asyncio
+async def test_interrupted_retry_adopts_active_pending_attempt(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session()
+    paths = jobs_ops._attempt_paths("retry-recover", 2)
+    jobs_ops._save_store(
+        {
+            "version": jobs_ops.JOB_STORE_VERSION,
+            "jobs": [
+                {
+                    "job_id": "retry-recover",
+                    "name": "retry-recover",
+                    "status": "retrying",
+                    "command": "sleep 1",
+                    "cwd": str(tmp_path),
+                    "session_id": session_id,
+                    "shell_id": "old-shell",
+                    "created_at": 1.0,
+                    "updated_at": 2.0,
+                    "last_started_at": 1.0,
+                    "attempts": 1,
+                    "pending_attempt": 2,
+                    "pending_shell_id": "retry-shell",
+                    "pending_command_path": str(paths["command"]),
+                    "pending_log_path": str(paths["log"]),
+                    "pending_status_path": str(paths["status"]),
+                    "operation_id": "stale-retry",
+                    "operation_kind": "retry",
+                }
+            ],
+        }
+    )
+
+    async def active_shell():
+        return ListPersistentShellsOutput.model_validate(
+            {"shells": [{"shell_id": "retry-shell"}]}
+        )
+
+    monkeypatch.setattr(
+        jobs_ops, "list_persistent_shells_execute", active_shell
+    )
+
+    result = await jobs_ops.job_list_execute(session_id)
+
+    recovered = result.jobs[0]
+    assert recovered.status == "running"
+    assert recovered.attempts == 2
+    assert recovered.last_started_at is not None
+    assert "recovered retry" in (recovered.error or "")
+    job = jobs_ops._load_store()["jobs"][0]
+    assert job["shell_id"] == "retry-shell"
+    assert job["log_path"] == str(paths["log"])
+    assert not any(key.startswith("pending_") for key in job)
+    assert "operation_id" not in job
+
+
+def test_concurrent_job_store_transactions_do_not_lose_records(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch, max_jobs=100)
+
+    def append(index: int) -> None:
+        with jobs_ops._store_transaction() as store:
+            store["jobs"].append(
+                {
+                    "job_id": f"job-{index}",
+                    "status": "succeeded",
+                    "created_at": float(index),
+                    "updated_at": float(index),
+                }
+            )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(append, range(32)))
+
+    persisted = jobs_ops._load_store()["jobs"]
+    assert {row["job_id"] for row in persisted} == {
+        f"job-{index}" for index in range(32)
     }
-    assert job["output_bytes"] == 0
-    assert job[jobs_module.MANAGED_DEFERRED_APPLIED_KEY] == [duplicate_id]
-    with pytest.raises(ValueError, match="unsupported managed update operation"):
-        jobs_module._apply_managed_update(job, "unknown", {})
-
-
-def test_managed_store_updates_handle_missing_jobs(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    runtime_dir = state_dir / "jobs"
-    runtime_dir.mkdir(parents=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    log_path = runtime_dir / "job_missing-attempt-1.log"
-
-    jobs_module._append_managed_log(str(log_path), "orphaned")
-
-    assert not (runtime_dir / "deferred").exists()
-    with pytest.raises(KeyError, match="job not found"):
-        jobs_module._update_managed_progress("job_missing", {"phase": "missing"})
 
 
 @pytest.mark.asyncio
-async def test_stop_managed_job_finishes_after_deferred_cancellation_updates(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    started = asyncio.Event()
-    blocked = asyncio.Event()
+async def test_job_start_does_not_launch_shell_for_invalid_store(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session()
+    invalid = json.dumps({"version": 99, "jobs": []})
+    jobs_ops._job_store_path().parent.mkdir(parents=True, exist_ok=True)
+    jobs_ops._job_store_path().write_text(invalid, encoding="utf-8")
+    jobs_ops._job_store_backup_path().write_text(invalid, encoding="utf-8")
+    started = False
 
-    async def handler(context, payload):  # noqa: ARG001
-        started.set()
-        await blocked.wait()
+    async def fake_start(cwd: str, name: str | None, command: str | None):
+        nonlocal started
+        started = True
+        return StartPersistentShellOutput(
+            shell_id="must-not-start", name=name, cwd=cwd, command=command
+        )
 
-    kind = f"test-managed-deferred-stop-{time.time_ns()}"
-    register_managed_job_handler(kind, handler)
-    job = await start_managed_job(kind, {}, name="managed-deferred-stop")
-    await asyncio.wait_for(started.wait(), timeout=1)
+    monkeypatch.setattr(jobs_ops, "start_persistent_shell_execute", fake_start)
 
-    original_transaction = jobs_module._store_transaction
-    attempts = 0
+    with pytest.raises(RuntimeError, match="refusing to reset"):
+        await jobs_ops.job_start_execute(session_id, "echo must-not-run")
 
-    @jobs_module.contextlib.contextmanager
-    def cancellation_contention():
-        nonlocal attempts
-        attempts += 1
-        if 3 <= attempts <= 6:
-            raise TimeoutError("busy")
-        with original_transaction() as store:
-            yield store
-
-    monkeypatch.setattr(jobs_module, "_store_transaction", cancellation_contention)
-    monkeypatch.setattr(jobs_module.time, "sleep", lambda _seconds: None)
-
-    stopped = await asyncio.wait_for(stop_job(job["job_id"]), timeout=1)
-
-    assert attempts == 7
-    assert stopped["killed"] is True
-    assert stopped["job"]["status"] == "stopped"
-    assert job["job_id"] not in jobs_module._MANAGED_JOB_TASKS
-    deferred_dir = state_dir / "jobs" / "deferred"
-    assert deferred_dir.is_dir()
-    assert not list(deferred_dir.iterdir())
+    assert started is False
+    runtime_dir = jobs_ops._job_runtime_dir()
+    assert not list(runtime_dir.iterdir())
 
 
 @pytest.mark.asyncio
-async def test_managed_jobs_track_tail_stop_and_retry(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
-    get_settings.cache_clear()
+async def test_job_start_kills_shell_when_running_state_cannot_be_committed(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session()
+    killed: list[str] = []
+
+    async def corrupt_after_launch(
+        cwd: str, name: str | None, command: str | None
+    ):
+        invalid = json.dumps({"version": 99, "jobs": []})
+        jobs_ops._job_store_path().write_text(invalid, encoding="utf-8")
+        jobs_ops._job_store_backup_path().write_text(invalid, encoding="utf-8")
+        return StartPersistentShellOutput(
+            shell_id="launched-shell", name=name, cwd=cwd, command=command
+        )
+
+    async def fake_kill(shell_id: str):
+        killed.append(shell_id)
+        return KillPersistentShellOutput(
+            shell_id=shell_id, killed=True, stderr=""
+        )
+
+    monkeypatch.setattr(
+        jobs_ops, "start_persistent_shell_execute", corrupt_after_launch
+    )
+    monkeypatch.setattr(jobs_ops, "kill_persistent_shell_execute", fake_kill)
+
+    with pytest.raises(RuntimeError, match="refusing to reset"):
+        await jobs_ops.job_start_execute(session_id, "echo launched")
+
+    assert killed == ["launched-shell"]
+    assert not list(jobs_ops._job_runtime_dir().iterdir())
+
+
+@pytest.mark.asyncio
+async def test_managed_job_tracks_progress_stop_retry_and_result(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    session_id = _create_session()
     release = asyncio.Event()
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
 
     async def handler(context, payload):
         await context.log(f"started {payload['value']}")
@@ -578,41 +815,49 @@ async def test_managed_jobs_track_tail_stop_and_retry(tmp_path, monkeypatch):
         await context.log("finished")
         return {"value": payload["value"]}
 
-    register_managed_job_handler("test-managed", handler)
-    job = await start_managed_job(
-        "test-managed",
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    jobs_ops.register_managed_job_handler("test-managed-lifecycle", handler)
+
+    started = await jobs_ops.start_managed_job(
+        session_id,
+        "test-managed-lifecycle",
         {"value": 7},
         name="managed",
         command="managed test",
     )
-    assert job["kind"] == "managed"
-    assert job["status"] == "running"
+    assert started.kind == "managed"
+    assert started.status == "running"
 
-    for _ in range(50):
+    tailed = None
+    for _ in range(100):
         await asyncio.sleep(0.01)
-        tail = await tail_job(job["job_id"])
-        if (
-            "started 7" in tail["output"]
-            and tail["job"]["progress"] == {"phase": "waiting", "value": 7}
-        ):
+        tailed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+        if tailed.job.progress == {"phase": "waiting", "value": 7}:
             break
-    assert tail["job"]["progress"] == {"phase": "waiting", "value": 7}
+    assert tailed is not None
+    assert "started 7" in tailed.output
+    assert tailed.job.progress == {"phase": "waiting", "value": 7}
 
-    stopped = await stop_job(job["job_id"])
-    assert stopped["killed"] is True
-    assert stopped["job"]["status"] == "stopped"
+    stopped = await jobs_ops.job_stop_execute(session_id, started.job_id)
+    assert stopped.killed is True
+    assert stopped.job.status == "stopped"
 
-    retried = await retry_job(job["job_id"])
-    assert retried["status"] == "running"
-    assert retried["attempts"] == 2
+    retried = await jobs_ops.job_retry_execute(session_id, started.job_id)
+    assert retried.kind == "managed"
+    assert retried.status == "running"
+    assert retried.attempts == 2
     release.set()
-    for _ in range(50):
+
+    current = retried
+    for _ in range(100):
         await asyncio.sleep(0.01)
-        current = (await list_jobs())["jobs"][0]
-        if current["status"] != "running":
+        current = (await jobs_ops.job_list_execute(session_id)).jobs[0]
+        if current.status == "succeeded":
             break
-    assert current["status"] == "succeeded"
-    assert current["result"] == {"value": 7}
+    assert current.status == "succeeded"
+    assert current.result == {"value": 7}
+    assert current.progress == {"phase": "waiting", "value": 7}
+    jobs_ops.reset_managed_jobs_for_tests()
 
 
 def test_managed_job_validation_and_lost_recovery():
@@ -623,18 +868,24 @@ def test_managed_job_validation_and_lost_recovery():
         return payload
 
     with pytest.raises(ValueError, match="must not be empty"):
-        register_managed_job_handler("   ", first_handler)
-
-    register_managed_job_handler("validation-managed", first_handler)
-    register_managed_job_handler("validation-managed", first_handler)
+        jobs_ops.register_managed_job_handler("   ", first_handler)
+    jobs_ops.register_managed_job_handler(
+        "test-managed-validation", first_handler
+    )
+    jobs_ops.register_managed_job_handler(
+        "test-managed-validation", first_handler
+    )
     with pytest.raises(ValueError, match="already registered"):
-        register_managed_job_handler("validation-managed", second_handler)
+        jobs_ops.register_managed_job_handler(
+            "test-managed-validation", second_handler
+        )
 
-    with pytest.raises(ValueError, match="unknown managed job kind"):
-        asyncio.run(start_managed_job("missing-managed", {}))
-
-    running = jobs_module._refresh_job_status(
-        {"job_id": "managed-running", "kind": "managed", "status": "running"},
+    running = jobs_ops._refresh_job_status(
+        {
+            "job_id": "job_managed_lost",
+            "kind": "managed",
+            "status": "running",
+        },
         set(),
         now=10.0,
     )
@@ -642,8 +893,12 @@ def test_managed_job_validation_and_lost_recovery():
     assert running["completed_at"] == 10.0
     assert "retry it" in running["error"]
 
-    stopping = jobs_module._refresh_job_status(
-        {"job_id": "managed-stopping", "kind": "managed", "status": "stopping"},
+    stopping = jobs_ops._refresh_job_status(
+        {
+            "job_id": "job_managed_stopping",
+            "kind": "managed",
+            "status": "stopping",
+        },
         set(),
         now=11.0,
     )
@@ -652,743 +907,308 @@ def test_managed_job_validation_and_lost_recovery():
 
 
 @pytest.mark.asyncio
-async def test_managed_job_failure_and_launch_cleanup(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
+async def test_remote_job_companion_merges_controller_managed_and_worker_jobs(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    store = get_tool_session_store()
+    remote_session = store.create_session(
+        target="remote",
+        workdir="/remote/project",
+        machine="worker-a",
+        worker_session_id="WORKER01",
+    )
+    release = asyncio.Event()
+    calls: list[dict] = []
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
+
+    async def handler(context, payload):
+        await context.update_progress(phase="waiting")
+        await release.wait()
+        return payload
+
+    remote_job = _job_info("job_remote", remote_session.session_id)
+
+    async def fake_remote_call(session, tool, args):
+        assert session.session_id == remote_session.session_id
+        assert tool == "job"
+        calls.append(args)
+        if args.get("list_jobs") or not any(
+            args.get(name) is not None for name in ("poll", "cancel", "retry")
+        ):
+            return JobOutput(
+                operation="list",
+                jobs=[remote_job],
+                counts={"running": 1},
+            ).model_dump(mode="json")
+        requested = args.get("poll") or []
+        return JobOutput(
+            operation="poll",
+            outputs=[
+                JobTailOutput(job=remote_job, output="remote output")
+                for item in requested
+                if item == remote_job.job_id
+            ],
+        ).model_dump(mode="json")
+
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(
+        job_tool_ops, "call_remote_session_tool", fake_remote_call
+    )
+    jobs_ops.register_managed_job_handler("test-remote-managed", handler)
+    managed = await jobs_ops.start_managed_job(
+        remote_session.session_id,
+        "test-remote-managed",
+        {"source": "controller"},
+    )
+
+    listed = await job_tool_ops.job_execute(remote_session.session_id)
+    assert [job.job_id for job in listed.jobs] == [
+        managed.job_id,
+        remote_job.job_id,
+    ]
+    assert listed.counts == {"running": 2}
+
+    polled = await job_tool_ops.job_execute(
+        remote_session.session_id,
+        poll=[managed.job_id, remote_job.job_id],
+        lines=7,
+    )
+    assert [row.job.job_id for row in polled.outputs] == [
+        managed.job_id,
+        remote_job.job_id,
+    ]
+    assert calls[-1]["poll"] == [remote_job.job_id]
+
+    before = len(calls)
+    cancelled = await job_tool_ops.job_execute(
+        remote_session.session_id, cancel=[managed.job_id]
+    )
+    assert cancelled.cancelled[0].job.status == "stopped"
+    assert len(calls) == before
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_managed_job_failure_result_bounds_and_launch_rollback(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    session_id = _create_session()
+
+    async def no_shells():
+        return ListPersistentShellsOutput(shells=[])
 
     async def failing_handler(context, payload):  # noqa: ARG001
         raise RuntimeError("managed failure")
 
-    register_managed_job_handler("failing-managed", failing_handler)
-    failed = await start_managed_job("failing-managed", {})
-    for _ in range(50):
-        await asyncio.sleep(0.01)
-        current = (await list_jobs())["jobs"][0]
-        if current["status"] == "failed":
-            break
-    assert current["status"] == "failed"
-    assert current["exit_code"] == 1
-    assert current["error"] == "RuntimeError: managed failure"
-    assert "managed failure" in (await tail_job(failed["job_id"]))["output"]
+    async def oversized_handler(context, payload):  # noqa: ARG001
+        return {"value": "x" * (jobs_ops._MANAGED_STATE_MAX_BYTES + 1)}
+
+    async def oversized_progress_handler(context, payload):  # noqa: ARG001
+        await context.update_progress(
+            value="x" * (jobs_ops._MANAGED_STATE_MAX_BYTES + 1)
+        )
+        return payload
 
     async def idle_handler(context, payload):  # noqa: ARG001
         return payload
 
-    register_managed_job_handler("launch-failure-managed", idle_handler)
+    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    jobs_ops.register_managed_job_handler(
+        "test-managed-failure", failing_handler
+    )
+    failed = await jobs_ops.start_managed_job(
+        session_id, "test-managed-failure", {}
+    )
+    current = failed
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        current = (await jobs_ops.job_list_execute(session_id)).jobs[0]
+        if current.status == "failed":
+            break
+    assert current.status == "failed"
+    assert current.exit_code == 1
+    assert current.error == "RuntimeError: managed failure"
+    assert (
+        "managed failure"
+        in (await jobs_ops.job_tail_execute(session_id, failed.job_id)).output
+    )
+
+    jobs_ops.register_managed_job_handler(
+        "test-managed-oversized-result", oversized_handler
+    )
+    oversized = await jobs_ops.start_managed_job(
+        session_id, "test-managed-oversized-result", {}
+    )
+    oversized_row = oversized
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        rows = await jobs_ops.job_list_execute(session_id)
+        oversized_row = next(
+            row for row in rows.jobs if row.job_id == oversized.job_id
+        )
+        if oversized_row.status == "failed":
+            break
+    assert oversized_row.status == "failed"
+    assert "managed job result exceeds" in str(oversized_row.error)
+
+    jobs_ops.register_managed_job_handler(
+        "test-managed-oversized-progress", oversized_progress_handler
+    )
+    progress_job = await jobs_ops.start_managed_job(
+        session_id, "test-managed-oversized-progress", {}
+    )
+    progress_row = progress_job
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        rows = await jobs_ops.job_list_execute(session_id)
+        progress_row = next(
+            row for row in rows.jobs if row.job_id == progress_job.job_id
+        )
+        if progress_row.status == "failed":
+            break
+    assert progress_row.status == "failed"
+    assert "managed job progress exceeds" in str(progress_row.error)
+
+    jobs_ops.register_managed_job_handler(
+        "test-managed-payload-bound", idle_handler
+    )
+    with pytest.raises(ValueError, match="managed job payload exceeds"):
+        await jobs_ops.start_managed_job(
+            session_id,
+            "test-managed-payload-bound",
+            {"value": "x" * (jobs_ops._MANAGED_STATE_MAX_BYTES + 1)},
+        )
+    jobs_ops.register_managed_job_handler(
+        "test-managed-launch-failure", idle_handler
+    )
+
     def fail_launch(*args, **kwargs):  # noqa: ARG001
         raise RuntimeError("launch failed")
 
-    monkeypatch.setattr(jobs_module, "_launch_managed_job", fail_launch)
+    monkeypatch.setattr(jobs_ops, "_launch_managed_job", fail_launch)
+    before = {
+        row.job_id for row in (await jobs_ops.job_list_execute(session_id)).jobs
+    }
     with pytest.raises(RuntimeError, match="launch failed"):
-        await start_managed_job("launch-failure-managed", {})
-
-    stored = json.loads((state_dir / jobs_module.JOB_STORE_FILE_NAME).read_text(encoding="utf-8"))
-    assert [job["job_id"] for job in stored["jobs"]] == [failed["job_id"]]
-    assert [path.name for path in (state_dir / "jobs").glob("*-attempt-1.log")] == [
-        f"{failed['job_id']}-attempt-1.log"
-    ]
-
-
-@pytest.mark.asyncio
-async def test_job_list_marks_missing_running_session_lost(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
-    get_settings.cache_clear()
-
-    async def fake_start_shell(cwd=".", name=None, command=None):  # noqa: ARG001
-        return {"session_id": "gone", "cwd": cwd, "command": command, "backend": "fake"}
-
-    async def no_shells():
-        return {"sessions": []}
-
-    monkeypatch.setattr(jobs_module, "start_shell", fake_start_shell)
-    monkeypatch.setattr(jobs_module, "list_shells", no_shells)
-
-    job = await start_job("printf done")
-    assert job["status"] == "running"
-
-    listed = await list_jobs()
-    assert listed["counts"] == {"lost": 1}
-    assert listed["jobs"][0]["status"] == "lost"
-    assert listed["jobs"][0]["exit_code"] is None
-
-
-@pytest.mark.asyncio
-async def test_completed_job_retains_output_and_exit_code(tmp_path, monkeypatch):
-    if os.name != "nt" and not shutil.which("tmux"):
-        pytest.skip("tmux is required for the Unix persistent shell backend")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
-    get_settings.cache_clear()
-
-    job = await start_job("printf 'completed-output\n'; exit 3")
-    row = job
-    for _ in range(50):
-        await asyncio.sleep(0.1)
-        row = (await list_jobs())["jobs"][0]
-        if row["status"] != "running":
-            break
-
-    assert row["status"] == "failed"
-    assert row["exit_code"] == 3
-    tail = await tail_job(job["job_id"])
-    assert tail["output"] == "completed-output\n"
-    assert tail["message"] == "job completed with exit code 3"
-
-
-@pytest.mark.asyncio
-async def test_job_log_is_bounded_and_reports_truncation(tmp_path, monkeypatch):
-    if os.name != "nt" and not shutil.which("tmux"):
-        pytest.skip("tmux is required for the Unix persistent shell backend")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_JOB_LOG_BYTES", "32")
-    get_settings.cache_clear()
-
-    job = await start_job("python3 -c \"print('x' * 200)\"")
-    row = job
-    for _ in range(50):
-        await asyncio.sleep(0.1)
-        row = (await list_jobs())["jobs"][0]
-        if row["status"] != "running":
-            break
-
-    assert row["status"] == "succeeded"
-    assert row["log_truncated"] is True
-    tail = await tail_job(job["job_id"])
-    assert len(tail["output"].encode()) <= 32
-
-
-def test_concurrent_job_starts_preserve_every_record(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp"))
-    get_settings.cache_clear()
-
-    sessions: set[str] = set()
-    sessions_lock = threading.Lock()
-
-    async def fake_start_shell(cwd=".", name=None, command=None):
-        session_id = str(name)
-        with sessions_lock:
-            sessions.add(session_id)
-        return {
-            "session_id": session_id,
-            "cwd": cwd,
-            "command": command,
-            "backend": "fake",
-        }
-
-    async def fake_list_shells():
-        with sessions_lock:
-            current = sorted(sessions)
-        return {"sessions": [{"session_id": item} for item in current]}
-
-    original_load = jobs_module._load_store
-
-    def slow_load():
-        store = original_load()
-        time.sleep(0.02)
-        return store
-
-    monkeypatch.setattr(jobs_module, "start_shell", fake_start_shell)
-    monkeypatch.setattr(jobs_module, "list_shells", fake_list_shells)
-    monkeypatch.setattr(jobs_module, "_load_store", slow_load)
-
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(asyncio.run, start_job(f"printf {index}")) for index in range(8)]
-        started = [future.result() for future in futures]
-
-    listed = asyncio.run(list_jobs())
-    assert {job["job_id"] for job in listed["jobs"]} == {job["job_id"] for job in started}
-    assert listed["counts"] == {"running": 8}
-
-
-def test_finished_job_history_and_attempt_files_are_bounded(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".local-shell-mcp"
-    runtime_dir = state_dir / "jobs"
-    runtime_dir.mkdir(parents=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_JOBS", "2")
-    get_settings.cache_clear()
-
-    rows = []
-    for index in range(4):
-        job_id = f"job_{index}"
-        rows.append(
-            {
-                "job_id": job_id,
-                "name": job_id,
-                "status": "succeeded",
-                "command": "true",
-                "cwd": ".",
-                "created_at": float(index),
-                "updated_at": float(index),
-                "attempts": 1,
-            }
+        await jobs_ops.start_managed_job(
+            session_id, "test-managed-launch-failure", {}
         )
-        for suffix in ("command", "log", "status.json"):
-            (runtime_dir / f"{job_id}-attempt-1.{suffix}").write_text("data", encoding="utf-8")
-    (state_dir / "jobs.json").write_text(
-        json.dumps({"version": jobs_module.JOB_STORE_VERSION, "jobs": rows}),
-        encoding="utf-8",
-    )
-
-    async def no_shells():
-        return {"sessions": []}
-
-    monkeypatch.setattr(jobs_module, "list_shells", no_shells)
-    listed = asyncio.run(list_jobs())
-
-    assert [job["job_id"] for job in listed["jobs"]] == ["job_3", "job_2"]
-    assert not list(runtime_dir.glob("job_0-attempt-*"))
-    assert not list(runtime_dir.glob("job_1-attempt-*"))
-    assert list(runtime_dir.glob("job_2-attempt-*"))
-    assert list(runtime_dir.glob("job_3-attempt-*"))
-
-
-@pytest.mark.asyncio
-async def test_stop_failure_restores_retryable_job_state(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    get_settings.cache_clear()
-    active = {"session-a"}
-
-    async def fake_start_shell(cwd=".", name=None, command=None):
-        return {"session_id": "session-a", "cwd": cwd, "command": command, "backend": "fake"}
-
-    async def fake_list_shells():
-        return {"sessions": [{"session_id": item} for item in active]}
-
-    async def failing_kill_shell(session_id):
-        assert session_id == "session-a"
-        raise RuntimeError("kill failed")
-
-    monkeypatch.setattr(jobs_module, "start_shell", fake_start_shell)
-    monkeypatch.setattr(jobs_module, "list_shells", fake_list_shells)
-    monkeypatch.setattr(jobs_module, "kill_shell", failing_kill_shell)
-
-    job = await start_job("sleep 10")
-    with pytest.raises(RuntimeError, match="kill failed"):
-        await stop_job(job["job_id"])
-
-    listed = await list_jobs()
-    assert listed["jobs"][0]["status"] == "running"
-    assert "stop failed" in listed["jobs"][0]["error"]
-
-
-@pytest.mark.asyncio
-async def test_job_list_recovers_interrupted_stopping_and_retrying_states(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    runtime_dir = state_dir / "jobs"
-    runtime_dir.mkdir(parents=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    now = time.time()
-    rows = [
-        {
-            "job_id": "job_stop_gone",
-            "name": "stop-gone",
-            "status": "stopping",
-            "command": "sleep 10",
-            "cwd": ".",
-            "session_id": "gone-session",
-            "created_at": now,
-            "updated_at": now,
-            "attempts": 1,
-        },
-        {
-            "job_id": "job_stop_live",
-            "name": "stop-live",
-            "status": "stopping",
-            "command": "sleep 10",
-            "cwd": ".",
-            "session_id": "live-session",
-            "created_at": now - 1,
-            "updated_at": now,
-            "attempts": 1,
-        },
-        {
-            "job_id": "job_retry_gone",
-            "name": "retry-gone",
-            "status": "retrying",
-            "command": "true",
-            "cwd": ".",
-            "session_id": "old-session",
-            "created_at": now - 2,
-            "updated_at": now,
-            "attempts": 1,
-            "pending_attempt": 2,
-            "pending_session_name": "missing-retry-session",
-        },
-        {
-            "job_id": "job_retry_live",
-            "name": "retry-live",
-            "status": "retrying",
-            "command": "true",
-            "cwd": ".",
-            "session_id": "old-session-2",
-            "created_at": now - 3,
-            "updated_at": now,
-            "attempts": 1,
-            "pending_attempt": 2,
-            "pending_session_name": "live-retry-session",
-            "pending_command_path": str(runtime_dir / "retry.command"),
-            "pending_log_path": str(runtime_dir / "retry.log"),
-            "pending_status_path": str(runtime_dir / "retry.status.json"),
-        },
-    ]
-    (state_dir / jobs_module.JOB_STORE_FILE_NAME).write_text(
-        json.dumps({"version": jobs_module.JOB_STORE_VERSION, "jobs": rows}),
-        encoding="utf-8",
-    )
-
-    async def active_shells():
-        return {
-            "sessions": [
-                {"session_id": "live-session"},
-                {"session_id": "live-retry-session"},
-            ]
-        }
-
-    monkeypatch.setattr(jobs_module, "list_shells", active_shells)
-
-    listed = await list_jobs()
-    recovered = {job["job_id"]: job for job in listed["jobs"]}
-
-    assert recovered["job_stop_gone"]["status"] == "stopped"
-    assert recovered["job_stop_live"]["status"] == "running"
-    assert "interrupted stop" in recovered["job_stop_live"]["error"]
-    assert recovered["job_retry_gone"]["status"] == "failed"
-    assert "retry was interrupted" in recovered["job_retry_gone"]["error"]
-    assert recovered["job_retry_live"]["status"] == "running"
-    assert recovered["job_retry_live"]["session_id"] == "live-retry-session"
-    assert recovered["job_retry_live"]["attempts"] == 2
-
-
-@pytest.mark.asyncio
-async def test_job_store_migrates_v1_without_losing_history(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    state_dir.mkdir()
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    legacy_jobs = [
-        {
-            "job_id": "job_legacy_done",
-            "name": "legacy-done",
-            "status": "exited",
-            "command": "true",
-            "cwd": ".",
-            "session_id": "legacy-done-session",
-            "created_at": 1.0,
-            "updated_at": 2.0,
-            "attempts": 1,
-        },
-        {
-            "job_id": "job_legacy_live",
-            "name": "legacy-live",
-            "status": "running",
-            "command": "sleep 10",
-            "cwd": ".",
-            "session_id": "legacy-live-session",
-            "created_at": 3.0,
-            "updated_at": 3.0,
-            "attempts": 1,
-        },
-    ]
-    store_path = state_dir / jobs_module.JOB_STORE_FILE_NAME
-    store_path.write_text(json.dumps({"version": 1, "jobs": legacy_jobs}), encoding="utf-8")
-
-    async def legacy_shells():
-        return {"sessions": [{"session_id": "legacy-live-session"}]}
-
-    monkeypatch.setattr(jobs_module, "list_shells", legacy_shells)
-    listed = await list_jobs()
-
-    assert {job["job_id"] for job in listed["jobs"]} == {
-        "job_legacy_done",
-        "job_legacy_live",
+    after = {
+        row.job_id for row in (await jobs_ops.job_list_execute(session_id)).jobs
     }
-    assert listed["counts"] == {"exited": 1, "running": 1}
-    for path in (store_path, state_dir / jobs_module.JOB_STORE_BACKUP_FILE_NAME):
-        migrated = json.loads(path.read_text(encoding="utf-8"))
-        assert migrated["version"] == jobs_module.JOB_STORE_VERSION
-        assert {job["job_id"] for job in migrated["jobs"]} == {
-            "job_legacy_done",
-            "job_legacy_live",
-        }
-
-
-@pytest.mark.asyncio
-async def test_job_start_does_not_launch_shell_when_store_is_invalid(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    state_dir.mkdir()
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    (state_dir / jobs_module.JOB_STORE_FILE_NAME).write_text(
-        json.dumps({"version": 99, "jobs": []}), encoding="utf-8"
-    )
-    started = False
-
-    async def fake_start_shell(cwd=".", name=None, command=None):  # noqa: ARG001
-        nonlocal started
-        started = True
-        return {"session_id": str(name), "backend": "fake"}
-
-    monkeypatch.setattr(jobs_module, "start_shell", fake_start_shell)
-
-    with pytest.raises(RuntimeError, match="refusing to reset"):
-        await start_job("echo must-not-run")
-
-    assert started is False
-    runtime_dir = state_dir / "jobs"
-    assert not runtime_dir.exists() or not list(runtime_dir.iterdir())
-
-
-@pytest.mark.asyncio
-async def test_job_start_records_shell_launch_failure(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-
-    async def failing_start_shell(cwd=".", name=None, command=None):  # noqa: ARG001
-        raise RuntimeError("shell launch failed")
-
-    monkeypatch.setattr(jobs_module, "start_shell", failing_start_shell)
-
-    with pytest.raises(RuntimeError, match="shell launch failed"):
-        await start_job("echo never-ran")
-
-    stored = json.loads((state_dir / jobs_module.JOB_STORE_FILE_NAME).read_text(encoding="utf-8"))
-    assert len(stored["jobs"]) == 1
-    job = stored["jobs"][0]
-    assert job["status"] == "failed"
-    assert job["completed_at"] is not None
-    assert job["error"] == "start failed: RuntimeError: shell launch failed"
-    assert "operation_id" not in job
-    runtime_dir = state_dir / "jobs"
-    assert not list(runtime_dir.iterdir())
-
-
-@pytest.mark.asyncio
-async def test_job_start_kills_shell_when_running_state_cannot_be_committed(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    killed: list[str] = []
-
-    async def corrupt_store_after_start(cwd=".", name=None, command=None):  # noqa: ARG001
-        invalid = json.dumps({"version": 99, "jobs": []})
-        for path in (
-            state_dir / jobs_module.JOB_STORE_FILE_NAME,
-            state_dir / jobs_module.JOB_STORE_BACKUP_FILE_NAME,
-        ):
-            path.write_text(invalid, encoding="utf-8")
-        return {"session_id": str(name), "backend": "fake"}
-
-    async def fake_kill_shell(session_id):
-        killed.append(session_id)
-        return {"session_id": session_id, "killed": True, "stderr": ""}
-
-    monkeypatch.setattr(jobs_module, "start_shell", corrupt_store_after_start)
-    monkeypatch.setattr(jobs_module, "kill_shell", fake_kill_shell)
-
-    with pytest.raises(RuntimeError, match="refusing to reset"):
-        await start_job("echo started")
-
-    assert len(killed) == 1
-    runtime_dir = state_dir / "jobs"
-    assert not list(runtime_dir.iterdir())
-
-
-@pytest.mark.asyncio
-async def test_job_start_kills_shell_if_reserved_job_changes(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    killed: list[str] = []
-
-    async def change_reserved_job(cwd=".", name=None, command=None):  # noqa: ARG001
-        with jobs_module._store_transaction() as store:
-            store["jobs"][0]["status"] = "stopped"
-        return {"session_id": str(name), "backend": "fake"}
-
-    async def fake_kill_shell(session_id):
-        killed.append(session_id)
-        return {"session_id": session_id, "killed": True, "stderr": ""}
-
-    monkeypatch.setattr(jobs_module, "start_shell", change_reserved_job)
-    monkeypatch.setattr(jobs_module, "kill_shell", fake_kill_shell)
-
-    with pytest.raises(RuntimeError, match="job changed while starting"):
-        await start_job("echo changed")
-
-    assert len(killed) == 1
-    runtime_dir = state_dir / "jobs"
-    assert not list(runtime_dir.iterdir())
-
-
-@pytest.mark.asyncio
-async def test_job_list_recovers_interrupted_start(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    state_dir.mkdir()
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    now = time.time()
-    rows = [
-        {
-            "job_id": "job_start_live",
-            "name": "start-live",
-            "status": "starting",
-            "command": "sleep 10",
-            "cwd": ".",
-            "session_id": "start-live-session",
-            "created_at": now,
-            "updated_at": now,
-            "attempts": 1,
-            "operation_id": "start_stale_live",
-            "operation_kind": "start",
-        },
-        {
-            "job_id": "job_start_missing",
-            "name": "start-missing",
-            "status": "starting",
-            "command": "sleep 10",
-            "cwd": ".",
-            "session_id": "start-missing-session",
-            "created_at": now - 1,
-            "updated_at": now,
-            "attempts": 1,
-            "operation_id": "start_stale_missing",
-            "operation_kind": "start",
-        },
-    ]
-    (state_dir / jobs_module.JOB_STORE_FILE_NAME).write_text(
-        json.dumps({"version": jobs_module.JOB_STORE_VERSION, "jobs": rows}),
-        encoding="utf-8",
-    )
-
-    async def active_shells():
-        return {"sessions": [{"session_id": "start-live-session"}]}
-
-    monkeypatch.setattr(jobs_module, "list_shells", active_shells)
-    listed = await list_jobs()
-    recovered = {job["job_id"]: job for job in listed["jobs"]}
-
-    assert recovered["job_start_live"]["status"] == "running"
-    assert "recovered job start" in recovered["job_start_live"]["error"]
-    assert recovered["job_start_missing"]["status"] == "failed"
-    assert "start was interrupted" in recovered["job_start_missing"]["error"]
-    stored = json.loads((state_dir / jobs_module.JOB_STORE_FILE_NAME).read_text(encoding="utf-8"))
-    assert all("operation_id" not in job for job in stored["jobs"])
-
-
-@pytest.mark.asyncio
-async def test_job_store_recovers_from_atomic_backup(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    state_dir.mkdir(parents=True)
-    row = {
-        "job_id": "job_saved",
-        "name": "saved",
-        "status": "succeeded",
-        "command": "true",
-        "cwd": ".",
-        "created_at": 1.0,
-        "updated_at": 2.0,
-        "completed_at": 2.0,
-        "exit_code": 0,
-        "attempts": 1,
+    assert after == before
+    runtime_files = {
+        path.name
+        for path in jobs_ops._job_runtime_dir().glob("*-attempt-1.log")
     }
-    jobs_module._save_store({"version": jobs_module.JOB_STORE_VERSION, "jobs": [row]})
-    store_path = state_dir / jobs_module.JOB_STORE_FILE_NAME
-    backup_path = state_dir / jobs_module.JOB_STORE_BACKUP_FILE_NAME
-    assert backup_path.is_file()
-    store_path.write_text("{broken", encoding="utf-8")
-
-    async def no_shells():
-        return {"sessions": []}
-
-    monkeypatch.setattr(jobs_module, "list_shells", no_shells)
-    listed = await list_jobs()
-
-    assert [job["job_id"] for job in listed["jobs"]] == ["job_saved"]
-    assert json.loads(store_path.read_text(encoding="utf-8"))["jobs"][0]["job_id"] == "job_saved"
+    assert runtime_files == {
+        f"{failed.job_id}-attempt-1.log",
+        f"{oversized.job_id}-attempt-1.log",
+        f"{progress_job.job_id}-attempt-1.log",
+    }
+    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
-async def test_job_store_refuses_to_overwrite_unrecoverable_corruption(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    state_dir.mkdir()
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    store_path = state_dir / jobs_module.JOB_STORE_FILE_NAME
-    store_path.write_text("{broken", encoding="utf-8")
-
-    async def no_shells():
-        return {"sessions": []}
-
-    monkeypatch.setattr(jobs_module, "list_shells", no_shells)
-
-    with pytest.raises(RuntimeError, match="refusing to reset"):
-        await list_jobs()
-    assert store_path.read_text(encoding="utf-8") == "{broken"
-    assert not (state_dir / jobs_module.JOB_STORE_BACKUP_FILE_NAME).exists()
-
-
-@pytest.mark.asyncio
-async def test_job_list_does_not_interrupt_active_start(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    get_settings.cache_clear()
-    active: set[str] = set()
-    start_entered = asyncio.Event()
-    allow_start = asyncio.Event()
-
-    async def fake_start_shell(cwd=".", name=None, command=None):
-        start_entered.set()
-        await allow_start.wait()
-        active.add(str(name))
-        return {
-            "session_id": str(name),
-            "cwd": cwd,
-            "command": command,
-            "backend": "fake",
-        }
-
-    async def fake_list_shells():
-        return {"sessions": [{"session_id": item} for item in sorted(active)]}
-
-    monkeypatch.setattr(jobs_module, "start_shell", fake_start_shell)
-    monkeypatch.setattr(jobs_module, "list_shells", fake_list_shells)
-
-    start_task = asyncio.create_task(start_job("sleep 10"))
-    await start_entered.wait()
-
-    during = await list_jobs()
-    assert during["jobs"][0]["status"] == "starting"
-
-    allow_start.set()
-    started = await start_task
-    assert started["status"] == "running"
-    assert (await list_jobs())["jobs"][0]["status"] == "running"
-
-
-@pytest.mark.asyncio
-async def test_job_list_does_not_interrupt_active_stop(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    get_settings.cache_clear()
-    active = {"session-stop"}
-    kill_entered = asyncio.Event()
-    allow_kill = asyncio.Event()
-
-    async def fake_start_shell(cwd=".", name=None, command=None):
-        return {
-            "session_id": "session-stop",
-            "cwd": cwd,
-            "command": command,
-            "backend": "fake",
-        }
-
-    async def fake_list_shells():
-        return {"sessions": [{"session_id": item} for item in sorted(active)]}
-
-    async def fake_kill_shell(session_id):
-        assert session_id == "session-stop"
-        kill_entered.set()
-        await allow_kill.wait()
-        active.discard(session_id)
-        return {"session_id": session_id, "killed": True, "stderr": ""}
-
-    monkeypatch.setattr(jobs_module, "start_shell", fake_start_shell)
-    monkeypatch.setattr(jobs_module, "list_shells", fake_list_shells)
-    monkeypatch.setattr(jobs_module, "kill_shell", fake_kill_shell)
-
-    job = await start_job("sleep 10")
-    stop_task = asyncio.create_task(stop_job(job["job_id"]))
-    await kill_entered.wait()
-
-    during = await list_jobs()
-    assert during["jobs"][0]["status"] == "stopping"
-
-    allow_kill.set()
-    stopped = await stop_task
-    assert stopped["job"]["status"] == "stopped"
-    assert (await list_jobs())["jobs"][0]["status"] == "stopped"
-
-
-@pytest.mark.asyncio
-async def test_job_list_does_not_interrupt_active_retry(tmp_path, monkeypatch):
-    state_dir = tmp_path / ".state"
-    state_dir.mkdir()
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    get_settings.cache_clear()
-    now = time.time()
-    (state_dir / jobs_module.JOB_STORE_FILE_NAME).write_text(
-        json.dumps(
-            {
-                "version": jobs_module.JOB_STORE_VERSION,
-                "jobs": [
-                    {
-                        "job_id": "job-retry-race",
-                        "name": "retry-race",
-                        "status": "failed",
-                        "command": "echo retry",
-                        "cwd": ".",
-                        "session_id": "old-session",
-                        "created_at": now,
-                        "updated_at": now,
-                        "completed_at": now,
-                        "exit_code": 1,
-                        "attempts": 1,
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
+async def test_remote_job_list_keeps_controller_jobs_when_worker_is_offline(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    store = get_tool_session_store()
+    remote_session = store.create_session(
+        target="remote",
+        workdir="/remote/project",
+        machine="worker-a",
+        worker_session_id="WORKER01",
     )
-    active: set[str] = set()
-    start_entered = asyncio.Event()
-    allow_start = asyncio.Event()
+    release = asyncio.Event()
 
-    async def fake_list_shells():
-        return {"sessions": [{"session_id": item} for item in sorted(active)]}
+    async def handler(context, payload):
+        await context.update_progress(phase="waiting")
+        await release.wait()
+        return payload
 
-    async def fake_start_shell(cwd=".", name=None, command=None):
-        start_entered.set()
-        await allow_start.wait()
-        active.add(str(name))
-        return {
-            "session_id": str(name),
-            "cwd": cwd,
-            "command": command,
-            "backend": "fake",
-        }
+    async def offline(*args, **kwargs):  # noqa: ARG001
+        raise RuntimeError("worker offline")
 
-    monkeypatch.setattr(jobs_module, "list_shells", fake_list_shells)
-    monkeypatch.setattr(jobs_module, "start_shell", fake_start_shell)
+    jobs_ops.register_managed_job_handler("test-offline-managed", handler)
+    managed = await jobs_ops.start_managed_job(
+        remote_session.session_id, "test-offline-managed", {"value": 1}
+    )
+    monkeypatch.setattr(job_tool_ops, "call_remote_session_tool", offline)
 
-    retry_task = asyncio.create_task(retry_job("job-retry-race"))
-    await start_entered.wait()
+    listed = await job_tool_ops.job_execute(remote_session.session_id)
+    assert [row.job_id for row in listed.jobs] == [managed.job_id]
+    assert listed.counts == {"running": 1}
+    assert listed.message is not None and "worker offline" in listed.message
 
-    during = await list_jobs()
-    assert during["jobs"][0]["status"] == "retrying"
+    polled = await job_tool_ops.job_execute(
+        remote_session.session_id, poll=[managed.job_id]
+    )
+    assert polled.outputs[0].job.job_id == managed.job_id
+    cancelled = await job_tool_ops.job_execute(
+        remote_session.session_id, cancel=[managed.job_id]
+    )
+    assert cancelled.cancelled[0].job.status == "stopped"
+    jobs_ops.reset_managed_jobs_for_tests()
 
-    allow_start.set()
-    retried = await retry_task
-    assert retried["status"] == "running"
-    assert retried["attempts"] == 2
+
+@pytest.mark.asyncio
+async def test_managed_actions_do_not_query_shell_inventory(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    session_id = _create_session()
+    release = asyncio.Event()
+
+    async def handler(context, payload):
+        await context.update_progress(phase="waiting")
+        await release.wait()
+        return payload
+
+    jobs_ops.register_managed_job_handler("test-no-shell-inventory", handler)
+    started = await jobs_ops.start_managed_job(
+        session_id,
+        "test-no-shell-inventory",
+        {"value": 9},
+    )
+
+    async def fail_inventory():
+        raise AssertionError("managed action queried shell inventory")
+
+    monkeypatch.setattr(
+        jobs_ops, "list_persistent_shells_execute", fail_inventory
+    )
+
+    tailed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+    for _ in range(100):
+        if tailed.job.progress == {"phase": "waiting"}:
+            break
+        await asyncio.sleep(0.01)
+        tailed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+    assert tailed.job.progress == {"phase": "waiting"}
+
+    stopped = await jobs_ops.job_stop_execute(session_id, started.job_id)
+    assert stopped.job.status == "stopped"
+
+    retried = await jobs_ops.job_retry_execute(session_id, started.job_id)
+    assert retried.status == "running"
+    release.set()
+
+    completed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+    for _ in range(100):
+        if completed.job.status == "succeeded":
+            break
+        await asyncio.sleep(0.01)
+        completed = await jobs_ops.job_tail_execute(session_id, started.job_id)
+    assert completed.job.status == "succeeded"
+    assert completed.job.result == {"value": 9}
+    jobs_ops.reset_managed_jobs_for_tests()

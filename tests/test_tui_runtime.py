@@ -2,93 +2,215 @@ from __future__ import annotations
 
 import gzip
 import os
-import stat
-from concurrent.futures import ThreadPoolExecutor
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from local_shell_mcp import tui_runtime
+import local_shell_mcp.ui.runtime as runtime
+from local_shell_mcp.config.settings import Settings
 
-PAYLOAD_NAME = "local-shell-mcp-tui.exe.gz" if os.name == "nt" else "local-shell-mcp-tui.gz"
+
+def _settings(tmp_path: Path, **overrides: object) -> Settings:
+    return Settings.model_validate(
+        {
+            "workspace_root": tmp_path / "workspace",
+            "state_dir": tmp_path / "state",
+            "auth_mode": "none",
+            **overrides,
+        }
+    )
 
 
-def test_materialize_embedded_tui(tmp_path: Path) -> None:
-    payload = tmp_path / PAYLOAD_NAME
-    with gzip.open(payload, "wb") as archive:
-        archive.write(b"runtime")
+def test_runtime_roots_match_package_and_source_tree() -> None:
+    package_root = Path(runtime.__file__).resolve().parents[1]
 
-    state_dir = tmp_path / "state"
-    target = tui_runtime.materialize_embedded_tui(state_dir, payload=payload)
+    assert package_root == runtime._PACKAGE_ROOT
+    assert package_root.parents[1] == runtime._SOURCE_TREE_ROOT
 
-    assert target is not None
-    assert target.read_bytes() == b"runtime"
+
+def test_runtime_discovery_uses_explicit_package_and_source_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    package_root = tmp_path / "src" / "local_shell_mcp"
+    source_root = tmp_path
+    payload = package_root / "ui_runtime" / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
+    source = source_root / "ui-opentui" / "src" / "tui.tsx"
+    sidecar = source_root / "ui-opentui" / "dist" / runtime.TUI_EXECUTABLE_NAME
+    payload.parent.mkdir(parents=True)
+    source.parent.mkdir(parents=True)
+    payload.write_bytes(b"payload")
+    source.write_text("export {}", encoding="utf-8")
+    monkeypatch.setattr(runtime, "_PACKAGE_ROOT", package_root)
+    monkeypatch.setattr(runtime, "_SOURCE_TREE_ROOT", source_root)
+    monkeypatch.setattr(runtime.shutil, "which", lambda _name: None)
+
+    assert runtime.embedded_tui_payload() == payload
+    assert runtime.tui_source_path() == source
+    assert sidecar in runtime._tui_sidecar_candidates()
+
+
+def test_materialize_embedded_tui_is_atomic_executable_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    payload = tmp_path / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
+    expected = b"#!/bin/sh\necho tui\n"
+    with gzip.open(payload, "wb") as handle:
+        handle.write(expected)
+
+    first = runtime.materialize_embedded_tui(
+        tmp_path / "state", payload=payload
+    )
+    second = runtime.materialize_embedded_tui(
+        tmp_path / "state", payload=payload
+    )
+
+    assert first == second
+    assert first is not None
+    assert first.read_bytes() == expected
     if os.name != "nt":
-        assert os.access(target, os.X_OK)
-        assert target.stat().st_mode & (stat.S_IXGRP | stat.S_IXOTH) == 0
-    assert tui_runtime.materialize_embedded_tui(state_dir, payload=payload) == target
+        assert first.stat().st_mode & 0o100
+    assert not list(first.parent.glob("*.tmp"))
 
 
-def test_materialize_embedded_tui_returns_none_without_payload(tmp_path: Path) -> None:
-    assert tui_runtime.materialize_embedded_tui(
-        tmp_path / "state", payload=tmp_path / "missing.gz"
-    ) is None
+def test_materialize_embedded_tui_rejects_empty_payload(tmp_path: Path) -> None:
+    payload = tmp_path / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
+    with gzip.open(payload, "wb"):
+        pass
+
+    with pytest.raises(ValueError, match="empty"):
+        runtime.materialize_embedded_tui(tmp_path / "state", payload=payload)
 
 
-def test_materialize_embedded_tui_is_concurrency_safe(tmp_path: Path) -> None:
-    payload = tmp_path / PAYLOAD_NAME
-    with gzip.open(payload, "wb") as archive:
-        archive.write(b"runtime" * 1024)
-
-    state_dir = tmp_path / "state"
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        targets = list(
-            executor.map(
-                lambda _: tui_runtime.materialize_embedded_tui(state_dir, payload=payload),
-                range(16),
-            )
-        )
-
-    assert targets[0] is not None
-    assert all(target == targets[0] for target in targets)
-    assert targets[0].read_bytes() == b"runtime" * 1024
-    assert not list(targets[0].parent.glob("*.tmp"))
+def test_split_tui_command_preserves_windows_quoted_path() -> None:
+    assert runtime.split_tui_command(
+        '"C:\\Program Files\\LSM\\local-shell-mcp-tui.exe" --flag',
+        windows=True,
+    ) == ["C:\\Program Files\\LSM\\local-shell-mcp-tui.exe", "--flag"]
+    with pytest.raises(ValueError, match="empty"):
+        runtime.split_tui_command("   ")
 
 
-def test_materialize_embedded_tui_accepts_completed_windows_race(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_resolve_tui_command_prefers_configured_command(tmp_path: Path) -> None:
+    settings = _settings(
+        tmp_path,
+        ui_tui_command='"/opt/LSM TUI" --compact',
+    )
+
+    assert runtime.resolve_tui_command(settings) == [
+        "/opt/LSM TUI",
+        "--compact",
+    ]
+
+
+def test_resolve_tui_command_finds_sidecar_on_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    payload = tmp_path / PAYLOAD_NAME
-    with gzip.open(payload, "wb") as archive:
-        archive.write(b"runtime")
+    sidecar = tmp_path / runtime.TUI_EXECUTABLE_NAME
+    sidecar.write_bytes(b"sidecar")
+    monkeypatch.setattr(
+        runtime.sys, "executable", str(tmp_path / "missing-python")
+    )
+    monkeypatch.setattr(runtime.sys, "argv", [str(tmp_path / "missing-main")])
+    monkeypatch.setattr(runtime, "tui_source_path", lambda: None)
+    monkeypatch.setattr(runtime, "embedded_tui_payload", lambda: None)
+    monkeypatch.setattr(
+        runtime.shutil,
+        "which",
+        lambda name: (
+            str(sidecar) if name == runtime.TUI_EXECUTABLE_NAME else None
+        ),
+    )
 
-    real_replace = tui_runtime.os.replace
-
-    def replace_then_report_windows_race(source: Path, target: Path) -> None:
-        real_replace(source, target)
-        raise PermissionError("simulated Windows replace race")
-
-    monkeypatch.setattr(tui_runtime.os, "replace", replace_then_report_windows_race)
-    target = tui_runtime.materialize_embedded_tui(tmp_path / "state", payload=payload)
-
-    assert target is not None
-    assert target.read_bytes() == b"runtime"
-    assert not list(target.parent.glob("*.tmp"))
+    assert runtime.resolve_tui_command(_settings(tmp_path)) == [str(sidecar)]
+    assert runtime.tui_runtime_available(_settings(tmp_path)) is True
 
 
-def test_materialize_embedded_tui_propagates_replace_failure_without_winner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_resolve_tui_command_uses_bun_source_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    payload = tmp_path / PAYLOAD_NAME
-    with gzip.open(payload, "wb") as archive:
-        archive.write(b"runtime")
+    source = tmp_path / "tui.tsx"
+    source.write_text("export {}", encoding="utf-8")
 
-    def fail_replace(_source: Path, _target: Path) -> None:
-        raise PermissionError("simulated access failure")
+    monkeypatch.setattr(runtime, "tui_source_path", lambda: source)
+    monkeypatch.setattr(runtime, "_tui_sidecar_candidates", lambda: ())
+    monkeypatch.setattr(
+        runtime, "materialize_embedded_tui", lambda _state: None
+    )
+    monkeypatch.setattr(
+        runtime.shutil,
+        "which",
+        lambda name: "/usr/bin/bun" if name == "bun" else None,
+    )
+    monkeypatch.setattr(runtime.sys, "executable", str(tmp_path / "python"))
+    monkeypatch.setattr(
+        runtime.sys, "argv", [str(tmp_path / "local-shell-mcp")]
+    )
 
-    monkeypatch.setattr(tui_runtime.os, "replace", fail_replace)
-    with pytest.raises(PermissionError, match="simulated access failure"):
-        tui_runtime.materialize_embedded_tui(tmp_path / "state", payload=payload)
+    assert runtime.resolve_tui_command(_settings(tmp_path)) == [
+        "/usr/bin/bun",
+        str(source),
+    ]
 
-    target_dir = tmp_path / "state" / "ui-runtime" / tui_runtime.__version__
-    assert not list(target_dir.glob("*.tmp"))
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://example.com/api/ui",
+        "http://user@localhost/api/ui",
+        "http://localhost/api/ui?token=secret",
+        "http://localhost/api/ui#fragment",
+        "http://localhost/wrong",
+    ],
+)
+def test_validate_tui_api_base_rejects_non_loopback_or_ambiguous_urls(
+    value: str,
+) -> None:
+    with pytest.raises(ValueError, match="Native TUI --api-base"):
+        runtime.validate_tui_api_base(value)
+
+
+def test_validate_tui_api_base_accepts_loopback_variants() -> None:
+    assert (
+        runtime.validate_tui_api_base("http://127.0.0.1:8765/api/ui/")
+        == "http://127.0.0.1:8765/api/ui"
+    )
+    assert (
+        runtime.validate_tui_api_base("https://[::1]:9443/api/ui")
+        == "https://[::1]:9443/api/ui"
+    )
+
+
+def test_run_tui_keeps_token_out_of_argv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[list[str], dict[str, str]]] = []
+    monkeypatch.setattr(
+        runtime, "resolve_tui_command", lambda _settings: ["tui", "--safe"]
+    )
+    monkeypatch.setattr(
+        runtime, "get_or_create_ui_local_token", lambda: "private-token"
+    )
+
+    def fake_run(
+        command: list[str], *, env: dict[str, str], check: bool
+    ) -> subprocess.CompletedProcess[str]:
+        assert check is False
+        calls.append((command, env))
+        return subprocess.CompletedProcess(command, 7)
+
+    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+
+    result = runtime.run_tui(
+        "http://localhost:8765/api/ui", settings=_settings(tmp_path)
+    )
+
+    assert result == 7
+    assert calls[0][0] == ["tui", "--safe"]
+    assert "private-token" not in " ".join(calls[0][0])
+    assert calls[0][1][runtime.UI_LOCAL_TOKEN_ENV] == "private-token"
+    assert calls[0][1]["LOCAL_SHELL_MCP_UI_MODE"] == "tui"

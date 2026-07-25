@@ -1,133 +1,148 @@
 # Quickstart
 
-This guide uses Docker Compose as the first runtime and ChatGPT as the first client. These are separate choices: Docker, VS Code extension, binary, Python, and stdio are runtime options; ChatGPT and generic MCP clients are client options. See [runtime choices and deployment model](../guides/deployment.md) for the full map.
+This guide starts `local-shell-mcp` as a local service, exposes it through Cloudflare Tunnel, then connects ChatGPT to the public `/mcp` endpoint.
 
-## Requirements
+The local service path is the recommended default because it works without the Docker image platform restriction and matches normal development workflows. Docker Compose is covered separately in [Docker Compose](docker-compose.md).
 
-- Docker Engine with Compose v2.
-- A public HTTPS endpoint if ChatGPT must connect from the web.
-- A dedicated workspace directory.
-- A long random OAuth admin PIN and JWT secret.
+## Prerequisites
 
-!!! warning
-    The connected model can operate the configured workspace. Run the service in a disposable container or VM and avoid mounting host-control resources.
+You need:
 
-## 1. Clone and configure
+- A Linux host or VM that should run the shell/file/Git operations.
+- `git`, `uv`, `python3`, `tmux`, `ripgrep`, and `cloudflared` available on that host. The source-checkout path in this guide uses host tmux; only Linux standalone release binaries contain the fallback helper.
+- A Cloudflare Tunnel token for the public hostname.
+- A workspace directory that you are willing to let an AI coding agent control.
+- A ChatGPT plan and client mode that can add a custom MCP connector.
+
+## 1. Clone and install dependencies
 
 ```bash
-git clone https://github.com/fwerkor/local-shell-mcp.git
+git clone https://github.com/rijuyuezhu/local-shell-mcp.git
 cd local-shell-mcp
+uv sync --group dev
+```
+
+For a persistent service, keep this checkout in a stable path such as `~/Code/local-shell-mcp`.
+
+## 2. Create `.env`
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Set at least these values:
 
 ```env
-LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
+LOCAL_SHELL_MCP_MODE=mcp
+LOCAL_SHELL_MCP_HOST=127.0.0.1
+LOCAL_SHELL_MCP_PORT=8765
+LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/your/workspace
+LOCAL_SHELL_MCP_STATE_DIR=/path/to/your/workspace/.local-shell-mcp
+LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
 LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
-LOCAL_SHELL_MCP_OAUTH_JWT_SECRET=change-me-64-hex-random-secret
-CLOUDFLARE_TUNNEL_TOKEN=
+LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
+CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 ```
 
-## 2. Start the server
+Notes:
+
+- `LOCAL_SHELL_MCP_BASE_URL` is the public origin only, without `/mcp`.
+- `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` gates the local approval page. Use a long random value.
+- `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false` keeps built-in workspace and command restrictions active.
+- `LOCAL_SHELL_MCP_STATE_DIR` stores audit logs, temporary files, OAuth signing state, private download snapshots/link state, and Agent Bridge public config plus private credentials.
+
+## 3. Start locally for a smoke test
 
 ```bash
-mkdir -p workspaces/default
-docker compose up -d
+set -a
+. ./.env
+set +a
+uv run local-shell-mcp server --mode mcp
 ```
 
-Check status:
+In another terminal:
 
 ```bash
-docker compose ps
-docker compose logs --tail=100 local-shell-mcp
 curl -i http://127.0.0.1:8765/healthz
 ```
 
-A healthy response returns HTTP `200`.
+Stop the foreground process after the health check succeeds.
 
-## 3. Expose HTTPS
+## 4. Start with Cloudflare Tunnel
 
-For Cloudflare Tunnel sidecar:
+The repository includes a helper that starts `local-shell-mcp` with `uv`, then runs `cloudflared` in the same terminal:
 
 ```bash
-docker compose --profile tunnel up -d
+scripts/run-with-cloudflare-tunnel.sh
 ```
 
-In Cloudflare Zero Trust, point the public hostname to:
-
-```text
-http://local-shell-mcp:8765
-```
-
-For Caddy, Nginx, Traefik, Nginx Proxy Manager, or another reverse proxy, forward HTTPS traffic to `127.0.0.1:8765` or the container network address.
-
-## 4. Connect ChatGPT
-
-Use the MCP endpoint:
+The public MCP endpoint should be:
 
 ```text
 https://your-public-host.example.com/mcp
 ```
 
-Follow the [ChatGPT connector guide](chatgpt-connector.md) to finish OAuth and tool approval.
+See [Cloudflare Tunnel](cloudflare-tunnel.md) for the detailed Cloudflare side.
 
-## 5. Confirm tool access safely
+## 5. Install as a user systemd service
 
-Ask the model:
+Create `~/.config/systemd/user/local-shell-mcp.service`:
 
-```text
-Use local-shell-mcp. First call environment_info, then list the workspace root. Do not modify files yet.
+```ini
+[Unit]
+Description=local-shell-mcp
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/YOU/Code/local-shell-mcp
+ExecStart=/usr/bin/env bash scripts/run-with-cloudflare-tunnel.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
 ```
 
-Expected read-only tools:
-
-- `environment_info`
-- `list_files`
-- `tree_view`
-- `read_file`
-
-## 6. Start with a bounded coding task
-
-A good first task:
-
-```text
-Inspect this repository, summarize the project layout, run the existing test suite if one is obvious, and do not change files.
-```
-
-After connectivity is confirmed, give more specific instructions:
-
-```text
-Fix the failing test. Read the relevant files first, make the smallest patch, run the targeted test, then show git diff. Do not commit until I approve.
-```
-
-## Updating
+Then run:
 
 ```bash
-docker compose pull
-docker compose up -d
-curl -i http://127.0.0.1:8765/healthz
+systemctl --user daemon-reload
+systemctl --user enable --now local-shell-mcp.service
+journalctl --user -u local-shell-mcp.service -f -n 200
 ```
 
-If you use the tunnel profile:
+Use `systemctl --user restart local-shell-mcp.service` after changing `.env`.
+
+## 6. Add the ChatGPT connector
+
+Add a custom MCP connector with this URL:
+
+```text
+https://your-public-host.example.com/mcp
+```
+
+Complete the OAuth approval flow with the PIN from `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN`. For the full shell/filesystem/Git tool surface, use a client mode that exposes full MCP tools.
+
+## 7. Try a first prompt
+
+```text
+Use local-shell-mcp. First choose an explicit project workdir, then run session_start with that workdir and summarize the returned session_id, workdir, git status, instruction file paths, and the environment capabilities/policy that affect tool choice. Do not change files yet.
+```
+
+Then try a repository workflow:
+
+```text
+Use local-shell-mcp to inspect this repository, run the tests, and summarize what you found before making any changes.
+```
+
+## 8. Watch audit logs
+
+Default audit log path:
 
 ```bash
-docker compose --profile tunnel pull
-docker compose --profile tunnel up -d
-curl -i http://127.0.0.1:8765/healthz
+tail -F /path/to/your/workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
 ```
 
-## Next pages
-
-| Need | Page |
-|---|---|
-| Understand runtime vs client choices | [Runtime choices and deployment model](../guides/deployment.md) |
-| Run with Docker Compose | [Docker Compose runtime](../installation/docker.md) |
-| Run from VS Code | [VS Code extension runtime](../installation/vscode-extension.md) |
-| Run with a release binary | [Standalone binary runtime](../installation/binary.md) |
-| Run with Python or source checkout | [Python runtimes](../installation/python.md) |
-| Add ChatGPT as a client | [ChatGPT connector](chatgpt-connector.md) |
-| Choose tools and write better prompts | [Usage patterns](../guides/usage-patterns.md) |
-| Attach an HPC, NPU/GPU, or NAT machine | [Remote workers](../guides/remote-workers.md) |
-| Understand every MCP tool | [Tools reference](../reference/tools.md) |
+Audit state retains bounded references/previews and may retain complete sanitized tool inputs or outputs in private content-addressed payload objects. Credential-like fields and text are redacted on a best-effort basis before storage. Treat the whole audit directory as sensitive and do not publish it without review.

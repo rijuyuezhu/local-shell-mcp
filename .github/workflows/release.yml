@@ -1,6 +1,10 @@
 name: Release
 
 on:
+  push:
+    tags:
+      - "v*.*.*"
+
   workflow_dispatch:
     inputs:
       tag:
@@ -20,19 +24,19 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 concurrency:
-  group: release-${{ github.event.inputs.tag }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  DOCKERHUB_IMAGE_NAME: fwerkor/local-shell-mcp
-  GHCR_IMAGE_NAME: ghcr.io/fwerkor/local-shell-mcp
+  IMAGE_NAME: rijuyuezhu/local-shell-mcp
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "22"
-  BUN_VERSION: "1.3.14"
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  PUSH_LATEST: ${{ github.event_name == 'push' || inputs.push_latest }}
+  PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
 
 jobs:
   validate-release:
@@ -40,15 +44,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
-      dockerhub_tags: ${{ steps.docker-tags.outputs.dockerhub_tags }}
-      ghcr_tags: ${{ steps.docker-tags.outputs.ghcr_tags }}
+      docker_tags: ${{ steps.docker-tags.outputs.tags }}
     steps:
       - uses: actions/checkout@v6
 
       - name: Validate tag and read project version
         id: version
         env:
-          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import os
@@ -61,17 +64,6 @@ jobs:
 
           with open("pyproject.toml", "rb") as f:
               version = tomllib.load(f)["project"]["version"]
-
-          init_namespace = {}
-          with open("src/local_shell_mcp/__init__.py", encoding="utf-8") as f:
-              exec(f.read(), init_namespace)
-          package_version = init_namespace["__version__"]
-
-          if package_version != version:
-              raise SystemExit(
-                  f"src/local_shell_mcp/__init__.py declares {package_version!r}, "
-                  f"but pyproject.toml declares {version!r}"
-              )
 
           release_version = tag[1:] if tag.startswith("v") else tag
           if release_version != version:
@@ -86,106 +78,144 @@ jobs:
       - name: Prepare Docker release tags
         id: docker-tags
         env:
-          RELEASE_TAG: ${{ github.event.inputs.tag }}
-          PUSH_LATEST: ${{ github.event.inputs.push_latest }}
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+          PUSH_LATEST: ${{ env.PUSH_LATEST }}
         run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import os
+          tags=("${IMAGE_NAME}:${RELEASE_TAG}")
+          if [[ "${RELEASE_TAG}" == v* ]]; then
+            tags+=("${IMAGE_NAME}:${RELEASE_TAG#v}")
+          fi
+          if [[ "${PUSH_LATEST}" == "true" ]]; then
+            tags+=("${IMAGE_NAME}:latest")
+          fi
 
-          release_tag = os.environ["RELEASE_TAG"]
-          push_latest = os.environ["PUSH_LATEST"] == "true"
-
-          def tags_for(image_name: str) -> list[str]:
-              tags = [f"{image_name}:{release_tag}"]
-              if release_tag.startswith("v"):
-                  tags.append(f"{image_name}:{release_tag[1:]}")
-              if push_latest:
-                  tags.append(f"{image_name}:latest")
-              return tags
-
-          print(f"dockerhub_tags={json.dumps(tags_for(os.environ['DOCKERHUB_IMAGE_NAME']))}")
-          print(f"ghcr_tags={json.dumps(tags_for(os.environ['GHCR_IMAGE_NAME']))}")
-          PY
+          json="$(printf '%s\n' "${tags[@]}" | jq -R . | jq -sc .)"
+          echo "tags=${json}" >> "$GITHUB_OUTPUT"
 
   build-python-package:
-    name: Build Python package (${{ matrix.artifact }})
-    runs-on: ${{ matrix.runner }}
+    name: Build Python package
+    runs-on: ubuntu-latest
     needs: validate-release
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - artifact: linux-x86_64
-            runner: ubuntu-latest
-            build_sdist: true
-          - artifact: linux-aarch64
-            runner: ubuntu-24.04-arm
-            build_sdist: false
-          - artifact: macos-x86_64
-            runner: macos-15-intel
-            build_sdist: false
-          - artifact: macos-aarch64
-            runner: macos-15
-            build_sdist: false
-          - artifact: windows-x86_64
-            runner: windows-latest
-            build_sdist: false
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: astral-sh/setup-uv@v7
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          enable-cache: true
 
-      - name: Build OpenTUI runtime and embedded WebUI
-        working-directory: ui
+      - run: uv sync --locked --group dev
+
+      - name: Build wheel and source distribution
+        run: uv build
+
+      - name: Inspect universal wheel and source distribution
         run: |
-          bun install --frozen-lockfile
-          bun run typecheck
-          bun run build
+          uv run python - <<'PY'
+          from pathlib import Path
 
-      - name: Build platform wheel
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build --wheel
+          from local_shell_mcp.release.platform_wheel import inspect_sdist, inspect_wheel
 
-      - name: Build source distribution
-        if: matrix.build_sdist
-        run: python -m build --sdist
+          wheels = list(Path("dist").glob("*.whl"))
+          sdists = list(Path("dist").glob("*.tar.gz"))
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit("expected exactly one universal wheel and one sdist")
+          inspect_wheel(wheels[0], target=None)
+          inspect_sdist(sdists[0])
+          PY
 
-      - name: Install wheel and smoke test packaged UI
-        if: runner.os != 'Windows'
+      - name: Generate checksums
         shell: bash
         run: |
-          set -euxo pipefail
-          python -m venv /tmp/local-shell-mcp-wheel-venv
-          /tmp/local-shell-mcp-wheel-venv/bin/python -m pip install --upgrade pip
-          /tmp/local-shell-mcp-wheel-venv/bin/python -m pip install dist/*.whl
-          /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp --version
-          /tmp/local-shell-mcp-wheel-venv/bin/python scripts/standalone-ui-smoke.py \
-            --server /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp
-
-      - name: Install wheel and smoke test packaged UI
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          python -m venv $env:TEMP\local-shell-mcp-wheel-venv
-          & $env:TEMP\local-shell-mcp-wheel-venv\Scripts\python.exe -m pip install --upgrade pip
-          & $env:TEMP\local-shell-mcp-wheel-venv\Scripts\python.exe -m pip install (Get-Item dist\*.whl).FullName
-          & $env:TEMP\local-shell-mcp-wheel-venv\Scripts\local-shell-mcp.exe --version
-          & $env:TEMP\local-shell-mcp-wheel-venv\Scripts\python.exe scripts/standalone-ui-smoke.py `
-            --server $env:TEMP\local-shell-mcp-wheel-venv\Scripts\local-shell-mcp.exe
+          cd dist
+          sha256sum ./* > SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v7
         with:
-          name: python-dist-${{ matrix.artifact }}
+          name: python-dist
           path: dist/*
+          if-no-files-found: error
+
+  build-platform-wheel:
+    name: Build platform wheel (${{ matrix.artifact }})
+    needs: validate-release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: linux-x86_64
+            runner: ubuntu-latest
+            platform_tag: linux_x86_64
+          - artifact: linux-aarch64
+            runner: ubuntu-24.04-arm
+            platform_tag: linux_aarch64
+          - artifact: macos-x86_64
+            runner: macos-15-intel
+            platform_tag: macosx_10_15_x86_64
+          - artifact: macos-aarch64
+            runner: macos-15
+            platform_tag: macosx_11_0_arm64
+          - artifact: windows-x86_64
+            runner: windows-latest
+            platform_tag: win_amd64
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: uv sync --locked --group dev
+
+      - working-directory: ui-opentui
+        run: bun install --frozen-lockfile
+
+      - name: Build and inspect platform wheel
+        shell: bash
+        run: >-
+          uv run python scripts/release/build-platform-wheel.py
+          --platform-tag "${{ matrix.platform_tag }}"
+          --output-dir dist
+
+      - name: Install wheel without Bun or sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="$RUNNER_TEMP/platform-wheel-venv"
+          state="$RUNNER_TEMP/platform-wheel-state"
+          work="$RUNNER_TEMP/platform-wheel-work"
+          python -m venv "$venv"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            python_bin="$venv/Scripts/python.exe"
+            clean_path="$venv/Scripts"
+          else
+            python_bin="$venv/bin/python"
+            clean_path="$venv/bin"
+          fi
+          "$python_bin" -m pip install dist/*.whl
+          PATH="$clean_path" "$python_bin" \
+            "$GITHUB_WORKSPACE/scripts/release/smoke-platform-wheel.py" \
+            --state-dir "$state" \
+            --work-dir "$work"
+          test ! -e src/local_shell_mcp/ui_runtime
+          test ! -e src/local_shell_mcp/.platform-wheel-build.lock
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-wheel-${{ matrix.artifact }}
+          path: dist/*.whl
           if-no-files-found: error
 
   build-binary:
@@ -200,29 +230,24 @@ jobs:
             helper_platform: linux/amd64
             helper_tag: linux-x86_64
             binary: local-shell-mcp
-            tui_binary: local-shell-mcp-tui
             archive: tar.gz
           - artifact: linux-aarch64
             runner: ubuntu-24.04-arm
             helper_platform: linux/arm64
             helper_tag: linux-aarch64
             binary: local-shell-mcp
-            tui_binary: local-shell-mcp-tui
             archive: tar.gz
           - artifact: macos-x86_64
             runner: macos-15-intel
             binary: local-shell-mcp
-            tui_binary: local-shell-mcp-tui
             archive: tar.gz
           - artifact: macos-aarch64
             runner: macos-15
             binary: local-shell-mcp
-            tui_binary: local-shell-mcp-tui
             archive: tar.gz
           - artifact: windows-x86_64
             runner: windows-latest
             binary: local-shell-mcp.exe
-            tui_binary: local-shell-mcp-tui.exe
             archive: zip
     runs-on: ${{ matrix.runner }}
     steps:
@@ -231,33 +256,36 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version: 1.3.14
 
-      - name: Set up Docker Buildx
+      - name: Set up Docker Buildx for bundled tmux
         if: runner.os == 'Linux'
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v3
 
       - name: Build bundled tmux helper
         if: runner.os == 'Linux'
         shell: bash
-        run: scripts/build-tmux-helper.sh "src/local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux" "${{ matrix.helper_platform }}"
+        run: >-
+          scripts/release/build-tmux-helper.sh
+          "src/local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux"
+          "${{ matrix.helper_platform }}"
 
-      - name: Build OpenTUI runtime and embedded WebUI
-        working-directory: ui
+      - name: Build OpenTUI sidecar
+        working-directory: ui-opentui
         run: |
           bun install --frozen-lockfile
-          bun run typecheck
-          bun run build
+          bun run build:tui
 
       - name: Build self-contained executable
         shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e . pyinstaller typer
           PYINSTALLER_ARGS=(
             --clean
             --onefile
@@ -272,14 +300,29 @@ jobs:
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             PYINSTALLER_ARGS+=(--collect-all winpty)
           fi
-          pyinstaller "${PYINSTALLER_ARGS[@]}" scripts/pyinstaller-entry.py
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            PYINSTALLER_ARGS+=(
+              --add-binary
+              "src/local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux:local_shell_mcp/helpers/${{ matrix.helper_tag }}"
+            )
+          fi
+          uv run --with pyinstaller --with typer pyinstaller \
+            "${PYINSTALLER_ARGS[@]}" \
+            scripts/release/pyinstaller-entry.py
 
-      - name: Smoke test embedded OpenTUI runtime
+      - name: Smoke test executables
         shell: bash
         run: |
           ./dist/${{ matrix.binary }} --help
-          ./ui/dist/${{ matrix.tui_binary }} --version
-          python scripts/standalone-ui-smoke.py --server ./dist/${{ matrix.binary }}
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            uv run --with pyinstaller pyi-archive_viewer "dist/${{ matrix.binary }}" -l |
+              grep -F "local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux"
+          fi
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            ./ui-opentui/dist/local-shell-mcp-tui.exe --version
+          else
+            ./ui-opentui/dist/local-shell-mcp-tui --version
+          fi
 
       - name: Package executable
         shell: bash
@@ -287,13 +330,26 @@ jobs:
           set -euo pipefail
           mkdir -p release/local-shell-mcp-${{ matrix.artifact }}
           cp dist/${{ matrix.binary }} release/local-shell-mcp-${{ matrix.artifact }}/
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            cp ui-opentui/dist/local-shell-mcp-tui.exe release/local-shell-mcp-${{ matrix.artifact }}/
+          else
+            cp ui-opentui/dist/local-shell-mcp-tui release/local-shell-mcp-${{ matrix.artifact }}/
+          fi
           cp README.md LICENSE release/local-shell-mcp-${{ matrix.artifact }}/
+          cp src/local_shell_mcp/helpers/opentui.NOTICES \
+            release/local-shell-mcp-${{ matrix.artifact }}/OPENTUI-NOTICES.txt
+          cp src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md \
+            release/local-shell-mcp-${{ matrix.artifact }}/BUN-1.3.14-LICENSE.md
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            cp src/local_shell_mcp/helpers/tmux.LICENSE \
+              release/local-shell-mcp-${{ matrix.artifact }}/TMUX-LICENSE.txt
+          fi
           cat > release/local-shell-mcp-${{ matrix.artifact }}/QUICKSTART.txt <<'EOF'
           Start local-shell-mcp without Docker:
 
-            ./local-shell-mcp --mode mcp
+            ./local-shell-mcp server --mode mcp
 
-          Open the WebUI at http://127.0.0.1:8765/ui, or launch the native TUI:
+          In another terminal, open the native terminal UI:
 
             ./local-shell-mcp tui
 
@@ -304,8 +360,8 @@ jobs:
             LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/workspace
             LOCAL_SHELL_MCP_AUTH_MODE=oauth
             LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
-            Generate and export LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN as at least 8 random characters.
-            Generate and export LOCAL_SHELL_MCP_OAUTH_JWT_SECRET as at least 32 random bytes.
+            LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me
+            LOCAL_SHELL_MCP_OAUTH_JWT_SECRET=change-me-64-hex-random-secret
           EOF
           cd release
           if [[ "${{ matrix.archive }}" == "zip" ]]; then
@@ -314,6 +370,15 @@ jobs:
             tar -czf local-shell-mcp-${{ matrix.artifact }}.tar.gz local-shell-mcp-${{ matrix.artifact }}
           fi
 
+      - name: Generate binary checksums
+        shell: bash
+        run: |
+          cd release
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum local-shell-mcp-${{ matrix.artifact }}.* > local-shell-mcp-${{ matrix.artifact }}.sha256
+          else
+            shasum -a 256 local-shell-mcp-${{ matrix.artifact }}.* > local-shell-mcp-${{ matrix.artifact }}.sha256
+          fi
 
       - uses: actions/upload-artifact@v7
         with:
@@ -339,7 +404,7 @@ jobs:
       - name: Sync extension version from release tag
         working-directory: vscode-extension
         env:
-          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
         run: |
           VERSION="${RELEASE_TAG#v}"
           npm version "${VERSION}" --no-git-tag-version --allow-same-version
@@ -356,16 +421,24 @@ jobs:
         working-directory: vscode-extension
         run: npm run package:vsix
 
+      - name: Generate VSIX checksum
+        shell: bash
+        run: |
+          cd dist
+          sha256sum local-shell-mcp-vscode-*.vsix > local-shell-mcp-vscode.sha256
 
       - uses: actions/upload-artifact@v7
         with:
           name: vscode-extension
           path: |
             dist/local-shell-mcp-vscode-*.vsix
+            dist/local-shell-mcp-vscode.sha256
           if-no-files-found: error
+
 
   publish-docker-platform:
     name: Publish Docker image (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
     needs: validate-release
     strategy:
       fail-fast: false
@@ -377,41 +450,30 @@ jobs:
           - platform: linux/arm64
             suffix: arm64
             runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
       - name: Prepare platform tags
         id: platform-tags
         env:
-          DOCKERHUB_TAGS_JSON: ${{ needs.validate-release.outputs.dockerhub_tags }}
-          GHCR_TAGS_JSON: ${{ needs.validate-release.outputs.ghcr_tags }}
+          DOCKER_TAGS_JSON: ${{ needs.validate-release.outputs.docker_tags }}
           SUFFIX: ${{ matrix.suffix }}
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
           import os
 
-          dockerhub_tags = json.loads(os.environ["DOCKERHUB_TAGS_JSON"])
-          ghcr_tags = json.loads(os.environ["GHCR_TAGS_JSON"])
+          tags = json.loads(os.environ["DOCKER_TAGS_JSON"])
           suffix = os.environ["SUFFIX"]
           print("tags<<EOF")
-          for tag in dockerhub_tags + ghcr_tags:
+          for tag in tags:
               print(f"{tag}-{suffix}")
           print("EOF")
           PY
@@ -433,36 +495,38 @@ jobs:
       - validate-release
       - publish-docker-platform
     steps:
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
       - name: Create and push multi-arch manifests
         env:
-          DOCKERHUB_TAGS_JSON: ${{ needs.validate-release.outputs.dockerhub_tags }}
-          GHCR_TAGS_JSON: ${{ needs.validate-release.outputs.ghcr_tags }}
+          DOCKER_TAGS_JSON: ${{ needs.validate-release.outputs.docker_tags }}
         run: |
-          python - <<'PY' > /tmp/create-manifests.sh
+          python - <<'PY'
           import json
           import os
+          import subprocess
 
-          tags = json.loads(os.environ["DOCKERHUB_TAGS_JSON"]) + json.loads(os.environ["GHCR_TAGS_JSON"])
+          tags = json.loads(os.environ["DOCKER_TAGS_JSON"])
           for tag in tags:
-              print("docker buildx imagetools create \\")
-              print(f"  -t {tag} \\")
-              print(f"  {tag}-amd64 \\")
-              print(f"  {tag}-arm64")
+              subprocess.run(
+                  [
+                      "docker",
+                      "buildx",
+                      "imagetools",
+                      "create",
+                      "-t",
+                      tag,
+                      f"{tag}-amd64",
+                      f"{tag}-arm64",
+                  ],
+                  check=True,
+              )
           PY
-          bash /tmp/create-manifests.sh
 
   github-release:
     name: Publish GitHub release
@@ -470,6 +534,7 @@ jobs:
     needs:
       - validate-release
       - build-python-package
+      - build-platform-wheel
       - build-binary
       - build-vscode-extension
       - publish-docker-manifest
@@ -479,7 +544,13 @@ jobs:
       - name: Download Python package artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: python-dist-*
+          name: python-dist
+          path: dist
+
+      - name: Download platform wheel artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: python-wheel-*
           path: dist
           merge-multiple: true
 
@@ -496,12 +567,19 @@ jobs:
           name: vscode-extension
           path: dist
 
+      - name: Create combined checksums
+        run: |
+          cd dist
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
 
       - name: Create release notes
         run: |
-          # shellcheck disable=SC2006
           cat > RELEASE_NOTES.md <<EOF
-          Docker images are published to Docker Hub and GHCR under the release tag, the unprefixed semantic-version tag, and optionally `latest`.
+          Docker image:
+
+          \`\`\`bash
+          docker pull ${{ env.IMAGE_NAME }}:${{ env.RELEASE_TAG }}
+          \`\`\`
 
           Docker platforms are built in parallel and published as a multi-arch manifest:
 
@@ -509,6 +587,19 @@ jobs:
           linux/amd64
           linux/arm64
           \`\`\`
+
+          Embedded-OpenTUI Python wheels are attached for:
+
+          \`\`\`text
+          linux-x86_64
+          linux-aarch64
+          macos-x86_64
+          macos-aarch64
+          windows-x86_64
+          \`\`\`
+
+          Linux wheels use truthful native \`linux_*\` tags; they do not claim manylinux compatibility.
+          The universal \`py3-none-any\` wheel and source distribution remain payload-free.
 
           All-in-one executable downloads are attached for:
 
@@ -523,13 +614,7 @@ jobs:
           Start without Docker:
 
           \`\`\`bash
-          ./local-shell-mcp --mode mcp
-          \`\`\`
-
-          Then open \`http://127.0.0.1:8765/ui\`, or launch the embedded native TUI through:
-
-          \`\`\`bash
-          ./local-shell-mcp tui
+          ./local-shell-mcp server --mode mcp
           \`\`\`
 
           VS Code extension download:
@@ -538,7 +623,7 @@ jobs:
           local-shell-mcp-vscode-${{ needs.validate-release.outputs.version }}.vsix
           \`\`\`
 
-          Python package artifacts, executable archives, and the VS Code extension are attached below.
+          Universal and platform Python package artifacts, executable archives, VS Code extension, and SHA256 checksums are attached below.
 
           Python package version in \`pyproject.toml\`: \`${{ needs.validate-release.outputs.version }}\`
           EOF
@@ -546,9 +631,9 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag }}
+          tag_name: ${{ env.RELEASE_TAG }}
           target_commitish: ${{ github.sha }}
-          prerelease: ${{ github.event.inputs.prerelease }}
+          prerelease: ${{ env.PRERELEASE }}
           generate_release_notes: true
           body_path: RELEASE_NOTES.md
           files: dist/*
