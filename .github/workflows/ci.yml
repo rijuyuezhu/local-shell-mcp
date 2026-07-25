@@ -125,7 +125,7 @@ jobs:
       - name: Install locked Chromium revision
         run: uv run playwright install --with-deps chromium
       - name: Run real Chromium Human UI scenario
-        run: uv run python scripts/run-browser-e2e.py --artifacts browser-artifacts
+        run: uv run python scripts/testing/run-browser-e2e.py --artifacts browser-artifacts
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -287,6 +287,8 @@ jobs:
           test ! -e "$source_dir/scripts/build-platform-wheel.py"
           test ! -e "$source_dir/scripts/smoke-platform-wheel.py"
           test ! -e "$source_dir/scripts/pyinstaller-entry.py"
+          test ! -e "$source_dir/scripts/testing/run-browser-e2e.py"
+          test ! -e "$source_dir/scripts/run-browser-e2e.py"
           test -f "$source_dir/scripts/README.md"
           test -f "$source_dir/scripts/validation/check-coverage.py"
           test -f "$source_dir/scripts/validation/check-native-provenance.py"

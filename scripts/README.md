@@ -15,6 +15,12 @@ provenance, test, and documentation references in the same change.
 | `release/build-tmux-helper.sh` | Builds the locked static tmux helper for Linux amd64 or arm64 through Docker Buildx, with a native-platform Docker fallback. | It is the release-owned producer for bundled tmux binaries and must stay coupled to its Dockerfile, provenance lock, and multi-architecture workflow coverage. |
 | `release/tmux-helper.Dockerfile` | Downloads the pinned tmux source, verifies its SHA-256 digest, and builds a stripped static helper in an Alpine builder stage. | It is a release build recipe consumed only by the tmux helper builder, not an application container or development environment. |
 
+## `testing`
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `testing/run-browser-e2e.py` | Runs the real Chromium Human UI scenario with the browser marker and exports an absolute artifact directory for traces, screenshots, video, browser logs, and process logs. | It is a checkout-only test orchestrator consumed by CI, not a package validator, release builder, generated-artifact producer, or user-facing launcher. |
+
 ## `validation`
 
 | File | Responsibility | Why it belongs here |
