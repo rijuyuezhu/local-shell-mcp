@@ -1,8 +1,11 @@
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Annotated, Any, Literal
 
+import pytest
+
+import local_shell_mcp.config.settings as settings_module
 import local_shell_mcp.config.surface as surface
 from local_shell_mcp.config.settings import Settings, load_settings
 from local_shell_mcp.config.surface import (
@@ -28,13 +31,24 @@ def test_generated_config_examples_are_current():
     import sys
 
     result = subprocess.run(
-        [sys.executable, "scripts/generate-config-examples.py", "--check"],
+        [
+            sys.executable,
+            "scripts/generation/generate-config-examples.py",
+            "--check",
+        ],
         check=False,
         capture_output=True,
         text=True,
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_path_defaults_use_portable_posix_separators():
+    value = PureWindowsPath(r"\workspace\.local-shell-mcp")
+
+    assert surface.default_to_string(value) == "/workspace/.local-shell-mcp"
+    assert surface.yaml_default(value) == "/workspace/.local-shell-mcp"
 
 
 def test_config_examples_include_every_registered_setting():
@@ -130,3 +144,26 @@ def test_setting_spec_properties_cover_future_nullable_shapes(monkeypatch):
     assert specs["annotated_optional_int"].is_nullable
     assert specs["wide_optional"].is_nullable
     assert not specs["annotated_list"].is_nullable
+
+
+def test_remote_http_transfer_limits_and_config_file_errors(tmp_path):
+    assert settings_module._split_csv(None) == []
+
+    with pytest.raises(ValueError, match="must be greater than zero"):
+        Settings(remote_http_transfer_threshold_bytes=0)
+    with pytest.raises(ValueError, match="must not exceed 4194304"):
+        Settings(remote_http_transfer_chunk_bytes=4 * 1024 * 1024 + 1)
+    with pytest.raises(
+        ValueError, match="must not exceed remote_http_transfer_max"
+    ):
+        Settings(
+            remote_http_transfer_threshold_bytes=2,
+            remote_http_transfer_max_spool_bytes=1,
+        )
+
+    missing = tmp_path / "missing.yaml"
+    with pytest.raises(FileNotFoundError):
+        settings_module.read_config_file(missing)
+    empty = tmp_path / "empty.yaml"
+    empty.write_text("", encoding="utf-8")
+    assert settings_module.read_config_file(empty) == {}

@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+/docs/temp/
 dist/
 build/
 *.egg-info/
@@ -14,6 +16,7 @@ workspaces/
 .local-shell-mcp/
 playwright-report/
 test-results/
+/browser-artifacts*/
 node_modules/
 # VS Code extension local build outputs
 vscode-extension/node_modules/
@@ -21,3 +24,19 @@ vscode-extension/out/
 
 # MkDocs build output
 site/
+# OpenTUI build outputs
+/ui-opentui/node_modules/
+/ui-opentui/dist/
+/ui-opentui/coverage/
+/src/local_shell_mcp/ui_runtime/
+
+# Python coverage outputs
+/.coverage
+/.coverage.*
+/coverage.json
+/coverage.xml
+/htmlcov/
+
+# Generated platform helpers (release builds only)
+/src/local_shell_mcp/helpers/linux-x86_64/tmux
+/src/local_shell_mcp/helpers/linux-aarch64/tmux

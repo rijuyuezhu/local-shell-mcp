@@ -94,3 +94,35 @@ def test_change_session_workdir_updates_session_and_clears_snapshots(
     assert updated.workdir == str(second_dir)
     assert updated.updated_at >= session.updated_at
     assert store.get_snapshot(session.session_id, record.snapshot_id) is None
+
+
+def test_update_remote_session_workdir_clears_snapshots(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    remote = store.create_session(
+        target="remote",
+        workdir="/remote/first",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+    )
+    snapshot = store.record_file_snapshot(
+        session_id=remote.session_id,
+        path="file.txt",
+        file_sha256="a" * 64,
+        total_lines=1,
+        seen_ranges=((1, 1),),
+    )
+
+    updated = store.update_remote_session_workdir(
+        remote.session_id, "/remote/second"
+    )
+
+    assert updated.workdir == "/remote/second"
+    assert store.get_snapshot(remote.session_id, snapshot.snapshot_id) is None
+    with pytest.raises(ValueError, match="must not be empty"):
+        store.update_remote_session_workdir(remote.session_id, "")
+
+    local = store.create_session(target="local", workdir=tmp_path)
+    with pytest.raises(ValueError, match="not remote"):
+        store.update_remote_session_workdir(local.session_id, "/remote")

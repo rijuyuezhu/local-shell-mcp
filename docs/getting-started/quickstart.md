@@ -9,7 +9,7 @@ The local service path is the recommended default because it works without the D
 You need:
 
 - A Linux host or VM that should run the shell/file/Git operations.
-- `git`, `uv`, `python3`, `tmux`, `ripgrep`, and `cloudflared` available on that host.
+- `git`, `uv`, `python3`, `tmux`, `ripgrep`, and `cloudflared` available on that host. The source-checkout path in this guide uses host tmux; only Linux standalone release binaries contain the fallback helper.
 - A Cloudflare Tunnel token for the public hostname.
 - A workspace directory that you are willing to let an AI coding agent control.
 - A ChatGPT plan and client mode that can add a custom MCP connector.
@@ -50,7 +50,7 @@ Notes:
 - `LOCAL_SHELL_MCP_BASE_URL` is the public origin only, without `/mcp`.
 - `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` gates the local approval page. Use a long random value.
 - `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false` keeps built-in workspace and command restrictions active.
-- `LOCAL_SHELL_MCP_STATE_DIR` stores audit logs, temporary files, OAuth signing state, download-link state, and agent bridge config.
+- `LOCAL_SHELL_MCP_STATE_DIR` stores audit logs, temporary files, OAuth signing state, private download snapshots/link state, and Agent Bridge public config plus private credentials.
 
 ## 3. Start locally for a smoke test
 
@@ -58,7 +58,7 @@ Notes:
 set -a
 . ./.env
 set +a
-uv run local-shell-mcp --mode mcp
+uv run local-shell-mcp server --mode mcp
 ```
 
 In another terminal:
@@ -128,7 +128,7 @@ Complete the OAuth approval flow with the PIN from `LOCAL_SHELL_MCP_OAUTH_ADMIN_
 ## 7. Try a first prompt
 
 ```text
-Use local-shell-mcp. First choose an explicit project workdir, then run session_start with that workdir and summarize the returned session_id, workdir, git status, and instruction file paths. Do not change files yet.
+Use local-shell-mcp. First choose an explicit project workdir, then run session_start with that workdir and summarize the returned session_id, workdir, git status, instruction file paths, and the environment capabilities/policy that affect tool choice. Do not change files yet.
 ```
 
 Then try a repository workflow:
@@ -145,4 +145,4 @@ Default audit log path:
 tail -F /path/to/your/workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
 ```
 
-The audit log includes full tool inputs and outputs. Do not publish it without review.
+Audit state retains bounded references/previews and may retain complete sanitized tool inputs or outputs in private content-addressed payload objects. Credential-like fields and text are redacted on a best-effort basis before storage. Treat the whole audit directory as sensitive and do not publish it without review.

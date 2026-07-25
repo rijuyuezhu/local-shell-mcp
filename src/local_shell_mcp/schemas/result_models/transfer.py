@@ -19,6 +19,24 @@ class TransferStatOutput(BaseModel):
     )
 
 
+class TransferCopyFileOutput(BaseModel):
+    """Result of a worker-local raw streaming file copy."""
+
+    source_path: str = Field(
+        description="Resolved source path that was copied."
+    )
+    path: str = Field(
+        description="Resolved destination path that was published."
+    )
+    bytes: int = Field(description="Number of raw bytes copied.")
+    sha256: str = Field(description="SHA-256 digest of the copied contents.")
+    chunks: int = Field(description="Number of bounded raw chunks copied.")
+    chunk_size: int = Field(description="Maximum raw chunk size in bytes.")
+    completed: bool = Field(
+        description="Whether the destination was atomically published."
+    )
+
+
 class TransferReadChunkOutput(BaseModel):
     """Base64-encoded chunk read from a file."""
 
@@ -50,6 +68,14 @@ class TransferBeginWriteOutput(BaseModel):
     )
     expected_bytes: int | None = Field(
         default=None, description="Expected final byte count, when provided."
+    )
+    offset: int = Field(
+        default=0,
+        description="Validated contiguous byte offset already present.",
+    )
+    resumed: bool = Field(
+        default=False,
+        description="Whether an existing transaction was resumed.",
     )
 
 
@@ -133,4 +159,11 @@ class TransferUnpackArchiveOutput(BaseModel):
     )
     archive_deleted: bool = Field(
         description="Whether the source archive was deleted after unpacking."
+    )
+    backup_deleted: bool = Field(
+        description="Whether the replaced destination backup was removed."
+    )
+    cleanup_errors: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal cleanup errors after the destination was committed.",
     )

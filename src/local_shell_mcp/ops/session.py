@@ -1,17 +1,20 @@
 """Explicit agent session operations."""
 
+import asyncio
 import subprocess
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, overload
 
+from ..config.settings import get_settings
 from ..ops.utils.path import relative_display, workspace_root
+from ..schemas.result_models.jobs import JobStartOutput
 from ..schemas.result_models.session import (
     GitSessionInfo,
     SessionCopyOutput,
     SessionStartOutput,
 )
+from ..tool_session.environment import collect_session_environment
 from ..tool_session.store import AgentSession, get_tool_session_store
-from .utils.remote_session import start_worker_session
 
 _INSTRUCTION_FILE_NAMES = (
     "AGENTS.md",
@@ -21,12 +24,31 @@ _INSTRUCTION_FILE_NAMES = (
 )
 
 
+async def start_worker_session(
+    *,
+    machine: str,
+    workdir: str,
+    label: str | None = None,
+) -> dict[str, Any]:
+    """Lazily dispatch remote session creation without importing the control plane."""
+    from .utils.remote_session import (
+        start_worker_session as start_worker_session_impl,
+    )
+
+    return await start_worker_session_impl(
+        machine=machine,
+        workdir=workdir,
+        label=label,
+    )
+
+
 def _git_output(args: list[str], cwd: Path) -> str | None:
     """Run a bounded git orientation command and return stdout text."""
     try:
         result = subprocess.run(
             ["git", *args],
             cwd=cwd,
+            stdin=subprocess.DEVNULL,
             text=True,
             capture_output=True,
             timeout=5,
@@ -75,8 +97,9 @@ def _instruction_files(workdir: Path) -> list[str]:
 
 
 def _session_output(session: AgentSession) -> SessionStartOutput:
-    """Return a structured session_start payload for an agent session."""
+    """Return a structured session payload for a locally owned agent session."""
     workdir = Path(session.workdir)
+    settings = get_settings()
     return SessionStartOutput(
         session_id=session.session_id,
         target=session.target,
@@ -86,15 +109,59 @@ def _session_output(session: AgentSession) -> SessionStartOutput:
         updated_at=session.updated_at,
         expires_at=session.expires_at,
         label=session.label,
-        workspace_root=str(workspace_root()),
-        git=_git_info(workdir)
-        if session.target == "local"
-        else GitSessionInfo(is_repo=False),
-        instruction_files=_instruction_files(workdir)
-        if session.target == "local"
-        else [],
+        workspace_root=str(settings.workspace_root),
+        git=_git_info(workdir),
+        instruction_files=_instruction_files(workdir),
+        environment=collect_session_environment(
+            settings,
+            workdir=session.workdir,
+            target=session.target,
+            machine=session.machine,
+        ),
         message="Use this session_id in subsequent workspace tool calls.",
     )
+
+
+def _rebind_remote_output(
+    worker_output: SessionStartOutput,
+    control_session: AgentSession,
+) -> SessionStartOutput:
+    """Bind worker-generated orientation to the controller's public session id."""
+    workspace = worker_output.environment.workspace.model_copy(
+        update={
+            "target": "remote",
+            "machine": control_session.machine,
+            "workdir": worker_output.workdir,
+        }
+    )
+    environment = worker_output.environment.model_copy(
+        update={"workspace": workspace}
+    )
+    return worker_output.model_copy(
+        update={
+            "session_id": control_session.session_id,
+            "target": "remote",
+            "machine": control_session.machine,
+            "created_at": control_session.created_at,
+            "updated_at": control_session.updated_at,
+            "expires_at": control_session.expires_at,
+            "label": control_session.label,
+            "environment": environment,
+        }
+    )
+
+
+def _start_local_session(
+    *, workdir: str, machine: str | None, label: str | None
+) -> SessionStartOutput:
+    """Create and orient one local session outside the async transport loop."""
+    session = get_tool_session_store().create_session(
+        target="local",
+        workdir=workdir,
+        machine=machine,
+        label=label,
+    )
+    return _session_output(session)
 
 
 async def session_start_execute(
@@ -105,13 +172,12 @@ async def session_start_execute(
 ) -> SessionStartOutput:
     """Create an explicit agent/workspace session."""
     if target == "local":
-        session = get_tool_session_store().create_session(
-            target="local",
+        return await asyncio.to_thread(
+            _start_local_session,
             workdir=workdir,
             machine=machine,
             label=label,
         )
-        return _session_output(session)
     if target != "remote":
         raise ValueError("target must be 'local' or 'remote'")
     if not machine:
@@ -120,30 +186,109 @@ async def session_start_execute(
     worker_session = await start_worker_session(
         machine=machine, workdir=workdir, label=label
     )
-    worker_session_id = worker_session.get("session_id")
-    if not isinstance(worker_session_id, str) or not worker_session_id:
+    try:
+        worker_output = SessionStartOutput.model_validate(worker_session)
+    except Exception as exc:
+        raise RuntimeError(
+            "remote session_start returned invalid structured orientation"
+        ) from exc
+    worker_session_id = worker_output.session_id
+    if not worker_session_id:
         raise RuntimeError(
             "remote session_start did not return worker session_id"
         )
-    remote_workdir = worker_session.get("workdir")
     session = get_tool_session_store().create_session(
         target="remote",
-        workdir=str(remote_workdir or workdir),
+        workdir=worker_output.workdir,
         machine=machine,
         worker_session_id=worker_session_id,
         label=label,
     )
-    return _session_output(session)
+    return _rebind_remote_output(worker_output, session)
 
 
-def session_change_cwd_execute(
+def _change_local_session_cwd(
     session_id: str, workdir: str
 ) -> SessionStartOutput:
-    """Change a local session workdir and return refreshed orientation metadata."""
+    """Change and orient one local session outside the async transport loop."""
     session = get_tool_session_store().change_session_workdir(
         session_id, workdir
     )
     return _session_output(session)
+
+
+async def session_change_cwd_execute(
+    session_id: str, workdir: str
+) -> SessionStartOutput:
+    """Change a local or remote session workdir and refresh target orientation."""
+    store = get_tool_session_store()
+    session = store.require_session(session_id)
+    if session.target == "local":
+        return await asyncio.to_thread(
+            _change_local_session_cwd, session_id, workdir
+        )
+    from .utils.remote_session import call_remote_session_tool
+
+    payload = await call_remote_session_tool(
+        session,
+        "session_change_cwd",
+        {"workdir": workdir},
+    )
+    try:
+        worker_output = SessionStartOutput.model_validate(payload)
+    except Exception as exc:
+        raise RuntimeError(
+            "remote session_change_cwd returned invalid structured orientation"
+        ) from exc
+    updated = store.update_remote_session_workdir(
+        session_id, worker_output.workdir
+    )
+    return _rebind_remote_output(worker_output, updated)
+
+
+@overload
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: Literal["auto", "file", "dir"] = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    background: Literal[False] = False,
+) -> SessionCopyOutput:
+    """Return the synchronous copy result when background mode is disabled."""
+    ...
+
+
+@overload
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: Literal["auto", "file", "dir"] = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    background: Literal[True] = True,
+) -> JobStartOutput:
+    """Return a managed job when background mode is explicitly enabled."""
+    ...
+
+
+@overload
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: Literal["auto", "file", "dir"] = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    background: bool = False,
+) -> SessionCopyOutput | JobStartOutput:
+    """Return a synchronous copy or managed job for a runtime boolean flag."""
+    ...
 
 
 async def session_copy_execute(
@@ -154,11 +299,25 @@ async def session_copy_execute(
     kind: Literal["auto", "file", "dir"] = "auto",
     overwrite: bool = True,
     chunk_size: int | None = None,
-) -> SessionCopyOutput:
-    """Copy a file or directory between two explicit sessions."""
-    from .utils.session_copy import session_copy_execute as execute
+    background: bool = False,
+) -> SessionCopyOutput | JobStartOutput:
+    """Copy synchronously or start a managed background copy job."""
+    from .utils.session_copy import (
+        session_copy_execute as _session_copy_execute,
+    )
+    from .utils.session_copy import session_copy_job_execute
 
-    return await execute(
+    if background:
+        return await session_copy_job_execute(
+            src_session_id,
+            src_path,
+            dst_session_id,
+            dst_path,
+            kind,
+            overwrite,
+            chunk_size,
+        )
+    return await _session_copy_execute(
         src_session_id,
         src_path,
         dst_session_id,

@@ -26,6 +26,47 @@ async def _session_start(args: dict[str, Any]) -> Any:
     )
 
 
+async def _session_change_cwd(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.session import session_change_cwd_execute
+
+    return await session_change_cwd_execute(
+        str(args.get("session_id") or ""),
+        str(args.get("workdir") or "."),
+    )
+
+
+async def _query_audit(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.audit import query_audit
+
+    return await asyncio.to_thread(
+        query_audit,
+        limit=int(args.get("limit") or 300),
+        event=args.get("event"),
+        operation=args.get("operation"),
+        session=args.get("session"),
+        search=args.get("search"),
+        start_ts=args.get("start_ts"),
+        end_ts=args.get("end_ts"),
+        sort=str(args.get("sort") or "desc"),
+    )
+
+
+async def _get_audit_entry(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.audit import get_audit_entry
+
+    return await asyncio.to_thread(
+        get_audit_entry,
+        str(args.get("id") or ""),
+        include_full_payloads=bool(args.get("include_full_payloads", False)),
+    )
+
+
+async def _dashboard_snapshot(args: dict[str, Any]) -> Any:  # noqa: ARG001
+    from local_shell_mcp.ui.dashboard import dashboard_snapshot
+
+    return await asyncio.to_thread(dashboard_snapshot)
+
+
 async def _bash(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import bash_execute
 
@@ -58,6 +99,61 @@ async def _run_python_code(args: dict[str, Any]) -> Any:
     )
 
 
+async def _open_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal.bridge import open_terminal_bridge_execute
+
+    return await open_terminal_bridge_execute(
+        str(args["shell_id"]),
+        int(args.get("cols") or 120),
+        int(args.get("rows") or 36),
+    )
+
+
+async def _read_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal.bridge import read_terminal_bridge_execute
+
+    return await read_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        int(args.get("max_bytes") or 65_536),
+        int(args.get("wait_ms") or 0),
+    )
+
+
+async def _write_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal.bridge import write_terminal_bridge_execute
+
+    return await write_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        str(args.get("data_b64") or ""),
+    )
+
+
+async def _resize_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal.bridge import resize_terminal_bridge_execute
+
+    return await resize_terminal_bridge_execute(
+        str(args["bridge_id"]),
+        int(args["cols"]),
+        int(args["rows"]),
+    )
+
+
+async def _close_terminal_bridge(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.terminal.bridge import close_terminal_bridge_execute
+
+    return await close_terminal_bridge_execute(str(args["bridge_id"]))
+
+
+async def _start_persistent_shell(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.shell import start_persistent_shell_execute
+
+    return await start_persistent_shell_execute(
+        str(args.get("cwd") or "."),
+        str(args["name"]) if args.get("name") is not None else None,
+        str(args["command"]) if args.get("command") is not None else None,
+    )
+
+
 async def _send_persistent_shell_input(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import send_persistent_shell_input_execute
 
@@ -68,11 +164,24 @@ async def _send_persistent_shell_input(args: dict[str, Any]) -> Any:
     )
 
 
+async def _resize_persistent_shell(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.shell import resize_persistent_shell_execute
+
+    return await resize_persistent_shell_execute(
+        str(args["shell_id"]), int(args["cols"]), int(args["rows"])
+    )
+
+
 async def _read_persistent_shell_output(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.shell import read_persistent_shell_output_execute
 
+    preserve_ansi = args.get("preserve_ansi", False)
+    if not isinstance(preserve_ansi, bool):
+        raise ValueError("preserve_ansi must be a boolean")
     return await read_persistent_shell_output_execute(
-        str(args["shell_id"]), int(args.get("lines") or 200)
+        str(args["shell_id"]),
+        int(args.get("lines") or 200),
+        preserve_ansi=preserve_ansi,
     )
 
 
@@ -89,9 +198,9 @@ async def _list_persistent_shells(args: dict[str, Any]) -> Any:
 
 
 async def _job(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.ops.jobs import job_execute
+    from local_shell_mcp.jobs.runtime import job_local_execute
 
-    return await job_execute(
+    return await job_local_execute(
         str(args["session_id"]),
         bool(args.get("list_jobs", False)),
         args.get("poll"),
@@ -99,6 +208,52 @@ async def _job(args: dict[str, Any]) -> Any:
         args.get("retry"),
         bool(args.get("include_finished", True)),
         int(args.get("lines") or 200),
+    )
+
+
+async def _read_todos(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.todo import read_todos_execute
+
+    return await asyncio.to_thread(read_todos_execute, str(args["session_id"]))
+
+
+async def _write_todos(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.todo import write_todos_execute
+
+    return await asyncio.to_thread(
+        write_todos_execute,
+        list(args.get("todos") or []),
+        str(args["session_id"]),
+        args.get("expected_revision"),
+    )
+
+
+async def _list_agent_skills(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.agent import list_agent_skills_execute
+
+    return await asyncio.to_thread(
+        list_agent_skills_execute, str(args["session_id"])
+    )
+
+
+async def _activate_agent_skill(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.agent import activate_agent_skill_execute
+
+    return await asyncio.to_thread(
+        activate_agent_skill_execute,
+        str(args["name"]),
+        str(args["session_id"]),
+    )
+
+
+async def _read_agent_skill_file(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.agent import read_agent_skill_file_execute
+
+    return await asyncio.to_thread(
+        read_agent_skill_file_execute,
+        str(args["name"]),
+        str(args["path"]),
+        str(args["session_id"]),
     )
 
 
@@ -116,11 +271,13 @@ async def _list_files(args: dict[str, Any]) -> Any:
 async def _write_file(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.files import write_file_dispatch_execute
 
+    expected_sha256 = args.get("expected_sha256")
     return await write_file_dispatch_execute(
         str(args["path"]),
         str(args.get("content") or ""),
         bool(args.get("overwrite", True)),
         str(args["session_id"]),
+        None if expected_sha256 is None else str(expected_sha256),
     )
 
 
@@ -142,6 +299,16 @@ async def _hashline_edit(args: dict[str, Any]) -> Any:
 
     return await hashline_edit_dispatch_execute(
         str(args["input"]), str(args["session_id"])
+    )
+
+
+async def _apply_patch(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.patch import apply_patch_dispatch_execute
+
+    return await apply_patch_dispatch_execute(
+        str(args["patch"]),
+        str(args.get("cwd") or "."),
+        str(args["session_id"]),
     )
 
 
@@ -218,6 +385,20 @@ async def _transfer_stat(args: dict[str, Any]) -> Any:
         str(args["path"]),
         bool(args.get("sha256", True)),
         session_id=args.get("session_id"),
+    )
+
+
+async def _transfer_copy_file(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.transfer import transfer_copy_file
+
+    return await asyncio.to_thread(
+        transfer_copy_file,
+        str(args["source_path"]),
+        str(args["destination_path"]),
+        bool(args.get("overwrite", True)),
+        args.get("chunk_size"),
+        source_session_id=args.get("source_session_id"),
+        destination_session_id=args.get("destination_session_id"),
     )
 
 
@@ -323,11 +504,76 @@ async def _transfer_delete_temp_path(args: dict[str, Any]) -> Any:
     return await asyncio.to_thread(transfer_delete_temp_path, str(args["path"]))
 
 
+async def _transfer_http_upload(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.remote_worker.http_transfer import upload_file
+
+    return await asyncio.to_thread(
+        upload_file,
+        path=str(args["path"]),
+        session_id=args.get("session_id"),
+        url=str(args["url"]),
+        controller_url=str(args["controller_url"]),
+        authorization=str(args["authorization"]),
+        worker=str(args["worker"]),
+        expected_bytes=int(args["expected_bytes"]),
+        expected_sha256=str(args["expected_sha256"]),
+        chunk_size=int(args["chunk_size"]),
+        timeout_s=float(args.get("timeout_s") or 30),
+    )
+
+
+async def _transfer_http_download(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.remote_worker.http_transfer import download_file
+
+    return await asyncio.to_thread(
+        download_file,
+        path=str(args["path"]),
+        session_id=args.get("session_id"),
+        url=str(args["url"]),
+        controller_url=str(args["controller_url"]),
+        authorization=str(args["authorization"]),
+        worker=str(args["worker"]),
+        transfer_id=str(args["transfer_id"]),
+        expected_bytes=int(args["expected_bytes"]),
+        expected_sha256=str(args["expected_sha256"]),
+        overwrite=bool(args.get("overwrite", True)),
+        chunk_size=int(args["chunk_size"]),
+        timeout_s=float(args.get("timeout_s") or 30),
+    )
+
+
+async def _transfer_http_abort_download(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.remote_worker.http_transfer import abort_download
+
+    return await asyncio.to_thread(
+        abort_download,
+        path=str(args["path"]),
+        session_id=args.get("session_id"),
+        transfer_id=str(args["transfer_id"]),
+    )
+
+
 _HANDLERS: dict[str, WorkerHandler] = {
     "session_start": _session_start,
+    "session_change_cwd": _session_change_cwd,
+    "dashboard_snapshot": _dashboard_snapshot,
+    "query_audit": _query_audit,
+    "get_audit_entry": _get_audit_entry,
+    "read_todos": _read_todos,
+    "write_todos": _write_todos,
+    "list_agent_skills": _list_agent_skills,
+    "activate_agent_skill": _activate_agent_skill,
+    "read_agent_skill_file": _read_agent_skill_file,
     "bash": _bash,
     "run_python_code": _run_python_code,
+    "open_terminal_bridge": _open_terminal_bridge,
+    "read_terminal_bridge": _read_terminal_bridge,
+    "write_terminal_bridge": _write_terminal_bridge,
+    "resize_terminal_bridge": _resize_terminal_bridge,
+    "close_terminal_bridge": _close_terminal_bridge,
+    "start_persistent_shell": _start_persistent_shell,
     "send_persistent_shell_input": _send_persistent_shell_input,
+    "resize_persistent_shell": _resize_persistent_shell,
     "read_persistent_shell_output": _read_persistent_shell_output,
     "kill_persistent_shell": _kill_persistent_shell,
     "list_persistent_shells": _list_persistent_shells,
@@ -336,6 +582,7 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "write_file": _write_file,
     "edit_lines": _edit_lines,
     "hashline_edit": _hashline_edit,
+    "apply_patch": _apply_patch,
     "delete_file_or_dir": _delete_file_or_dir,
     "read": _read,
     "tree_view": _tree_view,
@@ -343,6 +590,7 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "search": _search,
     "secret_scan": _secret_scan,
     "transfer_stat": _transfer_stat,
+    "transfer_copy_file": _transfer_copy_file,
     "transfer_read_chunk": _transfer_read_chunk,
     "transfer_begin_write": _transfer_begin_write,
     "transfer_write_chunk": _transfer_write_chunk,
@@ -352,6 +600,9 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "transfer_pack_dir": _transfer_pack_dir,
     "transfer_unpack_archive": _transfer_unpack_archive,
     "transfer_delete_temp_path": _transfer_delete_temp_path,
+    "transfer_http_upload": _transfer_http_upload,
+    "transfer_http_download": _transfer_http_download,
+    "transfer_http_abort_download": _transfer_http_abort_download,
 }
 
 

@@ -5,6 +5,8 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any
 
+from ..tools.metadata import tool_safety_annotations
+from .auth import manager_redaction_maps
 from .models import AgentCapabilityRegistry
 from .registry import build_agent_registry
 from .service import (
@@ -13,7 +15,7 @@ from .service import (
     redact_configured_value_tree,
     tool_value,
 )
-from .state import agent_config_fingerprint
+from .state import agent_registry_fingerprint
 
 type SkillHandler = Callable[[], Awaitable[Any]]
 type McpHandler = Callable[..., Awaitable[Any]]
@@ -30,6 +32,7 @@ class AgentBridgeToolReloader:
         probe_timeout_s: float,
         dynamic_mcp_tools: bool | None,
         dynamic_skill_tools: bool | None,
+        skill_limits: dict[str, int] | None = None,
     ) -> None:
         self.mcp = mcp
         self.registry = registry
@@ -37,9 +40,20 @@ class AgentBridgeToolReloader:
         self.probe_timeout_s = probe_timeout_s
         self.dynamic_mcp_tools = dynamic_mcp_tools
         self.dynamic_skill_tools = dynamic_skill_tools
+        self.skill_limits = dict(skill_limits or {})
         self._dynamic_tool_names: set[str] = set()
-        self._fingerprint = agent_config_fingerprint(registry.config_dir)
+        self._fingerprint = agent_registry_fingerprint(
+            registry.config_dir,
+            registry.skill_sources,
+            self._private_state_paths(),
+        )
         self._lock = threading.RLock()
+
+    def _private_state_paths(self) -> tuple[Any, ...]:
+        store = getattr(self.registry.client_manager, "auth_store", None)
+        if store is None:
+            return ()
+        return tuple(store.fingerprint_paths())
 
     def current_registry(self) -> AgentCapabilityRegistry:
         """Return the latest bridge registry, refreshing dynamic tools if the config fingerprint changed."""
@@ -48,11 +62,19 @@ class AgentBridgeToolReloader:
 
     def refresh_if_needed(self) -> None:
         """Rebuild the registry and dynamic tool set when bridge config files change on disk."""
-        fingerprint = agent_config_fingerprint(self.registry.config_dir)
+        fingerprint = agent_registry_fingerprint(
+            self.registry.config_dir,
+            self.registry.skill_sources,
+            self._private_state_paths(),
+        )
         if fingerprint == self._fingerprint:
             return
         with self._lock:
-            fingerprint = agent_config_fingerprint(self.registry.config_dir)
+            fingerprint = agent_registry_fingerprint(
+                self.registry.config_dir,
+                self.registry.skill_sources,
+                self._private_state_paths(),
+            )
             if fingerprint == self._fingerprint:
                 return
             self._remove_dynamic_tools()
@@ -62,6 +84,8 @@ class AgentBridgeToolReloader:
                 self.probe_timeout_s,
                 self.dynamic_mcp_tools,
                 self.dynamic_skill_tools,
+                project_root=self.registry.project_root,
+                **self.skill_limits,
             )
             self._fingerprint = fingerprint
             self.register_dynamic_tools()
@@ -79,6 +103,9 @@ class AgentBridgeToolReloader:
                 make_skill_handler(self, record.skill_name),
                 name=dynamic_name,
                 description=description,
+                annotations=tool_safety_annotations(
+                    dynamic_name, read_only=True
+                ),
                 meta=self.meta,
             )
             self._dynamic_tool_names.add(dynamic_name)
@@ -90,20 +117,28 @@ class AgentBridgeToolReloader:
                 for candidate in server_record.tools
                 if str(tool_value(candidate, "name", "")) == record.tool_name
             )
+            env, headers = manager_redaction_maps(
+                self.registry.client_manager,
+                record.server_name,
+                server_record.config,
+            )
             tool_description = redact_configured_value_tree(
                 str(tool_value(tool, "description", "") or record.tool_name),
-                server_record.config.env,
-                server_record.config.headers,
+                env,
+                headers,
             )
             description = redact_configured_value_tree(
                 f"[agent mcp: {record.server_name}] {tool_description}",
-                server_record.config.env,
-                server_record.config.headers,
+                env,
+                headers,
             )
             self.mcp.add_tool(
                 make_mcp_handler(self, record.server_name, record.tool_name),
                 name=dynamic_name,
                 description=description,
+                annotations=tool_safety_annotations(
+                    dynamic_name, read_only=False
+                ),
                 meta=self.meta,
             )
             self._dynamic_tool_names.add(dynamic_name)
@@ -170,6 +205,7 @@ def register_agent_bridge_dynamic_tools(
     probe_timeout_s: float = 5,
     dynamic_mcp_tools: bool | None = None,
     dynamic_skill_tools: bool | None = None,
+    skill_limits: dict[str, int] | None = None,
 ) -> None:
     """Register dynamic bridge tools and install config-reload hooks."""
     reloader = AgentBridgeToolReloader(
@@ -179,6 +215,7 @@ def register_agent_bridge_dynamic_tools(
         probe_timeout_s,
         dynamic_mcp_tools,
         dynamic_skill_tools,
+        skill_limits,
     )
     reloader.register_dynamic_tools()
     _install_agent_bridge_reload_hooks(mcp, reloader)

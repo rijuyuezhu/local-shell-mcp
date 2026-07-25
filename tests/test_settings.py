@@ -105,3 +105,32 @@ def test_resolved_base_url_brackets_ipv6_host():
     )
 
     assert settings.resolved_base_url == "http://[::1]:9999"
+
+
+def test_audit_payload_limits_must_be_nested():
+    for overrides, message in (
+        (
+            {
+                "audit_inline_value_bytes": 2_048,
+                "max_audit_payload_bytes": 1_024,
+                "max_audit_payload_store_bytes": 4_096,
+            },
+            "audit_inline_value_bytes",
+        ),
+        (
+            {
+                "audit_inline_value_bytes": 256,
+                "max_audit_payload_bytes": 8_192,
+                "max_audit_payload_store_bytes": 4_096,
+            },
+            "max_audit_payload_bytes",
+        ),
+    ):
+        try:
+            load_settings(overrides=overrides, create_dirs=False)
+        except ValueError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError(
+                "expected nested audit payload limit validation"
+            )

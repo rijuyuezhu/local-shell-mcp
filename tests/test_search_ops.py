@@ -629,7 +629,7 @@ async def test_high_level_search_merges_repeated_line_scoped_file_selectors(
 async def test_mcp_search_facade_returns_grounded_results(
     tmp_path, monkeypatch
 ):
-    from local_shell_mcp.server.mcp.app import build_mcp
+    from local_shell_mcp.executors.mcp.app import build_mcp
     from tests.helpers import mcp_structured
 
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))

@@ -35,7 +35,7 @@ Regular connector-style clients may expose only `search` and `fetch`. ChatGPT De
 ## Test prompt
 
 ```text
-Use local-shell-mcp. Choose an explicit project workdir, then run session_start with that workdir and summarize the returned session_id, workdir, git status, and instruction file paths. Do not edit files yet.
+Use local-shell-mcp. Choose an explicit project workdir, then run session_start with that workdir and summarize the returned session_id, workdir, git status, instruction file paths, and the environment capabilities/policy that affect tool choice. Do not edit files yet.
 ```
 
 Then:

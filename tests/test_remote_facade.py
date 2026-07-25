@@ -1,14 +1,14 @@
 import pytest
 
 import local_shell_mcp.ops.files as file_ops
-import local_shell_mcp.ops.jobs as job_ops
 import local_shell_mcp.ops.read as read_ops
 import local_shell_mcp.ops.remote as remote_ops
 import local_shell_mcp.ops.search as search_ops
 import local_shell_mcp.ops.session as session_ops
 import local_shell_mcp.ops.shell as shell_ops
+import local_shell_mcp.tools.ops.jobs as job_ops
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from tests.helpers import mcp_structured
 
@@ -148,18 +148,26 @@ def _remote_job_payload(worker_session_id="WORKER12"):
 
 
 @pytest.mark.asyncio
-async def test_session_start_creates_remote_control_session(monkeypatch):
+async def test_session_start_creates_remote_control_session(
+    monkeypatch, tmp_path
+):
+    remote_root = tmp_path / "remote"
+    remote_project = remote_root / "project"
+    remote_project.mkdir(parents=True)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(remote_root))
+    clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
     calls = []
+    worker_session_ids = []
 
     async def fake_start_worker_session(*, machine, workdir, label=None):
         calls.append((machine, workdir, label))
-        return {
-            "session_id": "WORKER12",
-            "target": "local",
-            "workdir": "/remote/project",
-        }
+        worker = session_ops._start_local_session(
+            workdir=str(remote_project), machine=None, label=label
+        )
+        worker_session_ids.append(worker.session_id)
+        return worker.model_dump(mode="json")
 
     monkeypatch.setattr(
         session_ops, "start_worker_session", fake_start_worker_session
@@ -172,9 +180,14 @@ async def test_session_start_creates_remote_control_session(monkeypatch):
 
     assert result.target == "remote"
     assert result.machine == "worker-a"
-    assert result.workdir == "/remote/project"
+    assert result.workdir == str(remote_project)
+    assert result.workspace_root == str(remote_root)
+    assert result.environment.workspace.workspace_root == str(remote_root)
+    assert result.environment.workspace.target == "remote"
+    assert result.environment.workspace.machine == "worker-a"
     assert "worker_session_id" not in result.model_dump()
-    assert record.worker_session_id == "WORKER12"
+    assert record.worker_session_id == worker_session_ids[0]
+    assert record.worker_session_id != result.session_id
     assert calls == [("worker-a", "project", "demo")]
 
 
@@ -373,3 +386,68 @@ async def test_remote_session_dispatch_surfaces_worker_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="FileNotFoundError: missing.txt"):
         await read_ops.read_execute("missing.txt", control.session_id)
+
+
+@pytest.mark.asyncio
+async def test_remote_session_change_cwd_preserves_worker_orientation(
+    monkeypatch, tmp_path
+):
+    from local_shell_mcp.ops.utils import remote_session as remote_session_ops
+
+    remote_root = tmp_path / "worker-root"
+    first = remote_root / "first"
+    second = remote_root / "second"
+    first.mkdir(parents=True)
+    second.mkdir()
+    (second / "AGENTS.md").write_text("worker instructions\n", encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(remote_root))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME", "1")
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+
+    worker = session_ops._start_local_session(
+        workdir=str(first), machine=None, label="remote"
+    )
+    control = store.create_session(
+        target="remote",
+        workdir=str(first),
+        machine="worker-a",
+        worker_session_id=worker.session_id,
+        label="remote",
+    )
+    calls = []
+
+    async def fake_call(machine, tool, args, timeout_s=None):
+        calls.append((machine, tool, args, timeout_s))
+        changed = await session_ops.session_change_cwd_execute(
+            worker.session_id, str(second)
+        )
+        return {"ok": True, "data": changed.model_dump(mode="json")}
+
+    monkeypatch.setattr(
+        remote_session_ops, "call_remote_worker_tool", fake_call
+    )
+
+    result = await session_ops.session_change_cwd_execute(
+        control.session_id, "second"
+    )
+
+    assert calls == [
+        (
+            "worker-a",
+            "session_change_cwd",
+            {"workdir": "second", "session_id": worker.session_id},
+            None,
+        )
+    ]
+    assert result.session_id == control.session_id
+    assert result.target == "remote"
+    assert result.machine == "worker-a"
+    assert result.workdir == str(second)
+    assert result.workspace_root == str(remote_root)
+    assert result.instruction_files == ["second/AGENTS.md"]
+    assert result.environment.workspace.target == "remote"
+    assert result.environment.workspace.machine == "worker-a"
+    assert result.environment.workspace.worker_runtime.active is True
+    assert store.require_session(control.session_id).workdir == str(second)

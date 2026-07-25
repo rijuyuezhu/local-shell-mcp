@@ -126,7 +126,10 @@ async def authorize_post(request: Request) -> Response:
         audit("oauth_pin_failed", client_id=request_input.client_id)
         return _authorize_form(form_context, error="Invalid admin PIN")
 
-    authorization_response = issue_authorization_response(auth_request)
+    try:
+        authorization_response = issue_authorization_response(auth_request)
+    except OAuth2Error as exc:
+        return _authorize_form(form_context, error=oauth_error_message(exc))
     return oauth_redirect(
         authorization_response.redirect_uri, authorization_response.query
     )

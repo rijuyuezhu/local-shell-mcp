@@ -1,31 +1,18 @@
 """Local bearer signing and validation helpers."""
 
-import secrets
 import time
 from typing import Any
 
 import jwt
 
 from ...config.settings import get_settings
+from ..core.security import oauth_signing_secret
 from ..core.urls import issuer_url, resource_url
 
 
 def _jwt_secret() -> str:
-    """Return a configured or persisted signing key for local bearer credentials."""
-    settings = get_settings()
-    secret_path = settings.state_dir / "oauth-jwt-secret"
-    try:
-        secret = secret_path.read_text(encoding="utf-8").strip()
-        if secret:
-            return secret
-    except FileNotFoundError:
-        pass
-
-    settings.state_dir.mkdir(parents=True, exist_ok=True)
-    secret = secrets.token_urlsafe(48)
-    secret_path.write_text(secret + "\n", encoding="utf-8")
-    secret_path.chmod(0o600)
-    return secret
+    """Return the strong persisted signing key for local bearer credentials."""
+    return oauth_signing_secret()
 
 
 def issue_access_token(

@@ -1,3 +1,8 @@
+import base64
+import os
+import shlex
+import subprocess
+import sys
 from typing import Any
 
 
@@ -28,3 +33,13 @@ def mcp_structured(response: Any) -> dict[str, Any]:
     assert isinstance(response, tuple)
     assert isinstance(response[1], dict)
     return response[1]
+
+
+def python_shell_command(source: str) -> str:
+    """Return one shell-safe Python command for POSIX shells and cmd.exe."""
+    encoded = base64.b64encode(source.encode("utf-8")).decode("ascii")
+    wrapper = f"import base64;exec(base64.b64decode('{encoded}'))"
+    argv = [sys.executable, "-c", wrapper]
+    return (
+        subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
+    )

@@ -1,0 +1,479 @@
+"""Authenticated Human UI APIs for local and remote Audit records."""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import binascii
+from typing import Any, cast
+
+from fastapi import HTTPException
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
+
+from ...audit import get_audit_entry, query_audit
+from ...config.settings import get_settings
+from ...oauth.core.context import MissingOAuthScopeError, require_oauth_scopes
+from ...oauth.core.scopes import (
+    SCOPE_AUDIT_FULL,
+    SCOPE_AUDIT_READ,
+    SCOPE_FILE_SHARE,
+    SCOPE_GIT_WRITE,
+    SCOPE_REMOTE_USE,
+    SCOPE_SHELL_EXECUTE,
+    SCOPE_SHELL_WRITE,
+    SUPPORTED_OAUTH_SCOPES,
+)
+from ...ops.image import detect_image_type
+from ...remote.service import call_remote_worker_tool
+from .common import (
+    bounded_int as _bounded_int,
+)
+from .common import (
+    bounded_text as _bounded_text,
+)
+from .common import (
+    json_error as _json_error,
+)
+from .common import (
+    require_remote_machine as _require_remote_machine,
+)
+from .image_preview import (
+    UiImagePreviewRequest,
+    image_preview_request,
+    terminal_image_fields,
+)
+
+UI_AUDIT_MACHINE_MAX_BYTES = 255
+UI_AUDIT_ENTRY_ID_MAX_BYTES = 512
+UI_AUDIT_FILTER_MAX_BYTES = 1_024
+UI_AUDIT_SEARCH_MAX_BYTES = 4_096
+UI_AUDIT_MAX_ENTRIES = 2_000
+UI_AUDIT_REMOTE_TIMEOUT_S = 60
+
+_AUDIT_FILE_WRITE_TOOLS = frozenset(
+    {
+        "apply_patch",
+        "delete_file_or_dir",
+        "edit_lines",
+        "hashline_edit",
+        "write_file",
+    }
+)
+_AUDIT_EXECUTE_TOOLS = frozenset(
+    {
+        "bash",
+        "job",
+        "kill_persistent_shell",
+        "resize_persistent_shell",
+        "run_python_code",
+        "send_persistent_shell_input",
+        "session_start",
+    }
+)
+
+
+def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
+    return JSONResponse({"ok": True, "message": message, "data": data})
+
+
+def _require_scopes(*required: str) -> None:
+    try:
+        require_oauth_scopes(tuple(dict.fromkeys(required)))
+    except MissingOAuthScopeError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+def _machine_arg(value: Any) -> str:
+    return _bounded_text(
+        value,
+        field="machine",
+        max_bytes=UI_AUDIT_MACHINE_MAX_BYTES,
+        default="local",
+        allow_empty=False,
+    )
+
+
+def _bounded_float(value: Any, *, field: str) -> float | None:
+    if value in {None, ""}:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be a number")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be a number") from exc
+
+
+def _sort_arg(value: Any) -> str:
+    normalized = _bounded_text(
+        value,
+        field="sort",
+        max_bytes=16,
+        default="desc",
+        allow_empty=False,
+    ).casefold()
+    if normalized not in {"asc", "desc"}:
+        raise ValueError("sort must be asc or desc")
+    return normalized
+
+
+def _query_args(request: Request) -> dict[str, Any]:
+    params = request.query_params
+    start_ts = _bounded_float(params.get("start_ts"), field="start_ts")
+    end_ts = _bounded_float(params.get("end_ts"), field="end_ts")
+    if start_ts is not None and end_ts is not None and start_ts > end_ts:
+        raise ValueError("start_ts must not be greater than end_ts")
+    return {
+        "limit": _bounded_int(
+            params.get("limit"),
+            field="limit",
+            default=300,
+            minimum=1,
+            maximum=UI_AUDIT_MAX_ENTRIES,
+        ),
+        "event": _bounded_text(
+            params.get("event"),
+            field="event",
+            max_bytes=UI_AUDIT_FILTER_MAX_BYTES,
+        ),
+        "operation": _bounded_text(
+            params.get("operation"),
+            field="operation",
+            max_bytes=UI_AUDIT_FILTER_MAX_BYTES,
+        ),
+        "session": _bounded_text(
+            params.get("session"),
+            field="session",
+            max_bytes=UI_AUDIT_FILTER_MAX_BYTES,
+        ),
+        "search": _bounded_text(
+            params.get("search"),
+            field="search",
+            max_bytes=UI_AUDIT_SEARCH_MAX_BYTES,
+        ),
+        "start_ts": start_ts,
+        "end_ts": end_ts,
+        "sort": _sort_arg(params.get("sort")),
+    }
+
+
+def _remote_timeout_s() -> int:
+    return max(
+        1,
+        min(
+            int(get_settings().remote_job_timeout_s),
+            UI_AUDIT_REMOTE_TIMEOUT_S,
+        ),
+    )
+
+
+def _remote_result_data(
+    result: dict[str, Any], *, machine: str, tool: str
+) -> dict[str, Any]:
+    if not result.get("ok", False):
+        raise RuntimeError(
+            str(result.get("message") or f"remote {tool} failed on {machine}")
+        )
+    data = result.get("data")
+    if isinstance(data, dict) and data.get("status") == "error":
+        error_type = str(data.get("error_type") or "remote_error")
+        message = str(
+            data.get("message") or f"remote {tool} failed on {machine}"
+        )
+        raise RuntimeError(f"{error_type}: {message}")
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            f"Remote machine {machine} returned malformed audit data"
+        )
+    return cast(dict[str, Any], data)
+
+
+async def _remote_audit_call(
+    machine: str, tool: str, args: dict[str, Any]
+) -> dict[str, Any]:
+    _require_remote_machine(machine)
+    result = await call_remote_worker_tool(
+        machine,
+        tool,
+        args,
+        _remote_timeout_s(),
+    )
+    return _remote_result_data(result, machine=machine, tool=tool)
+
+
+def _normalize_entry(machine: str, value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise RuntimeError(
+            f"Machine {machine} returned a malformed audit entry"
+        )
+    entry = cast(dict[str, Any], dict(value))
+    identifier = _bounded_text(
+        entry.get("id"),
+        field="audit entry id",
+        max_bytes=UI_AUDIT_ENTRY_ID_MAX_BYTES,
+        allow_empty=False,
+    )
+    entry["id"] = identifier
+    entry["node"] = machine
+    try:
+        entry["ts"] = float(entry.get("ts") or 0)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Machine {machine} returned a malformed audit timestamp"
+        ) from exc
+    entry["event"] = str(entry.get("event") or "unknown")
+    entry["operation"] = str(entry.get("operation") or "other")
+    if "tool" in entry:
+        entry["tool"] = str(entry.get("tool") or "unknown")
+    return entry
+
+
+def _audit_view_image_detail(
+    entry: dict[str, Any],
+    preview_request: UiImagePreviewRequest | None = None,
+) -> dict[str, Any]:
+    """Sanitize an audited MCP image result and attach bounded UI previews."""
+    if str(entry.get("tool") or "") != "view_image":
+        return entry
+    output = entry.get("output")
+    if not isinstance(output, dict):
+        return entry
+    content = output.get("content")
+    if not isinstance(content, list):
+        return entry
+    image_index = next(
+        (
+            index
+            for index, item in enumerate(content)
+            if isinstance(item, dict)
+            and item.get("type") == "image"
+            and isinstance(item.get("data"), str)
+        ),
+        None,
+    )
+    if image_index is None:
+        return entry
+
+    source_item = content[image_index]
+    assert isinstance(source_item, dict)
+    sanitized_item = {
+        name: value for name, value in source_item.items() if name != "data"
+    }
+    sanitized_content = list(content)
+    sanitized_content[image_index] = sanitized_item
+    detail = {**entry, "output": {**output, "content": sanitized_content}}
+    try:
+        raw = base64.b64decode(str(source_item["data"]), validate=True)
+        maximum = max(1, int(get_settings().max_view_image_bytes))
+        if not raw:
+            raise ValueError("Image payload is empty")
+        if len(raw) > maximum:
+            raise ValueError(
+                f"Refusing image of {len(raw)} bytes; max is {maximum}"
+            )
+        _, mime_type = detect_image_type(raw[:16])
+        structured = output.get("structuredContent")
+        if not isinstance(structured, dict):
+            structured = output.get("structured_content")
+        path = (
+            str(structured.get("path") or "image result")
+            if isinstance(structured, dict)
+            else "image result"
+        )
+        sanitized_item["bytes"] = len(raw)
+        detail["image_preview"] = {
+            "kind": "image",
+            "path": path,
+            "bytes": len(raw),
+            "mime_type": mime_type,
+            "data_base64": base64.b64encode(raw).decode("ascii"),
+            **terminal_image_fields(raw, preview_request),
+        }
+    except (ValueError, OSError, binascii.Error) as exc:
+        detail["image_preview_error"] = str(exc)
+    return detail
+
+
+def _summary_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Return metadata-only list data; protected payloads require detail scopes."""
+    summary: dict[str, Any] = {
+        "id": entry["id"],
+        "ts": entry["ts"],
+        "event": entry["event"],
+        "node": entry["node"],
+        "operation": entry["operation"],
+    }
+    for name in (
+        "tool",
+        "status",
+        "paired",
+        "ok",
+        "duration_ms",
+        "session",
+        "call_id",
+    ):
+        if name in entry:
+            summary[name] = entry[name]
+    source_events = entry.get("source_events")
+    if isinstance(source_events, list):
+        summary["source_events"] = [str(value) for value in source_events[:8]]
+    related_events = entry.get("related_events")
+    if isinstance(related_events, list):
+        summary["related_event_count"] = len(related_events)
+    return summary
+
+
+def _normalize_query_result(machine: str, value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise RuntimeError(f"Machine {machine} returned malformed audit data")
+    rows = value.get("entries")
+    if not isinstance(rows, list):
+        raise RuntimeError(
+            f"Machine {machine} returned malformed audit entries"
+        )
+    if len(rows) > UI_AUDIT_MAX_ENTRIES:
+        raise RuntimeError(f"Machine {machine} returned too many audit entries")
+    entries = [_normalize_entry(machine, item) for item in rows]
+    count = value.get("count", len(entries))
+    total_matched = value.get("total_matched", count)
+    if (
+        isinstance(count, bool)
+        or not isinstance(count, int)
+        or isinstance(total_matched, bool)
+        or not isinstance(total_matched, int)
+        or count < 0
+        or total_matched < count
+    ):
+        raise RuntimeError(f"Machine {machine} returned malformed audit counts")
+    if count != len(entries):
+        raise RuntimeError(
+            f"Machine {machine} returned inconsistent audit counts"
+        )
+    return {
+        "entries": [_summary_entry(entry) for entry in entries],
+        "count": count,
+        "total_matched": total_matched,
+    }
+
+
+async def _query(machine: str, args: dict[str, Any]) -> dict[str, Any]:
+    if machine == "local":
+        value = await asyncio.to_thread(query_audit, **args)
+    else:
+        value = await _remote_audit_call(machine, "query_audit", args)
+    return _normalize_query_result(machine, value)
+
+
+async def _detail(
+    machine: str, entry_id: str, *, include_full_payloads: bool = False
+) -> dict[str, Any]:
+    if machine == "local":
+        value = await asyncio.to_thread(
+            get_audit_entry,
+            entry_id,
+            include_full_payloads=include_full_payloads,
+        )
+    else:
+        value = await _remote_audit_call(
+            machine,
+            "get_audit_entry",
+            {"id": entry_id, "include_full_payloads": include_full_payloads},
+        )
+    return _normalize_entry(machine, value)
+
+
+def _detail_scopes(machine: str, entry: dict[str, Any]) -> tuple[str, ...]:
+    required = {SCOPE_AUDIT_READ}
+    tool = str(entry.get("tool") or "")
+    operation = str(entry.get("operation") or "").casefold()
+    if tool in _AUDIT_FILE_WRITE_TOOLS:
+        required.add(SCOPE_SHELL_WRITE)
+    if tool in _AUDIT_EXECUTE_TOOLS or operation in {"shell", "jobs"}:
+        required.add(SCOPE_SHELL_EXECUTE)
+    if tool.startswith("git_"):
+        required.add(SCOPE_GIT_WRITE)
+    if operation == "transfer":
+        required.add(SCOPE_FILE_SHARE)
+    if machine != "local" or operation == "remote":
+        required.add(SCOPE_REMOTE_USE)
+    if operation == "other":
+        required.update(
+            scope
+            for scope in SUPPORTED_OAUTH_SCOPES
+            if scope != SCOPE_AUDIT_FULL
+        )
+    return tuple(scope for scope in SUPPORTED_OAUTH_SCOPES if scope in required)
+
+
+def _payload(machine: str, data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "machine": machine,
+        "remote": machine != "local",
+        **data,
+        "limits": {
+            "entries": UI_AUDIT_MAX_ENTRIES,
+            "filter_bytes": UI_AUDIT_FILTER_MAX_BYTES,
+            "search_bytes": UI_AUDIT_SEARCH_MAX_BYTES,
+        },
+    }
+
+
+async def api_audit(request: Request) -> Response:
+    """Return a bounded filtered list from one machine's private Audit log."""
+    try:
+        machine = _machine_arg(request.query_params.get("machine"))
+        required = [SCOPE_AUDIT_READ]
+        if machine != "local":
+            required.append(SCOPE_REMOTE_USE)
+        _require_scopes(*required)
+        return _json_ok(
+            _payload(machine, await _query(machine, _query_args(request)))
+        )
+    except HTTPException:
+        raise
+    except ConnectionError as exc:
+        return _json_error(exc, status_code=503)
+    except RuntimeError as exc:
+        return _json_error(exc, status_code=502)
+    except Exception as exc:
+        return _json_error(exc)
+
+
+async def api_audit_detail(request: Request) -> Response:
+    """Return one audit entry after enforcing operation-sensitive scopes."""
+    try:
+        machine = _machine_arg(request.query_params.get("machine"))
+        entry_id = _bounded_text(
+            request.query_params.get("id"),
+            field="id",
+            max_bytes=UI_AUDIT_ENTRY_ID_MAX_BYTES,
+            allow_empty=False,
+        )
+        base_scopes = [SCOPE_AUDIT_READ]
+        if machine != "local":
+            base_scopes.append(SCOPE_REMOTE_USE)
+        _require_scopes(*base_scopes)
+        entry = await _detail(machine, entry_id)
+        _require_scopes(*_detail_scopes(machine, entry))
+        include_full_payloads = str(
+            request.query_params.get("include_full_payloads") or ""
+        ).casefold() in {"1", "true", "yes"}
+        if include_full_payloads:
+            _require_scopes(SCOPE_AUDIT_READ, SCOPE_AUDIT_FULL)
+            entry = await _detail(machine, entry_id, include_full_payloads=True)
+        preview_request = image_preview_request(request.query_params)
+        entry = await asyncio.to_thread(
+            _audit_view_image_detail, entry, preview_request
+        )
+        return _json_ok(_payload(machine, {"entry": entry}))
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        return _json_error(exc, status_code=404)
+    except ConnectionError as exc:
+        return _json_error(exc, status_code=503)
+    except RuntimeError as exc:
+        return _json_error(exc, status_code=502)
+    except Exception as exc:
+        return _json_error(exc)

@@ -175,7 +175,7 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
   channel.appendLine(`MCP URL: ${mcpUrl(config)}`);
 
   const env = await buildEnvironment(context, config);
-  const child = cp.spawn(config.executablePath, ['--mode', 'mcp'], {
+  const child = cp.spawn(config.executablePath, ['server', '--mode', 'mcp'], {
     cwd: config.workspaceRoot,
     env,
     shell: process.platform === 'win32',

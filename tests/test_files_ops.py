@@ -1,10 +1,15 @@
 import json
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.ops.files import (
+    delete_file_or_dir_execute,
     edit_file_execute,
     edit_lines_execute,
     hashline_edit_execute,
@@ -18,7 +23,6 @@ from local_shell_mcp.ops.files import (
 from local_shell_mcp.ops.shell import check_command_policy
 from local_shell_mcp.ops.utils.path import resolve_path
 from local_shell_mcp.schemas.input_models.files import ReadFileRequest
-from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from tests.helpers import nested_mcp_text
 
@@ -57,6 +61,32 @@ def test_list_files_reports_limit_and_truncation(tmp_path, monkeypatch):
 
     assert complete.count == 2
     assert complete.is_truncated is False
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="symlink creation may require elevated privileges"
+)
+def test_list_and_delete_preserve_final_symlink(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    target = tmp_path / "target"
+    target.mkdir()
+    important = target / "important.txt"
+    important.write_text("keep", encoding="utf-8")
+    link = tmp_path / "link"
+    link.symlink_to(target, target_is_directory=True)
+
+    entries = {entry.path: entry for entry in list_files_execute(".").entries}
+
+    assert entries["link"].type == "link"
+    assert entries["link"].target == str(target)
+    assert entries["target"].type == "dir"
+
+    deleted = delete_file_or_dir_execute("link")
+
+    assert deleted.model_dump() == {"path": "link", "deleted": "link"}
+    assert not os.path.lexists(link)
+    assert important.read_text(encoding="utf-8") == "keep"
 
 
 def test_read_text_rejects_invalid_utf8(tmp_path, monkeypatch):
@@ -145,6 +175,81 @@ def test_write_text_does_not_read_existing_file_before_overwrite(
     assert (tmp_path / "existing.txt").read_bytes().decode("utf-8") == "new"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not portable")
+def test_atomic_write_preserves_existing_file_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    path = tmp_path / "mode.txt"
+    path.write_text("old", encoding="utf-8")
+    path.chmod(0o640)
+
+    write_file_execute("mode.txt", "new")
+
+    assert path.read_text(encoding="utf-8") == "new"
+    assert path.stat().st_mode & 0o777 == 0o640
+
+
+def test_concurrent_overwrite_false_creates_file_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    barrier = threading.Barrier(2)
+
+    def write(content: str) -> str:
+        barrier.wait(timeout=5)
+        try:
+            write_file_execute("shared.txt", content, overwrite=False)
+        except FileExistsError:
+            return "exists"
+        return "created"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(write, ["first", "second"]))
+
+    assert sorted(outcomes) == ["created", "exists"]
+    assert (tmp_path / "shared.txt").read_text(encoding="utf-8") in {
+        "first",
+        "second",
+    }
+
+
+def test_concurrent_snapshot_edits_reject_stale_writer(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    path = tmp_path / "shared.txt"
+    path.write_text("alpha\nbeta\n", encoding="utf-8")
+    session_id = _create_session()
+    snapshot = read_file_execute(
+        "shared.txt", start_line=1, end_line=2, session_id=session_id
+    )
+    assert snapshot.snapshot_id is not None
+    barrier = threading.Barrier(2)
+
+    def edit(replacement: str) -> str:
+        barrier.wait(timeout=5)
+        try:
+            edit_lines_execute(
+                "shared.txt",
+                2,
+                2,
+                replacement,
+                snapshot_id=snapshot.snapshot_id,
+                session_id=session_id,
+            )
+        except ValueError as exc:
+            assert "file changed since snapshot" in str(exc)
+            return "stale"
+        return "edited"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(edit, ["BETA-ONE", "BETA-TWO"]))
+
+    assert sorted(outcomes) == ["edited", "stale"]
+    assert path.read_text(encoding="utf-8") in {
+        "alpha\nBETA-ONE\n",
+        "alpha\nBETA-TWO\n",
+    }
+
+
 def test_edit_refuses_files_above_write_limit(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_FILE_WRITE_BYTES", "5")
@@ -229,8 +334,12 @@ def test_full_container_mode_disables_builtin_restrictions(
 
     settings = get_settings()
     assert settings.command_denylist == []
+
     assert settings.path_denylist == []
-    assert str(resolve_path("/etc/passwd")) == "/etc/passwd"
+    outside_workspace = Path(tmp_path.anchor) / "outside-workspace"
+    assert resolve_path(outside_workspace) == Path(
+        os.path.abspath(outside_workspace)
+    )
     check_command_policy("mount /dev/null /mnt || true")
 
 

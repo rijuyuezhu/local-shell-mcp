@@ -76,6 +76,22 @@ LinesArg = Annotated[
         description="Number of recent terminal lines to capture from the persistent shell."
     ),
 ]
+ShellColumnsArg = Annotated[
+    int,
+    Field(
+        ge=20,
+        le=1600,
+        description="Persistent terminal width in character columns (20-1600).",
+    ),
+]
+ShellRowsArg = Annotated[
+    int,
+    Field(
+        ge=3,
+        le=500,
+        description="Persistent terminal height in character rows (3-500).",
+    ),
+]
 ToolPurposeArg = Annotated[
     str | None,
     Field(

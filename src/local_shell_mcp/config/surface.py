@@ -8,13 +8,14 @@ configuration files.
 import argparse
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import PurePath
 from typing import Annotated, Any, Literal, cast, get_args, get_origin
 
 from .settings import ENV_PREFIX, Settings
 
 type SectionName = Literal[
     "Server",
+    "Human interface",
     "Paths and state",
     "Authentication and OAuth",
     "Safety and resource limits",
@@ -136,10 +137,34 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("mode", "Server"),
     SettingSpec("host", "Server", metavar="HOST"),
     SettingSpec("port", "Server", metavar="PORT"),
+    SettingSpec("ui_enabled", "Human interface"),
+    SettingSpec("ui_path", "Human interface", metavar="PATH"),
+    SettingSpec("ui_tui_command", "Human interface", metavar="COMMAND"),
+    SettingSpec(
+        "ui_terminal_idle_timeout_s",
+        "Human interface",
+        metavar="SECONDS",
+    ),
+    SettingSpec(
+        "ui_terminal_max_connections",
+        "Human interface",
+        metavar="COUNT",
+    ),
+    SettingSpec("ui_wallpaper", "Human interface", metavar="MODE"),
     SettingSpec("workspace_root", "Paths and state", metavar="PATH"),
     SettingSpec("state_dir", "Paths and state", metavar="PATH"),
     SettingSpec("auth_mode", "Authentication and OAuth"),
     SettingSpec("auth_bypass_localhost", "Authentication and OAuth"),
+    SettingSpec(
+        "mcp_session_idle_timeout_s",
+        "Authentication and OAuth",
+        metavar="SECONDS",
+    ),
+    SettingSpec(
+        "mcp_max_sessions",
+        "Authentication and OAuth",
+        metavar="COUNT",
+    ),
     SettingSpec("base_url", "Authentication and OAuth", metavar="URL"),
     SettingSpec("oauth_issuer", "Authentication and OAuth", metavar="URL"),
     SettingSpec(
@@ -157,6 +182,11 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "oauth_code_ttl_s",
         "Authentication and OAuth",
         metavar="SECONDS",
+    ),
+    SettingSpec(
+        "oauth_max_pending_codes",
+        "Authentication and OAuth",
+        metavar="COUNT",
     ),
     SettingSpec(
         "oauth_client_ttl_s",
@@ -189,7 +219,6 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         metavar="CHARS",
     ),
     SettingSpec("allow_full_control", "Safety and resource limits"),
-    SettingSpec("relaxed_client_tool_hints", "Safety and resource limits"),
     SettingSpec(
         "tool_timeout_s", "Safety and resource limits", metavar="SECONDS"
     ),
@@ -207,7 +236,30 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "max_output_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(
+        "max_job_log_bytes", "Safety and resource limits", metavar="BYTES"
+    ),
+    SettingSpec("max_jobs", "Safety and resource limits", metavar="COUNT"),
+    SettingSpec(
         "max_file_read_bytes", "Safety and resource limits", metavar="BYTES"
+    ),
+    SettingSpec(
+        "max_view_image_bytes", "Safety and resource limits", metavar="BYTES"
+    ),
+    SettingSpec("max_skills", "Safety and resource limits", metavar="COUNT"),
+    SettingSpec(
+        "max_skill_related_files",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "max_skill_scan_entries",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "max_skill_path_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
     ),
     SettingSpec(
         "max_file_write_bytes", "Safety and resource limits", metavar="BYTES"
@@ -237,10 +289,47 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         "max_todo_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(
+        "max_http_request_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
+    SettingSpec(
         "max_audit_log_bytes", "Safety and resource limits", metavar="BYTES"
+    ),
+    SettingSpec(
+        "max_audit_event_bytes", "Safety and resource limits", metavar="BYTES"
+    ),
+    SettingSpec("audit_payloads_enabled", "Safety and resource limits"),
+    SettingSpec(
+        "audit_inline_value_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
+    SettingSpec(
+        "max_audit_payload_bytes", "Safety and resource limits", metavar="BYTES"
+    ),
+    SettingSpec(
+        "max_audit_payload_store_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
+    SettingSpec(
+        "audit_payload_retention_s",
+        "Safety and resource limits",
+        metavar="SECONDS",
     ),
     SettingSpec("max_tmp_files", "Safety and resource limits", metavar="COUNT"),
     SettingSpec("max_tmp_bytes", "Safety and resource limits", metavar="BYTES"),
+    SettingSpec(
+        "max_transfer_archive_entries",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "max_transfer_unpacked_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
     SettingSpec(
         "max_concurrent_commands", "Safety and resource limits", metavar="COUNT"
     ),
@@ -276,6 +365,27 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("remote_invite_ttl_s", "Remote workers", metavar="SECONDS"),
     SettingSpec("remote_poll_timeout_s", "Remote workers", metavar="SECONDS"),
     SettingSpec("remote_job_timeout_s", "Remote workers", metavar="SECONDS"),
+    SettingSpec("remote_max_pending_jobs", "Remote workers", metavar="COUNT"),
+    SettingSpec("remote_http_transfer_enabled", "Remote workers"),
+    SettingSpec(
+        "remote_http_transfer_threshold_bytes",
+        "Remote workers",
+        metavar="BYTES",
+    ),
+    SettingSpec(
+        "remote_http_transfer_chunk_bytes", "Remote workers", metavar="BYTES"
+    ),
+    SettingSpec(
+        "remote_http_transfer_ticket_ttl_s", "Remote workers", metavar="SECONDS"
+    ),
+    SettingSpec(
+        "remote_http_transfer_max_active", "Remote workers", metavar="COUNT"
+    ),
+    SettingSpec(
+        "remote_http_transfer_max_spool_bytes",
+        "Remote workers",
+        metavar="BYTES",
+    ),
     SettingSpec("agent_bridge_enabled", "Agent capability bridge"),
     SettingSpec(
         "agent_mcp_probe_timeout_s",
@@ -290,6 +400,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("shell_executable", "Tool executables", metavar="PATH"),
     SettingSpec("tmux_bin", "Tool executables", metavar="PATH"),
     SettingSpec("rg_bin", "Tool executables", metavar="PATH"),
+    SettingSpec("git_bin", "Tool executables", metavar="PATH"),
     SettingSpec("python_bin", "Tool executables", metavar="PATH"),
 )
 
@@ -330,8 +441,8 @@ def default_to_string(value: Any) -> str:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, Path):
-        return str(value)
+    if isinstance(value, PurePath):
+        return value.as_posix()
     if isinstance(value, list):
         items = cast(list[Any], value)
         return ",".join(str(item) for item in items)
@@ -340,8 +451,8 @@ def default_to_string(value: Any) -> str:
 
 def yaml_default(value: Any) -> Any:
     """Render a default value suitable for YAML dumping."""
-    if isinstance(value, Path):
-        return str(value)
+    if isinstance(value, PurePath):
+        return value.as_posix()
     return value
 
 

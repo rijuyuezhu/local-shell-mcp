@@ -37,7 +37,7 @@ class AuthCode:
     code_challenge: str | None
     """PKCE code challenge supplied during authorization."""
     code_challenge_method: str | None
-    """PKCE challenge method, such as S256 or plain."""
+    """PKCE S256 challenge method bound to this authorization code."""
     created_at: int = field(default_factory=lambda: int(time.time()))
     """Unix timestamp when the authorization code was issued."""
     used: bool = False

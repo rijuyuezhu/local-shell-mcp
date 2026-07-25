@@ -1,8 +1,10 @@
 """Authlib-backed OAuth service operations."""
 
+import contextlib
 import secrets
 import time
 from dataclasses import dataclass
+from threading import RLock
 from typing import NoReturn
 from urllib.parse import urlparse
 
@@ -15,7 +17,6 @@ from authlib.oauth2.rfc6749.errors import (
 from authlib.oauth2.rfc7636.challenge import (
     CODE_CHALLENGE_PATTERN,
     CODE_VERIFIER_PATTERN,
-    compare_plain_code_challenge,
     compare_s256_code_challenge,
 )
 
@@ -36,6 +37,24 @@ from .urls import issuer_url, normalize_resource, resource_url
 LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 BLOCKED_REDIRECT_SCHEMES = {"javascript", "data"}
 CLIENT_ID_GENERATION_ATTEMPTS = 8
+AUTHORIZATION_CODE_GENERATION_ATTEMPTS = 8
+PENDING_CODE_CAPACITY_ERROR = (
+    "Too many pending authorization requests; try again later"
+)
+_AUTH_CODE_LOCK = RLock()
+_OAUTH_CLIENT_LOCK = RLock()
+
+
+class OAuthStateCapacityError(OAuth2Error):
+    """Reject OAuth state creation when configured in-memory capacity is full."""
+
+    error = "temporarily_unavailable"
+    """OAuth error code returned for temporary in-memory capacity exhaustion."""
+
+    status_code = 503
+    """HTTP status used when the error is emitted as a JSON OAuth response."""
+
+
 REGISTRATION_REDIRECT_ERROR = (
     "redirect_uris must be https, loopback http, or custom private-use URIs"
 )
@@ -134,6 +153,17 @@ class TokenResponse:
     """Token lifetime in seconds, if configured."""
 
 
+@dataclass(frozen=True)
+class DynamicClientRegistration:
+    """Result of a dynamic public-client registration request."""
+
+    client: OAuthClient
+    """Newly created or previously matching public client."""
+
+    reused: bool
+    """Whether the request reused an existing registration."""
+
+
 def oauth_error_message(exc: OAuth2Error) -> str:
     """Return a user-facing message for local approval UI errors."""
     return str(exc.description or exc.error or "invalid_request")
@@ -153,9 +183,10 @@ def authorization_form_context(
     )
     client_name = auth_request.client_name if auth_request else "Unknown client"
     if auth_request is None and request_input.client_id:
-        client_record = _CLIENTS.get(request_input.client_id)
-        if client_record and client_record.client_name:
-            client_name = client_record.client_name
+        with _OAUTH_CLIENT_LOCK:
+            client_record = _CLIENTS.get(request_input.client_id)
+            if client_record and client_record.client_name:
+                client_name = client_record.client_name
     return AuthorizationFormContext(
         params=form_params,
         client_id=client_id,
@@ -206,12 +237,44 @@ def _is_allowed_redirect_uri(uri: str) -> bool:
 
 
 def _new_client_id() -> str:
-    """Generate a dynamic client id without overwriting an existing client."""
+    """Generate a unique client id while the client registry lock is held."""
     for _ in range(CLIENT_ID_GENERATION_ATTEMPTS):
         client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
         if client_id not in _CLIENTS:
             return client_id
     raise InvalidRequestError(description="Unable to allocate unique client_id")
+
+
+def _registration_key(
+    client_name: str | None,
+    redirect_uris: list[str],
+) -> tuple[str | None, tuple[str, ...]]:
+    """Return the stable identity for idempotent public-client registration."""
+    return client_name, tuple(sorted(set(redirect_uris)))
+
+
+def _matching_registered_client_locked(
+    client_name: str | None,
+    redirect_uris: list[str],
+) -> OAuthClient | None:
+    """Choose the preferred matching client while the registry lock is held."""
+    requested = _registration_key(client_name, redirect_uris)
+    matches = [
+        client
+        for client in _CLIENTS.values()
+        if _registration_key(client.client_name, client.redirect_uris)
+        == requested
+    ]
+    if not matches:
+        return None
+    return min(
+        matches,
+        key=lambda client: (
+            client.approved_at is None,
+            client.created_at,
+            client.client_id,
+        ),
+    )
 
 
 def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
@@ -225,26 +288,30 @@ def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
 
 def _prune_clients(*, now: int | None = None) -> None:
     """Remove expired, unapproved client registrations from memory."""
-    settings = get_settings()
-    if settings.oauth_client_ttl_s <= 0:
-        return
-    current_time = int(time.time()) if now is None else now
-    for client_id, client in list(_CLIENTS.items()):
-        if _client_expired(
-            client, now=current_time, ttl_s=settings.oauth_client_ttl_s
-        ):
-            _CLIENTS.pop(client_id, None)
+    with _OAUTH_CLIENT_LOCK:
+        settings = get_settings()
+        if settings.oauth_client_ttl_s <= 0:
+            return
+        current_time = int(time.time()) if now is None else now
+        for client_id, client in list(_CLIENTS.items()):
+            if _client_expired(
+                client, now=current_time, ttl_s=settings.oauth_client_ttl_s
+            ):
+                _CLIENTS.pop(client_id, None)
 
 
 def initialize_dynamic_clients() -> int:
     """Load approved clients and prune stale pending registrations."""
-    loaded = load_persisted_clients()
-    _prune_clients()
-    return loaded
+    with _OAUTH_CLIENT_LOCK:
+        loaded = load_persisted_clients()
+        _prune_clients()
+        return loaded
 
 
-def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
-    """Validate and retain a pending dynamic client registration."""
+def register_dynamic_client(
+    request: RegistrationRequest,
+) -> DynamicClientRegistration:
+    """Create or reuse one matching dynamic public-client registration."""
     if not request.redirect_uris:
         raise InvalidRequestError(
             description="redirect_uris must be a non-empty list"
@@ -253,30 +320,54 @@ def register_dynamic_client(request: RegistrationRequest) -> OAuthClient:
     if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
         raise InvalidRequestError(description=REGISTRATION_REDIRECT_ERROR)
 
-    _prune_clients()
-    settings = get_settings()
-    max_clients = settings.oauth_max_dynamic_clients
-    pending_clients = sum(
-        client.approved_at is None for client in _CLIENTS.values()
-    )
-    if max_clients > 0 and pending_clients >= max_clients:
-        raise InvalidRequestError(
-            description="Too many pending OAuth client registrations"
+    with _OAUTH_CLIENT_LOCK:
+        _prune_clients()
+        existing = _matching_registered_client_locked(
+            request.client_name, redirect_uris
         )
+        if existing is not None:
+            registration = DynamicClientRegistration(
+                client=existing,
+                reused=True,
+            )
+        else:
+            settings = get_settings()
+            max_clients = settings.oauth_max_dynamic_clients
+            pending_clients = sum(
+                client.approved_at is None for client in _CLIENTS.values()
+            )
+            if max_clients > 0 and pending_clients >= max_clients:
+                raise InvalidRequestError(
+                    description="Too many pending OAuth client registrations"
+                )
 
-    client_id = _new_client_id()
-    client = OAuthClient(
-        client_id=client_id,
-        redirect_uris=redirect_uris,
-        client_name=request.client_name,
-    )
-    _CLIENTS[client_id] = client
-    audit(
-        "oauth_client_registered",
-        client_id=client_id,
-        redirect_uris=redirect_uris,
-    )
-    return client
+            client_id = _new_client_id()
+            client = OAuthClient(
+                client_id=client_id,
+                redirect_uris=redirect_uris,
+                client_name=request.client_name,
+            )
+            _CLIENTS[client_id] = client
+            registration = DynamicClientRegistration(
+                client=client,
+                reused=False,
+            )
+
+    client = registration.client
+    if registration.reused:
+        audit(
+            "oauth_client_reused",
+            client_id=client.client_id,
+            approved=client.approved_at is not None,
+            redirect_uri_count=len(set(client.redirect_uris)),
+        )
+    else:
+        audit(
+            "oauth_client_registered",
+            client_id=client.client_id,
+            redirect_uris=client.redirect_uris,
+        )
+    return registration
 
 
 def validate_authorization_request(
@@ -295,8 +386,9 @@ def validate_authorization_request(
     if normalized_resource != resource_url():
         _raise_invalid("resource does not match this MCP server")
 
-    _prune_clients()
-    client_record = _CLIENTS.get(client_id)
+    with _OAUTH_CLIENT_LOCK:
+        _prune_clients()
+        client_record = _CLIENTS.get(client_id)
     if client_record is None:
         _raise_invalid("Unknown client_id")
     client = LocalOAuthClient(client_record)
@@ -314,11 +406,13 @@ def validate_authorization_request(
     challenge = request_params.get("code_challenge")
     if not challenge:
         _raise_invalid("Missing code_challenge")
-    if not CODE_CHALLENGE_PATTERN.match(challenge):
+    if not CODE_CHALLENGE_PATTERN.fullmatch(challenge):
         _raise_invalid("Invalid code_challenge")
     method = request_params.get("code_challenge_method")
-    if method and method not in {"S256", "plain"}:
-        _raise_invalid("Unsupported code_challenge_method")
+    if not method:
+        _raise_invalid("Missing code_challenge_method")
+    if method != "S256":
+        _raise_invalid("Only code_challenge_method=S256 is supported")
 
     return AuthorizationRequest(
         client=client,
@@ -331,47 +425,77 @@ def validate_authorization_request(
 
 def _approve_client(client_id: str, *, now: int | None = None) -> OAuthClient:
     """Persist a client after the local user approves its first authorization."""
-    client = _CLIENTS.get(client_id)
-    if client is None:
-        raise RuntimeError("Approved OAuth client is no longer registered")
-    if client.approved_at is not None:
+    with _OAUTH_CLIENT_LOCK:
+        client = _CLIENTS.get(client_id)
+        if client is None:
+            raise RuntimeError("Approved OAuth client is no longer registered")
+        if client.approved_at is not None:
+            return client
+
+        client.approved_at = max(
+            client.created_at,
+            int(time.time()) if now is None else now,
+        )
+        try:
+            persist_approved_clients()
+        except OSError:
+            client.approved_at = None
+            raise
+        audit("oauth_client_approved", client_id=client_id)
         return client
 
-    client.approved_at = max(
-        client.created_at,
-        int(time.time()) if now is None else now,
+
+def _ensure_pending_code_capacity() -> None:
+    """Reject new codes without evicting valid pending authorization state."""
+    max_codes = get_settings().oauth_max_pending_codes
+    pending_codes = len(_CODES)
+    if max_codes <= 0 or pending_codes < max_codes:
+        return
+    with contextlib.suppress(Exception):
+        audit(
+            "oauth_code_capacity_exhausted",
+            pending_codes=pending_codes,
+            max_pending_codes=max_codes,
+        )
+    raise OAuthStateCapacityError(description=PENDING_CODE_CAPACITY_ERROR)
+
+
+def _new_authorization_code() -> str:
+    """Generate an authorization code without overwriting live state."""
+    for _ in range(AUTHORIZATION_CODE_GENERATION_ATTEMPTS):
+        code = secrets.token_urlsafe(32)
+        if code not in _CODES:
+            return code
+    raise InvalidRequestError(
+        description="Unable to allocate authorization code"
     )
-    try:
-        persist_approved_clients()
-    except OSError:
-        client.approved_at = None
-        raise
-    audit("oauth_client_approved", client_id=client_id)
-    return client
 
 
 def issue_authorization_response(
     request: AuthorizationRequest,
 ) -> AuthorizationResponse:
-    """Approve the client, then issue and store a one-time authorization code."""
-    _approve_client(request.client_id)
-    code = secrets.token_urlsafe(32)
-    auth_code = AuthCode(
-        code=code,
-        client_id=request.client_id,
-        redirect_uri=request.redirect_uri,
-        scope=request.scope,
-        resource=request.resource,
-        code_challenge=request.input.code_challenge,
-        code_challenge_method=request.input.code_challenge_method,
-    )
-    _CODES[code] = auth_code
+    """Atomically reserve capacity, approve the client, and store a one-time code."""
+    with _AUTH_CODE_LOCK:
+        _prune_codes()
+        _ensure_pending_code_capacity()
+        code = _new_authorization_code()
+        auth_code = AuthCode(
+            code=code,
+            client_id=request.client_id,
+            redirect_uri=request.redirect_uri,
+            scope=request.scope,
+            resource=request.resource,
+            code_challenge=request.input.code_challenge,
+            code_challenge_method=request.input.code_challenge_method,
+        )
+        _approve_client(request.client_id)
+        _CODES[code] = auth_code
+
     audit(
         "oauth_code_issued",
         client_id=auth_code.client_id,
         resource=auth_code.resource,
     )
-
     query = {"code": code, "iss": issuer_url()}
     if request.state:
         query["state"] = request.state
@@ -383,15 +507,15 @@ def issue_authorization_response(
 
 
 def _verify_pkce(code_obj: AuthCode, verifier: str | None) -> bool:
-    """Validate PKCE using Authlib's RFC7636 challenge helpers."""
-    if not code_obj.code_challenge:
-        return verifier is None
-    if not verifier or not CODE_VERIFIER_PATTERN.match(verifier):
+    """Validate an S256-only PKCE verifier against stored authorization state."""
+    challenge = code_obj.code_challenge
+    if code_obj.code_challenge_method != "S256" or not challenge:
         return False
-    method = code_obj.code_challenge_method or "plain"
-    if method == "S256":
-        return compare_s256_code_challenge(verifier, code_obj.code_challenge)
-    return compare_plain_code_challenge(verifier, code_obj.code_challenge)
+    if not CODE_CHALLENGE_PATTERN.fullmatch(challenge):
+        return False
+    if not verifier or not CODE_VERIFIER_PATTERN.fullmatch(verifier):
+        return False
+    return compare_s256_code_challenge(verifier, challenge)
 
 
 def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
@@ -401,15 +525,16 @@ def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
 
 def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
     """Remove used or expired authorization codes from the in-memory store."""
-    settings = get_settings()
-    current_time = int(time.time()) if now is None else now
-    for code, code_obj in list(_CODES.items()):
-        if code == keep:
-            continue
-        if code_obj.used or _auth_code_expired(
-            code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
-        ):
-            _CODES.pop(code, None)
+    with _AUTH_CODE_LOCK:
+        settings = get_settings()
+        current_time = int(time.time()) if now is None else now
+        for code, code_obj in list(_CODES.items()):
+            if code == keep:
+                continue
+            if code_obj.used or _auth_code_expired(
+                code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
+            ):
+                _CODES.pop(code, None)
 
 
 def exchange_authorization_code(
@@ -429,24 +554,31 @@ def exchange_authorization_code(
     redirect_uri = request_input.redirect_uri or ""
     verifier = request_input.code_verifier
 
-    _prune_codes()
-    code_obj = _CODES.get(code)
-    if not code_obj or code_obj.used:
-        raise InvalidGrantError(description="Unknown or used code")
-
     settings = get_settings()
-    if _auth_code_expired(
-        code_obj, now=int(time.time()), ttl_s=settings.oauth_code_ttl_s
-    ):
-        raise InvalidGrantError(description="Expired code")
-    if code_obj.client_id != client_id or code_obj.redirect_uri != redirect_uri:
-        raise InvalidGrantError(description="Client or redirect mismatch")
-    if normalize_resource(resource) != normalize_resource(code_obj.resource):
-        raise InvalidGrantError(description="Resource mismatch")
-    if not _verify_pkce(code_obj, verifier):
-        raise InvalidGrantError(description="PKCE verification failed")
+    with _AUTH_CODE_LOCK:
+        _prune_codes()
+        code_obj = _CODES.get(code)
+        if not code_obj or code_obj.used:
+            raise InvalidGrantError(description="Unknown or used code")
 
-    code_obj.used = True
+        if _auth_code_expired(
+            code_obj, now=int(time.time()), ttl_s=settings.oauth_code_ttl_s
+        ):
+            raise InvalidGrantError(description="Expired code")
+        if (
+            code_obj.client_id != client_id
+            or code_obj.redirect_uri != redirect_uri
+        ):
+            raise InvalidGrantError(description="Client or redirect mismatch")
+        if normalize_resource(resource) != normalize_resource(
+            code_obj.resource
+        ):
+            raise InvalidGrantError(description="Resource mismatch")
+        if not _verify_pkce(code_obj, verifier):
+            raise InvalidGrantError(description="PKCE verification failed")
+
+        code_obj.used = True
+        _CODES.pop(code, None)
     credential = issue_access_token(
         client_id=client_id, scope=code_obj.scope, resource=code_obj.resource
     )

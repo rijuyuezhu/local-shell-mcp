@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -27,7 +27,9 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: vscode-extension/package-lock.json
+          cache-dependency-path: |
+            vscode-extension/package-lock.json
+            ui-terminal/package-lock.json
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -53,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -64,6 +66,185 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --group dev
       - run: uv run pytest -q
+
+  coverage:
+    name: Test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - name: Run branch coverage
+        run: |
+          find . -maxdepth 1 -name '.coverage*' -delete
+          uv run python -m coverage run -m pytest -q
+          uv run python -m coverage combine
+          uv run python -m coverage json
+          uv run python -m coverage xml
+          uv run python -m coverage report
+          uv run python scripts/validation/check-coverage.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: python-coverage
+          path: |
+            coverage.json
+            coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  browser-e2e:
+    name: Chromium Human UI E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Install terminal runtime dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes tmux
+      - run: uv sync --locked --group dev
+      - working-directory: ui-opentui
+        run: bun install --frozen-lockfile
+      - working-directory: ui-opentui
+        run: bun run build:tui
+      - name: Install locked Chromium revision
+        run: uv run playwright install --with-deps chromium
+      - name: Run real Chromium Human UI scenario
+        run: uv run python scripts/testing/run-browser-e2e.py --artifacts browser-artifacts
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: chromium-human-ui-e2e
+          path: browser-artifacts
+          if-no-files-found: warn
+          retention-days: 14
+
+  opentui:
+    name: OpenTUI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - working-directory: ui-opentui
+        run: bun install --frozen-lockfile
+      - working-directory: ui-opentui
+        run: bun run typecheck
+      - working-directory: ui-opentui
+        run: bun test
+      - working-directory: ui-opentui
+        run: bun run build:tui
+      - name: Smoke test OpenTUI sidecar
+        shell: bash
+        run: |
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            ./ui-opentui/dist/local-shell-mcp-tui.exe --version
+          else
+            ./ui-opentui/dist/local-shell-mcp-tui --version
+          fi
+
+  platform-wheel:
+    name: Platform wheel (${{ matrix.artifact }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: linux-x86_64
+            runner: ubuntu-latest
+            platform_tag: linux_x86_64
+          - artifact: linux-aarch64
+            runner: ubuntu-24.04-arm
+            platform_tag: linux_aarch64
+          - artifact: macos-x86_64
+            runner: macos-15-intel
+            platform_tag: macosx_10_15_x86_64
+          - artifact: macos-aarch64
+            runner: macos-15
+            platform_tag: macosx_11_0_arm64
+          - artifact: windows-x86_64
+            runner: windows-latest
+            platform_tag: win_amd64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: uv sync --locked --group dev
+      - working-directory: ui-opentui
+        run: bun install --frozen-lockfile
+      - name: Build and inspect platform wheel
+        shell: bash
+        run: >-
+          uv run python scripts/release/build-platform-wheel.py
+          --platform-tag "${{ matrix.platform_tag }}"
+          --output-dir dist
+      - name: Install wheel without Bun or sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="$RUNNER_TEMP/platform-wheel-venv"
+          state="$RUNNER_TEMP/platform-wheel-state"
+          work="$RUNNER_TEMP/platform-wheel-work"
+          python -m venv "$venv"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            python_bin="$venv/Scripts/python.exe"
+            clean_path="$venv/Scripts"
+          else
+            python_bin="$venv/bin/python"
+            clean_path="$venv/bin"
+          fi
+          "$python_bin" -m pip install dist/*.whl
+          PATH="$clean_path" "$python_bin" \
+            "$GITHUB_WORKSPACE/scripts/release/smoke-platform-wheel.py" \
+            --state-dir "$state" \
+            --work-dir "$work"
+          test ! -e src/local_shell_mcp/ui_runtime
+          test ! -e src/local_shell_mcp/.platform-wheel-build.lock
+
+  windows-conpty:
+    name: Windows ConPTY
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - run: >-
+          uv run pytest -q
+          tests/test_conpty_backend.py
+          tests/test_conpty_windows_integration.py
+          tests/test_terminal_bridge.py
 
   package-smoke:
     name: Package smoke
@@ -76,7 +257,88 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+      - run: uv sync --locked --group dev
       - run: uv build --out-dir dist
+      - name: Inspect universal wheel and source distribution
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          from local_shell_mcp.release.platform_wheel import inspect_sdist, inspect_wheel
+
+          wheels = list(Path("dist").glob("*.whl"))
+          sdists = list(Path("dist").glob("*.tar.gz"))
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit("expected exactly one universal wheel and one sdist")
+          inspect_wheel(wheels[0], target=None)
+          inspect_sdist(sdists[0])
+          PY
+      - name: Validate source distribution contents and rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/local-shell-mcp-sdist /tmp/local-shell-mcp-sdist-wheel
+          mkdir -p /tmp/local-shell-mcp-sdist /tmp/local-shell-mcp-sdist-wheel
+          tar -xzf dist/*.tar.gz -C /tmp/local-shell-mcp-sdist
+          source_dir="$(find /tmp/local-shell-mcp-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -f "$source_dir/scripts/release/build-platform-wheel.py"
+          test -f "$source_dir/scripts/release/smoke-platform-wheel.py"
+          test ! -e "$source_dir/scripts/release/pyinstaller-entry.py"
+          test ! -e "$source_dir/scripts/build-platform-wheel.py"
+          test ! -e "$source_dir/scripts/smoke-platform-wheel.py"
+          test ! -e "$source_dir/scripts/pyinstaller-entry.py"
+          test ! -e "$source_dir/scripts/testing/run-browser-e2e.py"
+          test ! -e "$source_dir/scripts/run-browser-e2e.py"
+          test -f "$source_dir/scripts/README.md"
+          test -f "$source_dir/scripts/validation/check-coverage.py"
+          test -f "$source_dir/scripts/validation/check-native-provenance.py"
+          test -f "$source_dir/scripts/validation/check-release-matrix.py"
+          test -f "$source_dir/scripts/generation/generate-tui-executable-contract.py"
+          test -f "$source_dir/scripts/validation/coverage-baseline.json"
+          test -f "$source_dir/tests/test_coverage_gate.py"
+          test -f "$source_dir/tests/test_native_provenance.py"
+          test -f "$source_dir/tests/test_tmux_helper.py"
+          test -f "$source_dir/scripts/release/build-tmux-helper.sh"
+          test -f "$source_dir/scripts/release/tmux-helper.Dockerfile"
+          test ! -e "$source_dir/scripts/build-tmux-helper.sh"
+          test ! -e "$source_dir/scripts/tmux-helper.Dockerfile"
+          test -f "$source_dir/src/local_shell_mcp/helpers/README.md"
+          test -f "$source_dir/src/local_shell_mcp/ui/contracts.py"
+          test -f "$source_dir/src/local_shell_mcp/helpers/tmux.LICENSE"
+          test -f "$source_dir/src/local_shell_mcp/helpers/opentui.NOTICES"
+          test -f "$source_dir/src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md"
+          test ! -e "$source_dir/src/local_shell_mcp/helpers/linux-x86_64/tmux"
+          test ! -e "$source_dir/src/local_shell_mcp/helpers/linux-aarch64/tmux"
+          test ! -e "$source_dir/.coverage"
+          test ! -e "$source_dir/coverage.json"
+          test ! -e "$source_dir/coverage.xml"
+          test -f "$source_dir/ui-terminal/package.json"
+          test -f "$source_dir/ui-terminal/package-lock.json"
+          test -f "$source_dir/ui-terminal/src/index.js"
+          test -f "$source_dir/ui-terminal/src/image-support.js"
+          test -f "$source_dir/ui-terminal/src/image-support.test.js"
+          test -f "$source_dir/ui-terminal/scripts/build.mjs"
+          test ! -e "$source_dir/ui-terminal/node_modules"
+          test -f "$source_dir/ui-opentui/package.json"
+          test -f "$source_dir/ui-opentui/bun.lock"
+          test -f "$source_dir/ui-opentui/src/tui.tsx"
+          test -f "$source_dir/ui-opentui/scripts/compile-tui.ts"
+          test -f "$source_dir/ui-opentui/scripts/executable-contract.ts"
+          PYTHONPATH="$source_dir/src" python             "$source_dir/scripts/generation/generate-tui-executable-contract.py" --check
+          test ! -e "$source_dir/ui-opentui/node_modules"
+          test ! -e "$source_dir/ui-opentui/dist"
+          test ! -e "$source_dir/src/local_shell_mcp/ui_runtime"
+          uv build --wheel "$source_dir" --out-dir /tmp/local-shell-mcp-sdist-wheel
+          rebuilt="$(find /tmp/local-shell-mcp-sdist-wheel -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$rebuilt"
+          REBUILT_WHEEL="$rebuilt" uv run python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from local_shell_mcp.release.platform_wheel import inspect_wheel
+
+          inspect_wheel(Path(os.environ["REBUILT_WHEEL"]), target=None)
+          PY
       - name: Install wheel in a clean virtualenv
         run: |
           python -m venv /tmp/local-shell-mcp-wheel-venv
@@ -84,6 +346,34 @@ jobs:
           /tmp/local-shell-mcp-wheel-venv/bin/python -m pip install dist/*.whl
           /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp --version
           /tmp/local-shell-mcp-wheel-venv/bin/local-shell-mcp version
+          /tmp/local-shell-mcp-wheel-venv/bin/python -c \
+            "from local_shell_mcp.ui.runtime import embedded_tui_payload; assert embedded_tui_payload() is None"
+
+  bundled-tmux:
+    name: Bundled tmux (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x86_64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - label: linux-aarch64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and smoke static tmux helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/release/build-tmux-helper.sh /tmp/local-shell-mcp-tmux "${{ matrix.platform }}"
+          /tmp/local-shell-mcp-tmux -L local-shell-mcp-ci new-session -d -s smoke "sh -lc 'printf ready; sleep 5'"
+          sleep 1
+          /tmp/local-shell-mcp-tmux -L local-shell-mcp-ci capture-pane -p -t smoke | grep -F ready
+          /tmp/local-shell-mcp-tmux -L local-shell-mcp-ci kill-server
 
   compose-smoke:
     name: Docker Compose config
@@ -121,7 +411,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - run: python scripts/check-release-matrix.py
+      - run: python scripts/validation/check-release-matrix.py
 
   vscode-extension:
     name: VS Code extension (${{ matrix.os }})

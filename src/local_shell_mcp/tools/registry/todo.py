@@ -4,7 +4,7 @@ import asyncio
 
 from ...ops.todo import read_todos_execute, write_todos_execute
 from ...schemas.input_models.session import SessionIdArg
-from ...schemas.input_models.todo import TodosArg
+from ...schemas.input_models.todo import ExpectedTodoRevisionArg, TodosArg
 from ...schemas.result_models.todo import ReadTodosOutput, WriteTodosOutput
 from ..declarative import DeclarativeToolRegistry
 
@@ -34,9 +34,14 @@ async def read_todos(session_id: SessionIdArg) -> ReadTodosOutput:
     http_method="POST",
     http_path="/tools/todo",
     oauth_scopes=("shell:read", "shell:write"),
+    timeout_cancellable=False,
 )
 async def write_todos(
-    session_id: SessionIdArg, todos: TodosArg
+    session_id: SessionIdArg,
+    todos: TodosArg,
+    expected_revision: ExpectedTodoRevisionArg = None,
 ) -> WriteTodosOutput:
-    """Replace the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start and provide the full desired todo list, not a partial patch; omitted existing items are removed. Use this for multi-step coding work where tracking in_progress/completed/pending items helps coordinate the current session. Keep todo content concise and actionable, and use read_todos first when preserving existing items matters."""
-    return await asyncio.to_thread(write_todos_execute, todos, session_id)
+    """Replace the structured todo list owned by one explicit agent/workspace session. Pass the session_id returned by session_start and provide the full desired todo list, not a partial patch; omitted existing items are removed. Use expected_revision from read_todos when a stale replacement must be rejected. Keep todo content concise and actionable."""
+    return await asyncio.to_thread(
+        write_todos_execute, todos, session_id, expected_revision
+    )

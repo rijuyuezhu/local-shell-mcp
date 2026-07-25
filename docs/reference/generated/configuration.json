@@ -39,6 +39,7 @@
   ],
   "section_order": [
     "Server",
+    "Human interface",
     "Paths and state",
     "Authentication and OAuth",
     "Safety and resource limits",
@@ -118,6 +119,143 @@
             "code": "8765"
           },
           "Bind port for HTTP/MCP transports."
+        ]
+      ]
+    },
+    {
+      "headers": [
+        "Setting",
+        "CLI",
+        "Environment",
+        "Type",
+        "Default",
+        "Description"
+      ],
+      "heading": "Human interface",
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "code": "ui_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Mount the browser Human UI and its authenticated API on the HTTP server."
+        ],
+        [
+          {
+            "code": "ui_path"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-path"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_PATH"
+          },
+          "string",
+          {
+            "code": "/ui"
+          },
+          "Non-root URL path where the browser Human UI is mounted."
+        ],
+        [
+          {
+            "code": "ui_tui_command"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-tui-command"
+              },
+              {
+                "code": "--unset-ui-tui-command clears the value"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_TUI_COMMAND"
+          },
+          "string",
+          {
+            "code": "unset"
+          },
+          "Optional administrator-supplied OpenTUI executable command."
+        ],
+        [
+          {
+            "code": "ui_terminal_idle_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-terminal-idle-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "3600"
+          },
+          "Idle timeout for authenticated Human UI terminal WebSockets; 0 disables idle expiry."
+        ],
+        [
+          {
+            "code": "ui_terminal_max_connections"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-terminal-max-connections"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_TERMINAL_MAX_CONNECTIONS"
+          },
+          "integer",
+          {
+            "code": "8"
+          },
+          "Maximum concurrent Human UI terminal WebSocket connections."
+        ],
+        [
+          {
+            "code": "ui_wallpaper"
+          },
+          {
+            "lines": [
+              {
+                "code": "--ui-wallpaper"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_UI_WALLPAPER"
+          },
+          "aurora | grid | none",
+          {
+            "code": "aurora"
+          },
+          "Browser Human UI background treatment; no external network image is fetched."
         ]
       ]
     },
@@ -229,6 +367,46 @@
         ],
         [
           {
+            "code": "mcp_session_idle_timeout_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--mcp-session-idle-timeout-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S"
+          },
+          "integer",
+          {
+            "code": "180"
+          },
+          "Idle timeout for stateful Streamable HTTP MCP sessions in seconds."
+        ],
+        [
+          {
+            "code": "mcp_max_sessions"
+          },
+          {
+            "lines": [
+              {
+                "code": "--mcp-max-sessions"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MCP_MAX_SESSIONS"
+          },
+          "integer",
+          {
+            "code": "1024"
+          },
+          "Maximum concurrent stateful Streamable HTTP MCP sessions."
+        ],
+        [
+          {
             "code": "base_url"
           },
           {
@@ -317,7 +495,7 @@
           {
             "code": "unset"
           },
-          "Admin PIN required to approve OAuth authorization."
+          "Admin PIN required to approve OAuth authorization. Public OAuth URLs require a non-placeholder value of at least 8 characters."
         ],
         [
           {
@@ -358,6 +536,26 @@
             "code": "300"
           },
           "OAuth authorization-code lifetime in seconds. The authorization must be done within this time."
+        ],
+        [
+          {
+            "code": "oauth_max_pending_codes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--oauth-max-pending-codes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES"
+          },
+          "integer",
+          {
+            "code": "2048"
+          },
+          "Maximum unused, unexpired OAuth authorization codes kept in memory; set to 0 to disable this capacity limit."
         ],
         [
           {
@@ -511,27 +709,7 @@
           {
             "code": "false"
           },
-          "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints."
-        ],
-        [
-          {
-            "code": "relaxed_client_tool_hints"
-          },
-          {
-            "lines": [
-              {
-                "code": "--relaxed-client-tool-hints"
-              }
-            ]
-          },
-          {
-            "code": "LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS"
-          },
-          "true | false",
-          {
-            "code": "false"
-          },
-          "Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations."
+          "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP safety annotations remain conservative in this mode."
         ],
         [
           {
@@ -551,7 +729,7 @@
           {
             "code": "60"
           },
-          "MCP/HTTP tool watchdog timeout in seconds."
+          "Base MCP/HTTP tool watchdog timeout in seconds. Shell execution tools receive additional bounded cleanup time beyond run_shell_max_timeout_s."
         ],
         [
           {
@@ -589,7 +767,7 @@
           },
           "integer",
           {
-            "code": "60"
+            "code": "120"
           },
           "Maximum timeout accepted by bounded shell command calls in seconds."
         ],
@@ -615,6 +793,46 @@
         ],
         [
           {
+            "code": "max_job_log_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-job-log-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_JOB_LOG_BYTES"
+          },
+          "integer",
+          {
+            "code": "10000000"
+          },
+          "Maximum retained output bytes for one tracked background-job attempt."
+        ],
+        [
+          {
+            "code": "max_jobs"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-jobs"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_JOBS"
+          },
+          "integer",
+          {
+            "code": "1000"
+          },
+          "Maximum retained tracked-job records; active jobs are never pruned."
+        ],
+        [
+          {
             "code": "max_file_read_bytes"
           },
           {
@@ -632,6 +850,106 @@
             "code": "512000"
           },
           "Per-file read limit in bytes."
+        ],
+        [
+          {
+            "code": "max_view_image_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-view-image-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES"
+          },
+          "integer",
+          {
+            "code": "20971520"
+          },
+          "Maximum raw bytes accepted by the native MCP image viewer."
+        ],
+        [
+          {
+            "code": "max_skills"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-skills"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SKILLS"
+          },
+          "integer",
+          {
+            "code": "256"
+          },
+          "Maximum number of discovered Skills across all configured sources."
+        ],
+        [
+          {
+            "code": "max_skill_related_files"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-skill-related-files"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SKILL_RELATED_FILES"
+          },
+          "integer",
+          {
+            "code": "1000"
+          },
+          "Maximum related files returned for one Skill."
+        ],
+        [
+          {
+            "code": "max_skill_scan_entries"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-skill-scan-entries"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SKILL_SCAN_ENTRIES"
+          },
+          "integer",
+          {
+            "code": "5000"
+          },
+          "Maximum filesystem entries inspected during one Skill registry scan."
+        ],
+        [
+          {
+            "code": "max_skill_path_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-skill-path-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SKILL_PATH_BYTES"
+          },
+          "integer",
+          {
+            "code": "200000"
+          },
+          "Maximum UTF-8 bytes used by returned related Skill paths."
         ],
         [
           {
@@ -815,6 +1133,26 @@
         ],
         [
           {
+            "code": "max_http_request_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-http-request-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_HTTP_REQUEST_BYTES"
+          },
+          "integer",
+          {
+            "code": "16000000"
+          },
+          "Maximum inbound HTTP request-body bytes; 0 disables the shared limit."
+        ],
+        [
+          {
             "code": "max_audit_log_bytes"
           },
           {
@@ -831,7 +1169,127 @@
           {
             "code": "20000000"
           },
-          "Audit-log threshold in bytes. If exceeded, the log is rotated."
+          "Maximum active audit JSONL bytes before atomic recent-record retention."
+        ],
+        [
+          {
+            "code": "max_audit_event_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-audit-event-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES"
+          },
+          "integer",
+          {
+            "code": "1000000"
+          },
+          "Maximum encoded bytes retained for one audit event before preview truncation."
+        ],
+        [
+          {
+            "code": "audit_payloads_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--audit-payloads-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AUDIT_PAYLOADS_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Store large sanitized audit field values as private content-addressed payloads."
+        ],
+        [
+          {
+            "code": "audit_inline_value_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--audit-inline-value-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES"
+          },
+          "integer",
+          {
+            "code": "16384"
+          },
+          "Maximum canonical JSON bytes kept inline for one sanitized audit field value."
+        ],
+        [
+          {
+            "code": "max_audit_payload_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-audit-payload-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES"
+          },
+          "integer",
+          {
+            "code": "67108864"
+          },
+          "Maximum canonical JSON bytes accepted for one recoverable sanitized audit payload."
+        ],
+        [
+          {
+            "code": "max_audit_payload_store_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-audit-payload-store-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES"
+          },
+          "integer",
+          {
+            "code": "268435456"
+          },
+          "Maximum compressed bytes retained in the private audit payload store."
+        ],
+        [
+          {
+            "code": "audit_payload_retention_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--audit-payload-retention-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AUDIT_PAYLOAD_RETENTION_S"
+          },
+          "integer",
+          {
+            "code": "604800"
+          },
+          "Recovery lifetime and orphan grace period for private audit payload objects."
         ],
         [
           {
@@ -872,6 +1330,46 @@
             "code": "50000000"
           },
           "Temporary-file byte limit. When exceeded, old files are deleted."
+        ],
+        [
+          {
+            "code": "max_transfer_archive_entries"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-transfer-archive-entries"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TRANSFER_ARCHIVE_ENTRIES"
+          },
+          "integer",
+          {
+            "code": "100000"
+          },
+          "Maximum entries accepted from one transferred archive."
+        ],
+        [
+          {
+            "code": "max_transfer_unpacked_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-transfer-unpacked-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_TRANSFER_UNPACKED_BYTES"
+          },
+          "integer",
+          {
+            "code": "10000000000"
+          },
+          "Maximum declared regular-file bytes accepted while unpacking an archive."
         ],
         [
           {
@@ -1146,6 +1644,146 @@
             "code": "3600"
           },
           "Control-side remote job result timeout in seconds."
+        ],
+        [
+          {
+            "code": "remote_max_pending_jobs"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-max-pending-jobs"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_MAX_PENDING_JOBS"
+          },
+          "integer",
+          {
+            "code": "64"
+          },
+          "Maximum queued or in-flight remote jobs allowed per worker."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_enabled"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-enabled"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_ENABLED"
+          },
+          "true | false",
+          {
+            "code": "true"
+          },
+          "Use the private resumable HTTP gateway for capable large session copies."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_threshold_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-threshold-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES"
+          },
+          "integer",
+          {
+            "code": "1048576"
+          },
+          "Minimum payload size selected for private HTTP streaming."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_chunk_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-chunk-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_CHUNK_BYTES"
+          },
+          "integer",
+          {
+            "code": "1048576"
+          },
+          "Maximum request or response chunk size for private HTTP transfer routes."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_ticket_ttl_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-ticket-ttl-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_TICKET_TTL_S"
+          },
+          "integer",
+          {
+            "code": "300"
+          },
+          "Lifetime of a private transfer grant before it must be renewed."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_max_active"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-max-active"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_ACTIVE"
+          },
+          "integer",
+          {
+            "code": "16"
+          },
+          "Maximum non-terminal private transfer objects retained concurrently."
+        ],
+        [
+          {
+            "code": "remote_http_transfer_max_spool_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--remote-http-transfer-max-spool-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES"
+          },
+          "integer",
+          {
+            "code": "10737418240"
+          },
+          "Maximum aggregate bytes reserved by private controller transfer spools."
         ]
       ]
     },
@@ -1293,7 +1931,7 @@
           {
             "code": "/bin/bash"
           },
-          "Shell executable used for shell commands."
+          "Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows."
         ],
         [
           {
@@ -1337,6 +1975,26 @@
         ],
         [
           {
+            "code": "git_bin"
+          },
+          {
+            "lines": [
+              {
+                "code": "--git-bin"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_GIT_BIN"
+          },
+          "string",
+          {
+            "code": "git"
+          },
+          "Git executable used for patch validation and application."
+        ],
+        [
+          {
             "code": "python_bin"
           },
           {
@@ -1353,7 +2011,7 @@
           {
             "code": "python3"
           },
-          "Python executable."
+          "Python executable; the POSIX default maps to the running interpreter on Windows."
         ]
       ]
     },
@@ -1490,6 +2148,91 @@
       "unset_cli": null
     },
     {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--ui-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Mount the browser Human UI and its authenticated API on the HTTP server.",
+      "env": "LOCAL_SHELL_MCP_UI_ENABLED",
+      "name": "ui_enabled",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--ui-path",
+      "default": "/ui",
+      "default_display": "/ui",
+      "description": "Non-root URL path where the browser Human UI is mounted.",
+      "env": "LOCAL_SHELL_MCP_UI_PATH",
+      "name": "ui_path",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "string",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--ui-tui-command",
+      "default": null,
+      "default_display": "unset",
+      "description": "Optional administrator-supplied OpenTUI executable command.",
+      "env": "LOCAL_SHELL_MCP_UI_TUI_COMMAND",
+      "name": "ui_tui_command",
+      "nullable": true,
+      "section": "Human interface",
+      "type": "string",
+      "unset_cli": "--unset-ui-tui-command"
+    },
+    {
+      "choices": [],
+      "cli": "--ui-terminal-idle-timeout-s",
+      "default": 3600,
+      "default_display": "3600",
+      "description": "Idle timeout for authenticated Human UI terminal WebSockets; 0 disables idle expiry.",
+      "env": "LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S",
+      "name": "ui_terminal_idle_timeout_s",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--ui-terminal-max-connections",
+      "default": 8,
+      "default_display": "8",
+      "description": "Maximum concurrent Human UI terminal WebSocket connections.",
+      "env": "LOCAL_SHELL_MCP_UI_TERMINAL_MAX_CONNECTIONS",
+      "name": "ui_terminal_max_connections",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "aurora",
+        "grid",
+        "none"
+      ],
+      "cli": "--ui-wallpaper",
+      "default": "aurora",
+      "default_display": "aurora",
+      "description": "Browser Human UI background treatment; no external network image is fetched.",
+      "env": "LOCAL_SHELL_MCP_UI_WALLPAPER",
+      "name": "ui_wallpaper",
+      "nullable": false,
+      "section": "Human interface",
+      "type": "aurora | grid | none",
+      "unset_cli": null
+    },
+    {
       "choices": [],
       "cli": "--workspace-root",
       "default": "/workspace",
@@ -1549,6 +2292,32 @@
     },
     {
       "choices": [],
+      "cli": "--mcp-session-idle-timeout-s",
+      "default": 180,
+      "default_display": "180",
+      "description": "Idle timeout for stateful Streamable HTTP MCP sessions in seconds.",
+      "env": "LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S",
+      "name": "mcp_session_idle_timeout_s",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--mcp-max-sessions",
+      "default": 1024,
+      "default_display": "1024",
+      "description": "Maximum concurrent stateful Streamable HTTP MCP sessions.",
+      "env": "LOCAL_SHELL_MCP_MCP_MAX_SESSIONS",
+      "name": "mcp_max_sessions",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
       "cli": "--base-url",
       "default": null,
       "default_display": "unset",
@@ -1591,7 +2360,7 @@
       "cli": "--oauth-admin-pin",
       "default": null,
       "default_display": "unset",
-      "description": "Admin PIN required to approve OAuth authorization.",
+      "description": "Admin PIN required to approve OAuth authorization. Public OAuth URLs require a non-placeholder value of at least 8 characters.",
       "env": "LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN",
       "name": "oauth_admin_pin",
       "nullable": true,
@@ -1620,6 +2389,19 @@
       "description": "OAuth authorization-code lifetime in seconds. The authorization must be done within this time.",
       "env": "LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S",
       "name": "oauth_code_ttl_s",
+      "nullable": false,
+      "section": "Authentication and OAuth",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--oauth-max-pending-codes",
+      "default": 2048,
+      "default_display": "2048",
+      "description": "Maximum unused, unexpired OAuth authorization codes kept in memory; set to 0 to disable this capacity limit.",
+      "env": "LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES",
+      "name": "oauth_max_pending_codes",
       "nullable": false,
       "section": "Authentication and OAuth",
       "type": "integer",
@@ -1711,25 +2493,9 @@
       "cli": "--allow-full-control",
       "default": false,
       "default_display": "false",
-      "description": "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. This enforces relaxed_client_tool_hints.",
+      "description": "Disable built-in workspace and command restrictions; use only in disposable containers or VMs. MCP safety annotations remain conservative in this mode.",
       "env": "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL",
       "name": "allow_full_control",
-      "nullable": false,
-      "section": "Safety and resource limits",
-      "type": "true | false",
-      "unset_cli": null
-    },
-    {
-      "choices": [
-        "true",
-        "false"
-      ],
-      "cli": "--relaxed-client-tool-hints",
-      "default": false,
-      "default_display": "false",
-      "description": "Advertise lower-risk MCP client hints for tools so that clients can run them with fewer confirmations.",
-      "env": "LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS",
-      "name": "relaxed_client_tool_hints",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "true | false",
@@ -1740,7 +2506,7 @@
       "cli": "--tool-timeout-s",
       "default": 60,
       "default_display": "60",
-      "description": "MCP/HTTP tool watchdog timeout in seconds.",
+      "description": "Base MCP/HTTP tool watchdog timeout in seconds. Shell execution tools receive additional bounded cleanup time beyond run_shell_max_timeout_s.",
       "env": "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S",
       "name": "tool_timeout_s",
       "nullable": false,
@@ -1764,8 +2530,8 @@
     {
       "choices": [],
       "cli": "--run-shell-max-timeout-s",
-      "default": 60,
-      "default_display": "60",
+      "default": 120,
+      "default_display": "120",
       "description": "Maximum timeout accepted by bounded shell command calls in seconds.",
       "env": "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S",
       "name": "run_shell_max_timeout_s",
@@ -1789,12 +2555,103 @@
     },
     {
       "choices": [],
+      "cli": "--max-job-log-bytes",
+      "default": 10000000,
+      "default_display": "10000000",
+      "description": "Maximum retained output bytes for one tracked background-job attempt.",
+      "env": "LOCAL_SHELL_MCP_MAX_JOB_LOG_BYTES",
+      "name": "max_job_log_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-jobs",
+      "default": 1000,
+      "default_display": "1000",
+      "description": "Maximum retained tracked-job records; active jobs are never pruned.",
+      "env": "LOCAL_SHELL_MCP_MAX_JOBS",
+      "name": "max_jobs",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
       "cli": "--max-file-read-bytes",
       "default": 512000,
       "default_display": "512000",
       "description": "Per-file read limit in bytes.",
       "env": "LOCAL_SHELL_MCP_MAX_FILE_READ_BYTES",
       "name": "max_file_read_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-view-image-bytes",
+      "default": 20971520,
+      "default_display": "20971520",
+      "description": "Maximum raw bytes accepted by the native MCP image viewer.",
+      "env": "LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES",
+      "name": "max_view_image_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-skills",
+      "default": 256,
+      "default_display": "256",
+      "description": "Maximum number of discovered Skills across all configured sources.",
+      "env": "LOCAL_SHELL_MCP_MAX_SKILLS",
+      "name": "max_skills",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-skill-related-files",
+      "default": 1000,
+      "default_display": "1000",
+      "description": "Maximum related files returned for one Skill.",
+      "env": "LOCAL_SHELL_MCP_MAX_SKILL_RELATED_FILES",
+      "name": "max_skill_related_files",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-skill-scan-entries",
+      "default": 5000,
+      "default_display": "5000",
+      "description": "Maximum filesystem entries inspected during one Skill registry scan.",
+      "env": "LOCAL_SHELL_MCP_MAX_SKILL_SCAN_ENTRIES",
+      "name": "max_skill_scan_entries",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-skill-path-bytes",
+      "default": 200000,
+      "default_display": "200000",
+      "description": "Maximum UTF-8 bytes used by returned related Skill paths.",
+      "env": "LOCAL_SHELL_MCP_MAX_SKILL_PATH_BYTES",
+      "name": "max_skill_path_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",
@@ -1919,12 +2776,106 @@
     },
     {
       "choices": [],
+      "cli": "--max-http-request-bytes",
+      "default": 16000000,
+      "default_display": "16000000",
+      "description": "Maximum inbound HTTP request-body bytes; 0 disables the shared limit.",
+      "env": "LOCAL_SHELL_MCP_MAX_HTTP_REQUEST_BYTES",
+      "name": "max_http_request_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
       "cli": "--max-audit-log-bytes",
       "default": 20000000,
       "default_display": "20000000",
-      "description": "Audit-log threshold in bytes. If exceeded, the log is rotated.",
+      "description": "Maximum active audit JSONL bytes before atomic recent-record retention.",
       "env": "LOCAL_SHELL_MCP_MAX_AUDIT_LOG_BYTES",
       "name": "max_audit_log_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-audit-event-bytes",
+      "default": 1000000,
+      "default_display": "1000000",
+      "description": "Maximum encoded bytes retained for one audit event before preview truncation.",
+      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_EVENT_BYTES",
+      "name": "max_audit_event_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--audit-payloads-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Store large sanitized audit field values as private content-addressed payloads.",
+      "env": "LOCAL_SHELL_MCP_AUDIT_PAYLOADS_ENABLED",
+      "name": "audit_payloads_enabled",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--audit-inline-value-bytes",
+      "default": 16384,
+      "default_display": "16384",
+      "description": "Maximum canonical JSON bytes kept inline for one sanitized audit field value.",
+      "env": "LOCAL_SHELL_MCP_AUDIT_INLINE_VALUE_BYTES",
+      "name": "audit_inline_value_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-audit-payload-bytes",
+      "default": 67108864,
+      "default_display": "67108864",
+      "description": "Maximum canonical JSON bytes accepted for one recoverable sanitized audit payload.",
+      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_BYTES",
+      "name": "max_audit_payload_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-audit-payload-store-bytes",
+      "default": 268435456,
+      "default_display": "268435456",
+      "description": "Maximum compressed bytes retained in the private audit payload store.",
+      "env": "LOCAL_SHELL_MCP_MAX_AUDIT_PAYLOAD_STORE_BYTES",
+      "name": "max_audit_payload_store_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--audit-payload-retention-s",
+      "default": 604800,
+      "default_display": "604800",
+      "description": "Recovery lifetime and orphan grace period for private audit payload objects.",
+      "env": "LOCAL_SHELL_MCP_AUDIT_PAYLOAD_RETENTION_S",
+      "name": "audit_payload_retention_s",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",
@@ -1951,6 +2902,32 @@
       "description": "Temporary-file byte limit. When exceeded, old files are deleted.",
       "env": "LOCAL_SHELL_MCP_MAX_TMP_BYTES",
       "name": "max_tmp_bytes",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-transfer-archive-entries",
+      "default": 100000,
+      "default_display": "100000",
+      "description": "Maximum entries accepted from one transferred archive.",
+      "env": "LOCAL_SHELL_MCP_MAX_TRANSFER_ARCHIVE_ENTRIES",
+      "name": "max_transfer_archive_entries",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-transfer-unpacked-bytes",
+      "default": 10000000000,
+      "default_display": "10000000000",
+      "description": "Maximum declared regular-file bytes accepted while unpacking an archive.",
+      "env": "LOCAL_SHELL_MCP_MAX_TRANSFER_UNPACKED_BYTES",
+      "name": "max_transfer_unpacked_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",
@@ -2150,6 +3127,100 @@
       "unset_cli": null
     },
     {
+      "choices": [],
+      "cli": "--remote-max-pending-jobs",
+      "default": 64,
+      "default_display": "64",
+      "description": "Maximum queued or in-flight remote jobs allowed per worker.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_MAX_PENDING_JOBS",
+      "name": "remote_max_pending_jobs",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "cli": "--remote-http-transfer-enabled",
+      "default": true,
+      "default_display": "true",
+      "description": "Use the private resumable HTTP gateway for capable large session copies.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_ENABLED",
+      "name": "remote_http_transfer_enabled",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "true | false",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-threshold-bytes",
+      "default": 1048576,
+      "default_display": "1048576",
+      "description": "Minimum payload size selected for private HTTP streaming.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_THRESHOLD_BYTES",
+      "name": "remote_http_transfer_threshold_bytes",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-chunk-bytes",
+      "default": 1048576,
+      "default_display": "1048576",
+      "description": "Maximum request or response chunk size for private HTTP transfer routes.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_CHUNK_BYTES",
+      "name": "remote_http_transfer_chunk_bytes",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-ticket-ttl-s",
+      "default": 300,
+      "default_display": "300",
+      "description": "Lifetime of a private transfer grant before it must be renewed.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_TICKET_TTL_S",
+      "name": "remote_http_transfer_ticket_ttl_s",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-max-active",
+      "default": 16,
+      "default_display": "16",
+      "description": "Maximum non-terminal private transfer objects retained concurrently.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_ACTIVE",
+      "name": "remote_http_transfer_max_active",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--remote-http-transfer-max-spool-bytes",
+      "default": 10737418240,
+      "default_display": "10737418240",
+      "description": "Maximum aggregate bytes reserved by private controller transfer spools.",
+      "env": "LOCAL_SHELL_MCP_REMOTE_HTTP_TRANSFER_MAX_SPOOL_BYTES",
+      "name": "remote_http_transfer_max_spool_bytes",
+      "nullable": false,
+      "section": "Remote workers",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
       "choices": [
         "true",
         "false"
@@ -2228,7 +3299,7 @@
       "cli": "--shell-executable",
       "default": "/bin/bash",
       "default_display": "/bin/bash",
-      "description": "Shell executable used for shell commands.",
+      "description": "Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows.",
       "env": "LOCAL_SHELL_MCP_SHELL_EXECUTABLE",
       "name": "shell_executable",
       "nullable": false,
@@ -2264,10 +3335,23 @@
     },
     {
       "choices": [],
+      "cli": "--git-bin",
+      "default": "git",
+      "default_display": "git",
+      "description": "Git executable used for patch validation and application.",
+      "env": "LOCAL_SHELL_MCP_GIT_BIN",
+      "name": "git_bin",
+      "nullable": false,
+      "section": "Tool executables",
+      "type": "string",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
       "cli": "--python-bin",
       "default": "python3",
       "default_display": "python3",
-      "description": "Python executable.",
+      "description": "Python executable; the POSIX default maps to the running interpreter on Windows.",
       "env": "LOCAL_SHELL_MCP_PYTHON_BIN",
       "name": "python_bin",
       "nullable": false,

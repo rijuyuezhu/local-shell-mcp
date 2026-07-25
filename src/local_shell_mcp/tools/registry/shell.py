@@ -5,6 +5,7 @@ from ...ops.shell import (
     kill_persistent_shell_execute,
     list_persistent_shells_execute,
     read_persistent_shell_output_execute,
+    resize_persistent_shell_execute,
     run_python_code_execute,
     send_persistent_shell_input_execute,
 )
@@ -15,6 +16,7 @@ from ...schemas.input_models.shell import (
     LinesArg,
     PythonCodeArg,
     ShellAsyncArg,
+    ShellColumnsArg,
     ShellCommandArg,
     ShellCwdArg,
     ShellEnvArg,
@@ -22,6 +24,7 @@ from ...schemas.input_models.shell import (
     ShellMaxOutputBytesArg,
     ShellNameArg,
     ShellPtyArg,
+    ShellRowsArg,
     ShellTimeoutArg,
     ToolPurposeArg,
 )
@@ -29,6 +32,7 @@ from ...schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     ReadPersistentShellOutput,
+    ResizePersistentShellOutput,
     RunPythonCodeOutput,
     SendPersistentShellInputOutput,
     ShellExecutionOutput,
@@ -137,6 +141,18 @@ async def send_persistent_shell_input(
     return await send_persistent_shell_input_execute(
         shell_id, input_text, enter
     )
+
+
+@shell_tool(
+    http_method="POST",
+    http_path="/tools/resize_persistent_shell",
+    oauth_scopes=("shell:read", "shell:execute"),
+)
+async def resize_persistent_shell(
+    shell_id: ShellIdArg, cols: ShellColumnsArg, rows: ShellRowsArg
+) -> ResizePersistentShellOutput:
+    """Resize a persistent PTY shell created by bash(pty=true). Pass shell_id returned by bash PTY mode or list_persistent_shells; shell_id is separate from the agent/workspace session_id. Supply the visible terminal width and height so terminal UIs and interactive full-screen programs can track the client viewport."""
+    return await resize_persistent_shell_execute(shell_id, cols, rows)
 
 
 @shell_tool(

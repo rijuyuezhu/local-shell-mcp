@@ -1,20 +1,20 @@
 """ChatGPT connector-compatible read-only workspace search/fetch tools."""
 
-from ...ops.workspace_connector import (
+from ..declarative import DeclarativeToolRegistry
+from ..ops.workspace_connector import (
     fetch_error_output,
     fetch_execute,
     search_error_output,
     search_execute,
 )
-from ...schemas.input_models.workspace_connector import (
+from ..schemas.input_models.workspace_connector import (
     ConnectorFetchIdArg,
     ConnectorSearchQueryArg,
 )
-from ...schemas.result_models.workspace_connector import (
+from ..schemas.result_models.workspace_connector import (
     FetchOutput,
     SearchOutput,
 )
-from ..declarative import DeclarativeToolRegistry
 
 
 class WorkspaceConnectorToolRegistry(DeclarativeToolRegistry):

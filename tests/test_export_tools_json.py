@@ -18,7 +18,7 @@ def test_export_tools_json_writes_wrapped_payload(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/export-tools-json.py",
+            "scripts/generation/export-tools-json.py",
             "--wrapped",
             "--output",
             str(output),
@@ -56,7 +56,7 @@ def test_export_tools_json_writes_instruction_markdown_section(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/export-tools-json.py",
+            "scripts/generation/export-tools-json.py",
             "--wrapped",
             "--output",
             str(output),

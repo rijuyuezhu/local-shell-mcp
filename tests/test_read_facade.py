@@ -1,7 +1,7 @@
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.tool_session.selectors import parse_read_target
 from tests.helpers import mcp_structured
 
@@ -108,7 +108,7 @@ async def test_read_facade_raw_selector_returns_unnumbered_content(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
-    (tmp_path / "demo.py").write_text("alpha\nbeta\n", encoding="utf-8")
+    (tmp_path / "demo.py").write_bytes(b"alpha\nbeta\n")
 
     session = mcp_structured(
         await build_mcp().call_tool("session_start", {"workdir": "."})

@@ -66,6 +66,7 @@ nav:
       - VS Code: getting-started/vscode.md
   - Guides:
       - Common workflows: guides/common-workflows.md
+      - Human interface: guides/human-interface.md
       - Remote workers: guides/remote-workers.md
       - Agent capability bridge: guides/agent-bridge.md
       - Audit log: guides/audit-log.md
@@ -77,9 +78,12 @@ nav:
       - MCP server instructions: reference/instructions.md
   - Security: security.md
   - Troubleshooting: troubleshooting.md
+  - Architecture: architecture.md
   - Development: development.md
   - Maintenance:
+      - Fork and upstream differences: maintenance/fork-upstream-differences.md
       - Upstream commit review: maintenance/upstream-commit-review.md
+      - Native artifact provenance: maintenance/native-artifact-provenance.md
   - Community:
       - Contributing: community/contributing.md
       - Support: community/support.md

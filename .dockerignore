@@ -13,3 +13,12 @@
 
 !scripts/
 !scripts/docker-entrypoint.sh
+
+!ui-opentui/
+!ui-opentui/package.json
+!ui-opentui/bun.lock
+!ui-opentui/tsconfig.json
+!ui-opentui/scripts/
+!ui-opentui/scripts/**
+!ui-opentui/src/
+!ui-opentui/src/**

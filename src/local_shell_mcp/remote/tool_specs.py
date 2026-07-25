@@ -25,7 +25,14 @@ class RemoteWorkerToolSpec:
 
 
 REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
+    RemoteWorkerToolSpec("", "open_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "read_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "write_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "resize_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "close_terminal_bridge", None),
+    RemoteWorkerToolSpec("", "start_persistent_shell", None),
     RemoteWorkerToolSpec("", "send_persistent_shell_input", None),
+    RemoteWorkerToolSpec("", "resize_persistent_shell", None),
     RemoteWorkerToolSpec("", "read_persistent_shell_output", None),
     RemoteWorkerToolSpec("", "kill_persistent_shell", None),
     RemoteWorkerToolSpec("", "list_persistent_shells", None),
@@ -33,6 +40,15 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
         "", "run_python_code", None, timeout_arg="timeout_s", default_timeout=60
     ),
     RemoteWorkerToolSpec("", "session_start", None),
+    RemoteWorkerToolSpec("", "session_change_cwd", None),
+    RemoteWorkerToolSpec("", "dashboard_snapshot", None),
+    RemoteWorkerToolSpec("", "query_audit", None),
+    RemoteWorkerToolSpec("", "get_audit_entry", None),
+    RemoteWorkerToolSpec("", "read_todos", None),
+    RemoteWorkerToolSpec("", "write_todos", None),
+    RemoteWorkerToolSpec("", "list_agent_skills", None),
+    RemoteWorkerToolSpec("", "activate_agent_skill", None),
+    RemoteWorkerToolSpec("", "read_agent_skill_file", None),
     RemoteWorkerToolSpec("", "list_files", None),
     RemoteWorkerToolSpec("", "tree_view", None),
     RemoteWorkerToolSpec("", "glob_search", None),
@@ -43,9 +59,11 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "search", None),
     RemoteWorkerToolSpec("", "edit_lines", None),
     RemoteWorkerToolSpec("", "hashline_edit", None),
+    RemoteWorkerToolSpec("", "apply_patch", None),
     RemoteWorkerToolSpec("", "bash", None),
     RemoteWorkerToolSpec("", "job", None),
     RemoteWorkerToolSpec("", "transfer_stat", None),
+    RemoteWorkerToolSpec("", "transfer_copy_file", None),
     RemoteWorkerToolSpec("", "transfer_read_chunk", None),
     RemoteWorkerToolSpec("", "transfer_begin_write", None),
     RemoteWorkerToolSpec("", "transfer_write_chunk", None),
@@ -55,6 +73,9 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "transfer_pack_dir", None),
     RemoteWorkerToolSpec("", "transfer_unpack_archive", None),
     RemoteWorkerToolSpec("", "transfer_delete_temp_path", None),
+    RemoteWorkerToolSpec("", "transfer_http_upload", None),
+    RemoteWorkerToolSpec("", "transfer_http_download", None),
+    RemoteWorkerToolSpec("", "transfer_http_abort_download", None),
 )
 
 REMOTE_WORKER_TOOL_NAMES = frozenset(

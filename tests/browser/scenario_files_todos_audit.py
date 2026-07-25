@@ -1,0 +1,132 @@
+from __future__ import annotations
+
+import time
+
+from playwright.sync_api import Route, expect
+
+from tests.browser.harness import TOKEN_STORAGE_KEY, BrowserHarness
+
+
+def _file_entry(harness: BrowserHarness, path: str):
+    return harness.page.locator(f'.file-entry[title="{path}"]')
+
+
+def run_files_todos_audit(harness: BrowserHarness) -> None:
+    page = harness.page
+
+    expect(_file_entry(harness, "notes.txt")).to_be_visible()
+    _file_entry(harness, "notes.txt").click()
+    expect(page.locator("#file-preview-body")).to_contain_text(
+        "local browser fixture"
+    )
+    page.locator("#file-edit").click()
+    expect(page.locator("#file-editor-form")).to_be_visible()
+    page.locator("#file-editor").fill("edited by Chromium\n")
+    page.locator("#file-editor-form").get_by_role(
+        "button", name="Save file"
+    ).click()
+    expect(page.locator("#file-state")).to_contain_text("Saved local:notes.txt")
+    assert harness.control_workspace.joinpath("notes.txt").read_text() == (
+        "edited by Chromium\n"
+    )
+
+    delayed = False
+
+    def delay_stale_preview(route: Route) -> None:
+        nonlocal delayed
+        if "stale-local.txt" in route.request.url and not delayed:
+            delayed = True
+            time.sleep(0.4)
+        route.continue_()
+
+    page.route("**/api/ui/files/preview**", delay_stale_preview)
+    _file_entry(harness, "stale-local.txt").click()
+    _file_entry(harness, "notes.txt").click()
+    expect(page.locator("#file-preview-body")).to_contain_text(
+        "edited by Chromium"
+    )
+    page.wait_for_timeout(600)
+    expect(page.locator("#file-preview-body")).not_to_contain_text(
+        "stale local preview"
+    )
+    page.unroute("**/api/ui/files/preview**", delay_stale_preview)
+
+    _file_entry(harness, "copy-source.txt").click()
+    page.once("dialog", lambda dialog: dialog.accept("copied.txt"))
+    page.locator("#file-copy").click()
+    expect(_file_entry(harness, "copied.txt")).to_be_visible()
+
+    page.once("dialog", lambda dialog: dialog.accept("moved.txt"))
+    page.locator("#file-move").click()
+    expect(_file_entry(harness, "moved.txt")).to_be_visible()
+    assert not harness.control_workspace.joinpath("copied.txt").exists()
+
+    page.once("dialog", lambda dialog: dialog.accept("renamed.txt"))
+    page.locator("#file-rename").click()
+    expect(_file_entry(harness, "renamed.txt")).to_be_visible()
+    assert harness.control_workspace.joinpath("renamed.txt").read_text() == (
+        "copy source\n"
+    )
+
+    page.locator("#todo-add").click()
+    row = page.locator("#todo-list .todo-row").last
+    row.locator("input").fill("verify browser todos")
+    row.locator("select").nth(0).select_option("in_progress")
+    row.locator("select").nth(1).select_option("high")
+    page.locator("#todo-save").click()
+    expect(page.locator("#todo-state")).to_contain_text("Saved local")
+    local_todos = harness.api("GET", "/api/ui/todos?machine=local")
+    assert local_todos["status"] == 200
+    assert local_todos["payload"]["data"]["todos"][0]["content"] == (
+        "verify browser todos"
+    )
+
+    session = harness.api("POST", "/tools/session_start", body={"workdir": "."})
+    assert session["status"] == 200
+    session_id = session["payload"]["session_id"]
+    audited_write = harness.api(
+        "POST",
+        "/tools/write_file",
+        body={
+            "session_id": session_id,
+            "path": "audit-scope.txt",
+            "content": "scope protected\n" + "payload-e2e-" * 2_000,
+            "overwrite": True,
+        },
+    )
+    assert audited_write["status"] == 200
+
+    page.locator("#audit-operation").select_option("files")
+    page.locator("#audit-search").fill("write_file")
+    page.locator("#audit-refresh").click()
+    expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
+    page.locator("#audit-list .audit-entry").first.click()
+    expect(page.locator("#audit-detail-body")).to_contain_text(
+        "audit-scope.txt"
+    )
+    expect(page.locator("#audit-detail-body")).to_contain_text("payload-e2e-")
+
+    full_token = page.evaluate(
+        "key => sessionStorage.getItem(key)", TOKEN_STORAGE_KEY
+    )
+    assert isinstance(full_token, str) and full_token
+    read_only_token = harness.issue_token("audit:read shell:read remote:use")
+    harness.set_token(read_only_token)
+    page.reload(wait_until="domcontentloaded")
+    expect(page.locator("#connection-state")).to_have_text("Connected")
+    page.locator("#audit-operation").select_option("files")
+    page.locator("#audit-search").fill("write_file")
+    page.locator("#audit-refresh").click()
+    expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
+    page.locator("#audit-list .audit-entry").first.click()
+    expect(page.locator("#audit-detail-meta")).to_have_text(
+        "Details unavailable"
+    )
+    expect(page.locator("#audit-detail-body")).to_contain_text("shell:write")
+    harness.console_errors = [
+        line for line in harness.console_errors if "403 (Forbidden)" not in line
+    ]
+
+    harness.set_token(full_token)
+    page.reload(wait_until="domcontentloaded")
+    expect(page.locator("#connection-state")).to_have_text("Connected")

@@ -28,6 +28,12 @@ MaxDownloadsArg = Annotated[
         description="Optional maximum number of downloads. Use 0 for unlimited; omit to use the configured default."
     ),
 ]
+InlineDownloadArg = Annotated[
+    bool,
+    Field(
+        description="Whether the browser should render the snapshot inline instead of downloading it as an attachment. Defaults to false."
+    ),
+]
 IncludeExpiredArg = Annotated[
     bool,
     Field(

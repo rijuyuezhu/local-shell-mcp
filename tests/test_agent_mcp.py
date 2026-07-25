@@ -18,6 +18,7 @@ from local_shell_mcp.agent_bridge.mcp import (
 )
 from local_shell_mcp.agent_bridge.models import AgentMcpServerConfig
 from local_shell_mcp.agent_bridge.registry import build_agent_registry
+from local_shell_mcp.agent_bridge.status import registry_config_status
 
 
 def test_normalize_mcp_tool_preserves_schema():
@@ -304,9 +305,9 @@ def test_registry_config_status_redacts_probe_errors(tmp_path):
         }
     )
 
-    status = build_agent_registry(
-        tmp_path, manager, probe_timeout_s=1
-    ).config_status()
+    status = registry_config_status(
+        build_agent_registry(tmp_path, manager, probe_timeout_s=1)
+    )
     serialized = json.dumps(status)
 
     assert "secret" not in serialized.lower()
@@ -334,9 +335,9 @@ def test_registry_config_status_redacts_env_and_header_values(tmp_path):
         encoding="utf-8",
     )
 
-    status = build_agent_registry(
-        tmp_path, FakeMcpManager(), probe_timeout_s=1
-    ).config_status()
+    status = registry_config_status(
+        build_agent_registry(tmp_path, FakeMcpManager(), probe_timeout_s=1)
+    )
     server = status["mcp_servers"]["off"]
     serialized = json.dumps(status)
 
@@ -375,9 +376,9 @@ def test_registry_config_status_redacts_configured_values_in_probe_errors(
         }
     )
 
-    status = build_agent_registry(
-        tmp_path, manager, probe_timeout_s=1
-    ).config_status()
+    status = registry_config_status(
+        build_agent_registry(tmp_path, manager, probe_timeout_s=1)
+    )
     serialized = json.dumps(status)
 
     assert env_value not in serialized

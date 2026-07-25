@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import os
 import re
 import time
 from typing import Any
@@ -12,6 +13,14 @@ from starlette.applications import Starlette
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.http.app import build_http_app
+from local_shell_mcp.executors.mcp.app import (
+    _add_public_routes_to_mcp_http_app,
+    build_mcp,
+)
+from local_shell_mcp.executors.mcp.transport_security import (
+    transport_security_settings,
+)
 from local_shell_mcp.oauth.core import service as oauth_service
 from local_shell_mcp.oauth.core.client_store import client_store_path
 from local_shell_mcp.oauth.core.models import (
@@ -28,14 +37,6 @@ from local_shell_mcp.oauth.http.responses import oauth_redirect
 from local_shell_mcp.oauth.protocol.token_codec import (
     issue_access_token,
     validate_bearer_token,
-)
-from local_shell_mcp.server.http.app import build_http_app
-from local_shell_mcp.server.mcp.app import (
-    _add_public_routes_to_mcp_http_app,
-    build_mcp,
-)
-from local_shell_mcp.server.mcp.transport_security import (
-    transport_security_settings,
 )
 from local_shell_mcp.tools.registry import agent as tools_module
 from tests.helpers import mcp_structured
@@ -60,6 +61,8 @@ def test_oauth_supported_scopes_include_feature_scopes():
         "git:write",
         "file:share",
         "remote:use",
+        "audit:read",
+        "audit:full",
     ]
 
 
@@ -205,6 +208,7 @@ async def test_mcp_metadata_for_chatgpt_developer_mode(tmp_path, monkeypatch):
         "file:share",
     ]
     assert tool_oauth_scopes("remote_admin") == ["remote:use"]
+    assert tool_oauth_scopes("audit_tail") == ["audit:read"]
     assert all(tool.outputSchema is not None for tool in tools.values())
     bash_schema = tools["bash"].outputSchema
     assert bash_schema is not None
@@ -295,6 +299,7 @@ async def test_persistent_shell_tools_use_shell_id_not_session_id(
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
     companion_names = [
         "send_persistent_shell_input",
+        "resize_persistent_shell",
         "read_persistent_shell_output",
         "kill_persistent_shell",
     ]
@@ -342,7 +347,7 @@ async def test_shell_tool_returns_per_tool_structured_content(
 
     assert structured["mode"] == "command"
     assert structured["command"] == "echo ok"
-    assert structured["result"]["stdout"] == "ok\n"
+    assert structured["result"]["stdout"].splitlines() == ["ok"]
     assert "data" not in structured
 
 
@@ -483,14 +488,12 @@ async def test_job_tool_schema_descriptions_explain_bash_companion(
     description = companion.description or ""
     assert "bash" in description
     assert "Starting work belongs" in description
+    assert "after completion and server restart" in description
 
     lines_schema = companion.inputSchema["properties"]["lines"]
     assert lines_schema["minimum"] == 1
     assert lines_schema["maximum"] == 5000
-    assert (
-        "Output is available only while the background job can still be inspected"
-        in lines_schema["description"]
-    )
+    assert "Output is retained after completion" in lines_schema["description"]
     assert "session_id" in companion.inputSchema["required"]
     assert (
         "Tracked bash"
@@ -500,7 +503,12 @@ async def test_job_tool_schema_descriptions_explain_bash_companion(
     output_schema = _output_schema(companion)
     assert output_schema["title"] == "JobOutput"
     assert output_schema["$defs"]["JobStatus"]["enum"] == [
+        "starting",
         "running",
+        "stopping",
+        "retrying",
+        "succeeded",
+        "failed",
         "exited",
         "stopped",
         "lost",
@@ -563,26 +571,88 @@ def test_transport_security_handles_default_ports_and_ipv6(
     assert "https://[2001:db8::1]" in transport_security.allowed_origins
 
 
+def _assert_tool_annotations(
+    tool,
+    *,
+    read_only: bool,
+    destructive: bool,
+    idempotent: bool,
+    open_world: bool,
+):
+    annotations = tool.annotations
+    assert annotations is not None, tool.name
+    assert annotations.readOnlyHint is read_only, tool.name
+    assert annotations.destructiveHint is destructive, tool.name
+    assert annotations.idempotentHint is idempotent, tool.name
+    assert annotations.openWorldHint is open_world, tool.name
+
+
 @pytest.mark.asyncio
-async def test_full_container_mode_marks_command_tools_with_relaxed_client_hints(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("allow_full_control", [False, True])
+async def test_tool_safety_annotations_are_mode_independent(
+    tmp_path,
+    monkeypatch,
+    allow_full_control,
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "true")
+    monkeypatch.setenv(
+        "LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", str(allow_full_control).lower()
+    )
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    annotations = tools["bash"].annotations
-    search_annotations = tools["workspace_search"].annotations
-    assert annotations is not None
-    assert search_annotations is not None
-    assert annotations.readOnlyHint is False
-    assert annotations.destructiveHint is False
-    assert annotations.idempotentHint is False
-    assert annotations.openWorldHint is False
-
-    assert search_annotations.readOnlyHint is True
+    assert all(tool.annotations is not None for tool in tools.values())
+    _assert_tool_annotations(
+        tools["workspace_search"],
+        read_only=True,
+        destructive=False,
+        idempotent=True,
+        open_world=False,
+    )
+    _assert_tool_annotations(
+        tools["bash"],
+        read_only=False,
+        destructive=True,
+        idempotent=False,
+        open_world=True,
+    )
+    _assert_tool_annotations(
+        tools["write_file"],
+        read_only=False,
+        destructive=True,
+        idempotent=False,
+        open_world=False,
+    )
+    _assert_tool_annotations(
+        tools["create_file_link"],
+        read_only=False,
+        destructive=False,
+        idempotent=False,
+        open_world=True,
+    )
+    _assert_tool_annotations(
+        tools["resize_persistent_shell"],
+        read_only=False,
+        destructive=False,
+        idempotent=False,
+        open_world=True,
+    )
+    _assert_tool_annotations(
+        tools["session_start"],
+        read_only=False,
+        destructive=False,
+        idempotent=False,
+        open_world=True,
+    )
+    assert tools["bash"].meta == {
+        "securitySchemes": [
+            {
+                "type": "oauth2",
+                "scopes": ["shell:read", "shell:execute"],
+            }
+        ]
+    }
 
 
 @pytest.mark.asyncio
@@ -594,6 +664,7 @@ async def test_read_only_tools_are_annotated(tmp_path, monkeypatch):
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
     read_only_tool_names = {
+        "audit_tail",
         "fetch",
         "glob_search",
         "list_file_links",
@@ -606,22 +677,26 @@ async def test_read_only_tools_are_annotated(tmp_path, monkeypatch):
         "secret_scan",
         "tree_view",
         "version",
+        "view_image",
         "workspace_search",
     }
     for name in read_only_tool_names:
+        _assert_tool_annotations(
+            tools[name],
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            open_world=False,
+        )
+
+    for name in set(tools) - read_only_tool_names:
         annotations = tools[name].annotations
         assert annotations is not None, name
-        assert annotations.readOnlyHint is True, name
-        assert annotations.destructiveHint is False, name
-        assert annotations.idempotentHint is True, name
-        assert annotations.openWorldHint is False, name
-
-    assert tools["write_file"].annotations is None
-    assert tools["write_todos"].annotations is None
+        assert annotations.readOnlyHint is False, name
 
 
 @pytest.mark.asyncio
-async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
+async def test_agent_bridge_annotations_remain_conservative(
     tmp_path, monkeypatch
 ):
     config_dir = tmp_path / ".local-shell-mcp" / "agent_config"
@@ -655,7 +730,6 @@ async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS", "true")
     monkeypatch.setattr(
         tools_module,
         "AgentMcpClientManager",
@@ -665,51 +739,34 @@ async def test_relaxed_client_hints_do_not_apply_to_agent_mcp_proxies(
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
 
-    run_shell_command_annotations = tools["bash"].annotations
-    assert run_shell_command_annotations is not None
-    assert run_shell_command_annotations.openWorldHint is False
-    assert tools["call_agent_mcp_tool"].annotations is None
-    assert tools["agent_mcp__docs__search"].annotations is None
-
-
-@pytest.mark.asyncio
-async def test_relaxed_client_tool_hints_marks_command_tools_without_full_container(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_RELAXED_CLIENT_TOOL_HINTS", "true")
-    clear_settings_cache()
-
-    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-
-    annotations = tools["bash"].annotations
-    assert annotations is not None
-    assert annotations.readOnlyHint is False
-    assert annotations.destructiveHint is False
-    assert annotations.idempotentHint is False
-    assert annotations.openWorldHint is False
-    assert tools["bash"].meta == {
-        "securitySchemes": [
-            {
-                "type": "oauth2",
-                "scopes": ["shell:read", "shell:execute"],
-            }
-        ]
-    }
-
-
-@pytest.mark.asyncio
-async def test_default_mode_does_not_mark_command_tools_for_auto_approval(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "false")
-    clear_settings_cache()
-
-    tools = {tool.name: tool for tool in await build_mcp().list_tools()}
-
-    assert tools["bash"].annotations is None
+    for name in {
+        "activate_agent_skill",
+        "agent_config_status",
+        "list_agent_mcp_servers",
+        "list_agent_skills",
+    }:
+        _assert_tool_annotations(
+            tools[name],
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            open_world=False,
+        )
+    _assert_tool_annotations(
+        tools["list_agent_mcp_tools"],
+        read_only=True,
+        destructive=False,
+        idempotent=True,
+        open_world=True,
+    )
+    for name in {"call_agent_mcp_tool", "agent_mcp__docs__search"}:
+        _assert_tool_annotations(
+            tools[name],
+            read_only=False,
+            destructive=True,
+            idempotent=False,
+            open_world=True,
+        )
 
 
 def test_oauth_registration_requires_redirect_uri(tmp_path, monkeypatch):
@@ -881,7 +938,8 @@ def test_oauth_approved_clients_persist_across_app_rebuild(
 
     store_path = client_store_path()
     assert store_path.exists()
-    assert store_path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert store_path.stat().st_mode & 0o777 == 0o600
     stored = json.loads(store_path.read_text())
     assert [client["client_id"] for client in stored["clients"]] == [client_id]
     assert stored["clients"][0]["approved_at"] is not None

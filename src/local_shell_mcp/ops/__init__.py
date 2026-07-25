@@ -1,1 +1,1 @@
-"""Operational helpers backing local-shell-mcp tool implementations."""
+"""Shared transport-neutral application operations."""

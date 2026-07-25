@@ -1,8 +1,8 @@
 """Version information MCP tool registry."""
 
-from ...ops.version import version_info_execute
-from ...schemas.result_models.version import VersionInfoOutput
 from ..declarative import DeclarativeToolRegistry
+from ..ops.version import version_info_execute
+from ..schemas.result_models.version import VersionInfoOutput
 
 
 class VersionToolRegistry(DeclarativeToolRegistry):
