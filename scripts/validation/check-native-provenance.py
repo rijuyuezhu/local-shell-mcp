@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 PROVENANCE = REPO / "docs" / "maintenance" / "native-artifact-provenance.md"
 EXPECTED_HASHES = {
     "ui-opentui/package.json": "dac1801bc8f6ae034ba092bb780a173f30cd47f343d626f43bb3895df1920238",
@@ -50,7 +50,7 @@ def main() -> int:
         "ui-opentui/scripts/compile-tui.ts": 'from "./executable-contract"',
         "pyproject.toml": '"src/local_shell_mcp/helpers/opentui.NOTICES"',
         ".github/workflows/release.yml": "BUN-1.3.14-LICENSE.md",
-        "scripts/check-release-matrix.py": '"BUN-1.3.14-LICENSE.md"',
+        "scripts/validation/check-release-matrix.py": '"BUN-1.3.14-LICENSE.md"',
         "mkdocs.yml": "maintenance/native-artifact-provenance.md",
         "scripts/tmux-helper.Dockerfile": (
             "ARG TMUX_SHA256="

@@ -8,7 +8,9 @@ from types import ModuleType
 def _load_checker() -> ModuleType:
     path = (
         Path(__file__).resolve().parents[1]
-        / "scripts/check-doc-reference-assets.py"
+        / "scripts"
+        / "validation"
+        / "check-doc-reference-assets.py"
     )
     spec = importlib.util.spec_from_file_location(
         "check_doc_reference_assets", path

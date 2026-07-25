@@ -66,7 +66,7 @@ def test_python_executable_name_literal_has_one_owner() -> None:
 
 def test_release_matrix_checker_uses_contract_without_project_install() -> None:
     completed = subprocess.run(
-        [sys.executable, "-S", "scripts/check-release-matrix.py"],
+        [sys.executable, "-S", "scripts/validation/check-release-matrix.py"],
         cwd=_REPO,
         check=False,
         capture_output=True,

@@ -282,8 +282,10 @@ jobs:
           tar -xzf dist/*.tar.gz -C /tmp/local-shell-mcp-sdist
           source_dir="$(find /tmp/local-shell-mcp-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)"
           test -f "$source_dir/scripts/build-platform-wheel.py"
+          test -f "$source_dir/scripts/README.md"
           test -f "$source_dir/scripts/validation/check-coverage.py"
-          test -f "$source_dir/scripts/check-native-provenance.py"
+          test -f "$source_dir/scripts/validation/check-native-provenance.py"
+          test -f "$source_dir/scripts/validation/check-release-matrix.py"
           test -f "$source_dir/scripts/generate-tui-executable-contract.py"
           test -f "$source_dir/scripts/smoke-platform-wheel.py"
           test -f "$source_dir/scripts/validation/coverage-baseline.json"
@@ -401,7 +403,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - run: python scripts/check-release-matrix.py
+      - run: python scripts/validation/check-release-matrix.py
 
   vscode-extension:
     name: VS Code extension (${{ matrix.os }})

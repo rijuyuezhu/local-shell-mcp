@@ -253,7 +253,7 @@ uv run pre-commit run --all-files
 uv run pyright
 uv run pytest -q
 uv run mkdocs build --strict
-uv run python scripts/check-release-matrix.py
+uv run python scripts/validation/check-release-matrix.py
 uv build --out-dir dist
 ```
 
@@ -275,7 +275,7 @@ with Bun and sidecars absent, then runs `scripts/smoke-platform-wheel.py` before
 all Python package artifacts are published together. Native source, license,
 platform, rebuild, and checksum ownership is recorded in
 [Native artifact provenance](maintenance/native-artifact-provenance.md). Run
-`uv run python scripts/check-native-provenance.py` whenever those inputs change.
+`uv run python scripts/validation/check-native-provenance.py` whenever those inputs change.
 
 Also test the Docker image or binary artifact and at least one real MCP connection path before publishing.
 

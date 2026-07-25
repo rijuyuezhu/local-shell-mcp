@@ -8,6 +8,7 @@ def _load_checker():
     path = (
         Path(__file__).resolve().parents[1]
         / "scripts"
+        / "validation"
         / "check-native-provenance.py"
     )
     spec = importlib.util.spec_from_file_location(

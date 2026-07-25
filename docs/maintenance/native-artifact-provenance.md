@@ -128,4 +128,4 @@ scripts/build-tmux-helper.sh /tmp/local-shell-mcp-tmux-arm64 linux/arm64
 
 Release checksums are the authority for generated helper and archive bytes.
 Changing any source version, checksum, toolchain pin, supported platform, or
-license notice requires updating this page and `scripts/check-native-provenance.py`.
+license notice requires updating this page and `scripts/validation/check-native-provenance.py`.

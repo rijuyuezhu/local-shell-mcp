@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from runpy import run_path
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 _TUI_CONTRACT = run_path(
     str(REPO / "src" / "local_shell_mcp" / "ui" / "contracts.py")
 )
@@ -216,7 +216,7 @@ def main() -> int:
             r"^  [A-Za-z0-9_-]+:\n",
         ),
         (
-            "scripts/check-native-provenance.py",
+            "scripts/validation/check-native-provenance.py",
             "scripts/generate-tui-executable-contract.py",
             "tests/test_native_provenance.py",
             "src/local_shell_mcp/ui/contracts.py",
