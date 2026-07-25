@@ -481,6 +481,15 @@ def test_tool_owned_module_map_covers_every_file() -> None:
 
 def test_tool_owned_slices_have_explicit_boundaries() -> None:
     _assert_tool_owned_slice(
+        "audit",
+        {
+            f"{_PACKAGE_NAME}.audit",
+            f"{_PACKAGE_NAME}.ops.utils.remote_session",
+            f"{_PACKAGE_NAME}.tool_session.store",
+            f"{_PACKAGE_NAME}.tools.schemas.result_models.audit",
+        },
+    )
+    _assert_tool_owned_slice(
         "version",
         {
             f"{_PACKAGE_NAME}.tools.schemas.result_models.version",

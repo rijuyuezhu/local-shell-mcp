@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.ops.audit as audit_ops
+import local_shell_mcp.tools.ops.audit as audit_ops
 from local_shell_mcp.audit import (
     audit,
     audit_call_context,
@@ -12,8 +12,8 @@ from local_shell_mcp.audit import (
     audit_tool_call_start,
 )
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.audit import audit_tail_execute
 from local_shell_mcp.tool_session.store import get_tool_session_store
+from local_shell_mcp.tools.ops.audit import audit_tail_execute
 
 
 @pytest.fixture(autouse=True)

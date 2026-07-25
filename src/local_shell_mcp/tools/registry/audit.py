@@ -1,8 +1,10 @@
 """Session-bound audit MCP tool registry."""
 
 from ...oauth.core.scopes import SCOPE_AUDIT_FULL, SCOPE_AUDIT_READ
-from ...ops.audit import audit_tail_execute
-from ...schemas.input_models.audit import (
+from ...schemas.input_models.session import SessionIdArg
+from ..declarative import DeclarativeToolRegistry, _enforce_oauth_scopes
+from ..ops.audit import audit_tail_execute
+from ..schemas.input_models.audit import (
     AuditEntryIdArg,
     AuditEventArg,
     AuditIncludeFullPayloadsArg,
@@ -13,9 +15,7 @@ from ...schemas.input_models.audit import (
     AuditSortArg,
     AuditTimestampArg,
 )
-from ...schemas.input_models.session import SessionIdArg
-from ...schemas.result_models.audit import AuditTailOutput
-from ..declarative import DeclarativeToolRegistry, _enforce_oauth_scopes
+from ..schemas.result_models.audit import AuditTailOutput
 
 
 class AuditToolRegistry(DeclarativeToolRegistry):
