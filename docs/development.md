@@ -159,13 +159,25 @@ uv run pytest tests/test_agent_bridge_tools.py -q
 
 ## Check branch coverage
 
-The Ubuntu CI job runs the complete Python suite under branch coverage. It
-ratchets both the aggregate percentage and every existing source file against
-`scripts/coverage-baseline.json`; a new non-empty module must begin at 90%
-coverage. The committed baseline records the lowest value observed for each
-module across the local Linux and GitHub Ubuntu reports, so environment-only
-branches cannot make either supported run flaky. Run the same gate locally
-with:
+The Ubuntu CI job runs the complete Python suite under branch coverage. The
+risk-weighted policy is serialized in `scripts/coverage-baseline.json` and
+validated by the checker:
+
+- aggregate package branch coverage may not fall below the committed baseline;
+- credential, private-file, audit, OAuth, remote-worker lifecycle, terminal,
+  destructive file/process, and transfer modules retain a near-zero per-file
+  drift allowance of 0.05 percentage points;
+- ordinary existing modules may move by at most one percentage point, avoiding
+  low-value tests for harmless branch-denominator changes;
+- new core modules must start at 80%, while new executor, HTTP, registry, schema,
+  and other thin adapter modules must start at 60%; and
+- zero-statement package markers do not create a coverage obligation.
+
+When moving a file, move its baseline key in the same commit so an existing
+module is not misclassified as new. The committed baseline records the lowest
+value observed for each module across local Linux and GitHub Ubuntu reports, so
+environment-only branches cannot make either supported run flaky. Run the same
+gate locally with:
 
 ```bash
 find . -maxdepth 1 -name '.coverage*' -delete
@@ -190,8 +202,11 @@ uv run python scripts/check-coverage.py \
   --report /tmp/python-coverage/coverage.json
 ```
 
-Coverage regressions should instead gain tests or be explicitly justified in
-review.
+Coverage work should target behavior, trust boundaries, failure modes, or a
+meaningful migration regression. Do not add tests solely to recover a small
+percentage caused by relocation or denominator movement inside the documented
+allowance. Regressions beyond the allowance should gain useful tests or be
+explicitly justified by changing the policy and baseline together in review.
 
 ## Regenerate generated reference data
 

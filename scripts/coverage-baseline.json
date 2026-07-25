@@ -886,8 +886,52 @@
       "percent_covered": 78.947368
     }
   },
-  "new_file_min_percent": 90.0,
+  "policy": {
+    "adapter_files": [
+      "src/local_shell_mcp/remote/http.py",
+      "src/local_shell_mcp/remote/responses.py",
+      "src/local_shell_mcp/remote/service.py",
+      "src/local_shell_mcp/tools/local_handlers.py"
+    ],
+    "adapter_prefixes": [
+      "src/local_shell_mcp/executors/",
+      "src/local_shell_mcp/http/",
+      "src/local_shell_mcp/schemas/",
+      "src/local_shell_mcp/tools/registry/",
+      "src/local_shell_mcp/ui/http/"
+    ],
+    "critical_existing_drift_percent": 0.05,
+    "critical_files": [
+      "src/local_shell_mcp/agent_bridge/auth.py",
+      "src/local_shell_mcp/agent_bridge/auth_store.py",
+      "src/local_shell_mcp/agent_bridge/redaction.py",
+      "src/local_shell_mcp/config/settings.py",
+      "src/local_shell_mcp/ops/files.py",
+      "src/local_shell_mcp/ops/jobs.py",
+      "src/local_shell_mcp/ops/patch/envelope.py",
+      "src/local_shell_mcp/ops/secret_scan.py",
+      "src/local_shell_mcp/ops/shell.py",
+      "src/local_shell_mcp/ops/transfer.py",
+      "src/local_shell_mcp/remote/manager.py",
+      "src/local_shell_mcp/remote/transfer.py",
+      "src/local_shell_mcp/remote/transfer_gateway.py",
+      "src/local_shell_mcp/tool_session/store.py",
+      "src/local_shell_mcp/ui/security.py",
+      "src/local_shell_mcp/utils/path_locks.py",
+      "src/local_shell_mcp/utils/private_files.py"
+    ],
+    "critical_prefixes": [
+      "src/local_shell_mcp/audit/",
+      "src/local_shell_mcp/oauth/",
+      "src/local_shell_mcp/remote_worker/",
+      "src/local_shell_mcp/terminal/"
+    ],
+    "default_existing_drift_percent": 1.0,
+    "new_adapter_min_percent": 60.0,
+    "new_core_min_percent": 80.0,
+    "total_drift_percent": 0.05
+  },
   "report_count": 2,
-  "schema_version": 1,
+  "schema_version": 2,
   "total_percent_covered": 82.604226
 }

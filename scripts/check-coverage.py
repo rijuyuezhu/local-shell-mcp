@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Enforce a no-regression branch-coverage baseline.
+"""Enforce aggregate and risk-weighted branch-coverage baselines.
 
-Existing source files may not fall below their recorded branch-coverage
-percentage. New non-empty source files must start at 90 percent coverage. The
-aggregate package percentage is also ratcheted so deleting a well-covered file
-cannot silently reduce the overall quality floor.
+Aggregate package coverage remains a strict ratchet. Security and runtime
+modules keep near-zero per-file drift, while ordinary existing modules tolerate
+small denominator movement. New core modules require meaningful coverage and
+thin adapter/schema modules use a lower threshold so relocation and wiring work
+do not encourage low-value tests.
 """
 
 from __future__ import annotations
@@ -16,16 +17,109 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_REPORT = Path("coverage.json")
 DEFAULT_BASELINE = Path("scripts/coverage-baseline.json")
 SOURCE_PREFIX = "src/local_shell_mcp/"
-NEW_FILE_MIN_PERCENT = 90.0
-TOLERANCE_PERCENT = 0.05
+TOTAL_DRIFT_PERCENT = 0.05
+CRITICAL_EXISTING_DRIFT_PERCENT = 0.05
+DEFAULT_EXISTING_DRIFT_PERCENT = 1.0
+NEW_CORE_MIN_PERCENT = 80.0
+NEW_ADAPTER_MIN_PERCENT = 60.0
+CRITICAL_PREFIXES = (
+    f"{SOURCE_PREFIX}audit/",
+    f"{SOURCE_PREFIX}oauth/",
+    f"{SOURCE_PREFIX}remote_worker/",
+    f"{SOURCE_PREFIX}terminal/",
+)
+CRITICAL_FILES = frozenset(
+    {
+        f"{SOURCE_PREFIX}agent_bridge/auth.py",
+        f"{SOURCE_PREFIX}agent_bridge/auth_store.py",
+        f"{SOURCE_PREFIX}agent_bridge/redaction.py",
+        f"{SOURCE_PREFIX}config/settings.py",
+        f"{SOURCE_PREFIX}ops/files.py",
+        f"{SOURCE_PREFIX}ops/jobs.py",
+        f"{SOURCE_PREFIX}ops/patch/envelope.py",
+        f"{SOURCE_PREFIX}ops/secret_scan.py",
+        f"{SOURCE_PREFIX}ops/shell.py",
+        f"{SOURCE_PREFIX}ops/transfer.py",
+        f"{SOURCE_PREFIX}remote/manager.py",
+        f"{SOURCE_PREFIX}remote/transfer.py",
+        f"{SOURCE_PREFIX}remote/transfer_gateway.py",
+        f"{SOURCE_PREFIX}tool_session/store.py",
+        f"{SOURCE_PREFIX}ui/security.py",
+        f"{SOURCE_PREFIX}utils/path_locks.py",
+        f"{SOURCE_PREFIX}utils/private_files.py",
+    }
+)
+ADAPTER_PREFIXES = (
+    f"{SOURCE_PREFIX}executors/",
+    f"{SOURCE_PREFIX}http/",
+    f"{SOURCE_PREFIX}schemas/",
+    f"{SOURCE_PREFIX}tools/registry/",
+    f"{SOURCE_PREFIX}ui/http/",
+)
+ADAPTER_FILES = frozenset(
+    {
+        f"{SOURCE_PREFIX}remote/http.py",
+        f"{SOURCE_PREFIX}remote/responses.py",
+        f"{SOURCE_PREFIX}remote/service.py",
+        f"{SOURCE_PREFIX}tools/local_handlers.py",
+    }
+)
 
 
 class CoverageDataError(ValueError):
     """Raised when a coverage report or baseline has an invalid shape."""
+
+
+def coverage_policy() -> dict[str, Any]:
+    """Return the serialized risk-weighted policy embedded in each baseline."""
+    return {
+        "adapter_files": sorted(ADAPTER_FILES),
+        "adapter_prefixes": list(ADAPTER_PREFIXES),
+        "critical_existing_drift_percent": CRITICAL_EXISTING_DRIFT_PERCENT,
+        "critical_files": sorted(CRITICAL_FILES),
+        "critical_prefixes": list(CRITICAL_PREFIXES),
+        "default_existing_drift_percent": DEFAULT_EXISTING_DRIFT_PERCENT,
+        "new_adapter_min_percent": NEW_ADAPTER_MIN_PERCENT,
+        "new_core_min_percent": NEW_CORE_MIN_PERCENT,
+        "total_drift_percent": TOTAL_DRIFT_PERCENT,
+    }
+
+
+def _matches_path_policy(
+    path: str,
+    *,
+    prefixes: tuple[str, ...],
+    files: frozenset[str],
+) -> bool:
+    return path in files or path.startswith(prefixes)
+
+
+def _is_critical(path: str) -> bool:
+    return _matches_path_policy(
+        path, prefixes=CRITICAL_PREFIXES, files=CRITICAL_FILES
+    )
+
+
+def _is_adapter(path: str) -> bool:
+    return _matches_path_policy(
+        path, prefixes=ADAPTER_PREFIXES, files=ADAPTER_FILES
+    )
+
+
+def _new_file_minimum(path: str) -> tuple[str, float]:
+    if not _is_critical(path) and _is_adapter(path):
+        return "adapter", NEW_ADAPTER_MIN_PERCENT
+    return "core", NEW_CORE_MIN_PERCENT
+
+
+def _existing_drift_allowance(path: str) -> float:
+    if _is_critical(path):
+        return CRITICAL_EXISTING_DRIFT_PERCENT
+    return DEFAULT_EXISTING_DRIFT_PERCENT
 
 
 def _mapping(value: object, context: str) -> Mapping[str, Any]:
@@ -101,7 +195,7 @@ def snapshot_report(report: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "total_percent_covered": round(total_percent, 6),
-        "new_file_min_percent": NEW_FILE_MIN_PERCENT,
+        "policy": coverage_policy(),
         "files": files,
     }
 
@@ -172,7 +266,7 @@ def merge_snapshots(snapshots: list[dict[str, Any]]) -> dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "report_count": len(snapshots),
         "total_percent_covered": round(total_percent, 6),
-        "new_file_min_percent": NEW_FILE_MIN_PERCENT,
+        "policy": coverage_policy(),
         "files": merged_files,
     }
 
@@ -204,14 +298,11 @@ def evaluate(
             "unsupported coverage baseline schema: "
             f"expected {SCHEMA_VERSION}, got {schema_version!r}"
         )
-    expected_new_file_min = _number(
-        baseline.get("new_file_min_percent"),
-        "baseline new_file_min_percent",
-    )
-    if expected_new_file_min != NEW_FILE_MIN_PERCENT:
+    baseline_policy = _mapping(baseline.get("policy"), "baseline policy")
+    expected_policy = coverage_policy()
+    if dict(baseline_policy) != expected_policy:
         raise CoverageDataError(
-            "baseline new-file policy does not match the checker: "
-            f"{expected_new_file_min:.2f}% != {NEW_FILE_MIN_PERCENT:.2f}%"
+            "baseline coverage policy does not match the checker"
         )
 
     current = snapshot_report(report)
@@ -226,7 +317,7 @@ def evaluate(
     current_files = _mapping(current["files"], "current coverage files")
 
     failures: list[str] = []
-    if current_total + TOLERANCE_PERCENT < baseline_total:
+    if current_total + TOTAL_DRIFT_PERCENT < baseline_total:
         failures.append(
             "total branch coverage regressed: "
             f"{current_total:.2f}% < {baseline_total:.2f}%"
@@ -249,9 +340,10 @@ def evaluate(
             if statements == 0:
                 continue
             new_files += 1
-            if current_percent + TOLERANCE_PERCENT < NEW_FILE_MIN_PERCENT:
+            category, minimum = _new_file_minimum(path)
+            if current_percent + TOTAL_DRIFT_PERCENT < minimum:
                 failures.append(
-                    f"new module {path} is below {NEW_FILE_MIN_PERCENT:.2f}%: "
+                    f"new {category} module {path} is below {minimum:.2f}%: "
                     f"{current_percent:.2f}%"
                 )
             continue
@@ -264,10 +356,12 @@ def evaluate(
             baseline_entry.get("percent_covered"),
             f"baseline coverage percent for {path}",
         )
-        if current_percent + TOLERANCE_PERCENT < baseline_percent:
+        allowance = _existing_drift_allowance(path)
+        if current_percent + allowance < baseline_percent:
             failures.append(
                 f"module coverage regressed for {path}: "
-                f"{current_percent:.2f}% < {baseline_percent:.2f}%"
+                f"{current_percent:.2f}% < {baseline_percent:.2f}% "
+                f"beyond {allowance:.2f} percentage-point allowance"
             )
 
     summary = (
