@@ -31,7 +31,11 @@ def test_generated_config_examples_are_current():
     import sys
 
     result = subprocess.run(
-        [sys.executable, "scripts/generate-config-examples.py", "--check"],
+        [
+            sys.executable,
+            "scripts/generation/generate-config-examples.py",
+            "--check",
+        ],
         check=False,
         capture_output=True,
         text=True,

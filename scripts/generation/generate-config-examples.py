@@ -338,7 +338,7 @@ def generate_config_reference_json() -> str:
 
 def write_examples(*, check: bool) -> int:
     """Write generated files or check they are up to date."""
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     outputs = {
         root / ".env.example": generate_env_example(),
         root / "config.example.yaml": generate_yaml_example(),

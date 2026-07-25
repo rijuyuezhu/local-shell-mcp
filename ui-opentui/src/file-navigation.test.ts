@@ -27,11 +27,12 @@ describe("file pointer navigation", () => {
 
 describe("file path breadcrumbs", () => {
   test("builds workspace-relative breadcrumbs", () => {
-    expect(pathBreadcrumbs("src/local_shell_mcp/ui_static")).toEqual([
+    expect(pathBreadcrumbs("src/local_shell_mcp/ui/static")).toEqual([
       { label: ".", path: "." },
       { label: "src", path: "src" },
       { label: "local_shell_mcp", path: "src/local_shell_mcp" },
-      { label: "ui_static", path: "src/local_shell_mcp/ui_static" },
+      { label: "ui", path: "src/local_shell_mcp/ui" },
+      { label: "static", path: "src/local_shell_mcp/ui/static" },
     ])
   })
 

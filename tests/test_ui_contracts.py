@@ -9,7 +9,9 @@ from types import ModuleType
 from local_shell_mcp.ui import contracts
 
 _REPO = Path(__file__).parents[1]
-_GENERATOR = _REPO / "scripts" / "generate-tui-executable-contract.py"
+_GENERATOR = (
+    _REPO / "scripts" / "generation" / "generate-tui-executable-contract.py"
+)
 _GENERATED_TYPESCRIPT = (
     _REPO / "ui-opentui" / "scripts" / "executable-contract.ts"
 )

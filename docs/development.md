@@ -75,7 +75,7 @@ curl -s -X POST http://127.0.0.1:13444/tools/list_files \
 Export the MCP tool surface:
 
 ```bash
-uv run python scripts/export-tools-json.py --wrapped > /tmp/local-shell-mcp-tools.json
+uv run python scripts/generation/export-tools-json.py --wrapped > /tmp/local-shell-mcp-tools.json
 jq '.count, [.tools[].name]' /tmp/local-shell-mcp-tools.json
 ```
 
@@ -124,7 +124,7 @@ direction explicit when adding features or moving code:
   executors.
 
 The canonical OpenTUI executable names live in `ui/contracts.py`. After changing
-that contract, run `uv run python scripts/generate-tui-executable-contract.py` to
+that contract, run `uv run python scripts/generation/generate-tui-executable-contract.py` to
 refresh the Bun-side mirror; pre-commit rejects stale generated output.
 
 Human UI route handlers should validate transport input and delegate reusable
@@ -213,19 +213,19 @@ explicitly justified by changing the policy and baseline together in review.
 Configuration examples and reference JSON are generated from the settings registry:
 
 ```bash
-uv run python scripts/generate-config-examples.py
-uv run python scripts/generate-config-examples.py --check
+uv run python scripts/generation/generate-config-examples.py
+uv run python scripts/generation/generate-config-examples.py --check
 ```
 
 Tool and instruction reference JSON are generated from the live MCP app:
 
 ```bash
-uv run python scripts/export-tools-json.py \
+uv run python scripts/generation/export-tools-json.py \
   --wrapped \
   --output docs/reference/generated/tools.json \
   --instructions-output docs/reference/generated/server-instructions.json
 
-uv run python scripts/export-tools-json.py \
+uv run python scripts/generation/export-tools-json.py \
   --wrapped \
   --output docs/reference/generated/tools.json \
   --instructions-output docs/reference/generated/server-instructions.json \

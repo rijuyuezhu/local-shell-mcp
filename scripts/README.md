@@ -15,6 +15,14 @@ provenance, test, and documentation references in the same change.
 | `validation/check-native-provenance.py` | Verifies locked OpenTUI/tmux source hashes, license notices, and required release/source-package wiring. | Native provenance is a repository validation policy; the checker must remain zero-install and separate from the builders whose inputs it audits. |
 | `validation/check-release-matrix.py` | Audits CI/release matrices, package-smoke fragments, Docker platforms, platform-wheel tags, native sidecars, and bundled tmux coverage. | It validates repository workflow completeness before installation and therefore belongs beside other zero-install validation gates rather than release builders. |
 
+## `generation`
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `generation/generate-config-examples.py` | Renders the environment, YAML, and generated configuration-reference examples from the canonical settings surface, or checks them for drift. | It deterministically generates reviewed repository artifacts and requires the installed project model, rather than validating an already-built package. |
+| `generation/export-tools-json.py` | Builds the MCP registry and exports stable tool plus server-instruction reference JSON for documentation and inspection. | It is a deterministic reference-data generator whose outputs are checked into the documentation tree. |
+| `generation/generate-tui-executable-contract.py` | Mirrors the dependency-leaf Python TUI executable-name contract into the Bun build input and checks that mirror for drift. | It owns a generated cross-language source artifact; release and provenance validators consume its output but do not own generation. |
+
 The remaining root-level scripts are transitional and will move in later,
 independently validated phases. User-facing convenience launchers may remain at
 stable root paths when their documented invocation is itself part of the public

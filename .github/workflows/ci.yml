@@ -286,7 +286,7 @@ jobs:
           test -f "$source_dir/scripts/validation/check-coverage.py"
           test -f "$source_dir/scripts/validation/check-native-provenance.py"
           test -f "$source_dir/scripts/validation/check-release-matrix.py"
-          test -f "$source_dir/scripts/generate-tui-executable-contract.py"
+          test -f "$source_dir/scripts/generation/generate-tui-executable-contract.py"
           test -f "$source_dir/scripts/smoke-platform-wheel.py"
           test -f "$source_dir/scripts/validation/coverage-baseline.json"
           test -f "$source_dir/tests/test_coverage_gate.py"
@@ -316,7 +316,7 @@ jobs:
           test -f "$source_dir/ui-opentui/src/tui.tsx"
           test -f "$source_dir/ui-opentui/scripts/compile-tui.ts"
           test -f "$source_dir/ui-opentui/scripts/executable-contract.ts"
-          PYTHONPATH="$source_dir/src" python             "$source_dir/scripts/generate-tui-executable-contract.py" --check
+          PYTHONPATH="$source_dir/src" python             "$source_dir/scripts/generation/generate-tui-executable-contract.py" --check
           test ! -e "$source_dir/ui-opentui/node_modules"
           test ! -e "$source_dir/ui-opentui/dist"
           test ! -e "$source_dir/src/local_shell_mcp/ui_runtime"

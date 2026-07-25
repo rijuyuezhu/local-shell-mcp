@@ -217,7 +217,7 @@ def main() -> int:
         ),
         (
             "scripts/validation/check-native-provenance.py",
-            "scripts/generate-tui-executable-contract.py",
+            "scripts/generation/generate-tui-executable-contract.py",
             "tests/test_native_provenance.py",
             "src/local_shell_mcp/ui/contracts.py",
             "ui-opentui/scripts/executable-contract.ts",
