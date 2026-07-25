@@ -1,5 +1,7 @@
 """Typed structured outputs for tokenized download-link tools."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -13,8 +15,16 @@ class FileLinkSummary(BaseModel):
         description="Browser-accessible download URL containing the token."
     )
     path: str | None = Field(description="Workspace-relative source file path.")
-    filename: str | None = Field(description="Browser download filename.")
-    bytes: int | None = Field(description="Source file size in bytes.")
+    filename: str | None = Field(description="Browser response filename.")
+    inline: bool = Field(
+        description="Whether the browser response uses inline disposition."
+    )
+    media_type: str | None = Field(
+        description="Stored MIME type for the browser response."
+    )
+    bytes: int | None = Field(
+        description="Creation-time snapshot size in bytes."
+    )
     created_at: float | None = Field(
         description="Unix timestamp when the link was created."
     )
@@ -29,6 +39,12 @@ class FileLinkSummary(BaseModel):
     )
     max_downloads: int = Field(
         description="Maximum allowed downloads, or 0 for unlimited."
+    )
+    target: Literal["local", "remote"] = Field(
+        description="Session target from which the snapshot was created."
+    )
+    machine: str | None = Field(
+        description="Remote worker machine for remote snapshots, otherwise null."
     )
 
 

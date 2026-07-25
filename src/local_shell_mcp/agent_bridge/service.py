@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from ..config.settings import Settings, get_settings
@@ -13,9 +14,12 @@ from ..schemas.result_models.agent import (
     ListAgentMcpToolsOutput,
     ListAgentSkillsOutput,
 )
+from ..tool_session.store import get_tool_session_store
 from ..utils.serialization import to_jsonable
+from .auth import manager_redaction_maps
+from .auth_store import AgentAuthStore
 from .mcp import AgentMcpClientManager
-from .models import AgentCapabilityRegistry, AgentMcpServerRecord
+from .models import AgentCapabilityRegistry, AgentMcpServerRecord, SkillRecord
 from .redaction import (
     _redact_text,
     redact_configured_value_tree,
@@ -23,7 +27,8 @@ from .redaction import (
     redact_mapping,
 )
 from .registry import build_agent_registry
-from .skills import activate_skill
+from .skills import activate_skill, read_agent_skill_file
+from .status import registry_config_status
 
 type AgentMcpClientManagerFactory = Callable[[float], Any]
 
@@ -31,15 +36,41 @@ type AgentMcpClientManagerFactory = Callable[[float], Any]
 def build_agent_registry_from_settings(
     settings: Settings | None = None,
     client_manager_factory: AgentMcpClientManagerFactory = AgentMcpClientManager,
+    *,
+    session_id: str | None = None,
+    project_root: Path | None = None,
 ) -> AgentCapabilityRegistry:
-    """Build the current agent capability registry from runtime settings."""
+    """Build the current registry for the default workspace or one explicit local session."""
     active_settings = settings or get_settings()
+    active_project_root = project_root or active_settings.workspace_root
+    if session_id is not None:
+        session = get_tool_session_store().touch_session(session_id)
+        if session.target != "local":
+            raise ValueError(
+                "remote agent Skill registries must be dispatched to the worker"
+            )
+        active_project_root = Path(session.workdir)
+    if client_manager_factory is AgentMcpClientManager:
+        client_manager = AgentMcpClientManager(
+            active_settings.agent_mcp_call_timeout_s,
+            AgentAuthStore(active_settings.agent_auth_dir),
+        )
+    else:
+        client_manager = client_manager_factory(
+            active_settings.agent_mcp_call_timeout_s
+        )
     return build_agent_registry(
         active_settings.agent_config_dir,
-        client_manager_factory(active_settings.agent_mcp_call_timeout_s),
+        client_manager,
         active_settings.agent_mcp_probe_timeout_s,
         None if active_settings.agent_dynamic_mcp_tools else False,
         None if active_settings.agent_dynamic_skill_tools else False,
+        project_root=Path(active_project_root),
+        max_skills=active_settings.max_skills,
+        max_skill_related_files=active_settings.max_skill_related_files,
+        max_skill_scan_entries=active_settings.max_skill_scan_entries,
+        max_skill_path_bytes=active_settings.max_skill_path_bytes,
+        max_skill_entry_bytes=active_settings.max_file_read_bytes,
     )
 
 
@@ -120,28 +151,77 @@ def agent_config_status_payload(
     registry: AgentCapabilityRegistry,
 ) -> AgentConfigStatusOutput:
     """Return a public, redacted agent bridge configuration status payload."""
-    return AgentConfigStatusOutput(**registry.config_status())
+    return AgentConfigStatusOutput(**registry_config_status(registry))
 
 
 def list_agent_skills_payload(
     registry: AgentCapabilityRegistry,
 ) -> ListAgentSkillsOutput:
-    """Return discovered agent skills and non-fatal skill warnings."""
+    """Return discovered agent skills, source roots, and non-fatal warnings."""
     return ListAgentSkillsOutput(
+        sources=[source.public_row() for source in registry.skill_sources],
         skills=[asdict(skill) for skill in registry.skills.values()],
         warnings=registry.skill_warnings,
     )
 
 
+def _skill_source(registry: AgentCapabilityRegistry, skill: SkillRecord):
+    """Return the selected source record for one discovered Skill."""
+    for source in registry.skill_sources:
+        if (
+            source.name == skill.source
+            and str(source.path) == skill.source_path
+        ):
+            return source
+    raise RuntimeError(f"Skill source is no longer available: {skill.source}")
+
+
 def activate_agent_skill_payload(
-    registry: AgentCapabilityRegistry, name: str
+    registry: AgentCapabilityRegistry,
+    name: str,
+    *,
+    max_entry_bytes: int | None = None,
 ) -> ActivateAgentSkillOutput:
     """Load one discovered agent skill payload by name."""
     skill = registry.skills.get(name)
     if skill is None:
         raise ValueError(f"Unknown agent skill: {name}")
+    kwargs = (
+        {"max_entry_bytes": max_entry_bytes}
+        if max_entry_bytes is not None
+        else {}
+    )
+
+    source = _skill_source(registry, skill)
     return ActivateAgentSkillOutput(
-        **activate_skill(registry.config_dir, skill)
+        **activate_skill(source.config_dir, skill, **kwargs)
+    )
+
+
+def read_agent_skill_file_payload(
+    registry: AgentCapabilityRegistry,
+    name: str,
+    path: str,
+    *,
+    max_file_bytes: int | None = None,
+) -> dict[str, Any]:
+    """Read one bounded related file from a discovered agent skill."""
+
+    skill = registry.skills.get(name)
+    if skill is None:
+        raise ValueError(f"Unknown agent skill: {name}")
+    source = _skill_source(registry, skill)
+    kwargs = (
+        {"max_file_bytes": max_file_bytes} if max_file_bytes is not None else {}
+    )
+    return read_agent_skill_file(
+        source.config_dir,
+        name,
+        path,
+        source.directory,
+        source_name=source.name,
+        source_path=str(source.path),
+        **kwargs,
     )
 
 
@@ -150,7 +230,7 @@ def list_agent_mcp_servers_payload(
 ) -> ListAgentMcpServersOutput:
     """Return configured agent MCP server status rows."""
     return ListAgentMcpServersOutput(
-        root=registry.config_status()["mcp_servers"]
+        root=registry_config_status(registry)["mcp_servers"]
     )
 
 
@@ -174,31 +254,36 @@ def list_agent_mcp_tools_payload(
         (record.server_name, record.tool_name): dynamic_name
         for dynamic_name, record in registry.dynamic_mcp_tool_map.items()
     }
-    rows = [
-        agent_mcp_tool_row(
-            server_name,
-            tool,
-            record.config.env,
-            record.config.headers,
-            dynamic_names.get((server_name, str(tool_value(tool, "name", "")))),
+    rows = []
+    for server_name, record in records:
+        env, headers = manager_redaction_maps(
+            registry.client_manager, server_name, record.config
         )
-        for server_name, record in records
-        for tool in record.tools
-    ]
+        rows.extend(
+            agent_mcp_tool_row(
+                server_name,
+                tool,
+                env,
+                headers,
+                dynamic_names.get(
+                    (server_name, str(tool_value(tool, "name", "")))
+                ),
+            )
+            for tool in record.tools
+        )
     return ListAgentMcpToolsOutput(tools=rows)
 
 
-def _agent_mcp_unavailable_error(record: AgentMcpServerRecord) -> str:
+def _agent_mcp_unavailable_error(
+    registry: AgentCapabilityRegistry, record: AgentMcpServerRecord
+) -> str:
     """Return the redacted availability error for an unreachable MCP server."""
     if not record.error:
         return "unknown error"
-    return _redact_text(
-        redact_configured_values(
-            record.error,
-            record.config.env,
-            record.config.headers,
-        )
+    env, headers = manager_redaction_maps(
+        registry.client_manager, record.name, record.config
     )
+    return _redact_text(redact_configured_values(record.error, env, headers))
 
 
 async def call_agent_mcp_tool_payload(
@@ -216,19 +301,18 @@ async def call_agent_mcp_tool_payload(
     if not record.available:
         raise ValueError(
             f"MCP server {server} is unavailable: "
-            f"{_agent_mcp_unavailable_error(record)}"
+            f"{_agent_mcp_unavailable_error(registry, record)}"
         )
+    env, headers = manager_redaction_maps(
+        registry.client_manager, server, record.config
+    )
     try:
         data = await registry.client_manager.call_tool(
             server, record.config, tool, args or {}
         )
     except Exception as exc:
-        raise redacted_mcp_call_error(
-            exc, record.config.env, record.config.headers
-        ) from None
-    output = redact_mcp_error_payload(
-        data, record.config.env, record.config.headers
-    )
+        raise redacted_mcp_call_error(exc, env, headers) from None
+    output = redact_mcp_error_payload(data, env, headers)
     if not isinstance(output, dict):
         output = {"result": output}
     return CallAgentMcpToolOutput(**output)

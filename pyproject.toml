@@ -22,21 +22,28 @@ dependencies = [
     "httpx>=0.28.1",
     "mcp>=1.28.0",
     "pathspec>=1.1.1",
+    "pillow>=12.1.1",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
     "python-multipart>=0.0.32",
+    "pywinpty>=2.0.13; platform_system == 'Windows'",
     "pyyaml>=6.0.3",
     "uvicorn[standard]>=0.49.0",
 ]
 
 [dependency-groups]
 dev = [
+    "coverage[toml]>=7.15.2",
+    "packaging>=26.0",
+    "playwright>=1.61.0",
     "pre-commit>=4.6.0",
     "pyright>=1.1.411",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-timeout>=2.4.0",
     "ruff>=0.15.20",
+    "wheel>=0.46.3",
 ]
 docs = [
     "mkdocs-material>=9.7.6",
@@ -46,6 +53,37 @@ docs = [
 requires = ["uv_build>=0.11.0,<0.12.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+source-include = [
+    "ui-terminal/**",
+    "ui-opentui/**",
+    "scripts/release/build-platform-wheel.py",
+    "scripts/generation/generate-tui-executable-contract.py",
+    "scripts/README.md",
+    "scripts/validation/check-coverage.py",
+    "scripts/validation/check-native-provenance.py",
+    "scripts/validation/check-release-matrix.py",
+    "scripts/release/smoke-platform-wheel.py",
+    "scripts/validation/coverage-baseline.json",
+    "tests/test_coverage_gate.py",
+    "tests/test_native_provenance.py",
+    "tests/test_tmux_helper.py",
+    "scripts/release/build-tmux-helper.sh",
+    "scripts/release/tmux-helper.Dockerfile",
+    "src/local_shell_mcp/helpers/README.md",
+    "src/local_shell_mcp/helpers/tmux.LICENSE",
+    "src/local_shell_mcp/helpers/opentui.NOTICES",
+    "src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md",
+    "docs/maintenance/native-artifact-provenance.md",
+]
+source-exclude = [
+    "/ui-terminal/node_modules",
+    "/ui-terminal/.build-check",
+    "/ui-opentui/node_modules",
+    "/ui-opentui/dist",
+    "/ui-opentui/coverage",
+    "/src/local_shell_mcp/helpers/linux-*/tmux",
+]
 
 [project.urls]
 Homepage = "https://github.com/rijuyuezhu/local-shell-mcp"
@@ -66,9 +104,44 @@ ignore = ["E501"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+timeout = 120
+timeout_method = "thread"
 markers = [
     "integration: tests that start real local-shell-mcp server processes",
+    "browser: real Chromium end-to-end tests run by the dedicated browser job",
 ]
+
+[tool.coverage.run]
+branch = true
+parallel = true
+patch = ["subprocess"]
+relative_files = true
+sigterm = true
+source = ["local_shell_mcp"]
+
+[tool.coverage.paths]
+source = [
+    "src/local_shell_mcp",
+    "*/.local-shell-mcp-worker/runtime/local_shell_mcp",
+    "*/runtime/local_shell_mcp",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.coverage.json]
+output = "coverage.json"
+pretty_print = true
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.pyright]
 pythonVersion = "3.14"

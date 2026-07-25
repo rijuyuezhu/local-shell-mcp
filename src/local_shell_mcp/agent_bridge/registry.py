@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from .auth import manager_redaction_maps
 from .models import (
     AgentCapabilityRegistry,
     AgentMcpServerRecord,
@@ -16,7 +17,14 @@ from .models import (
     SkillScanResult,
 )
 from .redaction import redact_configured_value_tree
-from .skills import scan_agent_skills
+from .skills import (
+    DEFAULT_MAX_ENTRY_BYTES,
+    DEFAULT_MAX_PATH_BYTES,
+    DEFAULT_MAX_RELATED_FILES,
+    DEFAULT_MAX_SCAN_ENTRIES,
+    DEFAULT_MAX_SKILLS,
+)
+from .sources import scan_skill_sources, skill_sources
 from .state import load_agent_manifest
 
 
@@ -84,10 +92,27 @@ def build_agent_registry(
     probe_timeout_s: float = 5,
     dynamic_mcp_tools: bool | None = None,
     dynamic_skill_tools: bool | None = None,
+    *,
+    project_root: Path | None = None,
+    max_skills: int = DEFAULT_MAX_SKILLS,
+    max_skill_related_files: int = DEFAULT_MAX_RELATED_FILES,
+    max_skill_scan_entries: int = DEFAULT_MAX_SCAN_ENTRIES,
+    max_skill_path_bytes: int = DEFAULT_MAX_PATH_BYTES,
+    max_skill_entry_bytes: int = DEFAULT_MAX_ENTRY_BYTES,
 ) -> AgentCapabilityRegistry:
-    """Build a complete bridge registry by loading config, scanning skills, probing MCP servers, and assigning dynamic names."""
-    config_root = Path(config_dir)
+    """Build one manifest-backed registry with ordered project, managed, and global Skills."""
+    config_root = Path(config_dir).expanduser().resolve()
+    active_project_root = (
+        config_root
+        if project_root is None
+        else Path(project_root).expanduser().resolve()
+    )
     manifest = load_agent_manifest(config_root)
+    sources = skill_sources(
+        project_root=active_project_root,
+        managed_config_dir=config_root,
+        managed_directory=manifest.data.skills.directory,
+    )
     probe_timeout = _probe_timeout_seconds(probe_timeout_s)
     if client_manager is None:
         from .mcp import AgentMcpClientManager
@@ -95,13 +120,18 @@ def build_agent_registry(
         client_manager = AgentMcpClientManager(call_timeout_s=probe_timeout)
 
     skill_scan = SkillScanResult()
+    if manifest.status != "invalid_config" and manifest.data.skills.enabled:
+        skill_scan = scan_skill_sources(
+            sources,
+            max_skills=max_skills,
+            max_related_files=max_skill_related_files,
+            max_scan_entries=max_skill_scan_entries,
+            max_path_bytes=max_skill_path_bytes,
+            max_entry_bytes=max_skill_entry_bytes,
+        )
+
     mcp_servers: dict[str, AgentMcpServerRecord] = {}
     if manifest.status == "loaded":
-        if manifest.data.skills.enabled:
-            skill_scan = scan_agent_skills(
-                config_root, manifest.data.skills.directory
-            )
-
         for name, server in manifest.data.mcp_servers.items():
             if not server.enabled:
                 mcp_servers[name] = AgentMcpServerRecord(
@@ -163,20 +193,15 @@ def build_agent_registry(
         for server_name, record in mcp_servers.items():
             if not record.available:
                 continue
+            env, headers = manager_redaction_maps(
+                client_manager, server_name, record.config
+            )
             for tool in record.tools:
                 display_server_name = str(
-                    redact_configured_value_tree(
-                        server_name,
-                        record.config.env,
-                        record.config.headers,
-                    )
+                    redact_configured_value_tree(server_name, env, headers)
                 )
                 display_tool_name = str(
-                    redact_configured_value_tree(
-                        tool.name,
-                        record.config.env,
-                        record.config.headers,
-                    )
+                    redact_configured_value_tree(tool.name, env, headers)
                 )
                 dynamic_name = make_unique_tool_name(
                     f"agent_mcp__{display_server_name}",
@@ -189,6 +214,8 @@ def build_agent_registry(
 
     return AgentCapabilityRegistry(
         config_dir=config_root,
+        project_root=active_project_root,
+        skill_sources=sources,
         config_path=manifest.config_path,
         manifest_status=manifest.status,
         manifest_errors=manifest.errors,

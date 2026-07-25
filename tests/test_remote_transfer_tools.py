@@ -4,12 +4,15 @@ from typing import Any
 import pytest
 
 import local_shell_mcp.remote.transfer as remote_transfer
+import local_shell_mcp.remote_worker.http_transfer as worker_http_transfer
+import local_shell_mcp.tools.registry.transfer as transfer_registry
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.ops.files import delete_file_or_dir_execute
 from local_shell_mcp.ops.transfer import (
     transfer_abort_write,
     transfer_alloc_temp_path,
     transfer_begin_write,
+    transfer_copy_file,
     transfer_finish_write,
     transfer_pack_dir,
     transfer_read_chunk,
@@ -29,6 +32,15 @@ async def fake_remote_worker_call(
     try:
         if tool == "transfer_stat":
             data = transfer_stat(args["path"], args.get("sha256", True))
+        elif tool == "transfer_copy_file":
+            data = transfer_copy_file(
+                args["source_path"],
+                args["destination_path"],
+                args.get("overwrite", True),
+                args.get("chunk_size"),
+                source_session_id=args.get("source_session_id"),
+                destination_session_id=args.get("destination_session_id"),
+            )
         elif tool == "transfer_read_chunk":
             data = transfer_read_chunk(
                 args["path"], args.get("offset", 0), args.get("chunk_size")
@@ -115,6 +127,69 @@ async def test_remote_copy_file_streams_between_workers(tmp_path, monkeypatch):
     assert (root / "dst-machine" / "payload.bin").read_bytes() == data
 
 
+def test_transfer_copy_file_streams_raw_bytes_atomically(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    payload = bytes(range(256)) * 32
+    (root / "source.bin").write_bytes(payload)
+    (root / "destination.bin").write_bytes(b"old")
+
+    with pytest.raises(FileExistsError):
+        transfer_copy_file(
+            "source.bin", "destination.bin", overwrite=False, chunk_size=257
+        )
+    assert (root / "destination.bin").read_bytes() == b"old"
+
+    result = transfer_copy_file(
+        "source.bin", "destination.bin", overwrite=True, chunk_size=257
+    )
+
+    assert result.bytes == len(payload)
+    assert result.chunks > 1
+    assert result.sha256 == transfer_stat("source.bin").sha256
+    assert (root / "destination.bin").read_bytes() == payload
+    assert not list(
+        root.glob(".destination.bin.local-shell-mcp-transfer-*.tmp")
+    )
+
+
+@pytest.mark.asyncio
+async def test_remote_copy_file_same_worker_uses_raw_fast_path(
+    tmp_path, monkeypatch
+):
+    root = _workspace(tmp_path, monkeypatch)
+    (root / "src").mkdir()
+    (root / "dst").mkdir()
+    payload = b"same-worker" * 1024
+    (root / "src" / "payload.bin").write_bytes(payload)
+    calls: list[str] = []
+
+    async def recording_call(
+        machine: str,
+        tool: str,
+        args: dict[str, Any],
+        timeout_s: int | None = None,
+    ) -> dict[str, Any]:
+        calls.append(tool)
+        return await fake_remote_worker_call(machine, tool, args, timeout_s)
+
+    monkeypatch.setattr(
+        remote_transfer, "call_remote_worker_tool", recording_call
+    )
+    result = await remote_transfer.copy_remote_file_to_remote(
+        "worker-a",
+        "src/payload.bin",
+        "worker-a",
+        "dst/payload.bin",
+        True,
+        257,
+    )
+
+    assert calls == ["transfer_copy_file"]
+    assert result.bytes == len(payload)
+    assert result.chunks > 1
+    assert (root / "dst" / "payload.bin").read_bytes() == payload
+
+
 @pytest.mark.asyncio
 async def test_remote_copy_dir_packs_transfers_and_unpacks(
     tmp_path, monkeypatch
@@ -174,3 +249,78 @@ async def test_remote_copy_local_file_aborts_remote_write_on_cancellation(
         )
 
     assert aborted == [{"path": "dest.txt", "transfer_id": "transfer-1"}]
+
+
+@pytest.mark.asyncio
+async def test_private_local_http_transfer_handlers(monkeypatch):
+    monkeypatch.setattr(
+        transfer_registry,
+        "transfer_abort_write_sync",
+        lambda path, transfer_id, *, session_id=None: {
+            "path": path,
+            "transfer_id": transfer_id,
+            "session_id": session_id,
+        },
+    )
+    aborted = await transfer_registry.transfer_abort_write.func(
+        "destination.bin", "transfer-id", "session-id"
+    )
+    assert aborted == {
+        "path": "destination.bin",
+        "transfer_id": "transfer-id",
+        "session_id": "session-id",
+    }
+
+    monkeypatch.setattr(
+        worker_http_transfer, "upload_file", lambda **kwargs: {"upload": kwargs}
+    )
+    upload = await transfer_registry.transfer_http_upload.func(
+        "source.bin",
+        "source-session",
+        "https://controller/remote/transfer/" + "a" * 24,
+        "https://controller",
+        "Transfer secret",
+        "worker-a",
+        10,
+        "0" * 64,
+        4,
+        5,
+    )
+    assert upload["upload"]["path"] == "source.bin"
+    assert upload["upload"]["worker"] == "worker-a"
+
+    monkeypatch.setattr(
+        worker_http_transfer,
+        "download_file",
+        lambda **kwargs: {"download": kwargs},
+    )
+    download = await transfer_registry.transfer_http_download.func(
+        "destination.bin",
+        "destination-session",
+        "https://controller/remote/transfer/" + "b" * 24,
+        "https://controller",
+        "Transfer secret",
+        "worker-b",
+        "transfer-id",
+        10,
+        "1" * 64,
+        True,
+        4,
+        5,
+    )
+    assert download["download"]["transfer_id"] == "transfer-id"
+    assert download["download"]["overwrite"] is True
+
+    monkeypatch.setattr(
+        worker_http_transfer,
+        "abort_download",
+        lambda **kwargs: {"abort": kwargs},
+    )
+    cleanup = await transfer_registry.transfer_http_abort_download.func(
+        "destination.bin", "destination-session", "transfer-id"
+    )
+    assert cleanup["abort"] == {
+        "path": "destination.bin",
+        "session_id": "destination-session",
+        "transfer_id": "transfer-id",
+    }

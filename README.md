@@ -28,6 +28,18 @@ https://your-public-host.example.com/mcp
 
 For full shell and filesystem tools, enable ChatGPT Developer Mode before adding the custom MCP connector.
 
+## Human interfaces
+
+The HTTP service includes a native browser Human UI at `/ui`. It remains the default management surface. The same Dashboard, Remotes, persistent Terminals, Files, Todos, and Audit APIs are also available through the optional OpenTUI client:
+
+```bash
+local-shell-mcp server --mode http
+# In another terminal:
+local-shell-mcp tui
+```
+
+Matching Linux x86_64/aarch64, macOS x86_64/arm64, and Windows x86_64 Python wheels embed a platform-native OpenTUI runtime, so `local-shell-mcp tui` works after an ordinary platform-wheel install without Bun or a release archive. Release archives and Docker images also include a sidecar, while the universal `py3-none-any` wheel remains payload-free for server-only or unsupported platforms. Source checkouts can build OpenTUI from [`ui-opentui/`](ui-opentui/) with Bun. See the [Human interface guide](docs/guides/human-interface.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

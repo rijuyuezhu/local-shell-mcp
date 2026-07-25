@@ -6,7 +6,7 @@ source .env
 set +a
 
 uv sync
-LOCAL_SHELL_MCP_MODE=mcp ./.venv/bin/python -m local_shell_mcp.main --mode mcp &
+LOCAL_SHELL_MCP_MODE=mcp ./.venv/bin/python -m local_shell_mcp.main server --mode mcp &
 MCP_PID=$!
 trap 'kill $MCP_PID || true' EXIT
 

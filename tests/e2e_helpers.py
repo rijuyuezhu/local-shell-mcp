@@ -4,7 +4,7 @@ import os
 import socket
 import subprocess
 import sys
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,7 +35,11 @@ def free_tcp_port() -> int:
 
 
 def server_env(
-    workspace_root: Path, *, mode: str, port: int | None = None
+    workspace_root: Path,
+    *,
+    mode: str,
+    port: int | None = None,
+    agent_bridge_enabled: bool = False,
 ) -> dict[str, str]:
     env = os.environ.copy()
     pythonpath = str(SRC_ROOT)
@@ -51,7 +55,9 @@ def server_env(
             "LOCAL_SHELL_MCP_MODE": mode,
             "LOCAL_SHELL_MCP_HOST": "127.0.0.1",
             "LOCAL_SHELL_MCP_AUTH_MODE": "none",
-            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
+            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": str(
+                agent_bridge_enabled
+            ).lower(),
             "LOCAL_SHELL_MCP_REMOTE_ENABLED": "false",
             "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
             "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
@@ -97,10 +103,16 @@ async def wait_for_http_ready(
 
 @asynccontextmanager
 async def run_http_process(
-    tmp_path: Path, *, mode: str
+    tmp_path: Path,
+    *,
+    mode: str,
+    agent_bridge_enabled: bool = False,
+    workspace_setup: Callable[[Path], None] | None = None,
 ) -> AsyncGenerator[tuple[str, Path]]:
     workspace = tmp_path / f"workspace-{mode}"
     workspace.mkdir()
+    if workspace_setup is not None:
+        workspace_setup(workspace)
     port = free_tcp_port()
     base_url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
@@ -108,6 +120,7 @@ async def run_http_process(
             sys.executable,
             "-m",
             "local_shell_mcp.main",
+            "server",
             "--mode",
             mode,
             "--host",
@@ -119,12 +132,17 @@ async def run_http_process(
             "--workspace-root",
             str(workspace),
             "--agent-bridge-enabled",
-            "false",
+            str(agent_bridge_enabled).lower(),
             "--remote-enabled",
             "false",
         ],
         cwd=PROJECT_ROOT,
-        env=server_env(workspace, mode=mode, port=port),
+        env=server_env(
+            workspace,
+            mode=mode,
+            port=port,
+            agent_bridge_enabled=agent_bridge_enabled,
+        ),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -165,6 +183,11 @@ def unwrap_tool_payload(value: Any) -> Any:
 
 
 REST_ROUTES: dict[str, tuple[str, str]] = {
+    "audit_tail": ("GET", "/tools/audit_tail"),
+    "agent_config_status": ("GET", "/tools/agent_config_status"),
+    "list_agent_skills": ("GET", "/tools/list_agent_skills"),
+    "activate_agent_skill": ("POST", "/tools/activate_agent_skill"),
+    "read_agent_skill_file": ("POST", "/tools/read_agent_skill_file"),
     "bash": ("POST", "/tools/bash"),
     "job": ("POST", "/tools/job"),
     "session_start": ("POST", "/tools/session_start"),
@@ -180,6 +203,7 @@ REST_ROUTES: dict[str, tuple[str, str]] = {
     "write_file": ("POST", "/tools/write_file"),
     "edit_lines": ("POST", "/tools/edit_lines"),
     "hashline_edit": ("POST", "/tools/hashline_edit"),
+    "apply_patch": ("POST", "/tools/apply_patch"),
     "delete_file_or_dir": ("POST", "/tools/delete"),
     "create_file_link": ("POST", "/tools/file_link/create"),
     "list_file_links": ("GET", "/tools/file_link/list"),
@@ -191,6 +215,7 @@ REST_ROUTES: dict[str, tuple[str, str]] = {
         "POST",
         "/tools/send_persistent_shell_input",
     ),
+    "resize_persistent_shell": ("POST", "/tools/resize_persistent_shell"),
     "read_persistent_shell_output": (
         "POST",
         "/tools/read_persistent_shell_output",
@@ -234,7 +259,11 @@ class McpSessionToolClient:
     async def call_tool_result(
         self, name: str, args: dict[str, Any] | None = None
     ) -> Any:
-        return await self._session.call_tool(name, args or {})
+        try:
+            async with asyncio.timeout(45):
+                return await self._session.call_tool(name, args or {})
+        except TimeoutError:
+            raise AssertionError(f"MCP tool call timed out: {name}") from None
 
     async def call_tool(
         self, name: str, args: dict[str, Any] | None = None
@@ -277,6 +306,7 @@ async def stdio_tool_client(
         args=[
             "-m",
             "local_shell_mcp.main",
+            "server",
             "--mode",
             "stdio",
             "--auth-mode",

@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from tests.e2e_helpers import ToolClient, assert_required_tools
+from tests.helpers import python_shell_command
 
 CORE_TOOL_NAMES = {
     "bash",
@@ -24,6 +25,7 @@ CORE_TOOL_NAMES = {
     "glob_search",
     "write_file",
     "hashline_edit",
+    "apply_patch",
     "delete_file_or_dir",
     "secret_scan",
     "run_python_code",
@@ -34,6 +36,7 @@ CORE_TOOL_NAMES = {
 
 INTERACTIVE_SHELL_TOOL_NAMES = {
     "send_persistent_shell_input",
+    "resize_persistent_shell",
     "read_persistent_shell_output",
     "kill_persistent_shell",
 }
@@ -133,6 +136,26 @@ async def exercise_explicit_session_workflow(
     assert "+needle three" in hash_edit["diff"]
     assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
         "alpha\nneedle three\ngamma\n"
+    )
+
+    patch_result = await client.call_tool(
+        "apply_patch",
+        {
+            "session_id": session_id,
+            "cwd": ".",
+            "patch": """*** Begin Patch
+*** Update File: notes.txt
+@@
+-needle three
++needle four
+*** End Patch
+""",
+        },
+    )
+    assert patch_result["checked"] is True
+    assert patch_result["applied"] is True
+    assert (session_dir / "notes.txt").read_text(encoding="utf-8") == (
+        "alpha\nneedle four\ngamma\n"
     )
 
     other_dir = workspace / "other-work"
@@ -400,7 +423,9 @@ async def exercise_shell_tools(client: ToolClient, workspace: Path) -> None:
         "bash",
         {
             "session_id": session_id,
-            "command": "printf e2e-shell && pwd",
+            "command": python_shell_command(
+                "import os; print('e2e-shell' + os.getcwd(), end='')"
+            ),
             "timeout_s": 5,
         },
     )
@@ -414,7 +439,9 @@ async def exercise_shell_tools(client: ToolClient, workspace: Path) -> None:
         "bash",
         {
             "session_id": session_id,
-            "command": "pwd",
+            "command": python_shell_command(
+                "import os; print(os.getcwd(), end='')"
+            ),
             "cwd": "subdir",
             "timeout_s": 5,
         },
@@ -499,6 +526,47 @@ async def exercise_session_bound_job_tools(
             "job", {"session_id": first_session, "cancel": [job_id]}
         )
 
+    completed = await client.call_tool(
+        "bash",
+        {
+            "session_id": first_session,
+            "command": "python -u -c \"print('persisted-job-output', flush=True)\"",
+            "async_": True,
+            "name": "completed-job-e2e",
+        },
+    )
+    completed_job_id = completed["result"]["job_id"]
+    completed_poll = None
+    for _ in range(40):
+        completed_poll = await client.call_tool(
+            "job",
+            {
+                "session_id": first_session,
+                "poll": [completed_job_id],
+                "lines": 20,
+            },
+        )
+        completed_output = completed_poll["outputs"][0]
+        if completed_output["job"]["status"] in {"succeeded", "failed"}:
+            break
+        await asyncio.sleep(0.25)
+    assert completed_poll is not None
+    completed_output = completed_poll["outputs"][0]
+    assert completed_output["job"]["status"] == "succeeded"
+    assert completed_output["job"]["exit_code"] == 0
+    assert "persisted-job-output" in completed_output["output"]
+
+    repeated_poll = await client.call_tool(
+        "job",
+        {
+            "session_id": first_session,
+            "poll": [completed_job_id],
+            "lines": 20,
+        },
+    )
+    assert repeated_poll["outputs"][0]["job"]["status"] == "succeeded"
+    assert "persisted-job-output" in repeated_poll["outputs"][0]["output"]
+
 
 async def exercise_interactive_shell_tools(client: ToolClient) -> None:
     if shutil.which("tmux") is None:
@@ -521,7 +589,7 @@ async def exercise_interactive_shell_tools(client: ToolClient) -> None:
             "send_persistent_shell_input",
             {
                 "shell_id": shell_id,
-                "input_text": "printf ready",
+                "input_text": "echo ready",
                 "enter": True,
             },
         )

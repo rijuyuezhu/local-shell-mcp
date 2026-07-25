@@ -57,6 +57,7 @@ The Docker entrypoint normally creates the runtime `agent` user from that owner.
 docker compose restart local-shell-mcp
 ```
 
+
 ## Tool call times out
 
 Public tool calls are bounded by strict watchdogs and shell timeouts. Check these settings:
@@ -64,7 +65,7 @@ Public tool calls are bounded by strict watchdogs and shell timeouts. Check thes
 ```env
 LOCAL_SHELL_MCP_TOOL_TIMEOUT_S=60
 LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S=10
-LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S=60
+LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S=120
 ```
 
 Use persistent shells for long-running dev servers, REPLs, or interactive commands.
@@ -76,7 +77,17 @@ Check:
 - The invite has not expired.
 - The remote machine can reach the public control server over outbound HTTPS.
 - `LOCAL_SHELL_MCP_REMOTE_ENABLED=true` on the control server.
-- The pasted command includes the correct `--server`, `--invite`, `--name`, and `--workdir` values.
+- The pasted command or `worker connect` invocation includes the correct `--server`, invite, `--name`, and `--workdir` values.
+
+
+For an installed worker, inspect the native service without exposing identity credentials:
+
+```bash
+local-shell-mcp worker status
+local-shell-mcp worker logs --lines 100
+```
+
+A `not_installed` status means enrollment may exist but no user service is installed. `unavailable` means systemd/launchd is supported on the platform but not reachable for the current user session. Windows returns `unsupported`. Use `worker run` to diagnose the stored identity in the foreground; use `worker install-service` only after foreground connection succeeds.
 
 Then ask the MCP client to run:
 
@@ -95,4 +106,12 @@ Every routed MCP or REST debug tool call should produce a `tool_call_start` and 
 
 ## Release binary lacks system tools
 
-The standalone binary includes the Python server and default OAuth dependencies. It does not bundle host tools such as Git, tmux, shells, compilers, or LibreOffice; those come from the host system. The Docker image includes a minimal Ubuntu runtime with core tools such as Git, SSH client, ripgrep, and tmux, while Python dependencies are installed with `uv`.
+The standalone binary includes the Python server and default OAuth
+dependencies. Linux `x86_64` and `aarch64` release binaries additionally bundle
+a statically linked tmux helper, but an explicitly configured
+`LOCAL_SHELL_MCP_TMUX_BIN` remains authoritative and must exist. Source and
+Python-package installs still require host tmux for persistent shells. Git,
+shells, compilers, LibreOffice, and other host tools are not bundled. The Docker
+image includes a minimal Ubuntu runtime with core tools such as Git, SSH client,
+ripgrep, and distribution-provided tmux, while Python dependencies are
+installed with `uv`.

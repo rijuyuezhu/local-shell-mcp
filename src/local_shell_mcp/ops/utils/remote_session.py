@@ -2,8 +2,20 @@
 
 from typing import Any, cast
 
-from ...remote.service import call_remote_worker_tool
+from ...errors import exception_from_tool_error
 from ...tool_session.store import AgentSession
+
+
+async def call_remote_worker_tool(
+    machine: str,
+    tool: str,
+    args: dict[str, Any],
+    timeout_s: int | None = None,
+) -> dict[str, Any]:
+    """Lazily call the controller manager while preserving the patchable seam."""
+    from ...remote.service import call_remote_worker_tool as call_impl
+
+    return await call_impl(machine, tool, args, timeout_s)
 
 
 def _remote_binding(session: AgentSession) -> tuple[str, str]:
@@ -27,12 +39,12 @@ def _remote_result_data(
         )
         raise RuntimeError(message)
     data = result.get("data")
-    if isinstance(data, dict) and data.get("status") == "error":
-        message = str(
-            data.get("message") or f"remote {tool} failed on {machine}"
-        )
-        error_type = str(data.get("error_type") or "remote_error")
-        raise RuntimeError(f"{error_type}: {message}")
+    if isinstance(data, dict) and data.get("status") in {
+        "error",
+        "not_found",
+        "executable_not_found",
+    }:
+        raise exception_from_tool_error(data)
     if isinstance(data, dict):
         return cast(dict[str, Any], data)
     return {"result": data}
@@ -92,10 +104,16 @@ async def start_worker_session(
     machine: str,
     workdir: str,
     label: str | None = None,
+    timeout_s: int | None = None,
 ) -> dict[str, Any]:
     """Create a local agent session on a remote worker."""
     payload: dict[str, Any] = {"target": "local", "workdir": workdir}
     if label is not None:
         payload["label"] = label
-    result = await call_remote_worker_tool(machine, "session_start", payload)
+    result = await call_remote_worker_tool(
+        machine,
+        "session_start",
+        payload,
+        timeout_s,
+    )
     return _remote_result_data(result, tool="session_start", machine=machine)

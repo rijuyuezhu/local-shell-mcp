@@ -13,10 +13,11 @@ async def register_client(request: Request) -> JSONResponse:
     """Accept a pending dynamic client registration."""
     try:
         registration_request = await parse_registration_request(request)
-        client = register_dynamic_client(registration_request)
+        registration = register_dynamic_client(registration_request)
     except OAuth2Error as exc:
         return oauth_error(exc)
 
+    client = registration.client
     return oauth_json(
         {
             "client_id": client.client_id,
@@ -26,6 +27,7 @@ async def register_client(request: Request) -> JSONResponse:
             "grant_types": ["authorization_code"],
             "response_types": ["code"],
             "token_endpoint_auth_method": "none",
+            "reused": registration.reused,
         },
-        status_code=201,
+        status_code=200 if registration.reused else 201,
     )

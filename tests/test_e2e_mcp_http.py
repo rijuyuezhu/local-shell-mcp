@@ -1,3 +1,4 @@
+import httpx
 import pytest
 
 from tests.e2e_helpers import run_http_process, streamable_http_tool_client
@@ -25,7 +26,14 @@ async def test_mcp_streamable_http_process_exercises_core_tool_categories(
     async with (
         run_http_process(tmp_path, mode="mcp") as (base_url, workspace),
         streamable_http_tool_client(base_url) as client,
+        httpx.AsyncClient(base_url=base_url) as http_client,
     ):
+        page = await http_client.get("/ui")
+        bootstrap = await http_client.get("/api/ui/bootstrap")
+
+        assert page.status_code == 200
+        assert bootstrap.status_code == 200
+
         await assert_core_tool_surface(client)
         await exercise_environment_tool(client, workspace)
         await exercise_explicit_session_workflow(client, workspace)

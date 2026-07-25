@@ -1,0 +1,150 @@
+"""Build and run the MCP server."""
+
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+import uvicorn
+from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+from starlette.applications import Starlette
+from starlette.routing import BaseRoute, Mount
+
+from ...config.settings import get_settings
+from ...http.public_routes import public_http_routes
+from ...http.request_limits import install_request_body_limit
+from ...oauth.core.security import validate_public_oauth_configuration
+from ...oauth.http.middleware import AuthMiddleware
+from ...oauth.http.routes import oauth_public_routes
+from ...remote.http import remote_routes
+from ...remote.transfer_gateway import build_transfer_gateway_router
+from ...tools.contracts import McpToolContext
+from ...tools.discovery import discover_tool_registries
+from ...tools.metadata import install_tool_safety_annotations
+from ...ui.http.routes import human_ui_routes
+from .instructions import SERVER_INSTRUCTIONS
+from .session_limits import McpSessionLimitMiddleware
+from .transport_security import transport_security_settings
+from .watchdogs import install_mcp_tool_watchdogs
+
+
+def _make_read_only_tool_annotations() -> ToolAnnotations:
+    """Mark a tool as read-only for MCP clients."""
+    return ToolAnnotations(
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    )
+
+
+def build_mcp() -> FastMCP:
+    """Create the MCP server and register the local tools."""
+    settings = get_settings()
+    mcp = FastMCP(
+        "local-shell-mcp",
+        instructions=SERVER_INSTRUCTIONS,
+        transport_security=transport_security_settings(),
+    )
+    context = McpToolContext(
+        settings=settings,
+        read_only_tool_annotations=_make_read_only_tool_annotations(),
+    )
+    for registry in discover_tool_registries():
+        registry.register_mcp(mcp, context)
+    install_tool_safety_annotations(mcp)
+    install_mcp_tool_watchdogs(mcp)
+    return mcp
+
+
+def _add_public_routes_to_mcp_http_app(
+    mcp_app: Starlette,
+) -> tuple[Starlette, list[BaseRoute]]:
+    """Serve health/OAuth routes directly and send everything else to MCP."""
+    settings = get_settings()
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncGenerator[None]:
+        async with mcp_app.router.lifespan_context(mcp_app):
+            yield
+
+    public_routes: list[BaseRoute] = [
+        *public_http_routes(
+            settings,
+            readyz_include_workspace_root=False,
+        ),
+        *(remote_routes() if settings.remote_enabled else ()),
+        *(
+            build_transfer_gateway_router()
+            if settings.remote_enabled and settings.remote_http_transfer_enabled
+            else ()
+        ),
+        *oauth_public_routes(),
+    ]
+    ui_routes, ui_public_routes = human_ui_routes(settings)
+    routes = [*public_routes, *ui_routes, Mount("/", app=mcp_app)]
+    public_routes.extend(ui_public_routes)
+    return Starlette(routes=routes, lifespan=lifespan), public_routes
+
+
+def _build_authenticated_mcp_http_app(
+    mcp_app: Starlette,
+    *,
+    session_manager: object | None = None,
+    mcp_path: str = "/mcp",
+) -> Starlette:
+    """Add resource limits and OAuth protection around the MCP HTTP app."""
+    settings = get_settings()
+    app, public_routes = _add_public_routes_to_mcp_http_app(mcp_app)
+    if session_manager is not None and not bool(
+        getattr(session_manager, "stateless", False)
+    ):
+        app.add_middleware(
+            McpSessionLimitMiddleware,
+            session_manager=session_manager,
+            max_sessions=settings.mcp_max_sessions,
+            mcp_path=mcp_path,
+        )
+    install_request_body_limit(app, max_bytes=settings.max_http_request_bytes)
+    if settings.auth_mode != "none":
+        app.add_middleware(AuthMiddleware, public_routes=public_routes)
+    return app
+
+
+def build_mcp_http_app(mcp: FastMCP) -> Starlette:
+    """Use the MCP SDK's HTTP app and add local public routes/auth."""
+    if hasattr(mcp, "streamable_http_app"):
+        inner: Starlette = mcp.streamable_http_app()
+        session_manager = getattr(mcp, "_session_manager", None)
+        if session_manager is not None and not bool(
+            getattr(session_manager, "stateless", False)
+        ):
+            session_manager.session_idle_timeout = max(
+                1, get_settings().mcp_session_idle_timeout_s
+            )
+        mcp_settings = getattr(mcp, "settings", None)
+        return _build_authenticated_mcp_http_app(
+            inner,
+            session_manager=session_manager,
+            mcp_path=str(getattr(mcp_settings, "streamable_http_path", "/mcp")),
+        )
+    if hasattr(mcp, "sse_app"):
+        inner = mcp.sse_app()
+        return _build_authenticated_mcp_http_app(inner)
+    raise RuntimeError(
+        "MCP HTTP ASGI app not available since both streamable_http_app and sse_app are not available"
+    )
+
+
+def run_mcp() -> None:
+    """Start the configured MCP server, over stdio or HTTP."""
+    settings = get_settings()
+    if settings.mode != "stdio":
+        validate_public_oauth_configuration(settings)
+    mcp = build_mcp()
+
+    if settings.mode == "stdio":
+        # stdio mode talks directly to the parent process; no HTTP app is needed.
+        mcp.run(transport="stdio")
+    else:
+        app = build_mcp_http_app(mcp)
+        uvicorn.run(app, host=settings.host, port=settings.port)

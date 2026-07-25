@@ -1,10 +1,11 @@
 """Tokenized file download link state and policy operations."""
 
+import asyncio
+import contextlib
 import hashlib
-import json
+import mimetypes
 import os
 import secrets
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -17,12 +18,23 @@ from ..schemas.result_models.downloads import (
     ListFileLinksOutput,
     RevokeFileLinkOutput,
 )
-from ..tool_session.store import get_tool_session_store, resolve_session_path
-from .utils.path import relative_display, resolve_path
+from ..tool_session.store import get_tool_session_store
+from .utils.download_snapshot import (
+    DownloadSnapshot,
+    create_local_snapshot,
+    create_remote_snapshot,
+    new_snapshot_path,
+)
+from .utils.download_store import (
+    ClaimedDownload,
+    open_snapshot,
+    prune_locked,
+    remove_snapshot,
+    save_locked,
+    transaction,
+)
 
 DOWNLOAD_PREFIX = "/download"
-DOWNLOAD_STORE_VERSION = 1
-STORE_LOCK = threading.RLock()
 
 
 def download_token_fingerprint(token: str) -> str:
@@ -33,46 +45,6 @@ def download_token_fingerprint(token: str) -> str:
 def now_s() -> float:
     """Return the current Unix timestamp."""
     return time.time()
-
-
-def download_store_path() -> Path:
-    """Return the persistent download-link store path."""
-    settings = get_settings()
-    settings.state_dir.mkdir(parents=True, exist_ok=True)
-    return settings.state_dir / "downloads.json"
-
-
-def empty_download_store() -> dict[str, Any]:
-    """Return a new empty download-link store."""
-    return {"version": DOWNLOAD_STORE_VERSION, "links": {}}
-
-
-def read_download_store_locked() -> dict[str, Any]:
-    """Read the download-link store while STORE_LOCK is held."""
-    path = download_store_path()
-    if not path.exists():
-        return empty_download_store()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError, OSError:
-        audit("download_store_unreadable", path=str(path))
-        return empty_download_store()
-    if not isinstance(data, dict) or not isinstance(data.get("links"), dict):
-        return empty_download_store()
-    data.setdefault("version", DOWNLOAD_STORE_VERSION)
-    return data
-
-
-def write_download_store_locked(store: dict[str, Any]) -> None:
-    """Write the download-link store atomically while STORE_LOCK is held."""
-    path = download_store_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(f".tmp-{os.getpid()}-{secrets.token_hex(4)}")
-    tmp.write_text(
-        json.dumps(store, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    os.replace(tmp, path)
 
 
 def coerce_download_ttl(ttl_s: int | None) -> int:
@@ -99,11 +71,26 @@ def coerce_max_downloads(max_downloads: int | None) -> int:
     return requested
 
 
-def safe_download_filename(filename: str | None, source: Path) -> str:
-    """Return a path-free, non-empty download filename."""
-    candidate = Path(filename).name if filename else source.name
-    candidate = candidate.strip().replace("\x00", "")
-    return candidate or "download"
+def safe_download_filename(filename: str | None, source: str | Path) -> str:
+    """Return a platform-independent, path-free browser filename."""
+    source_name = Path(source).name
+    candidate = str(filename) if filename else source_name
+    candidate = candidate.replace("/", "_").replace("\\", "_")
+    candidate = "".join(
+        character
+        for character in candidate.strip()
+        if ord(character) >= 32 and ord(character) != 127
+    )
+    return candidate[:255] or "download"
+
+
+def infer_download_media_type(source_name: str, filename: str) -> str:
+    """Infer MIME from the source name, then the browser display name."""
+    return (
+        mimetypes.guess_type(source_name)[0]
+        or mimetypes.guess_type(filename)[0]
+        or "application/octet-stream"
+    )
 
 
 def download_link_summary(token: str, link: dict[str, Any]) -> FileLinkSummary:
@@ -113,32 +100,82 @@ def download_link_summary(token: str, link: dict[str, Any]) -> FileLinkSummary:
         url=f"{get_settings().resolved_base_url}{DOWNLOAD_PREFIX}/{token}",
         path=link.get("display_path"),
         filename=link.get("filename"),
+        inline=bool(link.get("inline", False)),
+        media_type=link.get("media_type"),
         bytes=link.get("bytes"),
         created_at=link.get("created_at"),
         expires_at=link.get("expires_at"),
         ttl_remaining_s=max(0, int(link.get("expires_at", 0) - now_s())),
         downloads=link.get("downloads", 0),
         max_downloads=link.get("max_downloads", 0),
+        target=link.get("target", "local"),
+        machine=link.get("machine"),
     )
 
 
-def prune_download_links_locked(
-    store: dict[str, Any], now: float | None = None
-) -> bool:
-    """Remove expired or exhausted download links while STORE_LOCK is held."""
-    now = now_s() if now is None else now
-    links = store.get("links", {})
-    changed = False
-    for token, link in list(links.items()):
-        expires_at = float(link.get("expires_at", 0))
-        max_downloads = int(link.get("max_downloads", 0))
-        downloads = int(link.get("downloads", 0))
-        if expires_at <= now or (
-            max_downloads > 0 and downloads >= max_downloads
-        ):
-            links.pop(token, None)
-            changed = True
-    return changed
+def _register_snapshot(
+    snapshot: DownloadSnapshot,
+    *,
+    ttl_s: int | None,
+    filename: str | None,
+    max_downloads: int | None,
+    inline: bool,
+    session_id: str | None,
+) -> CreateFileLinkOutput:
+    token = secrets.token_urlsafe(32)
+    created_at = now_s()
+    browser_filename = safe_download_filename(filename, snapshot.source_name)
+    media_type = infer_download_media_type(
+        snapshot.source_name, browser_filename
+    )
+    final_path = new_snapshot_path()
+    link: dict[str, Any] | None = None
+    try:
+        with transaction() as store:
+            prune_locked(store, created_at)
+            os.replace(snapshot.staging_path, final_path)
+            with contextlib.suppress(OSError):
+                final_path.chmod(0o600)
+            snapshot_stat = final_path.stat()
+            link = {
+                "display_path": snapshot.display_path,
+                "filename": browser_filename,
+                "inline": bool(inline),
+                "media_type": media_type,
+                "bytes": snapshot.size,
+                "sha256": snapshot.sha256,
+                "snapshot_name": final_path.name,
+                "snapshot_device": int(snapshot_stat.st_dev),
+                "snapshot_inode": int(snapshot_stat.st_ino),
+                "created_at": created_at,
+                "expires_at": created_at + coerce_download_ttl(ttl_s),
+                "downloads": 0,
+                "max_downloads": coerce_max_downloads(max_downloads),
+                "session_id": session_id,
+                "target": snapshot.target,
+                "machine": snapshot.machine,
+            }
+            store["links"][token] = link
+            save_locked(store)
+    except Exception:
+        final_path.unlink(missing_ok=True)
+        raise
+    finally:
+        snapshot.staging_path.unlink(missing_ok=True)
+
+    assert link is not None
+    audit(
+        "download_link_created",
+        path=link["display_path"],
+        token_sha256=download_token_fingerprint(token),
+        expires_at=link["expires_at"],
+        inline=link["inline"],
+        target=link["target"],
+        machine=link["machine"],
+    )
+    return CreateFileLinkOutput(
+        **download_link_summary(token, link).model_dump()
+    )
 
 
 def create_file_link_execute(
@@ -147,12 +184,11 @@ def create_file_link_execute(
     filename: str | None = None,
     max_downloads: int | None = None,
     session_id: str | None = None,
+    inline: bool = False,
 ) -> CreateFileLinkOutput:
-    """Create a tokenized public download link for one workspace file."""
-    settings = get_settings()
-    if not settings.file_download_enabled:
+    """Create a local-session link bound to a creation-time snapshot."""
+    if not get_settings().file_download_enabled:
         raise PermissionError("file downloads are disabled")
-
     session = (
         get_tool_session_store().touch_session(session_id)
         if session_id is not None
@@ -160,74 +196,67 @@ def create_file_link_execute(
     )
     if session is not None and session.target != "local":
         raise ValueError(
-            "file download links can only be created for local sessions"
+            "file download links can only be created synchronously for local sessions; "
+            "use the async dispatcher for remote sessions"
         )
-    resolved = (
-        resolve_session_path(session, path, must_exist=True)
-        if session is not None
-        else resolve_path(path, must_exist=True)
+    return _register_snapshot(
+        create_local_snapshot(path, session),
+        ttl_s=ttl_s,
+        filename=filename,
+        max_downloads=max_downloads,
+        inline=inline,
+        session_id=session_id,
     )
-    if not resolved.is_file():
-        raise ValueError(f"Not a regular file: {path}")
 
-    size = resolved.stat().st_size
-    if (
-        settings.file_download_max_file_bytes > 0
-        and size > settings.file_download_max_file_bytes
-    ):
-        raise ValueError(f"File is too large: {size}")
 
-    ttl = coerce_download_ttl(ttl_s)
-    limit = coerce_max_downloads(max_downloads)
-    token = secrets.token_urlsafe(32)
-    created_at = now_s()
-    link = {
-        "path": str(resolved),
-        "display_path": relative_display(resolved),
-        "filename": safe_download_filename(filename, resolved),
-        "bytes": size,
-        "created_at": created_at,
-        "expires_at": created_at + ttl,
-        "downloads": 0,
-        "max_downloads": limit,
-        "session_id": session.session_id if session is not None else None,
-    }
-
-    with STORE_LOCK:
-        store = read_download_store_locked()
-        prune_download_links_locked(store, created_at)
-        store["links"][token] = link
-        write_download_store_locked(store)
-
-    audit(
-        "download_link_created",
-        path=link["display_path"],
-        token_sha256=download_token_fingerprint(token),
-        expires_at=link["expires_at"],
+async def create_file_link_dispatch_execute(
+    path: str,
+    ttl_s: int | None = None,
+    filename: str | None = None,
+    max_downloads: int | None = None,
+    session_id: str | None = None,
+    inline: bool = False,
+) -> CreateFileLinkOutput:
+    """Create a local or remote session link backed by a local snapshot."""
+    if not get_settings().file_download_enabled:
+        raise PermissionError("file downloads are disabled")
+    session = (
+        get_tool_session_store().touch_session(session_id)
+        if session_id is not None
+        else None
     )
-    return CreateFileLinkOutput(
-        **download_link_summary(token, link).model_dump()
+    if session is not None and session.target == "remote":
+        snapshot = await create_remote_snapshot(path, session)
+    else:
+        snapshot = await asyncio.to_thread(create_local_snapshot, path, session)
+    return await asyncio.to_thread(
+        _register_snapshot,
+        snapshot,
+        ttl_s=ttl_s,
+        filename=filename,
+        max_downloads=max_downloads,
+        inline=inline,
+        session_id=session_id,
     )
 
 
 def list_file_links_execute(
     include_expired: bool = False, session_id: str | None = None
 ) -> ListFileLinksOutput:
-    """List generated download links."""
+    """List generated links owned by one explicit session."""
     if session_id is not None:
         get_tool_session_store().touch_session(session_id)
-    with STORE_LOCK:
-        store = read_download_store_locked()
-        changed = (
-            False if include_expired else prune_download_links_locked(store)
-        )
-        if changed:
-            write_download_store_locked(store)
+    with transaction() as store:
+        changed = False
+        if not include_expired:
+            changed = prune_locked(store, now_s())
         links = [
             download_link_summary(token, link)
             for token, link in store.get("links", {}).items()
             if session_id is None or link.get("session_id") == session_id
         ]
+        if changed:
+            save_locked(store)
     links.sort(key=lambda item: item.created_at or 0, reverse=True)
     return ListFileLinksOutput(links=links)
 
@@ -235,19 +264,19 @@ def list_file_links_execute(
 def revoke_file_link_execute(
     token: str, session_id: str | None = None
 ) -> RevokeFileLinkOutput:
-    """Revoke one generated download link."""
+    """Revoke one link and remove its private snapshot."""
     if session_id is not None:
         get_tool_session_store().touch_session(session_id)
-    with STORE_LOCK:
-        store = read_download_store_locked()
+    removed: dict[str, Any] | None = None
+    with transaction() as store:
         link = store.get("links", {}).get(token)
-        removed = None
         if link is not None and (
             session_id is None or link.get("session_id") == session_id
         ):
-            removed = store.get("links", {}).pop(token, None)
+            removed = store["links"].pop(token, None)
         if removed is not None:
-            write_download_store_locked(store)
+            remove_snapshot(removed)
+            save_locked(store)
     if removed is not None:
         audit(
             "download_link_revoked",
@@ -259,8 +288,8 @@ def revoke_file_link_execute(
 
 def claim_download(
     token: str, *, consume: bool
-) -> tuple[Path, dict[str, Any]] | dict[str, Any]:
-    """Return a target path and link metadata, or an error payload."""
+) -> ClaimedDownload | dict[str, Any]:
+    """Claim a validated snapshot, or return an HTTP error payload."""
     settings = get_settings()
     if not settings.file_download_enabled:
         return {
@@ -269,61 +298,87 @@ def claim_download(
             "message": "File downloads are disabled",
         }
 
-    with STORE_LOCK:
-        store = read_download_store_locked()
-        link = store.get("links", {}).get(token)
-        if not link:
-            return {
-                "status_code": 404,
-                "error": "download_not_found",
-                "message": "Link not found",
-            }
+    handle = None
+    try:
+        with transaction() as store:
+            links = store.get("links", {})
+            link = links.get(token)
+            if not link:
+                if prune_locked(store, now_s()):
+                    save_locked(store)
+                return {
+                    "status_code": 404,
+                    "error": "download_not_found",
+                    "message": "Link not found",
+                }
 
-        current_time = now_s()
-        if float(link.get("expires_at", 0)) <= current_time:
-            store.get("links", {}).pop(token, None)
-            write_download_store_locked(store)
-            return {
-                "status_code": 410,
-                "error": "download_expired",
-                "message": "Link has expired",
-            }
+            current = now_s()
+            if float(link.get("expires_at", 0)) <= current:
+                remove_snapshot(link)
+                links.pop(token, None)
+                save_locked(store)
+                return {
+                    "status_code": 410,
+                    "error": "download_expired",
+                    "message": "Link has expired",
+                }
 
-        max_downloads = int(link.get("max_downloads", 0))
-        downloads = int(link.get("downloads", 0))
-        if max_downloads > 0 and downloads >= max_downloads:
-            store.get("links", {}).pop(token, None)
-            write_download_store_locked(store)
-            return {
-                "status_code": 410,
-                "error": "download_exhausted",
-                "message": "Link has reached its use limit",
-            }
+            maximum = int(link.get("max_downloads", 0))
+            downloads = int(link.get("downloads", 0))
+            if maximum > 0 and downloads >= maximum:
+                remove_snapshot(link)
+                links.pop(token, None)
+                save_locked(store)
+                return {
+                    "status_code": 410,
+                    "error": "download_exhausted",
+                    "message": "Link has reached its use limit",
+                }
 
-        path = Path(str(link.get("path", ""))).resolve(strict=False)
-        if not path.exists() or not path.is_file():
-            store.get("links", {}).pop(token, None)
-            write_download_store_locked(store)
-            return {
-                "status_code": 404,
-                "error": "download_missing",
-                "message": "The target file no longer exists",
-            }
+            if (
+                settings.file_download_max_file_bytes > 0
+                and int(link.get("bytes", 0))
+                > settings.file_download_max_file_bytes
+            ):
+                return {
+                    "status_code": 403,
+                    "error": "download_too_large",
+                    "message": "The snapshot exceeds the configured size limit",
+                }
 
-        if (
-            settings.file_download_max_file_bytes > 0
-            and path.stat().st_size > settings.file_download_max_file_bytes
-        ):
-            return {
-                "status_code": 403,
-                "error": "download_too_large",
-                "message": "The target file exceeds the configured size limit",
-            }
+            try:
+                handle, path = open_snapshot(link)
+            except FileNotFoundError, OSError, PermissionError, ValueError:
+                remove_snapshot(link)
+                links.pop(token, None)
+                save_locked(store)
+                return {
+                    "status_code": 404,
+                    "error": "download_missing",
+                    "message": "The shared file snapshot is unavailable",
+                }
 
-        if consume:
-            link["downloads"] = downloads + 1
-            link["last_download_at"] = current_time
-            store["links"][token] = link
-            write_download_store_locked(store)
-
-    return path, link
+            remove_after = False
+            if consume:
+                next_downloads = downloads + 1
+                link["downloads"] = next_downloads
+                link["last_download_at"] = current
+                remove_after = maximum > 0 and next_downloads >= maximum
+                save_locked(store)
+            if prune_locked(store, current, exclude_token=token):
+                save_locked(store)
+            return ClaimedDownload(
+                handle=handle,
+                path=path,
+                link=dict(link),
+                remove_snapshot_after=remove_after,
+            )
+    except (OSError, RuntimeError) as exc:
+        if handle is not None:
+            handle.close()
+        audit("download_store_unavailable", error=repr(exc))
+        return {
+            "status_code": 500,
+            "error": "download_store_unavailable",
+            "message": "Download state is unavailable",
+        }

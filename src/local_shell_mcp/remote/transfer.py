@@ -209,8 +209,33 @@ async def copy_remote_file_to_remote(
     overwrite: bool = True,
     chunk_size: int | None = None,
 ) -> RemoteCopyFileOutput:
-    """Copy a file between two remote workers through the control server."""
+    """Copy a file between remote workers, using a worker-local fast path."""
     chunk_bytes = normalize_chunk_size(chunk_size)
+    if src_machine == dst_machine:
+        copied = await _remote_transfer_data(
+            src_machine,
+            "transfer_copy_file",
+            {
+                "source_path": src_path,
+                "destination_path": dst_path,
+                "overwrite": overwrite,
+                "chunk_size": chunk_bytes,
+            },
+        )
+        return RemoteCopyFileOutput(
+            **{
+                "source": {
+                    "machine": src_machine,
+                    "path": copied["source_path"],
+                },
+                "destination": {"machine": dst_machine, "path": copied["path"]},
+                "bytes": copied["bytes"],
+                "sha256": copied["sha256"],
+                "chunks": copied["chunks"],
+                "chunk_size": copied["chunk_size"],
+            }
+        )
+
     stat = await _remote_transfer_data(
         src_machine, "transfer_stat", {"path": src_path, "sha256": True}
     )

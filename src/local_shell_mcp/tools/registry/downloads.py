@@ -4,7 +4,7 @@ import asyncio
 
 from ...config.settings import Settings
 from ...ops.downloads import (
-    create_file_link_execute,
+    create_file_link_dispatch_execute,
     list_file_links_execute,
     revoke_file_link_execute,
 )
@@ -14,6 +14,7 @@ from ...schemas.input_models.downloads import (
     DownloadTokenArg,
     DownloadTtlArg,
     IncludeExpiredArg,
+    InlineDownloadArg,
     MaxDownloadsArg,
 )
 from ...schemas.input_models.session import SessionIdArg
@@ -42,7 +43,7 @@ def _download_tools_enabled(settings: Settings) -> bool:
 
 def _create_file_link_description(context: McpToolContext) -> str:
     settings = context.settings
-    return f"""Create a temporary tokenized HTTP download URL for one existing regular file in a local agent/workspace session. Use this when a user needs to download or open an artifact through a browser. The response includes a sensitive token and URL. Current TTL default/cap: {settings.file_download_default_ttl_s}/{settings.file_download_max_ttl_s} seconds. Current file-size cap: {settings.file_download_max_file_bytes} bytes, with 0 meaning no configured cap."""
+    return f"""Create a temporary tokenized HTTP URL for an immutable creation-time snapshot of one existing regular file in a local or remote agent session. By default the browser downloads it as an attachment; set inline=true only when browser rendering is desired. The response includes a sensitive token and URL. Current TTL default/cap: {settings.file_download_default_ttl_s}/{settings.file_download_max_ttl_s} seconds. Current file-size cap: {settings.file_download_max_file_bytes} bytes, with 0 meaning no configured cap."""
 
 
 @download_tool(
@@ -58,15 +59,16 @@ async def create_file_link(
     ttl_s: DownloadTtlArg = None,
     filename: DownloadFilenameArg = None,
     max_downloads: MaxDownloadsArg = None,
+    inline: InlineDownloadArg = False,
 ) -> CreateFileLinkOutput:
-    """Create a temporary tokenized browser download URL for one local session file."""
-    return await asyncio.to_thread(
-        create_file_link_execute,
-        path,
-        ttl_s,
-        filename,
-        max_downloads,
-        session_id,
+    """Create a tokenized snapshot URL for one local or remote session file."""
+    return await create_file_link_dispatch_execute(
+        path=path,
+        ttl_s=ttl_s,
+        filename=filename,
+        max_downloads=max_downloads,
+        session_id=session_id,
+        inline=inline,
     )
 
 

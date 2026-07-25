@@ -6,7 +6,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 from local_shell_mcp.agent_bridge.mcp import AgentMcpTool
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.tools.registry import agent as tools_module
 from tests.helpers import mcp_text
 
@@ -103,6 +103,7 @@ async def test_fixed_bridge_tools_exist_with_missing_config(
     assert "agent_config_status" in tools
     assert "list_agent_skills" in tools
     assert "activate_agent_skill" in tools
+    assert "read_agent_skill_file" in tools
     assert "list_agent_mcp_servers" in tools
     assert "list_agent_mcp_tools" in tools
     assert "call_agent_mcp_tool" in tools

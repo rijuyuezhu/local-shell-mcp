@@ -2,10 +2,23 @@
 
 import asyncio
 import contextlib
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path, PurePath
 from typing import Any, Literal, cast
 
-from ...remote.service import call_remote_worker_tool
+from ...config.settings import get_settings
+from ...jobs.runtime import (
+    ManagedJobContext,
+    register_managed_job_handler,
+    start_managed_job,
+)
+from ...remote.transfer_gateway import (
+    TransferGatewayStore,
+    copy_spool_to_local_transaction,
+)
+from ...schemas.result_models.jobs import JobStartOutput
 from ...schemas.result_models.session import (
     SessionCopyEndpoint,
     SessionCopyOutput,
@@ -14,6 +27,7 @@ from ...schemas.result_models.session import (
 from ...tool_session.store import AgentSession, get_tool_session_store
 from ...utils.serialization import to_jsonable
 from ..transfer import (
+    _resolve_transfer_path,
     normalize_chunk_size,
     transfer_abort_write,
     transfer_alloc_temp_path,
@@ -26,7 +40,6 @@ from ..transfer import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
-from .remote_session import call_remote_session_tool
 
 SessionCopyKind = Literal["auto", "file", "dir"]
 SessionCopyRoute = Literal[
@@ -36,6 +49,39 @@ SessionCopyRoute = Literal[
     "remote_to_remote_same_machine",
     "remote_to_remote_different_machines",
 ]
+SessionCopyProgress = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+async def call_remote_worker_tool(
+    machine: str,
+    tool: str,
+    args: dict[str, Any],
+    timeout_s: int | None = None,
+) -> dict[str, Any]:
+    """Lazily call a raw worker tool while preserving the patchable seam."""
+    from ...remote.service import call_remote_worker_tool as call_impl
+
+    return await call_impl(machine, tool, args, timeout_s)
+
+
+async def call_remote_session_tool(
+    session: AgentSession,
+    tool: str,
+    args: dict[str, Any],
+    timeout_s: int | None = None,
+) -> dict[str, Any]:
+    """Lazily call a session-bound worker tool without controller imports."""
+    from .remote_session import call_remote_session_tool as call_impl
+
+    return await call_impl(session, tool, args, timeout_s)
+
+
+async def _report_progress(
+    progress: SessionCopyProgress | None, **fields: Any
+) -> None:
+    """Publish one structured progress snapshot when a callback is configured."""
+    if progress is not None:
+        await progress(fields)
 
 
 @dataclass(frozen=True)
@@ -196,19 +242,45 @@ async def _endpoint_transfer_data(
     raise ValueError(f"unsupported transfer tool: {tool}")
 
 
+async def _run_cleanup(operation: Any) -> None:
+    """Finish one best-effort cleanup even when the caller is cancelled."""
+    task = asyncio.create_task(operation)
+    try:
+        await asyncio.shield(task)
+    except BaseException:
+        with contextlib.suppress(BaseException):
+            await task
+
+
 async def _cleanup_temp(endpoint: _Endpoint, path: str | None) -> None:
     if not path:
         return
-    try:
-        await _endpoint_transfer_data(
+    await _run_cleanup(
+        _endpoint_transfer_data(
             endpoint,
             "transfer_delete_temp_path",
             {"path": path},
             session_bound=False,
         )
-    except Exception:
-        # Temp cleanup should not hide the primary copy failure/result.
-        return
+    )
+
+
+async def _abort_transfer(
+    endpoint: _Endpoint,
+    path: str,
+    transfer_id: str,
+    *,
+    session_bound: bool,
+) -> None:
+    """Best-effort abort one destination write without hiding its primary failure."""
+    await _run_cleanup(
+        _endpoint_transfer_data(
+            endpoint,
+            "transfer_abort_write",
+            {"path": path, "transfer_id": transfer_id},
+            session_bound=session_bound,
+        )
+    )
 
 
 def _copy_route(src: AgentSession, dst: AgentSession) -> SessionCopyRoute:
@@ -246,26 +318,264 @@ def _endpoint_model(session: AgentSession, path: str) -> SessionCopyEndpoint:
     )
 
 
-async def _copy_file(
+def _worker_session_id(
+    endpoint: _Endpoint, *, session_bound: bool
+) -> str | None:
+    """Return the worker-local session id required by one remote endpoint."""
+    if endpoint.session.target != "remote":
+        return None
+    session_id = endpoint.session.worker_session_id if session_bound else None
+    if session_bound and not session_id:
+        raise RuntimeError(
+            f"remote {endpoint.label} session is missing worker_session_id"
+        )
+    return session_id
+
+
+def _worker_supports_http(endpoint: _Endpoint) -> bool:
+    """Check the explicit worker protocol capability without importing it remotely."""
+    if endpoint.session.target != "remote" or not endpoint.session.machine:
+        return True
+    from ...remote.manager import remote_manager
+
+    return remote_manager().supports(
+        endpoint.session.machine, "http-transfer-v1"
+    )
+
+
+def _should_use_http_transfer(
+    src: _Endpoint, dst: _Endpoint, source_size: int
+) -> bool:
+    """Select HTTP only for configured, capable, non-local large transfers."""
+    settings = get_settings()
+    if not settings.remote_http_transfer_enabled or settings.base_url is None:
+        return False
+    if source_size < settings.remote_http_transfer_threshold_bytes:
+        return False
+    if src.session.target == "local" and dst.session.target == "local":
+        return False
+    if (
+        src.session.target == "remote"
+        and dst.session.target == "remote"
+        and src.session.machine == dst.session.machine
+    ):
+        return False
+    return _worker_supports_http(src) and _worker_supports_http(dst)
+
+
+async def _abort_http_destination(
+    dst: _Endpoint,
+    dst_path: str,
+    transfer_id: str,
+    *,
+    session_bound: bool,
+) -> None:
+    """Best-effort removal of a worker-side resumable destination transaction."""
+    if dst.session.target != "remote":
+        return
+    with contextlib.suppress(Exception):
+        await _remote_raw_transfer_data(
+            dst,
+            "transfer_http_abort_download",
+            {
+                "path": dst_path,
+                "session_id": _worker_session_id(
+                    dst, session_bound=session_bound
+                ),
+                "transfer_id": transfer_id,
+            },
+        )
+
+
+async def _copy_file_http(
     src: _Endpoint,
     src_path: str,
     dst: _Endpoint,
     dst_path: str,
     *,
+    stat: dict[str, Any],
     overwrite: bool,
-    chunk_size: int | None,
-    src_session_bound: bool = True,
-    dst_session_bound: bool = True,
+    chunk_bytes: int,
+    progress: SessionCopyProgress | None,
+    src_session_bound: bool,
+    dst_session_bound: bool,
+    resume_key: str | None,
 ) -> dict[str, Any]:
-    chunk_bytes = normalize_chunk_size(chunk_size)
-    stat = await _endpoint_transfer_data(
-        src,
-        "transfer_stat",
-        {"path": src_path, "sha256": True},
-        session_bound=src_session_bound,
+    """Copy one large file through the private durable controller gateway."""
+    settings = get_settings()
+    source_size = int(stat["size"])
+    source_sha256 = str(stat.get("sha256") or "")
+    http_chunk = min(chunk_bytes, settings.remote_http_transfer_chunk_bytes)
+    store = TransferGatewayStore(settings)
+    local_snapshot: Path | None = None
+    if src.session.target == "local":
+        local_snapshot = _resolve_transfer_path(
+            src_path,
+            must_exist=True,
+            session_id=(src.session.session_id if src_session_bound else None),
+        )
+    obj, upload_grant, download_grant = await asyncio.to_thread(
+        store.prepare,
+        expected_bytes=source_size,
+        expected_sha256=source_sha256,
+        upload_worker=(
+            src.session.machine if src.session.target == "remote" else None
+        ),
+        download_worker=(
+            dst.session.machine if dst.session.target == "remote" else None
+        ),
+        source_session_id=src.session.session_id,
+        destination_session_id=dst.session.session_id,
+        resume_key=resume_key,
+        snapshot_path=local_snapshot,
     )
-    if stat.get("type") != "file":
-        raise ValueError(f"source is not a file: {src_path}")
+    upload_result: dict[str, Any] = {}
+    destination_result: dict[str, Any] = {}
+    await _report_progress(
+        progress,
+        phase="transferring",
+        bytes_transferred=obj.offset,
+        total_bytes=source_size,
+        chunks=0,
+        chunk_size=http_chunk,
+        transport="http_stream",
+    )
+    try:
+        if upload_grant is not None:
+            upload_result = await _remote_raw_transfer_data(
+                src,
+                "transfer_http_upload",
+                {
+                    "path": src_path,
+                    "session_id": _worker_session_id(
+                        src, session_bound=src_session_bound
+                    ),
+                    "url": upload_grant.url,
+                    "controller_url": settings.resolved_base_url,
+                    "authorization": upload_grant.authorization,
+                    "worker": upload_grant.worker,
+                    "expected_bytes": source_size,
+                    "expected_sha256": source_sha256,
+                    "chunk_size": http_chunk,
+                    "timeout_s": min(settings.remote_job_timeout_s, 120),
+                },
+            )
+        obj = await asyncio.to_thread(store.object, obj.transfer_id)
+        await _report_progress(
+            progress,
+            phase="transferring",
+            bytes_transferred=source_size,
+            total_bytes=source_size,
+            chunks=int(upload_result.get("chunks", 0)),
+            chunk_size=http_chunk,
+            transport="http_stream",
+        )
+        if download_grant is not None:
+            destination_result = await _remote_raw_transfer_data(
+                dst,
+                "transfer_http_download",
+                {
+                    "path": dst_path,
+                    "session_id": _worker_session_id(
+                        dst, session_bound=dst_session_bound
+                    ),
+                    "url": download_grant.url,
+                    "controller_url": settings.resolved_base_url,
+                    "authorization": download_grant.authorization,
+                    "worker": download_grant.worker,
+                    "transfer_id": obj.transfer_id,
+                    "expected_bytes": source_size,
+                    "expected_sha256": source_sha256,
+                    "overwrite": overwrite,
+                    "chunk_size": http_chunk,
+                    "timeout_s": min(settings.remote_job_timeout_s, 120),
+                },
+            )
+        else:
+            destination_result = await copy_spool_to_local_transaction(
+                obj,
+                destination_path=dst_path,
+                destination_session_id=(
+                    dst.session.session_id if dst_session_bound else None
+                ),
+                overwrite=overwrite,
+                chunk_size=http_chunk,
+                preserve_partial=resume_key is not None,
+            )
+    except asyncio.CancelledError:
+        try:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await _abort_http_destination(
+                    dst,
+                    dst_path,
+                    obj.transfer_id,
+                    session_bound=dst_session_bound,
+                )
+        finally:
+            store.abort(obj.transfer_id)
+            store.delete(obj.transfer_id)
+        raise
+    except Exception:
+        if resume_key is None:
+            await _abort_http_destination(
+                dst,
+                dst_path,
+                obj.transfer_id,
+                session_bound=dst_session_bound,
+            )
+            await asyncio.to_thread(store.abort, obj.transfer_id)
+            await asyncio.to_thread(store.delete, obj.transfer_id)
+        else:
+            await asyncio.to_thread(store.suspend, obj.transfer_id)
+        raise
+    await asyncio.to_thread(store.consume, obj.transfer_id)
+    await asyncio.to_thread(store.delete, obj.transfer_id)
+    upload_chunks = int(upload_result.get("chunks", 0))
+    destination_chunks = int(destination_result.get("chunks", 0))
+    resumed_bytes = max(
+        int(upload_result.get("resumed_bytes", 0)),
+        int(destination_result.get("resumed_bytes", 0)),
+    )
+    return {
+        "source_path": stat["path"],
+        "destination_path": destination_result["path"],
+        "bytes": source_size,
+        "sha256": source_sha256,
+        "chunks": upload_chunks + destination_chunks,
+        "chunk_size": http_chunk,
+        "transport": "http_stream",
+        "resumed_bytes": resumed_bytes,
+    }
+
+
+async def _copy_file_rpc(
+    src: _Endpoint,
+    src_path: str,
+    dst: _Endpoint,
+    dst_path: str,
+    *,
+    stat: dict[str, Any],
+    overwrite: bool,
+    chunk_bytes: int,
+    progress: SessionCopyProgress | None,
+    src_session_bound: bool,
+    dst_session_bound: bool,
+) -> dict[str, Any]:
+    """Copy one file through the bounded JSON/base64 control-channel fallback."""
+    source_size = int(stat["size"])
+    await _report_progress(
+        progress,
+        phase="transferring",
+        bytes_transferred=0,
+        total_bytes=source_size,
+        chunks=0,
+        chunk_size=chunk_bytes,
+        transport=(
+            "local"
+            if src.session.target == dst.session.target == "local"
+            else "worker_rpc"
+        ),
+    )
     begin = await _endpoint_transfer_data(
         dst,
         "transfer_begin_write",
@@ -280,15 +590,31 @@ async def _copy_file(
     chunks = 0
     offset = 0
     try:
-        while offset < int(stat["size"]):
+        while offset < source_size:
             chunk = await _endpoint_transfer_data(
                 src,
                 "transfer_read_chunk",
                 {"path": src_path, "offset": offset, "chunk_size": chunk_bytes},
                 session_bound=src_session_bound,
             )
-            if int(chunk["bytes"]) == 0:
-                break
+            chunk_offset = int(chunk["offset"])
+            chunk_size_received = int(chunk["bytes"])
+            chunk_source_size = int(chunk["size"])
+            if chunk_offset != offset:
+                raise RuntimeError(
+                    f"source chunk offset mismatch: expected {offset}, got {chunk_offset}"
+                )
+            if chunk_source_size != source_size:
+                raise RuntimeError(
+                    "source size changed during transfer: "
+                    f"expected {source_size}, got {chunk_source_size}"
+                )
+            if chunk_size_received <= 0:
+                raise RuntimeError("source transfer ended before completion")
+            next_offset = offset + chunk_size_received
+            eof = bool(chunk.get("eof", False))
+            if eof != (next_offset >= source_size):
+                raise RuntimeError("source transfer EOF marker is inconsistent")
             await _endpoint_transfer_data(
                 dst,
                 "transfer_write_chunk",
@@ -301,27 +627,39 @@ async def _copy_file(
                 },
                 session_bound=dst_session_bound,
             )
-            offset += int(chunk["bytes"])
+            offset = next_offset
             chunks += 1
+            await _report_progress(
+                progress,
+                phase="transferring",
+                bytes_transferred=offset,
+                total_bytes=source_size,
+                chunks=chunks,
+                chunk_size=chunk_bytes,
+                transport=(
+                    "local"
+                    if src.session.target == dst.session.target == "local"
+                    else "worker_rpc"
+                ),
+            )
         finish = await _endpoint_transfer_data(
             dst,
             "transfer_finish_write",
             {
                 "path": dst_path,
                 "transfer_id": transfer_id,
-                "expected_bytes": stat["size"],
+                "expected_bytes": source_size,
                 "expected_sha256": stat.get("sha256"),
             },
             session_bound=dst_session_bound,
         )
-    except Exception:
-        with contextlib.suppress(Exception):
-            await _endpoint_transfer_data(
-                dst,
-                "transfer_abort_write",
-                {"path": dst_path, "transfer_id": transfer_id},
-                session_bound=dst_session_bound,
-            )
+    except BaseException:
+        await _abort_transfer(
+            dst,
+            dst_path,
+            transfer_id,
+            session_bound=dst_session_bound,
+        )
         raise
     return {
         "source_path": stat["path"],
@@ -330,7 +668,105 @@ async def _copy_file(
         "sha256": stat.get("sha256"),
         "chunks": chunks,
         "chunk_size": chunk_bytes,
+        "transport": (
+            "local"
+            if src.session.target == dst.session.target == "local"
+            else "worker_rpc"
+        ),
+        "resumed_bytes": 0,
     }
+
+
+async def _copy_file(
+    src: _Endpoint,
+    src_path: str,
+    dst: _Endpoint,
+    dst_path: str,
+    *,
+    overwrite: bool,
+    chunk_size: int | None,
+    progress: SessionCopyProgress | None = None,
+    src_session_bound: bool = True,
+    dst_session_bound: bool = True,
+    resume_key: str | None = None,
+) -> dict[str, Any]:
+    chunk_bytes = normalize_chunk_size(chunk_size)
+    same_remote_worker = (
+        src.session.target == "remote"
+        and dst.session.target == "remote"
+        and src.session.machine == dst.session.machine
+    )
+    if same_remote_worker:
+        copied = await _remote_raw_transfer_data(
+            src,
+            "transfer_copy_file",
+            {
+                "source_path": src_path,
+                "destination_path": dst_path,
+                "overwrite": overwrite,
+                "chunk_size": chunk_bytes,
+                "source_session_id": _worker_session_id(
+                    src, session_bound=src_session_bound
+                ),
+                "destination_session_id": _worker_session_id(
+                    dst, session_bound=dst_session_bound
+                ),
+            },
+        )
+        await _report_progress(
+            progress,
+            phase="transferring",
+            bytes_transferred=int(copied["bytes"]),
+            total_bytes=int(copied["bytes"]),
+            chunks=int(copied["chunks"]),
+            chunk_size=int(copied["chunk_size"]),
+            transport="same_worker",
+        )
+        return {
+            "source_path": copied["source_path"],
+            "destination_path": copied["path"],
+            "bytes": copied["bytes"],
+            "sha256": copied["sha256"],
+            "chunks": copied["chunks"],
+            "chunk_size": copied["chunk_size"],
+            "transport": "same_worker",
+            "resumed_bytes": 0,
+        }
+
+    stat = await _endpoint_transfer_data(
+        src,
+        "transfer_stat",
+        {"path": src_path, "sha256": True},
+        session_bound=src_session_bound,
+    )
+    if stat.get("type") != "file":
+        raise ValueError(f"source is not a file: {src_path}")
+    if _should_use_http_transfer(src, dst, int(stat["size"])):
+        return await _copy_file_http(
+            src,
+            src_path,
+            dst,
+            dst_path,
+            stat=stat,
+            overwrite=overwrite,
+            chunk_bytes=chunk_bytes,
+            progress=progress,
+            src_session_bound=src_session_bound,
+            dst_session_bound=dst_session_bound,
+            resume_key=resume_key,
+        )
+    return await _copy_file_rpc(
+        src,
+        src_path,
+        dst,
+        dst_path,
+        stat=stat,
+        overwrite=overwrite,
+        chunk_bytes=chunk_bytes,
+        progress=progress,
+        src_session_bound=src_session_bound,
+        dst_session_bound=dst_session_bound,
+    )
 
 
 async def _copy_dir(
@@ -341,19 +777,24 @@ async def _copy_dir(
     *,
     overwrite: bool,
     chunk_size: int | None,
+    progress: SessionCopyProgress | None = None,
+    resume_key: str | None = None,
 ) -> dict[str, Any]:
-    pack = await _endpoint_transfer_data(
-        src,
-        "transfer_pack_dir",
-        {"path": src_path, "compression": "gz"},
-    )
-    dst_archive = await _endpoint_transfer_data(
-        dst,
-        "transfer_alloc_temp_path",
-        {"suffix": ".tar.gz"},
-        session_bound=False,
-    )
+    await _report_progress(progress, phase="packing", bytes_transferred=0)
+    pack: dict[str, Any] = {}
+    dst_archive: dict[str, Any] = {}
     try:
+        pack = await _endpoint_transfer_data(
+            src,
+            "transfer_pack_dir",
+            {"path": src_path, "compression": "gz"},
+        )
+        dst_archive = await _endpoint_transfer_data(
+            dst,
+            "transfer_alloc_temp_path",
+            {"suffix": ".tar.gz"},
+            session_bound=False,
+        )
         copy_result = await _copy_file(
             src,
             pack["archive_path"],
@@ -361,8 +802,19 @@ async def _copy_dir(
             dst_archive["path"],
             overwrite=True,
             chunk_size=chunk_size,
+            progress=progress,
             src_session_bound=False,
             dst_session_bound=False,
+            resume_key=(f"{resume_key}:archive" if resume_key else None),
+        )
+        await _report_progress(
+            progress,
+            phase="unpacking",
+            bytes_transferred=int(pack["bytes"]),
+            total_bytes=int(pack["bytes"]),
+            chunks=int(copy_result["chunks"]),
+            chunk_size=int(copy_result["chunk_size"]),
+            transport=copy_result["transport"],
         )
         unpack = await _endpoint_transfer_data(
             dst,
@@ -374,10 +826,8 @@ async def _copy_dir(
                 "cleanup_archive": True,
             },
         )
-    except Exception:
-        await _cleanup_temp(dst, dst_archive.get("path"))
-        raise
     finally:
+        await _cleanup_temp(dst, dst_archive.get("path"))
         await _cleanup_temp(src, pack.get("archive_path"))
     return {
         "source_path": pack["path"],
@@ -385,7 +835,11 @@ async def _copy_dir(
         "archive_bytes": pack["bytes"],
         "archive_sha256": pack["sha256"],
         "chunks": copy_result["chunks"],
+        "chunk_size": copy_result["chunk_size"],
+        "transport": copy_result["transport"],
+        "resumed_bytes": copy_result["resumed_bytes"],
         "entries": unpack["entries"],
+        "cleanup_errors": list(unpack.get("cleanup_errors") or []),
     }
 
 
@@ -397,6 +851,9 @@ async def session_copy_execute(
     kind: SessionCopyKind = "auto",
     overwrite: bool = True,
     chunk_size: int | None = None,
+    *,
+    progress: SessionCopyProgress | None = None,
+    resume_key: str | None = None,
 ) -> SessionCopyOutput:
     """Copy a file or directory between two explicit sessions."""
     store = get_tool_session_store()
@@ -404,6 +861,7 @@ async def session_copy_execute(
     dst_session = store.touch_session(dst_session_id)
     src = _Endpoint(src_session)
     dst = _Endpoint(dst_session)
+    await _report_progress(progress, phase="preparing", bytes_transferred=0)
 
     stat = await _endpoint_transfer_data(
         src, "transfer_stat", {"path": src_path, "sha256": kind != "dir"}
@@ -427,6 +885,8 @@ async def session_copy_execute(
             dst_path,
             overwrite=overwrite,
             chunk_size=chunk_size,
+            progress=progress,
+            resume_key=resume_key,
         )
     else:
         metrics = await _copy_dir(
@@ -436,6 +896,8 @@ async def session_copy_execute(
             dst_path,
             overwrite=overwrite,
             chunk_size=chunk_size,
+            progress=progress,
+            resume_key=resume_key,
         )
 
     source_model = _endpoint_model(src_session, src_path)
@@ -445,6 +907,8 @@ async def session_copy_execute(
 
     return SessionCopyOutput(
         kind=resolved_kind,
+        transport=cast(Any, metrics["transport"]),
+        resumed_bytes=int(metrics.get("resumed_bytes", 0)),
         source=source_model,
         destination=destination_model,
         relation=_relation(src_session, dst_session),
@@ -453,6 +917,116 @@ async def session_copy_execute(
         archive_bytes=metrics.get("archive_bytes"),
         archive_sha256=metrics.get("archive_sha256"),
         chunks=int(metrics.get("chunks", 0)),
-        chunk_size=normalize_chunk_size(chunk_size),
+        chunk_size=int(
+            metrics.get("chunk_size", normalize_chunk_size(chunk_size))
+        ),
         entries=metrics.get("entries"),
+        cleanup_errors=list(metrics.get("cleanup_errors") or []),
     )
+
+
+SESSION_COPY_MANAGED_KIND = "session-copy"
+
+
+async def _run_session_copy_job(
+    context: ManagedJobContext, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Run one durable session-copy managed job from its stored payload."""
+    last_report_at = 0.0
+    last_phase = ""
+
+    async def report(progress: dict[str, Any]) -> None:
+        nonlocal last_phase, last_report_at
+        now = time.monotonic()
+        phase = str(progress.get("phase") or "")
+        transferred = int(progress.get("bytes_transferred") or 0)
+        total = int(progress.get("total_bytes") or 0)
+        if (
+            phase != last_phase
+            or transferred == 0
+            or (total > 0 and transferred >= total)
+            or now - last_report_at >= 0.5
+        ):
+            await context.update_progress(**progress)
+            last_phase = phase
+            last_report_at = now
+
+    src_session_id = str(payload["src_session_id"])
+    src_path = str(payload["src_path"])
+    dst_session_id = str(payload["dst_session_id"])
+    dst_path = str(payload["dst_path"])
+    kind = cast(SessionCopyKind, str(payload.get("kind") or "auto"))
+    overwrite = bool(payload.get("overwrite", True))
+    raw_chunk_size = payload.get("chunk_size")
+    chunk_size = int(raw_chunk_size) if raw_chunk_size is not None else None
+
+    await context.log(
+        f"copying {src_session_id}:{src_path} -> {dst_session_id}:{dst_path}"
+    )
+    result = await session_copy_execute(
+        src_session_id,
+        src_path,
+        dst_session_id,
+        dst_path,
+        kind,
+        overwrite,
+        chunk_size,
+        progress=report,
+        resume_key=context.job_id,
+    )
+    total_bytes = int(result.bytes or result.archive_bytes or 0)
+    await context.update_progress(
+        phase="completed",
+        bytes_transferred=total_bytes,
+        total_bytes=total_bytes,
+        chunks=result.chunks,
+        chunk_size=result.chunk_size,
+        kind=result.kind,
+        route=result.relation.route,
+        transport=result.transport,
+        resumed_bytes=result.resumed_bytes,
+    )
+    await context.log(
+        f"copy completed: {result.kind}, {total_bytes} bytes, {result.chunks} chunks"
+    )
+    return result.model_dump(mode="json")
+
+
+async def session_copy_job_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: SessionCopyKind = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+) -> JobStartOutput:
+    """Start a controller-managed session copy and return its tracked job."""
+    store = get_tool_session_store()
+    store.touch_session(src_session_id)
+    store.touch_session(dst_session_id)
+    normalized_chunk_size = normalize_chunk_size(chunk_size)
+    payload = {
+        "src_session_id": src_session_id,
+        "src_path": src_path,
+        "dst_session_id": dst_session_id,
+        "dst_path": dst_path,
+        "kind": kind,
+        "overwrite": overwrite,
+        "chunk_size": normalized_chunk_size,
+    }
+    destination_name = PurePath(dst_path).name or "artifact"
+    return await start_managed_job(
+        src_session_id,
+        SESSION_COPY_MANAGED_KIND,
+        payload,
+        name=f"copy-{destination_name}"[:80],
+        command=(
+            f"session_copy {src_session_id}:{src_path} -> "
+            f"{dst_session_id}:{dst_path}"
+        ),
+        cwd=".",
+    )
+
+
+register_managed_job_handler(SESSION_COPY_MANAGED_KIND, _run_session_copy_job)

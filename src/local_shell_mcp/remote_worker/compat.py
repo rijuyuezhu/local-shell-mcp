@@ -191,6 +191,12 @@ class _BaseModel:
 
 
 class _RootModel(_BaseModel):
+    @classmethod
+    def __class_getitem__(cls, item: Any) -> type[_RootModel]:
+        """Accept Pydantic v2 generic RootModel syntax in the source-only runtime."""
+        del item
+        return cls
+
     def __init__(self, root: Any = None, **data: Any) -> None:
         self.root = data if data and root is None else root
 

@@ -1,11 +1,22 @@
+import base64
+import ctypes
+import hashlib
 import io
+import os
 import tarfile
+import time
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
+import local_shell_mcp.ops.transfer as transfer_ops
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.ops.transfer import (
     transfer_abort_write,
+    transfer_alloc_temp_path,
     transfer_begin_write,
     transfer_finish_write,
     transfer_pack_dir,
@@ -14,7 +25,6 @@ from local_shell_mcp.ops.transfer import (
     transfer_unpack_archive,
     transfer_write_chunk,
 )
-from local_shell_mcp.server.mcp.app import build_mcp
 
 
 def _workspace(tmp_path, monkeypatch):
@@ -25,6 +35,134 @@ def _workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     return tmp_path
+
+
+def test_transfer_handle_identity_uses_platform_native_ids(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "identity.bin"
+    path.write_bytes(b"data")
+
+    with path.open("rb") as handle:
+        file_stat = os.fstat(handle.fileno())
+        assert transfer_ops._transfer_handle_identity(
+            handle, platform="posix"
+        ) == (int(file_stat.st_dev), int(file_stat.st_ino))
+
+        seen_descriptors = []
+        monkeypatch.setattr(
+            transfer_ops,
+            "_windows_file_identity",
+            lambda descriptor: seen_descriptors.append(descriptor) or (7, 11),
+        )
+        assert transfer_ops._transfer_handle_identity(
+            handle, platform="nt"
+        ) == (7, 11)
+        assert seen_descriptors == [handle.fileno()]
+
+
+class _FakeWindowsFunction:
+    def __init__(self, callback) -> None:
+        self.callback = callback
+        self.argtypes: Any = None
+        self.restype: Any = None
+
+    def __call__(self, *args):
+        return self.callback(*args)
+
+
+def test_windows_transfer_opener_rejects_reparse_and_closes_failures(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "windows-open.bin"
+    path.write_bytes(b"data")
+    backing_fd = os.open(path, os.O_RDWR)
+    native_handle = 1234
+    attributes = 0
+    information_ok = True
+    create_result = native_handle
+    close_calls: list[int] = []
+    open_calls: list[int] = []
+
+    def create_file(*_args):
+        return create_result
+
+    def get_information(handle, pointer):
+        assert int(handle.value) == native_handle
+        if not information_ok:
+            return 0
+        information = ctypes.cast(
+            pointer,
+            ctypes.POINTER(transfer_ops._ByHandleFileInformation),
+        ).contents
+        information.dwFileAttributes = attributes
+        information.dwVolumeSerialNumber = 7
+        information.nFileIndexHigh = 0
+        information.nFileIndexLow = 11
+        return 1
+
+    def close_handle(handle):
+        close_calls.append(int(handle.value))
+        return 1
+
+    kernel32 = SimpleNamespace(
+        CreateFileW=_FakeWindowsFunction(create_file),
+        GetFileInformationByHandle=_FakeWindowsFunction(get_information),
+        CloseHandle=_FakeWindowsFunction(close_handle),
+    )
+    monkeypatch.setattr(
+        transfer_ops.ctypes,
+        "WinDLL",
+        lambda *_args, **_kwargs: kernel32,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        transfer_ops.ctypes, "get_last_error", lambda: 5, raising=False
+    )
+    real_import_module = transfer_ops.importlib.import_module
+
+    def import_module(name: str):
+        if name != "msvcrt":
+            return real_import_module(name)
+
+        def open_osfhandle(handle: int, _flags: int) -> int:
+            open_calls.append(handle)
+            return os.dup(backing_fd)
+
+        return SimpleNamespace(open_osfhandle=open_osfhandle)
+
+    monkeypatch.setattr(transfer_ops.importlib, "import_module", import_module)
+    try:
+        with transfer_ops._open_windows_transfer_file(
+            path, update=False
+        ) as source:
+            assert source.read() == b"data"
+        with transfer_ops._open_windows_transfer_file(
+            path, update=True
+        ) as destination:
+            destination.seek(0)
+            destination.write(b"DATA")
+        assert path.read_bytes() == b"DATA"
+        assert open_calls == [native_handle, native_handle]
+
+        attributes = 0x00000400
+        with pytest.raises(ValueError, match="reparse point"):
+            transfer_ops._open_windows_transfer_file(path, update=False)
+        assert close_calls == [native_handle]
+
+        attributes = 0
+        information_ok = False
+        with pytest.raises(OSError, match="GetFileInformationByHandle"):
+            transfer_ops._open_windows_transfer_file(path, update=False)
+        assert close_calls == [native_handle, native_handle]
+
+        information_ok = True
+        invalid_handle = transfer_ops.wintypes.HANDLE(-1).value
+        create_result = invalid_handle
+        with pytest.raises(OSError, match="CreateFileW"):
+            transfer_ops._open_windows_transfer_file(path, update=False)
+    finally:
+        os.close(backing_fd)
 
 
 def test_chunked_transfer_round_trip_and_checksum(tmp_path, monkeypatch):
@@ -149,3 +287,293 @@ async def test_mcp_does_not_expose_remote_transfer_tools(tmp_path, monkeypatch):
         "remote_pull_dir",
         "remote_push_dir",
     }.isdisjoint(tools)
+
+
+def _write_payload(
+    path: str, transfer_id: str, offset: int, payload: bytes
+) -> None:
+    transfer_write_chunk(
+        path,
+        transfer_id,
+        offset,
+        base64.b64encode(payload).decode("ascii"),
+        hashlib.sha256(payload).hexdigest(),
+    )
+
+
+def test_finish_rechecks_overwrite_false_after_begin(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    begin = transfer_begin_write("dest.txt", overwrite=False, expected_bytes=3)
+    _write_payload("dest.txt", begin.transfer_id, 0, b"new")
+    (root / "dest.txt").write_text("racer", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        transfer_finish_write(
+            "dest.txt",
+            begin.transfer_id,
+            expected_bytes=3,
+            expected_sha256=hashlib.sha256(b"new").hexdigest(),
+        )
+
+    assert (root / "dest.txt").read_text(encoding="utf-8") == "racer"
+    assert transfer_abort_write("dest.txt", begin.transfer_id).deleted is True
+
+
+def test_transfer_rejects_overlapping_and_missing_ranges(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    begin = transfer_begin_write("dest.bin", expected_bytes=4)
+    _write_payload("dest.bin", begin.transfer_id, 0, b"ab")
+
+    with pytest.raises(ValueError, match="overlaps"):
+        _write_payload("dest.bin", begin.transfer_id, 1, b"bc")
+
+    transfer_abort_write("dest.bin", begin.transfer_id)
+    begin = transfer_begin_write("dest.bin", expected_bytes=4)
+    _write_payload("dest.bin", begin.transfer_id, 2, b"cd")
+
+    with pytest.raises(ValueError, match="missing or non-contiguous"):
+        transfer_finish_write("dest.bin", begin.transfer_id, expected_bytes=4)
+
+    assert not (root / "dest.bin").exists()
+    transfer_abort_write("dest.bin", begin.transfer_id)
+
+
+def test_chunk_cannot_exceed_declared_transfer_size(tmp_path, monkeypatch):
+    _workspace(tmp_path, monkeypatch)
+    begin = transfer_begin_write("dest.bin", expected_bytes=2)
+
+    with pytest.raises(ValueError, match="exceeds expected transfer size"):
+        _write_payload("dest.bin", begin.transfer_id, 0, b"three")
+
+    transfer_abort_write("dest.bin", begin.transfer_id)
+
+
+def test_transfer_id_and_private_state_are_hardened(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    begin = transfer_begin_write("dest.bin", expected_bytes=1)
+    temporary = root / begin.temp_path
+    metadata = temporary.with_name(temporary.name + ".json")
+
+    if os.name != "nt":
+        assert temporary.stat().st_mode & 0o777 == 0o600
+        assert metadata.stat().st_mode & 0o777 == 0o600
+    with pytest.raises(ValueError, match="unsupported characters"):
+        transfer_abort_write("dest.bin", "../invalid")
+
+    transfer_abort_write("dest.bin", begin.transfer_id)
+    assert not temporary.exists()
+    assert not metadata.exists()
+
+
+def test_replaced_transfer_temp_is_rejected(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    begin = transfer_begin_write("dest.bin", expected_bytes=3)
+    temporary = root / begin.temp_path
+    replacement = temporary.with_name(temporary.name + ".replacement")
+    replacement.write_bytes(b"")
+    os.replace(replacement, temporary)
+
+    with pytest.raises(ValueError, match="identity changed"):
+        _write_payload("dest.bin", begin.transfer_id, 0, b"new")
+
+    transfer_abort_write("dest.bin", begin.transfer_id)
+
+
+def test_externally_resized_transfer_temp_is_rejected(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    begin = transfer_begin_write("dest.bin", expected_bytes=3)
+    temporary = root / begin.temp_path
+    temporary.write_bytes(b"x")
+
+    with pytest.raises(ValueError, match="size changed"):
+        _write_payload("dest.bin", begin.transfer_id, 0, b"new")
+
+    transfer_abort_write("dest.bin", begin.transfer_id)
+
+
+def test_finish_replaces_final_symlink_not_its_target(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    target = root / "target.txt"
+    target.write_text("old", encoding="utf-8")
+    link = root / "dest.txt"
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+    begin = transfer_begin_write("dest.txt", overwrite=True, expected_bytes=3)
+    _write_payload("dest.txt", begin.transfer_id, 0, b"new")
+    transfer_finish_write(
+        "dest.txt",
+        begin.transfer_id,
+        expected_bytes=3,
+        expected_sha256=hashlib.sha256(b"new").hexdigest(),
+    )
+
+    assert not link.is_symlink()
+    assert link.read_text(encoding="utf-8") == "new"
+    assert target.read_text(encoding="utf-8") == "old"
+
+
+def test_begin_prunes_only_stale_destination_transfers(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    stale = root / ".dest.bin.local-shell-mcp-transfer-stale.tmp"
+    stale_metadata = stale.with_name(stale.name + ".json")
+    orphan_metadata = root / (
+        ".dest.bin.local-shell-mcp-transfer-orphan.tmp.json"
+    )
+    recent = root / ".dest.bin.local-shell-mcp-transfer-recent.tmp"
+    stale.write_bytes(b"stale")
+    stale_metadata.write_text("{}", encoding="utf-8")
+    orphan_metadata.write_text("{}", encoding="utf-8")
+    recent.write_bytes(b"recent")
+    old = time.time() - 2 * 24 * 60 * 60
+    os.utime(stale, (old, old))
+    os.utime(stale_metadata, (old, old))
+    os.utime(orphan_metadata, (old, old))
+
+    begin = transfer_begin_write("dest.bin", expected_bytes=0)
+
+    assert not stale.exists()
+    assert not stale_metadata.exists()
+    assert not orphan_metadata.exists()
+    assert recent.read_bytes() == b"recent"
+    transfer_abort_write("dest.bin", begin.transfer_id)
+    recent.unlink()
+
+
+def _archive_with_files(path, files: dict[str, bytes]) -> None:
+    with tarfile.open(path, "w") as archive:
+        for name, payload in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+
+
+def test_unpack_limits_preserve_existing_destination(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, monkeypatch)
+    destination = root / "dst"
+    destination.mkdir()
+    (destination / "important.txt").write_text("keep", encoding="utf-8")
+    archive = root / "large.tar"
+    _archive_with_files(archive, {"payload.bin": b"1234"})
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TRANSFER_UNPACKED_BYTES", "3")
+    clear_settings_cache()
+
+    with pytest.raises(ValueError, match="expands to more than 3 bytes"):
+        transfer_unpack_archive(
+            "large.tar", "dst", overwrite=True, cleanup_archive=False
+        )
+
+    assert (destination / "important.txt").read_text(encoding="utf-8") == "keep"
+    assert archive.exists()
+    assert not list(root.glob(".dst.unpack-*"))
+
+
+def test_unpack_entry_limit_preserves_existing_destination(
+    tmp_path, monkeypatch
+):
+    root = _workspace(tmp_path, monkeypatch)
+    destination = root / "dst"
+    destination.mkdir()
+    (destination / "important.txt").write_text("keep", encoding="utf-8")
+    archive = root / "many.tar"
+    _archive_with_files(archive, {"one.txt": b"1", "two.txt": b"2"})
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TRANSFER_ARCHIVE_ENTRIES", "1")
+    clear_settings_cache()
+
+    with pytest.raises(ValueError, match="more than 1 entries"):
+        transfer_unpack_archive(
+            "many.tar", "dst", overwrite=True, cleanup_archive=False
+        )
+
+    assert (destination / "important.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_unpack_commits_before_reporting_backup_cleanup_failure(
+    tmp_path, monkeypatch
+):
+    root = _workspace(tmp_path, monkeypatch)
+    destination = root / "dst"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    archive = root / "new.tar"
+    _archive_with_files(archive, {"new.txt": b"new"})
+    original_remove = transfer_ops._remove_existing_path
+
+    def fail_backup_cleanup(path):
+        if ".backup-" in path.name:
+            raise OSError("simulated cleanup failure")
+        original_remove(path)
+
+    monkeypatch.setattr(
+        transfer_ops, "_remove_existing_path", fail_backup_cleanup
+    )
+
+    result = transfer_unpack_archive(
+        "new.tar", "dst", overwrite=True, cleanup_archive=True
+    )
+
+    assert result.completed is True
+    assert result.backup_deleted is False
+    assert (
+        result.cleanup_errors
+        and "simulated cleanup failure" in result.cleanup_errors[0]
+    )
+    assert (destination / "new.txt").read_bytes() == b"new"
+    assert not archive.exists()
+    backups = list(root.glob(".dst.backup-*"))
+    assert len(backups) == 1
+    original_remove(backups[0])
+
+
+def test_transfer_temp_pruning_preserves_recent_active_files(
+    tmp_path, monkeypatch
+):
+    root = _workspace(tmp_path, monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TMP_FILES", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TMP_BYTES", "0")
+    clear_settings_cache()
+    directory = root / ".local-shell-mcp" / "tmp"
+    directory.mkdir(parents=True)
+    stale = directory / "stale.bin"
+    recent = directory / "recent.bin"
+    stale.write_bytes(b"stale")
+    recent.write_bytes(b"recent")
+    old = time.time() - 2 * 24 * 60 * 60
+    os.utime(stale, (old, old))
+
+    transfer_alloc_temp_path(".bin")
+
+    assert not stale.exists()
+    assert recent.read_bytes() == b"recent"
+
+
+def test_unpack_commit_failure_restores_previous_destination(
+    tmp_path, monkeypatch
+):
+    root = _workspace(tmp_path, monkeypatch)
+    destination = root / "dst"
+    destination.mkdir()
+    (destination / "old.txt").write_text("old", encoding="utf-8")
+    archive = root / "new.tar"
+    _archive_with_files(archive, {"new.txt": b"new"})
+    original_replace = transfer_ops.os.replace
+
+    def fail_staging_commit(source, target):
+        if ".dst.unpack-" in str(source) and Path(target) == destination:
+            raise OSError("simulated commit failure")
+        return original_replace(source, target)
+
+    monkeypatch.setattr(transfer_ops.os, "replace", fail_staging_commit)
+
+    with pytest.raises(OSError, match="simulated commit failure"):
+        transfer_unpack_archive(
+            "new.tar", "dst", overwrite=True, cleanup_archive=True
+        )
+
+    assert (destination / "old.txt").read_text(encoding="utf-8") == "old"
+    assert not (destination / "new.txt").exists()
+    assert archive.exists()
+    assert not list(root.glob(".dst.unpack-*"))
+    assert not list(root.glob(".dst.backup-*"))

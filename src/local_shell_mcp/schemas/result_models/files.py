@@ -15,6 +15,11 @@ class EntryInfo(BaseModel):
     modified: float = Field(
         description="Last modification time as a Unix timestamp."
     )
+    target: str | None = Field(
+        default=None,
+        description="Raw symlink target for link entries, otherwise omitted.",
+        exclude_if=lambda value: value is None,
+    )
 
 
 class ListFilesOutput(BaseModel):

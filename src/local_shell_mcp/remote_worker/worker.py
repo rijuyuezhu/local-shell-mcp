@@ -1,33 +1,62 @@
 """Remote worker-side tool dispatch, process loop, and CLI helpers."""
 
-import argparse
 import asyncio
 import contextlib
 import json
+import math
 import os
 import shutil
 import socket
 import subprocess
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, cast
 
+from ..agent_bridge.redaction import _redact_text
+from ..errors import tool_error_payload
 from ..remote.constants import (
     REMOTE_API_PREFIX,
     REMOTE_WORKER_IDENTITY_FILE_NAME,
 )
 from ..remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
+from ..version import version_info
+from . import runtime as worker_runtime
 from .compat import _jsonable as to_jsonable
+
+
+class WorkerHttpError(RuntimeError):
+    """HTTP response error with a status code usable by retry policy."""
+
+    def __init__(self, url: str, status_code: int, detail: str) -> None:
+        self.url = url
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(
+            f"worker HTTP POST {_redact_text(url)} failed with {status_code}: "
+            f"{_redact_text(detail)}"
+        )
 
 
 def _handled_remote_exception(exc: Exception) -> dict[str, Any]:
     """Convert local helper failures into serializable worker-side error payloads."""
-    return {"ok": False, "error": type(exc).__name__, "message": str(exc)}
+    workspace_root = os.getenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT") or "."
+    data = tool_error_payload(exc, workspace_root=workspace_root)
+    return {
+        "ok": False,
+        "error": str(data["error_type"]),
+        "message": str(data["message"]),
+        "data": data,
+    }
 
 
 WORKER_TOOL_NAMES = REMOTE_WORKER_TOOL_NAMES
+_WORKER_CONNECT_TIMEOUT_S = 10.0
+_WORKER_POLL_TIMEOUT_GRACE_S = 10.0
 
 
 async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
@@ -45,48 +74,56 @@ def _parse_worker_http_json(
     """Validate one worker HTTP response and return its JSON object body."""
     if not 200 <= status_code < 300:
         detail = response_body.strip() or "<empty response body>"
-        raise RuntimeError(
-            f"worker HTTP POST {url} failed with {status_code}: {detail}"
-        )
+        raise WorkerHttpError(url, status_code, detail)
     try:
         decoded = json.loads(response_body)
     except json.JSONDecodeError as exc:
         detail = response_body.strip() or "<empty response body>"
         raise RuntimeError(
-            f"worker HTTP POST {url} returned invalid JSON: {detail}"
+            f"worker HTTP POST {_redact_text(url)} returned invalid JSON: "
+            f"{_redact_text(detail)}"
         ) from exc
     if not isinstance(decoded, dict):
         raise RuntimeError(
-            f"worker HTTP POST {url} returned JSON {type(decoded).__name__}, expected object"
+            f"worker HTTP POST {_redact_text(url)} returned JSON "
+            f"{type(decoded).__name__}, expected object"
         )
     return cast(dict[str, Any], decoded)
 
 
 def _worker_post_json_with_curl(
-    url: str, body: bytes, headers: dict[str, str], timeout: float | None = None
+    url: str,
+    body: bytes,
+    headers: dict[str, str],
+    timeout: float | None = None,
+    connect_timeout: float | None = _WORKER_CONNECT_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """POST JSON through curl when available to better handle CDN/proxy edge cases."""
+    """POST JSON through curl with separate connection and request deadlines."""
     curl = shutil.which("curl")
     if not curl:
         raise FileNotFoundError("curl is not available")
     status_marker = "\nLOCAL_SHELL_MCP_HTTP_STATUS:"
-    command = [
-        curl,
-        "-sS",
-        "-L",
-        "-X",
-        "POST",
-        "-H",
-        "Content-Type: application/json",
-        "--data-binary",
-        "@-",
-        "-w",
-        f"{status_marker}%{{http_code}}",
-    ]
+    command = [curl]
+    if connect_timeout is not None:
+        command.extend(["--connect-timeout", f"{connect_timeout:g}"])
+    if timeout is not None:
+        command.extend(["--max-time", f"{timeout:g}"])
+    command.extend(
+        [
+            "-sS",
+            "-L",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            "@-",
+            "-w",
+            f"{status_marker}%{{http_code}}",
+        ]
+    )
     for name, value in headers.items():
         command.extend(["-H", f"{name}: {value}"])
-    if timeout is not None:
-        command[1:1] = ["--max-time", str(timeout)]
     command.append(url)
     completed = subprocess.run(
         command, input=body, capture_output=True, check=False
@@ -103,7 +140,8 @@ def _worker_post_json_with_curl(
             "\n".join(detail_parts) or "curl exited without a response body"
         )
         raise RuntimeError(
-            f"worker HTTP POST {url} failed with curl exit {completed.returncode} (HTTP {status_code}): {detail}"
+            f"worker HTTP POST {_redact_text(url)} failed with curl exit "
+            f"{completed.returncode} (HTTP {status_code}): {_redact_text(detail)}"
         )
     return _parse_worker_http_json(url, status_code, response_body)
 
@@ -135,17 +173,40 @@ def _worker_post_json(
     payload: dict[str, Any],
     headers: dict[str, str] | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = _WORKER_CONNECT_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """POST a JSON worker request using curl when available or urllib otherwise."""
+    """POST a JSON worker request with bounded connection and request time."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("worker server URL must use absolute HTTP(S)")
     body = json.dumps(payload).encode("utf-8")
     request_headers = headers or {}
     if shutil.which("curl"):
-        return _worker_post_json_with_curl(url, body, request_headers, timeout)
+        return _worker_post_json_with_curl(
+            url, body, request_headers, timeout, connect_timeout
+        )
+    if timeout is not None and parsed.path.endswith(
+        f"{REMOTE_API_PREFIX}/poll"
+    ):
+        raise RuntimeError("curl is required for bounded worker poll requests")
     return _worker_post_json_with_urllib(url, body, request_headers, timeout)
 
 
 _WORKER_RETRY_INITIAL_DELAY_S = 1.0
 _WORKER_RETRY_MAX_DELAY_S = 30.0
+
+
+def _worker_poll_request_timeout_s(data: dict[str, Any]) -> float | None:
+    """Return a request timeout with transport grace from controller data."""
+    if "poll_timeout_s" not in data:
+        return None
+    try:
+        poll_timeout_s = float(data["poll_timeout_s"])
+    except TypeError, ValueError:
+        return None
+    if not math.isfinite(poll_timeout_s) or poll_timeout_s <= 0:
+        return None
+    return poll_timeout_s + _WORKER_POLL_TIMEOUT_GRACE_S
 
 
 def _worker_retry_delay(attempt: int) -> float:
@@ -157,12 +218,20 @@ def _worker_retry_delay(attempt: int) -> float:
 
 
 def _worker_log_retry(operation: str, exc: Exception, delay_s: float) -> None:
-    """Print one retry status line to stderr for worker operators."""
+    """Print one credential-redacted retry status line for worker operators."""
     print(
-        f"Status: {operation} failed: {exc}. Retrying in {delay_s:g}s...",
+        f"Status: {operation} failed: {_redact_text(str(exc))}. "
+        f"Retrying in {delay_s:g}s...",
         file=sys.stderr,
         flush=True,
     )
+
+
+def _worker_error_is_retryable(exc: Exception) -> bool:
+    """Return whether a failed worker request should be retried."""
+    if isinstance(exc, WorkerHttpError):
+        return exc.status_code in {408, 425, 429} or exc.status_code >= 500
+    return not isinstance(exc, ValueError)
 
 
 async def _worker_post_json_forever(
@@ -180,6 +249,8 @@ async def _worker_post_json_forever(
                 _worker_post_json, url, payload, headers, timeout
             )
         except Exception as exc:
+            if not _worker_error_is_retryable(exc):
+                raise
             delay_s = _worker_retry_delay(attempt)
             attempt += 1
             _worker_log_retry(operation, exc, delay_s)
@@ -206,7 +277,9 @@ def _normalized_env_path(path: str) -> str:
 def _env_is_absent_or_default(name: str, default: str) -> bool:
     """Return whether a worker env path is unset or still the package default."""
     value = os.getenv(name)
-    return not value or _normalized_env_path(value) == default
+    return not value or _normalized_env_path(value) == _normalized_env_path(
+        default
+    )
 
 
 def _configure_worker_runtime_env(workdir: str) -> None:
@@ -230,15 +303,17 @@ def _worker_identity_path() -> Path:
 
 
 def _read_worker_identity(
-    server: str, requested_name: str | None = None
+    server: str | None = None, requested_name: str | None = None
 ) -> dict[str, Any] | None:
-    """Read a stored worker identity when it matches the target server/name."""
+    """Read a stored worker identity, optionally matching server and name."""
     path = _worker_identity_path()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
-    if not isinstance(data, dict) or data.get("server") != server:
+    if not isinstance(data, dict):
+        return None
+    if server is not None and data.get("server") != server:
         return None
     stored_name = str(data.get("name") or "")
     if requested_name and stored_name != requested_name:
@@ -248,11 +323,25 @@ def _read_worker_identity(
     return data
 
 
+def load_worker_identity() -> dict[str, Any]:
+    """Load the complete stored identity required by ``worker run``."""
+    identity = _read_worker_identity()
+    if identity is None:
+        raise ValueError("no stored worker identity; run worker enroll first")
+    required = ("server", "name", "access", "workdir")
+    missing = [name for name in required if not str(identity.get(name) or "")]
+    if missing:
+        raise ValueError(
+            f"stored worker identity is incomplete: missing {missing[0]}"
+        )
+    return identity
+
+
 def _write_worker_identity(data: dict[str, Any]) -> None:
     """Persist a worker identity atomically with owner-only permissions where possible."""
     path = _worker_identity_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     tmp_path.write_text(
         json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
     )
@@ -269,10 +358,11 @@ def _delete_worker_identity() -> None:
 
 def _worker_identity_rejected(exc: Exception) -> bool:
     """Return whether a resume failure means the persisted identity is invalid."""
+    if isinstance(exc, WorkerHttpError) and exc.status_code == 401:
+        return True
     message = str(exc).lower()
     return (
-        "failed with 401" in message
-        or "invalid worker identity" in message
+        "invalid worker identity" in message
         or "identity is no longer valid" in message
     )
 
@@ -299,10 +389,107 @@ async def _worker_resume_or_none(
                 )
                 _delete_worker_identity()
                 return None
+            if not _worker_error_is_retryable(exc):
+                raise
             delay_s = _worker_retry_delay(attempt)
             attempt += 1
             _worker_log_retry("resume", exc, delay_s)
             await asyncio.sleep(delay_s)
+
+
+async def _worker_job_heartbeat_loop(
+    task: asyncio.Task[Any],
+    server: str,
+    headers: dict[str, str],
+    heartbeat_interval_s: float,
+) -> None:
+    """Refresh liveness until one worker job finishes or heartbeat becomes fatal."""
+    interval = max(0.01, heartbeat_interval_s)
+    while not task.done():
+        await asyncio.sleep(interval)
+        if task.done():
+            return
+        try:
+            await asyncio.to_thread(
+                _worker_post_json,
+                f"{server}{REMOTE_API_PREFIX}/heartbeat",
+                {},
+                headers,
+                30,
+            )
+        except Exception as exc:
+            if not _worker_error_is_retryable(exc):
+                return
+            _worker_log_retry("heartbeat", exc, interval)
+
+
+async def _execute_worker_job_with_heartbeat(
+    job: dict[str, Any],
+    server: str,
+    headers: dict[str, str],
+    heartbeat_interval_s: float,
+) -> Any:
+    """Execute one job while independently refreshing control-side liveness."""
+    task = asyncio.create_task(
+        execute_worker_tool(job["tool"], dict(job.get("args") or {}))
+    )
+    heartbeat = asyncio.create_task(
+        _worker_job_heartbeat_loop(
+            task,
+            server,
+            headers,
+            heartbeat_interval_s,
+        )
+    )
+    try:
+        return await task
+    finally:
+        heartbeat.cancel()
+        await asyncio.gather(heartbeat, return_exceptions=True)
+
+
+async def _submit_worker_result_with_heartbeat(
+    result: dict[str, Any],
+    server: str,
+    headers: dict[str, str],
+    heartbeat_interval_s: float,
+) -> dict[str, Any]:
+    """Retry one result submission while preserving worker liveness."""
+    submission = asyncio.create_task(
+        _worker_post_json_forever(
+            f"{server}{REMOTE_API_PREFIX}/result",
+            result,
+            headers,
+            30,
+            "submit result",
+        )
+    )
+
+    async def heartbeat_loop() -> None:
+        interval = max(0.01, heartbeat_interval_s)
+        while not submission.done():
+            await asyncio.sleep(interval)
+            if submission.done():
+                return
+            try:
+                await asyncio.to_thread(
+                    _worker_post_json,
+                    f"{server}{REMOTE_API_PREFIX}/heartbeat",
+                    {},
+                    headers,
+                    30,
+                )
+            except Exception as exc:
+                if not _worker_error_is_retryable(exc):
+                    return
+                _worker_log_retry("heartbeat", exc, interval)
+
+    heartbeat = asyncio.create_task(heartbeat_loop())
+    try:
+        return await submission
+    finally:
+        heartbeat.cancel()
+        await asyncio.gather(heartbeat, return_exceptions=True)
 
 
 def worker_capabilities() -> list[str]:
@@ -314,12 +501,14 @@ def worker_capabilities() -> list[str]:
         "search",
         "python",
         "transfer",
+        "http-transfer-v1",
     ]
 
 
 def worker_info(workdir: str) -> dict[str, Any]:
     """Return worker identity, workspace, platform, Python, and capability metadata."""
     return {
+        "lsm_version": str(version_info().get("version") or ""),
         "hostname": socket.gethostname(),
         "user": os.getenv("USER") or os.getenv("USERNAME") or "unknown",
         "cwd": os.getcwd(),
@@ -329,16 +518,62 @@ def worker_info(workdir: str) -> dict[str, Any]:
     }
 
 
-async def run_worker(
+def _worker_poll_payload(
+    worker_version: str,
+    running_runtime: dict[str, str],
+    poll_request_timeout_s: float | None,
+) -> dict[str, Any]:
+    """Build one poll report and advertise the worker-side deadline."""
+    payload = worker_runtime.worker_poll_payload(
+        worker_version, running_runtime
+    )
+    if poll_request_timeout_s is not None:
+        payload["poll_timeout_s"] = max(
+            0.001, poll_request_timeout_s - _WORKER_POLL_TIMEOUT_GRACE_S
+        )
+    return payload
+
+
+async def _install_and_reexec_worker(
+    instruction: dict[str, Any],
+    *,
+    server: str,
+    worker_version: str,
+) -> None:
+    """Install one required runtime and replace the idle worker process."""
+    installed = await asyncio.to_thread(
+        worker_runtime.install_runtime,
+        server,
+        instruction,
+        current_version=worker_version,
+    )
+    expected_digest = str(instruction.get("sha256") or "")
+    expected_version = str(instruction.get("version") or "")
+    if (
+        installed.get("sha256") != expected_digest
+        or installed.get("version") != expected_version
+    ):
+        raise RuntimeError(
+            "installed worker runtime does not match instruction"
+        )
+    print(
+        f"Status: worker runtime {expected_version} ({expected_digest[:12]}) installed; restarting.",
+        file=sys.stderr,
+        flush=True,
+    )
+    worker_runtime.reexec_worker()
+    raise RuntimeError("worker restart returned unexpectedly")
+
+
+async def _enroll_or_resume_worker(
     server: str,
     invite: str,
     name: str | None = None,
     workdir: str | None = None,
-    persist: bool = False,
-) -> None:
-    """Register with a server, poll for jobs, execute tools locally, and submit results until stopped."""
-    workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
-    _configure_worker_runtime_env(workdir)
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Enroll or resume one identity and persist it without entering the poll loop."""
+    resolved_workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
+    _configure_worker_runtime_env(resolved_workdir)
     from ..config.settings import clear_settings_cache
 
     clear_settings_cache()
@@ -346,9 +581,9 @@ async def run_worker(
     register_payload = {
         "invite": invite,
         "name": name,
-        "workdir": workdir,
+        "workdir": resolved_workdir,
         "capabilities": worker_capabilities(),
-        "info": worker_info(workdir),
+        "info": worker_info(resolved_workdir),
     }
     identity = _read_worker_identity(server, name)
     body: dict[str, Any] | None = None
@@ -364,6 +599,10 @@ async def run_worker(
             30,
         )
     if body is None:
+        if not invite:
+            raise ValueError(
+                "an invite is required when no resumable worker identity exists"
+            )
         body = await _worker_post_json_forever(
             f"{server}{REMOTE_API_PREFIX}/register",
             register_payload,
@@ -381,6 +620,72 @@ async def run_worker(
             raise RuntimeError(body.get("message") or body)
         data = body["data"]
         machine_name = data["name"]
+    stored = {
+        "server": server,
+        "name": machine_name,
+        "access": access,
+        "workdir": resolved_workdir,
+    }
+    _write_worker_identity(stored)
+    return stored, data
+
+
+async def enroll_worker(
+    server: str,
+    invite: str,
+    name: str | None = None,
+    workdir: str | None = None,
+) -> dict[str, Any]:
+    """Enroll or resume one worker identity and exit without polling."""
+    from .lifecycle import worker_run_lock
+
+    with worker_run_lock():
+        identity, _data = await _enroll_or_resume_worker(
+            server, invite, name, workdir
+        )
+    return identity
+
+
+async def run_worker(
+    server: str,
+    invite: str,
+    name: str | None = None,
+    workdir: str | None = None,
+) -> None:
+    """Run one worker process while holding its lifecycle lock."""
+    from .lifecycle import worker_run_lock
+
+    with worker_run_lock():
+        await _run_worker_locked(server, invite, name, workdir)
+
+
+async def run_stored_worker() -> None:
+    """Run using only the private persisted identity."""
+    identity = load_worker_identity()
+    await run_worker(
+        str(identity["server"]),
+        "",
+        str(identity["name"]),
+        str(identity["workdir"]),
+    )
+
+
+async def _run_worker_locked(
+    server: str,
+    invite: str,
+    name: str | None = None,
+    workdir: str | None = None,
+) -> None:
+    """Enroll or resume, then poll and execute jobs under the worker lock."""
+    identity, data = await _enroll_or_resume_worker(
+        server, invite, name, workdir
+    )
+    server = str(identity["server"])
+    machine_name = str(identity["name"])
+    access = str(identity["access"])
+    workdir = str(identity["workdir"])
+    heartbeat_interval_s = float(data.get("heartbeat_interval_s") or 15)
+    poll_request_timeout_s = _worker_poll_request_timeout_s(data)
     _write_worker_identity(
         {
             "server": server,
@@ -399,61 +704,77 @@ async def run_worker(
         flush=True,
     )
     headers = {"Author" + "ization": "B" + "earer " + access}
+    worker_version = str(version_info().get("version") or "")
+    running_runtime = worker_runtime.current_runtime_identity()
+    upgrade_attempt = 0
     while True:
         poll_body = await _worker_post_json_forever(
-            f"{server}{REMOTE_API_PREFIX}/poll", {}, headers, None, "poll"
+            f"{server}{REMOTE_API_PREFIX}/poll",
+            _worker_poll_payload(
+                worker_version, running_runtime, poll_request_timeout_s
+            ),
+            headers,
+            poll_request_timeout_s,
+            "poll",
         )
         payload = poll_body.get("data", {})
-        job = payload.get("job") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            continue
+        updated_poll_request_timeout_s = _worker_poll_request_timeout_s(payload)
+        if updated_poll_request_timeout_s is not None:
+            poll_request_timeout_s = updated_poll_request_timeout_s
+        upgrade = payload.get("upgrade")
+        if isinstance(upgrade, dict) and upgrade.get("required") is True:
+            try:
+                await _install_and_reexec_worker(
+                    upgrade,
+                    server=server,
+                    worker_version=worker_version,
+                )
+            except SystemExit:
+                raise
+            except Exception as exc:
+                delay_s = _worker_retry_delay(upgrade_attempt)
+                upgrade_attempt += 1
+                _worker_log_retry("upgrade", exc, delay_s)
+                await asyncio.sleep(delay_s)
+            continue
+        upgrade_attempt = 0
+        job = payload.get("job")
         if not job:
             continue
+        expires_at = float(job.get("expires_at") or 0)
+        if expires_at and expires_at < time.time():
+            out = {
+                "job_id": job.get("id"),
+                "ok": False,
+                "error": "TimeoutError",
+                "message": "remote job expired before execution",
+            }
+            await _submit_worker_result_with_heartbeat(
+                out,
+                server,
+                headers,
+                heartbeat_interval_s,
+            )
+            continue
         try:
-            result = await execute_worker_tool(
-                job["tool"], dict(job.get("args") or {})
+            result = await _execute_worker_job_with_heartbeat(
+                job, server, headers, heartbeat_interval_s
             )
             out = {"job_id": job["id"], "ok": True, "data": to_jsonable(result)}
         except Exception as exc:
             out = {"job_id": job.get("id"), **_handled_remote_exception(exc)}
-        await _worker_post_json_forever(
-            f"{server}{REMOTE_API_PREFIX}/result",
+        await _submit_worker_result_with_heartbeat(
             out,
+            server,
             headers,
-            30,
-            "submit result",
+            heartbeat_interval_s,
         )
-
-
-def add_worker_cli_args(parser: argparse.ArgumentParser) -> None:
-    """Add remote-worker connection and lifecycle options to the shared CLI parser."""
-    parser.add_argument("--server", required=True)
-    parser.add_argument("--invite", required=True)
-    parser.add_argument("--name", default=None)
-    parser.add_argument("--workdir", default=None)
-    parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Reserved for future user-service installation",
-    )
-
-
-def run_worker_from_args(args: argparse.Namespace) -> None:
-    """Run a remote worker from parsed CLI arguments."""
-    try:
-        asyncio.run(
-            run_worker(
-                args.server, args.invite, args.name, args.workdir, args.persist
-            )
-        )
-    except KeyboardInterrupt:
-        print("\nStatus: disconnected by user.", file=sys.stderr, flush=True)
-        raise SystemExit(130) from None
 
 
 def run_worker_cli(argv: list[str] | None = None) -> None:
-    """Entry point for launching a standalone remote worker process."""
-    parser = argparse.ArgumentParser(
-        description="Connect this machine to a local-shell-mcp control server"
-    )
-    add_worker_cli_args(parser)
-    args = parser.parse_args(argv)
-    run_worker_from_args(args)
+    """Run the standalone worker-only CLI used by source bundles."""
+    from .cli import run_worker_cli as run_cli
+
+    run_cli(argv)

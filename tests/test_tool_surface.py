@@ -5,16 +5,16 @@ import pytest
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
-import local_shell_mcp.server.http.tool_routes as http_tool_routes_module
+import local_shell_mcp.executors.http.tool_routes as http_tool_routes_module
 from local_shell_mcp import __version__
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.executors.http.app import build_http_app
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_NAMES,
     REMOTE_WORKER_TOOL_SPECS,
 )
 from local_shell_mcp.remote_worker.worker import WORKER_TOOL_NAMES
-from local_shell_mcp.server.http.app import build_http_app
-from local_shell_mcp.server.mcp.app import build_mcp
 from local_shell_mcp.tools.contracts import (
     HttpMethod,
     HttpToolRoute,
@@ -33,6 +33,7 @@ from local_shell_mcp.tools.local_handlers import (
 from tests.helpers import mcp_text
 
 LOCAL_MCP_TOOL_NAMES = {
+    "audit_tail",
     "bash",
     "read",
     "search",
@@ -44,6 +45,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "version",
     "run_python_code",
     "send_persistent_shell_input",
+    "resize_persistent_shell",
     "read_persistent_shell_output",
     "kill_persistent_shell",
     "list_persistent_shells",
@@ -53,6 +55,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "write_file",
     "edit_lines",
     "hashline_edit",
+    "apply_patch",
     "delete_file_or_dir",
     "create_file_link",
     "list_file_links",
@@ -61,6 +64,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "read_todos",
     "write_todos",
     "job",
+    "view_image",
 }
 
 
@@ -133,6 +137,7 @@ async def test_model_facing_tools_require_session_id_by_default(
         "workspace_search",
         "fetch",
         "send_persistent_shell_input",
+        "resize_persistent_shell",
         "read_persistent_shell_output",
         "kill_persistent_shell",
         "list_persistent_shells",
@@ -217,9 +222,13 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
         "hashline_edit when editing copied read/search rows"
         in descriptions["bash"]
     )
+    assert "timeout default/cap: 10/120 seconds" in descriptions["bash"]
     assert (
         "read/search/hashline_edit/edit_lines/write_file"
         in descriptions["run_python_code"]
+    )
+    assert (
+        "timeout default/cap: 10/120 seconds" in descriptions["run_python_code"]
     )
     assert (
         "read, search, hashline_edit, edit_lines"
@@ -641,7 +650,7 @@ def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
             ]
 
     monkeypatch.setattr(
-        "local_shell_mcp.server.http.tool_routes.discover_tool_registries",
+        "local_shell_mcp.executors.http.tool_routes.discover_tool_registries",
         lambda: [RegistryWithUnsupportedRoute()],
     )
 
@@ -721,8 +730,14 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
             for spec in REMOTE_WORKER_TOOL_SPECS
             if spec.expose_http
         }
+        if agent_bridge_enabled == "false":
+            internal_worker_handlers -= {
+                "list_agent_skills",
+                "activate_agent_skill",
+                "read_agent_skill_file",
+            }
 
-        assert route_tool_names == mcp_tool_names
+        assert route_tool_names == mcp_tool_names - {"view_image"}
         assert handler_tool_names == mcp_tool_names | internal_worker_handlers
     finally:
         local_tool_handlers.cache_clear()
@@ -749,5 +764,5 @@ async def test_run_python_code_creates_temp_file(tmp_path, monkeypatch):
     assert payload.mode == "command"
     assert payload.cwd == str(tmp_path)
     assert payload.result["ok"] is True
-    assert payload.result["stdout"] == "py314\n"
+    assert payload.result["stdout"].splitlines() == ["py314"]
     assert payload.script_path.endswith(".py")

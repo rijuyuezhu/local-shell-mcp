@@ -9,16 +9,19 @@ from ...agent_bridge.tools import register_agent_bridge_dynamic_tools
 from ...config.settings import Settings
 from ...oauth.core.scopes import SUPPORTED_OAUTH_SCOPES
 from ...ops.agent import (
-    activate_agent_skill_execute,
+    activate_agent_skill_dispatch_execute,
     agent_config_status_execute,
     call_agent_mcp_tool_execute,
     list_agent_mcp_servers_execute,
     list_agent_mcp_tools_execute,
-    list_agent_skills_execute,
+    list_agent_skills_dispatch_execute,
+    read_agent_skill_file_dispatch_execute,
 )
 from ...schemas.input_models.agent import (
     AgentServerArg,
     AgentServerFilterArg,
+    AgentSessionIdArg,
+    AgentSkillFilePathArg,
     AgentSkillNameArg,
     AgentToolArg,
     AgentToolArgsArg,
@@ -30,10 +33,11 @@ from ...schemas.result_models.agent import (
     ListAgentMcpServersOutput,
     ListAgentMcpToolsOutput,
     ListAgentSkillsOutput,
+    ReadAgentSkillFileOutput,
 )
-from ...server.mcp.metadata import oauth_security_meta
 from ..contracts import McpToolContext
 from ..declarative import DeclarativeToolRegistry
+from ..metadata import oauth_security_meta
 
 
 def _agent_registry() -> AgentCapabilityRegistry:
@@ -67,6 +71,7 @@ agent_bridge_tool = AgentBridgeToolRegistry.get_tool_decorator()
     http_method="GET",
     http_path="/tools/agent_config_status",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def agent_config_status() -> AgentConfigStatusOutput:
     """Return agent bridge configuration status, discovered skills, configured MCP servers, and load errors."""
@@ -77,28 +82,49 @@ async def agent_config_status() -> AgentConfigStatusOutput:
     http_method="GET",
     http_path="/tools/list_agent_skills",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
-async def list_agent_skills() -> ListAgentSkillsOutput:
-    """List agent skills discovered from config. Use to find the exact skill name before activate_agent_skill; this only lists available instruction sets and does not load them."""
-    return list_agent_skills_execute(_agent_registry())
+async def list_agent_skills(
+    session_id: AgentSessionIdArg = None,
+) -> ListAgentSkillsOutput:
+    """List Skills in project/session, managed, then global priority order without loading instructions."""
+    return await list_agent_skills_dispatch_execute(session_id)
 
 
 @agent_bridge_tool(
     http_method="POST",
     http_path="/tools/activate_agent_skill",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def activate_agent_skill(
     name: AgentSkillNameArg,
+    session_id: AgentSessionIdArg = None,
 ) -> ActivateAgentSkillOutput:
-    """Load an agent skill's instructions. Parameter name must be the exact skill name returned by list_agent_skills; use before tasks that need that specialized guidance."""
-    return activate_agent_skill_execute(name, _agent_registry())
+    """Load one exact Skill from the same local or remote session registry used by list_agent_skills."""
+    return await activate_agent_skill_dispatch_execute(name, session_id)
+
+
+@agent_bridge_tool(
+    http_method="POST",
+    http_path="/tools/read_agent_skill_file",
+    enabled=_agent_bridge_enabled,
+    annotations="read_only",
+)
+async def read_agent_skill_file(
+    name: AgentSkillNameArg,
+    path: AgentSkillFilePathArg,
+    session_id: AgentSessionIdArg = None,
+) -> ReadAgentSkillFileOutput:
+    """Read a bounded related file from the same selected Skill source; activate the Skill first."""
+    return await read_agent_skill_file_dispatch_execute(name, path, session_id)
 
 
 @agent_bridge_tool(
     http_method="GET",
     http_path="/tools/list_agent_mcp_servers",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def list_agent_mcp_servers() -> ListAgentMcpServersOutput:
     """List configured agent MCP servers. Use to find exact server names and connection status before listing or calling bridged MCP tools."""
@@ -109,6 +135,7 @@ async def list_agent_mcp_servers() -> ListAgentMcpServersOutput:
     http_method="POST",
     http_path="/tools/list_agent_mcp_tools",
     enabled=_agent_bridge_enabled,
+    annotations="read_only",
 )
 async def list_agent_mcp_tools(
     server: AgentServerFilterArg = None,
@@ -146,4 +173,11 @@ def register_agent_bridge_dynamic_mcp(
         settings.agent_mcp_probe_timeout_s,
         None if settings.agent_dynamic_mcp_tools else False,
         None if settings.agent_dynamic_skill_tools else False,
+        {
+            "max_skills": settings.max_skills,
+            "max_skill_related_files": settings.max_skill_related_files,
+            "max_skill_scan_entries": settings.max_skill_scan_entries,
+            "max_skill_path_bytes": settings.max_skill_path_bytes,
+            "max_skill_entry_bytes": settings.max_file_read_bytes,
+        },
     )

@@ -1,10 +1,13 @@
 """Shell command, Python snippet, and persistent session operation helpers."""
 
 import asyncio
+import contextlib
 import os
 import re
 import shlex
+import shutil
 import signal
+import subprocess
 import sys
 import time
 import uuid
@@ -13,21 +16,35 @@ from typing import Any
 
 from ..audit import audit
 from ..config.settings import get_settings
+from ..errors import (
+    ShellExecutableNotFoundError,
+    process_start_not_found_error,
+)
 from ..schemas.result_models.shell import (
     CommandResult,
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     ReadPersistentShellOutput,
+    ResizePersistentShellOutput,
     RunPythonCodeOutput,
     RunShellCommandOutput,
     SendPersistentShellInputOutput,
     ShellExecutionOutput,
     StartPersistentShellOutput,
 )
+from ..terminal import conpty
+from ..terminal.contracts import (
+    PERSISTENT_SHELL_MAX_COLUMNS,
+    PERSISTENT_SHELL_MAX_ROWS,
+    PERSISTENT_SHELL_MIN_COLUMNS,
+    PERSISTENT_SHELL_MIN_ROWS,
+)
+from ..terminal.tmux import require_tmux, resolve_tmux
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
 )
+from ..utils.processes import new_process_group_kwargs
 from ..utils.serialization import to_jsonable
 from .utils.path import (
     relative_display,
@@ -39,6 +56,14 @@ from .utils.temp_file import write_temp_text_file
 GRACEFUL_TERMINATION_TIMEOUT_S = 5
 KILL_TERMINATION_TIMEOUT_S = 2
 READER_DRAIN_TIMEOUT_S = 2
+TOOL_WATCHDOG_SCHEDULING_MARGIN_S = 1
+SHELL_TIMEOUT_CLEANUP_GRACE_S = (
+    GRACEFUL_TERMINATION_TIMEOUT_S
+    + KILL_TERMINATION_TIMEOUT_S
+    + READER_DRAIN_TIMEOUT_S
+    + TOOL_WATCHDOG_SCHEDULING_MARGIN_S
+)
+SHELL_TIMEOUT_CLEANUP_TOOL_NAMES = frozenset({"bash", "run_python_code"})
 INTERNAL_SHELL_DEFAULT_TIMEOUT_S = 60
 INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
@@ -101,11 +126,37 @@ class TailBuffer:
         return self.total_bytes > len(self.data)
 
 
+def _shared_tail_bytes(
+    stdout: bytes, stderr: bytes, limit: int
+) -> tuple[bytes, bytes, bool]:
+    """Fit two stream tails into one byte budget without wasting idle-stream capacity."""
+    total = len(stdout) + len(stderr)
+    if total <= limit:
+        return stdout, stderr, False
+
+    stdout_keep = min(len(stdout), limit // 2)
+    stderr_keep = min(len(stderr), limit // 2)
+    remaining = limit - stdout_keep - stderr_keep
+    if remaining > 0:
+        stdout_extra = min(remaining, len(stdout) - stdout_keep)
+        stdout_keep += stdout_extra
+        remaining -= stdout_extra
+    if remaining > 0:
+        stderr_keep += min(remaining, len(stderr) - stderr_keep)
+
+    return (
+        stdout[-stdout_keep:] if stdout_keep else b"",
+        stderr[-stderr_keep:] if stderr_keep else b"",
+        True,
+    )
+
+
 def check_command_policy(command: str) -> None:
     """Reject shell commands matching configured denylist entries before execution."""
     settings = get_settings()
+    normalized = command.casefold()
     for denied in settings.command_denylist:
-        if denied and denied in command:
+        if denied and denied.casefold() in normalized:
             raise PermissionError(
                 f"Command contains denylisted fragment: {denied!r}"
             )
@@ -146,9 +197,20 @@ def run_shell_command_timeout(timeout_s: int | None) -> int:
     return max(1, min(timeout_s or default, cap))
 
 
-def tool_timeout_s() -> float:
-    """Return the MCP/HTTP tool watchdog timeout in seconds."""
-    return max(0.001, get_settings().tool_timeout_s)
+def tool_timeout_s(tool_name: str | None = None) -> float:
+    """Return the effective MCP/HTTP watchdog timeout for one tool."""
+    settings = get_settings()
+    configured = max(0.001, settings.tool_timeout_s)
+    if tool_name == "apply_patch":
+        from .patch import APPLY_PATCH_WATCHDOG_TIMEOUT_S
+
+        return max(configured, float(APPLY_PATCH_WATCHDOG_TIMEOUT_S))
+    if tool_name not in SHELL_TIMEOUT_CLEANUP_TOOL_NAMES:
+        return configured
+    cleanup_safe_shell_timeout = (
+        max(1, settings.run_shell_max_timeout_s) + SHELL_TIMEOUT_CLEANUP_GRACE_S
+    )
+    return max(configured, float(cleanup_safe_shell_timeout))
 
 
 def _effective_output_limit(max_output_bytes: int | None = None) -> int:
@@ -189,20 +251,88 @@ def _subprocess_env() -> dict[str, str]:
     return env
 
 
-async def _spawn_process(command: str, cwd: str) -> asyncio.subprocess.Process:
-    """Start a shell command in its own process group with workspace-aware cwd resolution."""
-    settings = get_settings()
-    return await asyncio.create_subprocess_exec(
-        settings.shell_executable,
-        "-lc",
-        command,
-        cwd=cwd,
-        env=_subprocess_env(),
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        start_new_session=True,
+def _effective_shell_executable() -> str:
+    """Return a usable configured shell, adapting the POSIX default on Windows."""
+    configured = str(get_settings().shell_executable).strip()
+    if os.name == "nt" and configured in {"", "/bin/bash"}:
+        return os.environ.get("COMSPEC") or "cmd.exe"
+    return configured or os.environ.get("SHELL") or "/bin/sh"
+
+
+def _shell_command_args(shell: str, command: str) -> list[str]:
+    """Build native argv for POSIX shells, PowerShell, or cmd.exe."""
+    name = os.path.basename(shell).lower()
+    if name in {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}:
+        return [shell, "-NoProfile", "-NonInteractive", "-Command", command]
+    if name in {"cmd", "cmd.exe"}:
+        return [shell, "/D", "/S", "/C", command]
+    return [shell, "-lc", command]
+
+
+def _shell_join_argv(argv: list[str]) -> str:
+    """Render argv for the native shell without losing Windows quoting."""
+    return (
+        subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
     )
+
+
+def _effective_python_executable() -> str:
+    """Return a usable Python executable, adapting the POSIX default on Windows."""
+    configured = str(get_settings().python_bin).strip()
+    if os.name == "nt" and configured in {"", "python3"}:
+        return sys.executable or "python"
+    return configured or sys.executable
+
+
+def _validated_env_overrides(env: dict[str, str] | None) -> dict[str, str]:
+    """Validate and normalize caller-provided subprocess environment overrides."""
+    if not env:
+        return {}
+    normalized: dict[str, str] = {}
+    for name, value in env.items():
+        if not _ENV_NAME_RE.match(name):
+            raise ValueError(f"Invalid environment variable name: {name!r}")
+        normalized[name] = str(value)
+    return normalized
+
+
+async def _spawn_process(
+    command: str,
+    cwd: str,
+    env: dict[str, str] | None = None,
+) -> asyncio.subprocess.Process:
+    """Start a native shell command in its own process group."""
+    shell = _effective_shell_executable()
+    child_env = _subprocess_env()
+    child_env.update(_validated_env_overrides(env))
+    process_group = new_process_group_kwargs()
+    common: dict[str, Any] = {
+        "cwd": cwd,
+        "env": child_env,
+        "stdin": asyncio.subprocess.DEVNULL,
+        "stdout": asyncio.subprocess.PIPE,
+        "stderr": asyncio.subprocess.PIPE,
+        **process_group,
+    }
+    shell_name = os.path.basename(shell).lower()
+    try:
+        if shell_name in {"cmd", "cmd.exe"}:
+            return await asyncio.create_subprocess_shell(
+                command,
+                executable=shell,
+                **common,
+            )
+        return await asyncio.create_subprocess_exec(
+            *_shell_command_args(shell, command),
+            **common,
+        )
+    except FileNotFoundError as exc:
+        raise process_start_not_found_error(
+            exc,
+            executable=shell,
+            command=command,
+            cwd=cwd,
+        ) from exc
 
 
 async def _read_stream_tail(
@@ -268,6 +398,7 @@ async def run_shell(
     cwd: str = ".",
     timeout_s: int | None = None,
     max_output_bytes: int | None = None,
+    env: dict[str, str] | None = None,
 ) -> CommandResult:
     """Execute a shell command with policy enforcement, concurrency limits, timeout handling, and bounded output capture."""
     check_command_policy(command)
@@ -280,14 +411,13 @@ async def run_shell(
     timed_out = False
     termination_error = ""
     output_limit = _effective_output_limit(max_output_bytes)
-    per_stream_limit = max(1, output_limit // 2)
-    stdout_tail = TailBuffer(per_stream_limit, bytearray())
-    stderr_tail = TailBuffer(per_stream_limit, bytearray())
+    stdout_tail = TailBuffer(output_limit, bytearray())
+    stderr_tail = TailBuffer(output_limit, bytearray())
     reader_tasks: list[asyncio.Task[None]] = []
 
     async def spawn_and_wait() -> None:
         nonlocal proc
-        proc = await _spawn_process(command, str(resolved_cwd))
+        proc = await _spawn_process(command, str(resolved_cwd), env)
         reader_tasks.extend(
             [
                 asyncio.create_task(
@@ -330,11 +460,14 @@ async def run_shell(
     if termination_error:
         stderr_tail.append(termination_error.encode())
 
-    stdout_b = bytes(stdout_tail.data)
-    stderr_b = bytes(stderr_tail.data)
+    stdout_b, stderr_b, total_truncated = _shared_tail_bytes(
+        bytes(stdout_tail.data), bytes(stderr_tail.data), output_limit
+    )
     stdout = stdout_b.decode(errors="replace")
     stderr = stderr_b.decode(errors="replace")
-    truncated = stdout_tail.truncated or stderr_tail.truncated
+    truncated = (
+        stdout_tail.truncated or stderr_tail.truncated or total_truncated
+    )
     duration_ms = int((time.time() - start) * 1000)
     result = CommandResult(
         ok=(proc is not None and proc.returncode == 0 and not timed_out),
@@ -364,6 +497,7 @@ async def run_shell_command_execute(
     cwd: str = ".",
     timeout_s: int | None = None,
     max_output_bytes: int | None = None,
+    env: dict[str, str] | None = None,
 ) -> RunShellCommandOutput:
     """Execute a shell command through the public API using stricter timeout defaults."""
     result = await run_shell(
@@ -371,19 +505,31 @@ async def run_shell_command_execute(
         cwd,
         run_shell_command_timeout(timeout_s),
         max_output_bytes,
+        env,
     )
     return RunShellCommandOutput(**result.model_dump())
 
 
 def _command_with_env(command: str, env: dict[str, str] | None) -> str:
-    """Return a shell command prefixed with validated environment assignments."""
-    if not env:
+    """Prefix PTY/job commands with shell-native environment assignments."""
+    overrides = _validated_env_overrides(env)
+    if not overrides:
         return command
-    assignments: list[str] = []
-    for name, value in env.items():
-        if not _ENV_NAME_RE.match(name):
-            raise ValueError(f"Invalid environment variable name: {name!r}")
-        assignments.append(f"{name}={shlex.quote(value)}")
+    shell_name = os.path.basename(_effective_shell_executable()).lower()
+    if shell_name in {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}:
+        assignments = [
+            f"$env:{name}='{value.replace(chr(39), chr(39) * 2)}'"
+            for name, value in overrides.items()
+        ]
+        return f"{'; '.join(assignments)}; {command}"
+    if shell_name in {"cmd", "cmd.exe"}:
+        assignments = [
+            f'set "{name}={value}"' for name, value in overrides.items()
+        ]
+        return f"{' && '.join(assignments)} && {command}"
+    assignments = [
+        f"{name}={shlex.quote(value)}" for name, value in overrides.items()
+    ]
     return f"{' '.join(assignments)} {command}"
 
 
@@ -443,7 +589,7 @@ async def bash_execute(
             result=_as_result_dict(result),
         )
     if async_:
-        from .jobs import job_start_execute
+        from ..jobs.runtime import job_start_execute
 
         result = await job_start_execute(
             session_id, command_with_env, cwd_text, name
@@ -455,7 +601,7 @@ async def bash_execute(
             result=_as_result_dict(result),
         )
     result = await run_shell_command_execute(
-        command_with_env, cwd_text, timeout_s, max_output_bytes
+        command, cwd_text, timeout_s, max_output_bytes, env
     )
     return ShellExecutionOutput(
         mode="command",
@@ -500,7 +646,9 @@ async def run_python_code_execute(
     script_path = await write_temp_text_file(
         "Python script", code, "script", "py"
     )
-    command = f"python3 {shlex.quote(str(script_path))}"
+    command = _shell_join_argv(
+        [_effective_python_executable(), str(script_path)]
+    )
     result = await bash_execute(
         session_id,
         command,
@@ -517,31 +665,215 @@ async def run_python_code_execute(
     )
 
 
+async def _spawn_exec_process(
+    argv: list[str],
+    cwd: str,
+    env: dict[str, str] | None = None,
+) -> asyncio.subprocess.Process:
+    """Start one direct executable without routing through the configured shell."""
+    child_env = _subprocess_env()
+    child_env.update(_validated_env_overrides(env))
+    process_group = new_process_group_kwargs()
+    command = _shell_join_argv(argv)
+    try:
+        return await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=cwd,
+            env=child_env,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            **process_group,
+        )
+    except FileNotFoundError as exc:
+        raise process_start_not_found_error(
+            exc,
+            executable=str(argv[0]),
+            command=command,
+            cwd=cwd,
+        ) from exc
+
+
+async def _run_exec(
+    argv: list[str],
+    *,
+    cwd: str = ".",
+    timeout_s: int | None = None,
+    env: dict[str, str] | None = None,
+) -> CommandResult:
+    """Run one trusted argv with the same bounds used by shell commands."""
+    if not argv:
+        raise ValueError("argv must not be empty")
+    command = _shell_join_argv(argv)
+    check_command_policy(command)
+    resolved_cwd = resolve_path(cwd, must_exist=True)
+    start = time.time()
+    audit("run_shell_command_start", command=command, cwd=str(resolved_cwd))
+    timeout = clamp_timeout(timeout_s)
+    proc: asyncio.subprocess.Process | None = None
+    timed_out = False
+    termination_error = ""
+    output_limit = _effective_output_limit()
+    stdout_tail = TailBuffer(output_limit, bytearray())
+    stderr_tail = TailBuffer(output_limit, bytearray())
+    reader_tasks: list[asyncio.Task[None]] = []
+
+    async def spawn_and_wait() -> None:
+        nonlocal proc
+        proc = await _spawn_exec_process(argv, str(resolved_cwd), env)
+        reader_tasks.extend(
+            [
+                asyncio.create_task(
+                    _read_stream_tail(proc.stdout, stdout_tail)
+                ),
+                asyncio.create_task(
+                    _read_stream_tail(proc.stderr, stderr_tail)
+                ),
+            ]
+        )
+        await proc.wait()
+
+    semaphore = _command_semaphore()
+    acquired = False
+    try:
+        try:
+            await asyncio.wait_for(semaphore.acquire(), timeout=timeout)
+            acquired = True
+            elapsed = max(0.0, time.time() - start)
+            await asyncio.wait_for(
+                spawn_and_wait(), timeout=max(0.001, timeout - elapsed)
+            )
+        except TimeoutError:
+            timed_out = True
+            if proc is None:
+                reader_tasks = []
+                termination_error = "Timed out while starting subprocess"
+            else:
+                termination_error = await _terminate_process_group(proc)
+        except asyncio.CancelledError:
+            if proc is not None:
+                await asyncio.shield(_terminate_process_group(proc))
+            raise
+    finally:
+        if acquired:
+            semaphore.release()
+
+    if reader_tasks:
+        await _finish_reader_tasks(reader_tasks)
+    if termination_error:
+        stderr_tail.append(termination_error.encode())
+    stdout_b, stderr_b, total_truncated = _shared_tail_bytes(
+        bytes(stdout_tail.data), bytes(stderr_tail.data), output_limit
+    )
+    duration_ms = int((time.time() - start) * 1000)
+    result = CommandResult(
+        ok=(proc is not None and proc.returncode == 0 and not timed_out),
+        exit_code=proc.returncode if proc is not None else None,
+        timed_out=timed_out,
+        duration_ms=duration_ms,
+        cwd=relative_display(resolved_cwd),
+        command=command,
+        stdout=stdout_b.decode(errors="replace"),
+        stderr=stderr_b.decode(errors="replace"),
+        truncated=(
+            stdout_tail.truncated or stderr_tail.truncated or total_truncated
+        ),
+    )
+    audit(
+        "run_shell_command_end",
+        command=command,
+        cwd=str(resolved_cwd),
+        exit_code=proc.returncode if proc is not None else None,
+        timed_out=timed_out,
+        duration_ms=duration_ms,
+        truncated=result.truncated,
+    )
+    return result
+
+
+def _tmux_session_cwd(args: list[str]) -> str:
+    """Return the new-session cwd used to resolve a relative configured shell."""
+    if args and args[0] == "new-session":
+        try:
+            return args[args.index("-c") + 1]
+        except ValueError, IndexError:
+            pass
+    return "."
+
+
+def _resolved_tmux_shell(session_cwd: str = ".") -> str:
+    """Resolve the configured persistent shell without trusting account $SHELL."""
+    configured = os.path.expanduser(_effective_shell_executable())
+    candidate = shutil.which(configured, path=_subprocess_env().get("PATH"))
+    if candidate:
+        return candidate
+    if os.path.isabs(configured):
+        return configured
+    return os.path.abspath(os.path.join(session_cwd, configured))
+
+
 def _tmux_session_name(name: str | None = None) -> str:
     """Normalize user-facing shell names into the tmux naming scheme used by the server."""
     base = name or f"mcp-{uuid.uuid4().hex[:8]}"
-    return re.sub(r"[^A-Za-z0-9_.-]", "-", base)[:64]
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "-", base.strip())[:64].strip(".-")
+    return cleaned or f"mcp-{uuid.uuid4().hex[:8]}"
 
 
 async def tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
-    """Run a tmux command with a bounded timeout and normalized command result payload."""
-    cmd = " ".join(shlex.quote(x) for x in [get_settings().tmux_bin, *args])
-    return await run_shell(cmd, cwd=".", timeout_s=timeout_s)
+    """Run tmux directly with a resolved configured shell in its environment."""
+    selection = require_tmux()
+    if selection.path is None:  # pragma: no cover - require_tmux enforces this.
+        raise RuntimeError("tmux executable resolution returned no path")
+    return await _run_exec(
+        [selection.path, *args],
+        cwd=".",
+        timeout_s=timeout_s,
+        env={"SHELL": _resolved_tmux_shell(_tmux_session_cwd(args))},
+    )
+
+
+def _use_conpty_persistent_shell_backend() -> bool:
+    """Return whether persistent shells should use the Windows ConPTY backend."""
+    return os.name == "nt"
 
 
 async def start_persistent_shell_execute(
     cwd: str = ".", name: str | None = None, command: str | None = None
 ) -> StartPersistentShellOutput:
-    """Start or replace a tmux-backed persistent shell in a resolved working directory."""
+    """Start a platform-native persistent shell in a resolved working directory."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
     shells = await list_persistent_shells_execute()
     max_sessions = max(1, get_settings().max_tmux_sessions)
     if len(shells.shells) >= max_sessions:
         raise RuntimeError(
-            f"Refusing to start more than {max_sessions} tmux sessions"
+            f"Refusing to start more than {max_sessions} persistent shell sessions"
         )
     shell_id = _tmux_session_name(name)
-    initial = command or get_settings().shell_executable
+    if _use_conpty_persistent_shell_backend():
+        if not conpty.is_available():
+            raise RuntimeError(
+                "pywinpty is required for persistent shells on Windows"
+            )
+        initial = conpty.initial_command(command)
+        check_command_policy(initial)
+        return await conpty.start_shell(
+            shell_id=shell_id,
+            cwd=resolved_cwd,
+            command=command,
+        )
+
+    configured_shell = _resolved_tmux_shell(str(resolved_cwd))
+    if (
+        shutil.which(configured_shell, path=_subprocess_env().get("PATH"))
+        is None
+    ):
+        raise ShellExecutableNotFoundError(
+            configured_shell,
+            command or configured_shell,
+            resolved_cwd,
+            "configured shell executable was not found or is not executable",
+        )
+    initial = command or configured_shell
     check_command_policy(initial)
     cmd = [
         "new-session",
@@ -550,21 +882,36 @@ async def start_persistent_shell_execute(
         shell_id,
         "-c",
         str(resolved_cwd),
-        initial,
     ]
+    if command is not None:
+        cmd.append(command)
     result = await tmux(cmd)
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
+    if command is None:
+        alive = await tmux(["has-session", "-t", f"={shell_id}"], timeout_s=5)
+        if not alive.ok:
+            with contextlib.suppress(Exception):
+                await tmux(["kill-session", "-t", f"={shell_id}"], timeout_s=5)
+            detail = (alive.stderr or alive.stdout).strip()
+            message = (
+                f"Persistent shell session exited during startup: {shell_id}"
+            )
+            if detail:
+                message += f" ({detail})"
+            raise RuntimeError(message)
     audit(
         "start_persistent_shell",
         shell_id=shell_id,
         cwd=str(resolved_cwd),
         command=initial,
+        backend="tmux",
     )
     return StartPersistentShellOutput(
         shell_id=shell_id,
         cwd=relative_display(resolved_cwd),
         command=initial,
+        backend="tmux",
     )
 
 
@@ -572,6 +919,8 @@ async def send_persistent_shell_input_execute(
     shell_id: str, input_text: str, enter: bool = True
 ) -> SendPersistentShellInputOutput:
     """Send input to a persistent shell, optionally appending Enter."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.send_shell(shell_id, input_text, enter)
     if input_text:
         result = await tmux(["send-keys", "-l", "-t", shell_id, input_text])
         if not result.ok:
@@ -585,6 +934,7 @@ async def send_persistent_shell_input_execute(
         shell_id=shell_id,
         bytes=len(input_text.encode()),
         enter=enter,
+        backend="tmux",
     )
     return SendPersistentShellInputOutput(
         shell_id=shell_id,
@@ -593,34 +943,125 @@ async def send_persistent_shell_input_execute(
     )
 
 
-async def read_persistent_shell_output_execute(
-    shell_id: str, lines: int = 200
-) -> ReadPersistentShellOutput:
-    """Read recent output from a persistent shell through tmux capture-pane."""
+def _validate_persistent_shell_size(cols: int, rows: int) -> tuple[int, int]:
+    columns = int(cols)
+    lines = int(rows)
+    if (
+        not PERSISTENT_SHELL_MIN_COLUMNS
+        <= columns
+        <= PERSISTENT_SHELL_MAX_COLUMNS
+    ):
+        raise ValueError(
+            f"cols must be between {PERSISTENT_SHELL_MIN_COLUMNS} and "
+            f"{PERSISTENT_SHELL_MAX_COLUMNS}"
+        )
+    if not PERSISTENT_SHELL_MIN_ROWS <= lines <= PERSISTENT_SHELL_MAX_ROWS:
+        raise ValueError(
+            f"rows must be between {PERSISTENT_SHELL_MIN_ROWS} and "
+            f"{PERSISTENT_SHELL_MAX_ROWS}"
+        )
+    return columns, lines
+
+
+async def resize_persistent_shell_execute(
+    shell_id: str, cols: int, rows: int
+) -> ResizePersistentShellOutput:
+    """Resize one persistent terminal when supported by its backend."""
+    columns, lines = _validate_persistent_shell_size(cols, rows)
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.resize_shell(shell_id, columns, lines)
     result = await tmux(
-        ["capture-pane", "-p", "-t", shell_id, "-S", f"-{max(1, lines)}"]
+        [
+            "resize-window",
+            "-t",
+            shell_id,
+            "-x",
+            str(columns),
+            "-y",
+            str(lines),
+        ]
     )
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
-    audit("read_persistent_shell_output", shell_id=shell_id, lines=lines)
-    return ReadPersistentShellOutput(shell_id=shell_id, output=result.stdout)
+    audit(
+        "resize_persistent_shell",
+        shell_id=shell_id,
+        cols=columns,
+        rows=lines,
+        backend="tmux",
+    )
+    return ResizePersistentShellOutput(
+        shell_id=shell_id,
+        cols=columns,
+        rows=lines,
+        resized=True,
+        backend="tmux",
+    )
+
+
+async def read_persistent_shell_output_execute(
+    shell_id: str,
+    lines: int = 200,
+    *,
+    preserve_ansi: bool = False,
+) -> ReadPersistentShellOutput:
+    """Read recent output from a persistent shell."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.read_shell(
+            shell_id,
+            lines,
+            preserve_ansi=preserve_ansi,
+        )
+    capture_args = ["capture-pane", "-p"]
+    if preserve_ansi:
+        capture_args.append("-e")
+    capture_args.extend(["-t", shell_id, "-S", f"-{max(1, lines)}"])
+    result = await tmux(capture_args)
+    if not result.ok:
+        raise RuntimeError(result.stderr or result.stdout)
+    audit(
+        "read_persistent_shell_output",
+        shell_id=shell_id,
+        lines=lines,
+        preserve_ansi=preserve_ansi,
+        backend="tmux",
+    )
+    return ReadPersistentShellOutput(
+        shell_id=shell_id,
+        output=result.stdout,
+        lines=lines,
+        backend="tmux",
+    )
 
 
 async def kill_persistent_shell_execute(
     shell_id: str,
 ) -> KillPersistentShellOutput:
-    """Terminate a persistent shell by its normalized tmux shell id."""
+    """Terminate a persistent shell by its normalized shell id."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.kill_shell(shell_id)
     result = await tmux(["kill-session", "-t", shell_id])
-    audit("kill_persistent_shell", shell_id=shell_id, ok=result.ok)
+    audit(
+        "kill_persistent_shell",
+        shell_id=shell_id,
+        ok=result.ok,
+        backend="tmux",
+    )
     return KillPersistentShellOutput(
         shell_id=shell_id,
         killed=result.ok,
         stderr=result.stderr,
+        backend="tmux",
     )
 
 
 async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
-    """List active tmux-backed persistent shells managed by local-shell-mcp."""
+    """List active persistent shells managed by local-shell-mcp."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.list_shells()
+    selection = resolve_tmux()
+    if selection.path is None and selection.source == "unavailable":
+        return ListPersistentShellsOutput(shells=[])
     result = await tmux(
         [
             "list-sessions",
@@ -630,7 +1071,6 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
         timeout_s=5,
     )
     if not result.ok:
-        # tmux exits nonzero when no server/sessions exist.
         return ListPersistentShellsOutput(shells=[])
     shells = []
     for line in result.stdout.splitlines():
@@ -641,6 +1081,7 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
                     "shell_id": parts[0],
                     "created": parts[1] if len(parts) > 1 else None,
                     "attached": parts[2] if len(parts) > 2 else None,
+                    "backend": "tmux",
                 }
             )
     return ListPersistentShellsOutput(shells=shells)

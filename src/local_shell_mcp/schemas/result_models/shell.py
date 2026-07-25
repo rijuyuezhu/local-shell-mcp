@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+PersistentShellBackend = str
+
 
 class CommandResult(BaseModel):
     """Completed subprocess result."""
@@ -79,7 +81,7 @@ class RunPythonCodeOutput(BaseModel):
 
 
 class StartPersistentShellOutput(BaseModel):
-    """Result of starting a tmux-backed persistent shell."""
+    """Result of starting a persistent shell."""
 
     model_config = ConfigDict(extra="allow")
     """Allow passthrough keys for dynamically shaped output payloads."""
@@ -99,6 +101,10 @@ class StartPersistentShellOutput(BaseModel):
         default=None,
         description="Initial command launched in the persistent shell, or the configured shell executable when omitted.",
     )
+    backend: PersistentShellBackend | None = Field(
+        default=None,
+        description="Persistent-shell backend selected for this session.",
+    )
 
 
 class SendPersistentShellInputOutput(BaseModel):
@@ -110,6 +116,22 @@ class SendPersistentShellInputOutput(BaseModel):
     )
     enter: bool = Field(
         description="Whether an Enter key was sent after the input text."
+    )
+
+
+class ResizePersistentShellOutput(BaseModel):
+    """Result of resizing a persistent terminal."""
+
+    shell_id: str = Field(description="Persistent shell that was resized.")
+    cols: int = Field(
+        description="Applied terminal width in character columns."
+    )
+    rows: int = Field(description="Applied terminal height in character rows.")
+    resized: bool = Field(
+        description="Whether the backend applied the requested size."
+    )
+    backend: PersistentShellBackend = Field(
+        description="Persistent-terminal backend that handled the resize request."
     )
 
 
@@ -128,6 +150,10 @@ class ReadPersistentShellOutput(BaseModel):
         default=None,
         description="Requested number of recent terminal lines, when returned by the implementation.",
     )
+    backend: PersistentShellBackend | None = Field(
+        default=None,
+        description="Persistent-shell backend that produced the output.",
+    )
 
 
 class KillPersistentShellOutput(BaseModel):
@@ -141,11 +167,15 @@ class KillPersistentShellOutput(BaseModel):
     )
     killed: bool | None = Field(
         default=None,
-        description="Whether tmux reported that the shell was killed successfully.",
+        description="Whether the persistent shell was killed successfully.",
     )
     stderr: str | None = Field(
         default=None,
-        description="Captured tmux stderr from the kill operation, when available.",
+        description="Captured backend error text from the kill operation, when available.",
+    )
+    backend: PersistentShellBackend | None = Field(
+        default=None,
+        description="Persistent-shell backend that handled termination.",
     )
 
 
@@ -166,10 +196,14 @@ class PersistentShellInfo(BaseModel):
     command: str | None = Field(
         default=None, description="Initial or current command, when known."
     )
+    backend: PersistentShellBackend | None = Field(
+        default=None,
+        description="Persistent-shell backend that owns this session.",
+    )
 
 
 class ListPersistentShellsOutput(BaseModel):
-    """Active tmux-backed persistent shells."""
+    """Active persistent shells."""
 
     model_config = ConfigDict(extra="allow")
     """Allow passthrough keys for dynamically shaped output payloads."""

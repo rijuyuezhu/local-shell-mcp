@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.server.mcp.app import build_mcp
+from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.tools.registry import (
     workspace_connector as workspace_connector_tools,
 )

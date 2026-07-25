@@ -1,13 +1,17 @@
 import json
 
+import pytest
+
 from local_shell_mcp.agent_bridge.models import (
     AgentBridgeManifest,
     AgentDynamicToolsConfig,
     AgentMcpServerConfig,
+    AgentSecretReference,
 )
 from local_shell_mcp.agent_bridge.redaction import _redact_text, redact_mapping
 from local_shell_mcp.agent_bridge.state import load_agent_manifest
 from local_shell_mcp.config.settings import (
+    AGENT_AUTH_STATE_DIR_NAME,
     AGENT_CONFIG_STATE_DIR_NAME,
     AUDIT_LOG_STATE_DIR_NAME,
     DEFAULT_STATE_DIR,
@@ -38,19 +42,37 @@ def test_workspace_root_does_not_rewrite_default_state_paths(
         settings.agent_config_dir
         == (DEFAULT_STATE_DIR / AGENT_CONFIG_STATE_DIR_NAME).resolve()
     )
+    assert (
+        settings.agent_auth_dir
+        == (DEFAULT_STATE_DIR / AGENT_AUTH_STATE_DIR_NAME).resolve()
+    )
     assert settings.agent_bridge_enabled is True
     assert settings.agent_mcp_probe_timeout_s == 5
 
 
-def test_agent_config_dir_is_derived_from_state_dir(monkeypatch, tmp_path):
-    config_dir = tmp_path / ".local-shell-mcp" / AGENT_CONFIG_STATE_DIR_NAME
+def test_dependent_state_paths_are_derived_from_custom_state_dir(
+    monkeypatch, tmp_path
+):
+    state_dir = tmp_path / "custom-state"
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path / "workspace")
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(config_dir.parent))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
     clear_settings_cache()
 
-    assert get_settings().agent_config_dir == config_dir.resolve()
+    settings = get_settings()
+    assert (
+        settings.agent_config_dir
+        == (state_dir / AGENT_CONFIG_STATE_DIR_NAME).resolve()
+    )
+    assert (
+        settings.audit_log_path
+        == (state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl").resolve()
+    )
+    assert (
+        settings.agent_auth_dir
+        == (state_dir / AGENT_AUTH_STATE_DIR_NAME).resolve()
+    )
 
 
 def test_load_agent_manifest_missing_config(tmp_path):
@@ -243,3 +265,88 @@ def test_agent_bridge_manifest_populates_python_field_names():
 
     assert manifest.mcp_servers["github"].command == "github-mcp-server"
     assert manifest.dynamic_tools.mcp is False
+
+
+def test_agent_mcp_manifest_accepts_secret_references_and_oauth_scopes():
+    secret_server = AgentMcpServerConfig.model_validate(
+        {
+            "type": "http",
+            "url": "https://secret.example.test/mcp",
+            "headers": {"Authorization": {"secret": "bearer_token"}},
+            "auth": {"mode": "secret"},
+        }
+    )
+    oauth_server = AgentMcpServerConfig.model_validate(
+        {
+            "type": "http",
+            "url": "https://oauth.example.test/mcp",
+            "auth": {
+                "mode": "oauth",
+                "scopes": ["tools.read", "tools.read", "tools.write"],
+            },
+        }
+    )
+
+    authorization = secret_server.headers["Authorization"]
+    assert isinstance(authorization, AgentSecretReference)
+    assert authorization.secret == "bearer_token"
+    assert secret_server.auth.mode == "secret"
+    assert oauth_server.auth.mode == "oauth"
+    assert oauth_server.auth.scopes == ["tools.read", "tools.write"]
+
+
+def test_agent_mcp_manifest_rejects_oauth_for_stdio():
+    with pytest.raises(ValueError, match="OAuth authentication"):
+        AgentMcpServerConfig.model_validate(
+            {
+                "type": "stdio",
+                "command": "example",
+                "auth": {"mode": "oauth"},
+            }
+        )
+
+
+def test_agent_mcp_manifest_rejects_invalid_secret_reference():
+    with pytest.raises(ValueError):
+        AgentMcpServerConfig.model_validate(
+            {
+                "type": "http",
+                "url": "https://example.test/mcp",
+                "headers": {"Authorization": {"secret": "bad secret"}},
+            }
+        )
+
+
+def test_agent_mcp_manifest_rejects_secret_mode_without_reference():
+    with pytest.raises(ValueError, match="requires at least one"):
+        AgentMcpServerConfig.model_validate(
+            {
+                "type": "http",
+                "url": "https://example.test/mcp",
+                "headers": {"Authorization": "literal"},
+                "auth": {"mode": "secret"},
+            }
+        )
+
+
+def test_agent_mcp_manifest_rejects_secret_reference_without_secret_mode():
+    with pytest.raises(ValueError, match="auth.mode='secret'"):
+        AgentMcpServerConfig.model_validate(
+            {
+                "type": "http",
+                "url": "https://example.test/mcp",
+                "headers": {"Authorization": {"secret": "token"}},
+            }
+        )
+
+
+def test_agent_mcp_manifest_rejects_blank_or_whitespace_oauth_scope():
+    for scope in ["", "tools read"]:
+        with pytest.raises(ValueError, match="OAuth scopes"):
+            AgentMcpServerConfig.model_validate(
+                {
+                    "type": "http",
+                    "url": "https://example.test/mcp",
+                    "auth": {"mode": "oauth", "scopes": [scope]},
+                }
+            )

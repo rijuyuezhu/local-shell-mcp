@@ -1,5 +1,7 @@
 """Manifest loading and configuration fingerprinting for the agent bridge."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -8,7 +10,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from .models import AgentBridgeManifest, LoadedAgentManifest
+from .models import AgentBridgeManifest, LoadedAgentManifest, SkillSource
 
 
 def agent_config_fingerprint(config_dir: Path) -> str:
@@ -94,6 +96,33 @@ def agent_config_fingerprint(config_dir: Path) -> str:
     for error in walk_errors:
         update("walk_error", type(error).__name__, error)
 
+    return digest.hexdigest()
+
+
+def agent_registry_fingerprint(
+    config_dir: Path,
+    sources: tuple[SkillSource, ...],
+    private_state_paths: tuple[Path, ...] = (),
+) -> str:
+    """Fingerprint manifest/Skill roots plus bounded private auth state files."""
+    digest = hashlib.sha256()
+    digest.update(agent_config_fingerprint(config_dir).encode("ascii"))
+    for source in sources:
+        digest.update(source.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(source.path).encode("utf-8", errors="replace"))
+        digest.update(b"\0")
+        digest.update(agent_config_fingerprint(source.path).encode("ascii"))
+    for path in private_state_paths:
+        digest.update(str(path).encode("utf-8", errors="replace"))
+        digest.update(b"\0")
+        try:
+            payload = path.read_bytes()
+        except FileNotFoundError:
+            payload = b"<missing>"
+        except OSError as exc:
+            payload = f"<error:{type(exc).__name__}>".encode("ascii")
+        digest.update(hashlib.sha256(payload).digest())
     return digest.hexdigest()
 
 

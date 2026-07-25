@@ -5,9 +5,13 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-import local_shell_mcp.server.mcp.app as mcp_app
+import local_shell_mcp.executors.mcp.app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
 from local_shell_mcp.oauth.http.middleware import AuthMiddleware
+from local_shell_mcp.ui.security import (
+    UI_LOCAL_TOKEN_HEADER,
+    get_or_create_ui_local_token,
+)
 
 
 async def _ok(request):
@@ -23,6 +27,11 @@ class _DummyMcp:
 
     def run(self, *, transport: str):
         self.transports.append(transport)
+
+
+class _DummySseMcp:
+    def sse_app(self):
+        return Starlette(routes=[Route("/sse", _ok)])
 
 
 def _route_paths(app: Starlette) -> list[str]:
@@ -45,7 +54,52 @@ def test_build_mcp_http_app_wraps_mcp_with_oauth_route_app():
         "/.well-known/oauth-protected-resource"
     )
     assert "/oauth/token" in paths
+    assert "/ui" in paths
+    assert "/api/ui/bootstrap" in paths
+    assert paths.index("/ui") < len(paths) - 1
+    assert paths.index("/api/ui/bootstrap") < len(paths) - 1
     assert paths[-1] == ""
+
+
+def test_mcp_http_app_serves_public_ui_and_native_tui_api(tmp_path):
+    configure_settings(
+        Settings(
+            mode="mcp",
+            auth_mode="oauth",
+            remote_enabled=False,
+            base_url="http://127.0.0.1:8765",
+            state_dir=tmp_path,
+            ui_enabled=True,
+        )
+    )
+
+    app = mcp_app.build_mcp_http_app(cast(Any, _DummyMcp()))
+    client = TestClient(app, client=("127.0.0.1", 4242))
+
+    page = client.get("/ui")
+    unauthenticated_api = client.get("/api/ui/bootstrap")
+    token = get_or_create_ui_local_token()
+    native_api = client.get(
+        "/api/ui/bootstrap",
+        headers={UI_LOCAL_TOKEN_HEADER: token},
+    )
+
+    assert page.status_code == 200
+    assert "local-shell-mcp" in page.text
+    assert unauthenticated_api.status_code == 401
+    assert native_api.status_code == 200
+    assert native_api.json()["data"]["machines"][0]["name"] == "local"
+
+
+def test_build_mcp_http_app_supports_sdk_sse_fallback():
+    configure_settings(
+        Settings(mode="mcp", auth_mode="none", remote_enabled=False)
+    )
+
+    app = mcp_app.build_mcp_http_app(cast(Any, _DummySseMcp()))
+
+    assert app is not None
+    assert _route_paths(app)[-1] == ""
 
 
 def test_build_mcp_http_app_includes_remote_routes_when_enabled():
