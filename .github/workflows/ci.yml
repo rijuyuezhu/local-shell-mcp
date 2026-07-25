@@ -296,8 +296,10 @@ jobs:
           test -f "$source_dir/tests/test_coverage_gate.py"
           test -f "$source_dir/tests/test_native_provenance.py"
           test -f "$source_dir/tests/test_tmux_helper.py"
-          test -f "$source_dir/scripts/build-tmux-helper.sh"
-          test -f "$source_dir/scripts/tmux-helper.Dockerfile"
+          test -f "$source_dir/scripts/release/build-tmux-helper.sh"
+          test -f "$source_dir/scripts/release/tmux-helper.Dockerfile"
+          test ! -e "$source_dir/scripts/build-tmux-helper.sh"
+          test ! -e "$source_dir/scripts/tmux-helper.Dockerfile"
           test -f "$source_dir/src/local_shell_mcp/helpers/README.md"
           test -f "$source_dir/src/local_shell_mcp/ui/contracts.py"
           test -f "$source_dir/src/local_shell_mcp/helpers/tmux.LICENSE"
@@ -365,7 +367,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          scripts/build-tmux-helper.sh /tmp/local-shell-mcp-tmux "${{ matrix.platform }}"
+          scripts/release/build-tmux-helper.sh /tmp/local-shell-mcp-tmux "${{ matrix.platform }}"
           /tmp/local-shell-mcp-tmux -L local-shell-mcp-ci new-session -d -s smoke "sh -lc 'printf ready; sleep 5'"
           sleep 1
           /tmp/local-shell-mcp-tmux -L local-shell-mcp-ci capture-pane -p -t smoke | grep -F ready

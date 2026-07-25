@@ -177,7 +177,7 @@ def main() -> int:
             "helper_platform: linux/arm64",
             "helper_tag: linux-x86_64",
             "helper_tag: linux-aarch64",
-            "scripts/build-tmux-helper.sh",
+            "scripts/release/build-tmux-helper.sh",
             "--add-binary",
             "pyi-archive_viewer",
             "local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux",

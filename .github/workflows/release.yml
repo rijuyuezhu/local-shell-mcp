@@ -273,7 +273,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: >-
-          scripts/build-tmux-helper.sh
+          scripts/release/build-tmux-helper.sh
           "src/local_shell_mcp/helpers/${{ matrix.helper_tag }}/tmux"
           "${{ matrix.helper_platform }}"
 

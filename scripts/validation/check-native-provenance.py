@@ -17,8 +17,8 @@ EXPECTED_HASHES = {
     "ui-opentui/scripts/compile-tui.ts": "2a51b3ccc85a5823d3ad28676ebadcce951651c517b9f15c6d77e00778d4abb8",
     "scripts/release/build-platform-wheel.py": "93968eb5af540f686cb83dc572b8c8445603b0ff0a540dafd676d3c1fa8010a5",
     "scripts/release/smoke-platform-wheel.py": "8c4b48d29850bfd532636c4afd11d747bd671cee3d696c41f3b4533198a3f653",
-    "scripts/tmux-helper.Dockerfile": "b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693",
-    "scripts/build-tmux-helper.sh": "9147408366451272afe90396e63dd76f1809e641e48fc7861a8a2fd2304d825a",
+    "scripts/release/tmux-helper.Dockerfile": "b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693",
+    "scripts/release/build-tmux-helper.sh": "a1a6e46a1f284cb17050055690a63df5df0e89d0e0a037f969e3b88a00d42cbf",
     "src/local_shell_mcp/helpers/tmux.LICENSE": "c031bd37f464c534277814f6aa38686fa023d094261d57fd2545ad592bb53ccd",
     "src/local_shell_mcp/helpers/opentui.NOTICES": "73d026453521d235c1df46f2dcf90943661258695e8eed87ba2c91e7caa03e61",
     "src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md": "2c6160ec8fb853f7e8f97d9b249e756c9b0ac44860a68b6bf4f1b0bcbc5c3741",
@@ -52,7 +52,7 @@ def main() -> int:
         ".github/workflows/release.yml": "BUN-1.3.14-LICENSE.md",
         "scripts/validation/check-release-matrix.py": '"BUN-1.3.14-LICENSE.md"',
         "mkdocs.yml": "maintenance/native-artifact-provenance.md",
-        "scripts/tmux-helper.Dockerfile": (
+        "scripts/release/tmux-helper.Dockerfile": (
             "ARG TMUX_SHA256="
             "16216bd0877170dfcc64157085ba9013610b12b082548c7c9542cc0103198951"
         ),

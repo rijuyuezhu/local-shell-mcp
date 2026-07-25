@@ -106,8 +106,8 @@ not carry generated tmux binaries.
 | Alpine builder image | `3.22` |
 | tmux source release | `3.5a` |
 | tmux source archive SHA-256 | `16216bd0877170dfcc64157085ba9013610b12b082548c7c9542cc0103198951` |
-| `scripts/tmux-helper.Dockerfile` | `b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693` |
-| `scripts/build-tmux-helper.sh` | `9147408366451272afe90396e63dd76f1809e641e48fc7861a8a2fd2304d825a` |
+| `scripts/release/tmux-helper.Dockerfile` | `b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693` |
+| `scripts/release/build-tmux-helper.sh` | `a1a6e46a1f284cb17050055690a63df5df0e89d0e0a037f969e3b88a00d42cbf` |
 | `src/local_shell_mcp/helpers/tmux.LICENSE` | `c031bd37f464c534277814f6aa38686fa023d094261d57fd2545ad592bb53ccd` |
 
 The Docker build downloads the exact tmux release archive and verifies the pinned
@@ -121,9 +121,9 @@ Rebuild on a matching Linux host, or use Docker Buildx for cross-architecture
 output:
 
 ```bash
-scripts/build-tmux-helper.sh /tmp/local-shell-mcp-tmux linux/amd64
+scripts/release/build-tmux-helper.sh /tmp/local-shell-mcp-tmux linux/amd64
 /tmp/local-shell-mcp-tmux -V
-scripts/build-tmux-helper.sh /tmp/local-shell-mcp-tmux-arm64 linux/arm64
+scripts/release/build-tmux-helper.sh /tmp/local-shell-mcp-tmux-arm64 linux/arm64
 ```
 
 Release checksums are the authority for generated helper and archive bytes.

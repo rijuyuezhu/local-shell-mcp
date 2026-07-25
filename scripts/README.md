@@ -12,6 +12,8 @@ provenance, test, and documentation references in the same change.
 | `release/build-platform-wheel.py` | Thin installed-project entrypoint for building one verified platform wheel with the embedded native OpenTUI payload. | It invokes release-owned platform-wheel assembly and is consumed only by CI/release packaging workflows. |
 | `release/smoke-platform-wheel.py` | Verifies an installed platform wheel without Bun or a sidecar, including private payload materialization, stable executable resolution, and native `--version` execution. | It is an artifact acceptance test coupled to platform-wheel publishing rather than a general repository validator. |
 | `release/pyinstaller-entry.py` | Minimal PyInstaller startup shim that forwards command-line arguments to the packaged application entrypoint. | It exists only as an input to standalone release artifact construction and is not a runtime library or development command. |
+| `release/build-tmux-helper.sh` | Builds the locked static tmux helper for Linux amd64 or arm64 through Docker Buildx, with a native-platform Docker fallback. | It is the release-owned producer for bundled tmux binaries and must stay coupled to its Dockerfile, provenance lock, and multi-architecture workflow coverage. |
+| `release/tmux-helper.Dockerfile` | Downloads the pinned tmux source, verifies its SHA-256 digest, and builds a stripped static helper in an Alpine builder stage. | It is a release build recipe consumed only by the tmux helper builder, not an application container or development environment. |
 
 ## `validation`
 

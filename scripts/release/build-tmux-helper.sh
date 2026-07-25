@@ -21,7 +21,7 @@ case "$platform" in
   *) echo "unsupported helper platform: $platform" >&2; exit 2 ;;
 esac
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 tmp_dir=$(mktemp -d)
 container_id=
 image_tag=
@@ -36,7 +36,7 @@ mkdir -p "$(dirname "$output_path")"
 if docker buildx version >/dev/null 2>&1; then
   docker buildx build \
     --platform "$platform" \
-    --file "$repo_root/scripts/tmux-helper.Dockerfile" \
+    --file "$repo_root/scripts/release/tmux-helper.Dockerfile" \
     --output "type=local,dest=$tmp_dir/out" \
     "$repo_root"
 else
@@ -49,7 +49,7 @@ else
   esac
   image_tag="local-shell-mcp-tmux-helper:local-$$"
   docker build \
-    --file "$repo_root/scripts/tmux-helper.Dockerfile" \
+    --file "$repo_root/scripts/release/tmux-helper.Dockerfile" \
     --tag "$image_tag" \
     "$repo_root"
   container_id=$(docker create "$image_tag" /tmux -V)
