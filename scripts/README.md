@@ -5,6 +5,23 @@ Scripts are grouped by the lifecycle they own rather than by implementation
 language. Moving a script must update workflow, pre-commit, source-package,
 provenance, test, and documentation references in the same change.
 
+## Root deployment interfaces
+
+Only three tracked files may live directly under `scripts/`:
+
+| File | Responsibility | Why it remains at the root |
+| --- | --- | --- |
+| `README.md` | Records the ownership, lifecycle, and compatibility contract for repository automation. | The ownership map describes the complete `scripts` tree rather than one automation lifecycle. |
+| `docker-entrypoint.sh` | Prepares the container workspace, agent identity, and persistent credential links before executing the image command. | `Dockerfile` copies this exact path into `/usr/local/bin/docker-entrypoint.sh`, makes it executable, and selects it as the image `ENTRYPOINT`; moving it would break the container build/startup ABI. |
+| `run-with-cloudflare-tunnel.sh` | Loads checkout configuration, starts the MCP process, runs the named Cloudflare tunnel, and cleans up the background server. | Quickstart, tunnel setup, and the documented systemd service invoke this exact checkout path, so it is a stable user-facing deployment interface rather than internal automation. |
+
+The root allowlist is enforced by tests. New repository automation must be placed
+in `generation`, `release`, `testing`, or `validation`; adding another root script
+requires an explicit public deployment compatibility rationale and matching
+consumer-contract tests. Both shell interfaces must remain valid Bash programs.
+The Cloudflare helper is executable in a source checkout, while the Dockerfile
+owns installation and executable permissions for the container entrypoint.
+
 ## `release`
 
 | File | Responsibility | Why it belongs here |
@@ -38,7 +55,3 @@ provenance, test, and documentation references in the same change.
 | `generation/generate-config-examples.py` | Renders the environment, YAML, and generated configuration-reference examples from the canonical settings surface, or checks them for drift. | It deterministically generates reviewed repository artifacts and requires the installed project model, rather than validating an already-built package. |
 | `generation/export-tools-json.py` | Builds the MCP registry and exports stable tool plus server-instruction reference JSON for documentation and inspection. | It is a deterministic reference-data generator whose outputs are checked into the documentation tree. |
 | `generation/generate-tui-executable-contract.py` | Mirrors the dependency-leaf Python TUI executable-name contract into the Bun build input and checks that mirror for drift. | It owns a generated cross-language source artifact; release and provenance validators consume its output but do not own generation. |
-
-The remaining root-level scripts are audited in later, independently validated
-phases. User-facing deployment launchers may remain at stable root paths when
-their documented invocation is itself part of the public workflow.
