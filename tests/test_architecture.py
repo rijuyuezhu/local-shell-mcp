@@ -430,46 +430,73 @@ def test_owned_domain_maps_cover_every_file() -> None:
         )
 
 
-def test_version_tool_slice_has_one_explicit_owner() -> None:
-    migrated_paths = {
-        "tools/ops/__init__.py",
-        "tools/ops/version.py",
-        "tools/schemas/__init__.py",
-        "tools/schemas/input_models/__init__.py",
-        "tools/schemas/input_models/version.py",
-        "tools/schemas/result_models/__init__.py",
-        "tools/schemas/result_models/version.py",
-    }
-    _assert_ownership_map_covers(migrated_paths)
+def _assert_tool_owned_slice(
+    family: str,
+    expected_operation_dependencies: set[str],
+    *,
+    registry_uses_input_model: bool = True,
+) -> None:
+    operation = f"{_PACKAGE_NAME}.tools.ops.{family}"
+    input_model = f"{_PACKAGE_NAME}.tools.schemas.input_models.{family}"
+    result_model = f"{_PACKAGE_NAME}.tools.schemas.result_models.{family}"
+    registry = f"{_PACKAGE_NAME}.tools.registry.{family}"
+    owned_modules = {operation, input_model, result_model}
 
     old_paths = {
-        "ops/version.py",
-        "schemas/input_models/version.py",
-        "schemas/result_models/version.py",
+        f"ops/{family}.py",
+        f"schemas/input_models/{family}.py",
+        f"schemas/result_models/{family}.py",
     }
     assert {
         path for path in old_paths if (_PACKAGE_ROOT / path).exists()
     } == set()
 
-    operation = f"{_PACKAGE_NAME}.tools.ops.version"
-    input_model = f"{_PACKAGE_NAME}.tools.schemas.input_models.version"
-    result_model = f"{_PACKAGE_NAME}.tools.schemas.result_models.version"
-    registry = f"{_PACKAGE_NAME}.tools.registry.version"
-    version_contract = f"{_PACKAGE_NAME}.version"
     actual = frozenset(
         (importer, target)
         for importer, target in _local_imports()
-        if importer in {operation, input_model, result_model}
-        or target in {operation, input_model, result_model}
+        if importer in owned_modules or target in owned_modules
+    )
+    expected = {
+        (operation, dependency)
+        for dependency in expected_operation_dependencies
+    }
+    expected.update({(registry, operation), (registry, result_model)})
+    if registry_uses_input_model:
+        expected.add((registry, input_model))
+    assert actual == frozenset(expected)
+
+
+def test_tool_owned_module_map_covers_every_file() -> None:
+    _assert_ownership_map_covers(
+        {
+            str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
+            for root in (
+                _PACKAGE_ROOT / "tools" / "ops",
+                _PACKAGE_ROOT / "tools" / "schemas",
+            )
+            for path in root.rglob("*.py")
+        }
     )
 
-    assert actual == frozenset(
+
+def test_tool_owned_slices_have_explicit_boundaries() -> None:
+    _assert_tool_owned_slice(
+        "version",
         {
-            (operation, result_model),
-            (operation, version_contract),
-            (registry, operation),
-            (registry, result_model),
-        }
+            f"{_PACKAGE_NAME}.tools.schemas.result_models.version",
+            f"{_PACKAGE_NAME}.version",
+        },
+        registry_uses_input_model=False,
+    )
+    _assert_tool_owned_slice(
+        "workspace_connector",
+        {
+            f"{_PACKAGE_NAME}.audit",
+            f"{_PACKAGE_NAME}.ops.files",
+            f"{_PACKAGE_NAME}.ops.search",
+            f"{_PACKAGE_NAME}.tools.schemas.result_models.workspace_connector",
+            f"{_PACKAGE_NAME}.utils.serialization",
+        },
     )
 
 

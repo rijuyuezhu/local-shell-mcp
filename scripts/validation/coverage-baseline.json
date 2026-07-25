@@ -395,7 +395,7 @@
       "num_statements": 4,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/ops/workspace_connector.py": {
+    "src/local_shell_mcp/tools/ops/workspace_connector.py": {
       "num_branches": 8,
       "num_statements": 45,
       "percent_covered": 64.150943
@@ -565,7 +565,7 @@
       "num_statements": 0,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/workspace_connector.py": {
+    "src/local_shell_mcp/tools/schemas/input_models/workspace_connector.py": {
       "num_branches": 0,
       "num_statements": 4,
       "percent_covered": 100.0
@@ -650,7 +650,7 @@
       "num_statements": 6,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/result_models/workspace_connector.py": {
+    "src/local_shell_mcp/tools/schemas/result_models/workspace_connector.py": {
       "num_branches": 0,
       "num_statements": 14,
       "percent_covered": 100.0

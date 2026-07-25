@@ -166,23 +166,26 @@ schema contracts together without compatibility wrappers.
 | --- | --- | --- |
 | `tools/ops/__init__.py` | Declares the namespace for audited tool-owned operation implementations. | It distinguishes tool business logic from shared domain capabilities and from registry adapters. |
 | `tools/ops/version.py` | Converts package/runtime version metadata into the typed version-tool result. | Its only production consumer is the version tool registry, so keeping it at top-level `ops` implied reuse that does not exist. |
+| `tools/ops/workspace_connector.py` | Implements connector-compatible workspace search/fetch projection, bounded result-card deduplication, stable error envelopes, and auditing while delegating file reads and grep search to shared operations. | Only the workspace connector registry consumes this orchestration. Its dependencies remain shared capabilities; placing the adapter in top-level `ops` advertised broader reuse than its actual consumer graph. |
 | `tools/schemas/__init__.py` | Declares the namespace for tool-owned input and result contracts. | It keeps tool-only schemas with their public tool surface while shared contracts remain at top-level `schemas`. |
-| `tools/schemas/input_models/__init__.py` | Declares tool-owned input contracts. | The marker establishes the final package shape even though the version tool currently accepts no arguments. |
+| `tools/schemas/input_models/__init__.py` | Declares tool-owned input contracts. | The marker establishes the final package shape for migrated tool families. |
 | `tools/schemas/input_models/version.py` | Documents the intentionally argument-free version tool input contract. | The contract exists only to keep the version tool's operation/registry/schema slice structurally complete. |
+| `tools/schemas/input_models/workspace_connector.py` | Defines annotated literal-search and fetch-id arguments for connector clients. | These annotations describe only the public workspace connector tools and have no shared domain consumer. |
 | `tools/schemas/result_models/__init__.py` | Declares tool-owned structured result contracts. | It separates public tool response schemas from shared cross-domain result models. |
 | `tools/schemas/result_models/version.py` | Defines `VersionInfoOutput` for package, distribution, Python, and platform metadata. | Only the version operation and registry consume it; no UI, worker, remote, executor, release, or infrastructure module depends on it. |
+| `tools/schemas/result_models/workspace_connector.py` | Defines connector search cards, result collections, and fetched-document payloads. | The models are consumed only by the workspace connector operation and registry, so they belong with that tool-owned slice rather than shared schemas. |
 
 Rejected ownership alternatives:
 
-- top-level `ops/version.py` and `schemas/**/version.py`: their placement
-  advertised transport-neutral reuse despite an exclusively tool-owned consumer
-  graph.
-- `tools/registry/version.py`: registration adapts the operation to declarative
-  tool metadata; combining implementation and schemas into the adapter would
-  erase the operation/contract boundary.
-- source-only worker bundle: workers do not register or execute the version tool,
-  so controller-only version files must not be included incidentally by schema
-  wildcards.
+- top-level `ops/{version,workspace_connector}.py` and corresponding
+  `schemas/**` files: their placement advertised transport-neutral reuse despite
+  exclusively tool-owned consumer graphs.
+- `tools/registry/{version,workspace_connector}.py`: registration adapts
+  operations to declarative tool metadata; combining implementation and schemas
+  into registry adapters would erase the operation/contract boundary.
+- source-only worker bundle: workers do not register or execute these controller-
+  only tools, so migrated `tools/` files must not be included incidentally by
+  operation or schema wildcards.
 
 ## `telemetry`: transport-neutral host and process observations
 

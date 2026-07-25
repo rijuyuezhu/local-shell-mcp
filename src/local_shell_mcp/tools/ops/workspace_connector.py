@@ -3,15 +3,15 @@
 import asyncio
 from typing import Any
 
-from ..audit import audit
+from ...audit import audit
+from ...ops.files import read_file_execute
+from ...ops.search import grep_search_execute
+from ...utils.serialization import to_jsonable
 from ..schemas.result_models.workspace_connector import (
     FetchOutput,
     SearchOutput,
     SearchResult,
 )
-from ..utils.serialization import to_jsonable
-from .files import read_file_execute
-from .search import grep_search_execute
 
 
 def search_error_output(
