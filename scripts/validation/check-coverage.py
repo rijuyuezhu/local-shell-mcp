@@ -19,7 +19,7 @@ from typing import Any
 
 SCHEMA_VERSION = 2
 DEFAULT_REPORT = Path("coverage.json")
-DEFAULT_BASELINE = Path("scripts/coverage-baseline.json")
+DEFAULT_BASELINE = Path("scripts/validation/coverage-baseline.json")
 SOURCE_PREFIX = "src/local_shell_mcp/"
 TOTAL_DRIFT_PERCENT = 0.05
 CRITICAL_EXISTING_DRIFT_PERCENT = 0.05

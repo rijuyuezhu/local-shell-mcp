@@ -160,7 +160,7 @@ uv run pytest tests/test_agent_bridge_tools.py -q
 ## Check branch coverage
 
 The Ubuntu CI job runs the complete Python suite under branch coverage. The
-risk-weighted policy is serialized in `scripts/coverage-baseline.json` and
+risk-weighted policy is serialized in `scripts/validation/coverage-baseline.json` and
 validated by the checker:
 
 - aggregate package branch coverage may not fall below the committed baseline;
@@ -186,7 +186,7 @@ uv run python -m coverage combine
 uv run python -m coverage json
 uv run python -m coverage xml
 uv run python -m coverage report
-uv run python scripts/check-coverage.py
+uv run python scripts/validation/check-coverage.py
 ```
 
 Only update the baseline after reviewing why coverage changed. Download the
@@ -196,7 +196,7 @@ or statement/branch counts, and stores the per-module and aggregate minima:
 
 ```bash
 gh run download <run-id> -n python-coverage -D /tmp/python-coverage
-uv run python scripts/check-coverage.py \
+uv run python scripts/validation/check-coverage.py \
   --write-baseline \
   --report coverage.json \
   --report /tmp/python-coverage/coverage.json

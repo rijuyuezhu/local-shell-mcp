@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKER = ROOT / "scripts" / "check-coverage.py"
+CHECKER = ROOT / "scripts" / "validation" / "check-coverage.py"
 
 
 def _entry(percent: float, statements: int = 10) -> dict[str, Any]:
