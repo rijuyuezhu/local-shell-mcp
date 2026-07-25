@@ -8,12 +8,20 @@ _PACKAGE_ROOT = Path(__file__).parents[1] / "src" / "local_shell_mcp"
 _PACKAGE_NAME = "local_shell_mcp"
 _ARCHITECTURE_DOC = Path(__file__).parents[1] / "docs" / "architecture.md"
 
-# `main` composes only domain CLI registrars. The REST executor consumes exactly
-# one Human UI HTTP route-composition contract.
+# `main` composes only domain CLI registrars. Each HTTP-capable executor consumes
+# exactly one shared Human UI route-composition contract.
 _ALLOWED_HTTP_EXECUTOR_UI_IMPORTS = frozenset(
     {
         (
             "local_shell_mcp.executors.http.app",
+            "local_shell_mcp.ui.http.routes",
+        ),
+    }
+)
+_ALLOWED_MCP_EXECUTOR_UI_IMPORTS = frozenset(
+    {
+        (
+            "local_shell_mcp.executors.mcp.app",
             "local_shell_mcp.ui.http.routes",
         ),
     }
@@ -214,19 +222,18 @@ def test_executor_imports_match_explicit_process_composition() -> None:
     assert actual == _ALLOWED_NON_EXECUTOR_TO_EXECUTOR_IMPORTS
 
 
-def test_mcp_executor_does_not_depend_on_ui_delivery() -> None:
-    forbidden_prefixes = (
-        f"{_PACKAGE_NAME}.server.",
-        f"{_PACKAGE_NAME}.ui.",
-    )
+def test_mcp_executor_has_only_the_explicit_ui_route_dependency() -> None:
     actual = frozenset(
         (importer, target)
         for importer, target in _local_imports()
         if importer.startswith(f"{_PACKAGE_NAME}.executors.mcp")
-        and target.startswith(forbidden_prefixes)
+        and (
+            target.startswith(f"{_PACKAGE_NAME}.server.")
+            or target.startswith(f"{_PACKAGE_NAME}.ui.")
+        )
     )
 
-    assert actual == frozenset()
+    assert actual == _ALLOWED_MCP_EXECUTOR_UI_IMPORTS
 
 
 def test_http_executor_has_only_the_explicit_ui_route_dependency() -> None:

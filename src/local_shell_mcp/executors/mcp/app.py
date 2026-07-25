@@ -20,6 +20,7 @@ from ...remote.transfer_gateway import build_transfer_gateway_router
 from ...tools.contracts import McpToolContext
 from ...tools.discovery import discover_tool_registries
 from ...tools.metadata import install_tool_safety_annotations
+from ...ui.http.routes import human_ui_routes
 from .instructions import SERVER_INSTRUCTIONS
 from .session_limits import McpSessionLimitMiddleware
 from .transport_security import transport_security_settings
@@ -79,7 +80,9 @@ def _add_public_routes_to_mcp_http_app(
         ),
         *oauth_public_routes(),
     ]
-    routes = [*public_routes, Mount("/", app=mcp_app)]
+    ui_routes, ui_public_routes = human_ui_routes(settings)
+    routes = [*public_routes, *ui_routes, Mount("/", app=mcp_app)]
+    public_routes.extend(ui_public_routes)
     return Starlette(routes=routes, lifespan=lifespan), public_routes
 
 

@@ -103,11 +103,14 @@ Rejected alternatives:
 The `executors/mcp` package owns framework-specific MCP composition and runtime
 policy. It converts transport-neutral tool registries and shared services into a
 FastMCP server, then runs that server over stdio or wraps the MCP SDK's ASGI app
-for HTTP delivery.
+for HTTP delivery. The HTTP wrapper installs the same `ui/http` routes used by
+the REST executor before the catch-all MCP mount. The browser shell and assets
+remain public, while Human UI APIs retain OAuth or trusted-loopback TUI checks.
 
 Allowed dependencies include tools, operations, OAuth adapters, remote route
-contributions, executor-neutral `http` infrastructure, audit recording, and MCP
-SDK types. Lower-level packages must not import this executor. `executors/cli.py`
+contributions, the shared `ui/http/routes.py` route contract, executor-neutral
+`http` infrastructure, audit recording, and MCP SDK types. Lower-level packages
+must not import this executor. `executors/cli.py`
 selects and invokes it after argparse dispatch; `main.py` imports only that registrar.
 
 | File | Responsibility | Why it belongs here |
