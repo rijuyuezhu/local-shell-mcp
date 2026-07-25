@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import os
 import shutil
-import stat
 import subprocess
 from pathlib import Path
 
@@ -42,7 +42,10 @@ def test_scripts_root_has_one_explicit_owner_set() -> None:
     )
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash is unavailable")
+@pytest.mark.skipif(
+    os.name == "nt" or shutil.which("bash") is None,
+    reason="POSIX bash is unavailable",
+)
 def test_root_deployment_shell_interfaces_parse() -> None:
     for path in (_DOCKER_ENTRYPOINT, _CLOUDFLARE_HELPER):
         completed = subprocess.run(
@@ -67,8 +70,20 @@ def test_docker_entrypoint_path_is_an_image_build_and_startup_abi() -> None:
 
 
 def test_cloudflare_helper_path_is_a_documented_executable_interface() -> None:
-    mode = stat.S_IMODE(_CLOUDFLARE_HELPER.stat().st_mode)
-    assert mode & stat.S_IXUSR
+    index_entry = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "-s",
+            "--",
+            _CLOUDFLARE_HELPER.relative_to(_REPO_ROOT).as_posix(),
+        ],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert index_entry.split(maxsplit=1)[0] == "100755"
 
     quickstart = (_REPO_ROOT / "docs/getting-started/quickstart.md").read_text(
         encoding="utf-8"
