@@ -347,7 +347,7 @@ jobs:
           cat > release/local-shell-mcp-${{ matrix.artifact }}/QUICKSTART.txt <<'EOF'
           Start local-shell-mcp without Docker:
 
-            ./local-shell-mcp --mode mcp
+            ./local-shell-mcp server --mode mcp
 
           In another terminal, open the native terminal UI:
 
@@ -614,7 +614,7 @@ jobs:
           Start without Docker:
 
           \`\`\`bash
-          ./local-shell-mcp --mode mcp
+          ./local-shell-mcp server --mode mcp
           \`\`\`
 
           VS Code extension download:

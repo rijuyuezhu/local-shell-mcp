@@ -16,13 +16,13 @@ uv run pre-commit install
 Run MCP-over-HTTP locally without OAuth:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode mcp --port 13444
+LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp server --mode mcp --port 13444
 ```
 
 Run the REST debug API locally without OAuth:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http --port 13444
+LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp server --mode http --port 13444
 ```
 
 Use an explicit workspace when needed:
@@ -30,14 +30,14 @@ Use an explicit workspace when needed:
 ```bash
 LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project \
 LOCAL_SHELL_MCP_AUTH_MODE=none \
-uv run local-shell-mcp --mode http --port 13444
+uv run local-shell-mcp server --mode http --port 13444
 ```
 
 Use full-control mode only for disposable test workspaces:
 
 ```bash
 LOCAL_SHELL_MCP_AUTH_MODE=none \
-uv run local-shell-mcp --mode http --port 13444 --allow-full-control true
+uv run local-shell-mcp server --mode http --port 13444 --allow-full-control true
 ```
 
 ## Smoke-test with curl

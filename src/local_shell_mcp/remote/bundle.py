@@ -33,7 +33,8 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "ops/__init__.py",
     "ops/agent.py",
     "ops/files.py",
-    "jobs/*.py",
+    "jobs/__init__.py",
+    "jobs/runtime.py",
     "ops/patch/*.py",
     "ops/read.py",
     "ops/todo.py",
@@ -65,6 +66,7 @@ _WORKER_BUNDLE_EXCLUDE_PATTERNS = (
     "**/__pycache__/**",
     "**/*.pyc",
     "**/*.pyo",
+    "config/cli.py",
 )
 
 

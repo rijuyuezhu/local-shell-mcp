@@ -241,11 +241,12 @@ def _service_handler(handler: Any) -> Any:
     return wrapped
 
 
-def add_worker_cli_parser(subparsers: Any) -> argparse.ArgumentParser:
-    """Add the breaking-clean worker subcommand tree to the shared CLI."""
+def register_worker_cli(subparsers: Any) -> argparse.ArgumentParser:
+    """Register the breaking-clean worker subcommand tree."""
     worker = subparsers.add_parser(
         "worker",
         help="Enroll, connect, or manage this machine as a remote worker",
+        description="Manage or run a local-shell-mcp remote worker.",
     )
     add_worker_subcommands(worker)
     return worker

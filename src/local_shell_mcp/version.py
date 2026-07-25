@@ -1,5 +1,6 @@
-"""Version reporting helpers."""
+"""Version reporting and CLI registration helpers."""
 
+import argparse
 import importlib.metadata as importlib_metadata
 import platform
 import sys
@@ -34,3 +35,19 @@ def format_version_info(info: dict[str, Any] | None = None) -> str:
     ):
         return f"local-shell-mcp {data['version']} (package {data['package_version']})"
     return f"local-shell-mcp {data['version']}"
+
+
+def register_version_cli(subparsers: Any) -> argparse.ArgumentParser:
+    """Register the detailed version-reporting subcommand."""
+    parser = subparsers.add_parser(
+        "version",
+        help="Print local-shell-mcp version information",
+    )
+    parser.set_defaults(handler=print_version_from_args)
+    return parser
+
+
+def print_version_from_args(args: argparse.Namespace) -> None:
+    """Print detailed version information."""
+    del args
+    print(format_version_info())

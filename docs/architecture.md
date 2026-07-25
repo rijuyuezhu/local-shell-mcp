@@ -12,7 +12,7 @@ operations, and domain services:
 
 ```text
 local_shell_mcp/
-  main.py                 process composition and CLI dispatch
+  main.py                 argparse root and command registration
   executors/
     mcp/                   MCP executor and MCP-only middleware
     http/                  REST/tool HTTP executor
@@ -45,7 +45,9 @@ subpackage; `tests/test_architecture.py` enforces this allowlist.
 
 General rules:
 
-- `main.py` may select and launch executors and native UI clients.
+- `main.py` owns only the root argparse parser and composes domain-owned CLI
+  registration functions. Command modules load settings and invoke their own
+  runtime handlers; `main.py` must not inspect `sys.argv` or import runtime apps.
 - Executors may compose tools, OAuth, remote services, shared HTTP
   infrastructure, and UI route contributions.
 - `http` must not import an executor or Human UI implementation.
@@ -60,6 +62,42 @@ General rules:
 - `utils` is for small dependency-leaf technical primitives, not a holding area
   for domain algorithms or large workflows.
 
+## CLI composition and registration
+
+The command-line interface is one explicit argparse tree. `main.py` creates the
+root parser, requires a public subcommand, invokes domain registration functions,
+and dispatches the handler stored by argparse. It contains no command-specific
+arguments, settings loading, runtime imports, or `argv[0]` special cases. The
+private durable-job runner is also a normal argparse subcommand and is labeled
+internal in help rather than parsed by a separate code path.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `main.py` | Creates the root parser, installs `--version`, calls each command registrar, parses once, and invokes the selected argparse handler. | The package entry point composes CLI contracts but does not own any command's arguments or runtime behavior. |
+| `config/cli.py` | Registers config-file selection and generated Settings overrides, then loads and optionally installs settings from one parsed namespace. | Server, TUI, and Agent Bridge administration share this argparse/settings bridge without making `main.py` own configuration. |
+| `executors/cli.py` | Registers the explicit `server` command and selects MCP, stdio, or REST execution after loading settings. | Server mode selection belongs beside the selectable protocol executors; the root parser only imports its registrar. |
+| `ui/cli.py` | Registers `tui`, its settings, and loopback API override, then launches the native UI runtime. | Native-client arguments and defaults belong to the UI domain rather than the process entry point. |
+| `agent_bridge/cli.py` | Registers `mcp auth` and `mcp secret` administration and executes credential/OAuth workflows. | Agent Bridge owns both the nested command contract and its security-sensitive handlers. |
+| `remote_worker/cli.py` | Registers the worker command tree and executes enrollment, foreground runtime, service, log, and update actions. | Worker lifecycle commands are an independent product surface and remain reusable by the source-only worker launcher. |
+| `version.py` | Owns version discovery/formatting and registers the detailed `version` subcommand. | Version data is shared by HTTP, UI, worker, and tools; only its tiny CLI adapter is added here rather than creating a second version owner. |
+| `jobs/cli.py` | Registers the internal `job-runner` parser and binds it to the durable runner handler. | The runner's arguments belong to the jobs domain. It is a normal labeled argparse command, and the file is excluded from source-only worker bundles because workers need `jobs/runtime.py`, not controller process composition. |
+
+Runtime commands are explicit: `server`, `tui`, `mcp`, `worker`, `version`, and
+the labeled internal `job-runner`. Running `local-shell-mcp` without a command is
+an argparse error.
+Global `--version` remains an argparse version action. Settings flags follow the
+command that consumes them, for example `local-shell-mcp server --mode mcp` and
+`local-shell-mcp tui --port 8765`.
+
+Rejected alternatives:
+
+- implicit server startup with no subcommand: it makes root options double as one
+  command's contract and prevents a clear extensible command tree.
+- inspecting `argv[0]` for `job-runner`: it bypasses argparse composition, help,
+  validation, and module-owned registration.
+- defining all parsers and handlers in `main.py`: it couples the entry point to
+  every runtime and makes command ownership unclear.
+
 ## `executors/mcp`: MCP protocol executor
 
 The `executors/mcp` package owns framework-specific MCP composition and runtime
@@ -69,8 +107,8 @@ for HTTP delivery.
 
 Allowed dependencies include tools, operations, OAuth adapters, remote route
 contributions, executor-neutral `http` infrastructure, audit recording, and MCP
-SDK types. Lower-level packages must not import this executor. The process entry
-point is the only production module outside `executors` that imports it.
+SDK types. Lower-level packages must not import this executor. `executors/cli.py`
+selects and invokes it after argparse dispatch; `main.py` imports only that registrar.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
@@ -216,6 +254,7 @@ orchestration.
 | --- | --- | --- |
 | `jobs/__init__.py` | Declares the shared tracked-job domain boundary. | Job persistence and execution are used by the controller process, standalone runner, shell/session-copy workflows, and source-only workers, so they are broader than one public tool adapter. |
 | `jobs/runtime.py` | Owns the durable store and backup, lock-bounded transactions, deferred managed-update journal, attempt files, shell-backed and managed-job lifecycle, local companion actions, and standalone runner entrypoint. | These responsibilities must remain available without importing `tools`; keeping them in `ops/jobs.py` conflated the shared runtime with controller-only public-tool orchestration. |
+| `jobs/cli.py` | Registers the private durable runner arguments as a labeled internal argparse subcommand. | Parser ownership follows the jobs runtime, while the source-only worker manifest explicitly includes only `jobs/__init__.py` and `jobs/runtime.py`. |
 
 Rejected ownership alternatives:
 
@@ -298,6 +337,7 @@ internal rather than public tools.
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
 | `ui/__init__.py` | Declares the Human UI core boundary independently of HTTP delivery. | It prevents UI behavior from appearing to be part of the REST executor and allows browser and native clients to share core contracts. |
+| `ui/cli.py` | Registers the explicit native TUI command, shared settings overrides, loopback API default, and runtime handler. | The root CLI composes this registrar without importing UI runtime behavior directly. |
 | `ui/contracts.py` | Defines the stable POSIX and Windows OpenTUI executable filenames and resolves the current-platform name. | Runtime discovery, source-only session probes, release wheel construction, and generated Bun build inputs need one dependency-leaf naming contract without importing each other. |
 | `ui/dashboard.py` | Combines neutral system telemetry with metadata-only audit summaries, alerts, activity rows, health state, and version data for local or remote Dashboard clients. | The output is a Dashboard view model with UI labels and disclosure policy. Remote-worker support only transports this internal UI capability; it does not make the projection a generic telemetry or public tool contract. |
 | `ui/image_preview.py` | Decodes validated image bytes into bounded, orientation-corrected RGBA thumbnails and terminal-cell dimensions for native UI rendering. | The output is a UI view model tied to terminal rendering constraints. It contains no HTTP request parsing or response construction, so browser/HTTP adapters consume it rather than own it. |

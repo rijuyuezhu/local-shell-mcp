@@ -92,6 +92,7 @@ async def run_remote_enabled_mcp_process(
             sys.executable,
             "-m",
             "local_shell_mcp.main",
+            "server",
             "--mode",
             "mcp",
             "--host",

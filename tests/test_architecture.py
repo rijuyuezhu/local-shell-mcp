@@ -8,8 +8,8 @@ _PACKAGE_ROOT = Path(__file__).parents[1] / "src" / "local_shell_mcp"
 _PACKAGE_NAME = "local_shell_mcp"
 _ARCHITECTURE_DOC = Path(__file__).parents[1] / "docs" / "architecture.md"
 
-# `main` is the process-composition entry point and may import executors. The
-# REST executor consumes exactly one Human UI HTTP route-composition contract.
+# `main` composes only domain CLI registrars. The REST executor consumes exactly
+# one Human UI HTTP route-composition contract.
 _ALLOWED_HTTP_EXECUTOR_UI_IMPORTS = frozenset(
     {
         (
@@ -20,8 +20,7 @@ _ALLOWED_HTTP_EXECUTOR_UI_IMPORTS = frozenset(
 )
 _ALLOWED_NON_EXECUTOR_TO_EXECUTOR_IMPORTS = frozenset(
     {
-        ("local_shell_mcp.main", "local_shell_mcp.executors.http.app"),
-        ("local_shell_mcp.main", "local_shell_mcp.executors.mcp.app"),
+        ("local_shell_mcp.main", "local_shell_mcp.executors.cli"),
     }
 )
 _ALLOWED_RELEASE_IMPORTS = frozenset(
@@ -165,6 +164,22 @@ def _dependency_cycles() -> frozenset[frozenset[str]]:
         if module not in indices:
             visit(module)
     return frozenset(cycles)
+
+
+def test_main_cli_composes_only_domain_registrars() -> None:
+    main = f"{_PACKAGE_NAME}.main"
+    actual = {
+        target for importer, target in _local_imports() if importer == main
+    }
+
+    assert actual == {
+        f"{_PACKAGE_NAME}.agent_bridge.cli",
+        f"{_PACKAGE_NAME}.executors.cli",
+        f"{_PACKAGE_NAME}.jobs.cli",
+        f"{_PACKAGE_NAME}.remote_worker.cli",
+        f"{_PACKAGE_NAME}.ui.cli",
+        f"{_PACKAGE_NAME}.version",
+    }
 
 
 def test_server_package_is_removed_and_cannot_be_imported() -> None:
@@ -637,7 +652,9 @@ def test_jobs_domain_and_tool_operation_have_explicit_boundaries() -> None:
         or target.startswith(f"{_PACKAGE_NAME}.tools.")
         for target in runtime_targets
     )
-    _assert_ownership_map_covers({"jobs/__init__.py", "jobs/runtime.py"})
+    _assert_ownership_map_covers(
+        {"jobs/__init__.py", "jobs/cli.py", "jobs/runtime.py"}
+    )
 
 
 def test_ui_static_assets_have_one_explicit_owner() -> None:

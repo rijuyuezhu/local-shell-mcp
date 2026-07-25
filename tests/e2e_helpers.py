@@ -120,6 +120,7 @@ async def run_http_process(
             sys.executable,
             "-m",
             "local_shell_mcp.main",
+            "server",
             "--mode",
             mode,
             "--host",
@@ -305,6 +306,7 @@ async def stdio_tool_client(
         args=[
             "-m",
             "local_shell_mcp.main",
+            "server",
             "--mode",
             "stdio",
             "--auth-mode",

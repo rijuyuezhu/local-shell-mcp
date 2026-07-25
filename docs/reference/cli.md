@@ -1,15 +1,17 @@
 # CLI reference
 
-Running `local-shell-mcp` without a subcommand starts the server.
+Every runtime mode is selected by an explicit argparse subcommand.
 
 ```text
-local-shell-mcp [--config PATH] [--mode MODE] [--host HOST] [--port PORT] [--workspace-root PATH] [...]
+local-shell-mcp server [--config PATH] [--mode MODE] [--host HOST] [--port PORT] [--workspace-root PATH] [...]
 ```
 
 Use the built-in help for exact parser output:
 
 ```bash
 local-shell-mcp --help
+local-shell-mcp server --help
+local-shell-mcp tui --help
 local-shell-mcp worker --help
 ```
 
@@ -27,19 +29,19 @@ local-shell-mcp worker --help
 Run a local MCP server without OAuth:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode mcp
+LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp server --mode mcp
 ```
 
 Run the REST debug API:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp --mode http
+LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp server --mode http
 ```
 
 Run with a specific workspace root:
 
 ```bash
-LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project uv run local-shell-mcp --mode mcp
+LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project uv run local-shell-mcp server --mode mcp
 ```
 
 ## Boolean arguments
@@ -47,8 +49,8 @@ LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project uv run local-shell-mcp --mode mc
 Boolean CLI values are explicit:
 
 ```bash
-local-shell-mcp --allow-full-control false
-local-shell-mcp --remote-enabled true
+local-shell-mcp server --allow-full-control false
+local-shell-mcp server --remote-enabled true
 ```
 
 Every `LOCAL_SHELL_MCP_*` application setting has a matching CLI flag using lowercase dashed form. For example:

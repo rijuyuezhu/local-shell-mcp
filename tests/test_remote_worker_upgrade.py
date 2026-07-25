@@ -248,7 +248,10 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/agent_bridge/skills.py" in names
     assert "local_shell_mcp/agent_bridge/sources.py" in names
     assert "local_shell_mcp/agent_bridge/models.py" in names
+    assert "local_shell_mcp/jobs/runtime.py" in names
     assert "local_shell_mcp/agent_bridge/status.py" not in names
+    assert "local_shell_mcp/config/cli.py" not in names
+    assert "local_shell_mcp/jobs/cli.py" not in names
     assert not any(name.startswith("local_shell_mcp/tools/") for name in names)
     assert "local_shell_mcp/schemas/result_models/version.py" not in names
     assert "local_shell_mcp/utils/path_locks.py" in names

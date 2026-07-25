@@ -41,7 +41,7 @@ For a source checkout, run:
 scripts/run-with-cloudflare-tunnel.sh
 ```
 
-The helper loads `.env`, starts `uv run local-shell-mcp --mode mcp`, then starts `cloudflared tunnel --no-autoupdate run --token "$CLOUDFLARE_TUNNEL_TOKEN"`.
+The helper loads `.env`, starts `uv run local-shell-mcp server --mode mcp`, then starts `cloudflared tunnel --no-autoupdate run --token "$CLOUDFLARE_TUNNEL_TOKEN"`.
 
 When `cloudflared` exits, the helper stops the background server process. For long-running use, run the helper under systemd as shown in [Quickstart](quickstart.md).
 

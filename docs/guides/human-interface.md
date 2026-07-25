@@ -5,7 +5,7 @@ The HTTP server includes the canonical packaged browser Human UI at `/ui` by def
 ## Start the HTTP server
 
 ```bash
-local-shell-mcp --mode http
+local-shell-mcp server --mode http
 ```
 
 Open the URL formed from the configured host and port, for example:

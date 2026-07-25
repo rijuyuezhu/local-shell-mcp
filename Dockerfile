@@ -50,4 +50,4 @@ VOLUME ["/workspace", "/persist/credentials"]
 
 EXPOSE 8765
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["local-shell-mcp", "--mode", "mcp"]
+CMD ["local-shell-mcp", "server", "--mode", "mcp"]

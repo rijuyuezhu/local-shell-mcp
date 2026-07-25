@@ -58,7 +58,7 @@ Notes:
 set -a
 . ./.env
 set +a
-uv run local-shell-mcp --mode mcp
+uv run local-shell-mcp server --mode mcp
 ```
 
 In another terminal:

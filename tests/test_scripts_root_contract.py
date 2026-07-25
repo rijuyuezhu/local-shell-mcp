@@ -67,6 +67,7 @@ def test_docker_entrypoint_path_is_an_image_build_and_startup_abi() -> None:
     ) in dockerfile
     assert "chmod +x /usr/local/bin/docker-entrypoint.sh" in dockerfile
     assert 'ENTRYPOINT ["docker-entrypoint.sh"]' in dockerfile
+    assert 'CMD ["local-shell-mcp", "server", "--mode", "mcp"]' in dockerfile
 
 
 def test_cloudflare_helper_path_is_a_documented_executable_interface() -> None:
@@ -91,11 +92,13 @@ def test_cloudflare_helper_path_is_a_documented_executable_interface() -> None:
     tunnel = (
         _REPO_ROOT / "docs/getting-started/cloudflare-tunnel.md"
     ).read_text(encoding="utf-8")
+    helper = _CLOUDFLARE_HELPER.read_text(encoding="utf-8")
     invocation = "scripts/run-with-cloudflare-tunnel.sh"
 
     assert quickstart.count(invocation) == 2
     assert f"ExecStart=/usr/bin/env bash {invocation}" in quickstart
     assert tunnel.count(invocation) == 1
+    assert "local_shell_mcp.main server --mode mcp" in helper
 
 
 def test_scripts_readme_documents_the_root_compatibility_contract() -> None:

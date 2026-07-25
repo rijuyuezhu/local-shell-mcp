@@ -11,7 +11,7 @@ git clone https://github.com/rijuyuezhu/local-shell-mcp.git
 cd local-shell-mcp
 uv sync --group dev
 cp .env.example .env
-uv run local-shell-mcp --mode mcp
+uv run local-shell-mcp server --mode mcp
 ```
 
 Use [Quickstart](quickstart.md) to add Cloudflare Tunnel and systemd.
@@ -23,7 +23,7 @@ Release binaries are useful when you do not want a source checkout or Python env
 For binary deployments, set the workspace explicitly:
 
 ```bash
-LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project ./local-shell-mcp --mode mcp
+LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project ./local-shell-mcp server --mode mcp
 ```
 
 The binary includes the Python server and default OAuth dependencies. Linux
@@ -44,7 +44,7 @@ pip install local-shell-mcp
 Then run:
 
 ```bash
-local-shell-mcp --mode mcp
+local-shell-mcp server --mode mcp
 ```
 
 ## Docker Compose

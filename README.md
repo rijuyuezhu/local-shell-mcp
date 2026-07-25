@@ -33,7 +33,7 @@ For full shell and filesystem tools, enable ChatGPT Developer Mode before adding
 The HTTP service includes a native browser Human UI at `/ui`. It remains the default management surface. The same Dashboard, Remotes, persistent Terminals, Files, Todos, and Audit APIs are also available through the optional OpenTUI client:
 
 ```bash
-local-shell-mcp --mode http
+local-shell-mcp server --mode http
 # In another terminal:
 local-shell-mcp tui
 ```

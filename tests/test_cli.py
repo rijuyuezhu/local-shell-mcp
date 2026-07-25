@@ -1,18 +1,44 @@
 import argparse
 import json
 import textwrap
+from pathlib import Path
 
 import pytest
 from mcp.shared.auth import OAuthToken
 
 import local_shell_mcp.agent_bridge.cli as agent_cli
+import local_shell_mcp.executors.cli as server_cli
+import local_shell_mcp.jobs.cli as jobs_cli
 import local_shell_mcp.main as cli
+import local_shell_mcp.ui.cli as tui_cli
 from local_shell_mcp import __version__
 from local_shell_mcp.agent_bridge.auth_store import AgentAuthStore
+from local_shell_mcp.config.settings import load_settings
 from local_shell_mcp.config.surface import (
     SETTING_SPECS,
     cli_overrides_from_args,
 )
+
+
+def _command_parser(name: str) -> argparse.ArgumentParser:
+    parser = cli._build_parser()
+    subparsers = next(
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    return subparsers.choices[name]
+
+
+def test_vscode_extension_uses_explicit_server_subcommand():
+    source = (
+        Path(__file__).parents[1] / "vscode-extension" / "src" / "extension.ts"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "cp.spawn(config.executablePath, ['server', '--mode', 'mcp']" in source
+    )
+    assert "cp.spawn(config.executablePath, ['--mode', 'mcp']" not in source
 
 
 class NoBreakHelpFormatter(argparse.HelpFormatter):
@@ -39,9 +65,10 @@ class NoBreakHelpFormatter(argparse.HelpFormatter):
         )
 
 
-def test_server_options_parse_to_default_handler():
+def test_server_subcommand_parses_runtime_settings():
     args = cli._build_parser().parse_args(
         [
+            "server",
             "--config",
             "config.yaml",
             "--mode",
@@ -65,7 +92,7 @@ def test_server_options_parse_to_default_handler():
         ]
     )
 
-    assert args.handler is cli._run_server_from_args
+    assert args.handler is server_cli.run_server_from_args
     assert args.config == "config.yaml"
     assert args.mode == "stdio"
     assert args.host == "127.0.0.1"
@@ -76,6 +103,28 @@ def test_server_options_parse_to_default_handler():
     assert args.oauth_admin_pin == "pin"
     assert args.allow_full_control is True
     assert args.remote_enabled is False
+
+
+def test_root_parser_requires_an_explicit_command():
+    parser = cli._build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args([])
+
+
+def test_root_help_lists_registered_commands():
+    help_text = cli._build_parser().format_help()
+
+    for command in (
+        "server",
+        "tui",
+        "mcp",
+        "worker",
+        "version",
+        "job-runner",
+    ):
+        assert command in help_text
+    assert "Run one durable job attempt (internal)" in help_text
 
 
 def test_version_option_prints_package_version(capsys):
@@ -97,7 +146,7 @@ def test_version_subcommand_prints_package_version(capsys):
 
 
 def test_every_setting_has_cli_option():
-    parser = cli._build_parser()
+    parser = _command_parser("server")
     parser.formatter_class = NoBreakHelpFormatter
     help_text = parser.format_help()
 
@@ -115,7 +164,7 @@ def test_every_setting_has_cli_option():
 
 def test_nullable_cli_values_can_be_explicitly_unset():
     args = cli._build_parser().parse_args(
-        ["--unset-base-url", "--unset-oauth-admin-pin"]
+        ["server", "--unset-base-url", "--unset-oauth-admin-pin"]
     )
 
     assert args.base_url is None
@@ -132,6 +181,7 @@ def test_nullable_cli_value_and_unset_flag_are_mutually_exclusive():
     with pytest.raises(SystemExit):
         parser.parse_args(
             [
+                "server",
                 "--base-url",
                 "https://example.com",
                 "--unset-base-url",
@@ -143,18 +193,26 @@ def test_bool_cli_values_parse_explicitly():
     parser = cli._build_parser()
 
     assert (
-        parser.parse_args(["--allow-full-control", "true"]).allow_full_control
+        parser.parse_args(
+            ["server", "--allow-full-control", "true"]
+        ).allow_full_control
         is True
     )
     assert (
-        parser.parse_args(["--allow-full-control", "false"]).allow_full_control
+        parser.parse_args(
+            ["server", "--allow-full-control", "false"]
+        ).allow_full_control
         is False
     )
     assert (
-        parser.parse_args(["--remote-enabled", "false"]).remote_enabled is False
+        parser.parse_args(
+            ["server", "--remote-enabled", "false"]
+        ).remote_enabled
+        is False
     )
     assert (
-        parser.parse_args(["--remote-enabled", "true"]).remote_enabled is True
+        parser.parse_args(["server", "--remote-enabled", "true"]).remote_enabled
+        is True
     )
 
 
@@ -197,10 +255,10 @@ def test_legacy_flat_worker_parser_is_rejected():
 
 def test_tui_subcommand_parses_loopback_api_base():
     args = cli._build_parser().parse_args(
-        ["--port", "9443", "tui", "--api-base", "https://localhost:9443/api/ui"]
+        ["tui", "--port", "9443", "--api-base", "https://localhost:9443/api/ui"]
     )
 
-    assert args.handler is cli._run_tui_from_args
+    assert args.handler is tui_cli.run_tui_from_args
     assert args.port == 9443
     assert args.api_base == "https://localhost:9443/api/ui"
 
@@ -212,9 +270,9 @@ def test_tui_handler_uses_configured_port_and_settings(monkeypatch):
         calls.append((api_base, settings.port, settings.ui_tui_command))
         return 0
 
-    monkeypatch.setattr(cli, "run_tui", fake_run)
+    monkeypatch.setattr(tui_cli, "run_tui", fake_run)
     args = cli._build_parser().parse_args(
-        ["--port", "9555", "--ui-tui-command", "/opt/tui", "tui"]
+        ["tui", "--port", "9555", "--ui-tui-command", "/opt/tui"]
     )
 
     with pytest.raises(SystemExit) as exc_info:
@@ -230,15 +288,45 @@ def test_main_dispatches_to_argparse_handler(monkeypatch):
     def run_from_args(args):
         calls.append((args.mode, args.remote_enabled))
 
-    monkeypatch.setattr(cli, "_run_server_from_args", run_from_args)
+    monkeypatch.setattr(server_cli, "run_server_from_args", run_from_args)
 
-    cli.main(["--mode", "stdio", "--remote-enabled", "true"])
+    cli.main(["server", "--mode", "stdio", "--remote-enabled", "true"])
 
     assert calls == [("stdio", True)]
 
 
-def test_private_job_runner_is_hidden_and_dispatches_directly(monkeypatch):
-    public_help = cli._build_parser().format_help()
+def test_server_handler_dispatches_executor_modes(monkeypatch):
+    calls = []
+    mode = "http"
+
+    def settings_from_args(_args, *, configure):
+        assert configure is True
+        return argparse.Namespace(mode=mode)
+
+    monkeypatch.setattr(server_cli, "settings_from_args", settings_from_args)
+    monkeypatch.setattr(server_cli, "run_http", lambda: calls.append("http"))
+    monkeypatch.setattr(server_cli, "run_mcp", lambda: calls.append("mcp"))
+    args = argparse.Namespace()
+
+    server_cli.run_server_from_args(args)
+    mode = "mcp"
+    server_cli.run_server_from_args(args)
+    mode = "stdio"
+    server_cli.run_server_from_args(args)
+
+    assert calls == ["http", "mcp", "mcp"]
+
+    mode = "both"
+    with pytest.raises(SystemExit, match="mode=both is reserved"):
+        server_cli.run_server_from_args(args)
+
+    mode = "unexpected"
+    with pytest.raises(SystemExit, match="Unsupported mode"):
+        server_cli.run_server_from_args(args)
+
+
+def test_internal_job_runner_is_dispatched_by_argparse(monkeypatch):
+    help_text = cli._build_parser().format_help()
     calls = []
 
     def run_job_runner(args):
@@ -253,9 +341,9 @@ def test_private_job_runner_is_hidden_and_dispatches_directly(monkeypatch):
             )
         )
 
-    monkeypatch.setattr(cli, "run_job_runner_from_args", run_job_runner)
+    monkeypatch.setattr(jobs_cli, "run_job_runner_from_args", run_job_runner)
 
-    assert "job-runner" not in public_help
+    assert "job-runner" in help_text
     cli.main(
         [
             "job-runner",
@@ -288,7 +376,7 @@ def test_private_job_runner_is_hidden_and_dispatches_directly(monkeypatch):
 
 def test_server_overrides_include_only_explicit_values():
     args = cli._build_parser().parse_args(
-        ["--mode", "stdio", "--remote-enabled", "false"]
+        ["server", "--mode", "stdio", "--remote-enabled", "false"]
     )
 
     assert cli_overrides_from_args(args) == {
@@ -355,9 +443,9 @@ def test_mcp_secret_set_list_delete_never_print_values(
 
     set_args = parser.parse_args(
         [
+            "mcp",
             "--state-dir",
             str(state_dir),
-            "mcp",
             "secret",
             "set",
             "docs",
@@ -373,7 +461,7 @@ def test_mcp_secret_set_list_delete_never_print_values(
     assert store.get_secret("docs", "token") == "private-value"
 
     list_args = parser.parse_args(
-        ["--state-dir", str(state_dir), "mcp", "secret", "list", "docs"]
+        ["mcp", "--state-dir", str(state_dir), "secret", "list", "docs"]
     )
     list_args.handler(list_args)
     list_output = capsys.readouterr().out
@@ -382,9 +470,9 @@ def test_mcp_secret_set_list_delete_never_print_values(
 
     delete_args = parser.parse_args(
         [
+            "mcp",
             "--state-dir",
             str(state_dir),
-            "mcp",
             "secret",
             "delete",
             "docs",
@@ -408,7 +496,7 @@ def test_mcp_auth_status_reports_only_safe_metadata(tmp_path, capsys):
         },
     )
     args = cli._build_parser().parse_args(
-        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--status"]
+        ["mcp", "--state-dir", str(state_dir), "auth", "docs", "--status"]
     )
 
     args.handler(args)
@@ -445,7 +533,7 @@ def test_mcp_auth_no_open_runs_interactive_authorization(
 
     monkeypatch.setattr(agent_cli, "authorize_server", fake_authorize)
     args = cli._build_parser().parse_args(
-        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--no-open"]
+        ["mcp", "--state-dir", str(state_dir), "auth", "docs", "--no-open"]
     )
 
     args.handler(args)
@@ -486,7 +574,7 @@ def test_mcp_logout_reports_revocation_and_clears_local_credentials(
 
     monkeypatch.setattr(agent_cli, "revoke_stored_oauth", fake_revoke)
     args = cli._build_parser().parse_args(
-        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--logout"]
+        ["mcp", "--state-dir", str(state_dir), "auth", "docs", "--logout"]
     )
 
     args.handler(args)
@@ -535,7 +623,7 @@ def test_mcp_cli_reports_manifest_and_server_errors(tmp_path, capsys):
     state_dir = tmp_path / "state"
     parser = cli._build_parser()
     missing_manifest = parser.parse_args(
-        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--status"]
+        ["mcp", "--state-dir", str(state_dir), "auth", "docs", "--status"]
     )
     with pytest.raises(SystemExit, match="2"):
         missing_manifest.handler(missing_manifest)
@@ -550,14 +638,14 @@ def test_mcp_cli_reports_manifest_and_server_errors(tmp_path, capsys):
         },
     )
     unknown = parser.parse_args(
-        ["--state-dir", str(state_dir), "mcp", "auth", "unknown", "--status"]
+        ["mcp", "--state-dir", str(state_dir), "auth", "unknown", "--status"]
     )
     with pytest.raises(SystemExit, match="2"):
         unknown.handler(unknown)
     assert "Unknown Agent Bridge MCP server" in capsys.readouterr().err
 
     non_oauth = parser.parse_args(
-        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--status"]
+        ["mcp", "--state-dir", str(state_dir), "auth", "docs", "--status"]
     )
     with pytest.raises(SystemExit, match="2"):
         non_oauth.handler(non_oauth)
@@ -583,7 +671,7 @@ def test_mcp_cli_failed_remote_revocation_exits_one(
 
     monkeypatch.setattr(agent_cli, "revoke_stored_oauth", fake_revoke)
     args = cli._build_parser().parse_args(
-        ["--state-dir", str(state_dir), "mcp", "auth", "docs", "--logout"]
+        ["mcp", "--state-dir", str(state_dir), "auth", "docs", "--logout"]
     )
     with pytest.raises(SystemExit, match="1"):
         args.handler(args)
@@ -607,9 +695,7 @@ def test_mcp_cli_rejects_unknown_secret_dispatch(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
         agent_cli,
         "_settings_from_args",
-        lambda _args: agent_cli.load_settings(
-            None, {"state_dir": str(state_dir)}
-        ),
+        lambda _args: load_settings(None, {"state_dir": str(state_dir)}),
     )
     with pytest.raises(SystemExit, match="2"):
         agent_cli.run_mcp_cli_from_args(args)

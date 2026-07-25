@@ -19,8 +19,8 @@ from mcp.client.auth.utils import (
 )
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 
-from ..config.settings import Settings, load_settings
-from ..config.surface import cli_overrides_from_args
+from ..config.cli import register_config_and_setting_args, settings_from_args
+from ..config.settings import Settings
 from .auth import build_stored_oauth_provider, oauth_status
 from .auth_store import AgentAuthStore
 from .mcp import AgentMcpClientManager
@@ -31,12 +31,14 @@ _MAX_CALLBACK_REQUEST_BYTES = 16_384
 _MAX_STDIN_SECRET_BYTES = 65_536
 
 
-def add_mcp_cli_parser(subparsers: Any) -> None:
+def register_mcp_cli(subparsers: Any) -> argparse.ArgumentParser:
     """Register public Agent Bridge auth and secret administration commands."""
     mcp_parser = subparsers.add_parser(
         "mcp",
-        help="Manage Agent Bridge MCP credentials and OAuth authorization.",
+        help="Manage Agent Bridge MCP credentials and OAuth authorization",
+        description="Manage Agent Bridge MCP credentials and OAuth authorization.",
     )
+    register_config_and_setting_args(mcp_parser)
     mcp_subparsers = mcp_parser.add_subparsers(
         dest="mcp_command", required=True
     )
@@ -76,10 +78,11 @@ def add_mcp_cli_parser(subparsers: Any) -> None:
     delete_parser.add_argument("server")
     delete_parser.add_argument("name")
     delete_parser.set_defaults(handler=run_mcp_cli_from_args)
+    return mcp_parser
 
 
 def _settings_from_args(args: argparse.Namespace) -> Settings:
-    return load_settings(args.config, cli_overrides_from_args(args))
+    return settings_from_args(args)
 
 
 def _configured_server(

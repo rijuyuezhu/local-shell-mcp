@@ -212,6 +212,7 @@ class BrowserHarness:
                 sys.executable,
                 "-m",
                 "local_shell_mcp.main",
+                "server",
                 "--mode",
                 "http",
                 "--host",
