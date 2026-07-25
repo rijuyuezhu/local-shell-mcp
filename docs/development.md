@@ -262,7 +262,7 @@ The ordinary `uv build` output must contain exactly one payload-free universal
 only on matching runners with the pinned Bun release, for example:
 
 ```bash
-uv run python scripts/build-platform-wheel.py \
+uv run python scripts/release/build-platform-wheel.py \
   --platform-tag linux_x86_64 \
   --output-dir dist
 ```
@@ -271,7 +271,7 @@ The builder accepts only the repository's explicit target tags, validates the
 native host and executable magic, creates deterministic gzip metadata, rewrites
 and verifies `WHEEL` plus `RECORD`, and removes staging files on success or
 failure. Release CI installs every platform wheel in an isolated environment
-with Bun and sidecars absent, then runs `scripts/smoke-platform-wheel.py` before
+with Bun and sidecars absent, then runs `scripts/release/smoke-platform-wheel.py` before
 all Python package artifacts are published together. Native source, license,
 platform, rebuild, and checksum ownership is recorded in
 [Native artifact provenance](maintenance/native-artifact-provenance.md). Run

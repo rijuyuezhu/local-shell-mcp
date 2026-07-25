@@ -185,7 +185,7 @@ jobs:
       - name: Build and inspect platform wheel
         shell: bash
         run: >-
-          uv run python scripts/build-platform-wheel.py
+          uv run python scripts/release/build-platform-wheel.py
           --platform-tag "${{ matrix.platform_tag }}"
           --output-dir dist
 
@@ -206,7 +206,7 @@ jobs:
           fi
           "$python_bin" -m pip install dist/*.whl
           PATH="$clean_path" "$python_bin" \
-            "$GITHUB_WORKSPACE/scripts/smoke-platform-wheel.py" \
+            "$GITHUB_WORKSPACE/scripts/release/smoke-platform-wheel.py" \
             --state-dir "$state" \
             --work-dir "$work"
           test ! -e src/local_shell_mcp/ui_runtime
@@ -308,7 +308,7 @@ jobs:
           fi
           uv run --with pyinstaller --with typer pyinstaller \
             "${PYINSTALLER_ARGS[@]}" \
-            scripts/pyinstaller-entry.py
+            scripts/release/pyinstaller-entry.py
 
       - name: Smoke test executables
         shell: bash

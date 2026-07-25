@@ -202,7 +202,7 @@ jobs:
       - name: Build and inspect platform wheel
         shell: bash
         run: >-
-          uv run python scripts/build-platform-wheel.py
+          uv run python scripts/release/build-platform-wheel.py
           --platform-tag "${{ matrix.platform_tag }}"
           --output-dir dist
       - name: Install wheel without Bun or sidecar
@@ -222,7 +222,7 @@ jobs:
           fi
           "$python_bin" -m pip install dist/*.whl
           PATH="$clean_path" "$python_bin" \
-            "$GITHUB_WORKSPACE/scripts/smoke-platform-wheel.py" \
+            "$GITHUB_WORKSPACE/scripts/release/smoke-platform-wheel.py" \
             --state-dir "$state" \
             --work-dir "$work"
           test ! -e src/local_shell_mcp/ui_runtime
@@ -281,13 +281,17 @@ jobs:
           mkdir -p /tmp/local-shell-mcp-sdist /tmp/local-shell-mcp-sdist-wheel
           tar -xzf dist/*.tar.gz -C /tmp/local-shell-mcp-sdist
           source_dir="$(find /tmp/local-shell-mcp-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)"
-          test -f "$source_dir/scripts/build-platform-wheel.py"
+          test -f "$source_dir/scripts/release/build-platform-wheel.py"
+          test -f "$source_dir/scripts/release/smoke-platform-wheel.py"
+          test ! -e "$source_dir/scripts/release/pyinstaller-entry.py"
+          test ! -e "$source_dir/scripts/build-platform-wheel.py"
+          test ! -e "$source_dir/scripts/smoke-platform-wheel.py"
+          test ! -e "$source_dir/scripts/pyinstaller-entry.py"
           test -f "$source_dir/scripts/README.md"
           test -f "$source_dir/scripts/validation/check-coverage.py"
           test -f "$source_dir/scripts/validation/check-native-provenance.py"
           test -f "$source_dir/scripts/validation/check-release-matrix.py"
           test -f "$source_dir/scripts/generation/generate-tui-executable-contract.py"
-          test -f "$source_dir/scripts/smoke-platform-wheel.py"
           test -f "$source_dir/scripts/validation/coverage-baseline.json"
           test -f "$source_dir/tests/test_coverage_gate.py"
           test -f "$source_dir/tests/test_native_provenance.py"

@@ -5,6 +5,14 @@ Scripts are grouped by the lifecycle they own rather than by implementation
 language. Moving a script must update workflow, pre-commit, source-package,
 provenance, test, and documentation references in the same change.
 
+## `release`
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `release/build-platform-wheel.py` | Thin installed-project entrypoint for building one verified platform wheel with the embedded native OpenTUI payload. | It invokes release-owned platform-wheel assembly and is consumed only by CI/release packaging workflows. |
+| `release/smoke-platform-wheel.py` | Verifies an installed platform wheel without Bun or a sidecar, including private payload materialization, stable executable resolution, and native `--version` execution. | It is an artifact acceptance test coupled to platform-wheel publishing rather than a general repository validator. |
+| `release/pyinstaller-entry.py` | Minimal PyInstaller startup shim that forwards command-line arguments to the packaged application entrypoint. | It exists only as an input to standalone release artifact construction and is not a runtime library or development command. |
+
 ## `validation`
 
 | File | Responsibility | Why it belongs here |
@@ -23,7 +31,6 @@ provenance, test, and documentation references in the same change.
 | `generation/export-tools-json.py` | Builds the MCP registry and exports stable tool plus server-instruction reference JSON for documentation and inspection. | It is a deterministic reference-data generator whose outputs are checked into the documentation tree. |
 | `generation/generate-tui-executable-contract.py` | Mirrors the dependency-leaf Python TUI executable-name contract into the Bun build input and checks that mirror for drift. | It owns a generated cross-language source artifact; release and provenance validators consume its output but do not own generation. |
 
-The remaining root-level scripts are transitional and will move in later,
-independently validated phases. User-facing convenience launchers may remain at
-stable root paths when their documented invocation is itself part of the public
-workflow.
+The remaining root-level scripts are audited in later, independently validated
+phases. User-facing deployment launchers may remain at stable root paths when
+their documented invocation is itself part of the public workflow.
