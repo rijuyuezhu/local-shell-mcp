@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 STATIC_ROOT = (
-    Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui_static"
+    Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
 )
 
 

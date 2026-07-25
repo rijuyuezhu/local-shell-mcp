@@ -50,7 +50,7 @@ def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
 
 def _assets_dir() -> Path:
     """Return the packaged browser asset directory."""
-    return Path(__file__).resolve().parents[2] / "ui_static"
+    return Path(__file__).resolve().parents[1] / "static"
 
 
 def _ui_index_html(settings: Settings) -> str:

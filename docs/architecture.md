@@ -213,6 +213,30 @@ Rejected ownership alternatives:
 - `oauth`: OAuth middleware consumes the UI trust decision, but credential
   creation and loopback UI namespace rules must remain owned by the UI domain.
 
+### `ui/static`: packaged browser assets
+
+The `ui/static` directory owns the immutable HTML, CSS, JavaScript, third-party
+license, syntax-highlighting, and terminal-rendering assets served by
+`ui/http/routes.py`. Keeping the assets under the UI domain makes their product
+ownership explicit while preserving their package-data role; they contain no
+Python modules and are deliberately excluded from the source-only remote-worker
+runtime.
+
+The directory contains exactly the browser shell (`index.html`), Human UI styles
+and controller (`web.css`, `web.js`), OpenTUI console bridge, syntax highlighter,
+terminal renderer, vendored xterm bundle and stylesheet, and the corresponding
+license notice. Build and architecture gates reject symlinks, Python files,
+unexpected assets, and restoration of the former top-level `ui_static` path.
+
+Rejected ownership alternatives:
+
+- top-level `ui_static`: the name exposed package mechanics without expressing
+  that these files belong exclusively to the Human UI product surface.
+- `ui/http/static`: HTTP adapters serve the files, but the same assets are UI
+  product resources packaged independently of any specific executor.
+- `executors/http`: the REST executor composes routes and middleware; it must not
+  own browser presentation resources.
+
 ### `ui/http`: Human UI delivery adapters
 
 The `ui/http` package owns Starlette request parsing, authorization checks,

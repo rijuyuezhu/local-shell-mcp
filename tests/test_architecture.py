@@ -430,6 +430,30 @@ def test_owned_domain_maps_cover_every_file() -> None:
         )
 
 
+def test_ui_static_assets_have_one_explicit_owner() -> None:
+    static_root = _PACKAGE_ROOT / "ui" / "static"
+    expected = {
+        "index.html",
+        "opentui_console.js",
+        "syntax_highlight.js",
+        "terminal_renderer.js",
+        "web.css",
+        "web.js",
+        "xterm_bundle.js",
+        "xterm.css",
+        "xterm.LICENSE.txt",
+    }
+
+    assert static_root.is_dir()
+    assert {path.name for path in static_root.iterdir()} == expected
+    assert all(
+        path.is_file() and not path.is_symlink()
+        for path in static_root.iterdir()
+    )
+    assert not (_PACKAGE_ROOT / "ui_static").exists()
+    assert "`ui/static`" in _ARCHITECTURE_DOC.read_text(encoding="utf-8")
+
+
 def test_agent_bridge_data_dependencies_are_acyclic() -> None:
     modules = {
         f"{_PACKAGE_NAME}.agent_bridge.auth",

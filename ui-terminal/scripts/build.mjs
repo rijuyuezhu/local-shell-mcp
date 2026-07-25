@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const outputRoot = resolve(root, "../src/local_shell_mcp/ui_static");
+const outputRoot = resolve(root, "../src/local_shell_mcp/ui/static");
 const check = process.argv.includes("--check");
 const temporary = check ? resolve(root, ".build-check") : outputRoot;
 if (check) await rm(temporary, { recursive: true, force: true });

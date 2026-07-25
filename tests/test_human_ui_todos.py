@@ -525,7 +525,7 @@ def test_todo_api_enforces_local_remote_and_write_scopes(monkeypatch, tmp_path):
 
 def test_todo_static_ui_has_machine_isolation_and_stale_write_guards():
     static_root = (
-        Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui_static"
+        Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
     )
     index = (static_root / "index.html").read_text(encoding="utf-8")
     script = (static_root / "web.js").read_text(encoding="utf-8")

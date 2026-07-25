@@ -9,7 +9,8 @@ RENDERER = (
     Path(__file__).resolve().parents[1]
     / "src"
     / "local_shell_mcp"
-    / "ui_static"
+    / "ui"
+    / "static"
     / "terminal_renderer.js"
 )
 

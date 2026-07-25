@@ -256,7 +256,10 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/remote/http.py" not in names
     assert "local_shell_mcp/remote/service.py" not in names
     assert not any(
-        "ui_static" in name or name.startswith("tests/") for name in names
+        name.startswith("local_shell_mcp/ui/static/")
+        or "ui_static" in name
+        or name.startswith("tests/")
+        for name in names
     )
 
 

@@ -541,7 +541,7 @@ def test_audit_detail_rejects_invalid_inline_image(monkeypatch, tmp_path):
 
 def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     static_root = (
-        Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui_static"
+        Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
     )
     index = (static_root / "index.html").read_text(encoding="utf-8")
     script = (static_root / "web.js").read_text(encoding="utf-8")

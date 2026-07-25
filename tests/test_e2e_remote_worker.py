@@ -288,7 +288,11 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert "local_shell_mcp/remote/manager.py" not in names
             assert "local_shell_mcp/remote/http.py" not in names
             assert not any(name.startswith("vendor/") for name in names)
-            assert not any("ui_static" in name for name in names)
+            assert not any(
+                name.startswith("local_shell_mcp/ui/static/")
+                or "ui_static" in name
+                for name in names
+            )
             assert all(name.endswith(".py") for name in names)
 
         worker = start_worker_process(
