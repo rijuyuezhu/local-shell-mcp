@@ -288,7 +288,7 @@ def test_worker_bundle_imports_without_checkout_fallback(tmp_path):
         "local_shell_mcp.agent_bridge.sources",
         "local_shell_mcp.schemas.result_models.agent",
         "local_shell_mcp.ops.shell",
-        "local_shell_mcp.ops.jobs",
+        "local_shell_mcp.jobs.runtime",
         "local_shell_mcp.ops.todo",
         "local_shell_mcp.ops.files",
         "local_shell_mcp.ops.read",

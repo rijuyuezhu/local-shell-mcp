@@ -1,4 +1,4 @@
-"""Durable tracked background-job helpers."""
+"""Shared durable tracked-job runtime, persistence, and runner helpers."""
 
 from __future__ import annotations
 
@@ -21,6 +21,14 @@ from typing import Any, BinaryIO
 from ..audit import audit
 from ..config.settings import get_settings
 from ..errors import public_error_type
+from ..ops.shell import (
+    _subprocess_env,
+    check_command_policy,
+    kill_persistent_shell_execute,
+    list_persistent_shells_execute,
+    read_persistent_shell_output_execute,
+    start_persistent_shell_execute,
+)
 from ..schemas.result_models.jobs import (
     JobInfo,
     JobListOutput,
@@ -31,7 +39,6 @@ from ..schemas.result_models.jobs import (
     JobTailOutput,
 )
 from ..tool_session.store import (
-    UnknownAgentSessionError,
     get_tool_session_store,
     resolve_session_path,
 )
@@ -41,15 +48,6 @@ from ..utils.private_files import (
     write_private_text,
 )
 from ..utils.serialization import to_jsonable
-from .shell import (
-    _subprocess_env,
-    check_command_policy,
-    kill_persistent_shell_execute,
-    list_persistent_shells_execute,
-    read_persistent_shell_output_execute,
-    start_persistent_shell_execute,
-)
-from .utils.remote_session import call_remote_session_tool
 
 JOB_STORE_FILE_NAME = "jobs.json"
 JOB_STORE_BACKUP_FILE_NAME = "jobs.json.bak"
@@ -1413,7 +1411,7 @@ async def job_tail_execute(
 ) -> JobTailOutput:
     """Read durable recent output and refresh one tracked job."""
     get_tool_session_store().touch_session(session_id)
-    managed = job_id in _managed_job_id_set(session_id, [job_id])
+    managed = job_id in managed_job_id_set(session_id, [job_id])
     active = (
         set()
         if managed
@@ -1503,7 +1501,7 @@ async def _stop_managed_job(
 async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
     """Stop one tracked command through a serialized lifecycle transition."""
     get_tool_session_store().touch_session(session_id)
-    managed = job_id in _managed_job_id_set(session_id, [job_id])
+    managed = job_id in managed_job_id_set(session_id, [job_id])
     active = (
         set()
         if managed
@@ -1698,7 +1696,7 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
 async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
     """Retry a terminal job with durable two-phase state transitions."""
     session = get_tool_session_store().touch_session(session_id)
-    managed = job_id in _managed_job_id_set(session_id, [job_id])
+    managed = job_id in managed_job_id_set(session_id, [job_id])
     if managed:
         return await _retry_managed_job(session_id, job_id)
     active = _active_shell_ids(await list_persistent_shells_execute())
@@ -1836,7 +1834,7 @@ async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
 
 
-async def _managed_job_list_execute(
+async def managed_job_list_execute(
     session_id: str, include_finished: bool
 ) -> JobListOutput:
     """List only controller-managed jobs owned by one explicit session."""
@@ -1869,7 +1867,7 @@ async def _managed_job_list_execute(
     return JobListOutput(jobs=rows, counts=counts)
 
 
-def _managed_job_id_set(session_id: str, job_ids: list[str]) -> set[str]:
+def managed_job_id_set(session_id: str, job_ids: list[str]) -> set[str]:
     """Return requested identifiers owned by controller-managed jobs."""
     requested = set(job_ids)
     if not requested:
@@ -1884,29 +1882,7 @@ def _managed_job_id_set(session_id: str, job_ids: list[str]) -> set[str]:
         }
 
 
-def _merge_job_counts(*counts: dict[str, int]) -> dict[str, int]:
-    """Sum status counts from controller-managed and worker job stores."""
-    merged: dict[str, int] = {}
-    for source in counts:
-        for status, value in source.items():
-            merged[status] = merged.get(status, 0) + int(value)
-    return merged
-
-
-def _ordered_job_results(
-    requested: list[str],
-    local_rows: list[Any],
-    remote_rows: list[Any],
-    *,
-    job_id: Callable[[Any], str],
-) -> list[Any]:
-    """Merge local and worker action rows in caller-requested order."""
-    by_id = {job_id(row): row for row in remote_rows}
-    by_id.update({job_id(row): row for row in local_rows})
-    return [by_id[item] for item in requested if item in by_id]
-
-
-async def job_execute(
+async def job_local_execute(
     session_id: str,
     list_jobs: bool = False,
     poll: list[str] | None = None,
@@ -1915,7 +1891,7 @@ async def job_execute(
     include_finished: bool = True,
     lines: int = 200,
 ) -> JobOutput:
-    """Run one high-level tracked-job companion operation."""
+    """Run one tracked-job companion operation against the local job store."""
     selected = [poll is not None, cancel is not None, retry is not None]
     if list_jobs and any(selected):
         raise ValueError(
@@ -1923,121 +1899,6 @@ async def job_execute(
         )
     if sum(selected) > 1:
         raise ValueError("poll, cancel, and retry are mutually exclusive")
-
-    try:
-        session = get_tool_session_store().touch_session(session_id)
-    except UnknownAgentSessionError:
-        session = None
-
-    if session is not None and session.target == "remote":
-        if list_jobs or not any(selected):
-            local = await _managed_job_list_execute(
-                session_id, include_finished
-            )
-            try:
-                remote = JobOutput.model_validate(
-                    await call_remote_session_tool(
-                        session,
-                        "job",
-                        {
-                            "list_jobs": list_jobs,
-                            "poll": None,
-                            "cancel": None,
-                            "retry": None,
-                            "include_finished": include_finished,
-                            "lines": lines,
-                        },
-                    )
-                )
-            except Exception as exc:
-                if not local.jobs:
-                    raise
-                return JobOutput(
-                    operation="list",
-                    jobs=local.jobs,
-                    counts=local.counts,
-                    message=f"Remote worker jobs unavailable: {type(exc).__name__}: {exc}",
-                )
-            jobs = [*remote.jobs, *local.jobs]
-            jobs.sort(key=lambda item: item.created_at, reverse=True)
-            return JobOutput(
-                operation="list",
-                jobs=jobs,
-                counts=_merge_job_counts(remote.counts, local.counts),
-                message=(
-                    "No tracked jobs in this session."
-                    if not jobs
-                    else "Tracked controller and worker job snapshot for this session."
-                ),
-            )
-
-        requested = list(poll or cancel or retry or [])
-        managed_ids = _managed_job_id_set(session_id, requested)
-        local_ids = [item for item in requested if item in managed_ids]
-        remote_ids = [item for item in requested if item not in managed_ids]
-        remote = JobOutput(
-            operation=(
-                "poll"
-                if poll is not None
-                else "cancel"
-                if cancel is not None
-                else "retry"
-            )
-        )
-        if remote_ids:
-            remote = JobOutput.model_validate(
-                await call_remote_session_tool(
-                    session,
-                    "job",
-                    {
-                        "poll": remote_ids if poll is not None else None,
-                        "cancel": remote_ids if cancel is not None else None,
-                        "retry": remote_ids if retry is not None else None,
-                        "include_finished": include_finished,
-                        "lines": lines,
-                    },
-                )
-            )
-
-        if poll is not None:
-            local_rows = [
-                await job_tail_execute(session_id, item, lines)
-                for item in local_ids
-            ]
-            return JobOutput(
-                operation="poll",
-                outputs=_ordered_job_results(
-                    requested,
-                    local_rows,
-                    remote.outputs,
-                    job_id=lambda row: row.job.job_id,
-                ),
-            )
-        if cancel is not None:
-            local_rows = [
-                await job_stop_execute(session_id, item) for item in local_ids
-            ]
-            return JobOutput(
-                operation="cancel",
-                cancelled=_ordered_job_results(
-                    requested,
-                    local_rows,
-                    remote.cancelled,
-                    job_id=lambda row: row.job.job_id,
-                ),
-            )
-        local_rows = [
-            await job_retry_execute(session_id, item) for item in local_ids
-        ]
-        return JobOutput(
-            operation="retry",
-            retried=_ordered_job_results(
-                requested,
-                local_rows,
-                remote.retried,
-                job_id=lambda row: row.job_id,
-            ),
-        )
 
     if list_jobs or not any(selected):
         result = await job_list_execute(session_id, include_finished)

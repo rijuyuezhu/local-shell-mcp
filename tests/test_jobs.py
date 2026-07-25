@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops import jobs as jobs_ops
+from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.schemas.result_models.jobs import (
     JobInfo,
     JobListOutput,
@@ -23,6 +23,7 @@ from local_shell_mcp.schemas.result_models.shell import (
     StartPersistentShellOutput,
 )
 from local_shell_mcp.tool_session.store import get_tool_session_store
+from local_shell_mcp.tools.ops import jobs as job_tool_ops
 from tests.helpers import python_shell_command
 
 
@@ -93,14 +94,16 @@ async def test_job_execute_dispatches_companion_actions(monkeypatch):
     monkeypatch.setattr(jobs_ops, "job_stop_execute", fake_stop)
     monkeypatch.setattr(jobs_ops, "job_retry_execute", fake_retry)
 
-    list_result = await jobs_ops.job_execute("ABC12345", include_finished=False)
+    list_result = await job_tool_ops.job_execute(
+        "ABC12345", include_finished=False
+    )
     assert list_result.operation == "list"
     assert list_result.jobs == [job]
     assert list_result.counts == {"running": 1}
     assert calls == [("list", "ABC12345", False)]
 
     calls.clear()
-    poll_result = await jobs_ops.job_execute(
+    poll_result = await job_tool_ops.job_execute(
         "ABC12345", poll=["job_1", "job_2"], lines=5
     )
     assert poll_result.operation == "poll"
@@ -114,13 +117,13 @@ async def test_job_execute_dispatches_companion_actions(monkeypatch):
     ]
 
     calls.clear()
-    cancel_result = await jobs_ops.job_execute("ABC12345", cancel=["job_1"])
+    cancel_result = await job_tool_ops.job_execute("ABC12345", cancel=["job_1"])
     assert cancel_result.operation == "cancel"
     assert cancel_result.cancelled[0].killed is True
     assert calls == [("cancel", "ABC12345", "job_1")]
 
     calls.clear()
-    retry_result = await jobs_ops.job_execute("ABC12345", retry=["job_1"])
+    retry_result = await job_tool_ops.job_execute("ABC12345", retry=["job_1"])
     assert retry_result.operation == "retry"
     assert retry_result.retried[0].attempts == 2
     assert calls == [("retry", "ABC12345", "job_1")]
@@ -129,10 +132,14 @@ async def test_job_execute_dispatches_companion_actions(monkeypatch):
 @pytest.mark.asyncio
 async def test_job_execute_rejects_combined_actions():
     with pytest.raises(ValueError, match="list_jobs cannot be combined"):
-        await jobs_ops.job_execute("ABC12345", list_jobs=True, poll=["job_1"])
+        await job_tool_ops.job_execute(
+            "ABC12345", list_jobs=True, poll=["job_1"]
+        )
 
     with pytest.raises(ValueError, match="mutually exclusive"):
-        await jobs_ops.job_execute("ABC12345", poll=["job_1"], cancel=["job_2"])
+        await job_tool_ops.job_execute(
+            "ABC12345", poll=["job_1"], cancel=["job_2"]
+        )
 
 
 @pytest.mark.asyncio
@@ -948,7 +955,9 @@ async def test_remote_job_companion_merges_controller_managed_and_worker_jobs(
         ).model_dump(mode="json")
 
     monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
-    monkeypatch.setattr(jobs_ops, "call_remote_session_tool", fake_remote_call)
+    monkeypatch.setattr(
+        job_tool_ops, "call_remote_session_tool", fake_remote_call
+    )
     jobs_ops.register_managed_job_handler("test-remote-managed", handler)
     managed = await jobs_ops.start_managed_job(
         remote_session.session_id,
@@ -956,14 +965,14 @@ async def test_remote_job_companion_merges_controller_managed_and_worker_jobs(
         {"source": "controller"},
     )
 
-    listed = await jobs_ops.job_execute(remote_session.session_id)
+    listed = await job_tool_ops.job_execute(remote_session.session_id)
     assert [job.job_id for job in listed.jobs] == [
         managed.job_id,
         remote_job.job_id,
     ]
     assert listed.counts == {"running": 2}
 
-    polled = await jobs_ops.job_execute(
+    polled = await job_tool_ops.job_execute(
         remote_session.session_id,
         poll=[managed.job_id, remote_job.job_id],
         lines=7,
@@ -975,7 +984,7 @@ async def test_remote_job_companion_merges_controller_managed_and_worker_jobs(
     assert calls[-1]["poll"] == [remote_job.job_id]
 
     before = len(calls)
-    cancelled = await jobs_ops.job_execute(
+    cancelled = await job_tool_ops.job_execute(
         remote_session.session_id, cancel=[managed.job_id]
     )
     assert cancelled.cancelled[0].job.status == "stopped"
@@ -1133,18 +1142,18 @@ async def test_remote_job_list_keeps_controller_jobs_when_worker_is_offline(
     managed = await jobs_ops.start_managed_job(
         remote_session.session_id, "test-offline-managed", {"value": 1}
     )
-    monkeypatch.setattr(jobs_ops, "call_remote_session_tool", offline)
+    monkeypatch.setattr(job_tool_ops, "call_remote_session_tool", offline)
 
-    listed = await jobs_ops.job_execute(remote_session.session_id)
+    listed = await job_tool_ops.job_execute(remote_session.session_id)
     assert [row.job_id for row in listed.jobs] == [managed.job_id]
     assert listed.counts == {"running": 1}
     assert listed.message is not None and "worker offline" in listed.message
 
-    polled = await jobs_ops.job_execute(
+    polled = await job_tool_ops.job_execute(
         remote_session.session_id, poll=[managed.job_id]
     )
     assert polled.outputs[0].job.job_id == managed.job_id
-    cancelled = await jobs_ops.job_execute(
+    cancelled = await job_tool_ops.job_execute(
         remote_session.session_id, cancel=[managed.job_id]
     )
     assert cancelled.cancelled[0].job.status == "stopped"

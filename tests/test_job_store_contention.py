@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops import jobs as jobs_ops
+from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.utils import private_files
 

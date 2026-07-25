@@ -1,12 +1,12 @@
 import pytest
 
 import local_shell_mcp.ops.files as file_ops
-import local_shell_mcp.ops.jobs as job_ops
 import local_shell_mcp.ops.read as read_ops
 import local_shell_mcp.ops.remote as remote_ops
 import local_shell_mcp.ops.search as search_ops
 import local_shell_mcp.ops.session as session_ops
 import local_shell_mcp.ops.shell as shell_ops
+import local_shell_mcp.tools.ops.jobs as job_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.tool_session.store import get_tool_session_store

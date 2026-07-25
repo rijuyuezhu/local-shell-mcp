@@ -39,7 +39,7 @@ _ALLOWED_DEPENDENCY_CYCLES = frozenset(
     {
         frozenset(
             {
-                "local_shell_mcp.ops.jobs",
+                "local_shell_mcp.jobs.runtime",
                 "local_shell_mcp.ops.shell",
             }
         ),
@@ -507,6 +507,50 @@ def test_tool_owned_slices_have_explicit_boundaries() -> None:
             f"{_PACKAGE_NAME}.utils.serialization",
         },
     )
+
+
+def test_jobs_domain_and_tool_operation_have_explicit_boundaries() -> None:
+    runtime = f"{_PACKAGE_NAME}.jobs.runtime"
+    operation = f"{_PACKAGE_NAME}.tools.ops.jobs"
+    input_model = f"{_PACKAGE_NAME}.tools.schemas.input_models.jobs"
+    shared_result = f"{_PACKAGE_NAME}.schemas.result_models.jobs"
+    registry = f"{_PACKAGE_NAME}.tools.registry.jobs"
+
+    assert not (_PACKAGE_ROOT / "ops" / "jobs.py").exists()
+    assert not (_PACKAGE_ROOT / "schemas" / "input_models" / "jobs.py").exists()
+    assert (_PACKAGE_ROOT / "jobs" / "runtime.py").is_file()
+
+    operation_edges = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer == operation or target == operation
+    )
+    assert operation_edges == frozenset(
+        {
+            (registry, operation),
+            (operation, runtime),
+            (operation, f"{_PACKAGE_NAME}.ops.utils.remote_session"),
+            (operation, shared_result),
+            (operation, f"{_PACKAGE_NAME}.tool_session.store"),
+        }
+    )
+
+    input_edges = frozenset(
+        (importer, target)
+        for importer, target in _local_imports()
+        if importer == input_model or target == input_model
+    )
+    assert input_edges == frozenset({(registry, input_model)})
+
+    runtime_targets = {
+        target for importer, target in _local_imports() if importer == runtime
+    }
+    assert not any(
+        target == f"{_PACKAGE_NAME}.tools"
+        or target.startswith(f"{_PACKAGE_NAME}.tools.")
+        for target in runtime_targets
+    )
+    _assert_ownership_map_covers({"jobs/__init__.py", "jobs/runtime.py"})
 
 
 def test_ui_static_assets_have_one_explicit_owner() -> None:

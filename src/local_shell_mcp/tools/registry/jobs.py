@@ -1,7 +1,10 @@
 """Tracked shell and managed job companion tool registry."""
 
-from ...ops.jobs import job_execute
-from ...schemas.input_models.jobs import (
+from ...schemas.input_models.session import SessionIdArg
+from ...schemas.result_models.jobs import JobOutput
+from ..declarative import DeclarativeToolRegistry
+from ..ops.jobs import job_execute
+from ..schemas.input_models.jobs import (
     IncludeFinishedArg,
     JobCancelIdsArg,
     JobListSnapshotArg,
@@ -9,9 +12,6 @@ from ...schemas.input_models.jobs import (
     JobRetryIdsArg,
     JobTailLinesArg,
 )
-from ...schemas.input_models.session import SessionIdArg
-from ...schemas.result_models.jobs import JobOutput
-from ..declarative import DeclarativeToolRegistry
 
 
 class JobToolRegistry(DeclarativeToolRegistry):

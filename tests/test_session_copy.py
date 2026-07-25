@@ -8,7 +8,7 @@ import pytest
 import local_shell_mcp.ops.utils.remote_session as remote_session_utils
 import local_shell_mcp.ops.utils.session_copy as session_copy_ops
 from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops import jobs as jobs_ops
+from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.ops.session import session_copy_execute
 from local_shell_mcp.schemas.result_models.shell import (
     ListPersistentShellsOutput,

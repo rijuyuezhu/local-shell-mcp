@@ -85,7 +85,7 @@ def _policy() -> dict[str, Any]:
                 "src/local_shell_mcp/agent_bridge/redaction.py",
                 "src/local_shell_mcp/config/settings.py",
                 "src/local_shell_mcp/ops/files.py",
-                "src/local_shell_mcp/ops/jobs.py",
+                "src/local_shell_mcp/jobs/runtime.py",
                 "src/local_shell_mcp/ops/patch/envelope.py",
                 "src/local_shell_mcp/ops/secret_scan.py",
                 "src/local_shell_mcp/ops/shell.py",

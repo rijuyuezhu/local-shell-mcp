@@ -39,7 +39,7 @@ CRITICAL_FILES = frozenset(
         f"{SOURCE_PREFIX}agent_bridge/redaction.py",
         f"{SOURCE_PREFIX}config/settings.py",
         f"{SOURCE_PREFIX}ops/files.py",
-        f"{SOURCE_PREFIX}ops/jobs.py",
+        f"{SOURCE_PREFIX}jobs/runtime.py",
         f"{SOURCE_PREFIX}ops/patch/envelope.py",
         f"{SOURCE_PREFIX}ops/secret_scan.py",
         f"{SOURCE_PREFIX}ops/shell.py",

@@ -198,9 +198,9 @@ async def _list_persistent_shells(args: dict[str, Any]) -> Any:
 
 
 async def _job(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.ops.jobs import job_execute
+    from local_shell_mcp.jobs.runtime import job_local_execute
 
-    return await job_execute(
+    return await job_local_execute(
         str(args["session_id"]),
         bool(args.get("list_jobs", False)),
         args.get("poll"),

@@ -300,7 +300,7 @@
       "num_statements": 98,
       "percent_covered": 91.044776
     },
-    "src/local_shell_mcp/ops/jobs.py": {
+    "src/local_shell_mcp/jobs/runtime.py": {
       "num_branches": 220,
       "num_statements": 846,
       "percent_covered": 83.58349
@@ -510,7 +510,7 @@
       "num_statements": 3,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/schemas/input_models/jobs.py": {
+    "src/local_shell_mcp/tools/schemas/input_models/jobs.py": {
       "num_branches": 0,
       "num_statements": 12,
       "percent_covered": 100.0
@@ -906,8 +906,8 @@
       "src/local_shell_mcp/agent_bridge/auth_store.py",
       "src/local_shell_mcp/agent_bridge/redaction.py",
       "src/local_shell_mcp/config/settings.py",
+      "src/local_shell_mcp/jobs/runtime.py",
       "src/local_shell_mcp/ops/files.py",
-      "src/local_shell_mcp/ops/jobs.py",
       "src/local_shell_mcp/ops/patch/envelope.py",
       "src/local_shell_mcp/ops/secret_scan.py",
       "src/local_shell_mcp/ops/shell.py",

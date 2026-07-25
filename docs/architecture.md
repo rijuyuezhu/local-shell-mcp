@@ -23,6 +23,7 @@ local_shell_mcp/
   tools/                   public tool contracts and registration
     ops/                   audited tool-owned operation implementations
     schemas/               audited tool-owned input and result contracts
+  jobs/                    shared durable background-job domain
   ops/                     shared or not-yet-migrated use cases
   schemas/                 shared or not-yet-migrated contracts
   config/                  settings and configuration surface
@@ -154,6 +155,31 @@ Rejected ownership alternatives:
   either location would reverse the other executor's dependency direction.
 
 
+## `jobs`: shared durable background-job domain
+
+The `jobs` package owns durable tracked-job state and execution that must work
+independently of public tool registration. It is included in the source-only
+worker bundle and may depend on shell operations, session state, configuration,
+audit recording, private-file primitives, and shared job result contracts. It
+must not import `tools`, executors, UI adapters, or controller-only remote
+orchestration.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `jobs/__init__.py` | Declares the shared tracked-job domain boundary. | Job persistence and execution are used by the controller process, standalone runner, shell/session-copy workflows, and source-only workers, so they are broader than one public tool adapter. |
+| `jobs/runtime.py` | Owns the durable store and backup, lock-bounded transactions, deferred managed-update journal, attempt files, shell-backed and managed-job lifecycle, local companion actions, and standalone runner entrypoint. | These responsibilities must remain available without importing `tools`; keeping them in `ops/jobs.py` conflated the shared runtime with controller-only public-tool orchestration. |
+
+Rejected ownership alternatives:
+
+- `ops/jobs.py`: the old module mixed shared persistence/runner behavior with the
+  public controller-side job companion, preventing a truthful single owner for
+  the `job` tool family.
+- `tools/ops/jobs.py`: only controller-side local/remote result orchestration
+  belongs there; moving the runtime would force source-only workers and process
+  entrypoints to depend on the tool-registration layer.
+- `utils`: job state, lifecycle, and recovery form a cohesive domain rather than
+  small dependency-leaf helpers.
+
 ## `tools`: public contracts and tool-owned implementations
 
 The `tools` package owns public tool registration, metadata, and implementation
@@ -166,11 +192,13 @@ schema contracts together without compatibility wrappers.
 | --- | --- | --- |
 | `tools/ops/__init__.py` | Declares the namespace for audited tool-owned operation implementations. | It distinguishes tool business logic from shared domain capabilities and from registry adapters. |
 | `tools/ops/audit.py` | Resolves explicit local/remote sessions, queries audit listings or details, maps remote session identifiers, excludes the active local call, and returns typed audit results. | Only the audit tool registry consumes this orchestration. Audit persistence, session state, and remote dispatch remain shared domains below the tool-owned operation. |
+| `tools/ops/jobs.py` | Validates the unified job companion action, merges controller-managed and remote-worker job snapshots, routes poll/cancel/retry identifiers to the correct owner, preserves caller order, and degrades remote list failures when controller jobs remain available. | This local/remote projection is consumed only by the public job registry. Durable state, local actions, managed handlers, and runner behavior remain in the shared `jobs` domain. |
 | `tools/ops/version.py` | Converts package/runtime version metadata into the typed version-tool result. | Its only production consumer is the version tool registry, so keeping it at top-level `ops` implied reuse that does not exist. |
 | `tools/ops/workspace_connector.py` | Implements connector-compatible workspace search/fetch projection, bounded result-card deduplication, stable error envelopes, and auditing while delegating file reads and grep search to shared operations. | Only the workspace connector registry consumes this orchestration. Its dependencies remain shared capabilities; placing the adapter in top-level `ops` advertised broader reuse than its actual consumer graph. |
 | `tools/schemas/__init__.py` | Declares the namespace for tool-owned input and result contracts. | It keeps tool-only schemas with their public tool surface while shared contracts remain at top-level `schemas`. |
 | `tools/schemas/input_models/__init__.py` | Declares tool-owned input contracts. | The marker establishes the final package shape for migrated tool families. |
 | `tools/schemas/input_models/audit.py` | Defines bounded audit filters, timestamps, sort order, detail id, and full-payload annotations. | These annotations describe only the public audit tool input surface; shared session-id input remains in the shared schema package. |
+| `tools/schemas/input_models/jobs.py` | Defines list, poll, cancel, retry, include-finished, and bounded-tail annotations for the unified job companion. | These annotations describe only the public job tool input surface; shared job lifecycle result models remain at top-level `schemas` because runtime, session, transfer, and worker code consume them. |
 | `tools/schemas/input_models/version.py` | Documents the intentionally argument-free version tool input contract. | The contract exists only to keep the version tool's operation/registry/schema slice structurally complete. |
 | `tools/schemas/input_models/workspace_connector.py` | Defines annotated literal-search and fetch-id arguments for connector clients. | These annotations describe only the public workspace connector tools and have no shared domain consumer. |
 | `tools/schemas/result_models/__init__.py` | Declares tool-owned structured result contracts. | It separates public tool response schemas from shared cross-domain result models. |
@@ -180,15 +208,15 @@ schema contracts together without compatibility wrappers.
 
 Rejected ownership alternatives:
 
-- top-level `ops/{audit,version,workspace_connector}.py` and corresponding
+- top-level `ops/{audit,jobs,version,workspace_connector}.py` and corresponding
   `schemas/**` files: their placement advertised transport-neutral reuse despite
   exclusively tool-owned consumer graphs.
 - matching `tools/registry/*.py`: registration adapts operations to declarative
   tool metadata; combining implementation and schemas into registry adapters
   would erase the operation/contract boundary.
-- source-only worker bundle: workers do not register or execute these controller-
-  only tools, so migrated `tools/` files must not be included incidentally by
-  operation or schema wildcards.
+- source-only worker bundle: workers execute shared job runtime actions but do
+  not import controller-side public-tool orchestration, so migrated `tools/` files
+  must not be included incidentally by operation or schema wildcards.
 
 ## `telemetry`: transport-neutral host and process observations
 
@@ -446,10 +474,28 @@ Rejected ownership alternatives:
 - `utils`: wheel metadata, binary format validation, deterministic archives, and
   release locking form one build-time domain rather than general helpers.
 
-## Ownership review status
+## Large-module reassessment
 
-The following areas still require the same file-by-file ownership review:
+The post-migration ownership review compared the remaining large stateful
+modules by responsibility clusters, dependency direction, monkeypatch surface,
+source-only worker constraints, and existing test ownership. Only the jobs split
+was accepted in this review:
 
-- Human UI core and HTTP adapters.
-- Large stateful modules, which will be split only after package ownership is
-  stable and each split has an independent test and CI closure.
+- `jobs/runtime.py` and `tools/ops/jobs.py` now separate shared durable execution
+  from the controller-only public-tool projection. The split removes the
+  misleading `ops/jobs.py` owner while preserving the explicit
+  `jobs.runtime <-> ops.shell` cycle as visible architecture debt.
+- `ui/http/terminals.py` remains intact. Its HTTP validation, remote terminal
+  normalization, raw bridge lifecycle, connection limits, authentication, and
+  WebSocket orchestration share one protocol state machine and one concentrated
+  test/monkeypatch surface. A future split requires a dedicated protocol
+  contract and adapter-parity tests rather than a line-count-driven move.
+- `remote/transfer_gateway.py` remains intact. Its ticket store, spool identity,
+  authorization, range handling, cleanup, and router composition jointly enforce
+  the transfer security and TOCTOU model. Separating them without a narrower
+  security contract would increase risk and is not justified by the current
+  consumer graph.
+
+No further large-module decomposition is authorized by this review. Future
+changes must begin from a concrete behavior, dependency, or testability problem
+and complete their own focused commit, push, and exact-head CI closure.

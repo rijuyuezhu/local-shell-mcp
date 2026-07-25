@@ -589,7 +589,7 @@ async def bash_execute(
             result=_as_result_dict(result),
         )
     if async_:
-        from .jobs import job_start_execute
+        from ..jobs.runtime import job_start_execute
 
         result = await job_start_execute(
             session_id, command_with_env, cwd_text, name

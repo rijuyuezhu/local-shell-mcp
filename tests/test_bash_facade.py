@@ -92,7 +92,7 @@ async def test_shell_execution_routes_async_to_session_job(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.jobs.job_start_execute", fake_job_start
+        "local_shell_mcp.jobs.runtime.job_start_execute", fake_job_start
     )
     monkeypatch.setattr(
         shell_ops, "get_tool_session_store", lambda: FakeStore()
