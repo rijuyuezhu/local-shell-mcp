@@ -7,6 +7,7 @@ the full MCP/FastAPI control-plane registry.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -629,4 +630,54 @@ async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
         handler = _HANDLERS[tool]
     except KeyError as exc:
         raise ValueError(f"unsupported remote worker tool: {tool}") from exc
-    return await handler(args or {})
+    payload = args or {}
+    from local_shell_mcp.tool_session import tool_input_session_ids
+
+    session_ids = tool_input_session_ids(payload)
+    if not session_ids:
+        return await handler(payload)
+
+    from local_shell_mcp.audit import (
+        audit_call_context,
+        audit_tool_call_end,
+        audit_tool_call_start,
+        new_audit_call_id,
+    )
+    from local_shell_mcp.utils.serialization import to_jsonable
+
+    call_id = new_audit_call_id()
+    start = time.time()
+    audit_tool_call_start(
+        call_id=call_id,
+        transport="worker",
+        tool=tool,
+        input=payload,
+    )
+    try:
+        with audit_call_context(call_id, session_ids):
+            result = await handler(payload)
+    except BaseException as exc:
+        audit_tool_call_end(
+            call_id=call_id,
+            transport="worker",
+            tool=tool,
+            ok=False,
+            duration_ms=int((time.time() - start) * 1000),
+            error={
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "repr": repr(exc),
+            },
+            session_ids=session_ids,
+        )
+        raise
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="worker",
+        tool=tool,
+        ok=True,
+        duration_ms=int((time.time() - start) * 1000),
+        output=to_jsonable(result),
+        session_ids=session_ids,
+    )
+    return result

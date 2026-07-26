@@ -613,6 +613,39 @@ async def test_remote_worker_dispatch_exposes_process_scoped_audit(
 
 
 @pytest.mark.asyncio
+async def test_remote_worker_dispatch_records_session_owned_tool_lifecycle(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "worker"
+    _configure(monkeypatch, workspace)
+    session = get_tool_session_store().create_session(
+        workdir=workspace,
+        label="worker audit owner",
+    )
+    (workspace / "remote.txt").write_text("remote content", encoding="utf-8")
+
+    result = await execute_worker_tool(
+        "read",
+        {"session_id": session.session_id, "path": "remote.txt"},
+    )
+    listing = await execute_worker_tool(
+        "query_audit",
+        {
+            "log_session_id": session.session_id,
+            "operation": "files",
+            "limit": 10,
+        },
+    )
+
+    assert "remote content" in result.content
+    assert listing["count"] == 1
+    entry = listing["entries"][0]
+    assert entry["tool"] == "read"
+    assert entry["session"] == session.session_id
+    assert entry["status"] == "success"
+
+
+@pytest.mark.asyncio
 async def test_remote_registry_audit_handlers_support_global_and_session_logs(
     monkeypatch, tmp_path
 ):

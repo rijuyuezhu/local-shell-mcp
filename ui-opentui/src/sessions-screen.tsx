@@ -7,10 +7,11 @@ import { handleSelectionScroll } from "./mouse"
 import {
   clampIndex,
   nextValue,
+  sessionInventoryRequestMatches,
   sessionResourceRequestMatches,
   updateTodo,
 } from "./state-utils"
-import type { SessionResourceRequest } from "./state-utils"
+import type { SessionInventoryRequest, SessionResourceRequest } from "./state-utils"
 import { screenTheme, theme } from "./theme"
 import { TODO_ROW_HEIGHT, todoVisibleRowCount } from "./todos-layout"
 import type { AgentSession, AuditEntry, Machine, TodoItem, TodoPayload } from "./types"
@@ -114,6 +115,10 @@ export function SessionsScreen({
   const todoRequestGeneration = useRef(0)
   const selectedResourceContext = useRef({ machine, sessionId })
   selectedResourceContext.current.machine = machine
+  const inventoryRequestGeneration = useRef(0)
+  const inventoryContext = useRef({ machine, includeInactive })
+  inventoryContext.current.machine = machine
+  inventoryContext.current.includeInactive = includeInactive
 
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
   const [auditSelected, setAuditSelected] = useState(0)
@@ -233,35 +238,50 @@ export function SessionsScreen({
   }, [applyTodoPayload, clearResources, loadAudit, machine, setStatus])
 
   const load = useCallback(async () => {
+    const request: SessionInventoryRequest = {
+      generation: ++inventoryRequestGeneration.current,
+      machine,
+      includeInactive,
+    }
+    const currentRequest = (): SessionInventoryRequest => ({
+      generation: inventoryRequestGeneration.current,
+      machine: inventoryContext.current.machine,
+      includeInactive: inventoryContext.current.includeInactive,
+    })
     setLoading(true)
     try {
       const payload = await api.sessions(machine, includeInactive)
-      const previous = todoState.current.sessionId || sessionId
+      if (!mounted.current || !sessionInventoryRequestMatches(request, currentRequest())) return
+      const previous = todoState.current.sessionId
       const nextSessionId = payload.sessions.some((session) => session.session_id === previous)
         ? previous
         : payload.sessions[0]?.session_id || ""
-      if (!mounted.current) return
       setSessions(payload.sessions)
       setSessionId(nextSessionId)
       await loadResources(nextSessionId)
-      if (mounted.current) {
+      if (mounted.current && sessionInventoryRequestMatches(request, currentRequest())) {
         setLoaded(true)
         setStatus(
           `Sessions: ${payload.count} ${includeInactive ? "total" : `active in ${payload.active_window_hours || 5}h`} on ${machine}`,
         )
       }
     } catch (error) {
-      if (mounted.current) setStatus(`Sessions: ${formatError(error)}`)
+      if (mounted.current && sessionInventoryRequestMatches(request, currentRequest())) {
+        setStatus(`Sessions: ${formatError(error)}`)
+      }
     } finally {
-      if (mounted.current) setLoading(false)
+      if (mounted.current && sessionInventoryRequestMatches(request, currentRequest())) {
+        setLoading(false)
+      }
     }
-  }, [includeInactive, loadResources, machine, sessionId, setStatus])
+  }, [includeInactive, loadResources, machine, setStatus])
 
   useEffect(() => {
     mounted.current = true
     void load()
     return () => {
       mounted.current = false
+      inventoryRequestGeneration.current += 1
       todoRequestGeneration.current += 1
       auditRequest.current += 1
       auditController.current?.abort()
