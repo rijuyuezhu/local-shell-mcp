@@ -85,6 +85,25 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     row.locator("input").fill("verify browser todos")
     row.locator("select").nth(0).select_option("in_progress")
     row.locator("select").nth(1).select_option("high")
+
+    page.locator("#todo-add").click()
+    rows = page.locator("#todo-list .todo-row")
+    expect(rows).to_have_count(2)
+    second_row = rows.last
+    second_row.locator("input").fill("remove browser todo")
+    for selector, index in [
+        ("input", 0),
+        ("select", 0),
+        ("select", 1),
+        ("button", 0),
+    ]:
+        first_box = rows.nth(0).locator(selector).nth(index).bounding_box()
+        second_box = rows.nth(1).locator(selector).nth(index).bounding_box()
+        assert first_box is not None and second_box is not None
+        assert abs(first_box["x"] - second_box["x"]) < 1
+    second_row.get_by_role("button", name="Remove").click()
+    expect(rows).to_have_count(1)
+
     page.locator("#todo-save").click()
     expect(page.locator("#todo-state")).to_contain_text(f"Saved {session_id}")
     local_todos = harness.api(
