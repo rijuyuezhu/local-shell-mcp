@@ -70,7 +70,12 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
 
     index = client.get("/ui")
     assert index.status_code == 200
-    assert "Human Interface" in index.text
+    assert 'class="app-shell"' in index.text
+    assert 'class="app-sidebar"' in index.text
+    assert 'data-view="overview"' in index.text
+    assert 'data-view="sessions"' in index.text
+    assert 'data-view="audit"' in index.text
+    assert 'data-app-view="overview"' in index.text
     assert 'id="dashboard-panel"' in index.text
     assert 'id="dashboard-machine"' in index.text
     assert 'id="dashboard-cpu-trend"' in index.text
@@ -148,6 +153,8 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'resource: String(oauth.resource || "")' in script.text
     assert "pending.redirectUri === callbackUrl()" in script.text
     assert "OAuth issuer verification failed" in script.text
+    assert "function setActiveView" in script.text
+    assert "history.pushState" in script.text
     assert "response.status === 401" in script.text
     assert (
         "response.status === 401 || response.status === 403" not in script.text

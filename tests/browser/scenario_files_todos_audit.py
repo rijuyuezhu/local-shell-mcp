@@ -13,6 +13,7 @@ def _file_entry(harness: BrowserHarness, path: str):
 
 def run_files_todos_audit(harness: BrowserHarness) -> None:
     page = harness.page
+    harness.navigate("files")
 
     expect(_file_entry(harness, "notes.txt")).to_be_visible()
     _file_entry(harness, "notes.txt").click()
@@ -71,6 +72,7 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     session = harness.api("POST", "/tools/session_start", body={"workdir": "."})
     assert session["status"] == 200
     session_id = session["payload"]["session_id"]
+    harness.navigate("sessions")
     page.locator("#session-refresh").click()
     expect(
         page.locator(
@@ -119,6 +121,7 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         "payload-e2e-"
     )
 
+    harness.navigate("audit")
     page.locator("#audit-operation").select_option("files")
     page.locator("#audit-search").fill("write_file")
     page.locator("#audit-refresh").click()
@@ -136,6 +139,7 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     harness.set_token(read_only_token)
     page.reload(wait_until="domcontentloaded")
     expect(page.locator("#connection-state")).to_have_text("Connected")
+    harness.navigate("sessions")
     page.locator("#session-audit-operation").select_option("files")
     page.locator("#session-audit-search").fill("write_file")
     page.locator("#session-audit-refresh").click()
@@ -156,6 +160,7 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     harness.set_token(full_token)
     page.reload(wait_until="domcontentloaded")
     expect(page.locator("#connection-state")).to_have_text("Connected")
+    harness.navigate("sessions")
     expect(
         page.locator(
             f'#session-list .session-entry[data-session-id="{session_id}"]'

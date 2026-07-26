@@ -12,6 +12,40 @@
   const tokenStorageKey = "local-shell-mcp-ui-access-token";
   const pendingStorageKey = "local-shell-mcp-ui-oauth-pending";
   const pendingMaxAgeMs = 10 * 60 * 1000;
+  const viewDefinitions = Object.freeze({
+    overview: {
+      title: "Overview",
+      description: "System health across local and remote coding environments.",
+    },
+    machines: {
+      title: "Machines",
+      description: "Controller and worker targets available to the Human UI.",
+    },
+    remotes: {
+      title: "Remotes",
+      description: "Enroll, inspect, rename, and revoke outbound remote workers.",
+    },
+    sessions: {
+      title: "Sessions",
+      description: "Inspect agent sessions, todos, lifecycle state, and scoped Audit records.",
+    },
+    terminals: {
+      title: "Terminals",
+      description: "Persistent local and remote tmux terminals with interactive streaming.",
+    },
+    files: {
+      title: "Files",
+      description: "Browse and edit workspace-scoped files on the selected machine.",
+    },
+    audit: {
+      title: "Audit",
+      description: "Search machine-wide activity and control-plane events.",
+    },
+    console: {
+      title: "OpenTUI",
+      description: "Run the optional terminal-native interface inside the browser.",
+    },
+  });
   const encoder = new TextEncoder();
   let accessToken = sessionStorage.getItem(tokenStorageKey) || "";
   let terminalSocket = null;
@@ -97,8 +131,11 @@
   let remoteLoading = false;
   let remoteTimer = null;
   let remoteInviteCommand = "";
-
   const elements = {
+    appNavItems: Array.from(document.querySelectorAll(".nav-item[data-view]")),
+    appViews: Array.from(document.querySelectorAll("[data-app-view]")),
+    pageDescription: document.getElementById("page-description"),
+    pageTitle: document.getElementById("page-title"),
     dashboardActivity: document.getElementById("dashboard-activity"),
     dashboardAlertCount: document.getElementById("dashboard-alert-count"),
     dashboardAlerts: document.getElementById("dashboard-alerts"),
@@ -271,10 +308,46 @@
     tokenInput: document.getElementById("access-token"),
     version: document.getElementById("version"),
   };
-
   function text(value, fallback = "—") {
     if (value === null || value === undefined || value === "") return fallback;
     return String(value);
+  }
+
+  function normalizeView(value) {
+    const candidate = String(value || "").replace(/^#/, "");
+    if (!Object.prototype.hasOwnProperty.call(viewDefinitions, candidate)) return "overview";
+    if (candidate === "console" && !config.opentuiAvailable) return "overview";
+    return candidate;
+  }
+
+  function viewFromLocation() {
+    return normalizeView(location.hash.slice(1));
+  }
+
+  function setActiveView(value, { syncHash = true, replaceHash = false } = {}) {
+    const view = normalizeView(value);
+    const definition = viewDefinitions[view];
+    document.body.dataset.activeView = view;
+    elements.pageTitle.textContent = definition.title;
+    elements.pageDescription.textContent = definition.description;
+    document.title = `${definition.title} · local-shell-mcp`;
+
+    for (const item of elements.appNavItems) {
+      const active = item.dataset.view === view;
+      item.classList.toggle("active", active);
+      if (active) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    }
+    for (const panel of elements.appViews) {
+      panel.hidden = panel.dataset.appView !== view;
+    }
+
+    if (syncHash && location.hash !== `#${view}`) {
+      const url = `${location.pathname}${location.search}#${view}`;
+      if (replaceHash) history.replaceState({}, "", url);
+      else history.pushState({}, "", url);
+    }
+    window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
   }
 
   function setConnection(label, state) {
@@ -2634,6 +2707,7 @@
   }
 
   function sendTerminalResize() {
+    if (document.body.dataset.activeView !== "terminals") return;
     if (!terminalReady || !terminalSocketCurrent()) return;
     if (terminalMode === "pty" && terminalFitAddon && !elements.terminalXterm.hidden) {
       terminalFitAddon.fit();
@@ -2714,14 +2788,18 @@
         elements.terminalState.textContent = `Connected · ${requestedMachine} · ${mode.toUpperCase()}`;
         setTerminalControls(true);
         sendTerminalResize();
-        if (mode === "pty") terminalXterm?.focus();
-        else elements.terminalInput.focus();
+        if (document.body.dataset.activeView === "terminals") {
+          if (mode === "pty") terminalXterm?.focus();
+          else elements.terminalInput.focus();
+        }
       } else if (message.type === "snapshot") {
         acceptTerminalSnapshot(text(message.output, ""));
         terminalReady = true;
         elements.terminalState.textContent = `Connected · ${requestedMachine} · SNAPSHOT`;
         setTerminalControls(true);
-        elements.terminalInput.focus();
+        if (document.body.dataset.activeView === "terminals") {
+          elements.terminalInput.focus();
+        }
       } else if (message.type === "exit") {
         const detail = terminalNotice(message.message);
         terminalReady = false;
@@ -2771,8 +2849,12 @@
       if (generation !== terminalListGeneration || requestedMachine !== terminalMachine) return null;
       if (payload.machine !== requestedMachine) throw new Error("Terminal machine response mismatch");
       renderTerminalList(payload);
+      const connected =
+        terminalReady &&
+        terminalSocketMachine === requestedMachine &&
+        terminalSocket?.readyState === WebSocket.OPEN;
       elements.terminalState.textContent = selectedShellId
-        ? `${terminalSocket?.readyState === WebSocket.OPEN ? "Connected" : "Selected"} · ${requestedMachine}`
+        ? `${connected ? "Connected" : "Selected"} · ${requestedMachine}`
         : `${terminalSessions.length} session(s) · ${requestedMachine}`;
       return payload;
     } catch (error) {
@@ -3738,6 +3820,17 @@
     showAuthentication("Signed out", "The browser token was removed from this tab.");
   });
 
+  for (const item of elements.appNavItems) {
+    item.addEventListener("click", () => setActiveView(item.dataset.view));
+  }
+  if (!config.opentuiAvailable) {
+    const consoleNav = elements.appNavItems.find((item) => item.dataset.view === "console");
+    if (consoleNav) consoleNav.hidden = true;
+  }
+  const restoreViewFromLocation = () => setActiveView(viewFromLocation(), { syncHash: false });
+  window.addEventListener("popstate", restoreViewFromLocation);
+  window.addEventListener("hashchange", restoreViewFromLocation);
+
   window.addEventListener("resize", () => window.requestAnimationFrame(sendTerminalResize));
   window.addEventListener("beforeunload", () => {
     stopDashboardPolling();
@@ -3747,6 +3840,7 @@
   });
   elements.oauthLogin.hidden = !oauthAvailable();
   elements.authMode.textContent = text(config.authMode);
+  setActiveView(viewFromLocation(), { replaceHash: true });
   void boot();
   window.setInterval(() => {
     if (

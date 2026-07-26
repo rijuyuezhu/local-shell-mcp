@@ -9,12 +9,50 @@
   <link rel="stylesheet" href="__LSM_UI_PATH__/assets/web.css">
 </head>
 <body data-lsm-config="__LSM_UI_CONFIG_JSON__">
-  <main class="shell">
+  <div class="app-shell">
+    <aside class="app-sidebar" aria-label="Application navigation">
+      <div class="brand-block">
+        <span class="brand-mark" aria-hidden="true">&gt;_</span>
+        <span>
+          <strong>local-shell-mcp</strong>
+          <small>Control plane</small>
+        </span>
+      </div>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <button class="nav-item active" type="button" data-view="overview" aria-current="page">
+          <span class="nav-index" aria-hidden="true">01</span><span>Overview</span>
+        </button>
+        <button class="nav-item" type="button" data-view="machines">
+          <span class="nav-index" aria-hidden="true">02</span><span>Machines</span>
+        </button>
+        <button class="nav-item" type="button" data-view="remotes">
+          <span class="nav-index" aria-hidden="true">03</span><span>Remotes</span>
+        </button>
+        <button class="nav-item" type="button" data-view="sessions">
+          <span class="nav-index" aria-hidden="true">04</span><span>Sessions</span>
+        </button>
+        <button class="nav-item" type="button" data-view="terminals">
+          <span class="nav-index" aria-hidden="true">05</span><span>Terminals</span>
+        </button>
+        <button class="nav-item" type="button" data-view="files">
+          <span class="nav-index" aria-hidden="true">06</span><span>Files</span>
+        </button>
+        <button class="nav-item" type="button" data-view="audit">
+          <span class="nav-index" aria-hidden="true">07</span><span>Audit</span>
+        </button>
+        <button class="nav-item" type="button" data-view="console">
+          <span class="nav-index" aria-hidden="true">08</span><span>OpenTUI</span>
+        </button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <p class="sidebar-note">One control surface for local sessions, remote workers, files, and terminals.</p>
+    </aside>
+  <main id="app-main" class="shell app-main">
     <header class="masthead">
       <div>
-        <p class="eyebrow">Human Interface</p>
-        <h1>local-shell-mcp</h1>
-        <p class="subtitle">A shared control surface for local and remote coding environments.</p>
+        <p class="eyebrow">Control plane</p>
+        <h1 id="page-title">Overview</h1>
+        <p id="page-description" class="subtitle">System health across local and remote coding environments.</p>
       </div>
       <div class="actions">
         <span id="connection-state" class="status status-idle">Connecting</span>
@@ -43,7 +81,7 @@
       </div>
     </section>
 
-    <section id="dashboard-panel" class="panel dashboard-panel">
+    <section id="dashboard-panel" class="panel dashboard-panel app-view" data-app-view="overview">
       <div class="section-heading dashboard-heading">
         <div>
           <p class="eyebrow">Process telemetry</p>
@@ -149,7 +187,7 @@
       </div>
     </section>
 
-    <section class="metric-grid" aria-label="Service summary">
+    <section class="metric-grid app-view" data-app-view="overview" aria-label="Service summary">
       <article class="metric">
         <span>Version</span>
         <strong id="version">—</strong>
@@ -168,7 +206,7 @@
       </article>
     </section>
 
-    <section class="panel">
+    <section id="machines-panel" class="panel app-view" data-app-view="machines" hidden>
       <div class="section-heading">
         <div>
           <p class="eyebrow">Targets</p>
@@ -181,7 +219,7 @@
       </div>
     </section>
 
-    <section id="remotes-panel" class="panel remotes-panel">
+    <section id="remotes-panel" class="panel remotes-panel app-view" data-app-view="remotes" hidden>
       <div class="section-heading remotes-heading">
         <div>
           <p class="eyebrow">Worker control plane</p>
@@ -269,7 +307,7 @@
       </form>
     </dialog>
 
-    <section id="terminal-panel" class="panel terminal-panel">
+    <section id="terminal-panel" class="panel terminal-panel app-view" data-app-view="terminals" hidden>
       <div class="section-heading terminal-heading">
         <div>
           <p class="eyebrow">Machine-isolated tmux</p>
@@ -321,7 +359,7 @@
       </div>
     </section>
 
-    <section id="file-panel" class="panel file-panel">
+    <section id="file-panel" class="panel file-panel app-view" data-app-view="files" hidden>
       <div class="section-heading file-heading">
         <div>
           <p class="eyebrow">Machine workspace</p>
@@ -377,7 +415,7 @@
       </div>
     </section>
 
-    <section id="session-panel" class="panel session-panel">
+    <section id="session-panel" class="panel session-panel app-view" data-app-view="sessions" hidden>
       <div class="section-heading session-heading">
         <div>
           <p class="eyebrow">Agent control plane</p>
@@ -496,7 +534,7 @@
       </div>
     </section>
 
-    <section id="audit-panel" class="panel audit-panel">
+    <section id="audit-panel" class="panel audit-panel app-view" data-app-view="audit" hidden>
       <div class="section-heading audit-heading">
         <div>
           <p class="eyebrow">Machine-wide activity and control events</p>
@@ -565,7 +603,7 @@
       </div>
     </section>
 
-    <section id="opentui-panel" class="panel opentui-panel" hidden>
+    <section id="opentui-panel" class="panel opentui-panel app-view" data-app-view="console" hidden>
       <div class="section-heading opentui-heading">
         <div>
           <p class="eyebrow">Optional terminal interface</p>
@@ -589,7 +627,7 @@
       </div>
     </section>
 
-    <section class="panel roadmap">
+    <section class="panel roadmap app-view" data-app-view="overview">
       <div>
         <p class="eyebrow">Migration status</p>
         <h2>Human UI foundation active</h2>
@@ -597,6 +635,7 @@
       <p>Machine inventory, OAuth PKCE, Dashboard telemetry, Remotes management, xterm-grade local and remote tmux PTY streaming with snapshot fallback, command history, mobile terminal keys, workspace-safe local and remote Files, revision-guarded Todos, and filtered Audit records are available. Remote Files copy, move, and rename remain local-only. The packaged browser-native Human UI is the canonical cross-platform interface; it requires no Bun, Yazi, or sidecar runtime.</p>
     </section>
   </main>
+  </div>
   <script src="__LSM_UI_PATH__/assets/xterm_bundle.js" defer></script>
   <script src="__LSM_UI_PATH__/assets/terminal_renderer.js" defer></script>
   <script src="__LSM_UI_PATH__/assets/syntax_highlight.js" defer></script>

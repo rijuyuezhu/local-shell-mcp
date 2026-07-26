@@ -32,7 +32,7 @@ from .contracts import (
     PERSISTENT_SHELL_MIN_COLUMNS,
     PERSISTENT_SHELL_MIN_ROWS,
 )
-from .tmux import require_tmux
+from .tmux import detached_tmux_env, require_tmux
 
 TERMINAL_BRIDGE_MAX_CHUNK_BYTES = 65_536
 TERMINAL_BRIDGE_MAX_WAIT_MS = 1_000
@@ -179,10 +179,12 @@ class _UnixTmuxAttach:
 
         tmux_bin = require_tmux().path
         assert tmux_bin is not None
+        tmux_env = detached_tmux_env()
         check = subprocess.run(
-            [tmux_bin, "has-session", "-t", shell_id],
+            [tmux_bin, "has-session", "-t", f"={shell_id}"],
             capture_output=True,
             check=False,
+            env=tmux_env,
             timeout=10,
         )
         if check.returncode != 0:
@@ -199,12 +201,11 @@ class _UnixTmuxAttach:
         self.master_fd = master_fd
         try:
             self.resize(cols, rows)
-            env = os.environ.copy()
-            env.pop("TMUX", None)
+            env = tmux_env
             env["TERM"] = "xterm-256color"
             env["COLORTERM"] = "truecolor"
             self.process = subprocess.Popen(
-                [tmux_bin, "attach-session", "-t", shell_id],
+                [tmux_bin, "attach-session", "-t", f"={shell_id}"],
                 stdin=slave_fd,
                 stdout=slave_fd,
                 stderr=slave_fd,

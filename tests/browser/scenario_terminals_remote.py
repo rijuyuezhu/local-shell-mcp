@@ -42,6 +42,29 @@ def _wait_terminal_output(
     raise AssertionError(f"terminal output did not contain {marker!r}")
 
 
+def _terminal_resize_events(
+    harness: BrowserHarness, shell_id: str, start: int
+) -> list[str]:
+    return [
+        event
+        for event in harness.websocket_events[start:]
+        if event.startswith("sent ws://")
+        and f"/ui/ws/terminals/{shell_id}?" in event
+        and '{"type":"resize"' in event
+    ]
+
+
+def _wait_terminal_resize(
+    harness: BrowserHarness, shell_id: str, start: int
+) -> None:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if _terminal_resize_events(harness, shell_id, start):
+            return
+        harness.page.wait_for_timeout(50)
+    raise AssertionError("terminal route did not send a visible resize")
+
+
 def _start_terminal(harness: BrowserHarness, name: str) -> str:
     page = harness.page
     page.locator("#terminal-name").fill(name)
@@ -88,6 +111,7 @@ def _send_terminal(
 def run_terminals_remote(harness: BrowserHarness) -> None:
     page = harness.page
     suffix = secrets.token_hex(4)
+    harness.navigate("terminals")
 
     local_shell = _start_terminal(harness, f"browser-local-{suffix}")
     _send_terminal(
@@ -97,6 +121,20 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         "printf 'local-terminal-e2e\\n'",
         "local-terminal-e2e",
     )
+    initial_resize_start = len(harness.websocket_events)
+    page.evaluate("window.dispatchEvent(new Event('resize'))")
+    _wait_terminal_resize(harness, local_shell, initial_resize_start)
+
+    hidden_resize_start = len(harness.websocket_events)
+    harness.navigate("files")
+    page.wait_for_timeout(250)
+    assert not _terminal_resize_events(
+        harness, local_shell, hidden_resize_start
+    )
+
+    visible_resize_start = len(harness.websocket_events)
+    harness.navigate("terminals")
+    _wait_terminal_resize(harness, local_shell, visible_resize_start)
     resized = harness.api(
         "POST",
         "/api/ui/terminals/resize",
@@ -159,6 +197,7 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         page.locator('#session-machine option[value="browser-edge"]')
     ).to_have_count(1)
 
+    harness.navigate("files")
     page.locator("#file-machine").select_option(MACHINE)
     expect(page.locator("#file-state")).to_contain_text(f"{MACHINE}:.")
     remote_note = page.locator('.file-entry[title="remote-note.txt"]')
@@ -194,6 +233,7 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         "session_id"
     ]
 
+    harness.navigate("sessions")
     page.locator("#session-machine").select_option(MACHINE)
     expect(
         page.locator(
@@ -221,6 +261,7 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         "verify browser todos"
     )
 
+    harness.navigate("terminals")
     page.locator("#terminal-machine").select_option(MACHINE)
     expect(page.locator("#terminal-state")).to_contain_text(
         f"0 session(s) · {MACHINE}"

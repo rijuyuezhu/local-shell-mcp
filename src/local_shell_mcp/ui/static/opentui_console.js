@@ -10,7 +10,6 @@
 
   const config = JSON.parse(document.body.dataset.lsmConfig || "{}");
   if (!config.opentuiAvailable) return;
-  panel.hidden = false;
 
   const uiPath = String(config.uiPath || "/ui").replace(/\/$/, "");
   const tokenStorageKey = "local-shell-mcp-ui-access-token";
@@ -82,7 +81,7 @@
   }
 
   function sendResize() {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (panel.hidden || !socket || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ type: "resize", ...size() }));
   }
 
@@ -123,7 +122,7 @@
       if (socket !== current) return;
       state.textContent = "OpenTUI running";
       sendResize();
-      terminal.focus();
+      if (!panel.hidden) terminal.focus();
     });
     current.addEventListener("message", (event) => {
       if (socket !== current) return;

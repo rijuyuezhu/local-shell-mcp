@@ -39,7 +39,7 @@ from ..terminal.contracts import (
     PERSISTENT_SHELL_MIN_COLUMNS,
     PERSISTENT_SHELL_MIN_ROWS,
 )
-from ..terminal.tmux import require_tmux, resolve_tmux
+from ..terminal.tmux import require_tmux, resolve_tmux, tmux_env_overrides
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -828,7 +828,10 @@ async def tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
         [selection.path, *args],
         cwd=".",
         timeout_s=timeout_s,
-        env={"SHELL": _resolved_tmux_shell(_tmux_session_cwd(args))},
+        env={
+            **tmux_env_overrides(),
+            "SHELL": _resolved_tmux_shell(_tmux_session_cwd(args)),
+        },
     )
 
 

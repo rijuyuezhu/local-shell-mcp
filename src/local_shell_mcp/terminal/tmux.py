@@ -15,6 +15,19 @@ TMUX_HELPER_VERSION = "3.5a"
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 
+def tmux_env_overrides() -> dict[str, str]:
+    """Detach project-owned tmux commands from any enclosing tmux client."""
+    return {"TMUX": "", "TMUX_PANE": ""}
+
+
+def detached_tmux_env() -> dict[str, str]:
+    """Return the process environment without enclosing tmux client markers."""
+    env = os.environ.copy()
+    env.pop("TMUX", None)
+    env.pop("TMUX_PANE", None)
+    return env
+
+
 @dataclass(frozen=True)
 class TmuxSelection:
     """Describe the selected tmux executable and where it came from."""
