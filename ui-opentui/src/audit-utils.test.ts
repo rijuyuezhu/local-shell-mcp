@@ -3,6 +3,7 @@ import {
   AUDIT_OPERATIONS,
   auditListLayout,
   auditStackedVisibleRows,
+  auditAggregationLabel,
   auditInput,
   auditOutput,
   fitAuditColumn,
@@ -39,6 +40,24 @@ describe("audit formatting", () => {
     expect(
       formatAuditValue({ ok: true, message: "", data: { path: "a.txt", machine: null } }, "empty"),
     ).toBe('{\n  "path": "a.txt"\n}')
+  })
+
+  test("describes paired start/end records as one coalesced call", () => {
+    expect(auditAggregationLabel({
+      ...entry("call", 1),
+      event: "tool_call",
+      paired: true,
+      source_events: ["tool_call_start", "tool_call_end"],
+    })).toBe("Coalesced call · tool_call_start + tool_call_end")
+  })
+
+  test("keeps incomplete logical calls visibly unpaired", () => {
+    expect(auditAggregationLabel({
+      ...entry("call", 1),
+      event: "tool_call",
+      paired: false,
+      source_events: ["tool_call_start"],
+    })).toBe("Unpaired call event")
   })
 
   test("uses keyword arguments as call input and result as call output", () => {

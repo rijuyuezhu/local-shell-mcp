@@ -26,13 +26,14 @@ function Help({ close }: { close: () => void }) {
       <text fg={theme.muted} content="Alt+Q     quit the TUI" />
       <text fg={theme.muted} content="F1        show this guide" />
       <text fg={theme.borderBright} content="\nScreen conventions" />
-      <text fg={theme.muted} content="j/k or arrows move selection · Enter activates · Esc closes dialogs" />
+      <text fg={theme.muted} content="Tab chooses a pane · j/k or arrows select rows or scroll the active pane" />
+      <text fg={theme.muted} content="Enter activates · PgUp/PgDn/Home/End scroll read-only panes · Esc closes dialogs" />
       <text fg={theme.muted} content="[ / ] switches Files machines · Alt+[ / ] switches Terminal machines" />
       <text fg={theme.muted} content="Terminals: Alt+N new · Alt+W kill · PgUp/PgDn scroll · Alt+R refresh" />
-      <text fg={theme.muted} content="Sessions: choose machine/session first, then inspect Overview, Todos, or local Audit." />
+      <text fg={theme.muted} content="Sessions: select the sidebar, then inspect Overview, Todos, or coalesced local Audit calls." />
       <text fg={theme.muted} content="The footer on every screen lists its contextual commands." />
       <text fg={theme.borderBright} content="\nAudit policy" />
-      <text fg={theme.muted} content="Audit contains MCP-originated operations. Actions typed by a human in this TUI or the WebUI are intentionally excluded." />
+      <text fg={theme.muted} content="Audit combines paired start/end records into logical calls. Human-only TUI and WebUI actions remain excluded." />
       <box style={{ flexGrow: 1 }} />
       <text fg={theme.faint} content="Esc / Enter close" />
     </Modal>
