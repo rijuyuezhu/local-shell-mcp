@@ -217,6 +217,43 @@ async def test_http_style_tool_dispatch_stops_terminated_sessions(
 
 
 @pytest.mark.asyncio
+async def test_tool_dispatch_ignores_session_like_values_in_free_form_data(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    called = False
+
+    async def sample_tool(
+        session_id: str, env: dict[str, str]
+    ) -> dict[str, object]:
+        nonlocal called
+        called = True
+        return {"session_id": session_id, "env": env}
+
+    definition = ToolDefinition(
+        func=sample_tool,
+        name="sample_tool",
+        http_method="POST",
+        http_path="/tools/sample_tool",
+    )
+
+    result = await definition.call_from_mapping(
+        {
+            "session_id": session.session_id,
+            "env": {"session_id": "not-an-agent-session"},
+        }
+    )
+
+    assert called
+    assert result["env"] == {"session_id": "not-an-agent-session"}
+
+
+@pytest.mark.asyncio
 async def test_mcp_tool_dispatch_stops_terminated_sessions(
     tmp_path, monkeypatch
 ):

@@ -640,6 +640,30 @@ def test_sessions_api_lists_public_sessions_by_machine(monkeypatch, tmp_path):
     assert "worker_session_id" not in remote_rows.text
 
 
+def test_sessions_api_terminates_offline_remote_session(monkeypatch, tmp_path):
+    fake = _FakeRemoteTodos("worker01")
+    client, remote = _remote_client(
+        monkeypatch,
+        tmp_path,
+        fake,
+        status="offline",
+    )
+
+    response = client.post(
+        "/api/ui/sessions/terminate",
+        json={"machine": "edge", "session_id": remote.session_id},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["session"]["termination_requested"]
+    assert (
+        get_tool_session_store()
+        .require_session(remote.session_id)
+        .termination_requested_at
+    )
+    assert fake.calls == []
+
+
 def test_sessions_api_defaults_to_five_hour_activity_and_terminates_work(
     monkeypatch, tmp_path
 ):

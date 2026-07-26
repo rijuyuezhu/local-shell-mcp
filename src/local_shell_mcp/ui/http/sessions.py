@@ -153,8 +153,6 @@ async def api_session_action(request: Request) -> Response:
             allow_empty=False,
         )
         _require_scopes(machine, write=True)
-        if machine != "local":
-            require_remote_machine(machine)
         _session_for_machine(session_id, machine)
         session = await asyncio.to_thread(
             get_tool_session_store().request_termination, session_id

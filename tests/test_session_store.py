@@ -189,13 +189,20 @@ def test_termination_request_is_durable_idempotent_and_blocks_tool_work(
     assert SESSION_TERMINATION_PROMPT in str(exc_info.value)
 
 
-def test_tool_input_session_ids_covers_copy_and_legacy_transfer_names():
+def test_tool_input_session_ids_only_reads_semantic_argument_envelopes():
     assert store_module.tool_input_session_ids(
         {
+            "session_id": "TOP00001",
             "src_session_id": "SRC00001",
             "dst_session_id": "DST00001",
-            "source_session_id": "SOURCE01",
-            "destination_session_id": "DEST0001",
-            "nested": {"session_id": "NEST0001"},
+            "env": {"session_id": "IGNORED1"},
+            "payload": [{"session_id": "IGNORED2"}],
+            "kwargs": {
+                "source_session_id": "SOURCE01",
+                "env": {"session_id": "IGNORED3"},
+            },
+            "keyword_args": {
+                "destination_session_id": "DEST0001",
+            },
         }
-    ) == ("SRC00001", "DST00001", "SOURCE01", "DEST0001", "NEST0001")
+    ) == ("TOP00001", "SRC00001", "DST00001", "SOURCE01", "DEST0001")

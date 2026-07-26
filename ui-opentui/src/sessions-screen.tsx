@@ -4,7 +4,13 @@ import { api, formatError } from "./api"
 import { auditInput, auditOutput, formatAuditValue } from "./audit-utils"
 import { EmptyState, KeyHint, Loading, Modal, Panel, useVisibleRows } from "./components"
 import { handleSelectionScroll } from "./mouse"
-import { clampIndex, nextValue, updateTodo } from "./state-utils"
+import {
+  clampIndex,
+  nextValue,
+  sessionResourceRequestMatches,
+  updateTodo,
+} from "./state-utils"
+import type { SessionResourceRequest } from "./state-utils"
 import { screenTheme, theme } from "./theme"
 import { TODO_ROW_HEIGHT, todoVisibleRowCount } from "./todos-layout"
 import type { AgentSession, AuditEntry, Machine, TodoItem, TodoPayload } from "./types"
@@ -105,6 +111,9 @@ export function SessionsScreen({
   })
   const mutationQueue = useRef<Promise<void>>(Promise.resolve())
   const pendingMutations = useRef(0)
+  const todoRequestGeneration = useRef(0)
+  const selectedResourceContext = useRef({ machine, sessionId })
+  selectedResourceContext.current.machine = machine
 
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
   const [auditSelected, setAuditSelected] = useState(0)
@@ -198,12 +207,27 @@ export function SessionsScreen({
   }, [machine, sessionId, setStatus])
 
   const loadResources = useCallback(async (selectedSessionId: string) => {
+    const request: SessionResourceRequest = {
+      generation: ++todoRequestGeneration.current,
+      machine,
+      sessionId: selectedSessionId,
+    }
+    selectedResourceContext.current = {
+      machine: request.machine,
+      sessionId: request.sessionId,
+    }
     clearResources(selectedSessionId)
     if (!selectedSessionId) return
     const [todoResult] = await Promise.allSettled([
       api.todos(machine, selectedSessionId),
       loadAudit(selectedSessionId),
     ])
+    const currentRequest: SessionResourceRequest = {
+      generation: todoRequestGeneration.current,
+      machine: selectedResourceContext.current.machine,
+      sessionId: selectedResourceContext.current.sessionId,
+    }
+    if (!mounted.current || !sessionResourceRequestMatches(request, currentRequest)) return
     if (todoResult.status === "fulfilled") applyTodoPayload(todoResult.value)
     else if (mounted.current) setStatus(`Session Todos: ${formatError(todoResult.reason)}`)
   }, [applyTodoPayload, clearResources, loadAudit, machine, setStatus])
@@ -238,6 +262,7 @@ export function SessionsScreen({
     void load()
     return () => {
       mounted.current = false
+      todoRequestGeneration.current += 1
       auditRequest.current += 1
       auditController.current?.abort()
     }

@@ -11,6 +11,21 @@ export interface PreviewMeasurement {
   rows: number
 }
 
+export interface SessionResourceRequest {
+  generation: number
+  machine: string
+  sessionId: string
+}
+
+export function sessionResourceRequestMatches(
+  request: SessionResourceRequest,
+  current: SessionResourceRequest,
+): boolean {
+  return request.generation === current.generation
+    && request.machine === current.machine
+    && request.sessionId === current.sessionId
+}
+
 export function nextPreviewMeasurement(
   measuredViewport: string,
   viewport: string,

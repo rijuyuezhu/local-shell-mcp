@@ -5,6 +5,7 @@ import {
   nextValue,
   payloadMatches,
   scopedItems,
+  sessionResourceRequestMatches,
   updateTodo,
 } from "./state-utils"
 
@@ -65,5 +66,13 @@ describe("machine-scoped state", () => {
     expect(payloadMatches(payload, "worker-a", "src")).toBe(true)
     expect(payloadMatches(payload, "worker-b", "src")).toBe(false)
     expect(payloadMatches(payload, "worker-a", ".")).toBe(false)
+  })
+
+  test("rejects stale session resource responses", () => {
+    const request = { generation: 3, machine: "worker-a", sessionId: "session-a" }
+    expect(sessionResourceRequestMatches(request, request)).toBe(true)
+    expect(sessionResourceRequestMatches(request, { ...request, generation: 4 })).toBe(false)
+    expect(sessionResourceRequestMatches(request, { ...request, machine: "worker-b" })).toBe(false)
+    expect(sessionResourceRequestMatches(request, { ...request, sessionId: "session-b" })).toBe(false)
   })
 })
