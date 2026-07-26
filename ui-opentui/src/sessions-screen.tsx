@@ -124,8 +124,10 @@ export function SessionsScreen({
   const [auditSelected, setAuditSelected] = useState(0)
   const [auditDetail, setAuditDetail] = useState<AuditEntry | null>(null)
   const [auditLoading, setAuditLoading] = useState(false)
-  const auditRequest = useRef(0)
-  const auditController = useRef<AbortController | null>(null)
+  const auditListRequest = useRef(0)
+  const auditListController = useRef<AbortController | null>(null)
+  const auditDetailRequest = useRef(0)
+  const auditDetailController = useRef<AbortController | null>(null)
 
   const mounted = useRef(true)
   const currentSession = sessions.find((session) => session.session_id === sessionId)
@@ -171,6 +173,10 @@ export function SessionsScreen({
   }, [])
 
   const clearResources = useCallback((nextSessionId = "") => {
+    auditListRequest.current += 1
+    auditListController.current?.abort()
+    auditDetailRequest.current += 1
+    auditDetailController.current?.abort()
     todoState.current = { todos: [], revision: 0, sessionId: nextSessionId }
     setTodos([])
     setRevision(0)
@@ -178,13 +184,14 @@ export function SessionsScreen({
     setAuditEntries([])
     setAuditSelected(0)
     setAuditDetail(null)
+    setAuditLoading(false)
   }, [])
 
-  const loadAudit = useCallback(async (selectedSessionId = sessionId) => {
-    auditController.current?.abort()
+  const loadAudit = useCallback(async (selectedSessionId: string) => {
+    auditListController.current?.abort()
     const controller = new AbortController()
-    auditController.current = controller
-    const requestId = ++auditRequest.current
+    auditListController.current = controller
+    const requestId = ++auditListRequest.current
     if (!selectedSessionId) {
       setAuditEntries([])
       setAuditDetail(null)
@@ -198,18 +205,18 @@ export function SessionsScreen({
         { limit: 500, sort: "desc" },
         controller.signal,
       )
-      if (requestId !== auditRequest.current || controller.signal.aborted || !mounted.current) return
+      if (requestId !== auditListRequest.current || controller.signal.aborted || !mounted.current) return
       setAuditEntries(payload.entries)
       setAuditSelected((value) => clampIndex(value, payload.entries.length))
       setStatus(`Sessions: ${selectedSessionId} · ${payload.total_matched} local Audit records`)
     } catch (error) {
-      if (requestId === auditRequest.current && !controller.signal.aborted && mounted.current) {
+      if (requestId === auditListRequest.current && !controller.signal.aborted && mounted.current) {
         setStatus(`Session Audit: ${formatError(error)}`)
       }
     } finally {
-      if (requestId === auditRequest.current && mounted.current) setAuditLoading(false)
+      if (requestId === auditListRequest.current && mounted.current) setAuditLoading(false)
     }
-  }, [machine, sessionId, setStatus])
+  }, [machine, setStatus])
 
   const loadResources = useCallback(async (selectedSessionId: string) => {
     const request: SessionResourceRequest = {
@@ -283,8 +290,10 @@ export function SessionsScreen({
       mounted.current = false
       inventoryRequestGeneration.current += 1
       todoRequestGeneration.current += 1
-      auditRequest.current += 1
-      auditController.current?.abort()
+      auditListRequest.current += 1
+      auditListController.current?.abort()
+      auditDetailRequest.current += 1
+      auditDetailController.current?.abort()
     }
   }, [load])
 
@@ -294,21 +303,21 @@ export function SessionsScreen({
   }, [dialog.type, onInteractionLockChange])
 
   useEffect(() => {
-    auditController.current?.abort()
+    auditDetailController.current?.abort()
     const controller = new AbortController()
-    auditController.current = controller
-    const requestId = ++auditRequest.current
+    auditDetailController.current = controller
+    const requestId = ++auditDetailRequest.current
     setAuditDetail(null)
     const entry = auditEntries[auditSelected]
     if (!entry?.id || !sessionId) return () => controller.abort()
     void api.sessionAuditDetail(machine, sessionId, entry.id, undefined, undefined, undefined, controller.signal)
       .then((detail) => {
-        if (requestId === auditRequest.current && !controller.signal.aborted && mounted.current) {
+        if (requestId === auditDetailRequest.current && !controller.signal.aborted && mounted.current) {
           setAuditDetail(detail)
         }
       })
       .catch((error) => {
-        if (requestId === auditRequest.current && !controller.signal.aborted && mounted.current) {
+        if (requestId === auditDetailRequest.current && !controller.signal.aborted && mounted.current) {
           setStatus(`Session Audit detail: ${formatError(error)}`)
         }
       })
