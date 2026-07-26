@@ -8,6 +8,11 @@ export interface PointerClick {
   at: number
 }
 
+export interface FileNavigationKey {
+  name: string
+  shift?: boolean
+}
+
 export const DOUBLE_CLICK_WINDOW_MS = 500
 
 export function isDoubleClick(
@@ -30,6 +35,15 @@ export function selectionIndexForPath(
 ): number | null {
   const index = entries.findIndex((entry) => entry.path === targetPath)
   return index >= 0 ? index : null
+}
+
+export function fileListJumpTarget(
+  key: FileNavigationKey,
+  activePane: "list" | "preview",
+  entryCount: number,
+): number | null {
+  if (activePane !== "list" || key.name !== "g") return null
+  return key.shift ? Math.max(0, entryCount - 1) : 0
 }
 
 export function pathBreadcrumbs(path: string): PathBreadcrumb[] {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, formatError } from "./api"
 import { EmptyState, KeyHint, Loading, MachineSidebar, Modal, Panel, formatBytes, useVisibleRows } from "./components"
 import {
+  fileListJumpTarget,
   isDoubleClick,
   pathBreadcrumbs,
   selectionIndexForPath,
@@ -598,8 +599,8 @@ export function FilesScreen({
       return
     }
     if (moveOrScroll(key)) return
-    if (key.name === "g" && key.shift && narrowPane === "list") setSelected(Math.max(0, entries.length - 1))
-    else if (key.name === "g") setSelected(0)
+    const listJumpTarget = fileListJumpTarget(key, narrowPane, entries.length)
+    if (listJumpTarget !== null) setSelected(listJumpTarget)
     else if (key.name === "h" || key.name === "left" || key.name === "backspace") goToParent()
     else if (key.name === "l" || key.name === "right" || key.name === "return") activateCurrent()
     else if (key.name === "." || key.name === "period") setShowHidden((value) => !value)

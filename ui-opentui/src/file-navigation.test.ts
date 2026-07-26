@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   DOUBLE_CLICK_WINDOW_MS,
+  fileListJumpTarget,
   isDoubleClick,
   pathBreadcrumbs,
   selectionIndexForPath,
@@ -22,6 +23,14 @@ describe("file pointer navigation", () => {
     ]
     expect(selectionIndexForPath(entries, "src/components/index.ts")).toBe(1)
     expect(selectionIndexForPath(entries, "src/missing.ts")).toBeNull()
+  })
+
+  test("applies g/G jumps only to the active list pane", () => {
+    expect(fileListJumpTarget({ name: "g" }, "list", 4)).toBe(0)
+    expect(fileListJumpTarget({ name: "g", shift: true }, "list", 4)).toBe(3)
+    expect(fileListJumpTarget({ name: "g" }, "preview", 4)).toBeNull()
+    expect(fileListJumpTarget({ name: "g", shift: true }, "preview", 4)).toBeNull()
+    expect(fileListJumpTarget({ name: "x" }, "list", 4)).toBeNull()
   })
 })
 
