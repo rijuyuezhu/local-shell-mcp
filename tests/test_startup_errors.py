@@ -260,7 +260,7 @@ async def test_tmux_exec_uses_configured_shell_environment(
             ["/opt/local-shell-mcp/tmux", "new-session", "-c", str(tmp_path)],
             ".",
             5,
-            {"SHELL": str(shell)},
+            {"TMUX": "", "TMUX_PANE": "", "SHELL": str(shell)},
         )
     ]
 

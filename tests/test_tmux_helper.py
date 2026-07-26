@@ -45,6 +45,20 @@ def test_tmux_package_root_matches_parent_package() -> None:
     )
 
 
+def test_detached_tmux_env_removes_enclosing_client_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TMUX", "/tmp/tmux-1000/default,123,0")
+    monkeypatch.setenv("TMUX_PANE", "%7")
+    monkeypatch.setenv("KEEP_ME", "yes")
+
+    env = tmux_helper.detached_tmux_env()
+
+    assert "TMUX" not in env
+    assert "TMUX_PANE" not in env
+    assert env["KEEP_ME"] == "yes"
+
+
 def test_bundled_tmux_path_uses_explicit_default_package_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -219,7 +233,12 @@ async def test_shell_tmux_uses_resolved_executable(
     monkeypatch.setattr(shell, "_run_exec", fake_run_exec)
     assert await shell.tmux(["list-sessions"], timeout_s=7) is expected
     assert calls == [
-        (["/bundle path/tmux", "list-sessions"], ".", 7, {"SHELL": "/bin/bash"})
+        (
+            ["/bundle path/tmux", "list-sessions"],
+            ".",
+            7,
+            {"TMUX": "", "TMUX_PANE": "", "SHELL": "/bin/bash"},
+        )
     ]
 
 
