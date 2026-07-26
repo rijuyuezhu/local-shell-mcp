@@ -173,6 +173,8 @@ export function SessionsScreen({
   }, [])
 
   const clearResources = useCallback((nextSessionId = "") => {
+    auditListRequest.current += 1
+    auditListController.current?.abort()
     auditDetailRequest.current += 1
     auditDetailController.current?.abort()
     todoState.current = { todos: [], revision: 0, sessionId: nextSessionId }
@@ -182,6 +184,7 @@ export function SessionsScreen({
     setAuditEntries([])
     setAuditSelected(0)
     setAuditDetail(null)
+    setAuditLoading(false)
   }, [])
 
   const loadAudit = useCallback(async (selectedSessionId: string) => {
