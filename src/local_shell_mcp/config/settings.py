@@ -9,6 +9,8 @@ import yaml
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from ..persistence import StateLayout
+
 DEFAULT_WORKSPACE_ROOT = Path("/workspace")
 DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".local-shell-mcp"
 AUDIT_LOG_STATE_DIR_NAME = "audit_log"
@@ -312,27 +314,27 @@ class Settings(BaseSettings):
     @property
     def audit_log_path(self) -> Path:
         """Path to the JSONL audit log, derived from state_dir."""
-        return self.state_dir / AUDIT_LOG_STATE_DIR_NAME / "audit.jsonl"
+        return StateLayout(self.state_dir).audit_log_path
 
     @property
     def audit_payload_dir(self) -> Path:
         """Private content-addressed audit payload directory."""
-        return self.audit_log_path.parent / AUDIT_PAYLOAD_STATE_DIR_NAME
+        return StateLayout(self.state_dir).audit_payload_dir
 
     @property
     def agent_config_dir(self) -> Path:
         """Read-only capability config directory, derived from state_dir."""
-        return self.state_dir / AGENT_CONFIG_STATE_DIR_NAME
+        return StateLayout(self.state_dir).agent_config_dir
 
     @property
     def agent_auth_dir(self) -> Path:
         """Private Agent Bridge credential directory, derived from state_dir."""
-        return self.state_dir / AGENT_AUTH_STATE_DIR_NAME
+        return StateLayout(self.state_dir).agent_auth_dir
 
     @property
     def remote_transfer_dir(self) -> Path:
         """Private durable ticket and spool directory for HTTP transfers."""
-        return self.state_dir / REMOTE_TRANSFER_STATE_DIR_NAME
+        return StateLayout(self.state_dir).remote_transfers_dir
 
     @property
     def resolved_base_url(self) -> str:

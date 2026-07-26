@@ -5,6 +5,8 @@ import {
   nextValue,
   payloadMatches,
   scopedItems,
+  sessionInventoryRequestMatches,
+  sessionResourceRequestMatches,
   updateTodo,
 } from "./state-utils"
 
@@ -65,5 +67,21 @@ describe("machine-scoped state", () => {
     expect(payloadMatches(payload, "worker-a", "src")).toBe(true)
     expect(payloadMatches(payload, "worker-b", "src")).toBe(false)
     expect(payloadMatches(payload, "worker-a", ".")).toBe(false)
+  })
+
+  test("rejects stale session resource responses", () => {
+    const request = { generation: 3, machine: "worker-a", sessionId: "session-a" }
+    expect(sessionResourceRequestMatches(request, request)).toBe(true)
+    expect(sessionResourceRequestMatches(request, { ...request, generation: 4 })).toBe(false)
+    expect(sessionResourceRequestMatches(request, { ...request, machine: "worker-b" })).toBe(false)
+    expect(sessionResourceRequestMatches(request, { ...request, sessionId: "session-b" })).toBe(false)
+  })
+
+  test("rejects stale session inventory responses", () => {
+    const request = { generation: 5, machine: "worker-a", includeInactive: false }
+    expect(sessionInventoryRequestMatches(request, request)).toBe(true)
+    expect(sessionInventoryRequestMatches(request, { ...request, generation: 6 })).toBe(false)
+    expect(sessionInventoryRequestMatches(request, { ...request, machine: "worker-b" })).toBe(false)
+    expect(sessionInventoryRequestMatches(request, { ...request, includeInactive: true })).toBe(false)
   })
 })

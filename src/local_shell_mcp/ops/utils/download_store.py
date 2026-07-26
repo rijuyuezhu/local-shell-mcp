@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from ...audit import audit
-from ...config.settings import get_settings
+from ...persistence import get_state_store
 from ...utils.private_files import (
     atomic_write_private_text,
     private_file_lock,
@@ -55,17 +55,17 @@ class ClaimedDownload:
 
 def store_path() -> Path:
     """Return the primary download-link metadata path."""
-    return get_settings().state_dir / STORE_FILE_NAME
+    return get_state_store().layout.downloads_store_path
 
 
 def backup_path() -> Path:
     """Return the fallback download-link metadata path."""
-    return get_settings().state_dir / BACKUP_FILE_NAME
+    return get_state_store().layout.downloads_store_backup_path
 
 
 def lock_path() -> Path:
     """Return the cross-process download-link lock path."""
-    return get_settings().state_dir / LOCK_FILE_NAME
+    return get_state_store().layout.downloads_lock_path
 
 
 def empty_store() -> dict[str, Any]:

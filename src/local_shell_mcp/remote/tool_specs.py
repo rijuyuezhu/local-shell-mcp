@@ -2,6 +2,10 @@
 
 from dataclasses import dataclass
 
+REMOTE_WORKER_ORIGIN_ARG = "_local_shell_mcp_origin"
+REMOTE_WORKER_ORIGIN_MODEL = "model"
+REMOTE_WORKER_ORIGIN_HUMAN_UI = "human_ui"
+
 
 @dataclass(frozen=True)
 class RemoteWorkerToolSpec:

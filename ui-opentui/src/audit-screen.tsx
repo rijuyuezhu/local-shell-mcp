@@ -24,7 +24,7 @@ import type { AuditEntry, Machine } from "./types"
 const colors = screenTheme.Audit
 const terminalCellAspect = parseTerminalCellAspect(process.env.LOCAL_SHELL_MCP_UI_CELL_ASPECT)
 
-type AuditDialog = { type: "none" } | { type: "search" } | { type: "event" } | { type: "session" }
+type AuditDialog = { type: "none" } | { type: "search" } | { type: "event" }
 
 const TIME_RANGES = [
   { label: "15m", seconds: 15 * 60 },
@@ -78,7 +78,6 @@ export function AuditScreen({
   const [sort, setSort] = useState<"asc" | "desc">("desc")
   const [search, setSearch] = useState("")
   const [event, setEvent] = useState("")
-  const [session, setSession] = useState("")
   const [dialog, setDialog] = useState<AuditDialog>({ type: "none" })
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
@@ -102,7 +101,7 @@ export function AuditScreen({
   const horizontal = width >= 110
   const listLayout = useMemo(() => auditListLayout(entries, width), [entries, width])
   const stackedDetailHeight = Math.max(14, Math.floor(height * 0.42))
-  const hasFilterSummary = Boolean(search || event || session)
+  const hasFilterSummary = Boolean(search || event)
   const tableHeight = horizontal
     ? Math.max(6, height - 15)
     : auditStackedVisibleRows(height, stackedDetailHeight, hasFilterSummary)
@@ -115,14 +114,15 @@ export function AuditScreen({
     setSelected(resolved)
   }, [])
 
-  const cycleNode = () => setNodeIndex((value) => (value + 1) % nodes.length)
+  const cycleNode = () => {
+    setNodeIndex((value) => (value + 1) % nodes.length)
+  }
   const cycleOperation = () => setOperationIndex((value) => (value + 1) % AUDIT_OPERATIONS.length)
   const cycleTime = () => setTimeIndex((value) => (value + 1) % TIME_RANGES.length)
   const toggleSort = () => setSort((value) => (value === "desc" ? "asc" : "desc"))
   const clearFilters = () => {
     setSearch("")
     setEvent("")
-    setSession("")
     setNodeIndex(0)
     setOperationIndex(0)
     setTimeIndex(2)
@@ -143,7 +143,6 @@ export function AuditScreen({
           node: selectedNode,
           operation: selectedOperation,
           event,
-          session,
           search,
           start_ts: timeRange.seconds ? now - timeRange.seconds : undefined,
           sort,
@@ -166,7 +165,7 @@ export function AuditScreen({
       if (refreshController.current === controller) refreshController.current = null
       if (requestId === refreshRequest.current) setLoading(false)
     }
-  }, [event, search, selectedNode, selectedOperation, session, setStatus, sort, timeRange.seconds])
+  }, [event, search, selectedNode, selectedOperation, setStatus, sort, timeRange.seconds])
 
   useEffect(() => {
     refreshRequest.current += 1
@@ -243,7 +242,6 @@ export function AuditScreen({
     else if (key.name === "s") toggleSort()
     else if (key.name === "/") setDialog({ type: "search" })
     else if (key.name === "e") setDialog({ type: "event" })
-    else if (key.name === "i") setDialog({ type: "session" })
     else if (key.name === "c") clearFilters()
     else if (key.name === "r") void refresh(true)
   })
@@ -253,7 +251,6 @@ export function AuditScreen({
     const submitted = typeof value === "string" ? value : ""
     if (dialog.type === "search") setSearch(submitted.trim())
     else if (dialog.type === "event") setEvent(submitted.trim())
-    else if (dialog.type === "session") setSession(submitted.trim())
     setDialog({ type: "none" })
   }
 
@@ -289,17 +286,16 @@ export function AuditScreen({
           ))}
         </box>
       )}
-      {(search || event || session) && (
+      {(search || event) && (
         <box style={{ height: 2, flexDirection: "row", paddingLeft: 1, alignItems: "center", backgroundColor: theme.panelAlt }}>
           <text fg={theme.faint} content="Filters  " />
           {search && <text fg={colors.accent} content={`search:${search}  `} />}
           {event && <text fg={theme.blue} content={`event:${event}  `} />}
-          {session && <text fg={theme.yellow} content={`session:${session}  `} />}
         </box>
       )}
       <box style={{ flexGrow: 1, flexDirection: horizontal ? "row" : "column", gap: 1 }}>
         <Panel
-          title={`Audit records · ${loaded ? entries.length : "—"}${loading ? " · syncing" : ""}`}
+          title={`Global Audit · ${loaded ? entries.length : "—"}${loading ? " · syncing" : ""}`}
           active
           accent={colors.accent}
           activeBackground={colors.panel}
@@ -450,18 +446,17 @@ export function AuditScreen({
           { key: "s", label: "sort", onPress: toggleSort, disabled: footerLocked },
           { key: "/", label: "search", onPress: () => setDialog({ type: "search" }), disabled: footerLocked },
           { key: "e", label: "event", onPress: () => setDialog({ type: "event" }), disabled: footerLocked },
-          { key: "i", label: "session", onPress: () => setDialog({ type: "session" }), disabled: footerLocked },
           { key: "c", label: "clear", onPress: clearFilters, disabled: footerLocked },
           { key: "r", label: "refresh", onPress: () => void refresh(true), disabled: footerLocked || loading },
         ]}
       />
       {dialog.type !== "none" && (
-        <Modal title={dialog.type === "search" ? "Search audit" : dialog.type === "event" ? "Filter event" : "Filter session"} height={7}>
+        <Modal title={dialog.type === "search" ? "Search audit" : "Filter event"} height={7}>
           <text fg={theme.muted} content="Substring match; leave blank to clear" />
           <box style={{ height: 3, border: true, borderColor: theme.borderBright, paddingLeft: 1, paddingRight: 1 }}>
             <input
               focused
-              value={dialog.type === "search" ? search : dialog.type === "event" ? event : session}
+              value={dialog.type === "search" ? search : event}
               onSubmit={applyDialog}
             />
           </box>

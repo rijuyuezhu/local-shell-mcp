@@ -799,6 +799,184 @@ h2 {
 }
 
 
+.session-heading,
+.session-toolbar,
+.session-detail-header,
+.session-resource-heading {
+  display: flex;
+  align-items: center;
+}
+
+.session-heading,
+.session-detail-header,
+.session-resource-heading {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.session-toolbar {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.session-control {
+  display: grid;
+  gap: 0.3rem;
+  color: #8ca0b2;
+  font-size: 0.72rem;
+}
+
+.session-control select {
+  min-width: 10rem;
+  min-height: 2.55rem;
+  border: 1px solid rgba(137, 186, 207, 0.28);
+  border-radius: 0.65rem;
+  color: #f4f8fc;
+  background: rgba(2, 10, 16, 0.72);
+  padding: 0.7rem 0.8rem;
+}
+
+.session-active-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.55rem;
+  color: #a8bbc9;
+  font-size: 0.78rem;
+}
+
+.session-layout {
+  display: grid;
+  grid-template-columns: minmax(17rem, 0.28fr) minmax(0, 0.72fr);
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.session-list,
+.session-workspace,
+.session-resource {
+  min-width: 0;
+  border: 1px solid rgba(151, 184, 202, 0.12);
+  border-radius: 0.85rem;
+  background: rgba(2, 8, 13, 0.68);
+}
+
+.session-list {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  max-height: 72rem;
+  overflow: auto;
+  padding: 0.55rem;
+}
+
+.session-entry {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 0.35rem;
+  border-color: transparent;
+  background: rgba(7, 20, 29, 0.58);
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.session-entry:hover {
+  background: rgba(39, 102, 126, 0.45);
+}
+
+.session-entry[aria-current="true"] {
+  border-color: rgba(105, 199, 232, 0.68);
+  background: rgba(39, 102, 126, 0.8);
+}
+
+.session-entry strong,
+.session-entry-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-entry strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.session-entry-meta {
+  color: #8297a9;
+  font-size: 0.7rem;
+}
+
+.session-entry-terminated {
+  color: #ffc3c3;
+}
+
+.session-workspace {
+  display: grid;
+  align-content: start;
+  gap: 0.9rem;
+  padding: 0.9rem;
+}
+
+.session-detail-header strong,
+.session-detail-header span {
+  display: block;
+}
+
+.session-detail-header span {
+  margin-top: 0.25rem;
+}
+
+.session-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.session-detail-grid div {
+  min-width: 0;
+  border: 1px solid rgba(151, 184, 202, 0.1);
+  border-radius: 0.65rem;
+  background: rgba(6, 17, 24, 0.52);
+  padding: 0.65rem;
+}
+
+.session-detail-grid dt {
+  color: #8297a9;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.session-detail-grid dd {
+  margin: 0.3rem 0 0;
+  overflow: hidden;
+  color: #e5eef5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-resource {
+  padding: 0.85rem;
+}
+
+.session-resource h3 {
+  margin: 0.1rem 0 0;
+}
+
+.session-audit-layout .audit-list,
+.session-audit-layout .audit-detail {
+  max-height: 30rem;
+}
+
+.session-audit-layout .audit-detail {
+  grid-template-rows: auto minmax(18rem, 1fr);
+}
+
+
 .todo-heading,
 .todo-toolbar,
 .todo-actions,
@@ -1727,7 +1905,8 @@ h2 {
   .actions,
   .dashboard-actions,
   .terminal-actions,
-  .remotes-actions {
+  .remotes-actions,
+  .session-toolbar {
     margin-top: 1rem;
   }
 
@@ -1763,7 +1942,8 @@ h2 {
   .dashboard-layout,
   .file-layout,
   .audit-layout,
-  .remotes-layout {
+  .remotes-layout,
+  .session-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1778,8 +1958,13 @@ h2 {
   .dashboard-list,
   .file-list,
   .audit-list,
-  .remote-list {
+  .remote-list,
+  .session-list {
     max-height: 18rem;
+  }
+
+  .session-detail-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .terminal-layout {
@@ -1824,6 +2009,9 @@ h2 {
   .todo-row,
   .audit-toolbar,
   .audit-detail-header,
+  .session-toolbar,
+  .session-detail-header,
+  .session-resource-heading,
   .remote-details-header,
   .remote-detail-actions,
   .dialog-actions {
@@ -1833,6 +2021,7 @@ h2 {
 
   .dashboard-machine-control,
   .machine-select,
+  .session-control,
   .todo-field-content,
   .todo-field-status,
   .todo-field-priority {
@@ -1842,8 +2031,14 @@ h2 {
   .dashboard-machine-control,
   .dashboard-machine-control select,
   .machine-select,
-  .machine-select select {
+  .machine-select select,
+  .session-control,
+  .session-control select {
     width: 100%;
+  }
+
+  .session-detail-grid {
+    grid-template-columns: 1fr;
   }
 
   .dashboard-resource-row {

@@ -11,6 +11,36 @@ export interface PreviewMeasurement {
   rows: number
 }
 
+export interface SessionResourceRequest {
+  generation: number
+  machine: string
+  sessionId: string
+}
+
+export function sessionResourceRequestMatches(
+  request: SessionResourceRequest,
+  current: SessionResourceRequest,
+): boolean {
+  return request.generation === current.generation
+    && request.machine === current.machine
+    && request.sessionId === current.sessionId
+}
+
+export interface SessionInventoryRequest {
+  generation: number
+  machine: string
+  includeInactive: boolean
+}
+
+export function sessionInventoryRequestMatches(
+  request: SessionInventoryRequest,
+  current: SessionInventoryRequest,
+): boolean {
+  return request.generation === current.generation
+    && request.machine === current.machine
+    && request.includeInactive === current.includeInactive
+}
+
 export function nextPreviewMeasurement(
   measuredViewport: string,
   viewport: string,

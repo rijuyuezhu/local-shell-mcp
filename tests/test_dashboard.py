@@ -46,6 +46,11 @@ def test_dashboard_snapshot_exposes_metadata_only_and_failure_alert(
     monkeypatch.setattr(dashboard_module.time, "time", lambda: 100.0)
     monkeypatch.setattr(
         dashboard_module,
+        "todo_counts_execute",
+        lambda: {"total": 5, "open": 3},
+    )
+    monkeypatch.setattr(
+        dashboard_module,
         "query_audit",
         lambda **kwargs: {
             "entries": [
@@ -83,7 +88,12 @@ def test_dashboard_snapshot_exposes_metadata_only_and_failure_alert(
     assert snapshot["version"]["version"] == "9.9.9"
     assert snapshot["audit_total_24h"] == 7
     assert snapshot["audit_failed_24h"] == 4
-    assert snapshot["sources"] == {"system": "ok", "audit": "ok"}
+    assert snapshot["sources"] == {
+        "system": "ok",
+        "audit": "ok",
+        "todos": "ok",
+    }
+    assert snapshot["todo_counts"] == {"total": 5, "open": 3}
     assert snapshot["alerts"][0]["title"] == "4 recent MCP call failure(s)"
     assert snapshot["activity"][0] == {
         "timestamp": 99.0,

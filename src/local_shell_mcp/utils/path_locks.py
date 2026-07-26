@@ -10,7 +10,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config.settings import get_settings
+from ..persistence import get_state_store
 from .private_files import private_file_lock
 
 
@@ -48,7 +48,7 @@ def _release_thread_lock(key: str, entry: _ThreadPathLock) -> None:
 
 
 def _lock_shard_path(path: Path) -> Path:
-    directory = get_settings().state_dir / "locks"
+    directory = get_state_store().layout.locks_dir
     directory.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         directory.chmod(0o700)

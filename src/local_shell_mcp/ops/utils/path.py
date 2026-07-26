@@ -7,6 +7,7 @@ from typing import Any
 
 from ...config.settings import get_settings
 from ...errors import PathNotFoundError
+from ...persistence import get_state_store
 
 
 def workspace_root() -> Path:
@@ -16,7 +17,7 @@ def workspace_root() -> Path:
 
 def temp_dir() -> Path:
     """Create and return the scratch directory used for generated temporary files."""
-    path = get_settings().state_dir / "tmp"
+    path = get_state_store().layout.tmp_dir
     path.mkdir(parents=True, exist_ok=True)
     return path
 

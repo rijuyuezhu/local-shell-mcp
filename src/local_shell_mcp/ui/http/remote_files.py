@@ -18,6 +18,10 @@ from ...config.settings import get_settings
 from ...ops.utils.remote_session import start_worker_session
 from ...remote.manager import remote_manager
 from ...remote.service import call_remote_worker_tool
+from ...remote.tool_specs import (
+    REMOTE_WORKER_ORIGIN_ARG,
+    REMOTE_WORKER_ORIGIN_HUMAN_UI,
+)
 from ...schemas.result_models.files import ListFilesOutput
 from ...schemas.result_models.transfer import (
     TransferReadChunkOutput,
@@ -222,7 +226,11 @@ async def call_remote_ui_workspace_tool(
 ) -> dict[str, Any]:
     """Call one session-bound remote UI tool, recreating stale sessions once."""
     session = await _remote_file_session(machine)
-    payload = {**args, "session_id": session.worker_session_id}
+    payload = {
+        **args,
+        "session_id": session.worker_session_id,
+        REMOTE_WORKER_ORIGIN_ARG: REMOTE_WORKER_ORIGIN_HUMAN_UI,
+    }
     timeout_s = _remote_timeout_s()
     try:
         result = await call_remote_worker_tool(

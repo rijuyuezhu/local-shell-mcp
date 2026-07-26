@@ -7,10 +7,16 @@ the full MCP/FastAPI control-plane registry.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from local_shell_mcp.remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
+from local_shell_mcp.remote.tool_specs import (
+    REMOTE_WORKER_ORIGIN_ARG,
+    REMOTE_WORKER_ORIGIN_HUMAN_UI,
+    REMOTE_WORKER_ORIGIN_MODEL,
+    REMOTE_WORKER_TOOL_NAMES,
+)
 
 WorkerHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
@@ -36,28 +42,43 @@ async def _session_change_cwd(args: dict[str, Any]) -> Any:
 
 
 async def _query_audit(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.audit import query_audit
+    from local_shell_mcp.audit import query_audit, query_session_audit
 
-    return await asyncio.to_thread(
-        query_audit,
-        limit=int(args.get("limit") or 300),
-        event=args.get("event"),
-        operation=args.get("operation"),
-        session=args.get("session"),
-        search=args.get("search"),
-        start_ts=args.get("start_ts"),
-        end_ts=args.get("end_ts"),
-        sort=str(args.get("sort") or "desc"),
-    )
+    log_session_id = str(args.get("log_session_id") or "")
+    filters = {
+        "limit": int(args.get("limit") or 300),
+        "event": args.get("event"),
+        "operation": args.get("operation"),
+        "session": args.get("session"),
+        "search": args.get("search"),
+        "start_ts": args.get("start_ts"),
+        "end_ts": args.get("end_ts"),
+        "sort": str(args.get("sort") or "desc"),
+    }
+    if log_session_id:
+        return await asyncio.to_thread(
+            query_session_audit, log_session_id, **filters
+        )
+    return await asyncio.to_thread(query_audit, **filters)
 
 
 async def _get_audit_entry(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.audit import get_audit_entry
+    from local_shell_mcp.audit import get_audit_entry, get_session_audit_entry
 
+    log_session_id = str(args.get("log_session_id") or "")
+    entry_id = str(args.get("id") or "")
+    include_full_payloads = bool(args.get("include_full_payloads", False))
+    if log_session_id:
+        return await asyncio.to_thread(
+            get_session_audit_entry,
+            log_session_id,
+            entry_id,
+            include_full_payloads=include_full_payloads,
+        )
     return await asyncio.to_thread(
         get_audit_entry,
-        str(args.get("id") or ""),
-        include_full_payloads=bool(args.get("include_full_payloads", False)),
+        entry_id,
+        include_full_payloads=include_full_payloads,
     )
 
 
@@ -614,4 +635,59 @@ async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
         handler = _HANDLERS[tool]
     except KeyError as exc:
         raise ValueError(f"unsupported remote worker tool: {tool}") from exc
-    return await handler(args or {})
+    payload = dict(args or {})
+    origin = str(
+        payload.pop(REMOTE_WORKER_ORIGIN_ARG, REMOTE_WORKER_ORIGIN_MODEL)
+    )
+    if origin == REMOTE_WORKER_ORIGIN_HUMAN_UI:
+        return await handler(payload)
+    from local_shell_mcp.tool_session import tool_input_session_ids
+
+    session_ids = tool_input_session_ids(payload)
+    if not session_ids:
+        return await handler(payload)
+
+    from local_shell_mcp.audit import (
+        audit_call_context,
+        audit_tool_call_end,
+        audit_tool_call_start,
+        new_audit_call_id,
+    )
+    from local_shell_mcp.utils.serialization import to_jsonable
+
+    call_id = new_audit_call_id()
+    start = time.time()
+    audit_tool_call_start(
+        call_id=call_id,
+        transport="worker",
+        tool=tool,
+        input=payload,
+    )
+    try:
+        with audit_call_context(call_id, session_ids):
+            result = await handler(payload)
+    except BaseException as exc:
+        audit_tool_call_end(
+            call_id=call_id,
+            transport="worker",
+            tool=tool,
+            ok=False,
+            duration_ms=int((time.time() - start) * 1000),
+            error={
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "repr": repr(exc),
+            },
+            session_ids=session_ids,
+        )
+        raise
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="worker",
+        tool=tool,
+        ok=True,
+        duration_ms=int((time.time() - start) * 1000),
+        output=to_jsonable(result),
+        session_ids=session_ids,
+    )
+    return result

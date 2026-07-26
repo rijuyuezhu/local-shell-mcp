@@ -14,6 +14,10 @@ from local_shell_mcp.oauth.core.scopes import (
     SCOPE_SHELL_WRITE,
 )
 from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
+from local_shell_mcp.remote.tool_specs import (
+    REMOTE_WORKER_ORIGIN_ARG,
+    REMOTE_WORKER_ORIGIN_HUMAN_UI,
+)
 from local_shell_mcp.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
@@ -445,6 +449,9 @@ def test_remote_files_browse_preview_edit_create_and_delete(
     assert fake.started[0]["timeout_s"] == 60
     assert {str(args["session_id"]) for _, args in fake.calls} == {
         "remote-files-1"
+    }
+    assert {str(args[REMOTE_WORKER_ORIGIN_ARG]) for _, args in fake.calls} == {
+        REMOTE_WORKER_ORIGIN_HUMAN_UI
     }
 
 

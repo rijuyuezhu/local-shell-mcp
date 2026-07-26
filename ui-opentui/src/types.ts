@@ -1,4 +1,5 @@
-export type ScreenName = "Dashboard" | "Files" | "Terminals" | "Remotes" | "Audit" | "Todos"
+export type ScreenName = "Dashboard" | "Files" | "Terminals" | "Remotes" | "Sessions" | "Audit"
+export type OpenString<Known extends string> = Known | (string & {})
 
 export interface Machine {
   name: string
@@ -85,15 +86,40 @@ export interface TerminalPayload {
   sessions: TerminalSession[]
 }
 
+export interface AgentSession {
+  session_id: string
+  target: OpenString<"local" | "remote">
+  workdir: string
+  machine?: string | null
+  created_at: number
+  updated_at: number
+  expires_at?: number | null
+  label?: string | null
+  active?: boolean
+  termination_requested?: boolean
+  termination_requested_at?: number | null
+}
+
+export interface AgentSessionPayload {
+  machine: string
+  remote: boolean
+  sessions: AgentSession[]
+  count: number
+  include_inactive?: boolean
+  active_window_hours?: number
+}
+
 export interface TodoItem {
   id: string
   content: string
-  status: "pending" | "in_progress" | "completed" | string
-  priority: "low" | "medium" | "high" | string
+  status: OpenString<"pending" | "in_progress" | "completed">
+  priority: OpenString<"low" | "medium" | "high">
 }
 
 export interface TodoPayload {
-  machine?: string
+  machine: string
+  session_id: string
+  session?: AgentSession
   revision: number
   updated_at?: number | null
   todos: TodoItem[]
@@ -112,7 +138,7 @@ export interface AuditEntry {
   cwd?: string
   ok?: boolean
   paired?: boolean
-  status?: "success" | "failed" | "running" | "unpaired" | "completed" | string
+  status?: OpenString<"success" | "failed" | "running" | "unpaired" | "completed">
   duration_ms?: number
   input?: unknown
   output?: unknown
@@ -130,6 +156,7 @@ export interface AuditPayload {
   entries: AuditEntry[]
   count: number
   total_matched: number
+  scope?: OpenString<"global" | "session">
 }
 
 export interface InvitePayload {
@@ -145,7 +172,6 @@ export interface InvitePayload {
 export interface BootstrapPayload {
   version: Record<string, unknown>
   machines: MachinePayload
-  todos: TodoPayload
   features: {
     remote: boolean
     wallpaper: "aurora" | "grid" | "none" | string

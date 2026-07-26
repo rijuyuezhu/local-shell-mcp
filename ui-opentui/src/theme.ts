@@ -43,7 +43,7 @@ export const screenTheme = {
     selected: "#352846",
     panel: "#1d1829",
   },
-  Todos: {
+  Sessions: {
     accent: theme.orange,
     selected: "#44351f",
     panel: "#251f15",

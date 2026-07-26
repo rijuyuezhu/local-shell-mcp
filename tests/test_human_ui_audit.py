@@ -7,9 +7,14 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+import local_shell_mcp.tools.registry.remote as remote_registry_module
 import local_shell_mcp.ui.http.audit as ui_audit_module
 import local_shell_mcp.ui.http.common as ui_common_module
-from local_shell_mcp.audit import audit
+from local_shell_mcp.audit import (
+    audit,
+    audit_tool_call_end,
+    audit_tool_call_start,
+)
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.oauth.core.scopes import (
@@ -20,11 +25,16 @@ from local_shell_mcp.oauth.core.scopes import (
     SCOPE_SHELL_WRITE,
 )
 from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
+from local_shell_mcp.remote.tool_specs import (
+    REMOTE_WORKER_ORIGIN_ARG,
+    REMOTE_WORKER_ORIGIN_HUMAN_UI,
+)
 from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
 from local_shell_mcp.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
 )
+from local_shell_mcp.tool_session.store import get_tool_session_store
 
 BASE_URL = "https://local-shell-mcp.example"
 
@@ -243,6 +253,7 @@ class _FakeRemoteAudit:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any], int]] = []
         self.malformed = False
+        self.worker_session_id = ""
 
     async def call(
         self,
@@ -268,6 +279,8 @@ class _FakeRemoteAudit:
             "input": {"command": "printf safe"},
             "output": {"stdout": "safe"},
         }
+        if self.worker_session_id:
+            entry["session"] = self.worker_session_id
         if tool == "query_audit":
             return {
                 "ok": True,
@@ -278,10 +291,13 @@ class _FakeRemoteAudit:
                 },
             }
         assert tool == "get_audit_entry"
-        assert args == {
+        expected = {
             "id": "call:remote-shell",
             "include_full_payloads": False,
         }
+        if self.worker_session_id and args.get("log_session_id"):
+            expected["log_session_id"] = self.worker_session_id
+        assert args == expected
         return {"ok": True, "data": entry}
 
 
@@ -336,6 +352,168 @@ def test_remote_audit_uses_process_scoped_native_worker_rpc(
         "get_audit_entry",
     ]
     assert fake.calls[0][1]["operation"] == "shell"
+
+
+def test_remote_audit_maps_public_session_filters_to_worker_ids(
+    monkeypatch, tmp_path
+):
+    fake = _FakeRemoteAudit()
+    fake.worker_session_id = "worker01"
+    client = _remote_client(monkeypatch, tmp_path, fake)
+    session = get_tool_session_store().create_session(
+        target="remote",
+        machine="edge",
+        workdir="/srv/project",
+        worker_session_id=fake.worker_session_id,
+        label="remote audit",
+    )
+
+    listing = client.get(
+        "/api/ui/audit",
+        params={"machine": "edge", "session": session.session_id},
+    )
+
+    assert listing.status_code == 200
+    assert fake.calls[0][1]["session"] == fake.worker_session_id
+    assert listing.json()["data"]["entries"][0]["session"] == session.session_id
+
+
+@pytest.mark.asyncio
+async def test_remote_audit_builds_session_projection_once_per_query(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "workspace"
+    _configure(monkeypatch, workspace, remote_enabled=True)
+    store = get_tool_session_store()
+    session = store.create_session(
+        target="remote",
+        machine="edge",
+        workdir="/srv/project",
+        worker_session_id="worker01",
+    )
+    list_calls = 0
+    original_list_sessions = store.list_sessions
+
+    def counted_list_sessions():
+        nonlocal list_calls
+        list_calls += 1
+        return original_list_sessions()
+
+    async def remote_query(
+        machine: str, tool: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        assert machine == "edge"
+        assert tool == "query_audit"
+        assert args == {}
+        entries = [
+            {
+                "id": f"call:remote-{index}",
+                "ts": float(index),
+                "event": "tool_call",
+                "operation": "shell",
+                "session": "worker01",
+            }
+            for index in range(3)
+        ]
+        return {"entries": entries, "count": 3, "total_matched": 3}
+
+    monkeypatch.setattr(store, "list_sessions", counted_list_sessions)
+    monkeypatch.setattr(ui_audit_module, "_remote_audit_call", remote_query)
+
+    result = await ui_audit_module._query("edge", {})
+
+    assert list_calls == 1
+    assert {entry["session"] for entry in result["entries"]} == {
+        session.session_id
+    }
+
+
+def test_remote_session_audit_uses_worker_local_log_and_public_projection(
+    monkeypatch, tmp_path
+):
+    fake = _FakeRemoteAudit()
+    fake.worker_session_id = "worker01"
+    client = _remote_client(monkeypatch, tmp_path, fake)
+    session = get_tool_session_store().create_session(
+        target="remote",
+        machine="edge",
+        workdir="/srv/project",
+        worker_session_id=fake.worker_session_id,
+        label="remote local audit",
+    )
+
+    listing = client.get(
+        "/api/ui/audit",
+        params={
+            "machine": "edge",
+            "scope": "session",
+            "session": session.session_id,
+        },
+    )
+    detail = client.get(
+        "/api/ui/audit/detail",
+        params={
+            "machine": "edge",
+            "scope": "session",
+            "session": session.session_id,
+            "id": "call:remote-shell",
+        },
+    )
+
+    assert listing.status_code == 200
+    assert listing.json()["data"]["scope"] == "session"
+    assert listing.json()["data"]["entries"][0]["session"] == session.session_id
+    assert "session" not in fake.calls[0][1]
+    assert fake.calls[0][1]["log_session_id"] == fake.worker_session_id
+    assert detail.status_code == 200
+    assert detail.json()["data"]["scope"] == "session"
+    assert fake.calls[1][1]["log_session_id"] == fake.worker_session_id
+
+
+def test_session_audit_scope_keeps_multi_session_calls_in_each_owner_log(
+    monkeypatch, tmp_path
+):
+    client = _client(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    store = get_tool_session_store()
+    first = store.create_session(workdir=workspace, label="source")
+    second = store.create_session(workdir=workspace, label="destination")
+    call_id = "multi-session-copy"
+    session_ids = audit_tool_call_start(
+        call_id=call_id,
+        transport="http",
+        tool="session_copy",
+        input={
+            "src_session_id": first.session_id,
+            "dst_session_id": second.session_id,
+            "src_path": "source.txt",
+            "dst_path": "destination.txt",
+        },
+    )
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="http",
+        tool="session_copy",
+        ok=True,
+        duration_ms=1,
+        output={"status": "copied"},
+        session_ids=session_ids,
+    )
+
+    destination = client.get(
+        "/api/ui/audit",
+        params={
+            "machine": "local",
+            "scope": "session",
+            "session": second.session_id,
+        },
+    )
+
+    assert destination.status_code == 200
+    assert destination.json()["data"]["count"] == 1
+    entry = destination.json()["data"]["entries"][0]
+    assert entry["id"] == f"call:{call_id}"
+    assert entry["session"] == second.session_id
 
 
 def test_remote_audit_scopes_offline_and_malformed_returns(
@@ -436,6 +614,235 @@ async def test_remote_worker_dispatch_exposes_process_scoped_audit(
     assert listing["count"] == 1
     assert listing["entries"][0]["id"] == "call:worker-read"
     assert detail["output"] == {"content": "remote"}
+
+
+@pytest.mark.asyncio
+async def test_remote_worker_dispatch_records_session_owned_tool_lifecycle(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "worker"
+    _configure(monkeypatch, workspace)
+    session = get_tool_session_store().create_session(
+        workdir=workspace,
+        label="worker audit owner",
+    )
+    (workspace / "remote.txt").write_text("remote content", encoding="utf-8")
+
+    result = await execute_worker_tool(
+        "read",
+        {"session_id": session.session_id, "path": "remote.txt"},
+    )
+    listing = await execute_worker_tool(
+        "query_audit",
+        {
+            "log_session_id": session.session_id,
+            "operation": "files",
+            "limit": 10,
+        },
+    )
+
+    assert "remote content" in result.content
+    assert listing["count"] == 1
+    entry = listing["entries"][0]
+    assert entry["tool"] == "read"
+    assert entry["session"] == session.session_id
+    assert entry["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_remote_worker_dispatch_excludes_human_ui_calls_from_model_audit(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "worker"
+    _configure(monkeypatch, workspace)
+    session = get_tool_session_store().create_session(
+        workdir=workspace,
+        label="human ui worker session",
+    )
+    (workspace / "remote.txt").write_text("remote content", encoding="utf-8")
+
+    result = await execute_worker_tool(
+        "read",
+        {
+            "session_id": session.session_id,
+            "path": "remote.txt",
+            REMOTE_WORKER_ORIGIN_ARG: REMOTE_WORKER_ORIGIN_HUMAN_UI,
+        },
+    )
+    listing = await execute_worker_tool(
+        "query_audit",
+        {
+            "log_session_id": session.session_id,
+            "operation": "files",
+            "limit": 10,
+        },
+    )
+
+    assert "remote content" in result.content
+    assert listing["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_remote_registry_audit_handlers_support_global_and_session_logs(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "workspace"
+    _configure(monkeypatch, workspace)
+    store = get_tool_session_store()
+    session = store.create_session(workdir=workspace, label="registry audit")
+    call_id = "registry-session-read"
+    session_ids = audit_tool_call_start(
+        call_id=call_id,
+        transport="worker",
+        tool="read",
+        input={"session_id": session.session_id, "path": "file.txt"},
+    )
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="worker",
+        tool="read",
+        ok=True,
+        duration_ms=1,
+        output={"path": "file.txt"},
+        session_ids=session_ids,
+    )
+
+    global_listing = await remote_registry_module._query_audit_handler(
+        {"operation": "files", "limit": 10}
+    )
+    session_listing = await remote_registry_module._query_audit_handler(
+        {
+            "log_session_id": session.session_id,
+            "operation": "files",
+            "limit": 10,
+        }
+    )
+    global_detail = await remote_registry_module._get_audit_entry_handler(
+        {"id": f"call:{call_id}"}
+    )
+    session_detail = await remote_registry_module._get_audit_entry_handler(
+        {
+            "log_session_id": session.session_id,
+            "id": f"call:{call_id}",
+        }
+    )
+
+    assert global_listing["count"] == 1
+    assert session_listing["count"] == 1
+    assert global_detail["id"] == f"call:{call_id}"
+    assert session_detail["id"] == f"call:{call_id}"
+
+
+@pytest.mark.asyncio
+async def test_remote_registry_internal_adapters_forward_normalized_arguments(
+    monkeypatch,
+):
+    calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    monkeypatch.setattr(
+        remote_registry_module,
+        "dashboard_snapshot",
+        lambda: {"status": "ok"},
+    )
+
+    async def record(name: str, *args: Any) -> dict[str, Any]:
+        calls.append((name, args))
+        return {"name": name, "args": list(args)}
+
+    monkeypatch.setattr(
+        remote_registry_module,
+        "start_persistent_shell_execute",
+        lambda cwd, name, command: record("start", cwd, name, command),
+    )
+    monkeypatch.setattr(
+        remote_registry_module,
+        "open_terminal_bridge_execute",
+        lambda shell_id, cols, rows: record("open", shell_id, cols, rows),
+    )
+    monkeypatch.setattr(
+        remote_registry_module,
+        "read_terminal_bridge_execute",
+        lambda bridge_id, max_bytes, wait_ms: record(
+            "read", bridge_id, max_bytes, wait_ms
+        ),
+    )
+    monkeypatch.setattr(
+        remote_registry_module,
+        "write_terminal_bridge_execute",
+        lambda bridge_id, data_b64: record("write", bridge_id, data_b64),
+    )
+    monkeypatch.setattr(
+        remote_registry_module,
+        "resize_terminal_bridge_execute",
+        lambda bridge_id, cols, rows: record("resize", bridge_id, cols, rows),
+    )
+    monkeypatch.setattr(
+        remote_registry_module,
+        "close_terminal_bridge_execute",
+        lambda bridge_id: record("close", bridge_id),
+    )
+    monkeypatch.setattr(
+        remote_registry_module,
+        "remote_admin_execute",
+        lambda action, args: record("admin", action, args),
+    )
+    monkeypatch.setattr(
+        remote_registry_module,
+        "remote_worker_tool_execute",
+        lambda args, tool_name, timeout_s: record(
+            "worker", args, tool_name, timeout_s
+        ),
+    )
+
+    assert await remote_registry_module._dashboard_snapshot_handler({}) == {
+        "status": "ok"
+    }
+    await remote_registry_module._start_persistent_shell_handler(
+        {"cwd": "/tmp", "name": "demo", "command": "printf ok"}
+    )
+    await remote_registry_module._open_terminal_bridge_handler(
+        {"shell_id": "shell1", "cols": 90, "rows": 30}
+    )
+    await remote_registry_module._read_terminal_bridge_handler(
+        {"bridge_id": "bridge1", "max_bytes": 100, "wait_ms": 5}
+    )
+    await remote_registry_module._write_terminal_bridge_handler(
+        {"bridge_id": "bridge1", "data_b64": "YWJj"}
+    )
+    await remote_registry_module._resize_terminal_bridge_handler(
+        {"bridge_id": "bridge1", "cols": 100, "rows": 40}
+    )
+    await remote_registry_module._close_terminal_bridge_handler(
+        {"bridge_id": "bridge1"}
+    )
+    await remote_registry_module.remote_admin.func("list", {})
+    handler = remote_registry_module._make_remote_worker_handler(
+        "read_todos", timeout_arg="timeout_s", default_timeout=7
+    )
+    await handler({"timeout_s": 9, "session_id": "ABCDEFGH"})
+    no_timeout_handler = remote_registry_module._make_remote_worker_handler(
+        "dashboard_snapshot"
+    )
+    await no_timeout_handler({})
+
+    assert calls == [
+        ("start", ("/tmp", "demo", "printf ok")),
+        ("open", ("shell1", 90, 30)),
+        ("read", ("bridge1", 100, 5)),
+        ("write", ("bridge1", "YWJj")),
+        ("resize", ("bridge1", 100, 40)),
+        ("close", ("bridge1",)),
+        ("admin", ("list", {})),
+        (
+            "worker",
+            (
+                {"timeout_s": 9, "session_id": "ABCDEFGH"},
+                "read_todos",
+                9,
+            ),
+        ),
+        ("worker", ({}, "dashboard_snapshot", None)),
+    ]
 
 
 def test_audit_api_validates_bounds_and_unknown_details(monkeypatch, tmp_path):
@@ -552,9 +959,13 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     assert "auditGeneration" in script
     assert "auditDetailGeneration" in script
     assert "URLSearchParams" in script
-    assert "renderAuditDetail(entry)" in script
+    assert "renderAuditDetailInto(entry" in script
     assert "elements.auditDetailBody.innerHTML" not in script
     assert "audit-image-preview" in script
+    assert 'scope: "global"' in script
+    assert 'scope: "session"' in script
+    assert 'id="audit-session"' not in index
+    assert 'id="session-audit-list"' in index
     assert (
         "session_id"
         not in script[

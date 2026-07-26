@@ -34,12 +34,48 @@ function forkPayload(url: string, init?: RequestInit): unknown {
       alerts: [],
       activity: [],
       audit_total_24h: 4,
+      todo_counts: { total: 1, open: 1 },
     }
   }
   if (path === "/machines") {
     return {
       machines: [{ name: "local", status: "online" }],
       counts: { online: 1, offline: 0, total: 1 },
+    }
+  }
+  if (path === "/sessions") {
+    const machine = parsed.searchParams.get("machine") || "local"
+    return {
+      machine,
+      remote: machine !== "local",
+      sessions: [{
+        session_id: "agent001",
+        target: machine === "local" ? "local" : "remote",
+        machine: machine === "local" ? null : machine,
+        workdir: "/workspace/project",
+        created_at: 1,
+        updated_at: 2,
+        label: "Agent session",
+      }],
+      count: 1,
+      include_inactive: parsed.searchParams.get("include_inactive") === "true",
+      active_window_hours: 5,
+    }
+  }
+  if (path === "/sessions/terminate") {
+    const body = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>
+    return {
+      machine: body.machine,
+      session: {
+        session_id: body.session_id,
+        target: body.machine === "local" ? "local" : "remote",
+        machine: body.machine === "local" ? null : body.machine,
+        workdir: "/workspace/project",
+        created_at: 1,
+        updated_at: 3,
+        termination_requested: true,
+        termination_requested_at: 3,
+      },
     }
   }
   if (path === "/terminals") {
@@ -58,10 +94,11 @@ function forkPayload(url: string, init?: RequestInit): unknown {
   if (path === "/todos") {
     if (init?.method === "PUT") {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
-      return { machine: body.machine, revision: 8, todos: body.todos }
+      return { machine: body.machine, session_id: body.session_id, revision: 8, todos: body.todos }
     }
     return {
       machine: parsed.searchParams.get("machine") || "local",
+      session_id: parsed.searchParams.get("session_id") || "agent001",
       revision: 7,
       todos: [{ id: "a", content: "A", status: "pending", priority: "medium" }],
     }
@@ -157,8 +194,14 @@ describe("fork API adapter", () => {
     await api.writeTodos(
       [{ id: "a", content: "A", status: "pending", priority: "medium" }],
       7,
+      "local",
+      "agent001",
     )
     await api.audit({ node: "worker a", empty: "", zero: 0, enabled: false, omitted: null })
+    await api.sessions("worker a", true)
+    await api.terminateSession("worker a", "agent001")
+    await api.sessionAudit("worker a", "agent001", { limit: 10 })
+    await api.sessionAuditDetail("worker a", "agent001", "call:1")
 
     expect(calls[0]?.url).toBe(`${API_BASE}/files/write`)
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
@@ -179,9 +222,22 @@ describe("fork API adapter", () => {
     })
     expect(JSON.parse(String(calls[3]?.init?.body))).toMatchObject({
       machine: "local",
+      session_id: "agent001",
       expected_revision: 7,
     })
-    expect(calls[4]?.url).toBe(`${API_BASE}/audit?zero=0&enabled=false&machine=worker+a`)
+    expect(calls[4]?.url).toBe(`${API_BASE}/audit?zero=0&enabled=false&scope=global&machine=worker+a`)
+    expect(calls[5]?.url).toBe(`${API_BASE}/sessions?machine=worker+a&include_inactive=true`)
+    expect(calls[6]?.url).toBe(`${API_BASE}/sessions/terminate`)
+    expect(JSON.parse(String(calls[6]?.init?.body))).toEqual({
+      machine: "worker a",
+      session_id: "agent001",
+    })
+    expect(calls[7]?.url).toBe(
+      `${API_BASE}/audit?limit=10&scope=session&machine=worker+a&session=agent001`,
+    )
+    expect(calls[8]?.url).toBe(
+      `${API_BASE}/audit/detail?machine=worker+a&scope=session&session=agent001&id=call%3A1`,
+    )
   })
 
   test("propagates an already-aborted external signal", async () => {
@@ -207,27 +263,27 @@ describe("API response handling", () => {
         status: 409,
         statusText: "Conflict",
       })) as unknown as typeof fetch
-    expect(api.todos()).rejects.toThrow("conflict")
+    expect(api.todos("local", "agent001")).rejects.toThrow("conflict")
 
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ ok: false, message: "", error: "typed-error" }), {
         status: 400,
         statusText: "Bad Request",
       })) as unknown as typeof fetch
-    expect(api.todos()).rejects.toThrow("typed-error")
+    expect(api.todos("local", "agent001")).rejects.toThrow("typed-error")
   })
 
   test("reports status text when JSON is unavailable or the envelope has no detail", async () => {
     globalThis.fetch = (async () =>
       new Response("not-json", { status: 502, statusText: "Bad Gateway" })) as unknown as typeof fetch
-    expect(api.todos()).rejects.toThrow("502 Bad Gateway")
+    expect(api.todos("local", "agent001")).rejects.toThrow("502 Bad Gateway")
 
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ ok: true, data: null }), {
         status: 503,
         statusText: "Unavailable",
       })) as unknown as typeof fetch
-    expect(api.todos()).rejects.toThrow("503 Unavailable")
+    expect(api.todos("local", "agent001")).rejects.toThrow("503 Unavailable")
   })
 })
 

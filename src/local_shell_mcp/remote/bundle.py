@@ -45,6 +45,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "ops/shell.py",
     "ops/transfer.py",
     "ops/utils/*.py",
+    "persistence/*.py",
     "remote/__init__.py",
     "remote/constants.py",
     "remote/tool_specs.py",

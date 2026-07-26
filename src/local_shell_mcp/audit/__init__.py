@@ -12,8 +12,10 @@ from .core import (
     audit_tool_call_start,
     current_audit_call_id,
     get_audit_entry,
+    get_session_audit_entry,
     new_audit_call_id,
     query_audit,
+    query_session_audit,
 )
 
 __all__ = [
@@ -23,8 +25,10 @@ __all__ = [
     "audit_tool_call_start",
     "current_audit_call_id",
     "get_audit_entry",
+    "get_session_audit_entry",
     "new_audit_call_id",
     "query_audit",
+    "query_session_audit",
 ]
 
 

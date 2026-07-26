@@ -6,6 +6,7 @@ import contextlib
 import secrets
 
 from ...config.settings import Settings, get_settings
+from ...persistence import StateLayout
 from ...utils.private_files import atomic_write_private_text, private_file_lock
 
 MIN_OAUTH_ADMIN_PIN_CHARS = 8
@@ -27,8 +28,9 @@ _WEAK_SIGNING_SECRETS = {
 def oauth_signing_secret(settings: Settings | None = None) -> str:
     """Return a strong persisted signing key, generating one under a private lock."""
     settings = settings or get_settings()
-    path = settings.state_dir / OAUTH_SIGNING_SECRET_FILE_NAME
-    lock_path = settings.state_dir / "locks" / "oauth-jwt-secret.lock"
+    layout = StateLayout(settings.state_dir)
+    path = layout.oauth_signing_secret_path
+    lock_path = layout.oauth_signing_lock_path
     with private_file_lock(lock_path):
         try:
             with path.open("r", encoding="utf-8") as handle:

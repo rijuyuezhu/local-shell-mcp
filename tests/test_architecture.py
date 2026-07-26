@@ -530,7 +530,14 @@ def test_executor_ownership_map_covers_every_file() -> None:
 
 
 def test_owned_domain_maps_cover_every_file() -> None:
-    for package in ("audit", "release", "telemetry", "terminal", "ui"):
+    for package in (
+        "audit",
+        "persistence",
+        "release",
+        "telemetry",
+        "terminal",
+        "ui",
+    ):
         _assert_ownership_map_covers(
             {
                 str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")

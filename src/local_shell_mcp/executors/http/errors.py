@@ -4,11 +4,25 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ...errors import public_error_type
+from ...tool_session import SessionTerminationRequestedError
 from ...tools.local_handlers import UnknownLocalToolError
 
 
 def install_error_handlers(app: FastAPI) -> None:
     """Install JSON exception handlers for REST API errors."""
+
+    @app.exception_handler(SessionTerminationRequestedError)
+    async def session_termination_handler(
+        request: Request, exc: SessionTerminationRequestedError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "session_termination_requested",
+                "message": str(exc),
+                "session_id": exc.session_id,
+            },
+        )
 
     @app.exception_handler(ValueError)
     async def value_error_handler(

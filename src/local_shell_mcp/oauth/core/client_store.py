@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ...config.settings import get_settings
+from ...persistence import StateLayout
 from .models import _CLIENTS, OAuthClient
 
 CLIENT_STORE_FILENAME = "oauth-clients.json"
@@ -15,7 +16,7 @@ CLIENT_STORE_VERSION = 1
 
 def client_store_path() -> Path:
     """Return the configured persistent OAuth client registry path."""
-    return get_settings().state_dir / CLIENT_STORE_FILENAME
+    return StateLayout(get_settings().state_dir).oauth_clients_path
 
 
 def _decode_client(raw: object) -> OAuthClient:

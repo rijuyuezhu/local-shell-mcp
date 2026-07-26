@@ -21,14 +21,14 @@ async def call_http_tool(
     payload = args or {}
     call_id = new_audit_call_id()
     start = time.time()
-    audit_tool_call_start(
+    session_ids = audit_tool_call_start(
         call_id=call_id,
         transport="http",
         tool=tool_name,
         input=payload,
     )
     try:
-        with audit_call_context(call_id):
+        with audit_call_context(call_id, session_ids):
             result = await call_local_tool(tool_name, payload)
     except BaseException as exc:
         duration_ms = int((time.time() - start) * 1000)
@@ -43,6 +43,7 @@ async def call_http_tool(
                 "message": str(exc),
                 "repr": repr(exc),
             },
+            session_ids=session_ids,
         )
         raise
     duration_ms = int((time.time() - start) * 1000)
@@ -53,5 +54,6 @@ async def call_http_tool(
         ok=True,
         duration_ms=duration_ms,
         output=to_jsonable(result),
+        session_ids=session_ids,
     )
     return result

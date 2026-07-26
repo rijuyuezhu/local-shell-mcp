@@ -19,6 +19,7 @@ from typing import Any
 
 from ..audit import audit
 from ..config.settings import get_settings
+from ..persistence import get_state_store
 from ..schemas.result_models.remote import (
     RemoteInviteOutput,
     RemoteListMachinesOutput,
@@ -30,7 +31,6 @@ from .constants import (
     REMOTE_JOIN_PATH,
     REMOTE_WORKER_MANIFEST_PATH,
     REMOTE_WORKER_POLL_PROTOCOL_VERSION,
-    REMOTE_WORKER_REGISTRY_FILE_NAME,
 )
 from .responses import _ok
 
@@ -172,7 +172,7 @@ class RemoteManager:
         self._registry_loaded_path: Path | None = None
 
     def _registry_path(self) -> Path:
-        return get_settings().state_dir / REMOTE_WORKER_REGISTRY_FILE_NAME
+        return get_state_store().layout.remote_workers_path
 
     def _registry_backup_path(self) -> Path:
         path = self._registry_path()

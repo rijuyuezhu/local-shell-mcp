@@ -156,7 +156,7 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         page.locator('#terminal-machine option[value="browser-edge"]')
     ).to_have_count(1)
     expect(
-        page.locator('#todo-machine option[value="browser-edge"]')
+        page.locator('#session-machine option[value="browser-edge"]')
     ).to_have_count(1)
 
     page.locator("#file-machine").select_option(MACHINE)
@@ -182,15 +182,38 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         "edited by Chromium\n"
     )
 
-    page.locator("#todo-machine").select_option(MACHINE)
-    expect(page.locator("#todo-state")).to_contain_text(f"{MACHINE} · loaded")
+    remote_session = harness.api(
+        "POST",
+        "/tools/session_start",
+        body={"target": "remote", "machine": MACHINE, "workdir": "."},
+    )
+    assert remote_session["status"] == 200
+    remote_session_id = remote_session["payload"]["session_id"]
+    local_sessions = harness.api("GET", "/api/ui/sessions?machine=local")
+    local_session_id = local_sessions["payload"]["data"]["sessions"][0][
+        "session_id"
+    ]
+
+    page.locator("#session-machine").select_option(MACHINE)
+    expect(
+        page.locator(
+            f'#session-list .session-entry[data-session-id="{remote_session_id}"]'
+        )
+    ).to_have_attribute("aria-current", "true")
     page.locator("#todo-add").click()
     remote_row = page.locator("#todo-list .todo-row").last
     remote_row.locator("input").fill("remote todo is isolated")
     page.locator("#todo-save").click()
-    expect(page.locator("#todo-state")).to_contain_text(f"Saved {MACHINE}")
-    remote_todos = harness.api("GET", f"/api/ui/todos?machine={MACHINE}")
-    local_todos = harness.api("GET", "/api/ui/todos?machine=local")
+    expect(page.locator("#todo-state")).to_contain_text(
+        f"Saved {remote_session_id}"
+    )
+    remote_todos = harness.api(
+        "GET",
+        f"/api/ui/todos?machine={MACHINE}&session_id={remote_session_id}",
+    )
+    local_todos = harness.api(
+        "GET", f"/api/ui/todos?machine=local&session_id={local_session_id}"
+    )
     assert remote_todos["payload"]["data"]["todos"][0]["content"] == (
         "remote todo is isolated"
     )

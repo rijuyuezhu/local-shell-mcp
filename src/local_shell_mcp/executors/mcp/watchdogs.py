@@ -57,7 +57,7 @@ def _mcp_tool_audit_watchdog_wrapper(
     async def wrapped(*args: Any, **kwargs: Any) -> Any:
         call_id = new_audit_call_id()
         start = time.time()
-        audit_tool_call_start(
+        session_ids = audit_tool_call_start(
             call_id=call_id,
             transport="mcp",
             tool=tool_name,
@@ -65,7 +65,7 @@ def _mcp_tool_audit_watchdog_wrapper(
         )
         timeout_s = tool_timeout_s(tool_name)
         try:
-            with audit_call_context(call_id):
+            with audit_call_context(call_id, session_ids):
                 result = await asyncio.wait_for(
                     original(*args, **kwargs), timeout=timeout_s
                 )
@@ -96,6 +96,7 @@ def _mcp_tool_audit_watchdog_wrapper(
                     "message": str(exc),
                     "repr": repr(exc),
                 },
+                session_ids=session_ids,
             )
             if payload is None:
                 raise exc from None
@@ -113,6 +114,7 @@ def _mcp_tool_audit_watchdog_wrapper(
                     "message": str(exc),
                     "repr": repr(exc),
                 },
+                session_ids=session_ids,
             )
             raise
         duration_ms = int((time.time() - start) * 1000)
@@ -123,6 +125,7 @@ def _mcp_tool_audit_watchdog_wrapper(
             ok=True,
             duration_ms=duration_ms,
             output=to_jsonable(result),
+            session_ids=session_ids,
         )
         return result
 

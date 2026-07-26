@@ -5,6 +5,8 @@ import pytest
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.tool_session import store as store_module
 from local_shell_mcp.tool_session.store import (
+    SESSION_TERMINATION_PROMPT,
+    SessionTerminationRequestedError,
     UnknownAgentSessionError,
     get_tool_session_store,
 )
@@ -126,3 +128,81 @@ def test_update_remote_session_workdir_clears_snapshots(tmp_path, monkeypatch):
     local = store.create_session(target="local", workdir=tmp_path)
     with pytest.raises(ValueError, match="not remote"):
         store.update_remote_session_workdir(local.session_id, "/remote")
+
+
+def test_sessions_and_snapshots_survive_new_store_instance(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    first_store = store_module.ToolSessionStore()
+    first_store.clear()
+    session = first_store.create_session(workdir=tmp_path, label="durable")
+    snapshot = first_store.record_file_snapshot(
+        session_id=session.session_id,
+        path="file.txt",
+        file_sha256="b" * 64,
+        total_lines=2,
+        seen_ranges=((1, 2),),
+    )
+
+    second_store = store_module.ToolSessionStore()
+
+    assert second_store.require_session(session.session_id) == session
+    assert (
+        second_store.get_snapshot(session.session_id, snapshot.snapshot_id)
+        == snapshot
+    )
+    assert second_store.list_sessions() == [session]
+    session_dir = tmp_path / ".state" / "sessions" / session.session_id
+    assert (session_dir / "session.json").is_file()
+    assert (session_dir / "snapshots.json").is_file()
+
+
+def test_termination_request_is_durable_idempotent_and_blocks_tool_work(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+
+    terminated = store.request_termination(session.session_id)
+    repeated = store.request_termination(session.session_id)
+
+    assert terminated.termination_requested_at is not None
+    assert (
+        repeated.termination_requested_at == terminated.termination_requested_at
+    )
+    restored = store_module.ToolSessionStore().require_session(
+        session.session_id
+    )
+    assert (
+        restored.termination_requested_at == terminated.termination_requested_at
+    )
+    with pytest.raises(SessionTerminationRequestedError) as exc_info:
+        store.assert_tool_call_allowed((session.session_id,))
+    assert exc_info.value.session_id == session.session_id
+    assert SESSION_TERMINATION_PROMPT in str(exc_info.value)
+
+
+def test_tool_input_session_ids_only_reads_semantic_argument_envelopes():
+    assert store_module.tool_input_session_ids(
+        {
+            "session_id": "TOP00001",
+            "src_session_id": "SRC00001",
+            "dst_session_id": "DST00001",
+            "env": {"session_id": "IGNORED1"},
+            "payload": [{"session_id": "IGNORED2"}],
+            "kwargs": {
+                "source_session_id": "SOURCE01",
+                "env": {"session_id": "IGNORED3"},
+            },
+            "keyword_args": {
+                "destination_session_id": "DEST0001",
+            },
+        }
+    ) == ("TOP00001", "SRC00001", "DST00001", "SOURCE01", "DEST0001")

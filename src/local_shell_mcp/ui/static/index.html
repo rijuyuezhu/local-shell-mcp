@@ -377,48 +377,130 @@
       </div>
     </section>
 
-    <section id="todo-panel" class="panel todo-panel">
-      <div class="section-heading todo-heading">
+    <section id="session-panel" class="panel session-panel">
+      <div class="section-heading session-heading">
         <div>
-          <p class="eyebrow">Machine session</p>
-          <h2>Todos</h2>
+          <p class="eyebrow">Agent control plane</p>
+          <h2>Sessions</h2>
         </div>
-        <span id="todo-state" class="muted">Not loaded</span>
-      </div>
-      <div class="todo-toolbar">
-        <label class="todo-control" for="todo-machine">
-          <span>Machine</span>
-          <select id="todo-machine" name="todo-machine">
-            <option value="local">local</option>
-          </select>
-        </label>
-        <label class="todo-control" for="todo-filter">
-          <span>Filter</span>
-          <select id="todo-filter" name="todo-filter">
-            <option value="all">All</option>
-            <option value="open">Open</option>
-            <option value="completed">Completed</option>
-          </select>
-        </label>
-        <div class="todo-actions">
-          <button id="todo-refresh" type="button">Reload</button>
-          <button id="todo-add" type="button">Add todo</button>
-          <button id="todo-save" class="primary-action" type="button" disabled>Save changes</button>
+        <div class="session-toolbar">
+          <label class="session-control" for="session-machine">
+            <span>Machine</span>
+            <select id="session-machine" name="session-machine">
+              <option value="local">local</option>
+            </select>
+          </label>
+          <label class="session-active-toggle"><input id="session-include-inactive" type="checkbox"> Show all sessions</label>
+          <button id="session-refresh" type="button">Refresh</button>
+          <span id="session-state" class="muted">Not loaded</span>
         </div>
       </div>
-      <div id="todo-summary" class="todo-summary" aria-live="polite">
-        <span>0 total</span><span>0 open</span><span>0 completed</span><span>revision 0</span>
-      </div>
-      <div id="todo-list" class="todo-list" aria-live="polite">
-        <div class="empty-state">Loading todo list…</div>
+      <div class="session-layout">
+        <nav id="session-list" class="session-list" aria-label="Agent sessions" aria-live="polite">
+          <div class="empty-state">Loading active sessions…</div>
+        </nav>
+        <article class="session-workspace">
+          <div class="session-detail-header">
+            <div>
+              <strong id="session-detail-title">No session selected</strong>
+              <span id="session-detail-status" class="muted">Select a session to inspect its state</span>
+            </div>
+            <button id="session-terminate" class="danger-action" type="button" disabled>Terminate immediately</button>
+          </div>
+          <dl class="session-detail-grid">
+            <div><dt>Session ID</dt><dd id="session-detail-id">—</dd></div>
+            <div><dt>Target</dt><dd id="session-detail-target">—</dd></div>
+            <div><dt>Machine</dt><dd id="session-detail-machine">—</dd></div>
+            <div><dt>Workdir</dt><dd id="session-detail-workdir">—</dd></div>
+            <div><dt>Created</dt><dd id="session-detail-created">—</dd></div>
+            <div><dt>Last activity</dt><dd id="session-detail-updated">—</dd></div>
+          </dl>
+
+          <section class="session-resource session-todos">
+            <div class="session-resource-heading">
+              <div><p class="eyebrow">Session state</p><h3>Todos</h3></div>
+              <span id="todo-state" class="muted">Select a session</span>
+            </div>
+            <div class="todo-toolbar">
+              <label class="todo-control" for="todo-filter">
+                <span>Filter</span>
+                <select id="todo-filter" name="todo-filter">
+                  <option value="all">All</option>
+                  <option value="open">Open</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </label>
+              <div class="todo-actions">
+                <button id="todo-refresh" type="button">Reload</button>
+                <button id="todo-add" type="button">Add todo</button>
+                <button id="todo-save" class="primary-action" type="button" disabled>Save changes</button>
+              </div>
+            </div>
+            <div id="todo-summary" class="todo-summary" aria-live="polite">
+              <span>0 total</span><span>0 open</span><span>0 completed</span><span>revision 0</span>
+            </div>
+            <div id="todo-list" class="todo-list" aria-live="polite">
+              <div class="empty-state">Select a session to load its todo list.</div>
+            </div>
+          </section>
+
+          <section class="session-resource session-audit">
+            <div class="session-resource-heading">
+              <div><p class="eyebrow">Session-local activity</p><h3>Audit</h3></div>
+              <span id="session-audit-state" class="muted">Select a session</span>
+            </div>
+            <form id="session-audit-filter-form" class="audit-toolbar session-audit-toolbar">
+              <label class="audit-control" for="session-audit-operation">
+                <span>Operation</span>
+                <select id="session-audit-operation" name="session-audit-operation">
+                  <option value="">All</option>
+                  <option value="files">Files</option>
+                  <option value="shell">Shell</option>
+                  <option value="jobs">Jobs</option>
+                  <option value="transfer">Transfer</option>
+                  <option value="remote">Remote</option>
+                  <option value="agent">Agent</option>
+                  <option value="security">Security</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label class="audit-control audit-search-control" for="session-audit-search">
+                <span>Search</span>
+                <input id="session-audit-search" type="search" maxlength="4096" placeholder="Search this session" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="audit-control" for="session-audit-sort">
+                <span>Order</span>
+                <select id="session-audit-sort"><option value="desc">Newest first</option><option value="asc">Oldest first</option></select>
+              </label>
+              <label class="audit-control" for="session-audit-limit">
+                <span>Limit</span>
+                <select id="session-audit-limit"><option value="100">100</option><option value="300" selected>300</option><option value="1000">1000</option></select>
+              </label>
+              <button id="session-audit-refresh" type="submit">Refresh</button>
+            </form>
+            <div id="session-audit-summary" class="audit-summary" aria-live="polite">0 entries</div>
+            <div class="audit-layout session-audit-layout">
+              <nav id="session-audit-list" class="audit-list" aria-label="Session Audit records" aria-live="polite">
+                <div class="empty-state">Select a session to load its Audit records.</div>
+              </nav>
+              <article class="audit-detail">
+                <div class="audit-detail-header">
+                  <strong id="session-audit-detail-title">No record selected</strong>
+                  <span id="session-audit-detail-meta" class="muted">Select a session Audit record</span>
+                </div>
+                <div id="session-audit-detail-body" class="audit-detail-body" tabindex="0">Select a session Audit record.</div>
+              </article>
+            </div>
+          </section>
+        </article>
       </div>
     </section>
 
     <section id="audit-panel" class="panel audit-panel">
       <div class="section-heading audit-heading">
         <div>
-          <p class="eyebrow">Private activity log</p>
-          <h2>Audit</h2>
+          <p class="eyebrow">Machine-wide activity and control events</p>
+          <h2>Global Audit</h2>
         </div>
         <span id="audit-state" class="muted">Not loaded</span>
       </div>
@@ -446,10 +528,6 @@
         <label class="audit-control" for="audit-event">
           <span>Event</span>
           <input id="audit-event" name="audit-event" type="text" maxlength="1024" placeholder="tool_call" autocomplete="off" spellcheck="false">
-        </label>
-        <label class="audit-control" for="audit-session">
-          <span>Session</span>
-          <input id="audit-session" name="audit-session" type="text" maxlength="1024" placeholder="Optional session ID" autocomplete="off" spellcheck="false">
         </label>
         <label class="audit-control audit-search-control" for="audit-search">
           <span>Search</span>
