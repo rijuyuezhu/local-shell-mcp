@@ -34,6 +34,7 @@ from .files import (
 )
 from .opentui import ui_opentui_websocket
 from .remotes import api_remote_action, api_remotes
+from .sessions import api_sessions
 from .terminals import (
     api_terminal_action,
     api_terminal_read,
@@ -196,6 +197,8 @@ async def api_bootstrap(request: Request) -> Response:  # noqa: ARG001
                     "file_rename": True,
                     "remote_files": True,
                     "remote_file_editor": True,
+                    "sessions": True,
+                    "remote_sessions": True,
                     "todos": True,
                     "remote_todos": True,
                     "audit": True,
@@ -233,6 +236,7 @@ def human_ui_routes(
         Route(UI_API_PREFIX + "/bootstrap", api_bootstrap, methods=["GET"]),
         Route(UI_API_PREFIX + "/dashboard", api_dashboard, methods=["GET"]),
         Route(UI_API_PREFIX + "/machines", api_machines, methods=["GET"]),
+        Route(UI_API_PREFIX + "/sessions", api_sessions, methods=["GET"]),
         Route(UI_API_PREFIX + "/remotes", api_remotes, methods=["GET", "POST"]),
         Route(
             UI_API_PREFIX + "/remotes/{action}",

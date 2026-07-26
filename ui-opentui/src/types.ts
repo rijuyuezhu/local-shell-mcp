@@ -85,6 +85,24 @@ export interface TerminalPayload {
   sessions: TerminalSession[]
 }
 
+export interface AgentSession {
+  session_id: string
+  target: "local" | "remote" | string
+  workdir: string
+  machine?: string | null
+  created_at: number
+  updated_at: number
+  expires_at?: number | null
+  label?: string | null
+}
+
+export interface AgentSessionPayload {
+  machine: string
+  remote: boolean
+  sessions: AgentSession[]
+  count: number
+}
+
 export interface TodoItem {
   id: string
   content: string
@@ -93,7 +111,9 @@ export interface TodoItem {
 }
 
 export interface TodoPayload {
-  machine?: string
+  machine: string
+  session_id: string
+  session?: AgentSession
   revision: number
   updated_at?: number | null
   todos: TodoItem[]
@@ -145,7 +165,6 @@ export interface InvitePayload {
 export interface BootstrapPayload {
   version: Record<string, unknown>
   machines: MachinePayload
-  todos: TodoPayload
   features: {
     remote: boolean
     wallpaper: "aurora" | "grid" | "none" | string

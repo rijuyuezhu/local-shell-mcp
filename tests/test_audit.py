@@ -456,6 +456,38 @@ def test_query_audit_filters_sorts_limits_and_skips_malformed_lines(
         get_audit_entry("missing")
 
 
+def test_tool_call_session_is_derived_before_oversized_input_is_externalized(
+    tmp_path, monkeypatch
+):
+    path = _configure_audit(tmp_path, monkeypatch, inline_bytes=256)
+    audit_tool_call_start(
+        call_id="session-input",
+        transport="mcp",
+        tool="read",
+        input={
+            "session_id": "SESSION1",
+            "path": "file.txt",
+            "content": "x" * 5_000,
+        },
+    )
+    audit_tool_call_end(
+        call_id="session-input",
+        transport="mcp",
+        tool="read",
+        ok=True,
+        duration_ms=1,
+        output={"path": "file.txt"},
+    )
+
+    start = _records(path)[0]
+    result = query_audit(session="SESSION1")
+
+    assert start["session"] == "SESSION1"
+    assert AUDIT_PAYLOAD_KEY in start["input"]
+    assert result["count"] == 1
+    assert result["entries"][0]["session"] == "SESSION1"
+
+
 def test_query_audit_reports_failures_across_all_matches(tmp_path, monkeypatch):
     _configure_audit(tmp_path, monkeypatch)
     for index, ok in enumerate((False, True, False)):

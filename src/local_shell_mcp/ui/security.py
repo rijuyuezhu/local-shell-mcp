@@ -11,7 +11,7 @@ from pathlib import Path
 
 from starlette.requests import HTTPConnection
 
-from ..config.settings import get_settings
+from ..persistence import get_state_store
 
 UI_API_PREFIX = "/api/ui"
 UI_LOCAL_TOKEN_HEADER = "x-local-shell-mcp-ui-token"
@@ -20,7 +20,7 @@ UI_LOCAL_TOKEN_ENV = "LOCAL_SHELL_MCP_UI_LOCAL_TOKEN"
 
 def _token_path() -> Path:
     """Return the private state-file path for the transparent local UI token."""
-    return get_settings().state_dir / "ui" / "local-token"
+    return get_state_store().layout.ui_local_token_path
 
 
 def _read_token(path: Path) -> str | None:

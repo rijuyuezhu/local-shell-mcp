@@ -249,6 +249,8 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/agent_bridge/sources.py" in names
     assert "local_shell_mcp/agent_bridge/models.py" in names
     assert "local_shell_mcp/jobs/runtime.py" in names
+    assert "local_shell_mcp/persistence/__init__.py" in names
+    assert "local_shell_mcp/persistence/store.py" in names
     assert "local_shell_mcp/agent_bridge/status.py" not in names
     assert "local_shell_mcp/config/cli.py" not in names
     assert "local_shell_mcp/jobs/cli.py" not in names
@@ -287,6 +289,8 @@ def test_worker_bundle_imports_without_checkout_fallback(tmp_path):
         "local_shell_mcp.terminal.bridge",
         "local_shell_mcp.terminal.tmux",
         "local_shell_mcp.ops.session",
+        "local_shell_mcp.persistence",
+        "local_shell_mcp.persistence.store",
         "local_shell_mcp.ops.agent",
         "local_shell_mcp.agent_bridge.sources",
         "local_shell_mcp.schemas.result_models.agent",

@@ -68,22 +68,27 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         "copy source\n"
     )
 
+    session = harness.api("POST", "/tools/session_start", body={"workdir": "."})
+    assert session["status"] == 200
+    session_id = session["payload"]["session_id"]
+    page.locator("#todo-refresh").click()
+    expect(page.locator("#todo-session")).to_have_value(session_id)
+
     page.locator("#todo-add").click()
     row = page.locator("#todo-list .todo-row").last
     row.locator("input").fill("verify browser todos")
     row.locator("select").nth(0).select_option("in_progress")
     row.locator("select").nth(1).select_option("high")
     page.locator("#todo-save").click()
-    expect(page.locator("#todo-state")).to_contain_text("Saved local")
-    local_todos = harness.api("GET", "/api/ui/todos?machine=local")
+    expect(page.locator("#todo-state")).to_contain_text(f"Saved {session_id}")
+    local_todos = harness.api(
+        "GET", f"/api/ui/todos?machine=local&session_id={session_id}"
+    )
     assert local_todos["status"] == 200
     assert local_todos["payload"]["data"]["todos"][0]["content"] == (
         "verify browser todos"
     )
 
-    session = harness.api("POST", "/tools/session_start", body={"workdir": "."})
-    assert session["status"] == 200
-    session_id = session["payload"]["session_id"]
     audited_write = harness.api(
         "POST",
         "/tools/write_file",
@@ -99,6 +104,10 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     page.locator("#audit-operation").select_option("files")
     page.locator("#audit-search").fill("write_file")
     page.locator("#audit-refresh").click()
+    expect(
+        page.locator(f'#audit-session option[value="{session_id}"]')
+    ).to_be_attached()
+    page.locator("#audit-session").select_option(session_id)
     expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
     page.locator("#audit-list .audit-entry").first.click()
     expect(page.locator("#audit-detail-body")).to_contain_text(
@@ -117,6 +126,10 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     page.locator("#audit-operation").select_option("files")
     page.locator("#audit-search").fill("write_file")
     page.locator("#audit-refresh").click()
+    expect(
+        page.locator(f'#audit-session option[value="{session_id}"]')
+    ).to_be_attached()
+    page.locator("#audit-session").select_option(session_id)
     expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
     page.locator("#audit-list .audit-entry").first.click()
     expect(page.locator("#audit-detail-meta")).to_have_text(

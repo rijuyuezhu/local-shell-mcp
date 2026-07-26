@@ -1,5 +1,6 @@
 import type {
   ApiEnvelope,
+  AgentSessionPayload,
   AuditEntry,
   AuditPayload,
   BootstrapPayload,
@@ -160,22 +161,18 @@ async function rawTerminals(machine: string, signal?: AbortSignal): Promise<Term
   )
 }
 
-async function rawTodos(machine = "local", signal?: AbortSignal): Promise<TodoPayload> {
-  return request(`/todos${queryString({ machine })}`, { signal })
+async function rawTodos(machine: string, sessionId: string, signal?: AbortSignal): Promise<TodoPayload> {
+  return request(`/todos${queryString({ machine, session_id: sessionId })}`, { signal })
 }
 
 export const api = {
   async bootstrap(): Promise<BootstrapPayload> {
-    const [payload, todos] = await Promise.all([
-      request<ForkBootstrap>("/bootstrap"),
-      rawTodos(),
-    ])
+    const payload = await request<ForkBootstrap>("/bootstrap")
     const machines = normalizeMachinePayload(payload)
     const features = payload.ui?.features || {}
     return {
       version: payload.version || {},
       machines,
-      todos,
       features: {
         ...features,
         remote: Boolean(features.remotes ?? features.remote ?? machines.enabled !== false),
@@ -185,13 +182,11 @@ export const api = {
   },
 
   async dashboard(signal?: AbortSignal): Promise<DashboardPayload> {
-    const [dashboard, machines, terminals, todos] = await Promise.all([
+    const [dashboard, machines, terminals] = await Promise.all([
       request<ForkDashboardPayload>(`/dashboard${queryString({ machine: "local" })}`, { signal }),
       request<MachinePayload>("/machines", { signal }),
       rawTerminals("local", signal),
-      rawTodos("local", signal),
     ])
-    const openTodos = todos.todos.filter((todo) => todo.status !== "completed").length
     return {
       generated_at: dashboard.generated_at,
       health: dashboard.health,
@@ -205,12 +200,16 @@ export const api = {
       alerts: dashboard.alerts,
       activity: dashboard.activity,
       audit_total_24h: dashboard.audit_total_24h,
-      todo_counts: { total: todos.todos.length, open: openTodos },
+      todo_counts: dashboard.todo_counts || { total: 0, open: 0 },
     }
   },
 
   async machines(): Promise<MachinePayload> {
     return normalizeMachinePayload(await request<MachinePayload>("/machines"))
+  },
+
+  sessions(machine = "local", signal?: AbortSignal): Promise<AgentSessionPayload> {
+    return request(`/sessions${queryString({ machine })}`, { signal })
   },
 
   async files(machine: string, path: string, signal?: AbortSignal): Promise<FilesPayload> {
@@ -287,14 +286,19 @@ export const api = {
     return terminalResult(result)
   },
 
-  todos(machine = "local"): Promise<TodoPayload> {
-    return rawTodos(machine)
+  todos(machine: string, sessionId: string): Promise<TodoPayload> {
+    return rawTodos(machine, sessionId)
   },
 
-  writeTodos(todos: TodoItem[], expectedRevision: number, machine = "local"): Promise<TodoPayload> {
+  writeTodos(
+    todos: TodoItem[],
+    expectedRevision: number,
+    machine: string,
+    sessionId: string,
+  ): Promise<TodoPayload> {
     return request("/todos", {
       method: "PUT",
-      body: JSON.stringify({ machine, todos, expected_revision: expectedRevision }),
+      body: JSON.stringify({ machine, session_id: sessionId, todos, expected_revision: expectedRevision }),
     })
   },
 

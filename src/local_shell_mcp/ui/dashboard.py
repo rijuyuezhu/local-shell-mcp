@@ -8,6 +8,7 @@ from typing import Any
 
 from ..audit import query_audit
 from ..config.settings import get_settings
+from ..ops.todo import todo_counts_execute
 from ..telemetry.system import local_system_snapshot
 from ..version import version_info
 
@@ -112,13 +113,28 @@ def dashboard_snapshot() -> dict[str, Any]:
     system = local_system_snapshot()
     source_alerts: list[dict[str, Any]] = []
     try:
+        todo_counts = todo_counts_execute()
+        todo_source = "ok"
+    except Exception as exc:
+        todo_counts = {"total": 0, "open": 0}
+        todo_source = "degraded"
+        source_alerts.append(
+            {
+                "severity": "warning",
+                "title": "Todo state unavailable",
+                "detail": type(exc).__name__,
+            }
+        )
+    try:
         audit_payload = query_audit(
             limit=_DASHBOARD_AUDIT_LIMIT,
             start_ts=time.time() - _DASHBOARD_WINDOW_S,
             sort="desc",
         )
+        audit_source = "ok"
     except Exception as exc:
         audit_payload = {"entries": [], "count": 0, "total_matched": 0}
+        audit_source = "degraded"
         source_alerts.append(
             {
                 "severity": "warning",
@@ -174,8 +190,10 @@ def dashboard_snapshot() -> dict[str, Any]:
         "activity": dashboard_activity(entries),
         "audit_total_24h": total_matched,
         "audit_failed_24h": failed_count,
+        "todo_counts": todo_counts,
         "sources": {
             "system": "ok",
-            "audit": "degraded" if source_alerts else "ok",
+            "audit": audit_source,
+            "todos": todo_source,
         },
     }

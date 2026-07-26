@@ -15,16 +15,16 @@ import {
 import { EmptyState, KeyHint, Loading, Modal, Panel, useVisibleRows } from "./components"
 import { ImagePreviewView } from "./image-preview-view"
 import { handleSelectionScroll } from "./mouse"
-import { clampIndex, nextPreviewMeasurement } from "./state-utils"
+import { clampIndex, nextPreviewMeasurement, nextValue } from "./state-utils"
 import { HighlightedText } from "./syntax-highlight"
 import { parseTerminalCellAspect } from "./terminal-geometry"
 import { screenTheme, theme } from "./theme"
-import type { AuditEntry, Machine } from "./types"
+import type { AgentSession, AuditEntry, Machine } from "./types"
 
 const colors = screenTheme.Audit
 const terminalCellAspect = parseTerminalCellAspect(process.env.LOCAL_SHELL_MCP_UI_CELL_ASPECT)
 
-type AuditDialog = { type: "none" } | { type: "search" } | { type: "event" } | { type: "session" }
+type AuditDialog = { type: "none" } | { type: "search" } | { type: "event" }
 
 const TIME_RANGES = [
   { label: "15m", seconds: 15 * 60 },
@@ -79,6 +79,7 @@ export function AuditScreen({
   const [search, setSearch] = useState("")
   const [event, setEvent] = useState("")
   const [session, setSession] = useState("")
+  const [sessions, setSessions] = useState<AgentSession[]>([])
   const [dialog, setDialog] = useState<AuditDialog>({ type: "none" })
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
@@ -115,10 +116,17 @@ export function AuditScreen({
     setSelected(resolved)
   }, [])
 
-  const cycleNode = () => setNodeIndex((value) => (value + 1) % nodes.length)
+  const cycleNode = () => {
+    setSession("")
+    setNodeIndex((value) => (value + 1) % nodes.length)
+  }
   const cycleOperation = () => setOperationIndex((value) => (value + 1) % AUDIT_OPERATIONS.length)
   const cycleTime = () => setTimeIndex((value) => (value + 1) % TIME_RANGES.length)
   const toggleSort = () => setSort((value) => (value === "desc" ? "asc" : "desc"))
+  const cycleSession = () => {
+    const order = ["", ...sessions.map((item) => item.session_id)]
+    if (order.length > 1) setSession(nextValue(session, order))
+  }
   const clearFilters = () => {
     setSearch("")
     setEvent("")
@@ -167,6 +175,27 @@ export function AuditScreen({
       if (requestId === refreshRequest.current) setLoading(false)
     }
   }, [event, search, selectedNode, selectedOperation, session, setStatus, sort, timeRange.seconds])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!selectedNode) {
+      setSessions([])
+      setSession("")
+      return () => {
+        cancelled = true
+      }
+    }
+    void api.sessions(selectedNode).then((payload) => {
+      if (cancelled) return
+      setSessions(payload.sessions)
+      setSession((value) => payload.sessions.some((item) => item.session_id === value) ? value : "")
+    }).catch((error) => {
+      if (!cancelled) setStatus(`Audit sessions: ${formatError(error)}`)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedNode, setStatus])
 
   useEffect(() => {
     refreshRequest.current += 1
@@ -243,7 +272,7 @@ export function AuditScreen({
     else if (key.name === "s") toggleSort()
     else if (key.name === "/") setDialog({ type: "search" })
     else if (key.name === "e") setDialog({ type: "event" })
-    else if (key.name === "i") setDialog({ type: "session" })
+    else if (key.name === "i") cycleSession()
     else if (key.name === "c") clearFilters()
     else if (key.name === "r") void refresh(true)
   })
@@ -253,7 +282,6 @@ export function AuditScreen({
     const submitted = typeof value === "string" ? value : ""
     if (dialog.type === "search") setSearch(submitted.trim())
     else if (dialog.type === "event") setEvent(submitted.trim())
-    else if (dialog.type === "session") setSession(submitted.trim())
     setDialog({ type: "none" })
   }
 
@@ -272,6 +300,7 @@ export function AuditScreen({
             <text onMouseDown={cycleNode} fg={colors.accent} content={`N:${selectedNode || "*"}  `} />
             <text onMouseDown={cycleOperation} fg={theme.blue} content={`O:${selectedOperation || "*"}  `} />
             <text onMouseDown={cycleTime} fg={theme.yellow} content={`T:${timeRange.label}  `} />
+            <text onMouseDown={cycleSession} fg={theme.green} content={`I:${session || "*"}  `} />
             <text onMouseDown={toggleSort} fg={theme.magenta} content={`S:${sort.slice(0, 1).toUpperCase()}`} />
           </box>
         </Panel>
@@ -281,6 +310,7 @@ export function AuditScreen({
             { title: "Node", value: selectedNode || "All", color: colors.accent, action: cycleNode },
             { title: "Operation", value: selectedOperation || "All", color: theme.blue, action: cycleOperation },
             { title: "Time", value: timeRange.label, color: theme.yellow, action: cycleTime },
+            { title: "Session", value: session || "All", color: theme.green, action: cycleSession },
             { title: "Sort", value: sort.toUpperCase(), color: theme.magenta, action: toggleSort },
           ].map(({ title, value, color, action }) => (
             <Panel key={title} title={title} active accent={colors.accent} activeBackground={colors.panel} onMouseDown={action} style={{ flexGrow: 1, alignItems: "center", justifyContent: "center" }}>
@@ -450,18 +480,18 @@ export function AuditScreen({
           { key: "s", label: "sort", onPress: toggleSort, disabled: footerLocked },
           { key: "/", label: "search", onPress: () => setDialog({ type: "search" }), disabled: footerLocked },
           { key: "e", label: "event", onPress: () => setDialog({ type: "event" }), disabled: footerLocked },
-          { key: "i", label: "session", onPress: () => setDialog({ type: "session" }), disabled: footerLocked },
+          { key: "i", label: "session", onPress: cycleSession, disabled: footerLocked || !selectedNode || sessions.length === 0 },
           { key: "c", label: "clear", onPress: clearFilters, disabled: footerLocked },
           { key: "r", label: "refresh", onPress: () => void refresh(true), disabled: footerLocked || loading },
         ]}
       />
       {dialog.type !== "none" && (
-        <Modal title={dialog.type === "search" ? "Search audit" : dialog.type === "event" ? "Filter event" : "Filter session"} height={7}>
+        <Modal title={dialog.type === "search" ? "Search audit" : "Filter event"} height={7}>
           <text fg={theme.muted} content="Substring match; leave blank to clear" />
           <box style={{ height: 3, border: true, borderColor: theme.borderBright, paddingLeft: 1, paddingRight: 1 }}>
             <input
               focused
-              value={dialog.type === "search" ? search : dialog.type === "event" ? event : session}
+              value={dialog.type === "search" ? search : event}
               onSubmit={applyDialog}
             />
           </box>

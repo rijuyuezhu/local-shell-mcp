@@ -1,60 +1,95 @@
-"""Persist agent-visible todo lists as revisioned JSON in the server state directory."""
+"""Persist revisioned todo lists inside their owning session directory."""
 
 from __future__ import annotations
 
-import contextlib
 import json
-import os
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 from ..config.settings import get_settings
+from ..persistence import get_state_store
 from ..schemas.result_models.todo import (
     ReadTodosOutput,
     TodoItem,
     WriteTodosOutput,
 )
-from ..tool_session.store import get_tool_session_store
-from ..utils.path_locks import path_lock
+from ..tool_session.store import (
+    SESSION_METADATA_MAX_BYTES,
+    UnknownAgentSessionError,
+    get_tool_session_store,
+)
 
 
 class TodoConflictError(RuntimeError):
     """Raised when a revision-guarded replacement targets stale todo state."""
 
 
-def _todo_path(session_id: str | None = None) -> Path:
-    """Return the state-file path used to persist a todo list."""
-    state_dir = get_settings().state_dir
-    if session_id is None:
-        path = state_dir / "todos.json"
-    else:
-        path = state_dir / "todos" / f"{session_id}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
+def _todo_path(session_id: str) -> Path:
+    """Return the canonical todo path colocated with one durable session."""
+    return get_state_store().layout.session_todos_path(session_id)
+
+
+def _session_transaction_path(session_id: str) -> Path:
+    """Return the transaction identity shared by all state for one session."""
+    return get_state_store().layout.session_transaction_path(session_id)
+
+
+def _require_session_metadata(session_id: str) -> None:
+    """Reject a session deleted after an earlier touch or inventory read."""
+    store = get_state_store()
+    value = store.read_json(
+        store.layout.session_metadata_path(session_id),
+        max_bytes=SESSION_METADATA_MAX_BYTES,
+    )
+    if value is None:
+        raise UnknownAgentSessionError(
+            f"unknown session_id {session_id!r}; call session_start first"
+        )
 
 
 def _read_todo_path(path: Path) -> ReadTodosOutput:
-    """Read one todo file, accepting pre-revision payloads as revision zero."""
-    if not path.exists():
-        return ReadTodosOutput(revision=0, todos=[])
-    settings = get_settings()
-    size = path.stat().st_size
-    if size > settings.max_todo_bytes:
-        raise ValueError(
-            f"Refusing to read {size} todo bytes; max is {settings.max_todo_bytes}"
-        )
-    return ReadTodosOutput.model_validate(
-        json.loads(path.read_text(encoding="utf-8"))
+    """Read one revisioned todo file or return an empty initial state."""
+    value = get_state_store().read_json(
+        path, max_bytes=get_settings().max_todo_bytes
     )
+    if value is None:
+        return ReadTodosOutput(revision=0, todos=[])
+    return ReadTodosOutput.model_validate(value)
 
 
-def read_todos_execute(session_id: str | None = None) -> ReadTodosOutput:
-    """Read the persisted todo list for one agent session."""
-    if session_id is not None:
-        get_tool_session_store().touch_session(session_id)
-    return _read_todo_path(_todo_path(session_id))
+def read_todos_execute(session_id: str) -> ReadTodosOutput:
+    """Read the persisted todo list owned by one explicit agent session."""
+    get_tool_session_store().touch_session(session_id)
+    store = get_state_store()
+    with store.transaction(_session_transaction_path(session_id)):
+        _require_session_metadata(session_id)
+        return _read_todo_path(_todo_path(session_id))
+
+
+def todo_counts_execute() -> dict[str, int]:
+    """Aggregate todo counts across durable local sessions without touching them."""
+    total = 0
+    open_count = 0
+    store = get_state_store()
+    for session in get_tool_session_store().list_sessions():
+        if session.target != "local":
+            continue
+        with store.transaction(_session_transaction_path(session.session_id)):
+            if (
+                store.read_json(
+                    store.layout.session_metadata_path(session.session_id),
+                    max_bytes=SESSION_METADATA_MAX_BYTES,
+                )
+                is None
+            ):
+                continue
+            result = _read_todo_path(_todo_path(session.session_id))
+            total += len(result.todos)
+            open_count += sum(
+                item.status != "completed" for item in result.todos
+            )
+    return {"total": total, "open": open_count}
 
 
 def _normalized_todos(todos: list[dict[str, Any]]) -> list[TodoItem]:
@@ -76,40 +111,13 @@ def _normalized_todos(todos: list[dict[str, Any]]) -> list[TodoItem]:
     return normalized
 
 
-def _atomic_write(path: Path, content: str) -> None:
-    """Atomically replace one todo file with owner-only temporary storage."""
-    temporary: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temporary = Path(handle.name)
-            with contextlib.suppress(OSError):
-                os.chmod(temporary, 0o600)
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        temporary = None
-    finally:
-        if temporary is not None:
-            with contextlib.suppress(OSError):
-                temporary.unlink(missing_ok=True)
-
-
 def write_todos_execute(
     todos: list[dict[str, Any]],
-    session_id: str | None = None,
+    session_id: str,
     expected_revision: int | None = None,
 ) -> WriteTodosOutput:
-    """Normalize and atomically replace one session's todo list."""
-    if session_id is not None:
-        get_tool_session_store().touch_session(session_id)
+    """Normalize and atomically replace one explicit session's todo list."""
+    get_tool_session_store().touch_session(session_id)
     if expected_revision is not None and (
         isinstance(expected_revision, bool) or expected_revision < 0
     ):
@@ -117,8 +125,10 @@ def write_todos_execute(
 
     normalized = _normalized_todos(todos)
     settings = get_settings()
+    store = get_state_store()
     path = _todo_path(session_id)
-    with path_lock(path):
+    with store.transaction(_session_transaction_path(session_id)):
+        _require_session_metadata(session_id)
         current = _read_todo_path(path)
         if (
             expected_revision is not None
@@ -133,13 +143,18 @@ def write_todos_execute(
             updated_at=time.time(),
             todos=normalized,
         )
+        data = payload.model_dump(mode="json")
         encoded = json.dumps(
-            payload.model_dump(mode="json"), ensure_ascii=False, indent=2
+            data,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=2,
+            sort_keys=True,
         )
         encoded_bytes = len(encoded.encode("utf-8"))
         if encoded_bytes > settings.max_todo_bytes:
             raise ValueError(
                 f"Refusing to write {encoded_bytes} todo bytes; max is {settings.max_todo_bytes}"
             )
-        _atomic_write(path, encoded)
+        store.write_json(path, data)
         return payload

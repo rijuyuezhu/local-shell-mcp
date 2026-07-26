@@ -6,7 +6,7 @@ import { handleSelectionScroll } from "./mouse"
 import { clampIndex, nextValue, updateTodo } from "./state-utils"
 import { screenTheme, theme } from "./theme"
 import { TODO_ROW_HEIGHT, todoVisibleRowCount } from "./todos-layout"
-import type { TodoItem, TodoPayload } from "./types"
+import type { AgentSession, TodoItem, TodoPayload } from "./types"
 
 const colors = screenTheme.Todos
 
@@ -51,6 +51,8 @@ export function TodosScreen({
   onInteractionLockChange: (locked: boolean) => void
 }) {
   const [todos, setTodos] = useState<TodoItem[]>([])
+  const [sessions, setSessions] = useState<AgentSession[]>([])
+  const [sessionId, setSessionId] = useState("")
   const [revision, setRevision] = useState(0)
   const [selected, setSelected] = useState(0)
   const [filter, setFilter] = useState<"all" | "open" | "completed">("all")
@@ -58,7 +60,11 @@ export function TodosScreen({
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
-  const stateRef = useRef<{ todos: TodoItem[]; revision: number }>({ todos: [], revision: 0 })
+  const stateRef = useRef<{ todos: TodoItem[]; revision: number; sessionId: string }>({
+    todos: [],
+    revision: 0,
+    sessionId: "",
+  })
   const mutationQueue = useRef<Promise<void>>(Promise.resolve())
   const pendingMutations = useRef(0)
   const mounted = useRef(true)
@@ -84,8 +90,13 @@ export function TodosScreen({
 
   const applyPayload = useCallback((payload: TodoPayload) => {
     const nextRevision = payload.revision || 0
-    stateRef.current = { todos: payload.todos, revision: nextRevision }
+    stateRef.current = {
+      todos: payload.todos,
+      revision: nextRevision,
+      sessionId: payload.session_id,
+    }
     if (!mounted.current) return
+    setSessionId(payload.session_id)
     setTodos(payload.todos)
     setRevision(nextRevision)
     setSelected((value) => clampIndex(value, payload.todos.length))
@@ -94,7 +105,26 @@ export function TodosScreen({
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      applyPayload(await api.todos())
+      const payload = await api.sessions("local")
+      const available = payload.sessions
+      const previous = stateRef.current.sessionId
+      const nextSessionId = available.some((session) => session.session_id === previous)
+        ? previous
+        : available[0]?.session_id || ""
+      if (mounted.current) {
+        setSessions(available)
+        setSessionId(nextSessionId)
+      }
+      if (nextSessionId) {
+        applyPayload(await api.todos("local", nextSessionId))
+      } else {
+        stateRef.current = { todos: [], revision: 0, sessionId: "" }
+        if (mounted.current) {
+          setTodos([])
+          setRevision(0)
+          setSelected(0)
+        }
+      }
       if (mounted.current) setLoaded(true)
     } catch (error) {
       if (mounted.current) setStatus(`Todos: ${formatError(error)}`)
@@ -128,15 +158,16 @@ export function TodosScreen({
         let next = mutate(base.todos)
         let payload: TodoPayload
         try {
-          payload = await api.writeTodos(next, base.revision)
+          if (!base.sessionId) throw new Error("No agent session selected")
+          payload = await api.writeTodos(next, base.revision, "local", base.sessionId)
         } catch (error) {
           const detail = formatError(error)
           if (!detail.includes("changed from revision")) throw error
-          const latest = await api.todos()
+          const latest = await api.todos("local", base.sessionId)
           applyPayload(latest)
           base = stateRef.current
           next = mutate(base.todos)
-          payload = await api.writeTodos(next, base.revision)
+          payload = await api.writeTodos(next, base.revision, "local", base.sessionId)
         }
         applyPayload(payload)
         if (message && mounted.current) setStatus(message)
@@ -179,6 +210,29 @@ export function TodosScreen({
   const moveSelection = (delta: number) => {
     setSelected((value) => clampIndex(value + delta, visible.length))
   }
+  const selectedSession = sessions.find((session) => session.session_id === sessionId)
+  const selectSession = async (nextSessionId: string) => {
+    if (!nextSessionId || saving || pendingMutations.current > 0) return
+    setLoading(true)
+    setLoaded(false)
+    setSessionId(nextSessionId)
+    stateRef.current = { todos: [], revision: 0, sessionId: nextSessionId }
+    setTodos([])
+    setRevision(0)
+    setSelected(0)
+    try {
+      applyPayload(await api.todos("local", nextSessionId))
+      if (mounted.current) setLoaded(true)
+    } catch (error) {
+      if (mounted.current) setStatus(`Todos: ${formatError(error)}`)
+    } finally {
+      if (mounted.current) setLoading(false)
+    }
+  }
+  const cycleSession = () => {
+    const ids = sessions.map((session) => session.session_id)
+    if (ids.length > 1) void selectSession(nextValue(sessionId, ids))
+  }
   const addCurrent = () => setDialog({ type: "add" })
   const editCurrent = () => current && setDialog({ type: "edit", item: current })
   const deleteCurrent = () => current && setDialog({ type: "delete", item: current })
@@ -215,6 +269,7 @@ export function TodosScreen({
     else if (key.name === "return" || key.name === "space") cycleStatus()
     else if (key.name === "p") cyclePriority()
     else if (key.name === "f") cycleFilter()
+    else if (key.name === "i") cycleSession()
     else if (key.name === "r" && pendingMutations.current === 0) void load()
   })
 
@@ -252,7 +307,7 @@ export function TodosScreen({
         </box>
       )}
       <Panel
-        title={`Todos · ${loaded ? visible.length : "—"}`}
+        title={`Todos · ${selectedSession?.label || selectedSession?.session_id || "no session"} · ${loaded ? visible.length : "—"}`}
         active
         accent={colors.accent}
         activeBackground={colors.panel}
@@ -260,6 +315,8 @@ export function TodosScreen({
       >
         {!loaded ? (
           loading ? <Loading label="Loading todos" /> : <EmptyState title="Todos unavailable" detail="Press r to try again" />
+        ) : !sessionId ? (
+          <EmptyState title="No agent sessions" detail="Start an agent session before adding todos" />
         ) : visible.length === 0 ? (
           <EmptyState title="No matching todos" detail="Press n to add an item" />
         ) : (
@@ -326,6 +383,7 @@ export function TodosScreen({
           { key: "e", label: "edit", onPress: editCurrent, disabled: footerLocked || !current },
           { key: "d", label: "delete", onPress: deleteCurrent, disabled: footerLocked || !current },
           { key: "f", label: "filter", onPress: cycleFilter, disabled: footerLocked },
+          { key: "i", label: "session", onPress: cycleSession, disabled: footerLocked || saving || sessions.length < 2 },
           { key: "r", label: loading ? "refreshing" : "refresh", onPress: () => void load(), disabled: footerLocked || saving || loading },
         ]}
       />

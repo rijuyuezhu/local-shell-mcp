@@ -308,6 +308,32 @@ Rejected ownership alternatives:
   not import controller-side public-tool orchestration, so migrated `tools/` files
   must not be included incidentally by operation or schema wildcards.
 
+## `persistence`: shared private-state layout and file-store primitives
+
+The `persistence` package owns the canonical directory layout below the configured
+state root and the small filesystem primitives shared by durable repositories. It
+does not own domain schemas, retention policy, migrations, or application-level
+state transitions. Session, Todo, jobs, OAuth, downloads, remote workers, and UI
+modules retain their own validation and lifecycle rules while resolving paths
+through this package.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `persistence/__init__.py` | Exposes the shared state layout, storage protocol, filesystem implementation, and configured store accessor. | Consumers need one narrow import boundary without depending on implementation internals. |
+| `persistence/store.py` | Defines canonical state paths, validates path components and root containment, creates owner-private directories, performs bounded JSON reads and atomic private writes, removes state paths, enumerates session directories, and provides cross-process transactions. | These are storage mechanics shared across domains. Domain payload formats, compatibility policy, retention, and recovery decisions remain with their owners. |
+
+Rejected ownership alternatives:
+
+- `utils`: the layout and store define a stateful cross-domain contract rather
+  than a small stateless helper.
+- `config`: configuration selects the state root, but it must not own filesystem
+  mutation, locking, serialization, or domain directory structure.
+- one repository per domain with independently constructed paths: that recreates
+  the inconsistent storage layout and permissions this boundary is intended to
+  eliminate.
+- compatibility or migration logic in the shared store: old layouts are not read
+  or migrated; each current repository uses only the canonical layout.
+
 ## `telemetry`: transport-neutral host and process observations
 
 The `telemetry` package collects best-effort runtime observations without
@@ -418,6 +444,7 @@ not depend on either protocol executor. The REST executor consumes only
 | `ui/http/opentui.py` | Wraps Unix and Windows OpenTUI child processes and bridges one authenticated native-console WebSocket with bounded idle and cleanup behavior. | Native executable discovery remains in `ui/runtime.py`; this module owns WebSocket/process delivery for an HTTP-hosted UI session. |
 | `ui/http/remote_files.py` | Normalizes remote UI paths, caches bounded worker sessions, dispatches workspace RPCs, reads/decodes chunks, and implements remote preview/content/mutation payloads. | It is the Human UI adapter over remote-worker workspace tools, not the worker control plane or generic remote manager. |
 | `ui/http/remotes.py` | Presents worker inventory and validates invite, rename, and revoke HTTP actions with scope and mutation-policy checks. | Remote lifecycle remains in `remote`; this file owns the Human UI administration representation. |
+| `ui/http/sessions.py` | Lists durable public agent/workspace sessions for one local or remote machine while hiding worker-internal session bindings. | Session lifecycle and persistence remain in `tool_session`; this adapter owns authenticated Human UI inventory and machine-scoped projection. |
 | `ui/http/terminals.py` | Adapts local/remote persistent-shell list/start/send/read/resize/kill operations and raw terminal bridges to REST and WebSocket protocols with bounded validation and cleanup. | Terminal backends and bridge capabilities remain in `terminal`; this large module owns their Human UI delivery contract and is a later split candidate. |
 | `ui/http/todos.py` | Maps authenticated local or remote UI sessions to revisioned todo reads/writes and stable JSON responses. | Todo state belongs to tool sessions; this module owns its Human UI HTTP semantics and remote dispatch. |
 

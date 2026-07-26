@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from .. import __version__
 from ..config.settings import Settings, get_settings
+from ..persistence import StateLayout
 from .contracts import TUI_EXECUTABLE_NAME
 from .security import (
     UI_API_PREFIX,
@@ -64,7 +65,7 @@ def materialize_embedded_tui(
     if payload is None or not payload.is_file():
         return None
 
-    target_dir = state_dir / "ui-runtime" / __version__
+    target_dir = StateLayout(state_dir).ui_runtime_dir / __version__
     target = target_dir / payload.name.removesuffix(".gz")
     if target.is_file():
         return target

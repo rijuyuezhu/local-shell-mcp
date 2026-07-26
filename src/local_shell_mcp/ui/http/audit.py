@@ -26,6 +26,7 @@ from ...oauth.core.scopes import (
 )
 from ...ops.image import detect_image_type
 from ...remote.service import call_remote_worker_tool
+from ...tool_session.store import get_tool_session_store
 from .common import (
     bounded_int as _bounded_int,
 )
@@ -226,7 +227,34 @@ def _normalize_entry(machine: str, value: Any) -> dict[str, Any]:
     entry["operation"] = str(entry.get("operation") or "other")
     if "tool" in entry:
         entry["tool"] = str(entry.get("tool") or "unknown")
+    if machine != "local" and entry.get("session"):
+        worker_session_id = str(entry["session"])
+        for session in get_tool_session_store().list_sessions():
+            if (
+                session.target == "remote"
+                and session.machine == machine
+                and session.worker_session_id == worker_session_id
+            ):
+                entry["session"] = session.session_id
+                break
     return entry
+
+
+def _remote_query_args(machine: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Translate a public control-session filter to its worker-side session id."""
+    public_session_id = str(args.get("session") or "")
+    if not public_session_id:
+        return args
+    session = get_tool_session_store().require_session(public_session_id)
+    if session.target != "remote" or session.machine != machine:
+        raise ValueError(
+            f"session {public_session_id} does not belong to machine {machine}"
+        )
+    if not session.worker_session_id:
+        raise RuntimeError(
+            f"remote session {public_session_id} is missing its worker binding"
+        )
+    return {**args, "session": session.worker_session_id}
 
 
 def _audit_view_image_detail(
@@ -361,7 +389,9 @@ async def _query(machine: str, args: dict[str, Any]) -> dict[str, Any]:
     if machine == "local":
         value = await asyncio.to_thread(query_audit, **args)
     else:
-        value = await _remote_audit_call(machine, "query_audit", args)
+        value = await _remote_audit_call(
+            machine, "query_audit", _remote_query_args(machine, args)
+        )
     return _normalize_query_result(machine, value)
 
 

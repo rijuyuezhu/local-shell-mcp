@@ -126,3 +126,33 @@ def test_update_remote_session_workdir_clears_snapshots(tmp_path, monkeypatch):
     local = store.create_session(target="local", workdir=tmp_path)
     with pytest.raises(ValueError, match="not remote"):
         store.update_remote_session_workdir(local.session_id, "/remote")
+
+
+def test_sessions_and_snapshots_survive_new_store_instance(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    first_store = store_module.ToolSessionStore()
+    first_store.clear()
+    session = first_store.create_session(workdir=tmp_path, label="durable")
+    snapshot = first_store.record_file_snapshot(
+        session_id=session.session_id,
+        path="file.txt",
+        file_sha256="b" * 64,
+        total_lines=2,
+        seen_ranges=((1, 2),),
+    )
+
+    second_store = store_module.ToolSessionStore()
+
+    assert second_store.require_session(session.session_id) == session
+    assert (
+        second_store.get_snapshot(session.session_id, snapshot.snapshot_id)
+        == snapshot
+    )
+    assert second_store.list_sessions() == [session]
+    session_dir = tmp_path / ".state" / "sessions" / session.session_id
+    assert (session_dir / "session.json").is_file()
+    assert (session_dir / "snapshots.json").is_file()

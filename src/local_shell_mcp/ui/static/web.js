@@ -53,6 +53,8 @@
     rename: true,
   };
   let todoMachine = "local";
+  let todoSessionId = "";
+  let todoSessions = [];
   let todoItems = [];
   let todoRevision = 0;
   let todoGeneration = 0;
@@ -68,6 +70,7 @@
     label_bytes: 64,
   };
   let auditMachine = "local";
+  let auditSessions = [];
   let auditEntries = [];
   let auditSelectedId = "";
   let auditGeneration = 0;
@@ -230,6 +233,7 @@
     todoFilter: document.getElementById("todo-filter"),
     todoList: document.getElementById("todo-list"),
     todoMachine: document.getElementById("todo-machine"),
+    todoSession: document.getElementById("todo-session"),
     todoRefresh: document.getElementById("todo-refresh"),
     todoSave: document.getElementById("todo-save"),
     todoState: document.getElementById("todo-state"),
@@ -1238,15 +1242,17 @@
 
   function setTodoControls() {
     const online = todoMachineOnline();
+    const sessionReady = Boolean(todoSessionId);
     elements.todoMachine.disabled = todoMutationBusy;
+    elements.todoSession.disabled = todoMutationBusy || !online || !todoSessions.length;
     elements.todoRefresh.disabled = todoMutationBusy || !online;
-    elements.todoAdd.disabled = todoMutationBusy || !online || todoItems.length >= todoLimits.todos;
-    elements.todoSave.disabled = todoMutationBusy || !online || !todoDirty;
+    elements.todoAdd.disabled = todoMutationBusy || !online || !sessionReady || todoItems.length >= todoLimits.todos;
+    elements.todoSave.disabled = todoMutationBusy || !online || !sessionReady || !todoDirty;
     for (const control of elements.todoList.querySelectorAll("input, select, button")) {
-      control.disabled = todoMutationBusy || !online;
+      control.disabled = todoMutationBusy || !online || !sessionReady;
     }
     for (const row of elements.todoList.querySelectorAll(".todo-row")) {
-      row.setAttribute("aria-disabled", todoMutationBusy || !online ? "true" : "false");
+      row.setAttribute("aria-disabled", todoMutationBusy || !online || !sessionReady ? "true" : "false");
     }
   }
 
@@ -1257,19 +1263,85 @@
 
   function setTodoDirty(dirty = true) {
     todoDirty = dirty;
-    if (dirty) elements.todoState.textContent = `Unsaved changes on ${todoMachine}`;
+    if (dirty) elements.todoState.textContent = `Unsaved changes · ${todoSessionId}`;
     setTodoControls();
   }
 
   function resetTodoWorkspace(machine) {
     todoMachine = machine || "local";
+    todoSessionId = "";
+    todoSessions = [];
     todoItems = [];
     todoRevision = 0;
     todoDirty = false;
     todoGeneration += 1;
     elements.todoMachine.value = todoMachine;
+    elements.todoSession.replaceChildren();
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Loading sessions…";
+    elements.todoSession.append(option);
     renderTodos();
     elements.todoState.textContent = `Not loaded · ${todoMachine}`;
+  }
+
+  function sessionOptionLabel(session) {
+    const sessionId = text(session && session.session_id, "");
+    const label = text(session && session.label, "");
+    const workdir = text(session && session.workdir, "");
+    return `${label || workdir || "session"} · ${sessionId}`;
+  }
+
+  function renderTodoSessions(sessions) {
+    todoSessions = Array.isArray(sessions) ? sessions : [];
+    if (!todoSessions.some((session) => session.session_id === todoSessionId)) {
+      todoSessionId = text(todoSessions[0] && todoSessions[0].session_id, "");
+    }
+    elements.todoSession.replaceChildren();
+    if (!todoSessions.length) {
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "No agent sessions";
+      elements.todoSession.append(empty);
+      todoSessionId = "";
+    } else {
+      for (const session of todoSessions) {
+        const option = document.createElement("option");
+        option.value = text(session.session_id, "");
+        option.textContent = sessionOptionLabel(session);
+        option.selected = option.value === todoSessionId;
+        elements.todoSession.append(option);
+      }
+    }
+    elements.todoSession.value = todoSessionId;
+    setTodoControls();
+  }
+
+  async function refreshTodoSessions() {
+    const requestedMachine = todoMachine;
+    try {
+      const payload = await request(`/sessions?${new URLSearchParams({ machine: requestedMachine }).toString()}`);
+      if (requestedMachine !== todoMachine) return null;
+      renderTodoSessions(payload.sessions);
+      if (!todoSessionId) {
+        todoItems = [];
+        todoRevision = 0;
+        renderTodos();
+        elements.todoState.textContent = `No agent sessions on ${requestedMachine}`;
+      }
+      return payload;
+    } catch (error) {
+      if (requestedMachine !== todoMachine) return null;
+      renderTodoSessions([]);
+      elements.todoState.textContent = error instanceof Error ? error.message : String(error);
+      throw error;
+    }
+  }
+
+  async function refreshTodoContext() {
+    await refreshTodoSessions();
+    if (!todoSessionId) return null;
+    return refreshTodos();
   }
 
   function renderTodoMachines(machines) {
@@ -1319,7 +1391,7 @@
     if ((!currentPresent || !currentOnline) && !todoDirty && !todoMutationBusy) {
       const changed = todoMachine !== "local";
       resetTodoWorkspace("local");
-      if (changed) void refreshTodos();
+      if (changed) void refreshTodoContext();
     } else {
       elements.todoMachine.value = todoMachine;
       if (!currentOnline) elements.todoState.textContent = `${todoMachine} is offline`;
@@ -1459,7 +1531,7 @@
   }
 
   function addTodo() {
-    if (todoMutationBusy || !todoMachineOnline() || todoItems.length >= todoLimits.todos) return;
+    if (todoMutationBusy || !todoMachineOnline() || !todoSessionId || todoItems.length >= todoLimits.todos) return;
     const item = { id: newTodoId(), content: "", status: "pending", priority: "medium" };
     todoItems.push(item);
     elements.todoFilter.value = "all";
@@ -1470,18 +1542,19 @@
   }
 
   function todoQuery() {
-    return `/todos?${new URLSearchParams({ machine: todoMachine }).toString()}`;
+    return `/todos?${new URLSearchParams({ machine: todoMachine, session_id: todoSessionId }).toString()}`;
   }
 
   async function refreshTodos({ force = false } = {}) {
-    if (!force && (todoDirty || todoMutationBusy)) return null;
+    if (!todoSessionId || (!force && (todoDirty || todoMutationBusy))) return null;
     const generation = ++todoGeneration;
     const requestedMachine = todoMachine;
-    elements.todoState.textContent = `Loading ${requestedMachine}`;
+    const requestedSession = todoSessionId;
+    elements.todoState.textContent = `Loading ${requestedSession}`;
     setTodoControls();
     try {
       const payload = await request(todoQuery());
-      if (generation !== todoGeneration || requestedMachine !== todoMachine) return null;
+      if (generation !== todoGeneration || requestedMachine !== todoMachine || requestedSession !== todoSessionId) return null;
       todoItems = Array.isArray(payload.todos)
         ? payload.todos.map((item) => ({
             id: text(item.id, ""),
@@ -1496,10 +1569,10 @@
       }
       todoDirty = false;
       renderTodos();
-      elements.todoState.textContent = `${requestedMachine} · loaded ${todoItems.length} todos`;
+      elements.todoState.textContent = `${requestedSession} · loaded ${todoItems.length} todos`;
       return payload;
     } catch (error) {
-      if (generation !== todoGeneration || requestedMachine !== todoMachine) return null;
+      if (generation !== todoGeneration || requestedMachine !== todoMachine || requestedSession !== todoSessionId) return null;
       elements.todoState.textContent = error instanceof Error ? error.message : String(error);
       throw error;
     } finally {
@@ -1508,31 +1581,33 @@
   }
 
   async function saveTodos() {
-    if (!todoDirty || todoMutationBusy || !todoMachineOnline()) return;
+    if (!todoDirty || todoMutationBusy || !todoMachineOnline() || !todoSessionId) return;
     const generation = ++todoGeneration;
     const requestedMachine = todoMachine;
+    const requestedSession = todoSessionId;
     const expectedRevision = todoRevision;
     const todos = todoItems.map((item) => ({ ...item }));
     setTodoMutationBusy(true);
-    elements.todoState.textContent = `Saving ${requestedMachine} revision ${expectedRevision}`;
+    elements.todoState.textContent = `Saving ${requestedSession} revision ${expectedRevision}`;
     try {
       const payload = await request("/todos", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           machine: requestedMachine,
+          session_id: requestedSession,
           expected_revision: expectedRevision,
           todos,
         }),
       });
-      if (generation !== todoGeneration || requestedMachine !== todoMachine) return;
+      if (generation !== todoGeneration || requestedMachine !== todoMachine || requestedSession !== todoSessionId) return;
       todoItems = Array.isArray(payload.todos) ? payload.todos.map((item) => ({ ...item })) : [];
       todoRevision = Number(payload.revision) || expectedRevision + 1;
       todoDirty = false;
       renderTodos();
-      elements.todoState.textContent = `Saved ${requestedMachine} · revision ${todoRevision}`;
+      elements.todoState.textContent = `Saved ${requestedSession} · revision ${todoRevision}`;
     } catch (error) {
-      if (generation !== todoGeneration || requestedMachine !== todoMachine) return;
+      if (generation !== todoGeneration || requestedMachine !== todoMachine || requestedSession !== todoSessionId) return;
       if (error && error.status === 409) {
         todoDirty = false;
         try {
@@ -1545,7 +1620,7 @@
         elements.todoState.textContent = error instanceof Error ? error.message : String(error);
       }
     } finally {
-      if (requestedMachine === todoMachine) setTodoMutationBusy(false);
+      if (requestedMachine === todoMachine && requestedSession === todoSessionId) setTodoMutationBusy(false);
     }
   }
 
@@ -1571,11 +1646,17 @@
 
   function resetAuditWorkspace(machine) {
     auditMachine = machine || "local";
+    auditSessions = [];
     auditLoading = false;
     auditEntries = [];
     auditSelectedId = "";
     auditGeneration += 1;
     elements.auditMachine.value = auditMachine;
+    elements.auditSession.replaceChildren();
+    const all = document.createElement("option");
+    all.value = "";
+    all.textContent = "All sessions";
+    elements.auditSession.append(all);
     elements.auditList.replaceChildren();
     const empty = document.createElement("div");
     empty.className = "empty-state";
@@ -1585,6 +1666,44 @@
     elements.auditState.textContent = `Not loaded · ${auditMachine}`;
     clearAuditDetail();
     setAuditControls();
+  }
+
+  function renderAuditSessions(sessions) {
+    auditSessions = Array.isArray(sessions) ? sessions : [];
+    const selected = elements.auditSession.value;
+    elements.auditSession.replaceChildren();
+    const all = document.createElement("option");
+    all.value = "";
+    all.textContent = "All sessions";
+    elements.auditSession.append(all);
+    for (const session of auditSessions) {
+      const option = document.createElement("option");
+      option.value = text(session.session_id, "");
+      option.textContent = sessionOptionLabel(session);
+      elements.auditSession.append(option);
+    }
+    elements.auditSession.value = auditSessions.some((session) => session.session_id === selected)
+      ? selected
+      : "";
+  }
+
+  async function refreshAuditSessions() {
+    const requestedMachine = auditMachine;
+    try {
+      const payload = await request(`/sessions?${new URLSearchParams({ machine: requestedMachine }).toString()}`);
+      if (requestedMachine !== auditMachine) return null;
+      renderAuditSessions(payload.sessions);
+      return payload;
+    } catch (error) {
+      if (requestedMachine !== auditMachine) return null;
+      renderAuditSessions([]);
+      throw error;
+    }
+  }
+
+  async function refreshAuditContext() {
+    await refreshAuditSessions();
+    return refreshAudit();
   }
 
   function renderAuditMachines(machines) {
@@ -1634,7 +1753,7 @@
     if (!currentPresent || !currentOnline) {
       const changed = auditMachine !== "local";
       resetAuditWorkspace("local");
-      if (changed) void refreshAudit();
+      if (changed) void refreshAuditContext();
     } else {
       elements.auditMachine.value = auditMachine;
       setAuditControls();
@@ -2901,12 +3020,12 @@
         showFilePreviewMessage("Files unavailable", error instanceof Error ? error.message : String(error));
       }
       try {
-        await refreshTodos();
+        await refreshTodoContext();
       } catch (error) {
         if (error.authenticationRequired) throw error;
         elements.todoState.textContent = error instanceof Error ? error.message : "Todo list unavailable";
       }
-      await refreshAudit();
+      await refreshAuditContext();
     } catch (error) {
       if (error.authenticationRequired) {
         terminalLoading = false;
@@ -3067,13 +3186,13 @@
   elements.auditMachine.addEventListener("change", () => {
     if (auditLoading) return;
     resetAuditWorkspace(elements.auditMachine.value || "local");
-    void refreshAudit();
+    void refreshAuditContext();
   });
   elements.auditFilterForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    void refreshAudit();
+    void refreshAuditContext();
   });
-  for (const control of [elements.auditOperation, elements.auditSort, elements.auditLimit]) {
+  for (const control of [elements.auditOperation, elements.auditSession, elements.auditSort, elements.auditLimit]) {
     control.addEventListener("change", () => void refreshAudit());
   }
 
@@ -3085,7 +3204,23 @@
       return;
     }
     resetTodoWorkspace(next);
-    void refreshTodos();
+    void refreshTodoContext();
+  });
+  elements.todoSession.addEventListener("change", () => {
+    if (todoMutationBusy) return;
+    const next = elements.todoSession.value || "";
+    if (todoDirty && !globalThis.confirm(`Discard unsaved changes in ${todoSessionId}?`)) {
+      elements.todoSession.value = todoSessionId;
+      return;
+    }
+    todoSessionId = next;
+    todoItems = [];
+    todoRevision = 0;
+    todoDirty = false;
+    todoGeneration += 1;
+    renderTodos();
+    if (todoSessionId) void refreshTodos();
+    else elements.todoState.textContent = `No agent sessions on ${todoMachine}`;
   });
   elements.todoFilter.addEventListener("change", renderTodos);
   elements.todoAdd.addEventListener("click", addTodo);
@@ -3094,7 +3229,7 @@
     if (todoMutationBusy) return;
     if (todoDirty && !globalThis.confirm(`Discard unsaved changes on ${todoMachine}?`)) return;
     todoDirty = false;
-    void refreshTodos({ force: true });
+    void refreshTodoContext();
   });
 
   elements.fileMachine.addEventListener("change", () => {

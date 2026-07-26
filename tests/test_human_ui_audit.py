@@ -25,6 +25,7 @@ from local_shell_mcp.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
 )
+from local_shell_mcp.tool_session.store import get_tool_session_store
 
 BASE_URL = "https://local-shell-mcp.example"
 
@@ -243,6 +244,7 @@ class _FakeRemoteAudit:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any], int]] = []
         self.malformed = False
+        self.worker_session_id = ""
 
     async def call(
         self,
@@ -268,6 +270,8 @@ class _FakeRemoteAudit:
             "input": {"command": "printf safe"},
             "output": {"stdout": "safe"},
         }
+        if self.worker_session_id:
+            entry["session"] = self.worker_session_id
         if tool == "query_audit":
             return {
                 "ok": True,
@@ -336,6 +340,30 @@ def test_remote_audit_uses_process_scoped_native_worker_rpc(
         "get_audit_entry",
     ]
     assert fake.calls[0][1]["operation"] == "shell"
+
+
+def test_remote_audit_maps_public_session_filters_to_worker_ids(
+    monkeypatch, tmp_path
+):
+    fake = _FakeRemoteAudit()
+    fake.worker_session_id = "worker01"
+    client = _remote_client(monkeypatch, tmp_path, fake)
+    session = get_tool_session_store().create_session(
+        target="remote",
+        machine="edge",
+        workdir="/srv/project",
+        worker_session_id=fake.worker_session_id,
+        label="remote audit",
+    )
+
+    listing = client.get(
+        "/api/ui/audit",
+        params={"machine": "edge", "session": session.session_id},
+    )
+
+    assert listing.status_code == 200
+    assert fake.calls[0][1]["session"] == fake.worker_session_id
+    assert listing.json()["data"]["entries"][0]["session"] == session.session_id
 
 
 def test_remote_audit_scopes_offline_and_malformed_returns(

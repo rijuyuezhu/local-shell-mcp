@@ -29,6 +29,7 @@ from ..ops.shell import (
     read_persistent_shell_output_execute,
     start_persistent_shell_execute,
 )
+from ..persistence import get_state_store
 from ..schemas.result_models.jobs import (
     JobInfo,
     JobListOutput,
@@ -80,22 +81,22 @@ def _utc() -> float:
 
 def _job_store_path() -> Path:
     """Return the primary tracked-job metadata path."""
-    return get_settings().state_dir / JOB_STORE_FILE_NAME
+    return get_state_store().layout.jobs_store_path
 
 
 def _job_store_backup_path() -> Path:
     """Return the fallback tracked-job metadata path."""
-    return get_settings().state_dir / JOB_STORE_BACKUP_FILE_NAME
+    return get_state_store().layout.jobs_store_backup_path
 
 
 def _job_store_lock_path() -> Path:
     """Return the cross-process tracked-job lock path."""
-    return get_settings().state_dir / JOB_STORE_LOCK_FILE_NAME
+    return get_state_store().layout.jobs_lock_path
 
 
 def _job_runtime_dir() -> Path:
     """Return the private directory containing job attempt logs and status files."""
-    path = get_settings().state_dir / "jobs"
+    path = get_state_store().layout.jobs_dir
     path.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         path.chmod(0o700)
@@ -104,7 +105,7 @@ def _job_runtime_dir() -> Path:
 
 def _managed_deferred_update_dir(*, create: bool = True) -> Path:
     """Return the private journal directory, creating it only for a writer."""
-    path = get_settings().state_dir / "jobs" / "deferred"
+    path = get_state_store().layout.jobs_deferred_dir
     if create:
         path.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):

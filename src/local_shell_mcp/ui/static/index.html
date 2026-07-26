@@ -392,6 +392,12 @@
             <option value="local">local</option>
           </select>
         </label>
+        <label class="todo-control" for="todo-session">
+          <span>Session</span>
+          <select id="todo-session" name="todo-session">
+            <option value="">No sessions</option>
+          </select>
+        </label>
         <label class="todo-control" for="todo-filter">
           <span>Filter</span>
           <select id="todo-filter" name="todo-filter">
@@ -449,7 +455,9 @@
         </label>
         <label class="audit-control" for="audit-session">
           <span>Session</span>
-          <input id="audit-session" name="audit-session" type="text" maxlength="1024" placeholder="Optional session ID" autocomplete="off" spellcheck="false">
+          <select id="audit-session" name="audit-session">
+            <option value="">All sessions</option>
+          </select>
         </label>
         <label class="audit-control audit-search-control" for="audit-search">
           <span>Search</span>

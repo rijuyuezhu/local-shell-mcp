@@ -292,6 +292,7 @@ def _fit_record(record: dict[str, Any], max_bytes: int) -> bytes:
         "call_id",
         "transport",
         "tool",
+        "session",
         "ok",
         "duration_ms",
     )
@@ -320,7 +321,7 @@ def _fit_record(record: dict[str, Any], max_bytes: int) -> bytes:
 
     minimal = {
         name: compact[name]
-        for name in ("id", "ts", "event", "call_id", "tool", "ok")
+        for name in ("id", "ts", "event", "call_id", "tool", "session", "ok")
         if name in compact
     }
     minimal[_AUDIT_TRUNCATED_KEY] = {
@@ -572,12 +573,23 @@ def _audit_node(record: dict[str, Any]) -> str:
 
 
 def _audit_session(record: dict[str, Any]) -> str:
-    return str(
+    direct = (
         record.get("session_id")
         or record.get("session")
         or record.get("shell_id")
-        or ""
     )
+    if direct:
+        return str(direct)
+    call_input = _audit_call_input(record)
+    if isinstance(call_input, dict):
+        nested = (
+            call_input.get("session_id")
+            or call_input.get("session")
+            or call_input.get("shell_id")
+        )
+        if nested:
+            return str(nested)
+    return ""
 
 
 def _audit_call_key(record: dict[str, Any]) -> tuple[str, str, str]:
@@ -981,6 +993,21 @@ def new_audit_call_id() -> str:
     return uuid.uuid4().hex
 
 
+def _tool_input_session(value: Any) -> str | None:
+    """Return a public session identifier before the input may be externalized."""
+    if not isinstance(value, Mapping):
+        return None
+    for name in ("session_id", "session", "shell_id"):
+        candidate = value.get(name)
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    for name in ("kwargs", "keyword_args"):
+        session = _tool_input_session(value.get(name))
+        if session:
+            return session
+    return None
+
+
 def audit_tool_call_start(
     *,
     call_id: str,
@@ -989,13 +1016,16 @@ def audit_tool_call_start(
     input: Any,
 ) -> None:
     """Record the bounded input and caller context for one tool call."""
-    audit(
-        "tool_call_start",
-        call_id=call_id,
-        transport=transport,
-        tool=tool,
-        input=input,
-    )
+    fields: dict[str, Any] = {
+        "call_id": call_id,
+        "transport": transport,
+        "tool": tool,
+        "input": input,
+    }
+    session = _tool_input_session(input)
+    if session:
+        fields["session"] = session
+    audit("tool_call_start", **fields)
 
 
 def audit_tool_call_end(

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from ...config.settings import get_settings
+from ...persistence import get_state_store
 from ...schemas.result_models.transfer import (
     TransferReadChunkOutput,
     TransferStatOutput,
@@ -55,7 +56,7 @@ class DownloadSnapshot:
 
 def snapshot_directory() -> Path:
     """Return the private directory containing file-link snapshots."""
-    path = get_settings().state_dir / "downloads"
+    path = get_state_store().layout.download_snapshots_dir
     path.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         path.chmod(0o700)
