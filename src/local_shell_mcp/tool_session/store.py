@@ -106,23 +106,40 @@ class ToolSessionStore:
         self._snapshots: dict[tuple[str, str], SnapshotRecord] = {}
 
     @staticmethod
+    def _required_float(payload: dict[str, Any], field: str) -> float:
+        candidate = payload.get(field)
+        if isinstance(candidate, bool) or not isinstance(
+            candidate, int | float
+        ):
+            raise ValueError(f"metadata contains an invalid {field}")
+        return float(candidate)
+
+    @staticmethod
+    def _required_int(payload: dict[str, Any], field: str) -> int:
+        candidate = payload.get(field)
+        if isinstance(candidate, bool) or not isinstance(candidate, int):
+            raise ValueError(f"metadata contains an invalid {field}")
+        return candidate
+
+    @staticmethod
     def _session_from_payload(value: Any) -> AgentSession:
         if not isinstance(value, dict):
             raise ValueError("session metadata must be a JSON object")
-        session_id = str(value.get("session_id") or "")
+        payload = cast(dict[str, Any], value)
+        session_id = str(payload.get("session_id") or "")
         if len(session_id) != SESSION_ID_LENGTH or any(
             character not in SESSION_ID_ALPHABET for character in session_id
         ):
             raise ValueError("session metadata contains an invalid session_id")
-        target_value = str(value.get("target") or "")
+        target_value = str(payload.get("target") or "")
         if target_value not in {"local", "remote"}:
             raise ValueError("session metadata contains an invalid target")
         target = cast(SessionTarget, target_value)
-        workdir = str(value.get("workdir") or "")
+        workdir = str(payload.get("workdir") or "")
         if not workdir:
             raise ValueError("session metadata contains an empty workdir")
-        machine = value.get("machine")
-        worker_session_id = value.get("worker_session_id")
+        machine = payload.get("machine")
+        worker_session_id = payload.get("worker_session_id")
         if target == "local":
             machine = None
             worker_session_id = None
@@ -138,21 +155,24 @@ class ToolSessionStore:
             worker_session_id=(
                 None if worker_session_id is None else str(worker_session_id)
             ),
-            created_at=float(value.get("created_at")),
-            updated_at=float(value.get("updated_at")),
+            created_at=ToolSessionStore._required_float(payload, "created_at"),
+            updated_at=ToolSessionStore._required_float(payload, "updated_at"),
             expires_at=(
                 None
-                if value.get("expires_at") is None
-                else float(value["expires_at"])
+                if payload.get("expires_at") is None
+                else ToolSessionStore._required_float(payload, "expires_at")
             ),
-            label=None if value.get("label") is None else str(value["label"]),
+            label=(
+                None if payload.get("label") is None else str(payload["label"])
+            ),
         )
 
     @staticmethod
     def _snapshot_from_payload(value: Any) -> SnapshotRecord:
         if not isinstance(value, dict):
             raise ValueError("snapshot metadata must be a JSON object")
-        ranges = value.get("seen_ranges")
+        payload = cast(dict[str, Any], value)
+        ranges = payload.get("seen_ranges")
         if not isinstance(ranges, list):
             raise ValueError("snapshot metadata contains invalid seen_ranges")
         normalized_ranges: list[tuple[int, int]] = []
@@ -161,13 +181,13 @@ class ToolSessionStore:
                 raise ValueError("snapshot metadata contains an invalid range")
             normalized_ranges.append((int(item[0]), int(item[1])))
         return SnapshotRecord(
-            session_id=str(value.get("session_id") or ""),
-            snapshot_id=str(value.get("snapshot_id") or ""),
-            path=str(value.get("path") or ""),
-            file_sha256=str(value.get("file_sha256") or ""),
-            total_lines=int(value.get("total_lines")),
+            session_id=str(payload.get("session_id") or ""),
+            snapshot_id=str(payload.get("snapshot_id") or ""),
+            path=str(payload.get("path") or ""),
+            file_sha256=str(payload.get("file_sha256") or ""),
+            total_lines=ToolSessionStore._required_int(payload, "total_lines"),
             seen_ranges=tuple(normalized_ranges),
-            created_at=float(value.get("created_at")),
+            created_at=ToolSessionStore._required_float(payload, "created_at"),
         )
 
     def _reset_for_current_root_locked(self) -> None:

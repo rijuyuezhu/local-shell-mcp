@@ -28,23 +28,29 @@ class StateStore(Protocol):
     @property
     def layout(self) -> StateLayout:
         """Return the current configured state layout."""
+        ...
 
     def read_json(
         self, path: Path, *, max_bytes: int | None = None
     ) -> Any | None:
         """Read one private JSON file, returning None when it is absent."""
+        ...
 
     def write_json(self, path: Path, value: Any) -> None:
         """Atomically replace one private JSON file."""
+        ...
 
     def remove(self, path: Path, *, recursive: bool = False) -> None:
         """Remove one private state path when it exists."""
+        ...
 
     def iter_directories(self, path: Path) -> Iterable[Path]:
         """Return regular child directories in stable name order."""
+        ...
 
     def transaction(self, path: Path) -> AbstractContextManager[None]:
         """Serialize one state-file transaction across threads and processes."""
+        ...
 
 
 @dataclass(frozen=True)
