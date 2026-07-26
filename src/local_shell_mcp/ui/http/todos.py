@@ -23,6 +23,7 @@ from ...ops.todo import (
     write_todos_execute,
 )
 from ...ops.utils.remote_session import call_remote_session_tool
+from ...remote.tool_specs import REMOTE_WORKER_ORIGIN_HUMAN_UI
 from ...schemas.result_models.todo import ReadTodosOutput, WriteTodosOutput
 from ...tool_session.store import AgentSession, get_tool_session_store
 from .common import json_error as _json_error
@@ -204,7 +205,12 @@ async def _read(session: AgentSession) -> ReadTodosOutput:
             touch_session=False,
         )
     try:
-        data = await call_remote_session_tool(session, "read_todos", {})
+        data = await call_remote_session_tool(
+            session,
+            "read_todos",
+            {},
+            audit_origin=REMOTE_WORKER_ORIGIN_HUMAN_UI,
+        )
         return ReadTodosOutput.model_validate(data)
     except ValidationError as exc:
         raise RuntimeError(
@@ -233,6 +239,7 @@ async def _write(
                 "todos": todos,
                 "expected_revision": expected_revision,
             },
+            audit_origin=REMOTE_WORKER_ORIGIN_HUMAN_UI,
         )
         return WriteTodosOutput.model_validate(data)
     except ValidationError as exc:

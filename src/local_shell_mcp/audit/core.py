@@ -996,15 +996,17 @@ def _append_session_audit_records(
     """Append one sanitized record to each existing owning session log."""
     state_store = get_state_store()
     for session_id in session_ids:
-        transaction_path = state_store.layout.session_transaction_path(
-            session_id
-        )
-        with state_store.transaction(transaction_path):
-            if not state_store.layout.session_metadata_path(
+        try:
+            transaction_path = state_store.layout.session_transaction_path(
                 session_id
-            ).is_file():
-                continue
+            )
+            metadata_path = state_store.layout.session_metadata_path(session_id)
             path = state_store.layout.session_audit_path(session_id)
+        except ValueError:
+            continue
+        with state_store.transaction(transaction_path):
+            if not metadata_path.is_file():
+                continue
             with _audit_transaction(path):
                 append_private_bytes(path, encoded)
                 _enforce_audit_log_limit(path, settings.max_audit_log_bytes)

@@ -30,6 +30,10 @@ from local_shell_mcp.ops.todo import (
     todo_counts_execute,
     write_todos_execute,
 )
+from local_shell_mcp.remote.tool_specs import (
+    REMOTE_WORKER_ORIGIN_ARG,
+    REMOTE_WORKER_ORIGIN_HUMAN_UI,
+)
 from local_shell_mcp.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
@@ -590,6 +594,9 @@ def test_remote_todos_use_public_control_session_and_worker_binding(
     assert current.json()["data"]["todos"][0]["id"] == "remote"
     assert current.json()["data"]["session_id"] == session.session_id
     assert {call[1]["session_id"] for call in fake.calls} == {"worker01"}
+    assert {call[1][REMOTE_WORKER_ORIGIN_ARG] for call in fake.calls} == {
+        REMOTE_WORKER_ORIGIN_HUMAN_UI
+    }
 
 
 def test_remote_todos_reject_wrong_machine_malformed_and_offline(

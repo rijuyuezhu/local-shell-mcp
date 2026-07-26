@@ -193,6 +193,35 @@ def test_audit_dual_writes_session_log_but_keeps_global_extras(
     assert get_session_audit_entry(session.session_id, entry["id"]) == entry
 
 
+def test_audit_skips_invalid_session_ids_without_leaving_running_calls(
+    tmp_path, monkeypatch
+):
+    _configure_audit(tmp_path, monkeypatch)
+    call_id = "invalid-session-id"
+
+    session_ids = audit_tool_call_start(
+        call_id=call_id,
+        transport="http",
+        tool="read",
+        input={"session_id": "bad/id", "path": "missing.txt"},
+    )
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="http",
+        tool="read",
+        ok=False,
+        duration_ms=1,
+        error={"type": "ValueError", "message": "invalid session"},
+        session_ids=session_ids,
+    )
+
+    entry = get_audit_entry(f"call:{call_id}")
+    assert entry["paired"] is True
+    assert entry["status"] == "failed"
+    assert entry["session"] == "bad/id"
+    assert not (tmp_path / ".state" / "sessions" / "bad").exists()
+
+
 def test_audit_package_facade_rejects_unknown_attributes() -> None:
     with pytest.raises(AttributeError):
         audit_module.__getattr__("not_an_audit_attribute")

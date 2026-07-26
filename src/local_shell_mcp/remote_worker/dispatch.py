@@ -11,7 +11,12 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from local_shell_mcp.remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
+from local_shell_mcp.remote.tool_specs import (
+    REMOTE_WORKER_ORIGIN_ARG,
+    REMOTE_WORKER_ORIGIN_HUMAN_UI,
+    REMOTE_WORKER_ORIGIN_MODEL,
+    REMOTE_WORKER_TOOL_NAMES,
+)
 
 WorkerHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
@@ -630,7 +635,12 @@ async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
         handler = _HANDLERS[tool]
     except KeyError as exc:
         raise ValueError(f"unsupported remote worker tool: {tool}") from exc
-    payload = args or {}
+    payload = dict(args or {})
+    origin = str(
+        payload.pop(REMOTE_WORKER_ORIGIN_ARG, REMOTE_WORKER_ORIGIN_MODEL)
+    )
+    if origin == REMOTE_WORKER_ORIGIN_HUMAN_UI:
+        return await handler(payload)
     from local_shell_mcp.tool_session import tool_input_session_ids
 
     session_ids = tool_input_session_ids(payload)

@@ -25,6 +25,10 @@ from local_shell_mcp.oauth.core.scopes import (
     SCOPE_SHELL_WRITE,
 )
 from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
+from local_shell_mcp.remote.tool_specs import (
+    REMOTE_WORKER_ORIGIN_ARG,
+    REMOTE_WORKER_ORIGIN_HUMAN_UI,
+)
 from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
 from local_shell_mcp.schemas.result_models.remote import (
     RemoteListMachinesOutput,
@@ -643,6 +647,39 @@ async def test_remote_worker_dispatch_records_session_owned_tool_lifecycle(
     assert entry["tool"] == "read"
     assert entry["session"] == session.session_id
     assert entry["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_remote_worker_dispatch_excludes_human_ui_calls_from_model_audit(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "worker"
+    _configure(monkeypatch, workspace)
+    session = get_tool_session_store().create_session(
+        workdir=workspace,
+        label="human ui worker session",
+    )
+    (workspace / "remote.txt").write_text("remote content", encoding="utf-8")
+
+    result = await execute_worker_tool(
+        "read",
+        {
+            "session_id": session.session_id,
+            "path": "remote.txt",
+            REMOTE_WORKER_ORIGIN_ARG: REMOTE_WORKER_ORIGIN_HUMAN_UI,
+        },
+    )
+    listing = await execute_worker_tool(
+        "query_audit",
+        {
+            "log_session_id": session.session_id,
+            "operation": "files",
+            "limit": 10,
+        },
+    )
+
+    assert "remote content" in result.content
+    assert listing["count"] == 0
 
 
 @pytest.mark.asyncio
