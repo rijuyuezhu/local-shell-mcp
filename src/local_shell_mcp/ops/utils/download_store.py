@@ -1,7 +1,5 @@
 """Durable private state for tokenized file-link snapshots."""
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import json

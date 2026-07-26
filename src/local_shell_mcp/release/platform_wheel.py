@@ -7,8 +7,6 @@ metadata with an explicit platform tag, regenerates ``RECORD``, and verifies the
 finished artifact before it can be published.
 """
 
-from __future__ import annotations
-
 import argparse
 import csv
 import gzip

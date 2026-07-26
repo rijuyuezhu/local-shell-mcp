@@ -1,7 +1,5 @@
 """Security helpers for native and browser Human UI clients."""
 
-from __future__ import annotations
-
 import hmac
 import ipaddress
 import os

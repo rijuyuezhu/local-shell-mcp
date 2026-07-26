@@ -1,7 +1,5 @@
 """Authenticated Human UI APIs for workspace-confined local files."""
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import binascii

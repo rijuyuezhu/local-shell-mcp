@@ -1,7 +1,5 @@
 """Cross-platform user-service management for the remote worker."""
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import json
@@ -44,8 +42,8 @@ _LAUNCHD_SYSTEM_DIRS = (
 _MAX_LOG_BYTES = 4 * 1024 * 1024
 _MAX_LOG_LINES = 2_000
 
-ServiceManager = Literal["systemd", "launchd", "unsupported"]
-ServiceState = Literal[
+type ServiceManager = Literal["systemd", "launchd", "unsupported"]
+type ServiceState = Literal[
     "unsupported",
     "unavailable",
     "not_installed",
@@ -255,7 +253,6 @@ def _launchd_path() -> str:
 
 def _launcher_text() -> str:
     return """\
-from __future__ import annotations
 
 import os
 import sys

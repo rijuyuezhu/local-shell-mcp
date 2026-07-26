@@ -7,8 +7,6 @@ ConPTY session's shared reader. Closing either bridge removes only the raw
 client and preserves the underlying persistent shell.
 """
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import contextlib

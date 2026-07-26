@@ -1,7 +1,5 @@
 """Redacted public status projection for Agent Bridge registries."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from .auth import manager_auth_status, manager_redaction_maps

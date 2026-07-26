@@ -1,7 +1,5 @@
 """Stable cross-platform contracts shared by Human UI runtimes and releases."""
 
-from __future__ import annotations
-
 import os
 
 TUI_EXECUTABLE_BASENAME = "local-shell-mcp-tui"

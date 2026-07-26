@@ -1,7 +1,5 @@
 """OAuth approval-credential and signing-key hardening."""
 
-from __future__ import annotations
-
 import contextlib
 import secrets
 

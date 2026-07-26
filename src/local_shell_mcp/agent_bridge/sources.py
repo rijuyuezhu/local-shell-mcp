@@ -1,7 +1,5 @@
 """Ordered Skill registry sources for local and session-scoped discovery."""
 
-from __future__ import annotations
-
 import os
 from collections.abc import Mapping
 from pathlib import Path

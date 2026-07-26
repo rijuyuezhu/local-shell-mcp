@@ -1,7 +1,5 @@
 """Private credential persistence for Agent Bridge secrets and OAuth clients."""
 
-from __future__ import annotations
-
 import contextlib
 import json
 import re

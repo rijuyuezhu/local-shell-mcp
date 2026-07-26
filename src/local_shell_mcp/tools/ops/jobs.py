@@ -1,7 +1,5 @@
 """Controller-side orchestration for the public tracked-job companion tool."""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from typing import Any
 

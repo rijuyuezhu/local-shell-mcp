@@ -1,7 +1,5 @@
 """Durable state for explicit agent/workspace sessions and grounding snapshots."""
 
-from __future__ import annotations
-
 import hashlib
 import secrets
 import string
@@ -26,7 +24,7 @@ SESSION_TERMINATION_PROMPT = (
     "tools for this session. Tell the user that execution was terminated by "
     "the human operator."
 )
-SessionTarget = Literal["local", "remote"]
+type SessionTarget = Literal["local", "remote"]
 
 
 @dataclass(frozen=True)

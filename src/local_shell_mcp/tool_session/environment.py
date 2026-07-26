@@ -1,7 +1,5 @@
 """Bounded runtime and capability orientation for explicit agent sessions."""
 
-from __future__ import annotations
-
 import importlib.metadata as importlib_metadata
 import os
 import platform
@@ -352,14 +350,15 @@ def _worker_runtime() -> SessionWorkerRuntime:
     ]
     if managed:
         system = _normalized_os(platform.system())
-        if system == "linux":
-            service_kind = "systemd"
-        elif system == "macos":
-            service_kind = "launchd"
-        elif system == "windows":
-            service_kind = "windows_startup"
-        else:
-            service_kind = "managed"
+        match system:
+            case "linux":
+                service_kind = "systemd"
+            case "macos":
+                service_kind = "launchd"
+            case "windows":
+                service_kind = "windows_startup"
+            case _:
+                service_kind = "managed"
     else:
         service_kind = "manual"
     return SessionWorkerRuntime(

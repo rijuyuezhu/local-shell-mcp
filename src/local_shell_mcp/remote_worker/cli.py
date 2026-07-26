@@ -1,7 +1,5 @@
 """Public remote-worker command-line contract."""
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import json

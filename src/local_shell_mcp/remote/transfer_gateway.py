@@ -1,7 +1,5 @@
 """Private durable HTTP transfer gateway used only by ``session_copy``."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import hashlib

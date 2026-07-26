@@ -1,7 +1,5 @@
 """Binary-safe transactional primitives for session and remote-worker transfers."""
 
-from __future__ import annotations
-
 import base64
 import binascii
 import contextlib

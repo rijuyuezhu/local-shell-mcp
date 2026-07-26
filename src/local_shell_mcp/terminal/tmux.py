@@ -1,7 +1,5 @@
 """Resolve system, configured, or release-bundled tmux executables."""
 
-from __future__ import annotations
-
 import os
 import platform
 import shutil

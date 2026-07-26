@@ -1,7 +1,5 @@
 """Secure remote-worker bundle installation and process replacement."""
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import json

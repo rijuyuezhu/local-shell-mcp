@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Verify documented native-artifact inputs and distribution notices."""
 
-from __future__ import annotations
-
 import hashlib
 from pathlib import Path
 
@@ -11,12 +9,12 @@ PROVENANCE = REPO / "docs" / "maintenance" / "native-artifact-provenance.md"
 EXPECTED_HASHES = {
     "ui-opentui/package.json": "dac1801bc8f6ae034ba092bb780a173f30cd47f343d626f43bb3895df1920238",
     "ui-opentui/bun.lock": "5412a17ab4bbd8695c361f944bf5286302c8635a548643cf7ad2a4653b0ef8b3",
-    "src/local_shell_mcp/ui/contracts.py": "7938a33666c851a66450973dddb6b4d04ef29078bc7e338ddaa310d7392a3f29",
-    "scripts/generation/generate-tui-executable-contract.py": "9458dfa30bb24008967e011409f38b54df5b6ca9eed766f62645bc9e8d21fef2",
+    "src/local_shell_mcp/ui/contracts.py": "b55fbc2642df6d06233f472d52fe04625abfa2da8fb9f339c06e55220680d374",
+    "scripts/generation/generate-tui-executable-contract.py": "069cbaf02b1563fc6599aeca0a4f1ba579e0526276d020f441b2e9832be47f18",
     "ui-opentui/scripts/executable-contract.ts": "424e7b00f8acfac0e20f7432891b916a67df852ae4b39ec46730728a7fa1e9f0",
     "ui-opentui/scripts/compile-tui.ts": "2a51b3ccc85a5823d3ad28676ebadcce951651c517b9f15c6d77e00778d4abb8",
     "scripts/release/build-platform-wheel.py": "93968eb5af540f686cb83dc572b8c8445603b0ff0a540dafd676d3c1fa8010a5",
-    "scripts/release/smoke-platform-wheel.py": "8c4b48d29850bfd532636c4afd11d747bd671cee3d696c41f3b4533198a3f653",
+    "scripts/release/smoke-platform-wheel.py": "dc8acea2f3f3dd82e19bf61308f2d0e9360c39fe678d98c79b81ded3ef616407",
     "scripts/release/tmux-helper.Dockerfile": "b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693",
     "scripts/release/build-tmux-helper.sh": "a1a6e46a1f284cb17050055690a63df5df0e89d0e0a037f969e3b88a00d42cbf",
     "src/local_shell_mcp/helpers/tmux.LICENSE": "c031bd37f464c534277814f6aa38686fa023d094261d57fd2545ad592bb53ccd",

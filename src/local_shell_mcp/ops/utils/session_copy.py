@@ -41,15 +41,15 @@ from ..transfer import (
     transfer_write_chunk,
 )
 
-SessionCopyKind = Literal["auto", "file", "dir"]
-SessionCopyRoute = Literal[
+type SessionCopyKind = Literal["auto", "file", "dir"]
+type SessionCopyRoute = Literal[
     "local_to_local",
     "local_to_remote",
     "remote_to_local",
     "remote_to_remote_same_machine",
     "remote_to_remote_different_machines",
 ]
-SessionCopyProgress = Callable[[dict[str, Any]], Awaitable[None]]
+type SessionCopyProgress = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 async def call_remote_worker_tool(
@@ -138,108 +138,110 @@ async def _endpoint_transfer_data(
         return await _remote_raw_transfer_data(endpoint, tool, args)
 
     session_id = endpoint.session.session_id if session_bound else None
-    if tool == "transfer_stat":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_stat(
-                    args["path"],
-                    args.get("sha256", True),
-                    session_id=session_id,
+    match tool:
+        case "transfer_stat":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_stat(
+                        args["path"],
+                        args.get("sha256", True),
+                        session_id=session_id,
+                    )
                 )
             )
-        )
-    if tool == "transfer_read_chunk":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_read_chunk(
-                    args["path"],
-                    args.get("offset", 0),
-                    args.get("chunk_size"),
-                    session_id=session_id,
+        case "transfer_read_chunk":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_read_chunk(
+                        args["path"],
+                        args.get("offset", 0),
+                        args.get("chunk_size"),
+                        session_id=session_id,
+                    )
                 )
             )
-        )
-    if tool == "transfer_begin_write":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_begin_write(
-                    args["path"],
-                    args.get("overwrite", True),
-                    args.get("expected_bytes"),
-                    session_id=session_id,
+        case "transfer_begin_write":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_begin_write(
+                        args["path"],
+                        args.get("overwrite", True),
+                        args.get("expected_bytes"),
+                        session_id=session_id,
+                    )
                 )
             )
-        )
-    if tool == "transfer_write_chunk":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_write_chunk(
-                    args["path"],
-                    args["transfer_id"],
-                    args["offset"],
-                    args["data_b64"],
-                    args.get("expected_sha256"),
-                    session_id=session_id,
+        case "transfer_write_chunk":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_write_chunk(
+                        args["path"],
+                        args["transfer_id"],
+                        args["offset"],
+                        args["data_b64"],
+                        args.get("expected_sha256"),
+                        session_id=session_id,
+                    )
                 )
             )
-        )
-    if tool == "transfer_finish_write":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_finish_write(
-                    args["path"],
-                    args["transfer_id"],
-                    args.get("expected_bytes"),
-                    args.get("expected_sha256"),
-                    session_id=session_id,
+        case "transfer_finish_write":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_finish_write(
+                        args["path"],
+                        args["transfer_id"],
+                        args.get("expected_bytes"),
+                        args.get("expected_sha256"),
+                        session_id=session_id,
+                    )
                 )
             )
-        )
-    if tool == "transfer_abort_write":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_abort_write(
-                    args["path"],
-                    args["transfer_id"],
-                    session_id=session_id,
+        case "transfer_abort_write":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_abort_write(
+                        args["path"],
+                        args["transfer_id"],
+                        session_id=session_id,
+                    )
                 )
             )
-        )
-    if tool == "transfer_alloc_temp_path":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_alloc_temp_path(
-                    args.get("suffix", ".bin"), session_id=session_id
+        case "transfer_alloc_temp_path":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_alloc_temp_path(
+                        args.get("suffix", ".bin"), session_id=session_id
+                    )
                 )
             )
-        )
-    if tool == "transfer_pack_dir":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_pack_dir(
-                    args["path"],
-                    args.get("compression", "gz"),
-                    session_id=session_id,
+        case "transfer_pack_dir":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_pack_dir(
+                        args["path"],
+                        args.get("compression", "gz"),
+                        session_id=session_id,
+                    )
                 )
             )
-        )
-    if tool == "transfer_unpack_archive":
-        return await asyncio.to_thread(
-            lambda: _json_dict(
-                transfer_unpack_archive(
-                    args["archive_path"],
-                    args["dst_path"],
-                    args.get("overwrite", True),
-                    args.get("cleanup_archive", True),
-                    session_id=session_id,
+        case "transfer_unpack_archive":
+            return await asyncio.to_thread(
+                lambda: _json_dict(
+                    transfer_unpack_archive(
+                        args["archive_path"],
+                        args["dst_path"],
+                        args.get("overwrite", True),
+                        args.get("cleanup_archive", True),
+                        session_id=session_id,
+                    )
                 )
             )
-        )
-    if tool == "transfer_delete_temp_path":
-        return await asyncio.to_thread(
-            lambda: _json_dict(transfer_delete_temp_path(args["path"]))
-        )
-    raise ValueError(f"unsupported transfer tool: {tool}")
+        case "transfer_delete_temp_path":
+            return await asyncio.to_thread(
+                lambda: _json_dict(transfer_delete_temp_path(args["path"]))
+            )
+        case _:
+            raise ValueError(f"unsupported transfer tool: {tool}")
 
 
 async def _run_cleanup(operation: Any) -> None:

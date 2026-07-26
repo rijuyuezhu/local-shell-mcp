@@ -1,7 +1,5 @@
 """Authenticated Human UI API for local and remote Dashboard telemetry."""
 
-from __future__ import annotations
-
 import asyncio
 import math
 from typing import Any, cast

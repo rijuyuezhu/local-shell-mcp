@@ -1,7 +1,5 @@
 """Fork-native Human UI routes shared by browser and future OpenTUI clients."""
 
-from __future__ import annotations
-
 import hashlib
 import html
 import json

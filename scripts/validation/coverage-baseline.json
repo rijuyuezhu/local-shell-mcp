@@ -312,8 +312,8 @@
     },
     "src/local_shell_mcp/ops/patch/envelope.py": {
       "num_branches": 110,
-      "num_statements": 214,
-      "percent_covered": 97.530864
+      "num_statements": 206,
+      "percent_covered": 97.468354
     },
     "src/local_shell_mcp/ops/read.py": {
       "num_branches": 8,
@@ -657,8 +657,8 @@
     },
     "src/local_shell_mcp/terminal/bridge.py": {
       "num_branches": 86,
-      "num_statements": 320,
-      "percent_covered": 77.093596
+      "num_statements": 311,
+      "percent_covered": 76.574307
     },
     "src/local_shell_mcp/terminal/conpty.py": {
       "num_branches": 122,
@@ -847,8 +847,8 @@
     },
     "src/local_shell_mcp/ui/image_preview.py": {
       "num_branches": 6,
-      "num_statements": 51,
-      "percent_covered": 91.22807
+      "num_statements": 43,
+      "percent_covered": 89.795918
     },
     "src/local_shell_mcp/ui/runtime.py": {
       "num_branches": 38,

@@ -1,7 +1,5 @@
 """Append redacted, portable, bounded audit events to a private JSONL log."""
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import json

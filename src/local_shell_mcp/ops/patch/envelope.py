@@ -1,7 +1,5 @@
 """Parse apply_patch envelopes and render portable Git unified diffs."""
 
-from __future__ import annotations
-
 import difflib
 import subprocess
 from dataclasses import dataclass

@@ -1,7 +1,5 @@
 """Authenticated browser PTY bridge for the optional OpenTUI client."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import importlib

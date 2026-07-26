@@ -1,7 +1,5 @@
 """Command-line registration for the optional native OpenTUI client."""
 
-from __future__ import annotations
-
 import argparse
 from typing import Any
 

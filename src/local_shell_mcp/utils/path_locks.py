@@ -1,7 +1,5 @@
 """Bounded thread/process locks for filesystem mutation paths."""
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import threading
