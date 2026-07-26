@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import time
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -54,6 +56,26 @@ def _assets_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "static"
 
 
+@lru_cache(maxsize=1)
+def _ui_asset_revision() -> str:
+    """Return a content revision used to keep the HTML and assets in sync."""
+    digest = hashlib.sha256()
+    for name in (
+        "xterm.css",
+        "web.css",
+        "xterm_bundle.js",
+        "terminal_renderer.js",
+        "syntax_highlight.js",
+        "web.js",
+        "opentui_console.js",
+    ):
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update((_assets_dir() / name).read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()[:16]
+
+
 def _ui_index_html(settings: Settings) -> str:
     """Load the browser shell and inject non-sensitive runtime configuration."""
     path = _assets_dir() / "index.html"
@@ -90,6 +112,7 @@ def _ui_index_html(settings: Settings) -> str:
     return (
         path.read_text(encoding="utf-8")
         .replace("__LSM_UI_PATH__", settings.ui_path)
+        .replace("__LSM_UI_ASSET_REV__", _ui_asset_revision())
         .replace("__LSM_UI_CONFIG_JSON__", config)
     )
 
@@ -133,7 +156,7 @@ async def ui_asset(request: Request) -> Response:
     return FileResponse(
         path,
         headers={
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "no-cache",
             "X-Content-Type-Options": "nosniff",
         },
     )

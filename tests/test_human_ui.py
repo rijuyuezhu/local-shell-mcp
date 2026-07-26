@@ -104,7 +104,11 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="file-copy"' in index.text
     assert 'id="file-move"' in index.text
     assert 'id="file-rename"' in index.text
+    assert "Migration status" not in index.text
+    assert "Human UI foundation active" not in index.text
     assert "__LSM_UI_PATH__" not in index.text
+    assert "__LSM_UI_ASSET_REV__" not in index.text
+    assert re.search(r"assets/web\.js\?v=[0-9a-f]{16}", index.text)
     assert index.headers["cache-control"] == "no-store"
     csp = index.headers["content-security-policy"]
     assert "script-src 'self' 'wasm-unsafe-eval'" in csp
@@ -114,6 +118,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert client.get("/ui/callback?code=example").status_code == 200
     renderer = client.get("/ui/assets/terminal_renderer.js")
     assert renderer.status_code == 200
+    assert renderer.headers["cache-control"] == "no-cache"
     assert renderer.headers["x-content-type-options"] == "nosniff"
     assert "LsmTerminalRenderer" in renderer.text
     assert "MAX_RUNS = 10_000" in renderer.text
@@ -343,8 +348,13 @@ def test_human_ui_custom_mount_and_bootstrap(monkeypatch, tmp_path):
     assert client.get("/ui").status_code == 404
     index = client.get("/control")
     assert index.status_code == 200
-    assert 'href="/control/assets/web.css"' in index.text
-    assert 'src="/control/assets/syntax_highlight.js"' in index.text
+    assert re.search(
+        r'href="/control/assets/web\.css\?v=[0-9a-f]{16}"', index.text
+    )
+    assert re.search(
+        r'src="/control/assets/syntax_highlight\.js\?v=[0-9a-f]{16}"',
+        index.text,
+    )
     match = re.search(r'data-lsm-config="([^"]+)"', index.text)
     assert match is not None
     runtime = json.loads(html.unescape(match.group(1)))
