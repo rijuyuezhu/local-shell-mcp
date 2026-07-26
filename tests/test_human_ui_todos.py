@@ -35,6 +35,8 @@ from local_shell_mcp.schemas.result_models.remote import (
     RemoteMachineInfo,
 )
 from local_shell_mcp.tool_session.store import (
+    SESSION_ACTIVE_WINDOW_S,
+    SESSION_TERMINATION_PROMPT,
     AgentSession,
     UnknownAgentSessionError,
     get_tool_session_store,
@@ -638,6 +640,70 @@ def test_sessions_api_lists_public_sessions_by_machine(monkeypatch, tmp_path):
     assert "worker_session_id" not in remote_rows.text
 
 
+def test_sessions_api_defaults_to_five_hour_activity_and_terminates_work(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "workspace"
+    _configure(monkeypatch, workspace)
+    store = get_tool_session_store()
+    old = _local_session(workspace, label="old")
+    active = _local_session(workspace, label="active")
+    now = time.time()
+    old_path = (
+        workspace / ".state" / "sessions" / old.session_id / "session.json"
+    )
+    old_payload = json.loads(old_path.read_text(encoding="utf-8"))
+    old_payload["updated_at"] = now - SESSION_ACTIVE_WINDOW_S - 1
+    old_path.write_text(json.dumps(old_payload), encoding="utf-8")
+    active_path = (
+        workspace / ".state" / "sessions" / active.session_id / "session.json"
+    )
+    active_payload = json.loads(active_path.read_text(encoding="utf-8"))
+    active_payload["updated_at"] = now
+    active_path.write_text(json.dumps(active_payload), encoding="utf-8")
+    client = TestClient(build_http_app(), base_url=BASE_URL)
+
+    recent = client.get("/api/ui/sessions", params={"machine": "local"})
+    all_sessions = client.get(
+        "/api/ui/sessions",
+        params={"machine": "local", "include_inactive": "true"},
+    )
+    old_todos = client.get(
+        "/api/ui/todos",
+        params={"machine": "local", "session_id": old.session_id},
+    )
+    recent_after_view = client.get(
+        "/api/ui/sessions", params={"machine": "local"}
+    )
+    terminated = client.post(
+        "/api/ui/sessions/terminate",
+        json={"machine": "local", "session_id": active.session_id},
+    )
+    blocked = client.post(
+        "/tools/read",
+        json={"session_id": active.session_id, "path": "missing.txt"},
+    )
+
+    assert [row["session_id"] for row in recent.json()["data"]["sessions"]] == [
+        active.session_id
+    ]
+    assert all_sessions.json()["data"]["active_window_hours"] == 5
+    assert {
+        row["session_id"] for row in all_sessions.json()["data"]["sessions"]
+    } == {active.session_id, old.session_id}
+    assert old_todos.status_code == 200
+    assert [
+        row["session_id"]
+        for row in recent_after_view.json()["data"]["sessions"]
+    ] == [active.session_id]
+    assert terminated.status_code == 200
+    assert terminated.json()["data"]["session"]["termination_requested"]
+    assert blocked.status_code == 409
+    assert blocked.json()["error"] == "session_termination_requested"
+    assert SESSION_TERMINATION_PROMPT in blocked.json()["message"]
+    assert store.require_session(active.session_id).termination_requested_at
+
+
 def test_todo_api_enforces_local_remote_and_write_scopes(monkeypatch, tmp_path):
     fake = _FakeRemoteTodos("worker01")
     client, remote = _remote_client(
@@ -701,18 +767,26 @@ def test_todo_api_enforces_local_remote_and_write_scopes(monkeypatch, tmp_path):
     assert writable_remote.status_code == 200
 
 
-def test_todo_static_ui_selects_explicit_sessions_and_guards_stale_writes():
+def test_sessions_static_ui_owns_todos_and_immediate_termination():
     static_root = (
         Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
     )
     index = (static_root / "index.html").read_text(encoding="utf-8")
     script = (static_root / "web.js").read_text(encoding="utf-8")
 
-    assert 'id="todo-machine"' in index
-    assert 'id="todo-session"' in index
+    assert 'id="session-panel"' in index
+    assert 'id="session-machine"' in index
+    assert 'id="session-list"' in index
+    assert 'id="session-include-inactive"' in index
+    assert 'id="session-terminate"' in index
     assert 'id="todo-save"' in index
-    assert 'id="audit-session"' in index
+    assert 'id="session-audit-list"' in index
+    assert 'id="todo-panel"' not in index
+    assert 'id="todo-machine"' not in index
+    assert 'id="todo-session"' not in index
     assert "refreshTodoSessions" in script
+    assert 'params.set("include_inactive", "true")' in script
+    assert 'request("/sessions/terminate"' in script
     assert "session_id: requestedSession" in script
     assert "expected_revision" in script
     assert "todoMutationBusy" in script

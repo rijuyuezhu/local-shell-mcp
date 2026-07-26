@@ -1,4 +1,4 @@
-export type ScreenName = "Dashboard" | "Files" | "Terminals" | "Remotes" | "Audit" | "Todos"
+export type ScreenName = "Dashboard" | "Files" | "Terminals" | "Remotes" | "Sessions" | "Audit"
 
 export interface Machine {
   name: string
@@ -94,6 +94,9 @@ export interface AgentSession {
   updated_at: number
   expires_at?: number | null
   label?: string | null
+  active?: boolean
+  termination_requested?: boolean
+  termination_requested_at?: number | null
 }
 
 export interface AgentSessionPayload {
@@ -101,6 +104,8 @@ export interface AgentSessionPayload {
   remote: boolean
   sessions: AgentSession[]
   count: number
+  include_inactive?: boolean
+  active_window_hours?: number
 }
 
 export interface TodoItem {
@@ -150,6 +155,7 @@ export interface AuditPayload {
   entries: AuditEntry[]
   count: number
   total_matched: number
+  scope?: "global" | "session" | string
 }
 
 export interface InvitePayload {

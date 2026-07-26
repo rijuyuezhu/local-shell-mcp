@@ -8,7 +8,7 @@ import { clampIndex } from "./state-utils"
 import type { Machine, ScreenName } from "./types"
 import { screenTheme, theme } from "./theme"
 
-export const SCREENS: ScreenName[] = ["Dashboard", "Files", "Terminals", "Remotes", "Audit", "Todos"]
+export const SCREENS: ScreenName[] = ["Dashboard", "Files", "Terminals", "Remotes", "Sessions", "Audit"]
 
 export function TopNav({
   active,
@@ -43,7 +43,7 @@ export function TopNav({
       {SCREENS.map((screen) => {
         const selected = screen === active
         const colors = screenTheme[screen]
-        const narrowInitial = screen === "Todos" ? "O" : screen[0]
+        const narrowInitial = screen === "Sessions" ? "S" : screen[0]
         const label = narrow ? narrowInitial : compact ? screen.slice(0, 3) : screen
         return (
           <box

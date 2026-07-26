@@ -18,6 +18,10 @@ from ..oauth.core.context import (
     require_oauth_scopes,
 )
 from ..oauth.core.scopes import SUPPORTED_OAUTH_SCOPES
+from ..tool_session import (
+    SessionTerminationRequestedError,
+    enforce_tool_session_control,
+)
 from .contracts import (
     HttpMethod,
     HttpToolRoute,
@@ -175,6 +179,7 @@ class ToolDefinition:
     async def call_from_mapping(self, args: Mapping[str, Any]) -> Any:
         """Invoke the typed tool function from an HTTP-style argument mapping."""
         _enforce_oauth_scopes(self.required_oauth_scopes())
+        enforce_tool_session_control(dict(args))
         return await self.func(
             **_tool_kwargs_from_mapping(self.signature, args)
         )
@@ -229,7 +234,11 @@ class ToolDefinition:
         async def mcp_handler(*args: Any, **kwargs: Any) -> Any:
             try:
                 _enforce_oauth_scopes(self.required_oauth_scopes())
+                bound = self.signature.bind_partial(*args, **kwargs)
+                enforce_tool_session_control(dict(bound.arguments))
                 return await self.func(*args, **kwargs)
+            except SessionTerminationRequestedError:
+                raise
             except Exception as exc:
                 if self.mcp_error_handler is not None:
                     return self.mcp_error_handler(exc, args, kwargs)

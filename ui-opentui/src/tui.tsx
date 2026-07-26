@@ -9,9 +9,9 @@ import { FilesScreen } from "./files-screen"
 import { appContentHeight, appContentWidth } from "./layout"
 import { forceFullRepaint } from "./repaint"
 import { RemotesScreen } from "./remotes-screen"
+import { SessionsScreen } from "./sessions-screen"
 import { TerminalsScreen } from "./terminals-screen"
 import { theme } from "./theme"
-import { TodosScreen } from "./todos-screen"
 import type { BootstrapPayload, Machine, ScreenName } from "./types"
 
 function Help({ close }: { close: () => void }) {
@@ -29,6 +29,7 @@ function Help({ close }: { close: () => void }) {
       <text fg={theme.muted} content="j/k or arrows move selection · Enter activates · Esc closes dialogs" />
       <text fg={theme.muted} content="[ / ] switches Files machines · Alt+[ / ] switches Terminal machines" />
       <text fg={theme.muted} content="Terminals: Alt+N new · Alt+W kill · PgUp/PgDn scroll · Alt+R refresh" />
+      <text fg={theme.muted} content="Sessions: choose machine/session first, then inspect Overview, Todos, or local Audit." />
       <text fg={theme.muted} content="The footer on every screen lists its contextual commands." />
       <text fg={theme.borderBright} content="\nAudit policy" />
       <text fg={theme.muted} content="Audit contains MCP-originated operations. Actions typed by a human in this TUI or the WebUI are intentionally excluded." />
@@ -171,9 +172,12 @@ function App() {
         onInteractionLockChange={setInteractionLocked}
       />
     )
-  } else if (screen === "Todos") {
+  } else if (screen === "Sessions") {
     content = (
-      <TodosScreen
+      <SessionsScreen
+        machines={machines}
+        machine={machine}
+        onMachine={setMachine}
         width={contentWidth}
         height={contentHeight}
         setStatus={setStatus}

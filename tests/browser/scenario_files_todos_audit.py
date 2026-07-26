@@ -71,8 +71,12 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     session = harness.api("POST", "/tools/session_start", body={"workdir": "."})
     assert session["status"] == 200
     session_id = session["payload"]["session_id"]
-    page.locator("#todo-refresh").click()
-    expect(page.locator("#todo-session")).to_have_value(session_id)
+    page.locator("#session-refresh").click()
+    expect(
+        page.locator(
+            f'#session-list .session-entry[data-session-id="{session_id}"]'
+        )
+    ).to_have_attribute("aria-current", "true")
 
     page.locator("#todo-add").click()
     row = page.locator("#todo-list .todo-row").last
@@ -101,19 +105,28 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     )
     assert audited_write["status"] == 200
 
+    page.locator("#session-audit-operation").select_option("files")
+    page.locator("#session-audit-search").fill("write_file")
+    page.locator("#session-audit-refresh").click()
+    expect(
+        page.locator("#session-audit-list .audit-entry").first
+    ).to_be_visible()
+    page.locator("#session-audit-list .audit-entry").first.click()
+    expect(page.locator("#session-audit-detail-body")).to_contain_text(
+        "audit-scope.txt"
+    )
+    expect(page.locator("#session-audit-detail-body")).to_contain_text(
+        "payload-e2e-"
+    )
+
     page.locator("#audit-operation").select_option("files")
     page.locator("#audit-search").fill("write_file")
     page.locator("#audit-refresh").click()
-    expect(
-        page.locator(f'#audit-session option[value="{session_id}"]')
-    ).to_be_attached()
-    page.locator("#audit-session").select_option(session_id)
     expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
     page.locator("#audit-list .audit-entry").first.click()
     expect(page.locator("#audit-detail-body")).to_contain_text(
         "audit-scope.txt"
     )
-    expect(page.locator("#audit-detail-body")).to_contain_text("payload-e2e-")
 
     full_token = page.evaluate(
         "key => sessionStorage.getItem(key)", TOKEN_STORAGE_KEY
@@ -123,19 +136,19 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     harness.set_token(read_only_token)
     page.reload(wait_until="domcontentloaded")
     expect(page.locator("#connection-state")).to_have_text("Connected")
-    page.locator("#audit-operation").select_option("files")
-    page.locator("#audit-search").fill("write_file")
-    page.locator("#audit-refresh").click()
+    page.locator("#session-audit-operation").select_option("files")
+    page.locator("#session-audit-search").fill("write_file")
+    page.locator("#session-audit-refresh").click()
     expect(
-        page.locator(f'#audit-session option[value="{session_id}"]')
-    ).to_be_attached()
-    page.locator("#audit-session").select_option(session_id)
-    expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
-    page.locator("#audit-list .audit-entry").first.click()
-    expect(page.locator("#audit-detail-meta")).to_have_text(
+        page.locator("#session-audit-list .audit-entry").first
+    ).to_be_visible()
+    page.locator("#session-audit-list .audit-entry").first.click()
+    expect(page.locator("#session-audit-detail-meta")).to_have_text(
         "Details unavailable"
     )
-    expect(page.locator("#audit-detail-body")).to_contain_text("shell:write")
+    expect(page.locator("#session-audit-detail-body")).to_contain_text(
+        "shell:write"
+    )
     harness.console_errors = [
         line for line in harness.console_errors if "403 (Forbidden)" not in line
     ]
@@ -143,3 +156,23 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     harness.set_token(full_token)
     page.reload(wait_until="domcontentloaded")
     expect(page.locator("#connection-state")).to_have_text("Connected")
+    expect(
+        page.locator(
+            f'#session-list .session-entry[data-session-id="{session_id}"]'
+        )
+    ).to_have_attribute("aria-current", "true")
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator("#session-terminate").click()
+    expect(page.locator("#session-detail-status")).to_contain_text(
+        "Immediate termination requested"
+    )
+    blocked = harness.api(
+        "POST",
+        "/tools/read",
+        body={"session_id": session_id, "path": "notes.txt"},
+    )
+    assert blocked["status"] == 409
+    assert blocked["payload"]["error"] == "session_termination_requested"
+    harness.console_errors = [
+        line for line in harness.console_errors if "409 (Conflict)" not in line
+    ]

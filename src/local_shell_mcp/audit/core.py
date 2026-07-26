@@ -27,6 +27,8 @@ from ..agent_bridge.redaction import (
     redact_configured_values,
 )
 from ..config.settings import Settings, get_settings
+from ..persistence import get_state_store
+from ..tool_session import get_tool_session_store, tool_input_session_ids
 from ..utils.private_files import (
     append_private_bytes,
     atomic_write_private_bytes,
@@ -48,6 +50,9 @@ DOWNLOAD_URL_TOKEN_RE = re.compile(
 _AUDIT_THREAD_LOCK = threading.RLock()
 _CURRENT_AUDIT_CALL_ID: ContextVar[str | None] = ContextVar(
     "local_shell_mcp_audit_call_id", default=None
+)
+_CURRENT_AUDIT_SESSION_IDS: ContextVar[tuple[str, ...]] = ContextVar(
+    "local_shell_mcp_audit_session_ids", default=()
 )
 _AUDIT_PAYLOAD_SWEEP_INTERVAL_S = 60.0
 _AUDIT_PAYLOAD_SWEEP_TIMES: dict[str, float] = {}
@@ -360,13 +365,17 @@ def current_audit_call_id() -> str | None:
 
 
 @contextmanager
-def audit_call_context(call_id: str) -> Generator[None]:
-    """Bind one lifecycle id while its public tool implementation executes."""
-    token = _CURRENT_AUDIT_CALL_ID.set(call_id)
+def audit_call_context(
+    call_id: str, session_ids: tuple[str, ...] = ()
+) -> Generator[None]:
+    """Bind lifecycle and session ids while a public tool implementation runs."""
+    call_token = _CURRENT_AUDIT_CALL_ID.set(call_id)
+    session_token = _CURRENT_AUDIT_SESSION_IDS.set(session_ids)
     try:
         yield
     finally:
-        _CURRENT_AUDIT_CALL_ID.reset(token)
+        _CURRENT_AUDIT_SESSION_IDS.reset(session_token)
+        _CURRENT_AUDIT_CALL_ID.reset(call_token)
 
 
 def _retention_units(lines: list[bytes]) -> list[list[tuple[int, bytes]]]:
@@ -769,10 +778,10 @@ def _public_audit_entry(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _read_audit_records() -> list[dict[str, Any]]:
+def _read_audit_records(path: Path | None = None) -> list[dict[str, Any]]:
     """Read a bounded, consistent tail of the private JSONL audit log."""
     settings = get_settings()
-    path = settings.audit_log_path
+    path = path or settings.audit_log_path
     configured_limit = int(settings.max_audit_log_bytes)
     max_bytes = _AUDIT_QUERY_MAX_BYTES
     if configured_limit > 0:
@@ -848,6 +857,7 @@ def query_audit(
     end_ts: float | None = None,
     sort: str = "desc",
     exclude_call_id: str | None = None,
+    _path: Path | None = None,
 ) -> dict[str, Any]:
     """Read, pair, filter, and sort bounded audit rows for a Human UI client."""
     bounded_limit = max(1, min(int(limit), _AUDIT_QUERY_MAX_ENTRIES))
@@ -857,7 +867,7 @@ def query_audit(
     if start_ts is not None and end_ts is not None and start_ts > end_ts:
         raise ValueError("start_ts must not be greater than end_ts")
 
-    rows = _coalesce_audit_records(_read_audit_records())
+    rows = _coalesce_audit_records(_read_audit_records(_path))
     needle = (search or "").casefold().strip()
     event_filter = (event or "").casefold().strip()
     operation_filter = (operation or "").casefold().strip()
@@ -917,12 +927,13 @@ def get_audit_entry(
     *,
     include_full_payloads: bool = False,
     exclude_call_id: str | None = None,
+    _path: Path | None = None,
 ) -> dict[str, Any]:
     """Return one coalesced audit entry, optionally resolving sanitized payloads."""
     normalized = str(entry_id).strip()
     if not normalized:
         raise ValueError("audit entry id is required")
-    for row in _coalesce_audit_records(_read_audit_records()):
+    for row in _coalesce_audit_records(_read_audit_records(_path)):
         if exclude_call_id and str(row.get("call_id") or "") == exclude_call_id:
             continue
         if str(row.get("id") or "") == normalized:
@@ -933,9 +944,79 @@ def get_audit_entry(
     raise ValueError(f"Unknown audit entry: {normalized}")
 
 
+def query_session_audit(
+    session_id: str,
+    **filters: Any,
+) -> dict[str, Any]:
+    """Query the dedicated append-only audit log for one durable session."""
+    get_tool_session_store().require_session(session_id)
+    return query_audit(
+        **filters,
+        _path=get_state_store().layout.session_audit_path(session_id),
+    )
+
+
+def get_session_audit_entry(
+    session_id: str,
+    entry_id: str,
+    *,
+    include_full_payloads: bool = False,
+) -> dict[str, Any]:
+    """Return one entry from a session's dedicated audit log."""
+    get_tool_session_store().require_session(session_id)
+    return get_audit_entry(
+        entry_id,
+        include_full_payloads=include_full_payloads,
+        _path=get_state_store().layout.session_audit_path(session_id),
+    )
+
+
+def _audit_record_session_ids(fields: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return explicit or context-bound sessions that own one audit record."""
+    explicit: list[str] = []
+    session_ids = fields.get("session_ids")
+    if isinstance(session_ids, list | tuple):
+        explicit.extend(
+            value for value in session_ids if isinstance(value, str) and value
+        )
+    for name in ("session_id", "session"):
+        value = fields.get(name)
+        if isinstance(value, str) and value:
+            explicit.append(value)
+    if not explicit:
+        explicit.extend(tool_input_session_ids(dict(fields)))
+    if not explicit:
+        explicit.extend(_CURRENT_AUDIT_SESSION_IDS.get())
+    return tuple(dict.fromkeys(explicit))
+
+
+def _append_session_audit_records(
+    session_ids: tuple[str, ...], encoded: bytes, settings: Settings
+) -> None:
+    """Append one sanitized record to each existing owning session log."""
+    state_store = get_state_store()
+    for session_id in session_ids:
+        transaction_path = state_store.layout.session_transaction_path(
+            session_id
+        )
+        with state_store.transaction(transaction_path):
+            if not state_store.layout.session_metadata_path(
+                session_id
+            ).is_file():
+                continue
+            path = state_store.layout.session_audit_path(session_id)
+            with _audit_transaction(path):
+                append_private_bytes(path, encoded)
+                _enforce_audit_log_limit(path, settings.max_audit_log_bytes)
+
+
 def audit(event: str, **fields: Any) -> None:
     """Append one uniformly redacted, bounded, private audit record."""
     settings = get_settings()
+    parent_call_id = current_audit_call_id()
+    if parent_call_id and "parent_call_id" not in fields:
+        fields = {**fields, "parent_call_id": parent_call_id}
+    session_ids = _audit_record_session_ids(fields)
     event_limit = max(512, int(settings.max_audit_event_bytes))
     if settings.max_audit_log_bytes > 0:
         event_limit = min(
@@ -986,26 +1067,13 @@ def audit(event: str, **fields: Any) -> None:
             settings,
             payload_changed=bool(payload_reference_digests(externalized)),
         )
+    if session_ids:
+        _append_session_audit_records(session_ids, encoded, settings)
 
 
 def new_audit_call_id() -> str:
     """Return a unique identifier used to link start/end audit records for one operation."""
     return uuid.uuid4().hex
-
-
-def _tool_input_session(value: Any) -> str | None:
-    """Return a public session identifier before the input may be externalized."""
-    if not isinstance(value, Mapping):
-        return None
-    for name in ("session_id", "session", "shell_id"):
-        candidate = value.get(name)
-        if isinstance(candidate, str) and candidate:
-            return candidate
-    for name in ("kwargs", "keyword_args"):
-        session = _tool_input_session(value.get(name))
-        if session:
-            return session
-    return None
 
 
 def audit_tool_call_start(
@@ -1014,7 +1082,7 @@ def audit_tool_call_start(
     transport: str,
     tool: str,
     input: Any,
-) -> None:
+) -> tuple[str, ...]:
     """Record the bounded input and caller context for one tool call."""
     fields: dict[str, Any] = {
         "call_id": call_id,
@@ -1022,10 +1090,12 @@ def audit_tool_call_start(
         "tool": tool,
         "input": input,
     }
-    session = _tool_input_session(input)
-    if session:
-        fields["session"] = session
+    session_ids = tool_input_session_ids(input)
+    if session_ids:
+        fields["session"] = session_ids[0]
+        fields["session_ids"] = list(session_ids)
     audit("tool_call_start", **fields)
+    return session_ids
 
 
 def audit_tool_call_end(
@@ -1037,6 +1107,7 @@ def audit_tool_call_end(
     duration_ms: int,
     output: Any = None,
     error: dict[str, Any] | None = None,
+    session_ids: tuple[str, ...] = (),
 ) -> None:
     """Record the bounded output or nested exception details for one tool call."""
     fields: dict[str, Any] = {
@@ -1046,6 +1117,9 @@ def audit_tool_call_end(
         "ok": ok,
         "duration_ms": duration_ms,
     }
+    if session_ids:
+        fields["session"] = session_ids[0]
+        fields["session_ids"] = list(session_ids)
     if error is not None:
         fields["error"] = error
     else:

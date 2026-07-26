@@ -58,9 +58,12 @@ def _read_todo_path(path: Path) -> ReadTodosOutput:
     return ReadTodosOutput.model_validate(value)
 
 
-def read_todos_execute(session_id: str) -> ReadTodosOutput:
+def read_todos_execute(
+    session_id: str, *, touch_session: bool = True
+) -> ReadTodosOutput:
     """Read the persisted todo list owned by one explicit agent session."""
-    get_tool_session_store().touch_session(session_id)
+    if touch_session:
+        get_tool_session_store().touch_session(session_id)
     store = get_state_store()
     with store.transaction(_session_transaction_path(session_id)):
         _require_session_metadata(session_id)
@@ -115,9 +118,12 @@ def write_todos_execute(
     todos: list[dict[str, Any]],
     session_id: str,
     expected_revision: int | None = None,
+    *,
+    touch_session: bool = True,
 ) -> WriteTodosOutput:
     """Normalize and atomically replace one explicit session's todo list."""
-    get_tool_session_store().touch_session(session_id)
+    if touch_session:
+        get_tool_session_store().touch_session(session_id)
     if expected_revision is not None and (
         isinstance(expected_revision, bool) or expected_revision < 0
     ):

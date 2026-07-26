@@ -156,7 +156,7 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         page.locator('#terminal-machine option[value="browser-edge"]')
     ).to_have_count(1)
     expect(
-        page.locator('#todo-machine option[value="browser-edge"]')
+        page.locator('#session-machine option[value="browser-edge"]')
     ).to_have_count(1)
 
     page.locator("#file-machine").select_option(MACHINE)
@@ -194,8 +194,12 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         "session_id"
     ]
 
-    page.locator("#todo-machine").select_option(MACHINE)
-    expect(page.locator("#todo-session")).to_have_value(remote_session_id)
+    page.locator("#session-machine").select_option(MACHINE)
+    expect(
+        page.locator(
+            f'#session-list .session-entry[data-session-id="{remote_session_id}"]'
+        )
+    ).to_have_attribute("aria-current", "true")
     page.locator("#todo-add").click()
     remote_row = page.locator("#todo-list .todo-row").last
     remote_row.locator("input").fill("remote todo is isolated")

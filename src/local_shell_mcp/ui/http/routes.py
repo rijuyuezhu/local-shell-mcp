@@ -34,7 +34,7 @@ from .files import (
 )
 from .opentui import ui_opentui_websocket
 from .remotes import api_remote_action, api_remotes
-from .sessions import api_sessions
+from .sessions import api_session_action, api_sessions
 from .terminals import (
     api_terminal_action,
     api_terminal_read,
@@ -237,6 +237,11 @@ def human_ui_routes(
         Route(UI_API_PREFIX + "/dashboard", api_dashboard, methods=["GET"]),
         Route(UI_API_PREFIX + "/machines", api_machines, methods=["GET"]),
         Route(UI_API_PREFIX + "/sessions", api_sessions, methods=["GET"]),
+        Route(
+            UI_API_PREFIX + "/sessions/{action}",
+            api_session_action,
+            methods=["POST"],
+        ),
         Route(UI_API_PREFIX + "/remotes", api_remotes, methods=["GET", "POST"]),
         Route(
             UI_API_PREFIX + "/remotes/{action}",

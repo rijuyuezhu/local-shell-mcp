@@ -6,7 +6,12 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ...audit import get_audit_entry, query_audit
+from ...audit import (
+    get_audit_entry,
+    get_session_audit_entry,
+    query_audit,
+    query_session_audit,
+)
 from ...config.settings import Settings
 from ...ops.remote import (
     remote_admin_execute,
@@ -39,24 +44,39 @@ def _remote_tools_enabled(settings: Settings) -> bool:
 
 
 async def _query_audit_handler(args: dict[str, Any]) -> dict[str, Any]:
-    return await asyncio.to_thread(
-        query_audit,
-        limit=int(args.get("limit") or 300),
-        event=args.get("event"),
-        operation=args.get("operation"),
-        session=args.get("session"),
-        search=args.get("search"),
-        start_ts=args.get("start_ts"),
-        end_ts=args.get("end_ts"),
-        sort=str(args.get("sort") or "desc"),
-    )
+    log_session_id = str(args.get("log_session_id") or "")
+    filters = {
+        "limit": int(args.get("limit") or 300),
+        "event": args.get("event"),
+        "operation": args.get("operation"),
+        "session": args.get("session"),
+        "search": args.get("search"),
+        "start_ts": args.get("start_ts"),
+        "end_ts": args.get("end_ts"),
+        "sort": str(args.get("sort") or "desc"),
+    }
+    if log_session_id:
+        return await asyncio.to_thread(
+            query_session_audit, log_session_id, **filters
+        )
+    return await asyncio.to_thread(query_audit, **filters)
 
 
 async def _get_audit_entry_handler(args: dict[str, Any]) -> dict[str, Any]:
+    log_session_id = str(args.get("log_session_id") or "")
+    entry_id = str(args.get("id") or "")
+    include_full_payloads = bool(args.get("include_full_payloads", False))
+    if log_session_id:
+        return await asyncio.to_thread(
+            get_session_audit_entry,
+            log_session_id,
+            entry_id,
+            include_full_payloads=include_full_payloads,
+        )
     return await asyncio.to_thread(
         get_audit_entry,
-        str(args.get("id") or ""),
-        include_full_payloads=bool(args.get("include_full_payloads", False)),
+        entry_id,
+        include_full_payloads=include_full_payloads,
     )
 
 

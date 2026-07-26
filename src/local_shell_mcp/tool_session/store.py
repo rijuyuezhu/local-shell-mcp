@@ -18,6 +18,13 @@ SESSION_ID_ALPHABET = string.ascii_letters + string.digits
 SESSION_ID_LENGTH = 8
 SESSION_METADATA_MAX_BYTES = 256_000
 SESSION_SNAPSHOTS_MAX_BYTES = 16_000_000
+SESSION_ACTIVE_WINDOW_S = 5 * 60 * 60
+SESSION_TERMINATION_PROMPT = (
+    "This session was marked for immediate termination by the human control "
+    "plane. Stop immediately. Do not perform any further work or call any more "
+    "tools for this session. Tell the user that execution was terminated by "
+    "the human operator."
+)
 SessionTarget = Literal["local", "remote"]
 
 
@@ -51,6 +58,9 @@ class AgentSession:
 
     label: str | None = None
     """Optional human-readable session label."""
+
+    termination_requested_at: float | None = None
+    """Unix timestamp when the human control plane requested immediate stop."""
 
 
 @dataclass(frozen=True)
@@ -93,6 +103,14 @@ def _new_snapshot_id() -> str:
 
 class UnknownAgentSessionError(ValueError):
     """Raised when a tool call references a missing agent session."""
+
+
+class SessionTerminationRequestedError(ValueError):
+    """Raised when a model invokes a tool for a terminated session."""
+
+    def __init__(self, session_id: str) -> None:
+        self.session_id = session_id
+        super().__init__(f"Session {session_id}: {SESSION_TERMINATION_PROMPT}")
 
 
 class ToolSessionStore:
@@ -164,6 +182,13 @@ class ToolSessionStore:
             ),
             label=(
                 None if payload.get("label") is None else str(payload["label"])
+            ),
+            termination_requested_at=(
+                None
+                if payload.get("termination_requested_at") is None
+                else ToolSessionStore._required_float(
+                    payload, "termination_requested_at"
+                )
             ),
         )
 
@@ -318,6 +343,7 @@ class ToolSessionStore:
                     updated_at=now,
                     expires_at=expires_at,
                     label=label,
+                    termination_requested_at=None,
                 )
                 with self._state_store.transaction(
                     self._transaction_path(session_id)
@@ -347,6 +373,38 @@ class ToolSessionStore:
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
                 return updated
+
+    def request_termination(self, session_id: str) -> AgentSession:
+        """Persist an irreversible immediate-stop request for one session."""
+        with self._lock:
+            self._reset_for_current_root_locked()
+            with self._state_store.transaction(
+                self._transaction_path(session_id)
+            ):
+                session = self._require_session_locked(session_id)
+                now = time.time()
+                updated = replace(
+                    session,
+                    updated_at=now,
+                    termination_requested_at=(
+                        session.termination_requested_at or now
+                    ),
+                )
+                self._write_session_locked(updated)
+                self._sessions[session_id] = updated
+                return updated
+
+    def assert_tool_call_allowed(self, session_ids: tuple[str, ...]) -> None:
+        """Reject tool work when any referenced session requested termination."""
+        sessions = [
+            self.require_session(session_id)
+            for session_id in dict.fromkeys(session_ids)
+        ]
+        for session in sessions:
+            if session.termination_requested_at is not None:
+                raise SessionTerminationRequestedError(session.session_id)
+        for session in sessions:
+            self.touch_session(session.session_id)
 
     def change_session_workdir(
         self, session_id: str, workdir: str | Path
@@ -548,6 +606,46 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def tool_input_session_ids(value: Any) -> tuple[str, ...]:
+    """Extract public session ids from one validated tool argument payload."""
+    found: list[str] = []
+    seen: set[int] = set()
+
+    def visit(candidate: Any) -> None:
+        if isinstance(candidate, dict | list | tuple):
+            identity = id(candidate)
+            if identity in seen:
+                return
+            seen.add(identity)
+        if isinstance(candidate, dict):
+            for name, child in candidate.items():
+                if name in {
+                    "session_id",
+                    "src_session_id",
+                    "dst_session_id",
+                    "source_session_id",
+                    "destination_session_id",
+                }:
+                    if isinstance(child, str) and child:
+                        found.append(child)
+                    continue
+                if isinstance(child, dict | list | tuple):
+                    visit(child)
+        elif isinstance(candidate, list | tuple):
+            for child in candidate:
+                visit(child)
+
+    visit(value)
+    return tuple(dict.fromkeys(found))
+
+
+def enforce_tool_session_control(value: Any) -> None:
+    """Apply persisted immediate-stop policy to one model tool invocation."""
+    session_ids = tool_input_session_ids(value)
+    if session_ids:
+        get_tool_session_store().assert_tool_call_allowed(session_ids)
 
 
 _STORE = ToolSessionStore()

@@ -90,6 +90,10 @@ class StateLayout:
         """Return the todo-list file colocated with one session's metadata."""
         return self.session_dir(session_id) / "todos.json"
 
+    def session_audit_path(self, session_id: str) -> Path:
+        """Return the append-only audit log owned by one explicit session."""
+        return self.session_dir(session_id) / "audit.jsonl"
+
     def session_transaction_path(self, session_id: str) -> Path:
         """Return the shared transaction identity for one session directory."""
         return self.session_dir(session_id) / ".transaction"

@@ -18,14 +18,18 @@ from local_shell_mcp.audit import (
     _AUDIT_CYCLE_KEY,
     _coalesce_audit_records,
     audit,
+    audit_call_context,
     audit_tool_call_end,
     audit_tool_call_start,
     get_audit_entry,
+    get_session_audit_entry,
     query_audit,
+    query_session_audit,
 )
 from local_shell_mcp.audit import core as audit_core
 from local_shell_mcp.audit.payloads import AUDIT_PAYLOAD_KEY
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.tool_session import get_tool_session_store
 
 
 def _configure_audit(
@@ -140,6 +144,53 @@ def test_audit_package_facade_preserves_public_and_legacy_attributes() -> None:
     assert audit_module.time is audit_core.time
     assert "audit" in dir(audit_module)
     assert "_AUDIT_BINARY_KEY" in dir(audit_module)
+
+
+def test_audit_dual_writes_session_log_but_keeps_global_extras(
+    tmp_path, monkeypatch
+):
+    global_path = _configure_audit(tmp_path, monkeypatch)
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, label="audit owner")
+
+    audit("global_extra", detail="not owned by a session")
+    call_id = "dual-write-call"
+    session_ids = audit_tool_call_start(
+        call_id=call_id,
+        transport="http",
+        tool="read",
+        input={"session_id": session.session_id, "path": "file.txt"},
+    )
+    with audit_call_context(call_id, session_ids):
+        audit("nested_session_event", detail="owned")
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="http",
+        tool="read",
+        ok=True,
+        duration_ms=2,
+        output={"path": "file.txt"},
+        session_ids=session_ids,
+    )
+
+    session_path = (
+        tmp_path / ".state" / "sessions" / session.session_id / "audit.jsonl"
+    )
+    assert global_path.is_file()
+    assert session_path.is_file()
+    assert query_audit(event="global_extra")["count"] == 1
+    assert (
+        query_session_audit(session.session_id, event="global_extra")["count"]
+        == 0
+    )
+    session_result = query_session_audit(session.session_id)
+    assert session_result["count"] == 1
+    entry = session_result["entries"][0]
+    assert entry["id"] == f"call:{call_id}"
+    assert entry["session"] == session.session_id
+    assert entry["related_events"][0]["event"] == "nested_session_event"
+    assert get_session_audit_entry(session.session_id, entry["id"]) == entry
 
 
 def test_audit_package_facade_rejects_unknown_attributes() -> None:

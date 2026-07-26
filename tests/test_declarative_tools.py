@@ -5,9 +5,15 @@ import pytest
 from fastapi import HTTPException
 from mcp.types import ToolAnnotations
 
+from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.oauth.core.context import (
     bind_oauth_claims,
     reset_oauth_claims,
+)
+from local_shell_mcp.tool_session import (
+    SESSION_TERMINATION_PROMPT,
+    SessionTerminationRequestedError,
+    get_tool_session_store,
 )
 from local_shell_mcp.tools.declarative import ToolDefinition
 
@@ -177,3 +183,73 @@ def test_tool_definition_rejects_unknown_annotations():
         ValueError, match="Invalid annotations: future-annotation"
     ):
         definition._mcp_annotations(_sample_context())
+
+
+@pytest.mark.asyncio
+async def test_http_style_tool_dispatch_stops_terminated_sessions(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    store.request_termination(session.session_id)
+    called = False
+
+    async def sample_tool(session_id: str) -> dict[str, str]:
+        nonlocal called
+        called = True
+        return {"session_id": session_id}
+
+    definition = ToolDefinition(
+        func=sample_tool,
+        name="sample_tool",
+        http_method="POST",
+        http_path="/tools/sample_tool",
+    )
+
+    with pytest.raises(SessionTerminationRequestedError) as exc_info:
+        await definition.call_from_mapping({"session_id": session.session_id})
+    assert not called
+    assert SESSION_TERMINATION_PROMPT in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_dispatch_stops_terminated_sessions(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    store.request_termination(session.session_id)
+    called = False
+
+    async def sample_tool(session_id: str) -> dict[str, str]:
+        nonlocal called
+        called = True
+        return {"session_id": session_id}
+
+    definition = ToolDefinition(
+        func=sample_tool,
+        name="sample_tool",
+        http_method="POST",
+        http_path="/tools/sample_tool",
+        oauth_scopes=("shell:read",),
+        mcp_error_handler=lambda exc, _args, _kwargs: {"adapted": str(exc)},
+    )
+    mcp = _FakeMcp()
+    definition.register_mcp(cast(Any, mcp), _sample_context())
+    handler = cast(Callable[[str], Awaitable[dict[str, str]]], mcp.handler)
+    claims_token = bind_oauth_claims({"scope": "shell:read"})
+    try:
+        with pytest.raises(SessionTerminationRequestedError) as exc_info:
+            await handler(session.session_id)
+    finally:
+        reset_oauth_claims(claims_token)
+    assert not called
+    assert SESSION_TERMINATION_PROMPT in str(exc_info.value)

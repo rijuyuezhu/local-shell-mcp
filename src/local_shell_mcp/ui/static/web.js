@@ -55,6 +55,9 @@
   let todoMachine = "local";
   let todoSessionId = "";
   let todoSessions = [];
+  let sessionIncludeInactive = false;
+  let sessionLoading = false;
+  let sessionTerminating = false;
   let todoItems = [];
   let todoRevision = 0;
   let todoGeneration = 0;
@@ -69,8 +72,12 @@
     content_bytes: 16384,
     label_bytes: 64,
   };
+  let sessionAuditEntries = [];
+  let sessionAuditSelectedId = "";
+  let sessionAuditGeneration = 0;
+  let sessionAuditDetailGeneration = 0;
+  let sessionAuditLoading = false;
   let auditMachine = "local";
-  let auditSessions = [];
   let auditEntries = [];
   let auditSelectedId = "";
   let auditGeneration = 0;
@@ -140,7 +147,6 @@
     auditOperation: document.getElementById("audit-operation"),
     auditRefresh: document.getElementById("audit-refresh"),
     auditSearch: document.getElementById("audit-search"),
-    auditSession: document.getElementById("audit-session"),
     auditSort: document.getElementById("audit-sort"),
     auditState: document.getElementById("audit-state"),
     auditSummary: document.getElementById("audit-summary"),
@@ -229,11 +235,35 @@
     terminalStartForm: document.getElementById("terminal-start-form"),
     terminalState: document.getElementById("terminal-state"),
     terminalTitle: document.getElementById("terminal-title"),
+    sessionAuditDetailBody: document.getElementById("session-audit-detail-body"),
+    sessionAuditDetailMeta: document.getElementById("session-audit-detail-meta"),
+    sessionAuditDetailTitle: document.getElementById("session-audit-detail-title"),
+    sessionAuditFilterForm: document.getElementById("session-audit-filter-form"),
+    sessionAuditLimit: document.getElementById("session-audit-limit"),
+    sessionAuditList: document.getElementById("session-audit-list"),
+    sessionAuditOperation: document.getElementById("session-audit-operation"),
+    sessionAuditRefresh: document.getElementById("session-audit-refresh"),
+    sessionAuditSearch: document.getElementById("session-audit-search"),
+    sessionAuditSort: document.getElementById("session-audit-sort"),
+    sessionAuditState: document.getElementById("session-audit-state"),
+    sessionAuditSummary: document.getElementById("session-audit-summary"),
+    sessionDetailCreated: document.getElementById("session-detail-created"),
+    sessionDetailId: document.getElementById("session-detail-id"),
+    sessionDetailMachine: document.getElementById("session-detail-machine"),
+    sessionDetailStatus: document.getElementById("session-detail-status"),
+    sessionDetailTarget: document.getElementById("session-detail-target"),
+    sessionDetailTitle: document.getElementById("session-detail-title"),
+    sessionDetailUpdated: document.getElementById("session-detail-updated"),
+    sessionDetailWorkdir: document.getElementById("session-detail-workdir"),
+    sessionIncludeInactive: document.getElementById("session-include-inactive"),
+    sessionList: document.getElementById("session-list"),
+    sessionMachine: document.getElementById("session-machine"),
+    sessionRefresh: document.getElementById("session-refresh"),
+    sessionState: document.getElementById("session-state"),
+    sessionTerminate: document.getElementById("session-terminate"),
     todoAdd: document.getElementById("todo-add"),
     todoFilter: document.getElementById("todo-filter"),
     todoList: document.getElementById("todo-list"),
-    todoMachine: document.getElementById("todo-machine"),
-    todoSession: document.getElementById("todo-session"),
     todoRefresh: document.getElementById("todo-refresh"),
     todoSave: document.getElementById("todo-save"),
     todoState: document.getElementById("todo-state"),
@@ -1240,14 +1270,35 @@
     return machine === "local" || todoMachineStates.get(machine) === "online";
   }
 
+  function selectedSession() {
+    return todoSessions.find((session) => session.session_id === todoSessionId) || null;
+  }
+
+  function sessionTimestamp(value) {
+    const date = new Date(Number(value || 0) * 1000);
+    return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+  }
+
+  function sessionTerminated(session = selectedSession()) {
+    return Boolean(session && (session.termination_requested || session.termination_requested_at));
+  }
+
   function setTodoControls() {
     const online = todoMachineOnline();
     const sessionReady = Boolean(todoSessionId);
-    elements.todoMachine.disabled = todoMutationBusy;
-    elements.todoSession.disabled = todoMutationBusy || !online || !todoSessions.length;
-    elements.todoRefresh.disabled = todoMutationBusy || !online;
+    const session = selectedSession();
+    elements.sessionMachine.disabled = sessionLoading || todoMutationBusy || sessionTerminating;
+    elements.sessionIncludeInactive.disabled = sessionLoading || todoMutationBusy || sessionTerminating;
+    elements.sessionRefresh.disabled = sessionLoading || todoMutationBusy || sessionTerminating || !online;
+    elements.sessionTerminate.disabled =
+      sessionLoading || sessionTerminating || !online || !sessionReady || sessionTerminated(session);
+    elements.todoRefresh.disabled = todoMutationBusy || !online || !sessionReady;
     elements.todoAdd.disabled = todoMutationBusy || !online || !sessionReady || todoItems.length >= todoLimits.todos;
     elements.todoSave.disabled = todoMutationBusy || !online || !sessionReady || !todoDirty;
+    elements.sessionAuditRefresh.disabled = sessionAuditLoading || !online || !sessionReady;
+    for (const control of elements.sessionAuditFilterForm.querySelectorAll("input, select")) {
+      control.disabled = sessionAuditLoading || !online || !sessionReady;
+    }
     for (const control of elements.todoList.querySelectorAll("input, select, button")) {
       control.disabled = todoMutationBusy || !online || !sessionReady;
     }
@@ -1267,22 +1318,33 @@
     setTodoControls();
   }
 
-  function resetTodoWorkspace(machine) {
-    todoMachine = machine || "local";
-    todoSessionId = "";
-    todoSessions = [];
+  function clearSelectedSessionResources(message = "Select a session") {
     todoItems = [];
     todoRevision = 0;
     todoDirty = false;
     todoGeneration += 1;
-    elements.todoMachine.value = todoMachine;
-    elements.todoSession.replaceChildren();
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "Loading sessions…";
-    elements.todoSession.append(option);
     renderTodos();
-    elements.todoState.textContent = `Not loaded · ${todoMachine}`;
+    elements.todoState.textContent = message;
+    resetSessionAuditWorkspace(message);
+  }
+
+  function resetTodoWorkspace(machine) {
+    todoMachine = machine || "local";
+    todoSessionId = "";
+    todoSessions = [];
+    sessionLoading = false;
+    sessionTerminating = false;
+    elements.sessionMachine.value = todoMachine;
+    elements.sessionIncludeInactive.checked = sessionIncludeInactive;
+    elements.sessionList.replaceChildren();
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "Loading active sessions…";
+    elements.sessionList.append(empty);
+    clearSelectedSessionResources("Select a session");
+    elements.sessionState.textContent = `Not loaded · ${todoMachine}`;
+    renderSessionDetail();
+    setTodoControls();
   }
 
   function sessionOptionLabel(session) {
@@ -1292,62 +1354,135 @@
     return `${label || workdir || "session"} · ${sessionId}`;
   }
 
+  function renderSessionDetail() {
+    const session = selectedSession();
+    if (!session) {
+      elements.sessionDetailTitle.textContent = "No session selected";
+      elements.sessionDetailStatus.textContent = "Select a session to inspect its state";
+      elements.sessionDetailId.textContent = "—";
+      elements.sessionDetailTarget.textContent = "—";
+      elements.sessionDetailMachine.textContent = "—";
+      elements.sessionDetailWorkdir.textContent = "—";
+      elements.sessionDetailCreated.textContent = "—";
+      elements.sessionDetailUpdated.textContent = "—";
+      setTodoControls();
+      return;
+    }
+    const terminated = sessionTerminated(session);
+    elements.sessionDetailTitle.textContent = text(session.label, text(session.session_id, "session"));
+    elements.sessionDetailStatus.textContent = terminated
+      ? `Immediate termination requested ${sessionTimestamp(session.termination_requested_at)}`
+      : session.active === false
+        ? "Inactive · outside the recent 5 hour window"
+        : "Active · responded within the last 5 hours";
+    elements.sessionDetailId.textContent = text(session.session_id);
+    elements.sessionDetailTarget.textContent = text(session.target);
+    elements.sessionDetailMachine.textContent = text(session.machine, session.target === "local" ? "local" : "—");
+    elements.sessionDetailWorkdir.textContent = text(session.workdir);
+    elements.sessionDetailCreated.textContent = sessionTimestamp(session.created_at);
+    elements.sessionDetailUpdated.textContent = sessionTimestamp(session.updated_at);
+    setTodoControls();
+  }
+
   function renderTodoSessions(sessions) {
     todoSessions = Array.isArray(sessions) ? sessions : [];
     if (!todoSessions.some((session) => session.session_id === todoSessionId)) {
       todoSessionId = text(todoSessions[0] && todoSessions[0].session_id, "");
+      clearSelectedSessionResources(todoSessionId ? "Loading selected session" : "No sessions available");
     }
-    elements.todoSession.replaceChildren();
+    elements.sessionList.replaceChildren();
     if (!todoSessions.length) {
-      const empty = document.createElement("option");
-      empty.value = "";
-      empty.textContent = "No agent sessions";
-      elements.todoSession.append(empty);
-      todoSessionId = "";
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = sessionIncludeInactive
+        ? `No agent sessions on ${todoMachine}.`
+        : `No sessions active in the last 5 hours on ${todoMachine}.`;
+      elements.sessionList.append(empty);
     } else {
       for (const session of todoSessions) {
-        const option = document.createElement("option");
-        option.value = text(session.session_id, "");
-        option.textContent = sessionOptionLabel(session);
-        option.selected = option.value === todoSessionId;
-        elements.todoSession.append(option);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "session-entry";
+        button.dataset.sessionId = text(session.session_id, "");
+        button.setAttribute("aria-current", session.session_id === todoSessionId ? "true" : "false");
+        const title = document.createElement("strong");
+        title.textContent = sessionOptionLabel(session);
+        const meta = document.createElement("span");
+        meta.className = sessionTerminated(session) ? "session-entry-meta session-entry-terminated" : "session-entry-meta";
+        meta.textContent = sessionTerminated(session)
+          ? "termination requested"
+          : session.active === false
+            ? `inactive · ${sessionTimestamp(session.updated_at)}`
+            : `active · ${sessionTimestamp(session.updated_at)}`;
+        button.append(title, meta);
+        button.addEventListener("click", () => void selectTodoSession(session.session_id));
+        elements.sessionList.append(button);
       }
     }
-    elements.todoSession.value = todoSessionId;
+    renderSessionDetail();
     setTodoControls();
+  }
+
+  async function refreshSelectedSessionResources() {
+    if (!todoSessionId) return;
+    const results = await Promise.allSettled([
+      refreshTodos({ force: true }),
+      refreshSessionAudit(),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected" && result.reason?.authenticationRequired) throw result.reason;
+    }
+  }
+
+  async function selectTodoSession(next) {
+    if (!next || next === todoSessionId || todoMutationBusy || sessionLoading) return;
+    if (todoDirty && !globalThis.confirm(`Discard unsaved changes in ${todoSessionId}?`)) return;
+    todoSessionId = next;
+    clearSelectedSessionResources("Loading selected session");
+    renderTodoSessions(todoSessions);
+    await refreshSelectedSessionResources();
   }
 
   async function refreshTodoSessions() {
     const requestedMachine = todoMachine;
+    const previousSession = todoSessionId;
+    sessionLoading = true;
+    setTodoControls();
+    elements.sessionState.textContent = `Loading sessions on ${requestedMachine}`;
     try {
-      const payload = await request(`/sessions?${new URLSearchParams({ machine: requestedMachine }).toString()}`);
+      const params = new URLSearchParams({ machine: requestedMachine });
+      if (sessionIncludeInactive) params.set("include_inactive", "true");
+      const payload = await request(`/sessions?${params.toString()}`);
       if (requestedMachine !== todoMachine) return null;
       renderTodoSessions(payload.sessions);
-      if (!todoSessionId) {
-        todoItems = [];
-        todoRevision = 0;
-        renderTodos();
-        elements.todoState.textContent = `No agent sessions on ${requestedMachine}`;
-      }
+      elements.sessionState.textContent = `${payload.count || 0} ${sessionIncludeInactive ? "total" : "active"} sessions · ${requestedMachine}`;
+      if (!todoSessionId) clearSelectedSessionResources(`No agent sessions on ${requestedMachine}`);
+      else if (todoSessionId !== previousSession) clearSelectedSessionResources("Loading selected session");
       return payload;
     } catch (error) {
       if (requestedMachine !== todoMachine) return null;
       renderTodoSessions([]);
-      elements.todoState.textContent = error instanceof Error ? error.message : String(error);
+      elements.sessionState.textContent = error instanceof Error ? error.message : String(error);
       throw error;
+    } finally {
+      if (requestedMachine === todoMachine) {
+        sessionLoading = false;
+        setTodoControls();
+      }
     }
   }
 
   async function refreshTodoContext() {
     await refreshTodoSessions();
     if (!todoSessionId) return null;
-    return refreshTodos();
+    await refreshSelectedSessionResources();
+    return selectedSession();
   }
 
   function renderTodoMachines(machines) {
     const available = Array.isArray(machines) ? machines : [];
     todoMachineStates = new Map([["local", "online"]]);
-    elements.todoMachine.replaceChildren();
+    elements.sessionMachine.replaceChildren();
     let localPresent = false;
     let currentPresent = false;
     let currentOnline = todoMachine === "local";
@@ -1367,14 +1502,14 @@
         currentPresent = true;
         currentOnline = online;
       }
-      elements.todoMachine.append(option);
+      elements.sessionMachine.append(option);
     }
     if (!localPresent) {
       const local = document.createElement("option");
       local.value = "local";
       local.textContent = "local";
       local.selected = todoMachine === "local";
-      elements.todoMachine.prepend(local);
+      elements.sessionMachine.prepend(local);
       if (local.selected) {
         currentPresent = true;
         currentOnline = true;
@@ -1386,15 +1521,43 @@
       stale.textContent = `${todoMachine} (unavailable)`;
       stale.disabled = true;
       stale.selected = true;
-      elements.todoMachine.append(stale);
+      elements.sessionMachine.append(stale);
     }
     if ((!currentPresent || !currentOnline) && !todoDirty && !todoMutationBusy) {
       const changed = todoMachine !== "local";
       resetTodoWorkspace("local");
       if (changed) void refreshTodoContext();
     } else {
-      elements.todoMachine.value = todoMachine;
-      if (!currentOnline) elements.todoState.textContent = `${todoMachine} is offline`;
+      elements.sessionMachine.value = todoMachine;
+      if (!currentOnline) elements.sessionState.textContent = `${todoMachine} is offline`;
+      setTodoControls();
+    }
+  }
+
+  async function terminateSelectedSession() {
+    const session = selectedSession();
+    if (!session || sessionTerminated(session) || sessionTerminating) return;
+    const label = sessionOptionLabel(session);
+    if (!globalThis.confirm(`Immediately terminate ${label}? Any later model tool call for this session will be told to stop all work.`)) return;
+    sessionTerminating = true;
+    setTodoControls();
+    elements.sessionState.textContent = `Requesting immediate termination for ${session.session_id}`;
+    try {
+      const payload = await request("/sessions/terminate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ machine: todoMachine, session_id: session.session_id }),
+      });
+      const updated = payload && payload.session ? payload.session : null;
+      if (updated) {
+        todoSessions = todoSessions.map((item) => item.session_id === updated.session_id ? updated : item);
+      }
+      renderTodoSessions(todoSessions);
+      elements.sessionState.textContent = `${session.session_id} marked for immediate termination`;
+    } catch (error) {
+      elements.sessionState.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      sessionTerminating = false;
       setTodoControls();
     }
   }
@@ -1637,7 +1800,7 @@
     }
   }
 
-  function clearAuditDetail(message = "Select an Audit record.") {
+  function clearAuditDetail(message = "Select a Global Audit record.") {
     auditDetailGeneration += 1;
     elements.auditDetailTitle.textContent = "No record selected";
     elements.auditDetailMeta.textContent = auditMachine;
@@ -1646,21 +1809,15 @@
 
   function resetAuditWorkspace(machine) {
     auditMachine = machine || "local";
-    auditSessions = [];
     auditLoading = false;
     auditEntries = [];
     auditSelectedId = "";
     auditGeneration += 1;
     elements.auditMachine.value = auditMachine;
-    elements.auditSession.replaceChildren();
-    const all = document.createElement("option");
-    all.value = "";
-    all.textContent = "All sessions";
-    elements.auditSession.append(all);
     elements.auditList.replaceChildren();
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = `Audit records for ${auditMachine} are not loaded.`;
+    empty.textContent = `Global Audit records for ${auditMachine} are not loaded.`;
     elements.auditList.append(empty);
     elements.auditSummary.textContent = "0 entries";
     elements.auditState.textContent = `Not loaded · ${auditMachine}`;
@@ -1668,41 +1825,7 @@
     setAuditControls();
   }
 
-  function renderAuditSessions(sessions) {
-    auditSessions = Array.isArray(sessions) ? sessions : [];
-    const selected = elements.auditSession.value;
-    elements.auditSession.replaceChildren();
-    const all = document.createElement("option");
-    all.value = "";
-    all.textContent = "All sessions";
-    elements.auditSession.append(all);
-    for (const session of auditSessions) {
-      const option = document.createElement("option");
-      option.value = text(session.session_id, "");
-      option.textContent = sessionOptionLabel(session);
-      elements.auditSession.append(option);
-    }
-    elements.auditSession.value = auditSessions.some((session) => session.session_id === selected)
-      ? selected
-      : "";
-  }
-
-  async function refreshAuditSessions() {
-    const requestedMachine = auditMachine;
-    try {
-      const payload = await request(`/sessions?${new URLSearchParams({ machine: requestedMachine }).toString()}`);
-      if (requestedMachine !== auditMachine) return null;
-      renderAuditSessions(payload.sessions);
-      return payload;
-    } catch (error) {
-      if (requestedMachine !== auditMachine) return null;
-      renderAuditSessions([]);
-      throw error;
-    }
-  }
-
   async function refreshAuditContext() {
-    await refreshAuditSessions();
     return refreshAudit();
   }
 
@@ -1753,7 +1876,7 @@
     if (!currentPresent || !currentOnline) {
       const changed = auditMachine !== "local";
       resetAuditWorkspace("local");
-      if (changed) void refreshAuditContext();
+      if (changed) void refreshAudit();
     } else {
       elements.auditMachine.value = auditMachine;
       setAuditControls();
@@ -1782,66 +1905,33 @@
       : "recorded";
   }
 
-  function renderAuditList() {
-    elements.auditList.replaceChildren();
-    if (!auditEntries.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = `No Audit records match on ${auditMachine}.`;
-      elements.auditList.append(empty);
-      clearAuditDetail("No matching Audit record is available.");
-      return;
-    }
-    for (const entry of auditEntries) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "audit-entry";
-      button.dataset.auditId = text(entry.id, "");
-      button.setAttribute("aria-current", entry.id === auditSelectedId ? "true" : "false");
+  function auditEntryButton(entry, selectedId, onSelect) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "audit-entry";
+    button.dataset.auditId = text(entry.id, "");
+    button.setAttribute("aria-current", entry.id === selectedId ? "true" : "false");
 
-      const title = document.createElement("span");
-      title.className = "audit-entry-title";
-      title.textContent = auditEntryTitle(entry);
+    const title = document.createElement("span");
+    title.className = "audit-entry-title";
+    title.textContent = auditEntryTitle(entry);
 
-      const status = auditEntryStatus(entry);
-      const meta = document.createElement("span");
-      meta.className = `audit-entry-meta audit-entry-status-${status}`;
-      const duration = Number.isFinite(Number(entry.duration_ms)) ? ` · ${Number(entry.duration_ms)} ms` : "";
-      meta.textContent = `${auditTimestamp(entry.ts)} · ${text(entry.operation, "other")} · ${status}${duration}`;
+    const status = auditEntryStatus(entry);
+    const meta = document.createElement("span");
+    meta.className = `audit-entry-meta audit-entry-status-${status}`;
+    const duration = Number.isFinite(Number(entry.duration_ms)) ? ` · ${Number(entry.duration_ms)} ms` : "";
+    meta.textContent = `${auditTimestamp(entry.ts)} · ${text(entry.operation, "other")} · ${status}${duration}`;
 
-      const session = document.createElement("span");
-      session.className = "audit-entry-session";
-      session.textContent = text(entry.session, text(entry.event, "record"));
+    const session = document.createElement("span");
+    session.className = "audit-entry-session";
+    session.textContent = text(entry.session, text(entry.event, "record"));
 
-      button.append(title, meta, session);
-      button.addEventListener("click", () => {
-        auditSelectedId = text(entry.id, "");
-        renderAuditList();
-        void loadAuditDetail(auditSelectedId);
-      });
-      elements.auditList.append(button);
-    }
+    button.append(title, meta, session);
+    button.addEventListener("click", onSelect);
+    return button;
   }
 
-  function auditQueryPath() {
-    const params = new URLSearchParams({
-      machine: auditMachine,
-      limit: elements.auditLimit.value || "300",
-      sort: elements.auditSort.value || "desc",
-    });
-    const filters = [
-      ["operation", elements.auditOperation.value],
-      ["event", elements.auditEvent.value.trim()],
-      ["session", elements.auditSession.value.trim()],
-      ["search", elements.auditSearch.value.trim()],
-    ];
-    for (const [name, value] of filters) {
-      if (value) params.set(name, value);
-    }
-    return `/audit?${params.toString()}`;
-  }
-
-  function renderAuditDetail(entry) {
+  function renderAuditDetailInto(entry, target) {
     const detail = { ...entry };
     const preview = detail.image_preview && typeof detail.image_preview === "object"
       ? detail.image_preview
@@ -1870,9 +1960,47 @@
     if (window.LsmSyntax) window.LsmSyntax.render(pre, source, "json");
     else pre.textContent = source;
     fragment.append(pre);
-    elements.auditDetailBody.replaceChildren(fragment);
+    target.replaceChildren(fragment);
   }
 
+  function renderAuditList() {
+    elements.auditList.replaceChildren();
+    if (!auditEntries.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = `No Global Audit records match on ${auditMachine}.`;
+      elements.auditList.append(empty);
+      clearAuditDetail("No matching Global Audit record is available.");
+      return;
+    }
+    for (const entry of auditEntries) {
+      elements.auditList.append(
+        auditEntryButton(entry, auditSelectedId, () => {
+          auditSelectedId = text(entry.id, "");
+          renderAuditList();
+          void loadAuditDetail(auditSelectedId);
+        }),
+      );
+    }
+  }
+
+  function auditQueryPath() {
+    const params = new URLSearchParams({
+      machine: auditMachine,
+      scope: "global",
+      limit: elements.auditLimit.value || "300",
+      sort: elements.auditSort.value || "desc",
+    });
+    const filters = [
+      ["operation", elements.auditOperation.value],
+      ["event", elements.auditEvent.value.trim()],
+      ["search", elements.auditSearch.value.trim()],
+    ];
+    for (const [name, value] of filters) {
+      if (value) params.set(name, value);
+    }
+    return `/audit?${params.toString()}`;
+  }
 
   async function loadAuditDetail(entryId) {
     if (!entryId || !auditMachineOnline()) {
@@ -1889,6 +2017,7 @@
     try {
       const params = new URLSearchParams({
         machine: requestedMachine,
+        scope: "global",
         id: entryId,
         include_full_payloads: "true",
       });
@@ -1901,8 +2030,8 @@
       const entry = payload && payload.entry && typeof payload.entry === "object" ? payload.entry : null;
       if (!entry) throw new Error("Audit detail response was malformed");
       elements.auditDetailTitle.textContent = auditEntryTitle(entry);
-      elements.auditDetailMeta.textContent = `${requestedMachine} · ${auditTimestamp(entry.ts)}`;
-      renderAuditDetail(entry);
+      elements.auditDetailMeta.textContent = `${requestedMachine} · Global · ${auditTimestamp(entry.ts)}`;
+      renderAuditDetailInto(entry, elements.auditDetailBody);
       return entry;
     } catch (error) {
       if (
@@ -1923,7 +2052,7 @@
     const previousSelection = auditSelectedId;
     auditLoading = true;
     setAuditControls();
-    elements.auditState.textContent = `Loading ${requestedMachine}`;
+    elements.auditState.textContent = `Loading Global Audit · ${requestedMachine}`;
     try {
       const payload = await request(auditQueryPath());
       if (generation !== auditGeneration || requestedMachine !== auditMachine) return null;
@@ -1932,8 +2061,8 @@
         ? previousSelection
         : text(auditEntries[0] && auditEntries[0].id, "");
       const total = Number.isInteger(payload.total_matched) ? payload.total_matched : auditEntries.length;
-      elements.auditSummary.textContent = `${auditEntries.length} shown · ${total} matched · ${requestedMachine}`;
-      elements.auditState.textContent = `${requestedMachine} · loaded ${auditEntries.length} records`;
+      elements.auditSummary.textContent = `${auditEntries.length} shown · ${total} matched · ${requestedMachine} · Global`;
+      elements.auditState.textContent = `${requestedMachine} · loaded ${auditEntries.length} global records`;
       renderAuditList();
       if (auditSelectedId) void loadAuditDetail(auditSelectedId);
       return payload;
@@ -1948,6 +2077,159 @@
       if (generation === auditGeneration) {
         auditLoading = false;
         setAuditControls();
+      }
+    }
+  }
+
+  function clearSessionAuditDetail(message = "Select a session Audit record.") {
+    sessionAuditDetailGeneration += 1;
+    elements.sessionAuditDetailTitle.textContent = "No record selected";
+    elements.sessionAuditDetailMeta.textContent = todoSessionId || todoMachine;
+    elements.sessionAuditDetailBody.textContent = message;
+  }
+
+  function resetSessionAuditWorkspace(message = "Select a session") {
+    sessionAuditEntries = [];
+    sessionAuditSelectedId = "";
+    sessionAuditLoading = false;
+    sessionAuditGeneration += 1;
+    elements.sessionAuditList.replaceChildren();
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = message;
+    elements.sessionAuditList.append(empty);
+    elements.sessionAuditSummary.textContent = "0 entries";
+    elements.sessionAuditState.textContent = message;
+    clearSessionAuditDetail();
+    setTodoControls();
+  }
+
+  function renderSessionAuditList() {
+    elements.sessionAuditList.replaceChildren();
+    if (!sessionAuditEntries.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = todoSessionId
+        ? `No local Audit records match for ${todoSessionId}.`
+        : "Select a session to load its Audit records.";
+      elements.sessionAuditList.append(empty);
+      clearSessionAuditDetail("No matching session Audit record is available.");
+      return;
+    }
+    for (const entry of sessionAuditEntries) {
+      elements.sessionAuditList.append(
+        auditEntryButton(entry, sessionAuditSelectedId, () => {
+          sessionAuditSelectedId = text(entry.id, "");
+          renderSessionAuditList();
+          void loadSessionAuditDetail(sessionAuditSelectedId);
+        }),
+      );
+    }
+  }
+
+  function sessionAuditQueryPath() {
+    const params = new URLSearchParams({
+      machine: todoMachine,
+      scope: "session",
+      session: todoSessionId,
+      limit: elements.sessionAuditLimit.value || "300",
+      sort: elements.sessionAuditSort.value || "desc",
+    });
+    if (elements.sessionAuditOperation.value) params.set("operation", elements.sessionAuditOperation.value);
+    if (elements.sessionAuditSearch.value.trim()) params.set("search", elements.sessionAuditSearch.value.trim());
+    return `/audit?${params.toString()}`;
+  }
+
+  async function loadSessionAuditDetail(entryId) {
+    if (!entryId || !todoSessionId || !todoMachineOnline()) {
+      clearSessionAuditDetail();
+      return null;
+    }
+    const generation = ++sessionAuditDetailGeneration;
+    const requestedMachine = todoMachine;
+    const requestedSession = todoSessionId;
+    elements.sessionAuditDetailTitle.textContent = auditEntryTitle(
+      sessionAuditEntries.find((entry) => entry.id === entryId) || {},
+    );
+    elements.sessionAuditDetailMeta.textContent = "Loading details";
+    elements.sessionAuditDetailBody.textContent = `Loading ${requestedSession}:${entryId}`;
+    try {
+      const params = new URLSearchParams({
+        machine: requestedMachine,
+        scope: "session",
+        session: requestedSession,
+        id: entryId,
+        include_full_payloads: "true",
+      });
+      const payload = await request(`/audit/detail?${params.toString()}`);
+      if (
+        generation !== sessionAuditDetailGeneration ||
+        requestedMachine !== todoMachine ||
+        requestedSession !== todoSessionId ||
+        entryId !== sessionAuditSelectedId
+      ) return null;
+      const entry = payload && payload.entry && typeof payload.entry === "object" ? payload.entry : null;
+      if (!entry) throw new Error("Session Audit detail response was malformed");
+      elements.sessionAuditDetailTitle.textContent = auditEntryTitle(entry);
+      elements.sessionAuditDetailMeta.textContent = `${requestedSession} · ${auditTimestamp(entry.ts)}`;
+      renderAuditDetailInto(entry, elements.sessionAuditDetailBody);
+      return entry;
+    } catch (error) {
+      if (
+        generation !== sessionAuditDetailGeneration ||
+        requestedMachine !== todoMachine ||
+        requestedSession !== todoSessionId ||
+        entryId !== sessionAuditSelectedId
+      ) return null;
+      elements.sessionAuditDetailMeta.textContent = "Details unavailable";
+      elements.sessionAuditDetailBody.textContent = error instanceof Error ? error.message : String(error);
+      return null;
+    }
+  }
+
+  async function refreshSessionAudit() {
+    if (sessionAuditLoading || !todoSessionId || !todoMachineOnline()) return null;
+    const generation = ++sessionAuditGeneration;
+    const requestedMachine = todoMachine;
+    const requestedSession = todoSessionId;
+    const previousSelection = sessionAuditSelectedId;
+    sessionAuditLoading = true;
+    setTodoControls();
+    elements.sessionAuditState.textContent = `Loading ${requestedSession}`;
+    try {
+      const payload = await request(sessionAuditQueryPath());
+      if (
+        generation !== sessionAuditGeneration ||
+        requestedMachine !== todoMachine ||
+        requestedSession !== todoSessionId
+      ) return null;
+      sessionAuditEntries = Array.isArray(payload.entries)
+        ? payload.entries.map((entry) => ({ ...entry }))
+        : [];
+      sessionAuditSelectedId = sessionAuditEntries.some((entry) => entry.id === previousSelection)
+        ? previousSelection
+        : text(sessionAuditEntries[0] && sessionAuditEntries[0].id, "");
+      const total = Number.isInteger(payload.total_matched) ? payload.total_matched : sessionAuditEntries.length;
+      elements.sessionAuditSummary.textContent = `${sessionAuditEntries.length} shown · ${total} matched · ${requestedSession}`;
+      elements.sessionAuditState.textContent = `${requestedSession} · loaded ${sessionAuditEntries.length} records`;
+      renderSessionAuditList();
+      if (sessionAuditSelectedId) void loadSessionAuditDetail(sessionAuditSelectedId);
+      return payload;
+    } catch (error) {
+      if (
+        generation !== sessionAuditGeneration ||
+        requestedMachine !== todoMachine ||
+        requestedSession !== todoSessionId
+      ) return null;
+      sessionAuditEntries = [];
+      sessionAuditSelectedId = "";
+      renderSessionAuditList();
+      elements.sessionAuditState.textContent = error instanceof Error ? error.message : String(error);
+      return null;
+    } finally {
+      if (generation === sessionAuditGeneration) {
+        sessionAuditLoading = false;
+        setTodoControls();
       }
     }
   }
@@ -3023,7 +3305,9 @@
         await refreshTodoContext();
       } catch (error) {
         if (error.authenticationRequired) throw error;
-        elements.todoState.textContent = error instanceof Error ? error.message : "Todo list unavailable";
+        elements.sessionState.textContent = error instanceof Error ? error.message : "Session list unavailable";
+        elements.todoState.textContent = "Session Todo unavailable";
+        elements.sessionAuditState.textContent = "Session Audit unavailable";
       }
       await refreshAuditContext();
     } catch (error) {
@@ -3186,50 +3470,60 @@
   elements.auditMachine.addEventListener("change", () => {
     if (auditLoading) return;
     resetAuditWorkspace(elements.auditMachine.value || "local");
-    void refreshAuditContext();
+    void refreshAudit();
   });
   elements.auditFilterForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    void refreshAuditContext();
+    void refreshAudit();
   });
-  for (const control of [elements.auditOperation, elements.auditSession, elements.auditSort, elements.auditLimit]) {
+  for (const control of [elements.auditOperation, elements.auditSort, elements.auditLimit]) {
     control.addEventListener("change", () => void refreshAudit());
   }
 
-  elements.todoMachine.addEventListener("change", () => {
-    if (todoMutationBusy) return;
-    const next = elements.todoMachine.value || "local";
-    if (todoDirty && !globalThis.confirm(`Discard unsaved changes on ${todoMachine}?`)) {
-      elements.todoMachine.value = todoMachine;
+  elements.sessionMachine.addEventListener("change", () => {
+    if (todoMutationBusy || sessionLoading || sessionTerminating) return;
+    const next = elements.sessionMachine.value || "local";
+    if (todoDirty && !globalThis.confirm(`Discard unsaved changes in ${todoSessionId}?`)) {
+      elements.sessionMachine.value = todoMachine;
       return;
     }
     resetTodoWorkspace(next);
     void refreshTodoContext();
   });
-  elements.todoSession.addEventListener("change", () => {
-    if (todoMutationBusy) return;
-    const next = elements.todoSession.value || "";
+  elements.sessionIncludeInactive.addEventListener("change", () => {
+    if (sessionLoading || sessionTerminating) return;
     if (todoDirty && !globalThis.confirm(`Discard unsaved changes in ${todoSessionId}?`)) {
-      elements.todoSession.value = todoSessionId;
+      elements.sessionIncludeInactive.checked = sessionIncludeInactive;
       return;
     }
-    todoSessionId = next;
-    todoItems = [];
-    todoRevision = 0;
+    sessionIncludeInactive = elements.sessionIncludeInactive.checked;
     todoDirty = false;
-    todoGeneration += 1;
-    renderTodos();
-    if (todoSessionId) void refreshTodos();
-    else elements.todoState.textContent = `No agent sessions on ${todoMachine}`;
+    void refreshTodoContext();
   });
+  elements.sessionRefresh.addEventListener("click", () => {
+    if (sessionLoading || sessionTerminating) return;
+    if (todoDirty && !globalThis.confirm(`Discard unsaved changes in ${todoSessionId}?`)) return;
+    todoDirty = false;
+    void refreshTodoContext();
+  });
+  elements.sessionTerminate.addEventListener("click", () => void terminateSelectedSession());
+
+  elements.sessionAuditFilterForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void refreshSessionAudit();
+  });
+  for (const control of [elements.sessionAuditOperation, elements.sessionAuditSort, elements.sessionAuditLimit]) {
+    control.addEventListener("change", () => void refreshSessionAudit());
+  }
+
   elements.todoFilter.addEventListener("change", renderTodos);
   elements.todoAdd.addEventListener("click", addTodo);
   elements.todoSave.addEventListener("click", () => void saveTodos());
   elements.todoRefresh.addEventListener("click", () => {
-    if (todoMutationBusy) return;
-    if (todoDirty && !globalThis.confirm(`Discard unsaved changes on ${todoMachine}?`)) return;
+    if (todoMutationBusy || !todoSessionId) return;
+    if (todoDirty && !globalThis.confirm(`Discard unsaved changes in ${todoSessionId}?`)) return;
     todoDirty = false;
-    void refreshTodoContext();
+    void refreshTodos({ force: true });
   });
 
   elements.fileMachine.addEventListener("change", () => {
@@ -3434,7 +3728,9 @@
     elements.terminalState.textContent = "Authentication required";
     elements.dashboardState.textContent = "Authentication required";
     elements.fileState.textContent = "Authentication required";
+    elements.sessionState.textContent = "Authentication required";
     elements.todoState.textContent = "Authentication required";
+    elements.sessionAuditState.textContent = "Authentication required";
     elements.auditState.textContent = "Authentication required";
     clearAccessToken();
     sessionStorage.removeItem(pendingStorageKey);

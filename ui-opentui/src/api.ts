@@ -208,8 +208,15 @@ export const api = {
     return normalizeMachinePayload(await request<MachinePayload>("/machines"))
   },
 
-  sessions(machine = "local", signal?: AbortSignal): Promise<AgentSessionPayload> {
-    return request(`/sessions${queryString({ machine })}`, { signal })
+  sessions(machine = "local", includeInactive = false, signal?: AbortSignal): Promise<AgentSessionPayload> {
+    return request(`/sessions${queryString({ machine, include_inactive: includeInactive || undefined })}`, { signal })
+  },
+
+  terminateSession(machine: string, sessionId: string): Promise<{ machine: string; session: AgentSessionPayload["sessions"][number] }> {
+    return request("/sessions/terminate", {
+      method: "POST",
+      body: JSON.stringify({ machine, session_id: sessionId }),
+    })
   },
 
   async files(machine: string, path: string, signal?: AbortSignal): Promise<FilesPayload> {
@@ -304,7 +311,16 @@ export const api = {
 
   audit(filters: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal): Promise<AuditPayload> {
     const { node, ...rest } = filters
-    return request(`/audit${queryString({ ...rest, machine: node || rest.machine })}`, { signal })
+    return request(`/audit${queryString({ ...rest, scope: "global", machine: node || rest.machine })}`, { signal })
+  },
+
+  sessionAudit(
+    machine: string,
+    sessionId: string,
+    filters: Record<string, string | number | boolean | null | undefined> = {},
+    signal?: AbortSignal,
+  ): Promise<AuditPayload> {
+    return request(`/audit${queryString({ ...filters, scope: "session", machine, session: sessionId })}`, { signal })
   },
 
   async auditDetail(
@@ -317,6 +333,33 @@ export const api = {
   ): Promise<AuditEntry> {
     const payload = await request<{ entry: AuditEntry }>(
       `/audit/detail${queryString({ machine, id, columns, rows, cell_aspect: cellAspect })}`,
+      { signal },
+    )
+    if (payload.entry.image_preview) {
+      payload.entry.image_preview = normalizePreview(payload.entry.image_preview)
+    }
+    return payload.entry
+  },
+
+  async sessionAuditDetail(
+    machine: string,
+    sessionId: string,
+    id: string,
+    columns?: number,
+    rows?: number,
+    cellAspect?: number,
+    signal?: AbortSignal,
+  ): Promise<AuditEntry> {
+    const payload = await request<{ entry: AuditEntry }>(
+      `/audit/detail${queryString({
+        machine,
+        scope: "session",
+        session: sessionId,
+        id,
+        columns,
+        rows,
+        cell_aspect: cellAspect,
+      })}`,
       { signal },
     )
     if (payload.entry.image_preview) {

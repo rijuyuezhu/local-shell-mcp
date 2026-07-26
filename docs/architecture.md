@@ -313,14 +313,14 @@ Rejected ownership alternatives:
 The `persistence` package owns the canonical directory layout below the configured
 state root and the small filesystem primitives shared by durable repositories. It
 does not own domain schemas, retention policy, migrations, or application-level
-state transitions. Session, Todo, jobs, OAuth, downloads, remote workers, and UI
-modules retain their own validation and lifecycle rules while resolving paths
-through this package.
+state transitions. Session metadata, snapshots, Todo, session-local Audit, jobs,
+OAuth, downloads, remote workers, and UI modules retain their own validation and
+lifecycle rules while resolving paths through this package.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
 | `persistence/__init__.py` | Exposes the shared state layout, storage protocol, filesystem implementation, and configured store accessor. | Consumers need one narrow import boundary without depending on implementation internals. |
-| `persistence/store.py` | Defines canonical state paths, validates path components and root containment, creates owner-private directories, performs bounded JSON reads and atomic private writes, removes state paths, enumerates session directories, and provides cross-process transactions. | These are storage mechanics shared across domains. Domain payload formats, compatibility policy, retention, and recovery decisions remain with their owners. |
+| `persistence/store.py` | Defines canonical state paths, including colocated session metadata, snapshots, Todo, and Audit files; validates path components and root containment; creates owner-private directories; performs bounded JSON reads and atomic private writes; removes state paths; enumerates session directories; and provides keyed thread/process transactions. | These are storage mechanics shared across domains. Domain payload formats, compatibility policy, retention, and recovery decisions remain with their owners. |
 
 Rejected ownership alternatives:
 
@@ -414,6 +414,12 @@ terminal renderer, vendored xterm bundle and stylesheet, and the corresponding
 license notice. Build and architecture gates reject symlinks, Python files,
 unexpected assets, and restoration of the former top-level `ui_static` path.
 
+The browser controller presents agent state through one Sessions control surface:
+machine and recent/all session selection precede session details, Todo, and the
+session-local Audit view. The separate Global Audit panel deliberately retains
+machine-wide lifecycle, control-plane, and other events that are not owned by one
+session. The browser never exposes worker-internal session identifiers.
+
 Rejected ownership alternatives:
 
 - top-level `ui_static`: the name exposed package mechanics without expressing
@@ -437,16 +443,16 @@ not depend on either protocol executor. The REST executor consumes only
 | `ui/http/__init__.py` | Declares the browser/native Human UI HTTP and WebSocket adapter boundary. | It separates delivery-specific code from transport-neutral UI view models, security, and native runtime behavior. |
 | `ui/http/routes.py` | Serves the packaged browser shell and traversal-safe static assets, builds bootstrap and machine inventory responses, and composes the complete/public Human UI route sets. | This is the single route contribution consumed by the REST executor; it owns UI delivery composition rather than executor assembly. |
 | `ui/http/common.py` | Provides shared JSON error envelopes, bounded text/integer validation, stable file-entry sorting, and remote-machine lookup for UI adapters. | These helpers encode Human UI HTTP response and input conventions used by several routes, not project-wide utility behavior. |
-| `ui/http/audit.py` | Parses audit query/detail parameters and scopes, dispatches local or remote audit reads, normalizes bounded summaries/details, and projects payload or image metadata into UI responses. | Audit storage remains in `audit`; this module owns only its Human UI HTTP representation. |
+| `ui/http/audit.py` | Parses global versus session-local audit query/detail scopes, maps public remote sessions to worker bindings, dispatches local or remote reads, normalizes bounded summaries/details, and projects payload or image metadata into UI responses. | Dual audit persistence remains in `audit`; this module owns only its authenticated Human UI HTTP representation. |
 | `ui/http/dashboard.py` | Authorizes and dispatches local/remote Dashboard snapshots and normalizes system, version, alert, activity, and health values into stable JSON. | The transport-neutral Dashboard projection lives in `ui/dashboard.py`; this file owns request and response adaptation. |
 | `ui/http/files.py` | Implements local workspace list, preview, content, write, mkdir, delete, copy, move, and rename HTTP actions while delegating remote requests to the remote-file adapter. | Filesystem operations and remote RPC stay in their domains; this module owns Human UI file semantics, scope checks, and response envelopes. |
 | `ui/http/image_preview.py` | Validates preview dimensions and converts core RGBA preview results into JSON-safe terminal-image fields. | Core decoding belongs in `ui/image_preview.py`; query/body normalization and response fields are HTTP adapter concerns. |
 | `ui/http/opentui.py` | Wraps Unix and Windows OpenTUI child processes and bridges one authenticated native-console WebSocket with bounded idle and cleanup behavior. | Native executable discovery remains in `ui/runtime.py`; this module owns WebSocket/process delivery for an HTTP-hosted UI session. |
 | `ui/http/remote_files.py` | Normalizes remote UI paths, caches bounded worker sessions, dispatches workspace RPCs, reads/decodes chunks, and implements remote preview/content/mutation payloads. | It is the Human UI adapter over remote-worker workspace tools, not the worker control plane or generic remote manager. |
 | `ui/http/remotes.py` | Presents worker inventory and validates invite, rename, and revoke HTTP actions with scope and mutation-policy checks. | Remote lifecycle remains in `remote`; this file owns the Human UI administration representation. |
-| `ui/http/sessions.py` | Lists durable public agent/workspace sessions for one local or remote machine while hiding worker-internal session bindings. | Session lifecycle and persistence remain in `tool_session`; this adapter owns authenticated Human UI inventory and machine-scoped projection. |
+| `ui/http/sessions.py` | Lists durable public agent/workspace sessions for one local or remote machine, defaults inventory to sessions active in the prior five hours, exposes an explicit all-sessions toggle, and persists the irreversible immediate-termination control action while hiding worker-internal bindings. | Session lifecycle, activity timestamps, and termination policy remain in `tool_session`; this adapter owns authenticated Human UI inventory, machine-scoped projection, and control-plane authorization. |
 | `ui/http/terminals.py` | Adapts local/remote persistent-shell list/start/send/read/resize/kill operations and raw terminal bridges to REST and WebSocket protocols with bounded validation and cleanup. | Terminal backends and bridge capabilities remain in `terminal`; this large module owns their Human UI delivery contract and is a later split candidate. |
-| `ui/http/todos.py` | Maps authenticated local or remote UI sessions to revisioned todo reads/writes and stable JSON responses. | Todo state belongs to tool sessions; this module owns its Human UI HTTP semantics and remote dispatch. |
+| `ui/http/todos.py` | Maps the centrally selected authenticated local or remote UI session to revisioned Todo reads/writes and stable JSON responses. | Todo state belongs inside tool-session storage; this module owns its Human UI HTTP semantics and remote dispatch, not an independent global Todo surface. |
 
 Rejected ownership alternatives:
 
@@ -489,14 +495,18 @@ Rejected ownership alternatives:
 ## `audit`: redacted event persistence and query
 
 The `audit` package owns the transport-neutral lifecycle of bounded, redacted
-audit events. It may consume configuration, private-file primitives, redaction,
+audit events. Every session-owned event is appended to both the global log and
+that session's colocated log; events without a session remain global-only. The
+global log remains authoritative for payload-object retention, while local logs
+provide direct per-session reads without re-scanning unrelated records. Audit may
+consume configuration, persistence primitives, tool-session identity, redaction,
 and the current payload store, but it must not depend on protocol executors, HTTP
 route adapters, Human UI presentation, or terminal implementations.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
 | `audit/__init__.py` | Preserves the stable `local_shell_mcp.audit` import contract, explicitly exports supported operations, and forwards legacy read-only diagnostic attributes to the implementation. | Callers should depend on one audit-domain facade rather than the physical location of a large implementation module. |
-| `audit/core.py` | Sanitizes arbitrary values, redacts credentials and download capabilities, bounds and encodes events, coordinates private JSONL transactions, enforces rotation and retention, externalizes payloads, coalesces tool-call records, and serves bounded query and detail views. | These responsibilities form one transport-neutral audit-event lifecycle shared by MCP, REST, Human UI, jobs, workers, OAuth, downloads, and shell operations. |
+| `audit/core.py` | Sanitizes arbitrary values, redacts credentials and download capabilities, binds public session identities to tool-call context, bounds and encodes events, appends global and session-local JSONL records, enforces rotation and global payload retention, externalizes payloads, coalesces tool-call records, and serves bounded global or per-session query/detail views. | These responsibilities form one transport-neutral audit-event lifecycle shared by MCP, REST, Human UI, jobs, workers, OAuth, downloads, and shell operations. |
 | `audit/payloads.py` | Canonically encodes sanitized values, stores oversized content as private content-addressed gzip objects, validates no-follow regular files, resolves bounded references, and prunes expired or unreferenced payloads. | Payload objects are an internal persistence extension of audit events. Their digest, retention, integrity, and disclosure rules belong beside the event store rather than at package root or in generic file utilities. |
 
 Rejected ownership alternatives:

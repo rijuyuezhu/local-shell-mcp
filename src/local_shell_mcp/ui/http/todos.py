@@ -198,7 +198,11 @@ def _payload(
 
 async def _read(session: AgentSession) -> ReadTodosOutput:
     if session.target == "local":
-        return await asyncio.to_thread(read_todos_execute, session.session_id)
+        return await asyncio.to_thread(
+            read_todos_execute,
+            session.session_id,
+            touch_session=False,
+        )
     try:
         data = await call_remote_session_tool(session, "read_todos", {})
         return ReadTodosOutput.model_validate(data)
@@ -219,6 +223,7 @@ async def _write(
             todos,
             session.session_id,
             expected_revision,
+            touch_session=False,
         )
     try:
         data = await call_remote_session_tool(

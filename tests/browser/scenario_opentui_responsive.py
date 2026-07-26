@@ -54,7 +54,7 @@ def run_opentui_responsive(harness: BrowserHarness) -> None:
         "#remotes-panel",
         "#terminal-panel",
         "#file-panel",
-        "#todo-panel",
+        "#session-panel",
         "#audit-panel",
         "#opentui-panel",
     ):
