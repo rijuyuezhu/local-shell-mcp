@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Generate the Bun-side mirror of the canonical Python TUI name contract."""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

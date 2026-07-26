@@ -1,7 +1,5 @@
 """Cross-platform helpers for private state files and lock files."""
 
-from __future__ import annotations
-
 import contextlib
 import errno
 import os

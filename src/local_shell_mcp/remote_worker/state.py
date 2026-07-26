@@ -1,7 +1,5 @@
 """Dependency-leaf filesystem paths for the source-only worker runtime."""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

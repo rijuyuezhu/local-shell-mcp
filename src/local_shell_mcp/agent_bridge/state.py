@@ -1,7 +1,5 @@
 """Manifest loading and configuration fingerprinting for the agent bridge."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import os

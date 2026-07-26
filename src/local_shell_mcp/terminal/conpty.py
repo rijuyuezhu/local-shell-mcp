@@ -1,7 +1,5 @@
 """Windows ConPTY-backed persistent shells and raw terminal attachments."""
 
-from __future__ import annotations
-
 import asyncio
 import codecs
 import contextlib

@@ -7,7 +7,7 @@ from typing import Any
 
 from .scopes import scope_set
 
-OAuthClaims = Mapping[str, Any]
+type OAuthClaims = Mapping[str, Any]
 
 _CURRENT_OAUTH_CLAIMS: ContextVar[OAuthClaims | None] = ContextVar(
     "local_shell_mcp_oauth_claims", default=None

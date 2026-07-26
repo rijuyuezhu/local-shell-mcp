@@ -1,7 +1,5 @@
 """Agent Bridge operations shared by tools and source-only workers."""
 
-from __future__ import annotations
-
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING

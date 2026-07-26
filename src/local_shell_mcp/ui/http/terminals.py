@@ -1,7 +1,5 @@
 """Authenticated machine-aware Human UI terminal APIs and tmux bridge."""
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import contextlib
@@ -903,74 +901,78 @@ async def api_terminal_action(request: Request) -> Response:
             raise ValueError("Request body must be a JSON object")
         machine = _machine_arg(body.get("machine"))
         _require_terminal_scopes(machine, execute=True)
-        if action == "start":
-            name = (
-                _bounded_text(
-                    body.get("name"),
-                    field="name",
-                    max_bytes=64,
+        match action:
+            case "start":
+                name = (
+                    _bounded_text(
+                        body.get("name"),
+                        field="name",
+                        max_bytes=64,
+                    )
+                    if body.get("name") is not None
+                    else None
                 )
-                if body.get("name") is not None
-                else None
-            )
-            command = (
-                _bounded_text(
-                    body.get("command"),
-                    field="command",
-                    max_bytes=UI_TERMINAL_METADATA_MAX_BYTES,
+                command = (
+                    _bounded_text(
+                        body.get("command"),
+                        field="command",
+                        max_bytes=UI_TERMINAL_METADATA_MAX_BYTES,
+                    )
+                    if body.get("command") is not None
+                    else None
                 )
-                if body.get("command") is not None
-                else None
-            )
-            result = await _start_shell(
-                machine,
-                cwd=_bounded_text(
-                    body.get("cwd"),
-                    field="cwd",
-                    max_bytes=UI_TERMINAL_METADATA_MAX_BYTES,
-                    default=".",
-                    allow_empty=False,
-                ),
-                name=name or None,
-                command=command or None,
-            )
-        elif action == "send":
-            shell_id = _shell_id(body.get("shell_id"))
-            input_text = str(body.get("input_text") or "")
-            if len(input_text.encode("utf-8")) > UI_TERMINAL_INPUT_MAX_BYTES:
-                raise ValueError(
-                    f"input_text exceeds {UI_TERMINAL_INPUT_MAX_BYTES} encoded bytes"
+                result = await _start_shell(
+                    machine,
+                    cwd=_bounded_text(
+                        body.get("cwd"),
+                        field="cwd",
+                        max_bytes=UI_TERMINAL_METADATA_MAX_BYTES,
+                        default=".",
+                        allow_empty=False,
+                    ),
+                    name=name or None,
+                    command=command or None,
                 )
-            result = await _send_shell(
-                machine,
-                shell_id,
-                input_text,
-                bool(body.get("enter", True)),
-            )
-        elif action == "resize":
-            shell_id = _shell_id(body.get("shell_id"))
-            cols = _bounded_int(
-                body.get("cols"),
-                default=120,
-                minimum=PERSISTENT_SHELL_MIN_COLUMNS,
-                maximum=PERSISTENT_SHELL_MAX_COLUMNS,
-                label="cols",
-            )
-            rows = _bounded_int(
-                body.get("rows"),
-                default=36,
-                minimum=PERSISTENT_SHELL_MIN_ROWS,
-                maximum=PERSISTENT_SHELL_MAX_ROWS,
-                label="rows",
-            )
-            result = await _resize_shell(machine, shell_id, cols, rows)
-        elif action == "kill":
-            result = await _kill_shell(
-                machine,
-                _shell_id(body.get("shell_id")),
-            )
-        else:
-            raise ValueError(f"Unsupported terminal action: {action}")
+            case "send":
+                shell_id = _shell_id(body.get("shell_id"))
+                input_text = str(body.get("input_text") or "")
+                if (
+                    len(input_text.encode("utf-8"))
+                    > UI_TERMINAL_INPUT_MAX_BYTES
+                ):
+                    raise ValueError(
+                        f"input_text exceeds {UI_TERMINAL_INPUT_MAX_BYTES} encoded bytes"
+                    )
+                result = await _send_shell(
+                    machine,
+                    shell_id,
+                    input_text,
+                    bool(body.get("enter", True)),
+                )
+            case "resize":
+                shell_id = _shell_id(body.get("shell_id"))
+                cols = _bounded_int(
+                    body.get("cols"),
+                    default=120,
+                    minimum=PERSISTENT_SHELL_MIN_COLUMNS,
+                    maximum=PERSISTENT_SHELL_MAX_COLUMNS,
+                    label="cols",
+                )
+                rows = _bounded_int(
+                    body.get("rows"),
+                    default=36,
+                    minimum=PERSISTENT_SHELL_MIN_ROWS,
+                    maximum=PERSISTENT_SHELL_MAX_ROWS,
+                    label="rows",
+                )
+                result = await _resize_shell(machine, shell_id, cols, rows)
+            case "kill":
+                result = await _kill_shell(
+                    machine,
+                    _shell_id(body.get("shell_id")),
+                )
+            case _:
+                raise ValueError(f"Unsupported terminal action: {action}")
         return _json_ok(result)
     except HTTPException:
         raise
@@ -1278,82 +1280,87 @@ async def ui_terminal_websocket(websocket: WebSocket) -> None:
                     return
 
                 kind = control.get("type")
-                if kind == "input":
-                    input_text = str(control.get("data") or "")
-                    raw_input = input_text.encode("utf-8")
-                    enter = bool(control.get("enter", False))
-                    if active_mode == "pty" and enter:
-                        raw_input += b"\r"
-                    if len(raw_input) > UI_TERMINAL_INPUT_MAX_BYTES:
+                match kind:
+                    case "input":
+                        input_text = str(control.get("data") or "")
+                        raw_input = input_text.encode("utf-8")
+                        enter = bool(control.get("enter", False))
+                        if active_mode == "pty" and enter:
+                            raw_input += b"\r"
+                        if len(raw_input) > UI_TERMINAL_INPUT_MAX_BYTES:
+                            await websocket.close(
+                                code=4400,
+                                reason="Terminal input is too large",
+                            )
+                            return
+                        if active_mode == "pty":
+                            if bridge is None:
+                                raise RuntimeError(
+                                    "Raw terminal bridge was not initialized"
+                                )
+                            await _write_bridge(bridge, raw_input)
+                        else:
+                            await _send_shell(
+                                machine,
+                                shell_id,
+                                input_text,
+                                enter,
+                            )
+                    case "resize":
+                        try:
+                            current_cols = _bounded_int(
+                                control.get("cols"),
+                                default=current_cols,
+                                minimum=PERSISTENT_SHELL_MIN_COLUMNS,
+                                maximum=PERSISTENT_SHELL_MAX_COLUMNS,
+                                label="cols",
+                            )
+                            current_rows = _bounded_int(
+                                control.get("rows"),
+                                default=current_rows,
+                                minimum=PERSISTENT_SHELL_MIN_ROWS,
+                                maximum=PERSISTENT_SHELL_MAX_ROWS,
+                                label="rows",
+                            )
+                        except ValueError as exc:
+                            await websocket.close(
+                                code=4400, reason=str(exc)[:120]
+                            )
+                            return
+                        if active_mode == "pty":
+                            if bridge is None:
+                                raise RuntimeError(
+                                    "Raw terminal bridge was not initialized"
+                                )
+                            await _resize_bridge(
+                                bridge,
+                                current_cols,
+                                current_rows,
+                            )
+                        else:
+                            await _resize_shell(
+                                machine,
+                                shell_id,
+                                current_cols,
+                                current_rows,
+                            )
+                    case "ping":
+                        payload: dict[str, Any] = {
+                            "type": "pong",
+                            "machine": machine,
+                            "shell_id": shell_id,
+                        }
+                        if announce_mode:
+                            payload["mode"] = active_mode
+                        await send_json(payload)
+                    case "close":
+                        return
+                    case _:
                         await websocket.close(
-                            code=4400, reason="Terminal input is too large"
+                            code=4400,
+                            reason="Unsupported terminal control",
                         )
                         return
-                    if active_mode == "pty":
-                        if bridge is None:
-                            raise RuntimeError(
-                                "Raw terminal bridge was not initialized"
-                            )
-                        await _write_bridge(bridge, raw_input)
-                    else:
-                        await _send_shell(
-                            machine,
-                            shell_id,
-                            input_text,
-                            enter,
-                        )
-                elif kind == "resize":
-                    try:
-                        current_cols = _bounded_int(
-                            control.get("cols"),
-                            default=current_cols,
-                            minimum=PERSISTENT_SHELL_MIN_COLUMNS,
-                            maximum=PERSISTENT_SHELL_MAX_COLUMNS,
-                            label="cols",
-                        )
-                        current_rows = _bounded_int(
-                            control.get("rows"),
-                            default=current_rows,
-                            minimum=PERSISTENT_SHELL_MIN_ROWS,
-                            maximum=PERSISTENT_SHELL_MAX_ROWS,
-                            label="rows",
-                        )
-                    except ValueError as exc:
-                        await websocket.close(code=4400, reason=str(exc)[:120])
-                        return
-                    if active_mode == "pty":
-                        if bridge is None:
-                            raise RuntimeError(
-                                "Raw terminal bridge was not initialized"
-                            )
-                        await _resize_bridge(
-                            bridge,
-                            current_cols,
-                            current_rows,
-                        )
-                    else:
-                        await _resize_shell(
-                            machine,
-                            shell_id,
-                            current_cols,
-                            current_rows,
-                        )
-                elif kind == "ping":
-                    payload: dict[str, Any] = {
-                        "type": "pong",
-                        "machine": machine,
-                        "shell_id": shell_id,
-                    }
-                    if announce_mode:
-                        payload["mode"] = active_mode
-                    await send_json(payload)
-                elif kind == "close":
-                    return
-                else:
-                    await websocket.close(
-                        code=4400, reason="Unsupported terminal control"
-                    )
-                    return
         except (
             ConnectionError,
             RuntimeError,

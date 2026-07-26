@@ -1,7 +1,5 @@
 """Authenticated Human UI control-plane APIs for remote workers."""
 
-from __future__ import annotations
-
 import math
 from typing import Any
 

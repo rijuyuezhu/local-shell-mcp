@@ -4,8 +4,6 @@ This module bypasses tools.local_handlers/discovery so the worker does not impor
 the full MCP/FastAPI control-plane registry.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
@@ -18,7 +16,7 @@ from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_NAMES,
 )
 
-WorkerHandler = Callable[[dict[str, Any]], Awaitable[Any]]
+type WorkerHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
 
 async def _session_start(args: dict[str, Any]) -> Any:

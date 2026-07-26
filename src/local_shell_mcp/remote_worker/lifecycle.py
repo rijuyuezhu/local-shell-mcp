@@ -1,7 +1,5 @@
 """Cross-platform remote-worker process locking and managed handoff helpers."""
 
-from __future__ import annotations
-
 import contextlib
 import errno
 import os

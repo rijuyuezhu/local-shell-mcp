@@ -1,7 +1,5 @@
 """Shared argparse contracts for configuration-backed CLI commands."""
 
-from __future__ import annotations
-
 import argparse
 
 from .settings import Settings, configure_settings, load_settings

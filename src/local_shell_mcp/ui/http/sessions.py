@@ -1,7 +1,5 @@
 """Authenticated Human UI inventory for durable agent/workspace sessions."""
 
-from __future__ import annotations
-
 import asyncio
 import time
 from dataclasses import asdict

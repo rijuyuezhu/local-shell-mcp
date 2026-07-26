@@ -1,7 +1,5 @@
 """Stable public facade for audit logging and query operations."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from . import core as _core

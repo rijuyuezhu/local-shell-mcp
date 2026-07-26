@@ -1,7 +1,5 @@
 """Shared durable tracked-job runtime, persistence, and runner helpers."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import json
@@ -67,8 +65,8 @@ _JOB_STORE_THREAD_LOCK = threading.RLock()
 _MANAGED_DEFERRED_SEQUENCE_LOCK = threading.Lock()
 _MANAGED_DEFERRED_NEXT_SEQUENCE: int | None = None
 _ACTIVE_JOB_OPERATIONS: set[str] = set()
-ManagedJobHandler = Callable[
-    ["ManagedJobContext", dict[str, Any]], Awaitable[dict[str, Any] | None]
+type ManagedJobHandler = Callable[
+    [ManagedJobContext, dict[str, Any]], Awaitable[dict[str, Any] | None]
 ]
 _MANAGED_JOB_HANDLERS: dict[str, ManagedJobHandler] = {}
 _MANAGED_JOB_TASKS: dict[str, asyncio.Task[None]] = {}
@@ -388,42 +386,46 @@ def _apply_managed_update(
     job: dict[str, Any], operation: str, payload: dict[str, Any]
 ) -> None:
     """Apply one already validated managed-state update to a mutable job row."""
-    if operation == "append_log":
-        job["output_bytes"] = int(job.get("output_bytes") or 0) + max(
-            0, int(payload.get("bytes") or 0)
-        )
-        job["log_truncated"] = bool(job.get("log_truncated")) or bool(
-            payload.get("truncated")
-        )
-        job["updated_at"] = float(payload.get("updated_at") or _utc())
-        return
-    if operation == "update_progress":
-        if str(job.get("status") or "") in ACTIVE_STATUSES:
-            job["progress"] = _managed_json_dict(
-                payload.get("progress"), label="progress"
+    match operation:
+        case "append_log":
+            job["output_bytes"] = int(job.get("output_bytes") or 0) + max(
+                0, int(payload.get("bytes") or 0)
+            )
+            job["log_truncated"] = bool(job.get("log_truncated")) or bool(
+                payload.get("truncated")
             )
             job["updated_at"] = float(payload.get("updated_at") or _utc())
-        return
-    if operation == "finish":
-        if str(job.get("status") or "") not in ACTIVE_STATUSES:
             return
-        completed = float(payload.get("completed_at") or _utc())
-        job.update(
-            {
-                "status": str(payload.get("status") or "failed"),
-                "updated_at": completed,
-                "completed_at": completed,
-                "exit_code": payload.get("exit_code"),
-                "error": payload.get("error"),
-            }
-        )
-        if bool(payload.get("has_result")):
-            job["result"] = _managed_json_dict(
-                payload.get("result"), label="result"
+        case "update_progress":
+            if str(job.get("status") or "") in ACTIVE_STATUSES:
+                job["progress"] = _managed_json_dict(
+                    payload.get("progress"), label="progress"
+                )
+                job["updated_at"] = float(payload.get("updated_at") or _utc())
+            return
+        case "finish":
+            if str(job.get("status") or "") not in ACTIVE_STATUSES:
+                return
+            completed = float(payload.get("completed_at") or _utc())
+            job.update(
+                {
+                    "status": str(payload.get("status") or "failed"),
+                    "updated_at": completed,
+                    "completed_at": completed,
+                    "exit_code": payload.get("exit_code"),
+                    "error": payload.get("error"),
+                }
             )
-        _clear_job_operation(job)
-        return
-    raise ValueError(f"unsupported managed update operation: {operation}")
+            if bool(payload.get("has_result")):
+                job["result"] = _managed_json_dict(
+                    payload.get("result"), label="result"
+                )
+            _clear_job_operation(job)
+            return
+        case _:
+            raise ValueError(
+                f"unsupported managed update operation: {operation}"
+            )
 
 
 def _reconcile_managed_deferred_updates(store: dict[str, Any]) -> list[Path]:

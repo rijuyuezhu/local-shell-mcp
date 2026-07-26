@@ -1,7 +1,5 @@
 """Command-line registration for the selectable server executors."""
 
-from __future__ import annotations
-
 import argparse
 from typing import Any
 

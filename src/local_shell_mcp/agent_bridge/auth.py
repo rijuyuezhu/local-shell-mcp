@@ -1,7 +1,5 @@
 """Agent Bridge secret resolution and MCP SDK OAuth integration."""
 
-from __future__ import annotations
-
 import time
 from collections.abc import Callable, Mapping
 from typing import Any, cast
@@ -13,7 +11,7 @@ from mcp.shared.auth import OAuthClientMetadata
 from .auth_store import AgentAuthStore, AgentOAuthTokenStorage
 from .models import AgentConfigValue, AgentMcpServerConfig, AgentSecretReference
 
-OAuthProviderFactory = Callable[[str, AgentMcpServerConfig], httpx.Auth]
+type OAuthProviderFactory = Callable[[str, AgentMcpServerConfig], httpx.Auth]
 
 
 def literal_config_mapping(

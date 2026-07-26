@@ -1,7 +1,5 @@
 """Command-line credential and OAuth administration for Agent Bridge MCP servers."""
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import json
@@ -364,29 +362,37 @@ def run_mcp_cli_from_args(args: argparse.Namespace) -> None:
         settings = _settings_from_args(args)
         store = AgentAuthStore(settings.agent_auth_dir)
         if args.mcp_command == "secret":
-            if args.secret_command == "set":
-                _configured_server(settings, args.server)
-                store.set_secret(args.server, args.name, _read_secret_stdin())
-                _print_json(
-                    {"server": args.server, "name": args.name, "stored": True}
-                )
-                return
-            if args.secret_command == "list":
-                _print_json({"secrets": store.list_secrets(args.server)})
-                return
-            if args.secret_command == "delete":
-                deleted = store.delete_secret(args.server, args.name)
-                _print_json(
-                    {
-                        "server": args.server,
-                        "name": args.name,
-                        "deleted": deleted,
-                    }
-                )
-                return
-            raise ValueError(
-                f"unsupported secret command: {args.secret_command}"
-            )
+            match args.secret_command:
+                case "set":
+                    _configured_server(settings, args.server)
+                    store.set_secret(
+                        args.server, args.name, _read_secret_stdin()
+                    )
+                    _print_json(
+                        {
+                            "server": args.server,
+                            "name": args.name,
+                            "stored": True,
+                        }
+                    )
+                    return
+                case "list":
+                    _print_json({"secrets": store.list_secrets(args.server)})
+                    return
+                case "delete":
+                    deleted = store.delete_secret(args.server, args.name)
+                    _print_json(
+                        {
+                            "server": args.server,
+                            "name": args.name,
+                            "deleted": deleted,
+                        }
+                    )
+                    return
+                case _:
+                    raise ValueError(
+                        f"unsupported secret command: {args.secret_command}"
+                    )
 
         server = _configured_server(settings, args.server)
         if server.auth.mode != "oauth":

@@ -1,7 +1,5 @@
 """Private argparse registration for durable tracked-job runner attempts."""
 
-from __future__ import annotations
-
 import argparse
 from typing import Any
 

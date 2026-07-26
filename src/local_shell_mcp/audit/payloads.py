@@ -1,7 +1,5 @@
 """Private content-addressed storage for sanitized audit payload values."""
 
-from __future__ import annotations
-
 import contextlib
 import gzip
 import hashlib

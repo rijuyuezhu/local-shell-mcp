@@ -1,7 +1,5 @@
 """Session-bound unified-diff and apply_patch envelope operations."""
 
-from __future__ import annotations
-
 import asyncio
 import shlex
 import subprocess

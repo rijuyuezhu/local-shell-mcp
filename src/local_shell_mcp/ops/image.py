@@ -1,7 +1,5 @@
 """Session-bound native image loading for local and remote workspaces."""
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import binascii

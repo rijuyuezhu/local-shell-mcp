@@ -1,7 +1,5 @@
 """Capacity limits for stateful Streamable HTTP MCP sessions."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

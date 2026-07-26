@@ -1,7 +1,5 @@
 """Authenticated Human UI APIs for session-scoped local and remote Todos."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

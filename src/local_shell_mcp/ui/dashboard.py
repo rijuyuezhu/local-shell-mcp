@@ -1,7 +1,5 @@
 """Safe Human UI Dashboard projections over telemetry and audit metadata."""
 
-from __future__ import annotations
-
 import math
 import time
 from typing import Any

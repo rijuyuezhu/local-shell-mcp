@@ -8,8 +8,6 @@ thin adapter/schema modules use a lower threshold so relocation and wiring work
 do not encourage low-value tests.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import sys

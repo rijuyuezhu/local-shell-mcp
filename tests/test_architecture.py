@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 import ast
 from collections import defaultdict
 from pathlib import Path
 
-_PACKAGE_ROOT = Path(__file__).parents[1] / "src" / "local_shell_mcp"
+_PROJECT_ROOT = Path(__file__).parents[1]
+_PACKAGE_ROOT = _PROJECT_ROOT / "src" / "local_shell_mcp"
 _PACKAGE_NAME = "local_shell_mcp"
 _ARCHITECTURE_DOC = Path(__file__).parents[1] / "docs" / "architecture.md"
 
@@ -59,6 +58,19 @@ _ALLOWED_DEPENDENCY_CYCLES = frozenset(
         ),
     }
 )
+
+
+def test_python_314_sources_do_not_enable_future_annotations() -> None:
+    """Keep deferred annotations on Python 3.14's native semantics."""
+    legacy_import = "from __future__ import " + "annotations"
+    offenders = sorted(
+        str(path.relative_to(_PROJECT_ROOT))
+        for root_name in ("src", "tests", "scripts")
+        for path in (_PROJECT_ROOT / root_name).rglob("*.py")
+        if legacy_import in path.read_text(encoding="utf-8")
+    )
+
+    assert offenders == []
 
 
 def _module_name(path: Path) -> str:

@@ -1,7 +1,5 @@
 """Compose and dispatch the local-shell-mcp command-line interface."""
 
-from __future__ import annotations
-
 import argparse
 
 from .agent_bridge.cli import register_mcp_cli

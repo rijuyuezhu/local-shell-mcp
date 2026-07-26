@@ -1,7 +1,5 @@
 """Bounded RGBA thumbnails for terminal-native image previews."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from io import BytesIO
 

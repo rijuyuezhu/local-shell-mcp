@@ -1,7 +1,5 @@
 """Session-bound local and remote audit query operations."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

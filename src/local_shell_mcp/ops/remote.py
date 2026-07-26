@@ -49,23 +49,25 @@ async def remote_admin_execute(
     action: str, args: dict[str, Any]
 ) -> RemoteAdminOutput:
     """Run one remote control-plane action."""
-    if action == "invite":
-        result = await create_remote_invite(
-            args.get("name"), args.get("workdir"), args.get("ttl_s")
-        )
-    elif action == "list":
-        result = list_remote_machines()
-    elif action == "revoke":
-        result = revoke_remote_machine(_required_str(args, "machine"))
-    elif action == "rename":
-        result = rename_remote_machine(
-            _required_str(args, "machine"), _required_str(args, "new_name")
-        )
-    else:
-        raise ValueError(
-            "Unsupported remote admin action "
-            f"{action!r}; supported: invite, list, revoke, rename"
-        )
+    match action:
+        case "invite":
+            result = await create_remote_invite(
+                args.get("name"), args.get("workdir"), args.get("ttl_s")
+            )
+        case "list":
+            result = list_remote_machines()
+        case "revoke":
+            result = revoke_remote_machine(_required_str(args, "machine"))
+        case "rename":
+            result = rename_remote_machine(
+                _required_str(args, "machine"),
+                _required_str(args, "new_name"),
+            )
+        case _:
+            raise ValueError(
+                "Unsupported remote admin action "
+                f"{action!r}; supported: invite, list, revoke, rename"
+            )
     return RemoteAdminOutput(action=action, data=_json_dict(result))
 
 

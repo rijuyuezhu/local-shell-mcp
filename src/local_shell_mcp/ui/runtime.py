@@ -1,7 +1,5 @@
 """Resolve, materialize, and launch the optional OpenTUI client."""
 
-from __future__ import annotations
-
 import contextlib
 import gzip
 import os

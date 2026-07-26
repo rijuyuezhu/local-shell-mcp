@@ -1,7 +1,5 @@
 """Source-only worker client for private resumable HTTP transfers."""
 
-from __future__ import annotations
-
 import hashlib
 import http.client
 import json

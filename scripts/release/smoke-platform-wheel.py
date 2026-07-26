@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Smoke-test an installed platform wheel without Bun or an OpenTUI sidecar."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import os

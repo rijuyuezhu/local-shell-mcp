@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Verify generated-reference widgets resolve to files in a built MkDocs site."""
 
-from __future__ import annotations
-
 import argparse
 from html.parser import HTMLParser
 from pathlib import Path

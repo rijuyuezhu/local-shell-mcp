@@ -1,7 +1,5 @@
 """Shared ASGI request-body limits for REST, MCP, OAuth, and remote routes."""
 
-from __future__ import annotations
-
 import contextlib
 import re
 from dataclasses import dataclass

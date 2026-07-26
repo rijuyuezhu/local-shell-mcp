@@ -31,12 +31,14 @@ from .contracts import (
 )
 from .metadata import oauth_security_meta
 
-McpSecurityProfile = Literal["oauth", "connector_compatible"]
-ToolAnnotation = Literal["read_only"]
-ToolDescription = str | Callable[[McpToolContext], str]
-ToolEnabled = Callable[[Settings], bool]
-ToolFunc = Callable[..., Awaitable[Any]]
-McpErrorHandler = Callable[[Exception, tuple[Any, ...], dict[str, Any]], Any]
+type McpSecurityProfile = Literal["oauth", "connector_compatible"]
+type ToolAnnotation = Literal["read_only"]
+type ToolDescription = str | Callable[[McpToolContext], str]
+type ToolEnabled = Callable[[Settings], bool]
+type ToolFunc = Callable[..., Awaitable[Any]]
+type McpErrorHandler = Callable[
+    [Exception, tuple[Any, ...], dict[str, Any]], Any
+]
 _MCP_HANDLER_ERROR_HANDLER_ATTR = "__local_shell_mcp_error_handler__"
 
 
