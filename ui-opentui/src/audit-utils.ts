@@ -127,12 +127,12 @@ export function auditAggregationLabel(entry: AuditEntry): string {
   const sourceEvents = Array.isArray(entry.source_events)
     ? entry.source_events.filter((value): value is string => typeof value === "string" && value.length > 0)
     : []
+  if (entry.paired === false) return "Unpaired call event"
   if (entry.paired === true || sourceEvents.length > 1 || entry.event === "tool_call") {
     return sourceEvents.length
       ? `Coalesced call · ${sourceEvents.join(" + ")}`
       : "Coalesced call"
   }
-  if (entry.paired === false) return "Unpaired call event"
   return "Audit event"
 }
 
