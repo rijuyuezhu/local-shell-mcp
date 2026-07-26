@@ -1,9 +1,12 @@
+import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, formatError } from "./api"
-import { auditInput, auditOutput, formatAuditValue } from "./audit-utils"
+import { auditAggregationLabel, auditInput, auditOutput, formatAuditValue } from "./audit-utils"
 import { EmptyState, KeyHint, Loading, Modal, Panel, useVisibleRows } from "./components"
+import { truncate } from "./dashboard-utils"
 import { handleSelectionScroll } from "./mouse"
+import { cyclePane, scrollPaneForKey } from "./pane-navigation"
 import {
   clampIndex,
   nextValue,
@@ -19,6 +22,9 @@ import type { AgentSession, AuditEntry, Machine, TodoItem, TodoPayload } from ".
 const colors = screenTheme.Sessions
 const VIEWS = ["Overview", "Todos", "Audit"] as const
 type SessionView = (typeof VIEWS)[number]
+type SessionPane = "sessions" | "content" | "audit-list" | "audit-request" | "audit-result"
+const SESSION_CONTENT_PANES = ["sessions", "content"] as const satisfies readonly SessionPane[]
+const SESSION_AUDIT_PANES = ["sessions", "audit-list", "audit-request", "audit-result"] as const satisfies readonly SessionPane[]
 
 type SessionDialog =
   | { type: "none" }
@@ -94,8 +100,10 @@ export function SessionsScreen({
 }) {
   const [sessions, setSessions] = useState<AgentSession[]>([])
   const [sessionId, setSessionId] = useState("")
+  const sessionIdRef = useRef("")
   const [includeInactive, setIncludeInactive] = useState(false)
   const [view, setView] = useState<SessionView>("Overview")
+  const [activePane, setActivePane] = useState<SessionPane>("sessions")
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
   const [dialog, setDialog] = useState<SessionDialog>({ type: "none" })
@@ -128,6 +136,9 @@ export function SessionsScreen({
   const auditListController = useRef<AbortController | null>(null)
   const auditDetailRequest = useRef(0)
   const auditDetailController = useRef<AbortController | null>(null)
+  const overviewScrollRef = useRef<ScrollBoxRenderable | null>(null)
+  const auditRequestScrollRef = useRef<ScrollBoxRenderable | null>(null)
+  const auditResultScrollRef = useRef<ScrollBoxRenderable | null>(null)
 
   const mounted = useRef(true)
   const currentSession = sessions.find((session) => session.session_id === sessionId)
@@ -136,6 +147,12 @@ export function SessionsScreen({
     [machines],
   )
   const sessionIndex = Math.max(0, sessions.findIndex((session) => session.session_id === sessionId))
+  const sessionRowCount = Math.max(1, Math.floor((height - 11) / 3))
+  const { rows: visibleSessionRows, start: sessionStart } = useVisibleRows(
+    sessions,
+    sessionIndex,
+    sessionRowCount,
+  )
   const currentAudit = auditDetail?.id === auditEntries[auditSelected]?.id
     ? auditDetail
     : auditEntries[auditSelected]
@@ -264,6 +281,7 @@ export function SessionsScreen({
         ? previous
         : payload.sessions[0]?.session_id || ""
       setSessions(payload.sessions)
+      sessionIdRef.current = nextSessionId
       setSessionId(nextSessionId)
       await loadResources(nextSessionId)
       if (mounted.current && sessionInventoryRequestMatches(request, currentRequest())) {
@@ -324,8 +342,18 @@ export function SessionsScreen({
     return () => controller.abort()
   }, [auditEntries, auditSelected, machine, sessionId, setStatus])
 
+  useEffect(() => {
+    overviewScrollRef.current?.scrollTo(0)
+  }, [sessionId])
+
+  useEffect(() => {
+    auditRequestScrollRef.current?.scrollTo(0)
+    auditResultScrollRef.current?.scrollTo(0)
+  }, [currentAudit?.id])
+
   const selectSession = async (nextSessionId: string) => {
-    if (!nextSessionId || nextSessionId === sessionId || saving || loading) return
+    if (!nextSessionId || nextSessionId === sessionIdRef.current || saving || loading) return
+    sessionIdRef.current = nextSessionId
     setSessionId(nextSessionId)
     await loadResources(nextSessionId)
   }
@@ -337,10 +365,14 @@ export function SessionsScreen({
 
   const cycleSession = () => {
     const ids = sessions.map((session) => session.session_id)
-    if (ids.length > 1) void selectSession(nextValue(sessionId, ids))
+    if (ids.length > 1) void selectSession(nextValue(sessionIdRef.current, ids))
   }
 
-  const cycleView = () => setView(nextValue(view, VIEWS))
+  const cycleView = () => {
+    const nextView = nextValue(view, VIEWS)
+    setView(nextView)
+    setActivePane(nextView === "Audit" ? "audit-list" : "content")
+  }
 
   const enqueueMutation = useCallback((
     mutate: (items: TodoItem[]) => TodoItem[],
@@ -418,9 +450,46 @@ export function SessionsScreen({
     }
   }
 
-  const moveSelection = (delta: number) => {
-    if (view === "Todos") setTodoSelected((value) => clampIndex(value + delta, visibleTodos.length))
-    else if (view === "Audit") setAuditSelected((value) => clampIndex(value + delta, auditEntries.length))
+  const selectAdjacentSession = (delta: number) => {
+    const currentIndex = Math.max(0, sessions.findIndex((session) => session.session_id === sessionIdRef.current))
+    const next = sessions[clampIndex(currentIndex + delta, sessions.length)]
+    if (next) void selectSession(next.session_id)
+  }
+
+  const panes = view === "Audit" ? SESSION_AUDIT_PANES : SESSION_CONTENT_PANES
+  const cycleActivePane = (delta = 1) => {
+    setActivePane((value) => cyclePane(panes, value, delta))
+  }
+
+  const moveOrScroll = (key: { name: string; shift?: boolean }) => {
+    const delta = key.name === "j" || key.name === "down" ? 1
+      : key.name === "k" || key.name === "up" ? -1
+      : 0
+    if (activePane === "sessions") {
+      if (!delta) return false
+      selectAdjacentSession(delta)
+      return true
+    }
+    if (view === "Todos" && activePane === "content") {
+      if (!delta) return false
+      setTodoSelected((value) => clampIndex(value + delta, visibleTodos.length))
+      return true
+    }
+    if (view === "Audit" && activePane === "audit-list") {
+      if (!delta) return false
+      setAuditSelected((value) => clampIndex(value + delta, auditEntries.length))
+      return true
+    }
+    if (view === "Audit" && activePane === "audit-request") {
+      return scrollPaneForKey(auditRequestScrollRef.current, key)
+    }
+    if (view === "Audit" && activePane === "audit-result") {
+      return scrollPaneForKey(auditResultScrollRef.current, key)
+    }
+    if (view === "Overview" && activePane === "content") {
+      return scrollPaneForKey(overviewScrollRef.current, key)
+    }
+    return false
   }
 
   useKeyboard((key) => {
@@ -443,8 +512,12 @@ export function SessionsScreen({
       if (key.name === "y" || key.name === "return") void confirmTerminate()
       return
     }
-    if (key.name === "j" || key.name === "down") moveSelection(1)
-    else if (key.name === "k" || key.name === "up") moveSelection(-1)
+    if (key.name === "tab") {
+      key.preventDefault()
+      cycleActivePane(key.shift ? -1 : 1)
+    } else if (key.name === "left") cycleActivePane(-1)
+    else if (key.name === "right") cycleActivePane(1)
+    else if (moveOrScroll(key)) return
     else if (key.name === "m") cycleMachine()
     else if (key.name === "i") cycleSession()
     else if (key.name === "v") cycleView()
@@ -479,7 +552,13 @@ export function SessionsScreen({
   const auditOutputText = currentAudit ? formatAuditValue(auditOutput(currentAudit), "No output recorded") : ""
 
   const overview = currentSession ? (
-    <box style={{ flexGrow: 1, flexDirection: "column", gap: 1, padding: 1 }}>
+    <scrollbox
+      ref={overviewScrollRef}
+      focused={false}
+      style={{ flexGrow: 1, minWidth: 0, minHeight: 0, gap: 1, padding: 1 }}
+      scrollY
+      verticalScrollbarOptions={{ visible: true }}
+    >
       <box style={{ height: 2, flexDirection: "row" }}>
         <text fg={colors.accent} attributes={1} content={sessionLabel(currentSession)} />
         <box style={{ flexGrow: 1 }} />
@@ -505,7 +584,7 @@ export function SessionsScreen({
       ))}
       <box style={{ flexGrow: 1 }} />
       <text fg={theme.muted} content="Todos and Audit below are scoped to this selected session. Global-only control events remain in the top-level Audit screen." />
-    </box>
+    </scrollbox>
   ) : (
     <EmptyState title="No session selected" detail={includeInactive ? "No sessions exist on this machine" : "No session responded in the last 5 hours · press g to show all"} />
   )
@@ -565,7 +644,14 @@ export function SessionsScreen({
     <EmptyState title="No session Audit records" detail="This log contains only model tool activity owned by the selected session" />
   ) : (
     <box style={{ flexGrow: 1, flexDirection: width >= 118 ? "row" : "column", gap: 1 }}>
-      <Panel title={`Session Audit · ${auditEntries.length}`} active accent={colors.accent} activeBackground={colors.panel} style={width >= 118 ? { width: 44, flexShrink: 0, paddingTop: 1 } : { height: Math.max(8, Math.floor(height * 0.45)), paddingTop: 1 }}>
+      <Panel
+        title={`Session Audit · ${auditEntries.length}`}
+        active={activePane === "audit-list"}
+        accent={colors.accent}
+        activeBackground={colors.panel}
+        onMouseDown={() => setActivePane("audit-list")}
+        style={width >= 118 ? { width: 44, flexShrink: 0, paddingTop: 1 } : { height: Math.max(8, Math.floor(height * 0.45)), paddingTop: 1 }}
+      >
         <box
           onMouseScroll={(event) => handleSelectionScroll(
             event,
@@ -593,12 +679,42 @@ export function SessionsScreen({
               <box style={{ flexGrow: 1 }} />
               <text fg={auditColor(currentAudit)} content={currentAudit.status?.toUpperCase() || "EVENT"} />
             </box>
-            <text fg={theme.faint} content={`${new Date(currentAudit.ts * 1000).toLocaleString()} · ${currentAudit.operation || "other"}`} />
-            <Panel title="Input" style={{ flexGrow: 1, minHeight: 0, padding: 1, overflow: "hidden" }}>
-              <text fg={theme.muted} content={auditInputText} />
+            <text fg={theme.faint} content={`${auditAggregationLabel(currentAudit)} · ${new Date(currentAudit.ts * 1000).toLocaleString()} · ${currentAudit.operation || "other"}`} />
+            <Panel
+              title="Call request"
+              active={activePane === "audit-request"}
+              accent={colors.accent}
+              activeBackground={colors.panel}
+              onMouseDown={() => setActivePane("audit-request")}
+              style={{ flexGrow: 1, minHeight: 0, padding: 1, overflow: "hidden" }}
+            >
+              <scrollbox
+                ref={auditRequestScrollRef}
+                focused={false}
+                style={{ flexGrow: 1, minWidth: 0, minHeight: 0 }}
+                scrollY
+                verticalScrollbarOptions={{ visible: true }}
+              >
+                <text fg={theme.muted} content={auditInputText} />
+              </scrollbox>
             </Panel>
-            <Panel title="Output" style={{ flexGrow: 1, minHeight: 0, padding: 1, overflow: "hidden" }}>
-              <text fg={theme.muted} content={auditOutputText} />
+            <Panel
+              title="Call result"
+              active={activePane === "audit-result"}
+              accent={colors.accent}
+              activeBackground={colors.panel}
+              onMouseDown={() => setActivePane("audit-result")}
+              style={{ flexGrow: 1, minHeight: 0, padding: 1, overflow: "hidden" }}
+            >
+              <scrollbox
+                ref={auditResultScrollRef}
+                focused={false}
+                style={{ flexGrow: 1, minWidth: 0, minHeight: 0 }}
+                scrollY
+                verticalScrollbarOptions={{ visible: true }}
+              >
+                <text fg={theme.muted} content={auditOutputText} />
+              </scrollbox>
             </Panel>
           </>
         ) : <EmptyState title="No Audit record selected" detail="Use j/k to inspect one call" />}
@@ -620,36 +736,46 @@ export function SessionsScreen({
         </Panel>
       </box>
       <box style={{ flexGrow: 1, flexDirection: "row", gap: 1 }}>
-        <Panel title={`Sessions · ${loaded ? sessions.length : "—"}`} active accent={colors.accent} activeBackground={colors.panel} style={{ width: sidebarWidth, flexShrink: 0, paddingTop: 1 }}>
+        <Panel
+          title={`Sessions · ${loaded ? sessions.length : "—"}${loaded && sessions.length ? ` · ${sessionStart + 1}-${sessionStart + visibleSessionRows.length}` : ""}`}
+          active={activePane === "sessions"}
+          accent={colors.accent}
+          activeBackground={colors.panel}
+          onMouseDown={() => setActivePane("sessions")}
+          style={{ width: sidebarWidth, minHeight: 0, flexShrink: 0, paddingTop: 1, overflow: "hidden" }}
+        >
           {!loaded ? (
             loading ? <Loading label="Loading sessions" /> : <EmptyState title="Sessions unavailable" detail="Press r to retry" />
           ) : sessions.length === 0 ? (
             <EmptyState title="No sessions" detail={includeInactive ? "No sessions exist" : "Press g to show inactive sessions"} />
           ) : (
             <box
-              onMouseScroll={(event) => handleSelectionScroll(
-                event,
-                (delta) => {
-                  const next = sessions[clampIndex(sessionIndex + delta, sessions.length)]
-                  if (next) void selectSession(next.session_id)
-                },
-              )}
-              style={{ flexDirection: "column", flexGrow: 1 }}
+              onMouseScroll={(event) => handleSelectionScroll(event, selectAdjacentSession)}
+              style={{ flexDirection: "column", flexGrow: 1, minHeight: 0, overflow: "hidden" }}
             >
-              {sessions.map((session) => {
+              {visibleSessionRows.map((session) => {
                 const active = session.session_id === sessionId
                 return (
-                  <box key={session.session_id} onMouseDown={() => void selectSession(session.session_id)} style={{ height: 3, flexDirection: "column", paddingLeft: 1, paddingRight: 1, backgroundColor: active ? colors.selected : undefined }}>
-                    <text fg={active ? theme.text : colors.accent} attributes={active ? 1 : 0} content={sessionLabel(session)} />
+                  <box key={session.session_id} onMouseDown={() => void selectSession(session.session_id)} style={{ height: 3, flexShrink: 0, flexDirection: "column", paddingLeft: 1, paddingRight: 1, overflow: "hidden", backgroundColor: active ? colors.selected : undefined }}>
+                    <text fg={active ? theme.text : colors.accent} attributes={active ? 1 : 0} content={truncate(sessionLabel(session), Math.max(4, sidebarWidth - 4))} />
                     <text fg={terminated(session) ? theme.red : session.active === false ? theme.faint : theme.green} content={terminated(session) ? "■ TERMINATION REQUESTED" : session.active === false ? "○ inactive" : "● active"} />
-                    <text fg={theme.faint} content={session.session_id} />
+                    <text fg={theme.faint} content={truncate(session.session_id, Math.max(4, sidebarWidth - 4))} />
                   </box>
                 )
               })}
             </box>
           )}
         </Panel>
-        <Panel title={`${view} · ${sessionLabel(currentSession)}`} active accent={colors.accent} activeBackground={colors.panel} style={{ flexGrow: 1, minWidth: 0, paddingTop: 1, overflow: "hidden" }}>
+        <Panel
+          title={`${view} · ${sessionLabel(currentSession)}`}
+          active={activePane !== "sessions"}
+          accent={colors.accent}
+          activeBackground={colors.panel}
+          onMouseDown={() => {
+            if (view !== "Audit") setActivePane("content")
+          }}
+          style={{ flexGrow: 1, minWidth: 0, minHeight: 0, paddingTop: 1, overflow: "hidden" }}
+        >
           {view === "Overview" ? overview : view === "Todos" ? todosView : auditView}
         </Panel>
       </box>
@@ -657,10 +783,12 @@ export function SessionsScreen({
         accent={colors.accent}
         items={[
           { key: "m", label: "machine", onPress: cycleMachine, disabled: footerLocked || onlineMachines.length < 2 },
-          { key: "i", label: "session", onPress: cycleSession, disabled: footerLocked || sessions.length < 2 || saving },
+          { key: "i", label: "next session", onPress: cycleSession, disabled: footerLocked || sessions.length < 2 || saving },
           { key: "v", label: "view", onPress: cycleView, disabled: footerLocked },
+          { key: "Tab", label: "pane", onPress: () => cycleActivePane(1), disabled: footerLocked },
+          { key: "j", label: activePane.includes("request") || activePane.includes("result") || (view === "Overview" && activePane === "content") ? "scroll down" : "down", onPress: () => moveOrScroll({ name: "j" }), disabled: footerLocked || (activePane === "sessions" && sessions.length === 0) },
+          { key: "k", label: activePane.includes("request") || activePane.includes("result") || (view === "Overview" && activePane === "content") ? "scroll up" : "up", onPress: () => moveOrScroll({ name: "k" }), disabled: footerLocked || (activePane === "sessions" && sessions.length === 0) },
           { key: "g", label: includeInactive ? "recent" : "show all", onPress: () => setIncludeInactive((value) => !value), disabled: footerLocked || loading },
-          { key: "j/k", label: "select", onPress: () => moveSelection(1), disabled: footerLocked || view === "Overview" },
           { key: "x", label: "terminate", onPress: () => currentSession && setDialog({ type: "terminate", session: currentSession }), disabled: footerLocked || !currentSession || terminated(currentSession) },
           { key: "r", label: loading ? "refreshing" : "refresh", onPress: () => void load(), disabled: footerLocked || loading || saving },
           ...(view === "Todos" ? [
