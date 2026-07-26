@@ -476,7 +476,26 @@ class BrowserHarness:
             if "401 (Unauthorized)" not in line
         ]
 
+    def navigate(self, view: str) -> None:
+        item = self.page.locator(f'.nav-item[data-view="{view}"]')
+        expect(item).to_be_visible()
+        item.click()
+        expect(item).to_have_attribute("aria-current", "page")
+        expect(self.page.locator("#page-title")).to_have_text(
+            {
+                "overview": "Overview",
+                "machines": "Machines",
+                "remotes": "Remotes",
+                "sessions": "Sessions",
+                "terminals": "Terminals",
+                "files": "Files",
+                "audit": "Audit",
+                "console": "OpenTUI",
+            }[view]
+        )
+
     def invite_and_start_worker(self, machine: str = "browser-edge") -> None:
+        self.navigate("remotes")
         self.page.locator("#remote-invite-open").click()
         expect(self.page.locator("#remote-invite-dialog")).to_be_visible()
         self.page.locator("#remote-invite-name").fill(machine)

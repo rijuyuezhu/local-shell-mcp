@@ -10,7 +10,6 @@
 
   const config = JSON.parse(document.body.dataset.lsmConfig || "{}");
   if (!config.opentuiAvailable) return;
-  panel.hidden = false;
 
   const uiPath = String(config.uiPath || "/ui").replace(/\/$/, "");
   const tokenStorageKey = "local-shell-mcp-ui-access-token";

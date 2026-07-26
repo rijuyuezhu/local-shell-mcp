@@ -22,6 +22,7 @@ def _assert_no_horizontal_overflow(harness: BrowserHarness) -> None:
 def run_opentui_responsive(harness: BrowserHarness) -> None:
     page = harness.page
 
+    harness.navigate("console")
     expect(page.locator("#opentui-panel")).to_be_visible()
     page.locator("#opentui-start").click()
     expect(page.locator("#opentui-state")).to_have_text(
@@ -49,21 +50,28 @@ def run_opentui_responsive(harness: BrowserHarness) -> None:
 
     page.set_viewport_size({"width": 390, "height": 844})
     _assert_no_horizontal_overflow(harness)
-    for selector in (
-        "#dashboard-panel",
-        "#remotes-panel",
-        "#terminal-panel",
-        "#file-panel",
-        "#session-panel",
-        "#audit-panel",
-        "#opentui-panel",
-    ):
+    views = {
+        "overview": "#dashboard-panel",
+        "machines": "#machines-panel",
+        "remotes": "#remotes-panel",
+        "sessions": "#session-panel",
+        "terminals": "#terminal-panel",
+        "files": "#file-panel",
+        "audit": "#audit-panel",
+        "console": "#opentui-panel",
+    }
+    for view, selector in views.items():
+        harness.navigate(view)
         expect(page.locator(selector)).to_be_visible()
+        for other_view, other_selector in views.items():
+            if other_view != view:
+                expect(page.locator(other_selector)).to_be_hidden()
 
     page.locator("#refresh").focus()
     expect(page.locator("#refresh")).to_be_focused()
     page.keyboard.press("Tab")
     assert page.evaluate("document.activeElement !== document.body")
+    harness.navigate("files")
     page.locator("#file-path").focus()
     page.keyboard.type(".")
     expect(page.locator("#file-path")).to_be_focused()

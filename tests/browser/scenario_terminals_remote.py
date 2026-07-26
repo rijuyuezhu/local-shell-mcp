@@ -88,6 +88,7 @@ def _send_terminal(
 def run_terminals_remote(harness: BrowserHarness) -> None:
     page = harness.page
     suffix = secrets.token_hex(4)
+    harness.navigate("terminals")
 
     local_shell = _start_terminal(harness, f"browser-local-{suffix}")
     _send_terminal(
@@ -159,6 +160,7 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         page.locator('#session-machine option[value="browser-edge"]')
     ).to_have_count(1)
 
+    harness.navigate("files")
     page.locator("#file-machine").select_option(MACHINE)
     expect(page.locator("#file-state")).to_contain_text(f"{MACHINE}:.")
     remote_note = page.locator('.file-entry[title="remote-note.txt"]')
@@ -194,6 +196,7 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         "session_id"
     ]
 
+    harness.navigate("sessions")
     page.locator("#session-machine").select_option(MACHINE)
     expect(
         page.locator(
@@ -221,6 +224,7 @@ def run_terminals_remote(harness: BrowserHarness) -> None:
         "verify browser todos"
     )
 
+    harness.navigate("terminals")
     page.locator("#terminal-machine").select_option(MACHINE)
     expect(page.locator("#terminal-state")).to_contain_text(
         f"0 session(s) · {MACHINE}"
