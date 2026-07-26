@@ -221,7 +221,23 @@ async def _remote_audit_call(
     return _remote_result_data(result, machine=machine, tool=tool)
 
 
-def _normalize_entry(machine: str, value: Any) -> dict[str, Any]:
+def _remote_session_projection(machine: str) -> dict[str, str]:
+    """Build one worker-to-public session map for a remote Audit response."""
+    return {
+        session.worker_session_id: session.session_id
+        for session in get_tool_session_store().list_sessions()
+        if session.target == "remote"
+        and session.machine == machine
+        and session.worker_session_id
+    }
+
+
+def _normalize_entry(
+    machine: str,
+    value: Any,
+    *,
+    session_projection: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RuntimeError(
             f"Machine {machine} returned a malformed audit entry"
@@ -245,16 +261,11 @@ def _normalize_entry(machine: str, value: Any) -> dict[str, Any]:
     entry["operation"] = str(entry.get("operation") or "other")
     if "tool" in entry:
         entry["tool"] = str(entry.get("tool") or "unknown")
-    if machine != "local" and entry.get("session"):
+    if session_projection is not None and entry.get("session"):
         worker_session_id = str(entry["session"])
-        for session in get_tool_session_store().list_sessions():
-            if (
-                session.target == "remote"
-                and session.machine == machine
-                and session.worker_session_id == worker_session_id
-            ):
-                entry["session"] = session.session_id
-                break
+        entry["session"] = session_projection.get(
+            worker_session_id, worker_session_id
+        )
     return entry
 
 
@@ -370,7 +381,12 @@ def _summary_entry(entry: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def _normalize_query_result(machine: str, value: Any) -> dict[str, Any]:
+def _normalize_query_result(
+    machine: str,
+    value: Any,
+    *,
+    session_projection: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RuntimeError(f"Machine {machine} returned malformed audit data")
     rows = value.get("entries")
@@ -380,7 +396,14 @@ def _normalize_query_result(machine: str, value: Any) -> dict[str, Any]:
         )
     if len(rows) > UI_AUDIT_MAX_ENTRIES:
         raise RuntimeError(f"Machine {machine} returned too many audit entries")
-    entries = [_normalize_entry(machine, item) for item in rows]
+    entries = [
+        _normalize_entry(
+            machine,
+            item,
+            session_projection=session_projection,
+        )
+        for item in rows
+    ]
     count = value.get("count", len(entries))
     total_matched = value.get("total_matched", count)
     if (
@@ -434,7 +457,16 @@ async def _query(
         else:
             remote_args = _remote_query_args(machine, remote_args)
         value = await _remote_audit_call(machine, "query_audit", remote_args)
-    result = _normalize_query_result(machine, value)
+    projection = (
+        _remote_session_projection(machine)
+        if machine != "local" and not log_session_id
+        else None
+    )
+    result = _normalize_query_result(
+        machine,
+        value,
+        session_projection=projection,
+    )
     if log_session_id:
         for entry in result["entries"]:
             entry["session"] = log_session_id
@@ -477,7 +509,16 @@ async def _detail(
             "get_audit_entry",
             args,
         )
-    detail = _normalize_entry(machine, value)
+    projection = (
+        _remote_session_projection(machine)
+        if machine != "local" and not log_session_id
+        else None
+    )
+    detail = _normalize_entry(
+        machine,
+        value,
+        session_projection=projection,
+    )
     if log_session_id:
         detail["session"] = log_session_id
     return detail

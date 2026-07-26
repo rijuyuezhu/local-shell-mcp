@@ -374,6 +374,56 @@ def test_remote_audit_maps_public_session_filters_to_worker_ids(
     assert listing.json()["data"]["entries"][0]["session"] == session.session_id
 
 
+@pytest.mark.asyncio
+async def test_remote_audit_builds_session_projection_once_per_query(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "workspace"
+    _configure(monkeypatch, workspace, remote_enabled=True)
+    store = get_tool_session_store()
+    session = store.create_session(
+        target="remote",
+        machine="edge",
+        workdir="/srv/project",
+        worker_session_id="worker01",
+    )
+    list_calls = 0
+    original_list_sessions = store.list_sessions
+
+    def counted_list_sessions():
+        nonlocal list_calls
+        list_calls += 1
+        return original_list_sessions()
+
+    async def remote_query(
+        machine: str, tool: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        assert machine == "edge"
+        assert tool == "query_audit"
+        assert args == {}
+        entries = [
+            {
+                "id": f"call:remote-{index}",
+                "ts": float(index),
+                "event": "tool_call",
+                "operation": "shell",
+                "session": "worker01",
+            }
+            for index in range(3)
+        ]
+        return {"entries": entries, "count": 3, "total_matched": 3}
+
+    monkeypatch.setattr(store, "list_sessions", counted_list_sessions)
+    monkeypatch.setattr(ui_audit_module, "_remote_audit_call", remote_query)
+
+    result = await ui_audit_module._query("edge", {})
+
+    assert list_calls == 1
+    assert {entry["session"] for entry in result["entries"]} == {
+        session.session_id
+    }
+
+
 def test_remote_session_audit_uses_worker_local_log_and_public_projection(
     monkeypatch, tmp_path
 ):
