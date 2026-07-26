@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from playwright.sync_api import expect
 
 from tests.browser.harness import BrowserHarness
@@ -19,6 +21,25 @@ def _assert_no_horizontal_overflow(harness: BrowserHarness) -> None:
     assert metrics["document"] <= metrics["viewport"] + 1
 
 
+def _opentui_resize_events(harness: BrowserHarness, start: int) -> list[str]:
+    return [
+        event
+        for event in harness.websocket_events[start:]
+        if event.startswith("sent ws://")
+        and "/ui/ws/opentui" in event
+        and '{"type":"resize"' in event
+    ]
+
+
+def _wait_opentui_resize(harness: BrowserHarness, start: int) -> None:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if _opentui_resize_events(harness, start):
+            return
+        harness.page.wait_for_timeout(50)
+    raise AssertionError("OpenTUI route did not send a visible resize")
+
+
 def run_opentui_responsive(harness: BrowserHarness) -> None:
     page = harness.page
 
@@ -29,6 +50,18 @@ def run_opentui_responsive(harness: BrowserHarness) -> None:
         "OpenTUI running", timeout=20_000
     )
     expect(page.locator("#opentui-terminal .xterm")).to_be_visible()
+    visible_resize_start = len(harness.websocket_events)
+    page.evaluate("window.dispatchEvent(new Event('resize'))")
+    _wait_opentui_resize(harness, visible_resize_start)
+
+    hidden_resize_start = len(harness.websocket_events)
+    harness.navigate("overview")
+    page.wait_for_timeout(250)
+    assert not _opentui_resize_events(harness, hidden_resize_start)
+
+    visible_resize_start = len(harness.websocket_events)
+    harness.navigate("console")
+    _wait_opentui_resize(harness, visible_resize_start)
     page.get_by_label("OpenTUI shortcut keys").get_by_role(
         "button", name="Tab", exact=True
     ).click()

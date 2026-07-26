@@ -2707,6 +2707,7 @@
   }
 
   function sendTerminalResize() {
+    if (document.body.dataset.activeView !== "terminals") return;
     if (!terminalReady || !terminalSocketCurrent()) return;
     if (terminalMode === "pty" && terminalFitAddon && !elements.terminalXterm.hidden) {
       terminalFitAddon.fit();
@@ -2787,14 +2788,18 @@
         elements.terminalState.textContent = `Connected · ${requestedMachine} · ${mode.toUpperCase()}`;
         setTerminalControls(true);
         sendTerminalResize();
-        if (mode === "pty") terminalXterm?.focus();
-        else elements.terminalInput.focus();
+        if (document.body.dataset.activeView === "terminals") {
+          if (mode === "pty") terminalXterm?.focus();
+          else elements.terminalInput.focus();
+        }
       } else if (message.type === "snapshot") {
         acceptTerminalSnapshot(text(message.output, ""));
         terminalReady = true;
         elements.terminalState.textContent = `Connected · ${requestedMachine} · SNAPSHOT`;
         setTerminalControls(true);
-        elements.terminalInput.focus();
+        if (document.body.dataset.activeView === "terminals") {
+          elements.terminalInput.focus();
+        }
       } else if (message.type === "exit") {
         const detail = terminalNotice(message.message);
         terminalReady = false;
