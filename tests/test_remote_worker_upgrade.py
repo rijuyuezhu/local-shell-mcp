@@ -126,6 +126,54 @@ async def test_stale_managed_runtime_enrolls_only_for_upgrade(
     )
 
 
+@pytest.mark.asyncio
+async def test_inventory_exposes_validated_reconnect_command(
+    tmp_path, monkeypatch
+):
+    manager, registered = await _registered_manager(tmp_path, monkeypatch)
+    worker = manager.workers[registered["name"]]
+    worker.info.update(
+        {
+            "profile_id": "p_abcdefgh",
+            "launcher_path": "/home/user/worker state/run",
+        }
+    )
+
+    row = manager.list_machines().machines[0]
+    reconnect = manager.reconnect_command(registered["name"])
+
+    assert row.profile_id == "p_abcdefgh"
+    assert row.reconnect_command == ("'/home/user/worker state/run' p_abcdefgh")
+    assert reconnect.model_dump() == {
+        "machine": registered["name"],
+        "profile_id": "p_abcdefgh",
+        "command": "'/home/user/worker state/run' p_abcdefgh",
+    }
+    assert "access" not in reconnect.command
+    assert "invite" not in reconnect.command
+
+
+@pytest.mark.asyncio
+async def test_inventory_hides_invalid_reconnect_metadata(
+    tmp_path, monkeypatch
+):
+    manager, registered = await _registered_manager(tmp_path, monkeypatch)
+    worker = manager.workers[registered["name"]]
+    worker.info.update(
+        {
+            "profile_id": "p_../escape",
+            "launcher_path": "/tmp/run\nmalicious",
+        }
+    )
+
+    row = manager.list_machines().machines[0]
+
+    assert row.profile_id is None
+    assert row.reconnect_command is None
+    with pytest.raises(ValueError, match="no reconnect profile metadata"):
+        manager.reconnect_command(registered["name"])
+
+
 def _poll_report(*, digest: str, version: str = "3.9.1") -> dict[str, Any]:
     return {
         "protocol_version": 2,

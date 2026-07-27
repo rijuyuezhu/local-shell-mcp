@@ -98,6 +98,17 @@ def test_reconnect_command_is_credential_free_and_shell_safe(
     assert "invite" not in command
 
 
+def test_worker_info_reports_profile_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+
+    info = worker.worker_info("/work/a", "p_abcdefgh")
+
+    assert info["profile_id"] == "p_abcdefgh"
+    assert info["launcher_path"] == str(tmp_path / "run")
+
+
 def test_active_runtime_selects_content_addressed_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

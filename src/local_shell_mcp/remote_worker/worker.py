@@ -530,6 +530,7 @@ def worker_info(workdir: str, profile_id: str | None = None) -> dict[str, Any]:
     }
     if profile_id is not None:
         info["profile_id"] = profile_id
+        info["launcher_path"] = str(worker_launcher_path())
     return info
 
 

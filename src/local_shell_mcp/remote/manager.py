@@ -21,6 +21,7 @@ from ..persistence import get_state_store
 from ..schemas.result_models.remote import (
     RemoteInviteOutput,
     RemoteListMachinesOutput,
+    RemoteReconnectCommandOutput,
     RemoteRenameMachineOutput,
     RemoteRevokeMachineOutput,
 )
@@ -37,6 +38,8 @@ from .responses import _ok
 MAX_REMOTE_INVITES = 1_024
 MAX_REMOTE_MACHINE_NAME_LENGTH = 128
 REMOTE_WORKER_REGISTRY_VERSION = 1
+_WORKER_PROFILE_ID_RE = re.compile(r"p_[A-Za-z0-9_-]{8,64}")
+_WORKER_LAUNCHER_PATH_MAX_BYTES = 4_096
 
 _WORKER_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -128,6 +131,31 @@ def _runtime_info(report: dict[str, Any]) -> dict[str, Any]:
         "worker_bundle_version": report["bundle_version"],
         "worker_bundle_sha256": report["bundle_sha256"],
     }
+
+
+def _worker_reconnect_metadata(
+    info: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    """Validate worker-local launcher metadata and build a shell-safe command."""
+    raw_profile_id = info.get("profile_id")
+    raw_launcher_path = info.get("launcher_path")
+    if raw_profile_id in {None, ""} and raw_launcher_path in {None, ""}:
+        return None, None
+    if not isinstance(
+        raw_profile_id, str
+    ) or not _WORKER_PROFILE_ID_RE.fullmatch(raw_profile_id):
+        return None, None
+    if not isinstance(raw_launcher_path, str) or not raw_launcher_path:
+        return None, None
+    if len(
+        raw_launcher_path.encode("utf-8")
+    ) > _WORKER_LAUNCHER_PATH_MAX_BYTES or any(
+        ord(character) < 32 for character in raw_launcher_path
+    ):
+        return None, None
+    return raw_profile_id, " ".join(
+        (shlex.quote(raw_launcher_path), shlex.quote(raw_profile_id))
+    )
 
 
 def _validate_poll_report(
@@ -768,6 +796,9 @@ class RemoteManager:
             rows = []
             counts = {"online": 0, "offline": 0}
             for worker in self.workers.values():
+                profile_id, reconnect_command = _worker_reconnect_metadata(
+                    worker.info
+                )
                 last_seen_age_s = (
                     None
                     if not worker.last_seen
@@ -786,6 +817,8 @@ class RemoteManager:
                         "name": worker.name,
                         "status": status,
                         "workdir": worker.workdir,
+                        "profile_id": profile_id,
+                        "reconnect_command": reconnect_command,
                         "last_seen": worker.last_seen,
                         "last_seen_age_s": last_seen_age_s,
                         "offline_after_s": offline_after_s,
@@ -799,6 +832,24 @@ class RemoteManager:
             )
             return RemoteListMachinesOutput(
                 machines=rows, counts={**counts, "total": len(rows)}
+            )
+
+    def reconnect_command(self, machine: str) -> RemoteReconnectCommandOutput:
+        """Return the credential-free command for one profile-aware worker."""
+        with self._state_lock:
+            self._load_registry_unlocked()
+            worker = self.workers.get(machine)
+            if worker is None:
+                raise ValueError(f"unknown remote machine: {machine}")
+            profile_id, command = _worker_reconnect_metadata(worker.info)
+            if profile_id is None or command is None:
+                raise ValueError(
+                    f"remote machine has no reconnect profile metadata: {machine}"
+                )
+            return RemoteReconnectCommandOutput(
+                machine=worker.name,
+                profile_id=profile_id,
+                command=command,
             )
 
     def revoke(self, machine: str) -> RemoteRevokeMachineOutput:

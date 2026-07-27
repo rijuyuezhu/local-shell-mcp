@@ -28,6 +28,30 @@ async def test_remote_admin_lists(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_remote_admin_returns_reconnect_command(monkeypatch):
+    monkeypatch.setattr(
+        remote_ops,
+        "remote_reconnect_command",
+        lambda machine: {
+            "machine": machine,
+            "profile_id": "p_abcdefgh",
+            "command": "/state/run p_abcdefgh",
+        },
+    )
+
+    result = await remote_ops.remote_admin_execute(
+        "reconnect_command", {"machine": "worker-a"}
+    )
+
+    assert result.action == "reconnect_command"
+    assert result.data == {
+        "machine": "worker-a",
+        "profile_id": "p_abcdefgh",
+        "command": "/state/run p_abcdefgh",
+    }
+
+
+@pytest.mark.asyncio
 async def test_remote_admin_is_exposed_in_mcp(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
@@ -50,6 +74,40 @@ async def test_remote_admin_is_exposed_in_mcp(tmp_path, monkeypatch):
         "action": "list",
         "data": {"machines": [], "counts": {"total": 0}},
     }
+
+
+@pytest.mark.asyncio
+async def test_remote_reconnect_command_is_exposed_in_mcp(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    monkeypatch.setattr(
+        remote_ops,
+        "remote_reconnect_command",
+        lambda machine: {
+            "machine": machine,
+            "profile_id": "p_abcdefgh",
+            "command": "/state/run p_abcdefgh",
+        },
+    )
+
+    result = mcp_structured(
+        await build_mcp().call_tool(
+            "remote_admin",
+            {
+                "action": "reconnect_command",
+                "args": {"machine": "worker-a"},
+            },
+        )
+    )
+
+    assert result["action"] == "reconnect_command"
+    assert result["data"]["profile_id"] == "p_abcdefgh"
+    assert result["data"]["command"] == "/state/run p_abcdefgh"
 
 
 def _remote_read_payload(worker_session_id="WORKER12"):

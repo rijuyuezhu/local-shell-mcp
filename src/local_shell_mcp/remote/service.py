@@ -5,6 +5,7 @@ from typing import Any
 from ..schemas.result_models.remote import (
     RemoteInviteOutput,
     RemoteListMachinesOutput,
+    RemoteReconnectCommandOutput,
     RemoteRenameMachineOutput,
     RemoteRevokeMachineOutput,
 )
@@ -21,6 +22,11 @@ async def create_remote_invite(
 def list_remote_machines() -> RemoteListMachinesOutput:
     """Return the remote machines currently known by the manager."""
     return remote_manager().list_machines()
+
+
+def remote_reconnect_command(machine: str) -> RemoteReconnectCommandOutput:
+    """Return a credential-free reconnect command for one registered worker."""
+    return remote_manager().reconnect_command(machine)
 
 
 def revoke_remote_machine(machine: str) -> RemoteRevokeMachineOutput:
