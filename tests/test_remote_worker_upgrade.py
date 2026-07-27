@@ -937,12 +937,15 @@ def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
         "import os\n"
         "import shutil\n"
         "import sys\n"
+        "import time\n"
         "args = sys.argv[1:]\n"
         "output = args[args.index('-o') + 1]\n"
         "url = next(item for item in args if item.startswith('http'))\n"
         "with open(os.environ['FAKE_CURL_REQUESTS'], 'a', encoding='utf-8') as log:\n"
         "    log.write(url + '\\n')\n"
         "source = os.environ['FAKE_MANIFEST'] if 'manifest=1' in url else os.environ['FAKE_BUNDLE']\n"
+        "if 'manifest=1' not in url:\n"
+        "    time.sleep(0.25)\n"
         "shutil.copyfile(source, output)\n",
         encoding="utf-8",
     )
@@ -957,8 +960,8 @@ def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
         "FAKE_MANIFEST": str(manifest_path),
         "FAKE_BUNDLE": str(bundle_path),
     }
-    for profile_id in ("p_abcdefgh", "p_ijklmnop"):
-        completed = subprocess.run(
+    processes = [
+        subprocess.Popen(
             [
                 "bash",
                 str(join_path),
@@ -970,12 +973,16 @@ def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
                 str(tmp_path),
             ],
             env=environment,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            check=False,
         )
-        assert completed.returncode == 0, completed.stderr
-        assert "bootstrap-complete" in completed.stdout
+        for profile_id in ("p_abcdefgh", "p_ijklmnop")
+    ]
+    for process in processes:
+        stdout, stderr = process.communicate(timeout=30)
+        assert process.returncode == 0, stderr
+        assert "bootstrap-complete" in stdout
 
     requests = requests_path.read_text(encoding="utf-8").splitlines()
     assert sum("manifest=1" in request for request in requests) == 2

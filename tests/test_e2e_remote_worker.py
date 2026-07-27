@@ -271,7 +271,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "Downloading worker manifest" in join_script
         assert "Downloading worker bundle" in join_script
         assert "Cache-Control: no-cache" in join_script
-        assert "Verifying and installing worker runtime" in join_script
+        assert "Preparing shared worker runtime" in join_script
         assert "os.replace(staging, runtime)" in join_script
         assert "member.isreg()" in join_script
         assert "curl -fSs" in join_script

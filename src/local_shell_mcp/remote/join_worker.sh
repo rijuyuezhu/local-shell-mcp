@@ -387,21 +387,12 @@ finally:
 PY
 }
 
-download_bundle() {
-  local url
-  url="$(cat "$TMPDIR/bundle-url")"
-  echo "Downloading worker bundle..." >&2
-  curl -fSs \
-    -H 'Cache-Control: no-cache' \
-    -H 'Pragma: no-cache' \
-    "$url" \
-    -o "$TMPDIR/worker.tgz"
-}
-
 install_bundle() {
-  echo "Verifying and installing worker runtime..." >&2
+  echo "Preparing shared worker runtime..." >&2
   "$PYTHON_BIN" - \
     "$TMPDIR/worker.tgz" \
+    "$TMPDIR/bundle-url" \
+    "$STATE_DIR/install.lock" \
     "$RUNTIME_DIR" \
     "$RUNTIME_METADATA" \
     "$(cat "$TMPDIR/bundle-version")" \
@@ -412,23 +403,32 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 import time
 import uuid
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 
-archive_path, runtime_path, metadata_path, version, expected_digest, expected_size = sys.argv[1:]
+(
+    archive_path,
+    bundle_url_path,
+    lock_path,
+    runtime_path,
+    metadata_path,
+    version,
+    expected_digest,
+    expected_size,
+) = sys.argv[1:]
 archive = Path(archive_path)
+bundle_url = Path(bundle_url_path).read_text(encoding="utf-8")
+lock_file = Path(lock_path)
 runtime = Path(runtime_path)
 metadata = Path(metadata_path)
 expected_size_int = int(expected_size)
-payload = archive.read_bytes()
-if len(payload) != expected_size_int:
-    raise SystemExit("worker bundle size does not match manifest")
-if hashlib.sha256(payload).hexdigest() != expected_digest:
-    raise SystemExit("worker bundle checksum does not match manifest")
-
 state_dir = runtime.parent
 staging = state_dir / f"{expected_digest}.install.{uuid.uuid4().hex}"
 backup = state_dir / f"{expected_digest}.previous.{uuid.uuid4().hex}"
@@ -442,12 +442,51 @@ required = (
     "local_shell_mcp/remote_worker/state.py",
     "local_shell_mcp/remote_worker/worker.py",
 )
-seen = set()
-file_count = 0
-total_size = 0
 state_dir.mkdir(parents=True, exist_ok=True)
 with contextlib.suppress(OSError):
     state_dir.chmod(0o700)
+lock_file.parent.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def install_lock(handle: BinaryIO) -> Generator[None]:
+    if os.name == "nt":
+        import msvcrt
+
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+
+    import fcntl
+
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    try:
+        yield
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def runtime_is_complete() -> bool:
+    try:
+        decoded = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(decoded, dict)
+        and decoded.get("schema_version") == 1
+        and decoded.get("bundle_version") == version
+        and decoded.get("sha256") == expected_digest
+        and all((runtime / relative).is_file() for relative in required)
+    )
 
 
 def target_for(name: str) -> Path:
@@ -462,74 +501,124 @@ def target_for(name: str) -> Path:
     return target
 
 
-try:
-    staging.mkdir()
-    with tarfile.open(archive, mode="r:gz") as tar:
-        for member in tar:
-            name = member.name.rstrip("/")
-            target = target_for(name)
-            if name in seen:
-                raise SystemExit(f"duplicate worker bundle path: {member.name}")
-            seen.add(name)
-            if member.isdir():
-                target.mkdir(parents=True, exist_ok=False)
-                continue
-            if not member.isreg():
-                raise SystemExit(f"unsupported worker bundle member: {member.name}")
-            file_count += 1
-            total_size += member.size
-            if file_count > 4096 or total_size > 128 * 1024 * 1024:
-                raise SystemExit("worker bundle extracted content exceeds limits")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.exists():
-                raise SystemExit(f"duplicate worker bundle path: {member.name}")
-            source = tar.extractfile(member)
-            if source is None:
-                raise SystemExit(f"worker bundle file is unreadable: {member.name}")
-            with source, target.open("xb") as output:
-                shutil.copyfileobj(source, output)
-            with contextlib.suppress(OSError):
-                target.chmod(0o755 if member.mode & 0o111 else 0o644)
-
-    for relative in required:
-        if not (staging / relative).is_file():
-            raise SystemExit(f"worker bundle is incomplete: missing {relative}")
-
-    old_metadata = metadata.read_bytes() if metadata.exists() else None
-    try:
-        if runtime.exists():
-            os.replace(runtime, backup)
-        os.replace(staging, runtime)
-        temporary_metadata = metadata.with_name(f"{metadata.name}.{uuid.uuid4().hex}.tmp")
-        temporary_metadata.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "bundle_version": version,
-                    "sha256": expected_digest,
-                    "size": expected_size_int,
-                    "installed_at": time.time(),
-                },
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
+with lock_file.open("a+b") as lock_handle, install_lock(lock_handle):
+    with contextlib.suppress(OSError):
+        lock_file.chmod(0o600)
+    if runtime_is_complete():
+        print(
+            f"Reusing worker runtime {version} ({expected_digest[:12]}).",
+            file=sys.stderr,
         )
-        with contextlib.suppress(OSError):
-            temporary_metadata.chmod(0o600)
-        os.replace(temporary_metadata, metadata)
-    except BaseException:
-        shutil.rmtree(runtime, ignore_errors=True)
-        if backup.exists():
-            os.replace(backup, runtime)
-        if old_metadata is None:
-            metadata.unlink(missing_ok=True)
-        else:
-            metadata.write_bytes(old_metadata)
-        raise
-finally:
-    shutil.rmtree(staging, ignore_errors=True)
-    shutil.rmtree(backup, ignore_errors=True)
+        raise SystemExit(0)
+
+    print("Downloading worker bundle...", file=sys.stderr)
+    completed = subprocess.run(
+        [
+            "curl",
+            "-fSs",
+            "-H",
+            "Cache-Control: no-cache",
+            "-H",
+            "Pragma: no-cache",
+            bundle_url,
+            "-o",
+            str(archive),
+        ],
+        check=False,
+    )
+    if completed.returncode:
+        raise SystemExit("worker bundle download failed")
+    payload = archive.read_bytes()
+    if len(payload) != expected_size_int:
+        raise SystemExit("worker bundle size does not match manifest")
+    if hashlib.sha256(payload).hexdigest() != expected_digest:
+        raise SystemExit("worker bundle checksum does not match manifest")
+
+    seen = set()
+    file_count = 0
+    total_size = 0
+    try:
+        staging.mkdir()
+        with tarfile.open(archive, mode="r:gz") as tar:
+            for member in tar:
+                name = member.name.rstrip("/")
+                target = target_for(name)
+                if name in seen:
+                    raise SystemExit(
+                        f"duplicate worker bundle path: {member.name}"
+                    )
+                seen.add(name)
+                if member.isdir():
+                    target.mkdir(parents=True, exist_ok=False)
+                    continue
+                if not member.isreg():
+                    raise SystemExit(
+                        f"unsupported worker bundle member: {member.name}"
+                    )
+                file_count += 1
+                total_size += member.size
+                if file_count > 4096 or total_size > 128 * 1024 * 1024:
+                    raise SystemExit(
+                        "worker bundle extracted content exceeds limits"
+                    )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    raise SystemExit(
+                        f"duplicate worker bundle path: {member.name}"
+                    )
+                source = tar.extractfile(member)
+                if source is None:
+                    raise SystemExit(
+                        f"worker bundle file is unreadable: {member.name}"
+                    )
+                with source, target.open("xb") as output:
+                    shutil.copyfileobj(source, output)
+                with contextlib.suppress(OSError):
+                    target.chmod(0o755 if member.mode & 0o111 else 0o644)
+
+        for relative in required:
+            if not (staging / relative).is_file():
+                raise SystemExit(
+                    f"worker bundle is incomplete: missing {relative}"
+                )
+
+        old_metadata = metadata.read_bytes() if metadata.exists() else None
+        try:
+            if runtime.exists():
+                os.replace(runtime, backup)
+            os.replace(staging, runtime)
+            temporary_metadata = metadata.with_name(
+                f"{metadata.name}.{uuid.uuid4().hex}.tmp"
+            )
+            temporary_metadata.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "bundle_version": version,
+                        "sha256": expected_digest,
+                        "size": expected_size_int,
+                        "installed_at": time.time(),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            with contextlib.suppress(OSError):
+                temporary_metadata.chmod(0o600)
+            os.replace(temporary_metadata, metadata)
+        except BaseException:
+            shutil.rmtree(runtime, ignore_errors=True)
+            if backup.exists():
+                os.replace(backup, runtime)
+            if old_metadata is None:
+                metadata.unlink(missing_ok=True)
+            else:
+                metadata.write_bytes(old_metadata)
+            raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(backup, ignore_errors=True)
 PY
 }
 
@@ -566,7 +655,6 @@ main() {
   if runtime_is_installed; then
     echo "Reusing worker runtime $RUNTIME_VERSION (${RUNTIME_DIGEST:0:12})." >&2
   else
-    download_bundle
     install_bundle
   fi
   write_profile_metadata
