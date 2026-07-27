@@ -154,6 +154,7 @@ PY
 install_launcher() {
   local installed_launcher
   installed_launcher="$(
+    cd "$RUNTIME_DIR"
     LOCAL_SHELL_MCP_WORKER_STATE_DIR="$STATE_DIR" \
     PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}" \
     "$PYTHON_BIN" - "$PYTHON_BIN" <<'PY'
@@ -579,9 +580,11 @@ worker_args() {
 start_worker() {
   echo "Starting worker with $PYTHON_BIN..." >&2
   printf 'Worker profile: %s\nReconnect with:\n  %q %q\n' "$PROFILE_ID" "$LAUNCHER" "$PROFILE_ID" >&2
+  export LOCAL_SHELL_MCP_WORKER_STATE_DIR="$STATE_DIR"
   export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"
   export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
   worker_args
+  cd "$RUNTIME_DIR"
   if [ "$BACKGROUND" = "1" ]; then
     nohup "$PYTHON_BIN" -m local_shell_mcp.remote_worker "${ARGS[@]}" > "$PROFILE_DIR/worker.log" 2>&1 &
     echo "local-shell-mcp worker started in background. Log: $PROFILE_DIR/worker.log"
@@ -594,6 +597,7 @@ main() {
   parse_args "$@"
   require_basic_tools
   mkdir -p "$STATE_DIR"
+  STATE_DIR="$(cd "$STATE_DIR" && pwd -P)"
   chmod 700 "$STATE_DIR" 2>/dev/null || true
   TMPDIR="$(mktemp -d "$STATE_DIR/install.XXXXXX")"
   trap cleanup EXIT

@@ -13,14 +13,18 @@ _RUNTIME_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 
 
 def worker_state_dir() -> Path:
-    """Return the persistent state directory for one worker installation."""
+    """Return the absolute persistent state directory for one installation."""
     configured = os.getenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR")
     if configured:
-        return Path(configured).expanduser()
-    xdg_state_home = os.getenv("XDG_STATE_HOME")
-    if xdg_state_home:
-        return Path(xdg_state_home).expanduser() / "local-shell-mcp-worker"
-    return Path.home() / ".local" / "state" / "local-shell-mcp-worker"
+        path = Path(configured).expanduser()
+    else:
+        xdg_state_home = os.getenv("XDG_STATE_HOME")
+        path = (
+            Path(xdg_state_home).expanduser() / "local-shell-mcp-worker"
+            if xdg_state_home
+            else Path.home() / ".local" / "state" / "local-shell-mcp-worker"
+        )
+    return path.resolve()
 
 
 def worker_profiles_dir() -> Path:

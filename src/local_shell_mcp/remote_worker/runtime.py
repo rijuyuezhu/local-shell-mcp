@@ -56,6 +56,7 @@ _REQUIRED_RUNTIME_FILES = (
 )
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _RELEASE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
+_RUNTIME_MODULE_PATH = Path("local_shell_mcp/remote_worker/runtime.py")
 
 
 def read_runtime_metadata(digest: str | None = None) -> dict[str, Any]:
@@ -90,8 +91,18 @@ def runtime_identity(digest: str | None = None) -> dict[str, str]:
 
 
 def current_runtime_identity() -> dict[str, str]:
-    """Return the identity of the runtime selected for this process."""
-    return runtime_identity()
+    """Return identity only when this module executes from the selected runtime."""
+    identity = runtime_identity()
+    if not identity.get("sha256"):
+        return identity
+    selected_module = (worker_runtime_dir() / _RUNTIME_MODULE_PATH).resolve()
+    try:
+        executing_module = Path(__file__).resolve()
+    except OSError:
+        return {"sha256": "", "bundle_version": ""}
+    if executing_module != selected_module:
+        return {"sha256": "", "bundle_version": ""}
+    return identity
 
 
 def worker_poll_payload(

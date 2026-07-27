@@ -144,11 +144,13 @@ def _repair_profile_runtime(
     profile_id: str,
     profile: dict[str, Any],
 ) -> dict[str, Any]:
+    identity = load_worker_identity(profile_id)
+    if identity.get("migration_source") != _LEGACY_MIGRATION_SOURCE:
+        raise ValueError("migrated worker identity has an invalid source")
     digest = str(profile.get("runtime_sha256") or "")
     if runtime.runtime_identity(digest).get("sha256") == digest:
         ensure_profile_launcher()
         return _migration_result(profile_id, profile)
-    identity = load_worker_identity(profile_id)
     installed = _install_current_runtime(str(identity["server"]))
     repaired = update_worker_profile(
         profile_id,
@@ -220,7 +222,7 @@ def migrate_legacy_worker_state() -> dict[str, Any] | None:
             result = _migration_result(profile_id, profile)
             _write_migration_marker(profile_id)
             return result
-        except Exception:
+        except BaseException:
             with contextlib.suppress(OSError):
                 shutil.rmtree(profile_dir)
             raise

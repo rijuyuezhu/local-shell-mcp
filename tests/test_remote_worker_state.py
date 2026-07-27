@@ -20,6 +20,18 @@ def test_worker_state_dir_prefers_explicit_configuration(
     assert state.worker_state_dir() == configured
 
 
+def test_worker_state_dir_resolves_relative_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", "worker-state")
+
+    expected = tmp_path / "worker-state"
+    assert state.worker_state_dir() == expected
+    assert state.worker_launcher_path().parent == expected
+    assert state.worker_launcher_path().is_absolute()
+
+
 def test_worker_state_dir_uses_xdg_state_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

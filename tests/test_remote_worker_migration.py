@@ -300,6 +300,40 @@ def test_migration_result_rejects_wrong_source_and_missing_runtime(
         worker_migration._migration_result(profile_id, profile)
 
 
+def test_marker_cannot_repair_non_migration_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_state(tmp_path, monkeypatch)
+    profile_id = "p_regular12"
+    identity = _legacy_identity(tmp_path)
+    worker._write_worker_identity(
+        {**identity, "profile_id": profile_id}, profile_id
+    )
+    update_worker_profile(
+        profile_id,
+        runtime_sha256="3" * 64,
+        runtime_version="3.9.0",
+        server=identity["server"],
+        name=identity["name"],
+        workdir=identity["workdir"],
+    )
+    marker = worker_legacy_migration_path()
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps({"schema_version": 1, "profile_id": profile_id}),
+        encoding="utf-8",
+    )
+    calls = _fake_runtime_update(monkeypatch, digest="4" * 64, version="4.1.0")
+
+    with pytest.raises(ValueError, match="invalid source"):
+        worker_migration.migrate_legacy_worker_state()
+
+    assert calls == []
+    profile = read_worker_profile(profile_id)
+    assert profile["runtime_sha256"] == "3" * 64
+    assert profile["runtime_version"] == "3.9.0"
+
+
 def test_runtime_install_must_produce_complete_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -330,6 +364,30 @@ def test_legacy_migration_failure_keeps_legacy_identity_and_no_marker(
     )
 
     with pytest.raises(OSError, match="launcher unavailable"):
+        worker_migration.migrate_legacy_worker_state()
+
+    assert worker.load_worker_identity() == identity
+    assert not worker_legacy_migration_path().exists()
+    profiles = worker_profiles_dir()
+    assert not profiles.exists() or not list(profiles.iterdir())
+
+
+def test_legacy_migration_interrupt_removes_partial_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_state(tmp_path, monkeypatch)
+    identity = _legacy_identity(tmp_path)
+    worker._write_worker_identity(identity)
+    _fake_runtime_update(monkeypatch)
+
+    def interrupt_launcher(*_args: Any, **_kwargs: Any) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        worker_migration, "ensure_profile_launcher", interrupt_launcher
+    )
+
+    with pytest.raises(KeyboardInterrupt):
         worker_migration.migrate_legacy_worker_state()
 
     assert worker.load_worker_identity() == identity

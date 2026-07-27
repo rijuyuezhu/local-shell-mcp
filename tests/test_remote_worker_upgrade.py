@@ -573,14 +573,24 @@ print("worker-bundle-imports-ok")
 
 
 def _runtime_archive_bytes(
-    *, extra_members: list[tarfile.TarInfo] | None = None
+    *,
+    extra_members: list[tarfile.TarInfo] | None = None,
+    overrides: dict[str, bytes] | None = None,
 ) -> bytes:
     from local_shell_mcp.remote_worker import runtime
 
+    replacements = overrides or {}
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
         for relative in runtime._REQUIRED_RUNTIME_FILES:
-            payload = f"# {relative}\n".encode()
+            payload = replacements.get(relative, f"# {relative}\n".encode())
+            info = tarfile.TarInfo(relative)
+            info.size = len(payload)
+            info.mode = 0o644
+            tar.addfile(info, io.BytesIO(payload))
+        for relative, payload in replacements.items():
+            if relative in runtime._REQUIRED_RUNTIME_FILES:
+                continue
             info = tarfile.TarInfo(relative)
             info.size = len(payload)
             info.mode = 0o644
@@ -818,6 +828,45 @@ def test_install_runtime_is_transactional_and_short_circuits(
         "https://controller.test", instruction, current_version="3.9.1"
     )
     assert same["updated"] is False
+
+
+def test_current_runtime_identity_requires_executing_managed_module(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.remote_worker import runtime
+    from local_shell_mcp.remote_worker.state import WORKER_RUNTIME_DIGEST_ENV
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    payload = _runtime_archive_bytes()
+    digest = _mock_runtime_download(monkeypatch, payload, "3.9.1")
+    runtime.install_runtime(
+        "https://controller.test",
+        {
+            "version": "3.9.1",
+            "sha256": digest,
+            "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+        },
+        current_version="3.9.0",
+    )
+    monkeypatch.setenv(WORKER_RUNTIME_DIGEST_ENV, digest)
+    selected_module = (
+        runtime.worker_runtime_dir_for_digest(digest)
+        / runtime._RUNTIME_MODULE_PATH
+    )
+    selected_module.parent.mkdir(parents=True, exist_ok=True)
+    selected_module.write_text("# managed runtime module\n", encoding="utf-8")
+
+    assert runtime.runtime_identity(digest)["sha256"] == digest
+    assert runtime.current_runtime_identity() == {
+        "sha256": "",
+        "bundle_version": "",
+    }
+
+    monkeypatch.setattr(runtime, "__file__", str(selected_module))
+    assert runtime.current_runtime_identity() == {
+        "sha256": digest,
+        "bundle_version": "3.9.1",
+    }
 
 
 def test_install_failure_restores_old_runtime_and_metadata(
@@ -1173,6 +1222,7 @@ def test_join_script_installs_persistent_verified_runtime():
     assert "sha256" in script
     assert "member.isreg()" in script
     assert "os.replace(staging, runtime)" in script
+    assert 'export LOCAL_SHELL_MCP_WORKER_STATE_DIR="$STATE_DIR"' in script
     assert (
         'export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"'
         in script
@@ -1180,6 +1230,8 @@ def test_join_script_installs_persistent_verified_runtime():
     assert (
         'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"' in script
     )
+    assert 'STATE_DIR="$(cd "$STATE_DIR" && pwd -P)"' in script
+    assert 'cd "$RUNTIME_DIR"' in script
     assert 'ARGS=(connect --server "$SERVER" --invite "$INVITE"' in script
     assert '--profile "$PROFILE_ID"' in script
     assert '"$PROFILE_DIR/worker.log"' in script
@@ -1187,6 +1239,161 @@ def test_join_script_installs_persistent_verified_runtime():
     assert "--persist" not in script
     assert "ARGS=(--server" not in script
     assert 'rm -rf "$RUNTIME_DIR"' not in script
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="executes the POSIX curl-to-bash bootstrap under a real shell",
+)
+def test_join_script_uses_verified_runtime_and_absolute_relative_state(
+    tmp_path,
+):
+    from importlib import resources
+
+    script = (
+        resources.files("local_shell_mcp.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace(
+            "__REMOTE_WORKER_BUNDLE_PATH__",
+            "/remote/worker-bundle.tgz",
+        )
+    )
+    join_path = tmp_path / "join.sh"
+    join_path.write_text(script, encoding="utf-8")
+    join_path.chmod(0o700)
+
+    launcher_module = b"""\
+import os
+from pathlib import Path
+
+
+def ensure_profile_launcher(_python=None):
+    path = Path(os.environ["LOCAL_SHELL_MCP_WORKER_STATE_DIR"]) / "run"
+    path.write_text("#!/bin/sh\\n", encoding="utf-8")
+    return path, True
+"""
+
+    def probe_module(source: str) -> bytes:
+        return f"""\
+import json
+import os
+from pathlib import Path
+
+Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
+    json.dumps(
+        {{
+            "source": {source!r},
+            "cwd": str(Path.cwd()),
+            "state_dir": os.environ.get("LOCAL_SHELL_MCP_WORKER_STATE_DIR"),
+            "runtime_digest": os.environ.get(
+                "LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"
+            ),
+        }}
+    ),
+    encoding="utf-8",
+)
+""".encode()
+
+    bundle = _runtime_archive_bytes(
+        overrides={
+            "local_shell_mcp/remote_worker/__main__.py": probe_module(
+                "managed"
+            ),
+            "local_shell_mcp/remote_worker/profile_launcher.py": (
+                launcher_module
+            ),
+        }
+    )
+    digest = hashlib.sha256(bundle).hexdigest()
+    bundle_path = tmp_path / "worker.tgz"
+    manifest_path = tmp_path / "manifest.json"
+    bundle_path.write_bytes(bundle)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "bundle_version": "9.9.9",
+                "sha256": digest,
+                "size": len(bundle),
+                "url": f"/remote/worker-bundle.tgz?sha256={digest}",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    checkout = tmp_path / "checkout"
+    checkout_package = checkout / "local_shell_mcp" / "remote_worker"
+    checkout_package.mkdir(parents=True)
+    (checkout / "local_shell_mcp" / "__init__.py").write_text(
+        "", encoding="utf-8"
+    )
+    (checkout_package / "__init__.py").write_text("", encoding="utf-8")
+    (checkout_package / "__main__.py").write_bytes(probe_module("checkout"))
+    (checkout_package / "profile_launcher.py").write_bytes(launcher_module)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_curl = bin_dir / "curl"
+    fake_curl.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "import shutil\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "output = args[args.index('-o') + 1]\n"
+        "url = next(item for item in args if item.startswith('http'))\n"
+        "source = os.environ['FAKE_MANIFEST'] if 'manifest=1' in url else os.environ['FAKE_BUNDLE']\n"
+        "shutil.copyfile(source, output)\n",
+        encoding="utf-8",
+    )
+    fake_curl.chmod(0o700)
+
+    probe_path = tmp_path / "probe.json"
+    environment = {
+        **{
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith(("COVERAGE_", "COV_CORE_"))
+        },
+        "PATH": os.pathsep.join((str(bin_dir), os.environ["PATH"])),
+        "LOCAL_SHELL_MCP_WORKER_STATE_DIR": "worker-state",
+        "FAKE_MANIFEST": str(manifest_path),
+        "FAKE_BUNDLE": str(bundle_path),
+        "BOOTSTRAP_PROBE": str(probe_path),
+    }
+    completed = subprocess.run(
+        [
+            "bash",
+            str(join_path),
+            "--invite",
+            "fixture-invite",
+            "--profile",
+            "p_abcdefgh",
+            "--workdir",
+            str(tmp_path),
+        ],
+        cwd=checkout,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+    state_dir = (checkout / "worker-state").resolve()
+    runtime_dir = state_dir / "runtimes" / digest
+    probe = json.loads(probe_path.read_text(encoding="utf-8"))
+    assert probe == {
+        "source": "managed",
+        "cwd": str(runtime_dir),
+        "state_dir": str(state_dir),
+        "runtime_digest": digest,
+    }
+    assert (state_dir / "profiles/p_abcdefgh/profile.json").is_file()
+    assert (state_dir / "run").is_file()
 
 
 @pytest.mark.skipif(

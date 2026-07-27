@@ -122,6 +122,7 @@ source = ["local_shell_mcp"]
 [tool.coverage.paths]
 source = [
     "src/local_shell_mcp",
+    "local_shell_mcp",
     "*/.local-shell-mcp-worker/runtime/local_shell_mcp",
     "*/.local-shell-mcp-worker/runtimes/*/local_shell_mcp",
     "*/runtime/local_shell_mcp",
