@@ -117,6 +117,16 @@ find_or_install_python() {
   fi
 }
 
+resolve_workdir() {
+  WORKDIR="$($PYTHON_BIN - "$WORKDIR" <<'PY'
+import sys
+from pathlib import Path
+
+print(Path(sys.argv[1]).expanduser().resolve())
+PY
+)"
+}
+
 select_launcher_path() {
   LAUNCHER="$($PYTHON_BIN - "$STATE_DIR" <<'PY'
 import os
@@ -602,6 +612,7 @@ main() {
   TMPDIR="$(mktemp -d "$STATE_DIR/install.XXXXXX")"
   trap cleanup EXIT
   find_or_install_python
+  resolve_workdir
   select_launcher_path
   prepare_profile
   download_manifest

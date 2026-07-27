@@ -1294,6 +1294,7 @@ def ensure_profile_launcher(_python=None):
         return f"""\
 import json
 import os
+import sys
 from pathlib import Path
 
 Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
@@ -1301,6 +1302,7 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
         {{
             "source": {source!r},
             "cwd": str(Path.cwd()),
+            "argv": sys.argv[1:],
             "state_dir": os.environ.get("LOCAL_SHELL_MCP_WORKER_STATE_DIR"),
             "runtime_digest": os.environ.get(
                 "LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"
@@ -1347,6 +1349,8 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
     (checkout_package / "__init__.py").write_text("", encoding="utf-8")
     (checkout_package / "__main__.py").write_bytes(probe_module("checkout"))
     (checkout_package / "profile_launcher.py").write_bytes(launcher_module)
+    workspace = checkout / "workspace"
+    workspace.mkdir()
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -1387,7 +1391,7 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
             "--profile",
             "p_abcdefgh",
             "--workdir",
-            str(tmp_path),
+            "workspace",
         ],
         cwd=checkout,
         env=environment,
@@ -1404,6 +1408,17 @@ Path(os.environ["BOOTSTRAP_PROBE"]).write_text(
     assert probe == {
         "source": "managed",
         "cwd": str(runtime_dir),
+        "argv": [
+            "connect",
+            "--server",
+            "https://controller.test",
+            "--invite",
+            "fixture-invite",
+            "--workdir",
+            str(workspace.resolve()),
+            "--profile",
+            "p_abcdefgh",
+        ],
         "state_dir": str(state_dir),
         "runtime_digest": digest,
     }
