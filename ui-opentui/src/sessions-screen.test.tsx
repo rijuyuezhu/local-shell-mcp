@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { RGBA } from "@opentui/core"
 import { testRender } from "@opentui/react/test-utils"
 import { act } from "react"
 import { SessionsScreen } from "./sessions-screen"
+import { theme } from "./theme"
 import type { Machine } from "./types"
 
 const originalFetch = globalThis.fetch
@@ -378,8 +380,10 @@ describe("SessionsScreen navigation and layout", () => {
             ok: true,
             paired: true,
             source_events: ["tool_call_start", "tool_call_end"],
-            input: { path: "README.md" },
-            output: { ok: true },
+            input: Object.fromEntries(
+              Array.from({ length: 40 }, (_, index) => [`argument_${index}`, `value_${index}`]),
+            ),
+            output: { visible_result_marker: true },
           },
         }))
       }
@@ -438,6 +442,12 @@ describe("SessionsScreen navigation and layout", () => {
     expect(frame).toContain("Coalesced call")
     expect(frame).toContain("Call request")
     expect(frame).toContain("Call result")
+    expect(frame).toContain("visible_result_marker")
     expect(frame).not.toContain(" Input ")
+
+    const resultKey = setup.captureSpans().lines
+      .flatMap((line) => line.spans)
+      .find((span) => span.text.includes("visible_result_marker"))
+    expect(resultKey?.fg.toInts()).toEqual(RGBA.fromHex(theme.blue).toInts())
   })
 })
