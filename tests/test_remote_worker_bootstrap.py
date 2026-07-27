@@ -764,6 +764,47 @@ async def test_remote_manager_persists_workers_and_resumes(
 
 
 @pytest.mark.asyncio
+async def test_remote_manager_resume_uses_token_name_after_rename(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.config.settings import clear_settings_cache
+    from local_shell_mcp.remote.manager import RemoteManager
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+
+    manager = RemoteManager()
+    invite = await manager.create_invite(name="worker-old")
+    registered = await manager.register_worker(
+        {
+            "invite": invite.code,
+            "workdir": str(tmp_path),
+            "capabilities": ["shell"],
+            "info": {"hostname": "remote-host"},
+            "runtime": _managed_runtime_report(),
+        }
+    )
+    manager.rename("worker-old", "worker-renamed")
+
+    resumed = await manager.resume_worker(
+        registered["token"],
+        {
+            "name": "worker-old",
+            "workdir": str(tmp_path / "remote"),
+            "runtime": _managed_runtime_report(),
+        },
+    )
+
+    assert resumed["name"] == "worker-renamed"
+    inventory = manager.list_machines()
+    assert [machine.name for machine in inventory.machines] == [
+        "worker-renamed"
+    ]
+    assert inventory.counts == {"online": 1, "offline": 0, "total": 1}
+
+
+@pytest.mark.asyncio
 async def test_remote_manager_list_machines_reports_counts_and_details(
     tmp_path, monkeypatch
 ):

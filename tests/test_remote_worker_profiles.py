@@ -58,6 +58,72 @@ def test_profile_identities_are_isolated(
     assert not (tmp_path / "identity.json").exists()
 
 
+@pytest.mark.asyncio
+async def test_profile_resume_persists_canonical_renamed_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_profile_environment(monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    profile_id = "p_abcdefgh"
+    workdir = tmp_path / "workspace"
+    workdir.mkdir()
+    digest = "a" * 64
+    original = {
+        **_identity("worker-old", str(workdir)),
+        "profile_id": profile_id,
+        "migration_source": "legacy-single-worker",
+    }
+    worker._write_worker_identity(original, profile_id)
+    captured: dict[str, Any] = {}
+
+    async def resume(
+        _url: str,
+        payload: dict[str, Any],
+        _headers: dict[str, str],
+        _timeout: int,
+        selected_profile: str,
+    ) -> dict[str, Any]:
+        captured.update(payload=payload, profile_id=selected_profile)
+        return {"ok": True, "data": {"name": "worker-renamed"}}
+
+    monkeypatch.setattr(worker, "_worker_resume_or_none", resume)
+    monkeypatch.setattr(worker, "worker_capabilities", lambda: [])
+    monkeypatch.setattr(
+        worker,
+        "worker_info",
+        lambda _workdir, _profile_id=None: {},
+    )
+    monkeypatch.setattr(
+        worker.worker_runtime,
+        "current_runtime_identity",
+        lambda: {"sha256": digest, "bundle_version": "4.0.0"},
+    )
+
+    stored, data = await worker._enroll_or_resume_worker(
+        "https://controller.test",
+        "",
+        "worker-old",
+        str(workdir),
+        profile_id,
+    )
+
+    assert captured["profile_id"] == profile_id
+    assert captured["payload"]["name"] == "worker-old"
+    assert data["name"] == "worker-renamed"
+    assert stored == {
+        "server": "https://controller.test",
+        "name": "worker-renamed",
+        "access": "access-worker-old",
+        "workdir": str(workdir),
+        "migration_source": "legacy-single-worker",
+        "profile_id": profile_id,
+    }
+    assert worker.load_worker_identity(profile_id) == stored
+    profile = worker_profiles.read_worker_profile(profile_id)
+    assert profile["name"] == "worker-renamed"
+    assert profile["runtime_sha256"] == digest
+
+
 def test_active_profile_survives_credential_free_reexec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

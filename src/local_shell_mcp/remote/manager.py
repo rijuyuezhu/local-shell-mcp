@@ -559,12 +559,9 @@ class RemoteManager:
         async with self._enrollment_lock:
             with self._state_lock:
                 self._load_registry_unlocked()
+                # The bearer token is canonical; the reported name may be stale
+                # after an administrator renames this registration.
                 worker = self._worker_by_token_unlocked(token)
-                requested_name = str(payload.get("name") or "").strip()
-                if requested_name and requested_name != worker.name:
-                    raise ValueError(
-                        f"worker identity belongs to machine {worker.name!r}"
-                    )
                 worker.status = "online"
                 worker.last_seen = _utc()
                 worker.workdir = str(

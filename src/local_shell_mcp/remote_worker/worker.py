@@ -670,6 +670,9 @@ async def _enroll_or_resume_worker(
         "access": access,
         "workdir": resolved_workdir,
     }
+    migration_source = identity.get("migration_source") if identity else None
+    if isinstance(migration_source, str) and migration_source:
+        stored["migration_source"] = migration_source
     if profile_id is not None:
         stored["profile_id"] = profile_id
         _write_worker_identity(stored, profile_id)
