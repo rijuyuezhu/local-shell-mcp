@@ -72,7 +72,7 @@ async def _remote_snapshot(
     return todos, raw_audit
 
 
-def _normalize_audit_snapshot(
+async def _normalize_audit_snapshot(
     machine: str,
     session: AgentSession,
     raw: dict[str, Any],
@@ -92,7 +92,8 @@ def _normalize_audit_snapshot(
     except HTTPException as exc:
         result["entry_error"] = str(exc.detail)
         return result
-    result["entry"] = audit_http._audit_view_image_detail(
+    result["entry"] = await asyncio.to_thread(
+        audit_http._audit_view_image_detail,
         detail,
         audit_http.image_preview_request(request.query_params),
     )
@@ -133,9 +134,12 @@ async def api_session_snapshot(request: Request) -> Response:
             )
 
         payload = todos_http._payload(machine, session, todos)
+        normalized_audit = await _normalize_audit_snapshot(
+            machine, session, raw_audit, request
+        )
         payload["audit"] = audit_http._payload(
             machine,
-            _normalize_audit_snapshot(machine, session, raw_audit, request),
+            normalized_audit,
             scope="session",
         )
         return _json_ok(payload)

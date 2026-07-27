@@ -1,4 +1,5 @@
 import base64
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -448,6 +449,74 @@ def test_local_session_snapshot_returns_todos_and_selected_audit_preview(
     assert "input" not in data["audit"]["entries"][0]
     assert data["audit"]["entry"]["input"]["path"] == "notes.txt"
     assert data["audit"]["entry"]["output"] == {"content": "snapshot"}
+
+
+def test_session_snapshot_offloads_selected_detail_projection(
+    monkeypatch, tmp_path
+):
+    client = _client(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    session = get_tool_session_store().create_session(
+        workdir=workspace,
+        label="threaded snapshot",
+    )
+    call_id = "threaded-session-snapshot"
+    session_ids = audit_tool_call_start(
+        call_id=call_id,
+        transport="http",
+        tool="read",
+        input={"session_id": session.session_id, "path": "threaded.txt"},
+    )
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="http",
+        tool="read",
+        ok=True,
+        duration_ms=1,
+        output={"content": "threaded"},
+        session_ids=session_ids,
+    )
+
+    original_to_thread = ui_session_snapshot_module.asyncio.to_thread
+    thread_calls: list[tuple[str, int, int]] = []
+
+    async def tracked_to_thread(function, /, *args, **kwargs):
+        caller_thread = threading.get_ident()
+
+        def invoke():
+            worker_thread = threading.get_ident()
+            thread_calls.append(
+                (
+                    getattr(function, "__name__", repr(function)),
+                    caller_thread,
+                    worker_thread,
+                )
+            )
+            return function(*args, **kwargs)
+
+        return await original_to_thread(invoke)
+
+    monkeypatch.setattr(
+        ui_session_snapshot_module.asyncio,
+        "to_thread",
+        tracked_to_thread,
+    )
+
+    response = client.get(
+        "/api/ui/sessions/snapshot",
+        params={
+            "machine": "local",
+            "session_id": session.session_id,
+            "operation": "files",
+            "limit": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    detail_call = next(
+        call for call in thread_calls if call[0] == "_audit_view_image_detail"
+    )
+    assert detail_call[1] != detail_call[2]
 
 
 def test_remote_session_snapshot_uses_one_session_worker_rpc(
@@ -1189,7 +1258,23 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     )
     index = (static_root / "index.html").read_text(encoding="utf-8")
     script = (static_root / "web.js").read_text(encoding="utf-8")
+    global_refresh = script[
+        script.index("async function refreshAudit()") : script.index(
+            "function clearSessionAuditDetail"
+        )
+    ]
+    session_snapshot = script[
+        script.index("function applySessionAuditPayload") : script.index(
+            "function sessionAuditQueryPath"
+        )
+    ]
 
+    assert global_refresh.index(
+        "auditDetailGeneration += 1;"
+    ) < global_refresh.index("auditEntries =")
+    assert session_snapshot.index(
+        "sessionAuditDetailGeneration += 1;"
+    ) < session_snapshot.index("sessionAuditEntries =")
     assert 'id="audit-machine"' in index
     assert 'id="audit-list"' in index
     assert 'id="audit-detail-body"' in index

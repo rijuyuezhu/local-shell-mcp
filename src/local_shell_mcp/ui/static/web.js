@@ -2354,6 +2354,7 @@
     try {
       const payload = await request(auditQueryPath());
       if (generation !== auditGeneration || requestedMachine !== auditMachine) return null;
+      auditDetailGeneration += 1;
       auditEntries = Array.isArray(payload.entries) ? payload.entries.map((entry) => ({ ...entry })) : [];
       auditSelectedId = auditEntries.some((entry) => entry.id === previousSelection)
         ? previousSelection
@@ -2442,6 +2443,7 @@
   }
 
   function applySessionAuditPayload(payload, requestedSession, previousSelection) {
+    sessionAuditDetailGeneration += 1;
     sessionAuditEntries = Array.isArray(payload.entries)
       ? payload.entries.map((entry) => ({ ...entry }))
       : [];
