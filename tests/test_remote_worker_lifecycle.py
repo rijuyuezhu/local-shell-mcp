@@ -13,6 +13,20 @@ from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
 
 
+def _managed_poll_report(**extra: object) -> dict[str, object]:
+    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+
+    manifest = worker_bundle_manifest()
+    return {
+        "protocol_version": 2,
+        "runtime_kind": "managed_bundle",
+        "worker_version": str(manifest["bundle_version"]),
+        "bundle_version": str(manifest["bundle_version"]),
+        "bundle_sha256": str(manifest["sha256"]),
+        **extra,
+    }
+
+
 def _configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path / "worker-state")
@@ -264,7 +278,8 @@ def test_poll_timeout_helpers_bound_and_advertise_deadline() -> None:
 
     payload = worker._worker_poll_payload("3.9.1", {}, 40)
     assert payload["poll_timeout_s"] == 30
-    assert payload["protocol_version"] == 1
+    assert payload["protocol_version"] == 2
+    assert payload["runtime_kind"] == "unmanaged_source"
 
 
 def test_bounded_poll_requires_curl(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -299,13 +314,21 @@ async def test_controller_uses_shorter_worker_poll_deadline(
         "local_shell_mcp.remote.manager.asyncio.wait_for", fake_wait_for
     )
 
-    result = await manager.poll("token", {"poll_timeout_s": 0.25})
+    result = await manager.poll(
+        "token", _managed_poll_report(poll_timeout_s=0.25)
+    )
 
     assert observed == [pytest.approx(0.25, abs=0.001)]
     assert result == {
         "job": None,
         "heartbeat": True,
         "poll_timeout_s": 30.0,
+        "upgrade": {
+            "required": False,
+            "version": _managed_poll_report()["bundle_version"],
+            "sha256": _managed_poll_report()["bundle_sha256"],
+            "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+        },
     }
 
 

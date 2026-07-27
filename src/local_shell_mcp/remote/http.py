@@ -94,6 +94,8 @@ async def poll_endpoint(request: Request) -> JSONResponse:
         )
     except PermissionError as exc:
         return _error(str(exc), type(exc).__name__, 401)
+    except WorkerRuntimeCompatibilityError as exc:
+        return _error(str(exc), type(exc).__name__, 409)
     except ValueError as exc:
         return _error(str(exc), type(exc).__name__, 400)
     except Exception as exc:

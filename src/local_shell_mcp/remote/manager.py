@@ -132,25 +132,33 @@ def _runtime_info(report: dict[str, Any]) -> dict[str, Any]:
 
 def _validate_poll_report(
     payload: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Validate optional version negotiation while preserving legacy polls."""
+) -> dict[str, Any]:
+    """Require a complete managed-runtime report before delivering jobs."""
     if not payload:
-        return None
-    protocol = payload.get("protocol_version", 0)
+        raise WorkerRuntimeCompatibilityError(
+            "managed remote worker poll report required; use a current generated invite command"
+        )
+    protocol = payload.get("protocol_version")
     if isinstance(protocol, bool) or not isinstance(protocol, int):
         raise ValueError("worker poll protocol_version must be an integer")
-    if not 0 <= protocol <= REMOTE_WORKER_POLL_PROTOCOL_VERSION:
-        raise ValueError("worker poll protocol_version is unsupported")
-    if protocol == 0:
-        return {"protocol_version": 0}
+    if protocol != REMOTE_WORKER_POLL_PROTOCOL_VERSION:
+        raise WorkerRuntimeCompatibilityError(
+            "worker poll protocol_version is unsupported; update the managed worker runtime"
+        )
 
+    runtime_kind = _reported_text(payload, "runtime_kind", required=True)
+    if runtime_kind != REMOTE_WORKER_RUNTIME_KIND:
+        raise WorkerRuntimeCompatibilityError(
+            "managed remote worker runtime required; manually installed source is not accepted"
+        )
     worker_version = _reported_text(payload, "worker_version", required=True)
-    bundle_version = _reported_text(payload, "bundle_version", required=False)
-    digest = _reported_text(payload, "bundle_sha256", required=False).lower()
-    if digest and not _WORKER_DIGEST_RE.fullmatch(digest):
+    bundle_version = _reported_text(payload, "bundle_version", required=True)
+    digest = _reported_text(payload, "bundle_sha256", required=True).lower()
+    if not _WORKER_DIGEST_RE.fullmatch(digest):
         raise ValueError("worker poll bundle_sha256 is invalid")
     return {
         "protocol_version": protocol,
+        "runtime_kind": runtime_kind,
         "worker_version": worker_version,
         "bundle_version": bundle_version,
         "bundle_sha256": digest,
@@ -571,37 +579,23 @@ class RemoteManager:
             effective_poll_timeout_s = min(
                 configured_poll_timeout_s, worker_poll_timeout_s
             )
-        upgrade: dict[str, Any] | None = None
+        upgrade = _runtime_upgrade(report)
         with self._state_lock:
             self._load_registry_unlocked()
             worker = self._worker_by_token_unlocked(token)
             worker.status = "online"
             worker.last_seen = _utc()
-            if report is not None:
-                info_updates = {
-                    "poll_protocol_version": report["protocol_version"],
-                }
-                if report["protocol_version"]:
-                    info_updates.update(
-                        {
-                            "lsm_version": report["worker_version"],
-                            "worker_bundle_version": report["bundle_version"],
-                            "worker_bundle_sha256": report["bundle_sha256"],
-                        }
-                    )
-                    upgrade = _upgrade_instruction(
-                        required=(
-                            report["bundle_sha256"]
-                            != worker_bundle_manifest()["sha256"]
-                        )
-                    )
-                if any(
-                    worker.info.get(key) != value
-                    for key, value in info_updates.items()
-                ):
-                    worker.info.update(info_updates)
-                    self._save_registry_unlocked()
-        if upgrade is not None and upgrade["required"]:
+            info_updates = {
+                "poll_protocol_version": report["protocol_version"],
+                **_runtime_info(report),
+            }
+            if any(
+                worker.info.get(key) != value
+                for key, value in info_updates.items()
+            ):
+                worker.info.update(info_updates)
+                self._save_registry_unlocked()
+        if upgrade["required"]:
             return {
                 "job": None,
                 "upgrade": upgrade,
@@ -617,9 +611,8 @@ class RemoteManager:
                     "job": None,
                     "heartbeat": True,
                     "poll_timeout_s": configured_poll_timeout_s,
+                    "upgrade": upgrade,
                 }
-                if upgrade is not None:
-                    response["upgrade"] = upgrade
                 return response
             try:
                 job = await asyncio.wait_for(
@@ -630,9 +623,8 @@ class RemoteManager:
                     "job": None,
                     "heartbeat": True,
                     "poll_timeout_s": configured_poll_timeout_s,
+                    "upgrade": upgrade,
                 }
-                if upgrade is not None:
-                    response["upgrade"] = upgrade
                 return response
             job_id = str(job.get("id") or "")
             with self._state_lock:
@@ -647,9 +639,8 @@ class RemoteManager:
             response = {
                 "job": job,
                 "poll_timeout_s": configured_poll_timeout_s,
+                "upgrade": upgrade,
             }
-            if upgrade is not None:
-                response["upgrade"] = upgrade
             return response
 
     async def heartbeat(self, token: str) -> dict[str, Any]:

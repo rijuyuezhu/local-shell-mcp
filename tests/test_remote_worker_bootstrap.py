@@ -26,6 +26,13 @@ def _managed_runtime_report() -> dict[str, object]:
     }
 
 
+def _managed_poll_report(**extra: object) -> dict[str, object]:
+    report = _managed_runtime_report()
+    report["protocol_version"] = 2
+    report.update(extra)
+    return report
+
+
 def test_remote_worker_entrypoint_import_is_dependency_light():
     script = """
 import asyncio
@@ -995,7 +1002,7 @@ async def test_remote_poll_skips_cancelled_job_and_delivers_next(
     worker.queue.put_nowait({"id": "cancelled", "tool": "read", "args": {}})
     worker.queue.put_nowait({"id": "next", "tool": "read", "args": {}})
 
-    result = await manager.poll("token")
+    result = await manager.poll("token", _managed_poll_report())
 
     assert result["job"]["id"] == "next"
     assert "cancelled" not in manager.cancelled_jobs

@@ -128,7 +128,8 @@ async def test_stale_managed_runtime_enrolls_only_for_upgrade(
 
 def _poll_report(*, digest: str, version: str = "3.9.1") -> dict[str, Any]:
     return {
-        "protocol_version": 1,
+        "protocol_version": 2,
+        "runtime_kind": "managed_bundle",
         "worker_version": version,
         "bundle_version": version,
         "bundle_sha256": digest,
@@ -161,11 +162,12 @@ async def test_poll_mismatch_records_report_and_does_not_dequeue(
         "poll_timeout_s": 1.0,
     }
     assert worker.queue.qsize() == 1
-    assert worker.info["poll_protocol_version"] == 1
+    assert worker.info["poll_protocol_version"] == 2
+    assert worker.info["runtime_kind"] == "managed_bundle"
     assert worker.info["lsm_version"] == "3.9.1"
     assert worker.info["worker_bundle_sha256"] == "0" * 64
     persisted = json.loads(manager._registry_path().read_text(encoding="utf-8"))
-    assert persisted["workers"][0]["info"]["poll_protocol_version"] == 1
+    assert persisted["workers"][0]["info"]["poll_protocol_version"] == 2
     assert registered["token"] not in json.dumps(result)
 
 
@@ -196,21 +198,23 @@ async def test_poll_matching_digest_delivers_job(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_poll_legacy_and_protocol_zero_remain_compatible(
+async def test_poll_rejects_legacy_reports_without_dequeuing(
     tmp_path, monkeypatch
 ):
+    from local_shell_mcp.remote.manager import WorkerRuntimeCompatibilityError
+
     manager, registered = await _registered_manager(tmp_path, monkeypatch)
     worker = manager.workers[registered["name"]]
     worker.queue.put_nowait({"id": "legacy"})
-    legacy = await manager.poll(registered["token"])
-    assert legacy == {"job": {"id": "legacy"}, "poll_timeout_s": 1.0}
-
-    worker.queue.put_nowait({"id": "v0"})
-    protocol_zero = await manager.poll(
-        registered["token"], {"protocol_version": 0}
-    )
-    assert protocol_zero == {"job": {"id": "v0"}, "poll_timeout_s": 1.0}
-    assert worker.info["poll_protocol_version"] == 0
+    with pytest.raises(
+        WorkerRuntimeCompatibilityError, match="report required"
+    ):
+        await manager.poll(registered["token"])
+    with pytest.raises(WorkerRuntimeCompatibilityError, match="unsupported"):
+        await manager.poll(registered["token"], {"protocol_version": 0})
+    with pytest.raises(WorkerRuntimeCompatibilityError, match="unsupported"):
+        await manager.poll(registered["token"], {"protocol_version": 1})
+    assert worker.queue.qsize() == 1
 
 
 @pytest.mark.asyncio
@@ -218,16 +222,30 @@ async def test_poll_legacy_and_protocol_zero_remain_compatible(
     "payload, message",
     [
         ({"protocol_version": True}, "must be an integer"),
-        ({"protocol_version": 2}, "unsupported"),
-        ({"protocol_version": 1}, "worker_version is required"),
+        ({"protocol_version": 3}, "unsupported"),
+        ({"protocol_version": 2}, "runtime_kind is required"),
         (
-            {"protocol_version": 1, "worker_version": 3},
+            {"protocol_version": 2, "runtime_kind": "unmanaged_source"},
+            "source",
+        ),
+        (
+            {"protocol_version": 2, "runtime_kind": "managed_bundle"},
+            "worker_version is required",
+        ),
+        (
+            {
+                "protocol_version": 2,
+                "runtime_kind": "managed_bundle",
+                "worker_version": 3,
+            },
             "worker_version must be a string",
         ),
         (
             {
-                "protocol_version": 1,
+                "protocol_version": 2,
+                "runtime_kind": "managed_bundle",
                 "worker_version": "3.9.1",
+                "bundle_version": "3.9.1",
                 "bundle_sha256": "bad",
             },
             "bundle_sha256 is invalid",
@@ -282,16 +300,22 @@ def test_runtime_compatibility_errors_use_conflict_status(monkeypatch):
         async def resume_worker(self, token, payload):
             raise WorkerRuntimeCompatibilityError("managed runtime required")
 
+        async def poll(self, token, payload):
+            raise WorkerRuntimeCompatibilityError("managed runtime required")
+
     monkeypatch.setattr(http, "remote_manager", lambda: Manager())
     client = TestClient(Starlette(routes=http.remote_routes()))
 
     registered = client.post("/remote/register", json={})
     resumed = client.post("/remote/resume", json={})
+    polled = client.post("/remote/poll", json={})
 
     assert registered.status_code == 409
     assert resumed.status_code == 409
+    assert polled.status_code == 409
     assert registered.json()["error"] == "WorkerRuntimeCompatibilityError"
     assert resumed.json()["error"] == "WorkerRuntimeCompatibilityError"
+    assert polled.json()["error"] == "WorkerRuntimeCompatibilityError"
 
 
 @pytest.mark.asyncio
@@ -975,7 +999,11 @@ async def test_worker_processes_required_upgrade_before_job(
         await worker.run_worker(
             "https://controller.test", "", "worker-a", str(tmp_path)
         )
-    assert poll_payloads[0]["protocol_version"] == 1
+    assert poll_payloads[0]["protocol_version"] == 2
+    assert poll_payloads[0]["runtime_kind"] in {
+        "managed_bundle",
+        "unmanaged_source",
+    }
     assert poll_payloads[0]["worker_version"]
     assert "secret-access" not in json.dumps(poll_payloads)
 

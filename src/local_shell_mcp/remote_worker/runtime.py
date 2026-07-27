@@ -103,6 +103,11 @@ def worker_poll_payload(
     )
     return {
         "protocol_version": POLL_PROTOCOL_VERSION,
+        "runtime_kind": (
+            REMOTE_WORKER_RUNTIME_KIND
+            if identity.get("sha256")
+            else "unmanaged_source"
+        ),
         "worker_version": worker_version,
         "bundle_sha256": str(identity.get("sha256") or ""),
         "bundle_version": str(identity.get("bundle_version") or ""),
