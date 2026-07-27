@@ -85,6 +85,8 @@ def runtime_metadata_path() -> Path:
     return worker_state_dir() / _RUNTIME_METADATA_FILE_NAME
 
 
-def worker_lock_path() -> Path:
-    """Return the legacy single-worker process lock."""
+def worker_lock_path(profile_id: str | None = None) -> Path:
+    """Return the process lock for one profile or the legacy worker."""
+    if profile_id is not None:
+        return worker_profile_lock_path(profile_id)
     return worker_state_dir() / "worker.lock"

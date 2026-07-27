@@ -191,11 +191,11 @@ def _adopt_worker_lock_handle() -> BinaryIO | None:
 
 
 @contextlib.contextmanager
-def worker_run_lock() -> Generator[None]:
-    """Hold the single-instance worker lock across enrollment, polling, and jobs."""
+def worker_run_lock(profile_id: str | None = None) -> Generator[None]:
+    """Hold one profile's single-instance lock across the worker lifecycle."""
     global _active_worker_lock_handle
 
-    path = worker_lock_path()
+    path = worker_lock_path(profile_id)
     _ensure_lock_file(path)
     handle = _adopt_worker_lock_handle()
     inherited = handle is not None

@@ -43,6 +43,29 @@ def test_worker_run_lock_rejects_duplicate_and_recovers(
         pass
 
 
+def test_worker_run_locks_are_isolated_by_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    first = "p_abcdefgh"
+    second = "p_ijklmnop"
+
+    with lifecycle.worker_run_lock(first):
+        with lifecycle.worker_run_lock(second):
+            assert lifecycle.worker_lock_path(first).is_file()
+            assert lifecycle.worker_lock_path(second).is_file()
+        with (
+            pytest.raises(
+                lifecycle.WorkerAlreadyRunningError, match="already running"
+            ),
+            lifecycle.worker_run_lock(first),
+        ):
+            pass
+
+    with lifecycle.worker_run_lock(first):
+        pass
+
+
 def test_managed_worker_waits_for_lock_handoff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
