@@ -1200,7 +1200,7 @@ def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
     requests_path = tmp_path / "curl-requests.txt"
     fake_curl = bin_dir / "curl"
     fake_curl.write_text(
-        f"#!{sys.executable}\n"
+        "#!/usr/bin/env python\n"
         "import os\n"
         "import shutil\n"
         "import sys\n"

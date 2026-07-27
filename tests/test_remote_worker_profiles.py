@@ -24,6 +24,7 @@ def _clear_profile_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(WORKER_RUNTIME_DIGEST_ENV, "")
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", "")
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", "")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "")
 
 
 def _identity(name: str, workdir: str) -> dict[str, str]:
