@@ -248,6 +248,7 @@
               <span id="remote-detail-status" class="muted">Select a worker to inspect it</span>
             </div>
             <div class="remote-detail-actions">
+              <button id="remote-reconnect-copy" type="button" disabled>Copy reconnect</button>
               <button id="remote-rename-open" type="button" disabled>Rename</button>
               <button id="remote-revoke-open" class="danger-action" type="button" disabled>Revoke</button>
             </div>
@@ -261,10 +262,15 @@
             <div><dt>User</dt><dd id="remote-detail-user">—</dd></div>
             <div><dt>Platform</dt><dd id="remote-detail-platform">—</dd></div>
             <div><dt>Python</dt><dd id="remote-detail-python">—</dd></div>
+            <div><dt>Profile</dt><dd id="remote-detail-profile">—</dd></div>
           </dl>
           <div class="remote-capabilities">
             <span>Capabilities</span>
             <div id="remote-detail-capabilities" class="remote-capability-list"><span class="muted">—</span></div>
+          </div>
+          <div class="remote-reconnect">
+            <span>Reconnect command</span>
+            <pre id="remote-detail-reconnect" tabindex="0">Unavailable for this worker</pre>
           </div>
         </article>
       </div>

@@ -84,7 +84,7 @@ def test_http_app_installs_public_worker_routes_when_remote_enabled(
     )
 
     assert client.get("/join").status_code == 200
-    assert client.post("/remote/register", json={}).status_code == 400
+    assert client.post("/remote/register", json={}).status_code == 409
 
 
 def test_http_app_omits_worker_routes_when_remote_disabled(
@@ -103,6 +103,8 @@ def _inventory() -> RemoteListMachinesOutput:
                 name="edge-a",
                 status="online",
                 workdir="/srv/edge-a",
+                profile_id="p_abcdefgh",
+                reconnect_command="/srv/worker/run p_abcdefgh",
                 last_seen=100.0,
                 last_seen_age_s=2.0,
                 offline_after_s=60.0,
@@ -209,6 +211,8 @@ def test_remote_inventory_is_normalized_and_strips_private_info(
         "name": "edge-a",
         "status": "online",
         "workdir": "/srv/edge-a",
+        "profile_id": "p_abcdefgh",
+        "reconnect_command": "/srv/worker/run p_abcdefgh",
         "last_seen": 100.0,
         "last_seen_age_s": 2.0,
         "offline_after_s": 60.0,
@@ -269,6 +273,23 @@ def test_remote_inventory_rejects_duplicate_and_malformed_rows(
     malformed = client.get("/api/ui/remotes")
     assert malformed.status_code == 500
     assert malformed.json()["error"] == "RemoteInventoryUnavailable"
+
+    class MalformedReconnectInventory:
+        def model_dump(self, *, mode: str) -> dict[str, Any]:
+            assert mode == "json"
+            row = _inventory().machines[0].model_dump(mode="json")
+            row["profile_id"] = "p_../escape"
+            row["reconnect_command"] = "/tmp/run\nmalicious"
+            return {"machines": [row], "counts": {}}
+
+    monkeypatch.setattr(
+        remotes_module,
+        "list_remote_machines",
+        lambda: MalformedReconnectInventory(),
+    )
+    malformed_reconnect = client.get("/api/ui/remotes")
+    assert malformed_reconnect.status_code == 500
+    assert malformed_reconnect.json()["error"] == ("RemoteInventoryUnavailable")
 
 
 def test_remote_invite_is_bounded_ephemeral_and_audited_without_secret(

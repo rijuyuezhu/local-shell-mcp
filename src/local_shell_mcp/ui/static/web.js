@@ -224,8 +224,10 @@
     remoteDetailLastSeen: document.getElementById("remote-detail-last-seen"),
     remoteDetailName: document.getElementById("remote-detail-name"),
     remoteDetailPlatform: document.getElementById("remote-detail-platform"),
+    remoteDetailProfile: document.getElementById("remote-detail-profile"),
     remoteDetailPython: document.getElementById("remote-detail-python"),
     remoteDetailQueue: document.getElementById("remote-detail-queue"),
+    remoteDetailReconnect: document.getElementById("remote-detail-reconnect"),
     remoteDetailStatus: document.getElementById("remote-detail-status"),
     remoteDetailUser: document.getElementById("remote-detail-user"),
     remoteDetailVersion: document.getElementById("remote-detail-version"),
@@ -246,6 +248,7 @@
     remoteOffline: document.getElementById("remote-offline"),
     remoteOnline: document.getElementById("remote-online"),
     remoteRefresh: document.getElementById("remote-refresh"),
+    remoteReconnectCopy: document.getElementById("remote-reconnect-copy"),
     remoteRenameDialog: document.getElementById("remote-rename-dialog"),
     remoteRenameForm: document.getElementById("remote-rename-form"),
     remoteRenameName: document.getElementById("remote-rename-name"),
@@ -1041,6 +1044,7 @@
     const selected = selectedRemote();
     elements.remoteRenameOpen.disabled = remoteLoading || !remoteEnabled || !selected;
     elements.remoteRevokeOpen.disabled = remoteLoading || !remoteEnabled || !selected;
+    elements.remoteReconnectCopy.disabled = remoteLoading || !text(selected?.reconnect_command, "");
   }
 
   function resetRemotes(message = "Not loaded") {
@@ -1077,6 +1081,7 @@
       elements.remoteDetailUser,
       elements.remoteDetailPlatform,
       elements.remoteDetailPython,
+      elements.remoteDetailProfile,
     ];
     if (!machine) {
       elements.remoteDetailName.textContent = "No remote selected";
@@ -1084,6 +1089,8 @@
         ? "Select a worker to inspect it"
         : "Remote workers are disabled";
       for (const element of values) element.textContent = "—";
+      elements.remoteDetailReconnect.textContent = "Unavailable for this worker";
+      elements.remoteReconnectCopy.textContent = "Copy reconnect";
       elements.remoteDetailCapabilities.replaceChildren();
       const empty = document.createElement("span");
       empty.className = "muted";
@@ -1104,6 +1111,12 @@
     elements.remoteDetailUser.textContent = text(info.user, "Not reported");
     elements.remoteDetailPlatform.textContent = text(info.platform, "Not reported");
     elements.remoteDetailPython.textContent = text(info.python, "Not reported");
+    elements.remoteDetailProfile.textContent = text(machine.profile_id, "Legacy worker");
+    elements.remoteDetailReconnect.textContent = text(
+      machine.reconnect_command,
+      "Unavailable for this worker",
+    );
+    elements.remoteReconnectCopy.textContent = "Copy reconnect";
     elements.remoteDetailCapabilities.replaceChildren();
     const capabilities = Array.isArray(machine.capabilities) ? machine.capabilities : [];
     if (!capabilities.length) {
@@ -3943,6 +3956,20 @@
   });
 
   elements.remoteRefresh.addEventListener("click", () => refreshRemotesInBackground({ force: true }));
+  elements.remoteReconnectCopy.addEventListener("click", async () => {
+    const command = text(selectedRemote()?.reconnect_command, "");
+    if (!command) return;
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+        throw new Error("Clipboard API is unavailable");
+      }
+      await navigator.clipboard.writeText(command);
+      elements.remoteReconnectCopy.textContent = "Copied";
+    } catch (error) {
+      elements.remoteReconnectCopy.textContent = "Copy unavailable";
+      elements.remoteState.textContent = error instanceof Error ? error.message : String(error);
+    }
+  });
   elements.remoteInviteOpen.addEventListener("click", () => {
     if (!remoteEnabled || remoteLoading || elements.remoteInviteDialog.open) return;
     elements.remoteInviteForm.reset();

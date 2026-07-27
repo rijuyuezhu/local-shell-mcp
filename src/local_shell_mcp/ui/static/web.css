@@ -1723,7 +1723,8 @@ h2 {
 }
 
 .remote-metric span,
-.remote-capabilities > span {
+.remote-capabilities > span,
+.remote-reconnect > span {
   color: #7f94a6;
   font-size: 0.66rem;
   font-weight: 700;
@@ -1871,6 +1872,29 @@ h2 {
   gap: 0.55rem;
   border-top: 1px solid rgba(151, 184, 202, 0.1);
   padding-top: 0.9rem;
+}
+
+.remote-reconnect {
+  display: grid;
+  gap: 0.55rem;
+  border-top: 1px solid rgba(151, 184, 202, 0.1);
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+}
+
+.remote-reconnect pre {
+  max-height: 8rem;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid rgba(93, 181, 213, 0.2);
+  border-radius: 0.55rem;
+  background: rgba(2, 10, 16, 0.78);
+  padding: 0.7rem;
+  color: #bcd9e8;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .remote-capability-list {
