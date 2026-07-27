@@ -972,26 +972,40 @@ def test_reexec_argv_and_pythonpath_are_safe(tmp_path, monkeypatch):
     assert "token" not in " ".join(argv).lower()
 
 
-def test_reexec_uses_execve_on_posix_and_spawn_on_windows(
+def test_reexec_uses_selected_runtime_cwd_on_all_platforms(
     tmp_path, monkeypatch
 ):
     from local_shell_mcp.remote_worker import runtime
 
+    old_digest = "a" * 64
+    new_digest = "b" * 64
+    old_runtime = tmp_path / "runtimes" / old_digest
+    new_runtime = tmp_path / "runtimes" / new_digest
+    old_runtime.mkdir(parents=True)
+    new_runtime.mkdir(parents=True)
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256", new_digest)
+    monkeypatch.chdir(old_runtime)
+
     captured = {}
     monkeypatch.setattr(runtime.sys, "platform", "linux")
-    monkeypatch.setattr(
-        runtime.os,
-        "execve",
-        lambda executable, argv, env: captured.update(
-            executable=executable, argv=argv, env=env
-        ),
-    )
+
+    def execve(executable, argv, env):
+        captured.update(
+            executable=executable,
+            argv=argv,
+            env=env,
+            cwd=Path.cwd(),
+        )
+
+    monkeypatch.setattr(runtime.os, "execve", execve)
     runtime.reexec_worker()
     assert captured["argv"][0] == sys.executable
+    assert captured["cwd"] == new_runtime
     assert captured["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(
-        runtime.worker_runtime_dir()
+        new_runtime
     )
+    assert Path.cwd() == old_runtime
 
     spawned = {}
     monkeypatch.setattr(runtime.sys, "platform", "win32")
@@ -1003,6 +1017,7 @@ def test_reexec_uses_execve_on_posix_and_spawn_on_windows(
     with pytest.raises(SystemExit) as exc_info:
         runtime.reexec_worker()
     assert exc_info.value.code == 0
+    assert spawned["kwargs"]["cwd"] == new_runtime
     assert spawned["kwargs"]["close_fds"] is False
 
 

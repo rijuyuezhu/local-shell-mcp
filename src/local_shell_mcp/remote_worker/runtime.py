@@ -601,13 +601,21 @@ def reexec_worker() -> None:
     inherited = prepare_worker_lock_reexec()
     try:
         environment = reexec_environment()
+        runtime = worker_runtime_dir()
         if sys.platform == "win32":
             subprocess.Popen(  # noqa: S603
                 argv,
                 env=environment,
+                cwd=runtime,
                 close_fds=False,
             )
             raise SystemExit(0)
-        os.execve(argv[0], argv, environment)
+        previous_cwd = Path.cwd()
+        try:
+            os.chdir(runtime)
+            os.execve(argv[0], argv, environment)
+        finally:
+            with contextlib.suppress(OSError):
+                os.chdir(previous_cwd)
     finally:
         cancel_worker_lock_reexec(inherited)
