@@ -776,6 +776,62 @@ def _public_audit_entry(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def summarize_audit_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Return metadata-only audit data suitable for bounded list transport."""
+    summary: dict[str, Any] = {
+        "id": entry.get("id"),
+        "ts": entry.get("ts"),
+        "event": entry.get("event"),
+        "node": entry.get("node"),
+        "operation": entry.get("operation"),
+    }
+    for name in (
+        "tool",
+        "status",
+        "paired",
+        "ok",
+        "duration_ms",
+        "session",
+        "call_id",
+    ):
+        if name in entry:
+            summary[name] = entry[name]
+    source_events = entry.get("source_events")
+    if isinstance(source_events, list):
+        summary["source_events"] = [str(value) for value in source_events[:8]]
+    related_events = entry.get("related_events")
+    if isinstance(related_events, list):
+        summary["related_event_count"] = len(related_events)
+    return summary
+
+
+def audit_query_snapshot(
+    result: dict[str, Any], *, selected_id: str | None = None
+) -> dict[str, Any]:
+    """Return list summaries plus one preview entry from a single audit scan."""
+    rows = result.get("entries")
+    if not isinstance(rows, list):
+        raise ValueError("audit query result entries must be a list")
+    entries = [entry for entry in rows if isinstance(entry, dict)]
+    normalized_selected_id = str(selected_id or "").strip()
+    selected = next(
+        (
+            entry
+            for entry in entries
+            if normalized_selected_id
+            and str(entry.get("id") or "") == normalized_selected_id
+        ),
+        entries[0] if entries else None,
+    )
+    snapshot = {
+        **result,
+        "entries": [summarize_audit_entry(entry) for entry in entries],
+    }
+    if selected is not None:
+        snapshot["entry"] = selected
+    return snapshot
+
+
 def _read_audit_records(path: Path | None = None) -> list[dict[str, Any]]:
     """Read a bounded, consistent tail of the private JSONL audit log."""
     settings = get_settings()

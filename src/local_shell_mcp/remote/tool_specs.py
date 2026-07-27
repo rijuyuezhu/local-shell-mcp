@@ -48,6 +48,7 @@ REMOTE_WORKER_TOOL_SPECS: tuple[RemoteWorkerToolSpec, ...] = (
     RemoteWorkerToolSpec("", "dashboard_snapshot", None),
     RemoteWorkerToolSpec("", "query_audit", None),
     RemoteWorkerToolSpec("", "get_audit_entry", None),
+    RemoteWorkerToolSpec("", "ui_session_snapshot", None),
     RemoteWorkerToolSpec("", "read_todos", None),
     RemoteWorkerToolSpec("", "write_todos", None),
     RemoteWorkerToolSpec("", "list_agent_skills", None),

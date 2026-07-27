@@ -10,10 +10,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from ...audit import (
+    audit_query_snapshot,
     get_audit_entry,
     get_session_audit_entry,
     query_audit,
     query_session_audit,
+    summarize_audit_entry,
 )
 from ...config.settings import get_settings
 from ...oauth.core.context import MissingOAuthScopeError, require_oauth_scopes
@@ -133,6 +135,17 @@ def _scope_arg(value: Any) -> str:
     if normalized not in {"global", "session"}:
         raise ValueError("scope must be global or session")
     return normalized
+
+
+def _bool_arg(value: Any, *, default: bool = False) -> bool:
+    if value in {None, ""}:
+        return default
+    normalized = str(value).casefold().strip()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("boolean query parameter is invalid")
 
 
 def _query_args(request: Request) -> dict[str, Any]:
@@ -352,31 +365,7 @@ def _audit_view_image_detail(
 
 def _summary_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Return metadata-only list data; protected payloads require detail scopes."""
-    summary: dict[str, Any] = {
-        "id": entry["id"],
-        "ts": entry["ts"],
-        "event": entry["event"],
-        "node": entry["node"],
-        "operation": entry["operation"],
-    }
-    for name in (
-        "tool",
-        "status",
-        "paired",
-        "ok",
-        "duration_ms",
-        "session",
-        "call_id",
-    ):
-        if name in entry:
-            summary[name] = entry[name]
-    source_events = entry.get("source_events")
-    if isinstance(source_events, list):
-        summary["source_events"] = [str(value) for value in source_events[:8]]
-    related_events = entry.get("related_events")
-    if isinstance(related_events, list):
-        summary["related_event_count"] = len(related_events)
-    return summary
+    return summarize_audit_entry(entry)
 
 
 def _normalize_query_result(
@@ -429,6 +418,8 @@ async def _query(
     args: dict[str, Any],
     *,
     log_session_id: str | None = None,
+    include_selected: bool = False,
+    selected_id: str = "",
 ) -> dict[str, Any]:
     query_args = dict(args)
     if log_session_id:
@@ -440,6 +431,8 @@ async def _query(
             )
         else:
             value = await asyncio.to_thread(query_audit, **query_args)
+        if include_selected:
+            value = audit_query_snapshot(value, selected_id=selected_id)
     else:
         remote_args = dict(query_args)
         if log_session_id:
@@ -454,6 +447,11 @@ async def _query(
             remote_args["log_session_id"] = worker_session_id
         else:
             remote_args = _remote_query_args(machine, remote_args)
+        if include_selected:
+            remote_args["snapshot"] = True
+            remote_args["selected_id"] = selected_id
+        else:
+            remote_args["summary_only"] = True
         value = await _remote_audit_call(machine, "query_audit", remote_args)
     projection = (
         _remote_session_projection(machine)
@@ -468,6 +466,16 @@ async def _query(
     if log_session_id:
         for entry in result["entries"]:
             entry["session"] = log_session_id
+    selected = value.get("entry") if isinstance(value, dict) else None
+    if selected is not None:
+        detail = _normalize_entry(
+            machine,
+            selected,
+            session_projection=projection,
+        )
+        if log_session_id:
+            detail["session"] = log_session_id
+        result["entry"] = detail
     return result
 
 
@@ -574,16 +582,38 @@ async def api_audit(request: Request) -> Response:
         log_session_id = str(args.get("session") or "")
         if scope == "session" and not log_session_id:
             raise ValueError("session is required when scope=session")
+        include_selected = _bool_arg(
+            request.query_params.get("include_selected")
+        )
+        selected_id = _bounded_text(
+            request.query_params.get("selected_id"),
+            field="selected_id",
+            max_bytes=UI_AUDIT_ENTRY_ID_MAX_BYTES,
+        )
+        result = await _query(
+            machine,
+            args,
+            log_session_id=(log_session_id if scope == "session" else None),
+            include_selected=include_selected,
+            selected_id=selected_id,
+        )
+        entry = result.get("entry")
+        if isinstance(entry, dict):
+            try:
+                _require_scopes(*_detail_scopes(machine, entry))
+            except HTTPException as exc:
+                result.pop("entry", None)
+                result["entry_error"] = str(exc.detail)
+            else:
+                result["entry"] = await asyncio.to_thread(
+                    _audit_view_image_detail,
+                    entry,
+                    image_preview_request(request.query_params),
+                )
         return _json_ok(
             _payload(
                 machine,
-                await _query(
-                    machine,
-                    args,
-                    log_session_id=(
-                        log_session_id if scope == "session" else None
-                    ),
-                ),
+                result,
                 scope=scope,
             )
         )
