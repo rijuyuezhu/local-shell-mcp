@@ -27,6 +27,11 @@ def _add_enrollment_args(parser: argparse.ArgumentParser) -> None:
     _add_invite_args(parser)
     parser.add_argument("--name", default=None)
     parser.add_argument("--workdir", default=None)
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="Store and run this enrollment as an independent worker profile",
+    )
 
 
 def _read_invite(args: argparse.Namespace) -> str:
@@ -57,6 +62,7 @@ def _safe_identity(identity: dict[str, Any]) -> dict[str, Any]:
         "server": str(identity.get("server") or ""),
         "name": str(identity.get("name") or ""),
         "workdir": str(identity.get("workdir") or ""),
+        "profile_id": str(identity.get("profile_id") or ""),
         "enrolled": bool(identity.get("access")),
     }
 
@@ -100,13 +106,16 @@ def _enroll_from_args(args: argparse.Namespace) -> None:
     from .worker import enroll_worker
 
     _mark_worker_runtime()
+    enroll_args = (
+        args.server,
+        _invite_or_exit(args),
+        args.name,
+        args.workdir,
+    )
     identity = _run_async(
-        enroll_worker(
-            args.server,
-            _invite_or_exit(args),
-            args.name,
-            args.workdir,
-        )
+        enroll_worker(*enroll_args)
+        if args.profile is None
+        else enroll_worker(*enroll_args, args.profile)
     )
     _print_json(_safe_identity(identity))
 
@@ -115,23 +124,30 @@ def _connect_from_args(args: argparse.Namespace) -> None:
     from .worker import run_worker
 
     _mark_worker_runtime()
+    run_args = (
+        args.server,
+        _invite_or_exit(args),
+        args.name,
+        args.workdir,
+    )
     _run_async(
-        run_worker(
-            args.server,
-            _invite_or_exit(args),
-            args.name,
-            args.workdir,
-        )
+        run_worker(*run_args)
+        if args.profile is None
+        else run_worker(*run_args, args.profile)
     )
 
 
-def _run_stored_from_args(_args: argparse.Namespace) -> None:
+def _run_stored_from_args(args: argparse.Namespace) -> None:
     from .service import prepare_worker_service_environment
     from .worker import run_stored_worker
 
     prepare_worker_service_environment()
     _mark_worker_runtime()
-    _run_async(run_stored_worker())
+    _run_async(
+        run_stored_worker()
+        if args.profile is None
+        else run_stored_worker(args.profile)
+    )
 
 
 def _load_identity() -> dict[str, Any]:
@@ -267,6 +283,12 @@ def add_worker_subcommands(parser: argparse.ArgumentParser) -> None:
     connect.set_defaults(handler=_connect_from_args)
 
     run = subparsers.add_parser("run", help="Run using stored worker identity")
+    run.add_argument(
+        "profile",
+        nargs="?",
+        default=None,
+        help="Optional profile id; omitted for the legacy single-worker identity",
+    )
     run.set_defaults(handler=_run_stored_from_args)
 
     install = subparsers.add_parser(

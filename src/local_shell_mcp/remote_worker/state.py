@@ -6,6 +6,7 @@ from pathlib import Path
 
 _RUNTIME_METADATA_FILE_NAME = "runtime.json"
 _PROFILE_METADATA_FILE_NAME = "profile.json"
+WORKER_PROFILE_ID_ENV = "LOCAL_SHELL_MCP_WORKER_PROFILE_ID"
 _PROFILE_ID_RE = re.compile(r"p_[A-Za-z0-9_-]{8,64}")
 _RUNTIME_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -33,6 +34,24 @@ def worker_profile_dir(profile_id: str) -> Path:
     return worker_profiles_dir() / profile_id
 
 
+def active_worker_profile_id() -> str | None:
+    """Return the validated profile selected for the current process."""
+    profile_id = os.getenv(WORKER_PROFILE_ID_ENV)
+    if not profile_id:
+        return None
+    worker_profile_dir(profile_id)
+    return profile_id
+
+
+def activate_worker_profile(profile_id: str | None) -> str | None:
+    """Select one profile for process re-exec and worker path resolution."""
+    if profile_id is None:
+        return active_worker_profile_id()
+    worker_profile_dir(profile_id)
+    os.environ[WORKER_PROFILE_ID_ENV] = profile_id
+    return profile_id
+
+
 def worker_profile_metadata_path(profile_id: str) -> Path:
     """Return the non-secret metadata file for one worker profile."""
     return worker_profile_dir(profile_id) / _PROFILE_METADATA_FILE_NAME
@@ -41,6 +60,16 @@ def worker_profile_metadata_path(profile_id: str) -> Path:
 def worker_profile_identity_path(profile_id: str) -> Path:
     """Return the private controller identity file for one worker profile."""
     return worker_profile_dir(profile_id) / "identity.json"
+
+
+def worker_identity_path(profile_id: str | None = None) -> Path:
+    """Return one profile identity path or the legacy identity path."""
+    selected = (
+        profile_id if profile_id is not None else active_worker_profile_id()
+    )
+    if selected is not None:
+        return worker_profile_identity_path(selected)
+    return worker_state_dir() / "identity.json"
 
 
 def worker_profile_lock_path(profile_id: str) -> Path:
