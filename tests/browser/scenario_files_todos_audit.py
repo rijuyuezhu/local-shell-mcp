@@ -162,6 +162,18 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     expect(page.locator("#session-audit-detail-body")).to_contain_text(
         "payload-e2e-"
     )
+    request_body = page.locator(
+        "#session-audit-detail-body .audit-call-panel-body"
+    ).nth(0)
+    expect(request_body).to_have_attribute("tabindex", "0")
+    scroll_extent = request_body.evaluate(
+        "element => ({height: element.clientHeight, scrollHeight: element.scrollHeight})"
+    )
+    assert scroll_extent["scrollHeight"] > scroll_extent["height"]
+    request_body.focus()
+    request_body.press("PageDown")
+    page.wait_for_timeout(100)
+    assert request_body.evaluate("element => element.scrollTop") > 0
     detail_style = page.locator(
         "#session-audit-detail-body .audit-detail-json"
     ).first.evaluate(

@@ -2168,6 +2168,8 @@
     heading.textContent = title;
     const body = document.createElement("div");
     body.className = "audit-call-panel-body";
+    body.tabIndex = 0;
+    body.setAttribute("aria-label", `${title} content`);
     panel.append(heading, body);
     return { panel, body };
   }
