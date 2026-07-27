@@ -759,15 +759,22 @@ def test_cli_install_and_update_bind_explicit_profile(
 
     new_digest = "c" * 64
     monkeypatch.setattr(service, "service_status", _stopped_status)
-    monkeypatch.setattr(
-        runtime,
-        "update_installed_runtime",
-        lambda server, force=False: {
+    updates: list[tuple[str, bool, str | None]] = []
+
+    def update_runtime(
+        server: str,
+        *,
+        force: bool = False,
+        current_version: str | None = None,
+    ) -> dict[str, Any]:
+        updates.append((server, force, current_version))
+        return {
             "updated": True,
             "version": "4.1.0",
             "sha256": new_digest,
-        },
-    )
+        }
+
+    monkeypatch.setattr(runtime, "update_installed_runtime", update_runtime)
     refreshes: list[tuple[dict[str, str], str | None]] = []
     monkeypatch.setattr(
         service,
@@ -785,6 +792,7 @@ def test_cli_install_and_update_bind_explicit_profile(
     profile = read_worker_profile(profile_id)
     assert profile["runtime_sha256"] == new_digest
     assert profile["runtime_version"] == "4.1.0"
+    assert updates == [(identity["server"], True, "4.0.0")]
     assert refreshes == [(identity, new_digest)]
     assert json.loads(capsys.readouterr().out)["service_restarted"] is False
 
@@ -820,6 +828,13 @@ def test_update_fetches_latest_manifest_and_propagates_force(
     )
     assert result["version"] == "4.0.0"
     assert calls[0][2:] == ("3.9.1", True)
+
+    calls.clear()
+    runtime.update_installed_runtime(
+        "https://controller.test",
+        current_version="3.8.0",
+    )
+    assert calls[0][2:] == ("3.8.0", False)
 
 
 def _stopped_status(

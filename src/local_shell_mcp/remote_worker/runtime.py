@@ -568,16 +568,21 @@ def worker_reexec_argv() -> list[str]:
 
 
 def update_installed_runtime(
-    server: str, *, force: bool = False
+    server: str,
+    *,
+    force: bool = False,
+    current_version: str | None = None,
 ) -> dict[str, Any]:
     """Install the controller's latest verified worker bundle without restarting."""
     from ..version import version_info
 
     manifest = fetch_latest_manifest(server)
-    current = current_runtime_identity()
-    current_version = str(current.get("bundle_version") or "") or str(
-        version_info().get("version") or ""
-    )
+    selected_version = str(current_version or "")
+    if not selected_version:
+        current = current_runtime_identity()
+        selected_version = str(current.get("bundle_version") or "") or str(
+            version_info().get("version") or ""
+        )
     return install_runtime(
         server,
         {
@@ -585,7 +590,7 @@ def update_installed_runtime(
             "sha256": str(manifest["sha256"]),
             "manifest_path": REMOTE_WORKER_MANIFEST_PATH,
         },
-        current_version=current_version,
+        current_version=selected_version,
         force=force,
     )
 

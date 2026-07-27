@@ -130,14 +130,36 @@ def _matching_orphan_profile(
     return None
 
 
-def _install_current_runtime(server: str) -> dict[str, str]:
-    installed = runtime.update_installed_runtime(server)
+def _install_current_runtime(
+    server: str,
+    current_version: str | None = None,
+) -> dict[str, str]:
+    if current_version:
+        installed = runtime.update_installed_runtime(
+            server,
+            current_version=current_version,
+        )
+    else:
+        installed = runtime.update_installed_runtime(server)
     digest = str(installed.get("sha256") or "")
     version = str(installed.get("version") or "")
     identity = runtime.runtime_identity(digest)
     if identity.get("sha256") != digest or not version:
         raise RuntimeError("installed worker runtime is incomplete")
     return {"sha256": digest, "version": version}
+
+
+def _rebind_legacy_service(
+    profile_id: str,
+    profile: dict[str, Any],
+) -> None:
+    from .service import refresh_installed_service_definition
+
+    identity = load_worker_identity(profile_id)
+    refresh_installed_service_definition(
+        identity,
+        str(profile.get("runtime_sha256") or ""),
+    )
 
 
 def _repair_profile_runtime(
@@ -149,19 +171,27 @@ def _repair_profile_runtime(
         raise ValueError("migrated worker identity has an invalid source")
     digest = str(profile.get("runtime_sha256") or "")
     if runtime.runtime_identity(digest).get("sha256") == digest:
-        ensure_profile_launcher()
-        return _migration_result(profile_id, profile)
-    installed = _install_current_runtime(str(identity["server"]))
-    repaired = update_worker_profile(
-        profile_id,
-        runtime_sha256=installed["sha256"],
-        runtime_version=installed["version"],
-        server=str(identity["server"]),
-        name=str(identity["name"]),
-        workdir=str(identity["workdir"]),
-    )
+        repaired = profile
+    else:
+        current_version = str(profile.get("runtime_version") or "")
+        if not current_version:
+            raise ValueError("migrated worker runtime version is unavailable")
+        installed = _install_current_runtime(
+            str(identity["server"]),
+            current_version,
+        )
+        repaired = update_worker_profile(
+            profile_id,
+            runtime_sha256=installed["sha256"],
+            runtime_version=installed["version"],
+            server=str(identity["server"]),
+            name=str(identity["name"]),
+            workdir=str(identity["workdir"]),
+        )
     ensure_profile_launcher()
-    return _migration_result(profile_id, repaired)
+    result = _migration_result(profile_id, repaired)
+    _rebind_legacy_service(profile_id, repaired)
+    return result
 
 
 def migrated_legacy_profile() -> dict[str, Any] | None:
@@ -221,8 +251,9 @@ def migrate_legacy_worker_state() -> dict[str, Any] | None:
             ensure_profile_launcher()
             result = _migration_result(profile_id, profile)
             _write_migration_marker(profile_id)
-            return result
         except BaseException:
             with contextlib.suppress(OSError):
                 shutil.rmtree(profile_dir)
             raise
+        _rebind_legacy_service(profile_id, profile)
+        return result

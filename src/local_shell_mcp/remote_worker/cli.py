@@ -222,7 +222,7 @@ def _logs_from_args(args: argparse.Namespace) -> None:
 
 
 def _update_from_args(args: argparse.Namespace) -> None:
-    from .profiles import update_worker_profile
+    from .profiles import read_worker_profile, update_worker_profile
     from .runtime import update_installed_runtime
     from .service import (
         refresh_installed_service_definition,
@@ -236,13 +236,24 @@ def _update_from_args(args: argparse.Namespace) -> None:
         if requested_profile is None
         else _load_identity(str(requested_profile))
     )
+    profile_id = str(identity.get("profile_id") or "") or None
     before = service_status()
-    result = update_installed_runtime(
-        str(identity["server"]), force=bool(args.force)
-    )
+    if profile_id is None:
+        result = update_installed_runtime(
+            str(identity["server"]), force=bool(args.force)
+        )
+    else:
+        profile = read_worker_profile(profile_id)
+        current_version = str(profile.get("runtime_version") or "")
+        if not current_version:
+            raise ValueError("worker profile runtime version is unavailable")
+        result = update_installed_runtime(
+            str(identity["server"]),
+            force=bool(args.force),
+            current_version=current_version,
+        )
     digest = str(result.get("sha256") or "")
     version = str(result.get("version") or "")
-    profile_id = str(identity.get("profile_id") or "") or None
     if profile_id is not None:
         update_worker_profile(
             profile_id,

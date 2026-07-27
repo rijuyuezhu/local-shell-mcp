@@ -8,6 +8,7 @@ import pytest
 import local_shell_mcp.remote_worker.identity as worker_identity
 import local_shell_mcp.remote_worker.migration as worker_migration
 import local_shell_mcp.remote_worker.runtime as worker_runtime
+import local_shell_mcp.remote_worker.service as worker_service
 import local_shell_mcp.remote_worker.worker as worker
 from local_shell_mcp.remote_worker.profiles import (
     read_worker_profile,
@@ -65,11 +66,18 @@ def _fake_runtime_update(
     *,
     digest: str = "a" * 64,
     version: str = "4.0.0",
+    expected_current_version: str | None = None,
 ) -> list[str]:
     calls: list[str] = []
 
-    def fake_update(server: str, *, force: bool = False) -> dict[str, Any]:
+    def fake_update(
+        server: str,
+        *,
+        force: bool = False,
+        current_version: str | None = None,
+    ) -> dict[str, Any]:
         assert force is False
+        assert current_version == expected_current_version
         calls.append(server)
         _write_complete_runtime(digest, version)
         return {
@@ -132,6 +140,33 @@ def test_legacy_migration_is_atomic_idempotent_and_retains_old_state(
     assert (state_dir / "python").is_file()
     if os.name != "nt":
         assert worker_launcher_path().stat().st_mode & 0o111
+
+
+def test_migration_rebinds_installed_legacy_service_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(worker_service, "service_manager", lambda: "systemd")
+    identity = _legacy_identity(tmp_path)
+    worker._write_worker_identity(identity)
+    _fake_runtime_update(monkeypatch)
+
+    unit = worker_service.systemd_unit_path()
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text("legacy enabled unit\n", encoding="utf-8")
+    launcher, _changed = worker_service.ensure_launcher()
+    assert 'main(["run"])' in launcher.read_text(encoding="utf-8")
+
+    result = worker_migration.migrate_legacy_worker_state()
+
+    assert result is not None
+    profile_id = str(result["profile_id"])
+    rebound = launcher.read_text(encoding="utf-8")
+    assert f"runtime_digest = {'a' * 64!r}" in rebound
+    assert f"os.environ[{WORKER_PROFILE_ID_ENV!r}] = {profile_id!r}" in rebound
+    assert f'main(["run", "{profile_id}"])' in rebound
+    assert unit.read_text(encoding="utf-8") == "legacy enabled unit\n"
 
 
 def test_identity_validation_and_deletion_fail_closed(
@@ -264,7 +299,12 @@ def test_migration_repairs_profile_with_missing_runtime(
         json.dumps({"schema_version": 1, "profile_id": profile_id}),
         encoding="utf-8",
     )
-    calls = _fake_runtime_update(monkeypatch, digest="f" * 64, version="4.1.0")
+    calls = _fake_runtime_update(
+        monkeypatch,
+        digest="f" * 64,
+        version="4.1.0",
+        expected_current_version="3.9.0",
+    )
 
     result = worker_migration.migrate_legacy_worker_state()
 
@@ -394,6 +434,46 @@ def test_legacy_migration_interrupt_removes_partial_profile(
     assert not worker_legacy_migration_path().exists()
     profiles = worker_profiles_dir()
     assert not profiles.exists() or not list(profiles.iterdir())
+
+
+def test_service_rebind_failure_keeps_retryable_migration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_state(tmp_path, monkeypatch)
+    identity = _legacy_identity(tmp_path)
+    worker._write_worker_identity(identity)
+    _fake_runtime_update(monkeypatch)
+
+    def fail_rebind(*_args: Any, **_kwargs: Any) -> bool:
+        raise OSError("service launcher unavailable")
+
+    monkeypatch.setattr(
+        worker_service,
+        "refresh_installed_service_definition",
+        fail_rebind,
+    )
+    with pytest.raises(OSError, match="service launcher unavailable"):
+        worker_migration.migrate_legacy_worker_state()
+
+    marker = json.loads(
+        worker_legacy_migration_path().read_text(encoding="utf-8")
+    )
+    profile_id = str(marker["profile_id"])
+    assert worker_profile_identity_path(profile_id).is_file()
+    rebound: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        worker_service,
+        "refresh_installed_service_definition",
+        lambda selected, digest=None: (
+            rebound.append((str(selected["profile_id"]), str(digest))) or True
+        ),
+    )
+
+    result = worker_migration.migrate_legacy_worker_state()
+
+    assert result is not None
+    assert result["profile_id"] == profile_id
+    assert rebound == [(profile_id, "a" * 64)]
 
 
 def test_legacy_migration_returns_none_without_old_identity(
