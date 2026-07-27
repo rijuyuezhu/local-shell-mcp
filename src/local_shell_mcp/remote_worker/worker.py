@@ -25,8 +25,11 @@ from ..remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
 from ..version import version_info
 from . import runtime as worker_runtime
 from .compat import _jsonable as to_jsonable
+from .profiles import update_worker_profile
 from .state import (
     activate_worker_profile,
+    activate_worker_runtime,
+    active_worker_profile_id,
     worker_identity_path,
     worker_launcher_path,
     worker_profile_dir,
@@ -578,6 +581,22 @@ async def _install_and_reexec_worker(
         raise RuntimeError(
             "installed worker runtime does not match instruction"
         )
+    profile_id = active_worker_profile_id()
+    activate_worker_runtime(expected_digest)
+    if profile_id is not None:
+        identity = load_worker_identity(profile_id)
+        update_worker_profile(
+            profile_id,
+            runtime_sha256=expected_digest,
+            runtime_version=expected_version,
+            server=str(identity["server"]),
+            name=str(identity["name"]),
+            workdir=str(identity["workdir"]),
+        )
+    elif os.getenv("LOCAL_SHELL_MCP_WORKER_MANAGED") == "1":
+        from .service import ensure_launcher
+
+        ensure_launcher(expected_digest)
     print(
         f"Status: worker runtime {expected_version} ({expected_digest[:12]}) installed; restarting.",
         file=sys.stderr,
@@ -670,6 +689,19 @@ async def _enroll_or_resume_worker(
     if profile_id is not None:
         stored["profile_id"] = profile_id
         _write_worker_identity(stored, profile_id)
+        runtime_identity = worker_runtime.current_runtime_identity()
+        runtime_digest = str(runtime_identity.get("sha256") or "")
+        if runtime_digest:
+            update_worker_profile(
+                profile_id,
+                runtime_sha256=runtime_digest,
+                runtime_version=str(
+                    runtime_identity.get("bundle_version") or ""
+                ),
+                server=server,
+                name=machine_name,
+                workdir=resolved_workdir,
+            )
     else:
         _write_worker_identity(stored)
     return stored, data

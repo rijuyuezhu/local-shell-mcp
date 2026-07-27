@@ -224,6 +224,7 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
 
     assert "local_shell_mcp/remote_worker/runtime.py" in names
     assert "local_shell_mcp/remote_worker/lifecycle.py" in names
+    assert "local_shell_mcp/remote_worker/profiles.py" in names
     assert "local_shell_mcp/remote_worker/state.py" in names
     assert "local_shell_mcp/remote_worker/worker.py" in names
     assert "local_shell_mcp/audit/__init__.py" in names
@@ -562,12 +563,13 @@ def test_install_runtime_is_transactional_and_short_circuits(
         "https://controller.test", instruction, current_version="3.9.0"
     )
     assert installed["updated"] is True
-    assert runtime.current_runtime_identity() == {
+    assert runtime.runtime_identity(digest) == {
         "sha256": digest,
         "bundle_version": "3.9.1",
     }
     assert (
-        runtime.worker_runtime_dir() / "local_shell_mcp/remote_worker/worker.py"
+        runtime.worker_runtime_dir_for_digest(digest)
+        / "local_shell_mcp/remote_worker/worker.py"
     ).is_file()
 
     monkeypatch.setattr(
@@ -587,17 +589,17 @@ def test_install_failure_restores_old_runtime_and_metadata(
     from local_shell_mcp.remote_worker import runtime
 
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
-    old_runtime = runtime.worker_runtime_dir()
+    payload = _runtime_archive_bytes()
+    digest = _mock_runtime_download(monkeypatch, payload, "3.9.1")
+    old_runtime = runtime.worker_runtime_dir_for_digest(digest)
     old_runtime.mkdir(parents=True)
     (old_runtime / "old.txt").write_text("old", encoding="utf-8")
     old_metadata = b'{"old": true}'
-    runtime.runtime_metadata_path().write_bytes(old_metadata)
-    payload = _runtime_archive_bytes()
-    digest = _mock_runtime_download(monkeypatch, payload, "3.9.1")
+    runtime.runtime_metadata_path(digest).write_bytes(old_metadata)
     monkeypatch.setattr(
         runtime,
         "_write_runtime_metadata",
-        lambda data: (_ for _ in ()).throw(OSError("disk full")),
+        lambda data, digest=None: (_ for _ in ()).throw(OSError("disk full")),
     )
 
     with pytest.raises(OSError, match="disk full"):
@@ -612,8 +614,8 @@ def test_install_failure_restores_old_runtime_and_metadata(
         )
 
     assert (old_runtime / "old.txt").read_text(encoding="utf-8") == "old"
-    assert runtime.runtime_metadata_path().read_bytes() == old_metadata
-    assert not list(tmp_path.glob("runtime.previous.*"))
+    assert runtime.runtime_metadata_path(digest).read_bytes() == old_metadata
+    assert not list((tmp_path / "runtimes").glob("*.previous.*"))
 
 
 def test_install_rejects_digest_mismatch_and_downgrade(tmp_path, monkeypatch):
@@ -860,15 +862,24 @@ def test_join_script_installs_persistent_verified_runtime():
         .joinpath("join_worker.sh")
         .read_text(encoding="utf-8")
     )
-    assert 'RUNTIME_DIR="$STATE_DIR/runtime"' in script
+    assert 'RUNTIME_DIR="$STATE_DIR/runtimes/$RUNTIME_DIGEST"' in script
+    assert 'RUNTIME_METADATA="$RUNTIME_DIR/runtime.json"' in script
     assert 'LAUNCHER="$STATE_DIR/run"' in script
     assert "prepare_profile" in script
+    assert "configure_runtime" in script
+    assert "runtime_is_installed" in script
+    assert "write_profile_metadata" in script
     assert "install_launcher" in script
+    assert "Reusing worker runtime" in script
     assert "?manifest=1" in script
     assert "Cache-Control: no-cache" in script
     assert "sha256" in script
     assert "member.isreg()" in script
     assert "os.replace(staging, runtime)" in script
+    assert (
+        'export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"'
+        in script
+    )
     assert (
         'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"' in script
     )
@@ -876,9 +887,120 @@ def test_join_script_installs_persistent_verified_runtime():
     assert '--profile "$PROFILE_ID"' in script
     assert 'run "$PROFILE_ID"' in script
     assert '"$PROFILE_DIR/worker.log"' in script
+    assert '"runtime_sha256": digest' in script
     assert "--persist" not in script
     assert "ARGS=(--server" not in script
     assert 'rm -rf "$RUNTIME_DIR"' not in script
+
+
+def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
+    from importlib import resources
+
+    from local_shell_mcp.remote.bundle import (
+        worker_bundle_bytes,
+        worker_bundle_manifest,
+    )
+
+    script = (
+        resources.files("local_shell_mcp.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace(
+            "__REMOTE_WORKER_BUNDLE_PATH__",
+            "/remote/worker-bundle.tgz",
+        )
+    )
+    original_tail = '\n  start_worker\n}\n\nmain "$@"'
+    assert original_tail in script
+    script = script.replace(
+        original_tail,
+        '\n  echo bootstrap-complete\n}\n\nmain "$@"',
+    )
+    join_path = tmp_path / "join.sh"
+    join_path.write_text(script, encoding="utf-8")
+    join_path.chmod(0o700)
+
+    bundle = worker_bundle_bytes()
+    manifest = worker_bundle_manifest()
+    bundle_path = tmp_path / "worker.tgz"
+    manifest_path = tmp_path / "manifest.json"
+    bundle_path.write_bytes(bundle)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    requests_path = tmp_path / "curl-requests.txt"
+    fake_curl = bin_dir / "curl"
+    fake_curl.write_text(
+        f"#!{sys.executable}\n"
+        "import os\n"
+        "import shutil\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "output = args[args.index('-o') + 1]\n"
+        "url = next(item for item in args if item.startswith('http'))\n"
+        "with open(os.environ['FAKE_CURL_REQUESTS'], 'a', encoding='utf-8') as log:\n"
+        "    log.write(url + '\\n')\n"
+        "source = os.environ['FAKE_MANIFEST'] if 'manifest=1' in url else os.environ['FAKE_BUNDLE']\n"
+        "shutil.copyfile(source, output)\n",
+        encoding="utf-8",
+    )
+    fake_curl.chmod(0o700)
+
+    state_dir = tmp_path / "state"
+    environment = {
+        **os.environ,
+        "PATH": os.pathsep.join((str(bin_dir), os.environ["PATH"])),
+        "LOCAL_SHELL_MCP_WORKER_STATE_DIR": str(state_dir),
+        "FAKE_CURL_REQUESTS": str(requests_path),
+        "FAKE_MANIFEST": str(manifest_path),
+        "FAKE_BUNDLE": str(bundle_path),
+    }
+    for profile_id in ("p_abcdefgh", "p_ijklmnop"):
+        completed = subprocess.run(
+            [
+                "bash",
+                str(join_path),
+                "--invite",
+                "fixture-invite",
+                "--profile",
+                profile_id,
+                "--workdir",
+                str(tmp_path),
+            ],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert "bootstrap-complete" in completed.stdout
+
+    requests = requests_path.read_text(encoding="utf-8").splitlines()
+    assert sum("manifest=1" in request for request in requests) == 2
+    assert sum("sha256=" in request for request in requests) == 1
+    digest = str(manifest["sha256"])
+    runtime = state_dir / "runtimes" / digest
+    assert (runtime / "runtime.json").is_file()
+    assert (
+        len(
+            [
+                path
+                for path in (state_dir / "runtimes").iterdir()
+                if path.is_dir()
+            ]
+        )
+        == 1
+    )
+    for profile_id in ("p_abcdefgh", "p_ijklmnop"):
+        profile = json.loads(
+            (state_dir / "profiles" / profile_id / "profile.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert profile["runtime_sha256"] == digest
+    assert (state_dir / "run").stat().st_mode & 0o111
 
 
 def test_bundle_rejects_stale_digest_and_retry_logs_redact_secrets(capsys):

@@ -7,17 +7,23 @@ from typing import Any
 import pytest
 
 import local_shell_mcp.remote_worker.cli as worker_cli
+import local_shell_mcp.remote_worker.profiles as worker_profiles
 import local_shell_mcp.remote_worker.worker as worker
 from local_shell_mcp.remote_worker.state import (
     WORKER_PROFILE_ID_ENV,
+    WORKER_RUNTIME_DIGEST_ENV,
     activate_worker_profile,
+    activate_worker_runtime,
+    runtime_metadata_path,
+    worker_runtime_dir,
 )
 
 
 def _clear_profile_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(WORKER_PROFILE_ID_ENV, raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_STATE_DIR", raising=False)
+    monkeypatch.setenv(WORKER_PROFILE_ID_ENV, "")
+    monkeypatch.setenv(WORKER_RUNTIME_DIGEST_ENV, "")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", "")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", "")
 
 
 def _identity(name: str, workdir: str) -> dict[str, str]:
@@ -90,6 +96,165 @@ def test_reconnect_command_is_credential_free_and_shell_safe(
     assert shlex.split(command) == [str(state_dir / "run"), "p_abcdefgh"]
     assert "access" not in command
     assert "invite" not in command
+
+
+def test_active_runtime_selects_content_addressed_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_profile_environment(monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    digest = "a" * 64
+    monkeypatch.setenv(WORKER_RUNTIME_DIGEST_ENV, digest)
+
+    assert activate_worker_runtime(digest) == digest
+    assert worker_runtime_dir() == tmp_path / "runtimes" / digest
+    assert runtime_metadata_path() == (
+        tmp_path / "runtimes" / digest / "runtime.json"
+    )
+
+
+def test_profile_metadata_is_atomic_validated_and_credential_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    profile_id = "p_abcdefgh"
+    digest = "a" * 64
+
+    stored = worker_profiles.update_worker_profile(
+        profile_id,
+        runtime_sha256=digest,
+        runtime_version="3.9.1",
+        server="https://controller.test",
+        name="worker-a",
+        workdir="/work/a",
+    )
+
+    assert worker_profiles.read_worker_profile(profile_id) == stored
+    encoded = (tmp_path / "profiles" / profile_id / "profile.json").read_text(
+        encoding="utf-8"
+    )
+    assert "access" not in encoded
+    assert "invite" not in encoded
+    assert "token" not in encoded
+
+
+@pytest.mark.parametrize(
+    ("digest", "name"),
+    [("bad", "worker-a"), ("a" * 64, "worker\nname")],
+)
+def test_profile_metadata_rejects_invalid_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    digest: str,
+    name: str,
+) -> None:
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+
+    with pytest.raises(ValueError, match="runtime|control"):
+        worker_profiles.update_worker_profile(
+            "p_abcdefgh",
+            runtime_sha256=digest,
+            name=name,
+        )
+
+
+@pytest.mark.asyncio
+async def test_required_upgrade_switches_profile_runtime_before_reexec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_profile_environment(monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    profile_id = "p_abcdefgh"
+    old_digest = "a" * 64
+    new_digest = "b" * 64
+    worker._write_worker_identity(_identity("worker-a", "/work/a"), profile_id)
+    monkeypatch.setenv(WORKER_PROFILE_ID_ENV, profile_id)
+    monkeypatch.setenv(WORKER_RUNTIME_DIGEST_ENV, old_digest)
+
+    monkeypatch.setattr(
+        worker.worker_runtime,
+        "install_runtime",
+        lambda *_args, **_kwargs: {
+            "updated": True,
+            "sha256": new_digest,
+            "version": "3.9.2",
+            "runtime": str(tmp_path / "runtimes" / new_digest),
+        },
+    )
+    monkeypatch.setattr(
+        worker.worker_runtime,
+        "reexec_worker",
+        lambda: (_ for _ in ()).throw(SystemExit(0)),
+    )
+
+    with pytest.raises(SystemExit):
+        await worker._install_and_reexec_worker(
+            {
+                "version": "3.9.2",
+                "sha256": new_digest,
+                "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+            },
+            server="https://controller.test",
+            worker_version="3.9.1",
+        )
+
+    assert os.environ[WORKER_RUNTIME_DIGEST_ENV] == new_digest
+    profile = worker_profiles.read_worker_profile(profile_id)
+    assert profile["runtime_sha256"] == new_digest
+    assert profile["runtime_version"] == "3.9.2"
+    assert profile["server"] == "https://controller.test"
+    assert profile["name"] == "worker-a"
+    assert profile["workdir"] == "/work/a"
+
+
+@pytest.mark.asyncio
+async def test_required_upgrade_refreshes_managed_service_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import local_shell_mcp.remote_worker.service as worker_service
+
+    _clear_profile_environment(monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    new_digest = "b" * 64
+    monkeypatch.setattr(
+        worker.worker_runtime,
+        "install_runtime",
+        lambda *_args, **_kwargs: {
+            "updated": True,
+            "sha256": new_digest,
+            "version": "3.9.2",
+            "runtime": str(tmp_path / "runtimes" / new_digest),
+        },
+    )
+    refreshed: list[str | None] = []
+    monkeypatch.setattr(
+        worker_service,
+        "ensure_launcher",
+        lambda digest=None: (
+            refreshed.append(digest) or tmp_path / "launcher",
+            True,
+        ),
+    )
+    monkeypatch.setattr(
+        worker.worker_runtime,
+        "reexec_worker",
+        lambda: (_ for _ in ()).throw(SystemExit(0)),
+    )
+
+    with pytest.raises(SystemExit):
+        await worker._install_and_reexec_worker(
+            {
+                "version": "3.9.2",
+                "sha256": new_digest,
+                "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+            },
+            server="https://controller.test",
+            worker_version="3.9.1",
+        )
+
+    assert refreshed == [new_digest]
+    assert os.environ[WORKER_RUNTIME_DIGEST_ENV] == new_digest
 
 
 def _parser() -> argparse.ArgumentParser:

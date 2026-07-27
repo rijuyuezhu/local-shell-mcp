@@ -620,21 +620,23 @@ def test_update_restarts_only_previously_running_service(
     )
     monkeypatch.setattr(service, "service_status", lambda: running)
     restarts: list[bool] = []
-    refreshes: list[dict[str, str]] = []
+    refreshes: list[tuple[dict[str, str], str | None]] = []
     monkeypatch.setattr(
         service, "restart_service", lambda: restarts.append(True)
     )
     monkeypatch.setattr(
         service,
         "refresh_installed_service_definition",
-        lambda identity: refreshes.append(identity) or False,
+        lambda identity, runtime_digest=None: (
+            refreshes.append((identity, runtime_digest)) or False
+        ),
     )
 
     worker_cli._update_from_args(argparse.Namespace(force=True))
     result = json.loads(capsys.readouterr().out)
     assert result["service_restarted"] is True
     assert restarts == [True]
-    assert refreshes == [{"server": "https://controller.test"}]
+    assert refreshes == [({"server": "https://controller.test"}, "a" * 64)]
 
     stopped = service.WorkerServiceStatus(
         1,
@@ -655,8 +657,8 @@ def test_update_restarts_only_previously_running_service(
     assert json.loads(capsys.readouterr().out)["service_restarted"] is False
     assert restarts == []
     assert refreshes == [
-        {"server": "https://controller.test"},
-        {"server": "https://controller.test"},
+        ({"server": "https://controller.test"}, "a" * 64),
+        ({"server": "https://controller.test"}, "a" * 64),
     ]
 
 
@@ -1008,6 +1010,26 @@ def test_changed_launcher_restarts_running_systemd_service(
     assert any(command[2] == "restart" for command in fake.commands)
 
 
+def test_managed_launcher_binds_content_addressed_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_systemd(monkeypatch)
+    identity = _identity(tmp_path)
+    service.install_service(identity, start=False)
+    digest = "a" * 64
+
+    changed = service.refresh_installed_service_definition(identity, digest)
+
+    assert changed is True
+    launcher = service.launcher_path().read_text(encoding="utf-8")
+    assert f"runtime_digest = {digest!r}" in launcher
+    assert 'runtime_dir = state_dir / "runtimes" / runtime_digest' in launcher
+    assert "LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256" in launcher
+    assert 'runtime_dir = state_dir / "runtime"' not in launcher
+    with pytest.raises(ValueError, match="runtime digest"):
+        service._launcher_text("invalid")
+
+
 def test_launchd_running_start_is_noop_but_restart_kickstarts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1169,15 +1191,17 @@ def test_update_no_change_does_not_restart(
         "restart_service",
         lambda: pytest.fail("restarted unchanged runtime"),
     )
-    refreshed: list[dict[str, str]] = []
+    refreshed: list[tuple[dict[str, str], str | None]] = []
     monkeypatch.setattr(
         service,
         "refresh_installed_service_definition",
-        lambda identity: refreshed.append(identity) or False,
+        lambda identity, runtime_digest=None: (
+            refreshed.append((identity, runtime_digest)) or False
+        ),
     )
     worker_cli._update_from_args(argparse.Namespace(force=False))
     assert json.loads(capsys.readouterr().out)["service_restarted"] is False
-    assert refreshed == [{"server": "https://controller.test"}]
+    assert refreshed == [({"server": "https://controller.test"}, "a" * 64)]
 
 
 def test_real_systemd_user_status_smoke_when_available(monkeypatch):

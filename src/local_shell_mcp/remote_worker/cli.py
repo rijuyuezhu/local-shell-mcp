@@ -215,7 +215,10 @@ def _update_from_args(args: argparse.Namespace) -> None:
     result = update_installed_runtime(
         str(identity["server"]), force=bool(args.force)
     )
-    definition_changed = refresh_installed_service_definition(identity)
+    definition_changed = refresh_installed_service_definition(
+        identity,
+        str(result.get("sha256") or "") or None,
+    )
     restarted = False
     if before.running and (result.get("updated") or definition_changed):
         restart_service()

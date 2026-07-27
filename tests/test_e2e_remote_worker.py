@@ -253,7 +253,15 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "__REMOTE_WORKER_BUNDLE_PATH__" not in join_script
         assert f"SERVER={base_url}" in join_script
         assert 'BUNDLE_URL="$SERVER/remote/worker-bundle.tgz"' in join_script
-        assert 'RUNTIME_DIR="$STATE_DIR/runtime"' in join_script
+        assert (
+            'RUNTIME_DIR="$STATE_DIR/runtimes/$RUNTIME_DIGEST"' in join_script
+        )
+        assert "runtime_is_installed" in join_script
+        assert "Reusing worker runtime" in join_script
+        assert (
+            'export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"'
+            in join_script
+        )
         assert (
             'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"'
             in join_script
@@ -282,6 +290,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert "local_shell_mcp/remote_worker/__main__.py" in names
             assert "local_shell_mcp/remote_worker/worker.py" in names
             assert "local_shell_mcp/remote_worker/compat.py" in names
+            assert "local_shell_mcp/remote_worker/profiles.py" in names
             assert "local_shell_mcp/remote_worker/runtime.py" in names
             assert "local_shell_mcp/remote_worker/cli.py" in names
             assert "local_shell_mcp/remote_worker/service.py" in names

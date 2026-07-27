@@ -12,8 +12,10 @@ TMPDIR=""
 PYTHON_BIN=""
 UV_BIN=""
 STATE_DIR="${LOCAL_SHELL_MCP_WORKER_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-shell-mcp-worker}"
-RUNTIME_DIR="$STATE_DIR/runtime"
-RUNTIME_METADATA="$STATE_DIR/runtime.json"
+RUNTIME_DIGEST=""
+RUNTIME_VERSION=""
+RUNTIME_DIR=""
+RUNTIME_METADATA=""
 PYTHON_PATH="$STATE_DIR/python"
 LAUNCHER="$STATE_DIR/run"
 PROFILE_DIR=""
@@ -164,13 +166,58 @@ if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
   exit 1
 fi
 
-RUNTIME_DIR="$STATE_DIR/runtime"
-if [ ! -d "$RUNTIME_DIR/local_shell_mcp" ]; then
-  echo "stored worker runtime is unavailable; run a fresh invite command" >&2
-  exit 1
-fi
+RUNTIME_DIR="$($PYTHON_BIN - "$STATE_DIR" "$PROFILE_ID" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+state_dir = Path(sys.argv[1])
+profile_id = sys.argv[2]
+profile_path = state_dir / "profiles" / profile_id / "profile.json"
+try:
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+except (OSError, ValueError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"worker profile is unreadable: {profile_id}") from exc
+if (
+    not isinstance(profile, dict)
+    or profile.get("schema_version") != 1
+    or profile.get("profile_id") != profile_id
+):
+    raise SystemExit(f"worker profile is invalid: {profile_id}")
+digest = profile.get("runtime_sha256")
+if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+    raise SystemExit(f"worker profile runtime is invalid: {profile_id}")
+runtime = state_dir / "runtimes" / digest
+metadata_path = runtime / "runtime.json"
+try:
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+except (OSError, ValueError, json.JSONDecodeError) as exc:
+    raise SystemExit("stored worker runtime metadata is unavailable") from exc
+required = (
+    "local_shell_mcp/__init__.py",
+    "local_shell_mcp/remote_worker/__init__.py",
+    "local_shell_mcp/remote_worker/__main__.py",
+    "local_shell_mcp/remote_worker/compat.py",
+    "local_shell_mcp/remote_worker/lifecycle.py",
+    "local_shell_mcp/remote_worker/profiles.py",
+    "local_shell_mcp/remote_worker/state.py",
+    "local_shell_mcp/remote_worker/worker.py",
+)
+if (
+    not isinstance(metadata, dict)
+    or metadata.get("schema_version") != 1
+    or metadata.get("sha256") != digest
+    or not all((runtime / relative).is_file() for relative in required)
+):
+    raise SystemExit("stored worker runtime is incomplete or invalid")
+print(runtime)
+PY
+)"
+RUNTIME_DIGEST="${RUNTIME_DIR##*/}"
 
 export LOCAL_SHELL_MCP_WORKER_STATE_DIR="$STATE_DIR"
+export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"
 export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
 exec "$PYTHON_BIN" -m local_shell_mcp.remote_worker run "$PROFILE_ID"
 EOF
@@ -236,6 +283,110 @@ output = Path(output_dir)
 PY
 }
 
+configure_runtime() {
+  RUNTIME_DIGEST="$(cat "$TMPDIR/bundle-sha256")"
+  RUNTIME_VERSION="$(cat "$TMPDIR/bundle-version")"
+  RUNTIME_DIR="$STATE_DIR/runtimes/$RUNTIME_DIGEST"
+  RUNTIME_METADATA="$RUNTIME_DIR/runtime.json"
+}
+
+runtime_is_installed() {
+  "$PYTHON_BIN" - \
+    "$RUNTIME_DIR" \
+    "$RUNTIME_METADATA" \
+    "$RUNTIME_VERSION" \
+    "$RUNTIME_DIGEST" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+runtime_path, metadata_path, version, digest = sys.argv[1:]
+runtime = Path(runtime_path)
+metadata_file = Path(metadata_path)
+try:
+    metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+except (OSError, ValueError, json.JSONDecodeError):
+    raise SystemExit(1)
+required = (
+    "local_shell_mcp/__init__.py",
+    "local_shell_mcp/remote_worker/__init__.py",
+    "local_shell_mcp/remote_worker/__main__.py",
+    "local_shell_mcp/remote_worker/compat.py",
+    "local_shell_mcp/remote_worker/lifecycle.py",
+    "local_shell_mcp/remote_worker/profiles.py",
+    "local_shell_mcp/remote_worker/state.py",
+    "local_shell_mcp/remote_worker/worker.py",
+)
+valid = (
+    isinstance(metadata, dict)
+    and metadata.get("schema_version") == 1
+    and metadata.get("bundle_version") == version
+    and metadata.get("sha256") == digest
+    and all((runtime / relative).is_file() for relative in required)
+)
+raise SystemExit(0 if valid else 1)
+PY
+}
+
+write_profile_metadata() {
+  "$PYTHON_BIN" - \
+    "$PROFILE_DIR/profile.json" \
+    "$PROFILE_ID" \
+    "$RUNTIME_DIGEST" \
+    "$RUNTIME_VERSION" \
+    "$SERVER" \
+    "$NAME" \
+    "$WORKDIR" <<'PY'
+import contextlib
+import json
+import os
+import re
+import sys
+import uuid
+from pathlib import Path
+
+profile_path, profile_id, digest, version, server, name, workdir = sys.argv[1:]
+if not re.fullmatch(r"p_[A-Za-z0-9_-]{8,64}", profile_id):
+    raise SystemExit("invalid remote worker profile id")
+if not re.fullmatch(r"[0-9a-f]{64}", digest):
+    raise SystemExit("invalid remote worker runtime digest")
+limits = {"runtime_version": 128, "server": 4096, "name": 512, "workdir": 4096}
+values = {
+    "runtime_version": version,
+    "server": server,
+    "name": name,
+    "workdir": workdir,
+}
+for key, value in values.items():
+    if len(value.encode("utf-8")) > limits[key] or any(ord(character) < 32 for character in value):
+        raise SystemExit(f"worker profile {key} is invalid")
+path = Path(profile_path)
+path.parent.mkdir(parents=True, exist_ok=True)
+temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+try:
+    temporary.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "profile_id": profile_id,
+                "runtime_sha256": digest,
+                **values,
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    with contextlib.suppress(OSError):
+        temporary.chmod(0o600)
+    os.replace(temporary, path)
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+finally:
+    temporary.unlink(missing_ok=True)
+PY
+}
+
 download_bundle() {
   local url
   url="$(cat "$TMPDIR/bundle-url")"
@@ -279,13 +430,16 @@ if hashlib.sha256(payload).hexdigest() != expected_digest:
     raise SystemExit("worker bundle checksum does not match manifest")
 
 state_dir = runtime.parent
-staging = state_dir / f"runtime.install.{uuid.uuid4().hex}"
-backup = state_dir / f"runtime.previous.{uuid.uuid4().hex}"
+staging = state_dir / f"{expected_digest}.install.{uuid.uuid4().hex}"
+backup = state_dir / f"{expected_digest}.previous.{uuid.uuid4().hex}"
 required = (
     "local_shell_mcp/__init__.py",
     "local_shell_mcp/remote_worker/__init__.py",
     "local_shell_mcp/remote_worker/__main__.py",
     "local_shell_mcp/remote_worker/compat.py",
+    "local_shell_mcp/remote_worker/lifecycle.py",
+    "local_shell_mcp/remote_worker/profiles.py",
+    "local_shell_mcp/remote_worker/state.py",
     "local_shell_mcp/remote_worker/worker.py",
 )
 seen = set()
@@ -387,6 +541,7 @@ worker_args() {
 start_worker() {
   echo "Starting worker with $PYTHON_BIN..." >&2
   printf 'Worker profile: %s\nReconnect with:\n  %q %q\n' "$PROFILE_ID" "$LAUNCHER" "$PROFILE_ID" >&2
+  export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"
   export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
   worker_args
   if [ "$BACKGROUND" = "1" ]; then
@@ -407,8 +562,14 @@ main() {
   find_or_install_python
   prepare_profile
   download_manifest
-  download_bundle
-  install_bundle
+  configure_runtime
+  if runtime_is_installed; then
+    echo "Reusing worker runtime $RUNTIME_VERSION (${RUNTIME_DIGEST:0:12})." >&2
+  else
+    download_bundle
+    install_bundle
+  fi
+  write_profile_metadata
   install_launcher
   start_worker
 }

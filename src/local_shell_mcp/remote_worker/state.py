@@ -7,6 +7,7 @@ from pathlib import Path
 _RUNTIME_METADATA_FILE_NAME = "runtime.json"
 _PROFILE_METADATA_FILE_NAME = "profile.json"
 WORKER_PROFILE_ID_ENV = "LOCAL_SHELL_MCP_WORKER_PROFILE_ID"
+WORKER_RUNTIME_DIGEST_ENV = "LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"
 _PROFILE_ID_RE = re.compile(r"p_[A-Za-z0-9_-]{8,64}")
 _RUNTIME_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -94,6 +95,24 @@ def runtime_metadata_path_for_digest(digest: str) -> Path:
     return worker_runtime_dir_for_digest(digest) / _RUNTIME_METADATA_FILE_NAME
 
 
+def active_worker_runtime_digest() -> str | None:
+    """Return the validated runtime digest selected for this process."""
+    digest = os.getenv(WORKER_RUNTIME_DIGEST_ENV)
+    if not digest:
+        return None
+    worker_runtime_dir_for_digest(digest)
+    return digest
+
+
+def activate_worker_runtime(digest: str | None) -> str | None:
+    """Select one content-addressed runtime for process re-exec."""
+    if digest is None:
+        return active_worker_runtime_digest()
+    worker_runtime_dir_for_digest(digest)
+    os.environ[WORKER_RUNTIME_DIGEST_ENV] = digest
+    return digest
+
+
 def worker_launcher_path() -> Path:
     """Return the stable user-facing worker launcher path."""
     return worker_state_dir() / "run"
@@ -104,13 +123,19 @@ def worker_install_lock_path() -> Path:
     return worker_state_dir() / "install.lock"
 
 
-def worker_runtime_dir() -> Path:
-    """Return the legacy atomically replaceable worker runtime directory."""
+def worker_runtime_dir(digest: str | None = None) -> Path:
+    """Return the selected content-addressed or legacy runtime directory."""
+    selected = digest if digest is not None else active_worker_runtime_digest()
+    if selected is not None:
+        return worker_runtime_dir_for_digest(selected)
     return worker_state_dir() / "runtime"
 
 
-def runtime_metadata_path() -> Path:
-    """Return the legacy persisted worker-runtime metadata path."""
+def runtime_metadata_path(digest: str | None = None) -> Path:
+    """Return metadata for the selected content-addressed or legacy runtime."""
+    selected = digest if digest is not None else active_worker_runtime_digest()
+    if selected is not None:
+        return runtime_metadata_path_for_digest(selected)
     return worker_state_dir() / _RUNTIME_METADATA_FILE_NAME
 
 

@@ -22,6 +22,11 @@ from ..utils.private_files import (
     atomic_write_private_text,
 )
 from . import runtime
+from .state import (
+    WORKER_RUNTIME_DIGEST_ENV,
+    active_worker_runtime_digest,
+    worker_runtime_dir_for_digest,
+)
 
 _SERVICE_NAME = "local-shell-mcp-worker"
 _LAUNCHD_LABEL = "com.fwerkor.local-shell-mcp-worker"
@@ -251,17 +256,36 @@ def _launchd_path() -> str:
     return _LAUNCHD_PATH_SEPARATOR.join(entries)
 
 
-def _launcher_text() -> str:
-    return """\
+def _launcher_text(runtime_digest: str | None = None) -> str:
+    selected = (
+        active_worker_runtime_digest()
+        if runtime_digest is None
+        else runtime_digest
+    )
+    if selected is not None:
+        worker_runtime_dir_for_digest(selected)
+        runtime_setup = f"""\
+runtime_digest = {selected!r}
+runtime_dir = state_dir / "runtimes" / runtime_digest
+if not runtime_dir.is_dir():
+    raise SystemExit("managed worker runtime is unavailable")
+sys.path.insert(0, str(runtime_dir))
+os.environ[{WORKER_RUNTIME_DIGEST_ENV!r}] = runtime_digest
+"""
+    else:
+        runtime_setup = """\
+runtime_dir = state_dir / "runtime"
+if runtime_dir.is_dir():
+    sys.path.insert(0, str(runtime_dir))
+"""
+    return f"""\
 
 import os
 import sys
 from pathlib import Path
 
 state_dir = Path(__file__).resolve().parents[1]
-runtime_dir = state_dir / "runtime"
-if runtime_dir.is_dir():
-    sys.path.insert(0, str(runtime_dir))
+{runtime_setup.rstrip()}
 os.environ.setdefault("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(state_dir))
 os.environ["LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME"] = "1"
 os.environ["LOCAL_SHELL_MCP_WORKER_MANAGED"] = "1"
@@ -270,10 +294,12 @@ main(["run"])
 """
 
 
-def ensure_launcher() -> tuple[Path, bool]:
+def ensure_launcher(
+    runtime_digest: str | None = None,
+) -> tuple[Path, bool]:
     """Install the stable private launcher and report whether content changed."""
     path = launcher_path()
-    content = _launcher_text()
+    content = _launcher_text(runtime_digest)
     changed = path.is_symlink() or not path.is_file()
     if not changed:
         try:
@@ -379,13 +405,19 @@ def _installed_launchd_workdir() -> str | None:
     return workdir if isinstance(workdir, str) and workdir else None
 
 
-def refresh_installed_service_definition(identity: dict[str, Any]) -> bool:
-    """Refresh an installed launchd definition without changing service state."""
-    path = launchd_plist_path()
-    if service_manager() != "launchd" or not path.is_file():
+def refresh_installed_service_definition(
+    identity: dict[str, Any],
+    runtime_digest: str | None = None,
+) -> bool:
+    """Refresh an installed managed launcher without changing service state."""
+    manager = service_manager()
+    path = systemd_unit_path() if manager == "systemd" else launchd_plist_path()
+    if manager == "unsupported" or not path.is_file():
         return False
     workdir = _identity_workdir(identity)
-    _launcher, launcher_changed = ensure_launcher()
+    _launcher, launcher_changed = ensure_launcher(runtime_digest)
+    if manager == "systemd":
+        return launcher_changed
     _path, definition_changed = _write_launchd_plist(workdir)
     return launcher_changed or definition_changed
 
