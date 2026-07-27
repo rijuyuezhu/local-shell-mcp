@@ -27,6 +27,21 @@ def _configure_remote_state(
     clear_settings_cache()
 
 
+def _runtime_report(
+    *, digest: str | None = None, version: str | None = None
+) -> dict[str, Any]:
+    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+
+    manifest = worker_bundle_manifest()
+    return {
+        "protocol_version": 1,
+        "runtime_kind": "managed_bundle",
+        "worker_version": version or str(manifest["bundle_version"]),
+        "bundle_version": version or str(manifest["bundle_version"]),
+        "bundle_sha256": digest or str(manifest["sha256"]),
+    }
+
+
 async def _registered_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from local_shell_mcp.remote.manager import RemoteManager
 
@@ -39,9 +54,76 @@ async def _registered_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             "workdir": str(tmp_path),
             "capabilities": ["shell"],
             "info": {"hostname": "edge"},
+            "runtime": _runtime_report(),
         }
     )
     return manager, registered
+
+
+@pytest.mark.asyncio
+async def test_enrollment_requires_managed_runtime_without_consuming_invite(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.remote.manager import (
+        RemoteManager,
+        WorkerRuntimeCompatibilityError,
+    )
+
+    _configure_remote_state(tmp_path, monkeypatch)
+    manager = RemoteManager()
+    invite = await manager.create_invite(name="worker-a")
+
+    with pytest.raises(
+        WorkerRuntimeCompatibilityError, match="generated invite"
+    ):
+        await manager.register_worker({"invite": invite.code})
+    assert invite.code in manager.invites
+
+    with pytest.raises(WorkerRuntimeCompatibilityError, match="source"):
+        await manager.register_worker(
+            {
+                "invite": invite.code,
+                "runtime": {
+                    **_runtime_report(),
+                    "runtime_kind": "unmanaged_source",
+                    "bundle_sha256": "",
+                },
+            }
+        )
+    assert invite.code in manager.invites
+
+
+@pytest.mark.asyncio
+async def test_stale_managed_runtime_enrolls_only_for_upgrade(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+    from local_shell_mcp.remote.manager import RemoteManager
+
+    _configure_remote_state(tmp_path, monkeypatch)
+    manager = RemoteManager()
+    invite = await manager.create_invite(name="worker-a")
+
+    registered = await manager.register_worker(
+        {
+            "invite": invite.code,
+            "runtime": _runtime_report(digest="0" * 64, version="3.9.0"),
+        }
+    )
+
+    manifest = worker_bundle_manifest()
+    assert registered["upgrade"] == {
+        "required": True,
+        "version": manifest["bundle_version"],
+        "sha256": manifest["sha256"],
+        "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+    }
+    assert manager.workers["worker-a"].info["runtime_kind"] == (
+        "managed_bundle"
+    )
+    assert manager.workers["worker-a"].info["worker_bundle_sha256"] == (
+        "0" * 64
+    )
 
 
 def _poll_report(*, digest: str, version: str = "3.9.1") -> dict[str, Any]:
@@ -187,6 +269,64 @@ def test_poll_endpoint_accepts_empty_body_and_rejects_non_object(monkeypatch):
     )
     assert malformed.status_code == 400
     assert "JSON object" in malformed.json()["message"]
+
+
+def test_runtime_compatibility_errors_use_conflict_status(monkeypatch):
+    from local_shell_mcp.remote import http
+    from local_shell_mcp.remote.manager import WorkerRuntimeCompatibilityError
+
+    class Manager:
+        async def register_worker(self, payload):
+            raise WorkerRuntimeCompatibilityError("managed runtime required")
+
+        async def resume_worker(self, token, payload):
+            raise WorkerRuntimeCompatibilityError("managed runtime required")
+
+    monkeypatch.setattr(http, "remote_manager", lambda: Manager())
+    client = TestClient(Starlette(routes=http.remote_routes()))
+
+    registered = client.post("/remote/register", json={})
+    resumed = client.post("/remote/resume", json={})
+
+    assert registered.status_code == 409
+    assert resumed.status_code == 409
+    assert registered.json()["error"] == "WorkerRuntimeCompatibilityError"
+    assert resumed.json()["error"] == "WorkerRuntimeCompatibilityError"
+
+
+@pytest.mark.asyncio
+async def test_runtime_conflict_does_not_delete_stored_identity(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.remote_worker import worker
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    identity = {
+        "server": "https://controller.test",
+        "name": "worker-a",
+        "access": "secret-access",
+        "workdir": str(tmp_path),
+    }
+    worker._write_worker_identity(identity)
+
+    def reject(*args, **kwargs):
+        raise worker.WorkerHttpError(
+            "https://controller.test/remote/resume",
+            409,
+            "managed runtime required",
+        )
+
+    monkeypatch.setattr(worker, "_worker_post_json", reject)
+
+    with pytest.raises(worker.WorkerHttpError) as exc_info:
+        await worker._worker_resume_or_none(
+            "https://controller.test/remote/resume",
+            {},
+            {},
+        )
+
+    assert exc_info.value.status_code == 409
+    assert worker.load_worker_identity() == identity
 
 
 def test_worker_bundle_manifest_is_deterministic_bounded_and_no_store():
@@ -718,6 +858,57 @@ def test_reexec_uses_execve_on_posix_and_spawn_on_windows(
         runtime.reexec_worker()
     assert exc_info.value.code == 0
     assert spawned["kwargs"]["close_fds"] is False
+
+
+@pytest.mark.asyncio
+async def test_worker_processes_enrollment_upgrade_before_poll(
+    monkeypatch, tmp_path
+):
+    import local_shell_mcp.remote_worker.worker as worker
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        worker, "_configure_worker_runtime_env", lambda workdir: None
+    )
+    monkeypatch.setattr(
+        worker,
+        "_read_worker_identity",
+        lambda server, name: {
+            "server": server,
+            "name": "worker-a",
+            "access": "secret-access",
+        },
+    )
+    monkeypatch.setattr(worker, "_write_worker_identity", lambda data: None)
+
+    async def resume(*args, **kwargs):
+        return {
+            "ok": True,
+            "data": {
+                "name": "worker-a",
+                "upgrade": {
+                    "required": True,
+                    "version": "3.9.2",
+                    "sha256": "a" * 64,
+                    "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+                },
+            },
+        }
+
+    async def unexpected_poll(*args, **kwargs):
+        raise AssertionError("poll started before enrollment upgrade")
+
+    async def upgrade(*args, **kwargs):
+        raise SystemExit(0)
+
+    monkeypatch.setattr(worker, "_worker_resume_or_none", resume)
+    monkeypatch.setattr(worker, "_worker_post_json_forever", unexpected_poll)
+    monkeypatch.setattr(worker, "_install_and_reexec_worker", upgrade)
+
+    with pytest.raises(SystemExit):
+        await worker.run_worker(
+            "https://controller.test", "", "worker-a", str(tmp_path)
+        )
 
 
 @pytest.mark.asyncio

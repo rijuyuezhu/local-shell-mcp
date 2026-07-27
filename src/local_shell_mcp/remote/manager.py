@@ -29,6 +29,8 @@ from .constants import (
     REMOTE_JOIN_PATH,
     REMOTE_WORKER_MANIFEST_PATH,
     REMOTE_WORKER_POLL_PROTOCOL_VERSION,
+    REMOTE_WORKER_RUNTIME_KIND,
+    REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION,
 )
 from .responses import _ok
 
@@ -77,6 +79,57 @@ def _reported_text(payload: dict[str, Any], key: str, *, required: bool) -> str:
     return value
 
 
+class WorkerRuntimeCompatibilityError(ValueError):
+    """Raised when a worker is not running a supported managed bundle."""
+
+
+def _validate_runtime_report(payload: dict[str, Any]) -> dict[str, Any]:
+    """Require one complete managed-bundle report before enrollment or resume."""
+    raw = payload.get("runtime")
+    if not isinstance(raw, dict):
+        raise WorkerRuntimeCompatibilityError(
+            "managed remote worker runtime required; use the generated invite command"
+        )
+    protocol = raw.get("protocol_version")
+    if (
+        isinstance(protocol, bool)
+        or not isinstance(protocol, int)
+        or protocol != REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION
+    ):
+        raise WorkerRuntimeCompatibilityError(
+            "remote worker runtime protocol is unsupported; use a current generated invite command"
+        )
+    runtime_kind = _reported_text(raw, "runtime_kind", required=True)
+    if runtime_kind != REMOTE_WORKER_RUNTIME_KIND:
+        raise WorkerRuntimeCompatibilityError(
+            "managed remote worker runtime required; manually installed source is not accepted"
+        )
+    worker_version = _reported_text(raw, "worker_version", required=True)
+    bundle_version = _reported_text(raw, "bundle_version", required=True)
+    digest = _reported_text(raw, "bundle_sha256", required=True).lower()
+    if not _WORKER_DIGEST_RE.fullmatch(digest):
+        raise WorkerRuntimeCompatibilityError(
+            "remote worker managed bundle digest is invalid"
+        )
+    return {
+        "protocol_version": protocol,
+        "runtime_kind": runtime_kind,
+        "worker_version": worker_version,
+        "bundle_version": bundle_version,
+        "bundle_sha256": digest,
+    }
+
+
+def _runtime_info(report: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "runtime_protocol_version": report["protocol_version"],
+        "runtime_kind": report["runtime_kind"],
+        "lsm_version": report["worker_version"],
+        "worker_bundle_version": report["bundle_version"],
+        "worker_bundle_sha256": report["bundle_sha256"],
+    }
+
+
 def _validate_poll_report(
     payload: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
@@ -113,6 +166,13 @@ def _upgrade_instruction(*, required: bool) -> dict[str, Any]:
         "sha256": manifest["sha256"],
         "manifest_path": REMOTE_WORKER_MANIFEST_PATH,
     }
+
+
+def _runtime_upgrade(report: dict[str, Any]) -> dict[str, Any]:
+    """Return the current bundle instruction for one managed runtime report."""
+    return _upgrade_instruction(
+        required=(report["bundle_sha256"] != worker_bundle_manifest()["sha256"])
+    )
 
 
 @dataclass
@@ -389,6 +449,7 @@ class RemoteManager:
 
     async def register_worker(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Consume an invite and persist a new worker registration."""
+        runtime_report = _validate_runtime_report(payload)
         code = str(payload.get("invite") or "")
         requested_name = str(payload.get("name") or "").strip() or None
         async with self._enrollment_lock:
@@ -418,12 +479,14 @@ class RemoteManager:
                 if name in self.workers:
                     raise ValueError(f"machine name already exists: {name}")
                 token = "lsmcp_wk_" + secrets.token_urlsafe(32)
+                info = dict(payload.get("info") or {})
+                info.update(_runtime_info(runtime_report))
                 worker = RemoteWorker(
                     name=name,
                     token=token,
                     workdir=str(payload.get("workdir") or invite.workdir or ""),
                     capabilities=list(payload.get("capabilities") or []),
-                    info=dict(payload.get("info") or {}),
+                    info=info,
                 )
                 self.workers[name] = worker
                 self.tokens[token] = name
@@ -437,12 +500,14 @@ class RemoteManager:
             "poll_interval_s": 0,
             "poll_timeout_s": get_settings().remote_poll_timeout_s,
             "heartbeat_interval_s": _heartbeat_interval_s(),
+            "upgrade": _runtime_upgrade(runtime_report),
         }
 
     async def resume_worker(
         self, token: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
         """Refresh a persisted worker registration using its bearer identity."""
+        runtime_report = _validate_runtime_report(payload)
         async with self._enrollment_lock:
             with self._state_lock:
                 self._load_registry_unlocked()
@@ -461,6 +526,7 @@ class RemoteManager:
                     payload.get("capabilities") or worker.capabilities
                 )
                 worker.info = dict(payload.get("info") or worker.info)
+                worker.info.update(_runtime_info(runtime_report))
                 self._save_registry_unlocked()
                 name = worker.name
         audit("remote_worker_resumed", machine=name)
@@ -470,6 +536,7 @@ class RemoteManager:
             "poll_interval_s": 0,
             "poll_timeout_s": get_settings().remote_poll_timeout_s,
             "heartbeat_interval_s": _heartbeat_interval_s(),
+            "upgrade": _runtime_upgrade(runtime_report),
         }
 
     def _default_machine_name_unlocked(self, payload: dict[str, Any]) -> str:

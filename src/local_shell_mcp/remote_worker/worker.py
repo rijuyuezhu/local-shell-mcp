@@ -630,6 +630,9 @@ async def _enroll_or_resume_worker(
         "workdir": resolved_workdir,
         "capabilities": worker_capabilities(),
         "info": worker_info(resolved_workdir, profile_id),
+        "runtime": worker_runtime.worker_runtime_report(
+            str(version_info().get("version") or "")
+        ),
     }
     identity = (
         _read_worker_identity(server, name)
@@ -802,6 +805,25 @@ async def _run_worker_locked(
         _write_worker_identity(stored, profile_id)
     else:
         _write_worker_identity(stored)
+    upgrade = data.get("upgrade")
+    if isinstance(upgrade, dict) and upgrade.get("required") is True:
+        worker_version = str(version_info().get("version") or "")
+        attempt = 0
+        while True:
+            try:
+                await _install_and_reexec_worker(
+                    upgrade,
+                    server=server,
+                    worker_version=worker_version,
+                )
+                raise RuntimeError("worker upgrade returned unexpectedly")
+            except SystemExit:
+                raise
+            except Exception as exc:
+                delay_s = _worker_retry_delay(attempt)
+                attempt += 1
+                _worker_log_retry("upgrade", exc, delay_s)
+                await asyncio.sleep(delay_s)
     print("local-shell-mcp worker")
     print(f"Server:  {server}")
     print(f"Name:    {machine_name}")

@@ -13,6 +13,19 @@ from pathlib import Path
 import pytest
 
 
+def _managed_runtime_report() -> dict[str, object]:
+    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+
+    manifest = worker_bundle_manifest()
+    return {
+        "protocol_version": 1,
+        "runtime_kind": "managed_bundle",
+        "worker_version": str(manifest["bundle_version"]),
+        "bundle_version": str(manifest["bundle_version"]),
+        "bundle_sha256": str(manifest["sha256"]),
+    }
+
+
 def test_remote_worker_entrypoint_import_is_dependency_light():
     script = """
 import asyncio
@@ -714,6 +727,7 @@ async def test_remote_manager_persists_workers_and_resumes(
             "workdir": str(tmp_path),
             "capabilities": ["shell"],
             "info": {"hostname": "remote-host"},
+            "runtime": _managed_runtime_report(),
         }
     )
     assert registered["poll_timeout_s"] == 25
@@ -726,7 +740,11 @@ async def test_remote_manager_persists_workers_and_resumes(
 
     resumed = await reloaded.resume_worker(
         registered["token"],
-        {"name": "worker-a", "workdir": str(tmp_path / "remote")},
+        {
+            "name": "worker-a",
+            "workdir": str(tmp_path / "remote"),
+            "runtime": _managed_runtime_report(),
+        },
     )
     assert resumed["name"] == "worker-a"
     assert resumed["token"] == registered["token"]
@@ -889,7 +907,11 @@ async def test_remote_registry_recovers_from_backup(tmp_path, monkeypatch):
     manager = RemoteManager()
     invite = await manager.create_invite(name="backup-worker")
     registered = await manager.register_worker(
-        {"invite": invite.code, "workdir": str(tmp_path)}
+        {
+            "invite": invite.code,
+            "workdir": str(tmp_path),
+            "runtime": _managed_runtime_report(),
+        }
     )
     manager._registry_path().write_text("{broken", encoding="utf-8")
 

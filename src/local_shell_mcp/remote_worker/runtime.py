@@ -21,6 +21,8 @@ from .. import __version__
 from ..remote.constants import (
     REMOTE_WORKER_MANIFEST_PATH,
     REMOTE_WORKER_POLL_PROTOCOL_VERSION,
+    REMOTE_WORKER_RUNTIME_KIND,
+    REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION,
 )
 from ..utils.private_files import private_file_lock
 from .state import (
@@ -104,6 +106,22 @@ def worker_poll_payload(
         "worker_version": worker_version,
         "bundle_sha256": str(identity.get("sha256") or ""),
         "bundle_version": str(identity.get("bundle_version") or ""),
+    }
+
+
+def worker_runtime_report(worker_version: str) -> dict[str, Any]:
+    """Describe whether this process is running a verified managed bundle."""
+    identity = current_runtime_identity()
+    digest = str(identity.get("sha256") or "")
+    bundle_version = str(identity.get("bundle_version") or "")
+    return {
+        "protocol_version": REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION,
+        "runtime_kind": REMOTE_WORKER_RUNTIME_KIND
+        if digest
+        else "unmanaged_source",
+        "worker_version": worker_version,
+        "bundle_version": bundle_version,
+        "bundle_sha256": digest,
     }
 
 
