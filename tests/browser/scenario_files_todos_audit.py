@@ -77,6 +77,12 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
             f'#session-list .session-entry[data-session-id="{session_id}"]'
         )
     ).to_have_attribute("aria-current", "true")
+    session_entry_box = page.locator(
+        "#session-list .session-entry"
+    ).first.bounding_box()
+    session_detail_box = page.locator(".session-detail-header").bounding_box()
+    assert session_entry_box is not None and session_detail_box is not None
+    assert abs(session_entry_box["y"] - session_detail_box["y"]) < 1
 
     page.locator("#todo-add").click()
     row = page.locator("#todo-list .todo-row").last
@@ -123,6 +129,17 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         },
     )
     assert audited_write["status"] == 200
+    audited_link = harness.api(
+        "POST",
+        "/tools/file_link/create",
+        body={
+            "session_id": session_id,
+            "path": "audit-scope.txt",
+            "ttl_s": 60,
+            "filename": None,
+        },
+    )
+    assert audited_link["status"] == 200
 
     page.locator("#session-audit-operation").select_option("files")
     page.locator("#session-audit-search").fill("write_file")
@@ -131,12 +148,67 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         page.locator("#session-audit-list .audit-entry").first
     ).to_be_visible()
     page.locator("#session-audit-list .audit-entry").first.click()
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel")
+    ).to_have_count(2)
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel").nth(0)
+    ).to_contain_text("Call request")
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel").nth(1)
+    ).to_contain_text("Call result")
     expect(page.locator("#session-audit-detail-body")).to_contain_text(
         "audit-scope.txt"
     )
     expect(page.locator("#session-audit-detail-body")).to_contain_text(
         "payload-e2e-"
     )
+    request_body = page.locator(
+        "#session-audit-detail-body .audit-call-panel-body"
+    ).nth(0)
+    expect(request_body).to_have_attribute("tabindex", "0")
+    scroll_extent = request_body.evaluate(
+        "element => ({height: element.clientHeight, scrollHeight: element.scrollHeight})"
+    )
+    assert scroll_extent["scrollHeight"] > scroll_extent["height"]
+    request_body.focus()
+    request_body.press("PageDown")
+    page.wait_for_timeout(100)
+    assert request_body.evaluate("element => element.scrollTop") > 0
+    detail_style = page.locator(
+        "#session-audit-detail-body .audit-detail-json"
+    ).first.evaluate(
+        """element => {
+          const style = getComputedStyle(element);
+          return {
+            minHeight: style.minHeight,
+            borderTopWidth: style.borderTopWidth,
+            paddingTop: style.paddingTop,
+          };
+        }"""
+    )
+    assert detail_style == {
+        "minHeight": "0px",
+        "borderTopWidth": "0px",
+        "paddingTop": "0px",
+    }
+
+    page.locator("#session-audit-operation").select_option("")
+    page.locator("#session-audit-search").fill("create_file_link")
+    page.locator("#session-audit-refresh").click()
+    expect(
+        page.locator("#session-audit-list .audit-entry").first
+    ).to_be_visible()
+    page.locator("#session-audit-list .audit-entry").first.click()
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel").nth(0)
+    ).to_contain_text('"filename": null')
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel").nth(1)
+    ).to_contain_text("related_events")
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel").nth(1)
+    ).to_contain_text("download_link_created")
 
     harness.navigate("audit")
     page.locator("#audit-operation").select_option("files")
@@ -144,9 +216,49 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     page.locator("#audit-refresh").click()
     expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
     page.locator("#audit-list .audit-entry").first.click()
+    expect(page.locator("#audit-detail-body .audit-call-panel")).to_have_count(
+        2
+    )
+    expect(
+        page.locator("#audit-detail-body .audit-call-panel").nth(0)
+    ).to_contain_text("Call request")
+    expect(
+        page.locator("#audit-detail-body .audit-call-panel").nth(1)
+    ).to_contain_text("Call result")
     expect(page.locator("#audit-detail-body")).to_contain_text(
         "audit-scope.txt"
     )
+
+    empty_write = harness.api(
+        "POST",
+        "/tools/write_file",
+        body={
+            "session_id": session_id,
+            "path": "empty-audit.txt",
+            "content": "",
+            "overwrite": True,
+        },
+    )
+    assert empty_write["status"] == 200
+    page.locator("#audit-search").fill("write_file")
+    page.locator("#audit-refresh").click()
+    expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
+    page.locator("#audit-list .audit-entry").first.click()
+    request_text = page.locator("#audit-detail-body .audit-call-panel").nth(0)
+    expect(request_text).to_contain_text("empty-audit.txt")
+    expect(request_text).to_contain_text('"content": ""')
+
+    page.locator("#audit-operation").select_option("")
+    page.locator("#audit-search").fill("oauth_client_approved")
+    page.locator("#audit-refresh").click()
+    expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
+    page.locator("#audit-list .audit-entry").first.click()
+    expect(
+        page.locator("#audit-detail-body .audit-call-panel").nth(1)
+    ).to_contain_text("client_id")
+    expect(
+        page.locator("#audit-detail-body .audit-call-panel").nth(1)
+    ).not_to_contain_text("No output recorded")
 
     full_token = page.evaluate(
         "key => sessionStorage.getItem(key)", TOKEN_STORAGE_KEY

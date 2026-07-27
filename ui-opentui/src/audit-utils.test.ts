@@ -39,7 +39,20 @@ describe("audit formatting", () => {
   test("shows only useful data from the standard tool envelope", () => {
     expect(
       formatAuditValue({ ok: true, message: "", data: { path: "a.txt", machine: null } }, "empty"),
-    ).toBe('{\n  "path": "a.txt"\n}')
+    ).toBe('{\n  "path": "a.txt",\n  "machine": null\n}')
+  })
+
+  test("preserves meaningful empty payload values", () => {
+    expect(
+      formatAuditValue({ content: "", items: [], options: {} }, "empty"),
+    ).toBe('{\n  "content": "",\n  "items": [],\n  "options": {}\n}')
+  })
+
+  test("preserves explicit nulls and array positions", () => {
+    expect(
+      formatAuditValue({ value: null, items: [null, "tail"] }, "empty"),
+    ).toBe('{\n  "value": null,\n  "items": [\n    null,\n    "tail"\n  ]\n}')
+    expect(formatAuditValue({ ok: true, message: "fallback", data: null }, "empty")).toBe("null")
   })
 
   test("describes paired start/end records as one coalesced call", () => {

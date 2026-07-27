@@ -2,6 +2,7 @@ import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, formatError } from "./api"
+import { HighlightedText } from "./syntax-highlight"
 import { auditAggregationLabel, auditInput, auditOutput, formatAuditValue } from "./audit-utils"
 import { EmptyState, KeyHint, Loading, Modal, Panel, useVisibleRows } from "./components"
 import { truncate } from "./dashboard-utils"
@@ -671,7 +672,7 @@ export function SessionsScreen({
           })}
         </box>
       </Panel>
-      <Panel title="Session call detail" style={{ flexGrow: 1, minHeight: 0, padding: 1, gap: 1 }}>
+      <Panel title="Session call detail" style={{ flexGrow: 1, minHeight: 0, padding: 1, gap: 1, overflow: "hidden" }}>
         {currentAudit ? (
           <>
             <box style={{ height: 1, flexDirection: "row" }}>
@@ -686,7 +687,7 @@ export function SessionsScreen({
               accent={colors.accent}
               activeBackground={colors.panel}
               onMouseDown={() => setActivePane("audit-request")}
-              style={{ flexGrow: 1, minHeight: 0, padding: 1, overflow: "hidden" }}
+              style={{ flexBasis: 0, flexGrow: 1, minHeight: 0, padding: 1, overflow: "hidden" }}
             >
               <scrollbox
                 ref={auditRequestScrollRef}
@@ -695,7 +696,7 @@ export function SessionsScreen({
                 scrollY
                 verticalScrollbarOptions={{ visible: true }}
               >
-                <text fg={theme.muted} content={auditInputText} />
+                <HighlightedText content={auditInputText} baseColor={theme.faint} />
               </scrollbox>
             </Panel>
             <Panel
@@ -704,7 +705,7 @@ export function SessionsScreen({
               accent={colors.accent}
               activeBackground={colors.panel}
               onMouseDown={() => setActivePane("audit-result")}
-              style={{ flexGrow: 1, minHeight: 0, padding: 1, overflow: "hidden" }}
+              style={{ flexBasis: 0, flexGrow: 1, minHeight: 0, padding: 1, overflow: "hidden" }}
             >
               <scrollbox
                 ref={auditResultScrollRef}
@@ -713,7 +714,7 @@ export function SessionsScreen({
                 scrollY
                 verticalScrollbarOptions={{ visible: true }}
               >
-                <text fg={theme.muted} content={auditOutputText} />
+                <HighlightedText content={auditOutputText} baseColor={theme.muted} />
               </scrollbox>
             </Panel>
           </>
