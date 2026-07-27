@@ -1509,6 +1509,17 @@
     return `/sessions/snapshot?${params.toString()}`;
   }
 
+  async function refreshSelectedSessionResourcesIndependently() {
+    const results = await Promise.allSettled([
+      refreshTodos({ force: true }),
+      refreshSessionAudit(),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected" && result.reason?.authenticationRequired) throw result.reason;
+    }
+    return results;
+  }
+
   async function refreshSelectedSessionResources() {
     if (!todoSessionId || !todoMachineOnline()) return null;
     const todoRequestGeneration = ++todoGeneration;
@@ -1541,6 +1552,11 @@
         requestedMachine !== todoMachine ||
         requestedSession !== todoSessionId
       ) return null;
+      if (error?.status === 403) {
+        sessionAuditLoading = false;
+        setTodoControls();
+        return await refreshSelectedSessionResourcesIndependently();
+      }
       const message = error instanceof Error ? error.message : String(error);
       elements.todoState.textContent = message;
       sessionAuditEntries = [];

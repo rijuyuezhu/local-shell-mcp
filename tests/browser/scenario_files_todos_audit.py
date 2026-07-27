@@ -1,3 +1,4 @@
+import json
 import time
 
 from playwright.sync_api import Route, expect
@@ -70,6 +71,23 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     session = harness.api("POST", "/tools/session_start", body={"workdir": "."})
     assert session["status"] == 200
     session_id = session["payload"]["session_id"]
+    snapshot_forbidden = 0
+
+    def forbid_combined_snapshot(route: Route) -> None:
+        nonlocal snapshot_forbidden
+        snapshot_forbidden += 1
+        route.fulfill(
+            status=403,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "ok": False,
+                    "message": "Missing required OAuth scope: audit:read",
+                }
+            ),
+        )
+
+    page.route("**/api/ui/sessions/snapshot**", forbid_combined_snapshot)
     harness.navigate("sessions")
     page.locator("#session-refresh").click()
     expect(
@@ -77,6 +95,9 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
             f'#session-list .session-entry[data-session-id="{session_id}"]'
         )
     ).to_have_attribute("aria-current", "true")
+    expect(page.locator("#todo-state")).to_contain_text("loaded 0 todos")
+    assert snapshot_forbidden >= 1
+    page.unroute("**/api/ui/sessions/snapshot**", forbid_combined_snapshot)
     session_entry_box = page.locator(
         "#session-list .session-entry"
     ).first.bounding_box()
