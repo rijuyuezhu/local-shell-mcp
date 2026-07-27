@@ -136,6 +136,7 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
             "session_id": session_id,
             "path": "audit-scope.txt",
             "ttl_s": 60,
+            "filename": None,
         },
     )
     assert audited_link["status"] == 200
@@ -199,6 +200,9 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         page.locator("#session-audit-list .audit-entry").first
     ).to_be_visible()
     page.locator("#session-audit-list .audit-entry").first.click()
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel").nth(0)
+    ).to_contain_text('"filename": null')
     expect(
         page.locator("#session-audit-detail-body .audit-call-panel").nth(1)
     ).to_contain_text("related_events")

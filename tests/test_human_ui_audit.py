@@ -970,6 +970,7 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
         not in index
     )
     assert "auditSupplementalDetails" in script
+    assert "if (value === undefined) return undefined" in script
     assert "renderAuditDetailMessage" in script
     assert "elements.auditDetailBody.innerHTML" not in script
     assert "audit-image-preview" in script

@@ -76,10 +76,9 @@ export function selectionAfterRefresh(
 }
 
 function cleanAuditValue(value: unknown): unknown {
-  if (value === null || value === undefined) return undefined
+  if (value === undefined) return undefined
   if (Array.isArray(value)) {
-    const items = value.map(cleanAuditValue).filter((item) => item !== undefined)
-    return items
+    return value.map(cleanAuditValue)
   }
   if (isRecord(value)) {
     const entries = Object.entries(value)
@@ -109,10 +108,14 @@ function unwrapToolEnvelope(value: unknown): unknown {
   const message = cleanAuditValue(value.message)
   const error = cleanAuditValue(value.error)
   const errorType = cleanAuditValue(value.error_type)
-  if (value.ok === false || error !== undefined || errorType !== undefined) {
+  if (
+    value.ok === false ||
+    (error !== undefined && error !== null) ||
+    (errorType !== undefined && errorType !== null)
+  ) {
     return cleanAuditValue({ message, error, error_type: errorType, data })
   }
-  return data ?? message
+  return data === undefined ? message : data
 }
 
 export function formatAuditValue(value: unknown, emptyLabel: string): string {
