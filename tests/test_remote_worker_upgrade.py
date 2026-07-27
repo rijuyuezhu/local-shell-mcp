@@ -154,6 +154,31 @@ async def test_inventory_exposes_validated_reconnect_command(
 
 
 @pytest.mark.asyncio
+async def test_inventory_formats_windows_reconnect_command(
+    tmp_path, monkeypatch
+):
+    manager, registered = await _registered_manager(tmp_path, monkeypatch)
+    worker = manager.workers[registered["name"]]
+    launcher = r"C:\Users\Worker Name\state\run.cmd"
+    worker.info.update(
+        {
+            "profile_id": "p_abcdefgh",
+            "launcher_path": launcher,
+            "platform": "win32",
+        }
+    )
+    expected = subprocess.list2cmdline([launcher, "p_abcdefgh"])
+
+    row = manager.list_machines().machines[0]
+    reconnect = manager.reconnect_command(registered["name"])
+
+    assert row.reconnect_command == expected
+    assert reconnect.command == expected
+    assert "access" not in reconnect.command
+    assert "invite" not in reconnect.command
+
+
+@pytest.mark.asyncio
 async def test_inventory_hides_invalid_reconnect_metadata(
     tmp_path, monkeypatch
 ):
@@ -1131,12 +1156,17 @@ def test_join_script_installs_persistent_verified_runtime():
     )
     assert 'RUNTIME_DIR="$STATE_DIR/runtimes/$RUNTIME_DIGEST"' in script
     assert 'RUNTIME_METADATA="$RUNTIME_DIR/runtime.json"' in script
-    assert 'LAUNCHER="$STATE_DIR/run"' in script
+    assert 'name = "run.cmd" if os.name == "nt" else "run"' in script
+    assert "select_launcher_path" in script
     assert "prepare_profile" in script
     assert "configure_runtime" in script
     assert "runtime_is_installed" in script
     assert "write_profile_metadata" in script
     assert "install_launcher" in script
+    assert (
+        "from local_shell_mcp.remote_worker.profile_launcher import" in script
+    )
+    assert "ensure_profile_launcher(sys.argv[1])" in script
     assert "Reusing worker runtime" in script
     assert "?manifest=1" in script
     assert "Cache-Control: no-cache" in script
@@ -1152,7 +1182,6 @@ def test_join_script_installs_persistent_verified_runtime():
     )
     assert 'ARGS=(connect --server "$SERVER" --invite "$INVITE"' in script
     assert '--profile "$PROFILE_ID"' in script
-    assert 'run "$PROFILE_ID"' in script
     assert '"$PROFILE_DIR/worker.log"' in script
     assert '"runtime_sha256": digest' in script
     assert "--persist" not in script
@@ -1160,6 +1189,10 @@ def test_join_script_installs_persistent_verified_runtime():
     assert 'rm -rf "$RUNTIME_DIR"' not in script
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="executes the POSIX curl-to-bash bootstrap under a real shell",
+)
 def test_join_script_reuses_one_digest_runtime_across_profiles(tmp_path):
     from importlib import resources
 

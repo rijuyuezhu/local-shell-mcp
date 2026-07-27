@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import shlex
+import subprocess
 import threading
 import time
 import uuid
@@ -133,6 +134,15 @@ def _runtime_info(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_worker_reconnect_command(argv: list[str], *, platform: str) -> str:
+    """Format validated reconnect arguments for the worker's command shell."""
+    return (
+        subprocess.list2cmdline(argv)
+        if platform == "win32"
+        else shlex.join(argv)
+    )
+
+
 def _worker_reconnect_metadata(
     info: dict[str, Any],
 ) -> tuple[str | None, str | None]:
@@ -153,8 +163,10 @@ def _worker_reconnect_metadata(
         ord(character) < 32 for character in raw_launcher_path
     ):
         return None, None
-    return raw_profile_id, " ".join(
-        (shlex.quote(raw_launcher_path), shlex.quote(raw_profile_id))
+    platform = info.get("platform")
+    return raw_profile_id, _format_worker_reconnect_command(
+        [raw_launcher_path, raw_profile_id],
+        platform=platform if isinstance(platform, str) else "",
     )
 
 

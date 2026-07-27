@@ -52,7 +52,14 @@ def test_worker_state_paths_share_one_root(
     assert state.worker_lock_path() == tmp_path / "worker.lock"
     assert state.worker_profiles_dir() == tmp_path / "profiles"
     assert state.worker_runtimes_dir() == tmp_path / "runtimes"
-    assert state.worker_launcher_path() == tmp_path / "run"
+    launcher_name = "run.cmd" if state.os.name == "nt" else "run"
+    assert state.worker_launcher_path() == tmp_path / launcher_name
+    assert state.worker_launcher_runner_path() == tmp_path / "run.py"
+    assert state.worker_python_path() == tmp_path / "python"
+    assert (
+        state.worker_legacy_migration_path() == tmp_path / "legacy-profile.json"
+    )
+    assert state.worker_migration_lock_path() == tmp_path / "migration.lock"
     assert state.worker_install_lock_path() == tmp_path / "install.lock"
 
 

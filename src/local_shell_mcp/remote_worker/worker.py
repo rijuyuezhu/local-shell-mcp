@@ -1,7 +1,6 @@
 """Remote worker-side tool dispatch, process loop, and CLI helpers."""
 
 import asyncio
-import contextlib
 import json
 import math
 import os
@@ -14,7 +13,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 from pathlib import Path
 from typing import Any, cast
 
@@ -25,6 +23,18 @@ from ..remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
 from ..version import version_info
 from . import runtime as worker_runtime
 from .compat import _jsonable as to_jsonable
+from .identity import (
+    delete_worker_identity as _delete_persisted_worker_identity,
+)
+from .identity import (
+    load_worker_identity as _load_persisted_worker_identity,
+)
+from .identity import (
+    read_worker_identity as _read_persisted_worker_identity,
+)
+from .identity import (
+    write_worker_identity as _write_persisted_worker_identity,
+)
 from .profiles import update_worker_profile
 from .state import (
     activate_worker_profile,
@@ -315,56 +325,24 @@ def _read_worker_identity(
     profile_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Read a stored worker identity, optionally matching server and name."""
-    path = _worker_identity_path(profile_id)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    if not isinstance(data, dict):
-        return None
-    if server is not None and data.get("server") != server:
-        return None
-    stored_name = str(data.get("name") or "")
-    if requested_name and stored_name != requested_name:
-        return None
-    if not stored_name or not str(data.get("access") or ""):
-        return None
-    return data
+    return _read_persisted_worker_identity(server, requested_name, profile_id)
 
 
 def load_worker_identity(profile_id: str | None = None) -> dict[str, Any]:
     """Load the complete stored identity required by ``worker run``."""
-    identity = _read_worker_identity(profile_id=profile_id)
-    if identity is None:
-        raise ValueError("no stored worker identity; run worker enroll first")
-    required = ("server", "name", "access", "workdir")
-    missing = [name for name in required if not str(identity.get(name) or "")]
-    if missing:
-        raise ValueError(
-            f"stored worker identity is incomplete: missing {missing[0]}"
-        )
-    return identity
+    return _load_persisted_worker_identity(profile_id)
 
 
 def _write_worker_identity(
     data: dict[str, Any], profile_id: str | None = None
 ) -> None:
-    """Persist a worker identity atomically with owner-only permissions where possible."""
-    path = _worker_identity_path(profile_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
-    tmp_path.write_text(
-        json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
-    )
-    with contextlib.suppress(OSError):
-        tmp_path.chmod(0o600)
-    tmp_path.replace(path)
+    """Persist a worker identity atomically with owner-only permissions."""
+    _write_persisted_worker_identity(data, profile_id)
 
 
 def _delete_worker_identity(profile_id: str | None = None) -> None:
     """Remove the stored worker identity after the control server rejects it."""
-    with contextlib.suppress(FileNotFoundError):
-        _worker_identity_path(profile_id).unlink()
+    _delete_persisted_worker_identity(profile_id)
 
 
 def _worker_identity_rejected(exc: Exception) -> bool:
@@ -534,13 +512,15 @@ def worker_info(workdir: str, profile_id: str | None = None) -> dict[str, Any]:
     return info
 
 
+def _format_reconnect_command(argv: list[str], *, windows: bool) -> str:
+    """Format one reconnect argv for the target platform's command shell."""
+    return subprocess.list2cmdline(argv) if windows else shlex.join(argv)
+
+
 def worker_reconnect_command(profile_id: str) -> str:
     """Return the credential-free command that restarts one local profile."""
-    return " ".join(
-        (
-            shlex.quote(str(worker_launcher_path())),
-            shlex.quote(profile_id),
-        )
+    return _format_reconnect_command(
+        [str(worker_launcher_path()), profile_id], windows=os.name == "nt"
     )
 
 
@@ -594,10 +574,10 @@ async def _install_and_reexec_worker(
             name=str(identity["name"]),
             workdir=str(identity["workdir"]),
         )
-    elif os.getenv("LOCAL_SHELL_MCP_WORKER_MANAGED") == "1":
+    if os.getenv("LOCAL_SHELL_MCP_WORKER_MANAGED") == "1":
         from .service import ensure_launcher
 
-        ensure_launcher(expected_digest)
+        ensure_launcher(expected_digest, profile_id)
     print(
         f"Status: worker runtime {expected_version} ({expected_digest[:12]}) installed; restarting.",
         file=sys.stderr,
@@ -761,6 +741,18 @@ async def run_worker(
 async def run_stored_worker(profile_id: str | None = None) -> None:
     """Run using only the private persisted identity."""
     profile_id = activate_worker_profile(profile_id)
+    if profile_id is None:
+        from .lifecycle import worker_run_lock
+        from .migration import migrate_legacy_worker_state
+
+        with worker_run_lock():
+            migrated = await asyncio.to_thread(migrate_legacy_worker_state)
+        if migrated is not None:
+            profile_id = str(migrated["profile_id"])
+            activate_worker_profile(profile_id)
+            activate_worker_runtime(str(migrated["runtime_sha256"]))
+            worker_runtime.reexec_worker()
+            raise RuntimeError("worker migration restart returned unexpectedly")
     identity = (
         load_worker_identity()
         if profile_id is None

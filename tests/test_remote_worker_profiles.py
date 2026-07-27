@@ -1,6 +1,8 @@
 import argparse
+import json
 import os
 import shlex
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,8 @@ from local_shell_mcp.remote_worker.state import (
     activate_worker_profile,
     activate_worker_runtime,
     runtime_metadata_path,
+    worker_launcher_path,
+    worker_profile_metadata_path,
     worker_runtime_dir,
 )
 
@@ -94,9 +98,20 @@ def test_reconnect_command_is_credential_free_and_shell_safe(
 
     command = worker.worker_reconnect_command("p_abcdefgh")
 
-    assert shlex.split(command) == [str(state_dir / "run"), "p_abcdefgh"]
+    assert shlex.split(command) == [str(worker_launcher_path()), "p_abcdefgh"]
     assert "access" not in command
     assert "invite" not in command
+
+
+def test_reconnect_command_formatter_uses_windows_cmd_quoting() -> None:
+    argv = [r"C:\Users\Worker Name\state\run.cmd", "p_abcdefgh"]
+
+    assert worker._format_reconnect_command(argv, windows=True) == (
+        subprocess.list2cmdline(argv)
+    )
+    assert worker._format_reconnect_command(argv, windows=False) == (
+        shlex.join(argv)
+    )
 
 
 def test_worker_info_reports_profile_launcher(
@@ -107,7 +122,7 @@ def test_worker_info_reports_profile_launcher(
     info = worker.worker_info("/work/a", "p_abcdefgh")
 
     assert info["profile_id"] == "p_abcdefgh"
-    assert info["launcher_path"] == str(tmp_path / "run")
+    assert info["launcher_path"] == str(worker_launcher_path())
 
 
 def test_active_runtime_selects_content_addressed_paths(
@@ -168,6 +183,86 @@ def test_profile_metadata_rejects_invalid_fields(
             runtime_sha256=digest,
             name=name,
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("server", 123, "must be a string"),
+        ("name", "x" * 513, "is too large"),
+    ],
+)
+def test_profile_metadata_rejects_invalid_text_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    data: dict[str, Any] = {
+        "schema_version": 1,
+        "profile_id": "p_abcdefgh",
+        "runtime_sha256": "a" * 64,
+        "runtime_version": "4.0.0",
+        "server": "https://controller.test",
+        "name": "worker-a",
+        "workdir": "/work/a",
+    }
+    data[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        worker_profiles.write_worker_profile("p_abcdefgh", data)
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"schema_version": 999}, "unsupported"),
+        (
+            {
+                "schema_version": 1,
+                "profile_id": "p_other123",
+                "runtime_sha256": "a" * 64,
+            },
+            "does not match",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "profile_id": "p_abcdefgh",
+                "runtime_sha256": 123,
+            },
+            "must be a string",
+        ),
+        ([], "must be a JSON object"),
+    ],
+)
+def test_profile_reader_rejects_invalid_documents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: object,
+    message: str,
+) -> None:
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    path = worker_profile_metadata_path("p_abcdefgh")
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        worker_profiles.read_worker_profile("p_abcdefgh")
+
+
+def test_profile_reader_rejects_unreadable_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    path = worker_profile_metadata_path("p_abcdefgh")
+    path.parent.mkdir(parents=True)
+    path.write_text("{", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="is unreadable"):
+        worker_profiles.read_worker_profile("p_abcdefgh")
 
 
 @pytest.mark.asyncio
@@ -239,12 +334,12 @@ async def test_required_upgrade_refreshes_managed_service_launcher(
             "runtime": str(tmp_path / "runtimes" / new_digest),
         },
     )
-    refreshed: list[str | None] = []
+    refreshed: list[tuple[str | None, str | None]] = []
     monkeypatch.setattr(
         worker_service,
         "ensure_launcher",
-        lambda digest=None: (
-            refreshed.append(digest) or tmp_path / "launcher",
+        lambda digest=None, profile_id=None: (
+            refreshed.append((digest, profile_id)) or tmp_path / "launcher",
             True,
         ),
     )
@@ -265,8 +360,65 @@ async def test_required_upgrade_refreshes_managed_service_launcher(
             worker_version="3.9.1",
         )
 
-    assert refreshed == [new_digest]
+    assert refreshed == [(new_digest, None)]
     assert os.environ[WORKER_RUNTIME_DIGEST_ENV] == new_digest
+
+
+@pytest.mark.asyncio
+async def test_required_upgrade_preserves_managed_profile_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import local_shell_mcp.remote_worker.service as worker_service
+
+    _clear_profile_environment(monkeypatch)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    profile_id = "p_abcdefgh"
+    activate_worker_profile(profile_id)
+    worker._write_worker_identity(_identity("worker-a", "/work/a"), profile_id)
+    new_digest = "c" * 64
+    monkeypatch.setattr(
+        worker.worker_runtime,
+        "install_runtime",
+        lambda *_args, **_kwargs: {
+            "updated": True,
+            "sha256": new_digest,
+            "version": "3.9.2",
+            "runtime": str(tmp_path / "runtimes" / new_digest),
+        },
+    )
+    refreshed: list[tuple[str | None, str | None]] = []
+    monkeypatch.setattr(
+        worker_service,
+        "ensure_launcher",
+        lambda digest=None, selected_profile=None: (
+            refreshed.append((digest, selected_profile))
+            or tmp_path / "launcher",
+            True,
+        ),
+    )
+    monkeypatch.setattr(
+        worker.worker_runtime,
+        "reexec_worker",
+        lambda: (_ for _ in ()).throw(SystemExit(0)),
+    )
+
+    with pytest.raises(SystemExit):
+        await worker._install_and_reexec_worker(
+            {
+                "version": "3.9.2",
+                "sha256": new_digest,
+                "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+            },
+            server="https://controller.test",
+            worker_version="3.9.1",
+        )
+
+    assert refreshed == [(new_digest, profile_id)]
+    assert (
+        worker_profiles.read_worker_profile(profile_id)["runtime_sha256"]
+        == new_digest
+    )
 
 
 def _parser() -> argparse.ArgumentParser:

@@ -123,7 +123,9 @@ source = ["local_shell_mcp"]
 source = [
     "src/local_shell_mcp",
     "*/.local-shell-mcp-worker/runtime/local_shell_mcp",
+    "*/.local-shell-mcp-worker/runtimes/*/local_shell_mcp",
     "*/runtime/local_shell_mcp",
+    "*/runtimes/*/local_shell_mcp",
 ]
 
 [tool.coverage.report]

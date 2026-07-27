@@ -115,7 +115,28 @@ def activate_worker_runtime(digest: str | None) -> str | None:
 
 def worker_launcher_path() -> Path:
     """Return the stable user-facing worker launcher path."""
-    return worker_state_dir() / "run"
+    name = "run.cmd" if os.name == "nt" else "run"
+    return worker_state_dir() / name
+
+
+def worker_launcher_runner_path() -> Path:
+    """Return the standalone Python runner used by the stable launcher."""
+    return worker_state_dir() / "run.py"
+
+
+def worker_python_path() -> Path:
+    """Return the stored Python executable used by the stable launcher."""
+    return worker_state_dir() / "python"
+
+
+def worker_legacy_migration_path() -> Path:
+    """Return the non-secret marker for one migrated legacy identity."""
+    return worker_state_dir() / "legacy-profile.json"
+
+
+def worker_migration_lock_path() -> Path:
+    """Return the lock serializing legacy single-worker migration."""
+    return worker_state_dir() / "migration.lock"
 
 
 def worker_install_lock_path() -> Path:

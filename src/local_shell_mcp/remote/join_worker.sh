@@ -16,8 +16,7 @@ RUNTIME_DIGEST=""
 RUNTIME_VERSION=""
 RUNTIME_DIR=""
 RUNTIME_METADATA=""
-PYTHON_PATH="$STATE_DIR/python"
-LAUNCHER="$STATE_DIR/run"
+LAUNCHER=""
 PROFILE_DIR=""
 
 usage() {
@@ -118,6 +117,18 @@ find_or_install_python() {
   fi
 }
 
+select_launcher_path() {
+  LAUNCHER="$($PYTHON_BIN - "$STATE_DIR" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+name = "run.cmd" if os.name == "nt" else "run"
+print(Path(sys.argv[1]) / name)
+PY
+)"
+}
+
 prepare_profile() {
   if [ -z "$PROFILE_ID" ]; then
     while :; do
@@ -141,88 +152,20 @@ PY
 }
 
 install_launcher() {
-  local temporary_python temporary_launcher
-  temporary_python="$PYTHON_PATH.tmp.$$"
-  temporary_launcher="$LAUNCHER.tmp.$$"
-  printf '%s\n' "$PYTHON_BIN" > "$temporary_python"
-  chmod 600 "$temporary_python" 2>/dev/null || true
-  mv -f "$temporary_python" "$PYTHON_PATH"
-
-  cat > "$temporary_launcher" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-STATE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
-PROFILE_ID="${1:-}"
-if [ "$#" -ne 1 ] || [[ ! "$PROFILE_ID" =~ ^p_[A-Za-z0-9_-]{8,64}$ ]]; then
-  echo "usage: $0 PROFILE_ID" >&2
-  exit 2
-fi
-
-PYTHON_BIN=""
-IFS= read -r PYTHON_BIN < "$STATE_DIR/python" || true
-if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
-  echo "stored worker Python is unavailable; run a fresh invite command" >&2
-  exit 1
-fi
-
-RUNTIME_DIR="$($PYTHON_BIN - "$STATE_DIR" "$PROFILE_ID" <<'PY'
-import json
-import re
+  local installed_launcher
+  installed_launcher="$(
+    LOCAL_SHELL_MCP_WORKER_STATE_DIR="$STATE_DIR" \
+    PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+    "$PYTHON_BIN" - "$PYTHON_BIN" <<'PY'
 import sys
-from pathlib import Path
 
-state_dir = Path(sys.argv[1])
-profile_id = sys.argv[2]
-profile_path = state_dir / "profiles" / profile_id / "profile.json"
-try:
-    profile = json.loads(profile_path.read_text(encoding="utf-8"))
-except (OSError, ValueError, json.JSONDecodeError) as exc:
-    raise SystemExit(f"worker profile is unreadable: {profile_id}") from exc
-if (
-    not isinstance(profile, dict)
-    or profile.get("schema_version") != 1
-    or profile.get("profile_id") != profile_id
-):
-    raise SystemExit(f"worker profile is invalid: {profile_id}")
-digest = profile.get("runtime_sha256")
-if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-    raise SystemExit(f"worker profile runtime is invalid: {profile_id}")
-runtime = state_dir / "runtimes" / digest
-metadata_path = runtime / "runtime.json"
-try:
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-except (OSError, ValueError, json.JSONDecodeError) as exc:
-    raise SystemExit("stored worker runtime metadata is unavailable") from exc
-required = (
-    "local_shell_mcp/__init__.py",
-    "local_shell_mcp/remote_worker/__init__.py",
-    "local_shell_mcp/remote_worker/__main__.py",
-    "local_shell_mcp/remote_worker/compat.py",
-    "local_shell_mcp/remote_worker/lifecycle.py",
-    "local_shell_mcp/remote_worker/profiles.py",
-    "local_shell_mcp/remote_worker/state.py",
-    "local_shell_mcp/remote_worker/worker.py",
-)
-if (
-    not isinstance(metadata, dict)
-    or metadata.get("schema_version") != 1
-    or metadata.get("sha256") != digest
-    or not all((runtime / relative).is_file() for relative in required)
-):
-    raise SystemExit("stored worker runtime is incomplete or invalid")
-print(runtime)
+from local_shell_mcp.remote_worker.profile_launcher import ensure_profile_launcher
+
+launcher, _changed = ensure_profile_launcher(sys.argv[1])
+print(launcher)
 PY
-)"
-RUNTIME_DIGEST="${RUNTIME_DIR##*/}"
-
-export LOCAL_SHELL_MCP_WORKER_STATE_DIR="$STATE_DIR"
-export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"
-export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
-exec "$PYTHON_BIN" -m local_shell_mcp.remote_worker run "$PROFILE_ID"
-EOF
-  chmod 700 "$temporary_launcher"
-  mv -f "$temporary_launcher" "$LAUNCHER"
+  )"
+  [ "$installed_launcher" = "$LAUNCHER" ] || die "worker launcher path mismatch"
 }
 
 download_manifest() {
@@ -312,7 +255,10 @@ required = (
     "local_shell_mcp/remote_worker/__init__.py",
     "local_shell_mcp/remote_worker/__main__.py",
     "local_shell_mcp/remote_worker/compat.py",
+    "local_shell_mcp/remote_worker/identity.py",
     "local_shell_mcp/remote_worker/lifecycle.py",
+    "local_shell_mcp/remote_worker/migration.py",
+    "local_shell_mcp/remote_worker/profile_launcher.py",
     "local_shell_mcp/remote_worker/profiles.py",
     "local_shell_mcp/remote_worker/state.py",
     "local_shell_mcp/remote_worker/worker.py",
@@ -437,7 +383,10 @@ required = (
     "local_shell_mcp/remote_worker/__init__.py",
     "local_shell_mcp/remote_worker/__main__.py",
     "local_shell_mcp/remote_worker/compat.py",
+    "local_shell_mcp/remote_worker/identity.py",
     "local_shell_mcp/remote_worker/lifecycle.py",
+    "local_shell_mcp/remote_worker/migration.py",
+    "local_shell_mcp/remote_worker/profile_launcher.py",
     "local_shell_mcp/remote_worker/profiles.py",
     "local_shell_mcp/remote_worker/state.py",
     "local_shell_mcp/remote_worker/worker.py",
@@ -649,6 +598,7 @@ main() {
   TMPDIR="$(mktemp -d "$STATE_DIR/install.XXXXXX")"
   trap cleanup EXIT
   find_or_install_python
+  select_launcher_path
   prepare_profile
   download_manifest
   configure_runtime
