@@ -970,9 +970,15 @@ h2 {
   display: grid;
   align-content: start;
   gap: 0.45rem;
-  max-height: 72rem;
   overflow: auto;
   padding: 0.9rem;
+}
+
+@media (min-width: 781px) {
+  .session-list {
+    height: 0;
+    min-height: 100%;
+  }
 }
 
 .session-entry {

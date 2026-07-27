@@ -151,6 +151,14 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     expect(
         page.locator("#session-audit-detail-body .audit-call-panel")
     ).to_have_count(2)
+    session_list_box = page.locator("#session-list").bounding_box()
+    session_workspace_box = page.locator(".session-workspace").bounding_box()
+    assert session_list_box is not None and session_workspace_box is not None
+    session_list_bottom = session_list_box["y"] + session_list_box["height"]
+    session_workspace_bottom = (
+        session_workspace_box["y"] + session_workspace_box["height"]
+    )
+    assert abs(session_list_bottom - session_workspace_bottom) < 1
     expect(
         page.locator("#session-audit-detail-body .audit-call-panel").nth(0)
     ).to_contain_text("Call request")
