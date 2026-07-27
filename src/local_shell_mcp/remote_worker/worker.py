@@ -790,17 +790,6 @@ async def _run_worker_locked(
     workdir = str(identity["workdir"])
     heartbeat_interval_s = float(data.get("heartbeat_interval_s") or 15)
     poll_request_timeout_s = _worker_poll_request_timeout_s(data)
-    stored = {
-        "server": server,
-        "name": machine_name,
-        "access": access,
-        "workdir": workdir,
-    }
-    if profile_id is not None:
-        stored["profile_id"] = profile_id
-        _write_worker_identity(stored, profile_id)
-    else:
-        _write_worker_identity(stored)
     upgrade = data.get("upgrade")
     if isinstance(upgrade, dict) and upgrade.get("required") is True:
         worker_version = str(version_info().get("version") or "")

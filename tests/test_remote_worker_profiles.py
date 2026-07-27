@@ -124,6 +124,50 @@ async def test_profile_resume_persists_canonical_renamed_identity(
     assert profile["runtime_sha256"] == digest
 
 
+@pytest.mark.asyncio
+async def test_run_worker_locked_does_not_rewrite_enrollment_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile_id = "p_abcdefgh"
+    identity = {
+        **_identity("worker-renamed", str(tmp_path)),
+        "profile_id": profile_id,
+        "migration_source": "legacy-single-worker",
+    }
+
+    async def enroll_or_resume(*_args: Any, **_kwargs: Any):
+        return identity, {
+            "upgrade": {
+                "required": True,
+                "version": "4.1.0",
+                "sha256": "b" * 64,
+                "manifest_path": "/remote/worker-bundle.tgz?manifest=1",
+            }
+        }
+
+    async def reexec(*_args: Any, **_kwargs: Any) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(worker, "_enroll_or_resume_worker", enroll_or_resume)
+    monkeypatch.setattr(worker, "_install_and_reexec_worker", reexec)
+    monkeypatch.setattr(
+        worker,
+        "_write_worker_identity",
+        lambda *_args, **_kwargs: pytest.fail(
+            "run loop rewrote the identity already persisted during enrollment"
+        ),
+    )
+
+    with pytest.raises(SystemExit):
+        await worker._run_worker_locked(
+            "https://controller.test",
+            "",
+            "worker-renamed",
+            str(tmp_path),
+            profile_id,
+        )
+
+
 def test_active_profile_survives_credential_free_reexec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
