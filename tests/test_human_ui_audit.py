@@ -960,9 +960,13 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     assert "renderAuditDetailInto(entry" in script
     assert 'auditCallPanel("Call request")' in script
     assert 'auditCallPanel("Call result")' in script
+    assert "auditSupplementalDetails" in script
     assert "renderAuditDetailMessage" in script
     assert "elements.auditDetailBody.innerHTML" not in script
     assert "audit-image-preview" in script
+    assert ".audit-detail pre" not in (static_root / "web.css").read_text(
+        encoding="utf-8"
+    )
     assert 'scope: "global"' in script
     assert 'scope: "session"' in script
     assert 'id="audit-session"' not in index

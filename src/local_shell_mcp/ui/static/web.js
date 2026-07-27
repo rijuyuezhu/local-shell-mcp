@@ -2059,24 +2059,79 @@
     return cleanAuditValue(fallback);
   }
 
-  function auditOutput(entry) {
-    if (entry.output !== undefined) return entry.output;
-    if (entry.result !== undefined) return entry.result;
-    const fallback = {};
-    for (const key of [
-      "ok",
-      "error",
-      "error_type",
-      "exit_code",
-      "timed_out",
-      "duration_ms",
-      "stdout",
-      "stderr",
-      "truncated",
-    ]) {
-      if (entry[key] !== undefined) fallback[key] = entry[key];
+  const AUDIT_DETAIL_METADATA_FIELDS = new Set([
+    "id",
+    "ts",
+    "event",
+    "tool",
+    "node",
+    "operation",
+    "paired",
+    "status",
+    "source_events",
+    "call_id",
+    "session",
+    "input",
+    "arguments",
+    "output",
+    "result",
+    "related_events",
+    "image_preview",
+    "image_preview_error",
+    "command",
+    "cwd",
+    "path",
+    "url",
+    "machine",
+    "ok",
+    "error",
+    "error_type",
+    "exit_code",
+    "timed_out",
+    "duration_ms",
+    "stdout",
+    "stderr",
+    "truncated",
+  ]);
+
+  function auditSupplementalDetails(entry) {
+    const details = {};
+    for (const [key, value] of Object.entries(entry)) {
+      if (!AUDIT_DETAIL_METADATA_FIELDS.has(key)) details[key] = value;
     }
-    return cleanAuditValue(fallback);
+    return cleanAuditValue(details);
+  }
+
+  function auditOutput(entry) {
+    let output;
+    if (entry.output !== undefined) output = entry.output;
+    else if (entry.result !== undefined) output = entry.result;
+    else {
+      const fallback = {};
+      for (const key of [
+        "ok",
+        "error",
+        "error_type",
+        "exit_code",
+        "timed_out",
+        "duration_ms",
+        "stdout",
+        "stderr",
+        "truncated",
+      ]) {
+        if (entry[key] !== undefined) fallback[key] = entry[key];
+      }
+      output = cleanAuditValue(fallback);
+    }
+    const related = cleanAuditValue(entry.related_events);
+    const details = auditSupplementalDetails(entry);
+    if (related === undefined && details === undefined) return output;
+    if (output === undefined && related === undefined) return details;
+    return cleanAuditValue({
+      result: unwrapAuditToolEnvelope(output),
+      related_events: related,
+      details,
+    });
   }
 
   function auditValueSource(value, emptyLabel) {
