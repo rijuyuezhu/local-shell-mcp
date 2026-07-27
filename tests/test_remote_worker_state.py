@@ -50,3 +50,55 @@ def test_worker_state_paths_share_one_root(
     assert state.worker_runtime_dir() == tmp_path / "runtime"
     assert state.runtime_metadata_path() == tmp_path / "runtime.json"
     assert state.worker_lock_path() == tmp_path / "worker.lock"
+    assert state.worker_profiles_dir() == tmp_path / "profiles"
+    assert state.worker_runtimes_dir() == tmp_path / "runtimes"
+    assert state.worker_launcher_path() == tmp_path / "run"
+    assert state.worker_install_lock_path() == tmp_path / "install.lock"
+
+
+def test_worker_profile_paths_are_isolated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    profile_id = "p_abcdefgh"
+    profile = tmp_path / "profiles" / profile_id
+
+    assert state.worker_profile_dir(profile_id) == profile
+    assert state.worker_profile_metadata_path(profile_id) == (
+        profile / "profile.json"
+    )
+    assert state.worker_profile_identity_path(profile_id) == (
+        profile / "identity.json"
+    )
+    assert state.worker_profile_lock_path(profile_id) == profile / "worker.lock"
+
+
+@pytest.mark.parametrize(
+    "profile_id",
+    ["", "worker-a", "p_short", "p_../escape", "p_abcdefgh/child"],
+)
+def test_worker_profile_paths_reject_unsafe_ids(profile_id: str) -> None:
+    with pytest.raises(ValueError, match="profile id"):
+        state.worker_profile_dir(profile_id)
+
+
+def test_worker_runtime_paths_are_content_addressed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    digest = "a" * 64
+    runtime = tmp_path / "runtimes" / digest
+
+    assert state.worker_runtime_dir_for_digest(digest) == runtime
+    assert state.runtime_metadata_path_for_digest(digest) == (
+        runtime / "runtime.json"
+    )
+
+
+@pytest.mark.parametrize(
+    "digest",
+    ["", "a" * 63, "A" * 64, "g" * 64, "../" + "a" * 64],
+)
+def test_worker_runtime_paths_reject_invalid_digests(digest: str) -> None:
+    with pytest.raises(ValueError, match="runtime digest"):
+        state.worker_runtime_dir_for_digest(digest)
