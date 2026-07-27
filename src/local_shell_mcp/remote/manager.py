@@ -149,13 +149,17 @@ def _worker_reconnect_metadata(
     """Validate worker-local launcher metadata and build a shell-safe command."""
     raw_profile_id = info.get("profile_id")
     raw_launcher_path = info.get("launcher_path")
-    if raw_profile_id in {None, ""} and raw_launcher_path in {None, ""}:
+    if raw_profile_id is not None and not isinstance(raw_profile_id, str):
         return None, None
-    if not isinstance(
-        raw_profile_id, str
-    ) or not _WORKER_PROFILE_ID_RE.fullmatch(raw_profile_id):
+    if raw_launcher_path is not None and not isinstance(raw_launcher_path, str):
         return None, None
-    if not isinstance(raw_launcher_path, str) or not raw_launcher_path:
+    if not raw_profile_id and not raw_launcher_path:
+        return None, None
+    if not raw_profile_id or not _WORKER_PROFILE_ID_RE.fullmatch(
+        raw_profile_id
+    ):
+        return None, None
+    if not raw_launcher_path:
         return None, None
     if len(
         raw_launcher_path.encode("utf-8")

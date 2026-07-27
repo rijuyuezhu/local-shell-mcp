@@ -374,6 +374,20 @@ def systemd_unit_text(workdir: str) -> str:
     )
 
 
+def _write_systemd_unit(workdir: str) -> tuple[Path, bool]:
+    path = systemd_unit_path()
+    content = systemd_unit_text(workdir)
+    changed = path.is_symlink() or not path.is_file()
+    if not changed:
+        try:
+            changed = path.read_text(encoding="utf-8") != content
+        except OSError:
+            changed = True
+    if changed:
+        atomic_write_private_text(path, content)
+    return path, changed
+
+
 def launchd_plist_bytes(workdir: str) -> bytes:
     """Generate one credential-free plist with an explicit sanitized tool PATH."""
     launcher = launcher_path()
@@ -444,7 +458,14 @@ def refresh_installed_service_definition(
     )
     _launcher, launcher_changed = ensure_launcher(selected_digest, profile_id)
     if manager == "systemd":
-        return launcher_changed
+        executable = _manager_executable(manager)
+        if executable is None:
+            raise WorkerServiceError(
+                "systemd user-service manager is unavailable"
+            )
+        _path, definition_changed = _write_systemd_unit(workdir)
+        _run_checked([executable, "--user", "daemon-reload"])
+        return launcher_changed or definition_changed
     _path, definition_changed = _write_launchd_plist(workdir)
     return launcher_changed or definition_changed
 
@@ -674,7 +695,7 @@ def _require_supported_available() -> tuple[ServiceManager, str]:
 
 def _identity_profile_id(identity: dict[str, Any]) -> str | None:
     raw_profile_id = identity.get("profile_id")
-    if raw_profile_id in {None, ""}:
+    if raw_profile_id is None or raw_profile_id == "":
         return None
     if not isinstance(raw_profile_id, str):
         raise WorkerServiceError(
@@ -729,13 +750,8 @@ def install_service(
     before = service_status()
     _launcher, launcher_changed = ensure_launcher(runtime_digest, profile_id)
     if manager == "systemd":
-        path = systemd_unit_path()
-        content = systemd_unit_text(workdir)
-        changed = launcher_changed or (
-            not path.is_file() or path.read_text(encoding="utf-8") != content
-        )
-        if changed:
-            atomic_write_private_text(path, content)
+        path, definition_changed = _write_systemd_unit(workdir)
+        changed = launcher_changed or definition_changed
         _run_checked([executable, "--user", "daemon-reload"])
         command = [executable, "--user", "enable"]
         if start:

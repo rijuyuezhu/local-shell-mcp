@@ -148,6 +148,17 @@ def test_migration_rebinds_installed_legacy_service_launcher(
     _configure_state(tmp_path, monkeypatch)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setattr(worker_service, "service_manager", lambda: "systemd")
+    monkeypatch.setattr(
+        worker_service,
+        "_manager_executable",
+        lambda _manager: "/usr/bin/systemctl",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        worker_service,
+        "_run_checked",
+        lambda command, **_kwargs: commands.append(command),
+    )
     identity = _legacy_identity(tmp_path)
     worker._write_worker_identity(identity)
     _fake_runtime_update(monkeypatch)
@@ -166,7 +177,10 @@ def test_migration_rebinds_installed_legacy_service_launcher(
     assert f"runtime_digest = {'a' * 64!r}" in rebound
     assert f"os.environ[{WORKER_PROFILE_ID_ENV!r}] = {profile_id!r}" in rebound
     assert f'main(["run", "{profile_id}"])' in rebound
-    assert unit.read_text(encoding="utf-8") == "legacy enabled unit\n"
+    assert unit.read_text(encoding="utf-8") == worker_service.systemd_unit_text(
+        str(Path(identity["workdir"]).resolve())
+    )
+    assert ["/usr/bin/systemctl", "--user", "daemon-reload"] in commands
 
 
 def test_identity_validation_and_deletion_fail_closed(

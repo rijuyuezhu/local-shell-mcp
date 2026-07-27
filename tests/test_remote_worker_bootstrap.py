@@ -33,6 +33,21 @@ def _managed_poll_report(**extra: object) -> dict[str, object]:
     return report
 
 
+@pytest.mark.parametrize(
+    "info",
+    [
+        {"profile_id": [], "launcher_path": "/state/run"},
+        {"profile_id": "p_abcdefgh", "launcher_path": {}},
+    ],
+)
+def test_reconnect_metadata_ignores_non_string_fields(
+    info: dict[str, object],
+) -> None:
+    from local_shell_mcp.remote.manager import _worker_reconnect_metadata
+
+    assert _worker_reconnect_metadata(info) == (None, None)
+
+
 def test_remote_worker_entrypoint_import_is_dependency_light():
     script = """
 import asyncio
@@ -824,7 +839,10 @@ async def test_remote_manager_list_machines_reports_counts_and_details(
         name="recent-worker", token="recent", last_seen=now - 5
     )
     stale = RemoteWorker(
-        name="stale-worker", token="stale", last_seen=now - 500
+        name="stale-worker",
+        token="stale",
+        last_seen=now - 500,
+        info={"profile_id": [], "launcher_path": {}},
     )
     manager.workers = {recent.name: recent, stale.name: stale}
     manager.tokens = {recent.token: recent.name, stale.token: stale.name}
@@ -840,6 +858,8 @@ async def test_remote_manager_list_machines_reports_counts_and_details(
     assert result.machines[0].last_seen_age_s == 5
     assert result.machines[0].queue_depth == 1
     assert result.machines[0].offline_after_s == 60
+    assert result.machines[1].profile_id is None
+    assert result.machines[1].reconnect_command is None
 
 
 def _configure_remote_state(tmp_path, monkeypatch, **overrides):

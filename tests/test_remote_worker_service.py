@@ -1172,6 +1172,60 @@ def test_managed_launcher_binds_content_addressed_runtime(
         service._launcher_text("invalid")
 
 
+def test_systemd_profile_rebind_updates_unit_workdir_and_reloads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    first = _profile_identity(
+        tmp_path,
+        monkeypatch,
+        profile_id="p_abcdefgh",
+        digest="a" * 64,
+    )
+    service.install_service(first, start=False)
+
+    second_workdir = tmp_path / "second workdir"
+    second_workdir.mkdir()
+    second_profile = "p_ijklmnop"
+    second_digest = "b" * 64
+    second = {
+        **first,
+        "profile_id": second_profile,
+        "workdir": str(second_workdir),
+    }
+    worker._write_worker_identity(second, second_profile)
+    update_worker_profile(
+        second_profile,
+        runtime_sha256=second_digest,
+        runtime_version="4.1.0",
+        server=second["server"],
+        name=second["name"],
+        workdir=second["workdir"],
+    )
+    fake.commands.clear()
+
+    changed = service.refresh_installed_service_definition(
+        second,
+        second_digest,
+    )
+
+    assert changed is True
+    assert service.systemd_unit_path().read_text(encoding="utf-8") == (
+        service.systemd_unit_text(str(second_workdir.resolve()))
+    )
+    launcher = service.launcher_path().read_text(encoding="utf-8")
+    assert f"runtime_digest = {second_digest!r}" in launcher
+    assert f'main(["run", "{second_profile}"])' in launcher
+    assert ["/usr/bin/systemctl", "--user", "daemon-reload"] in fake.commands
+
+    fake.commands.clear()
+    assert (
+        service.refresh_installed_service_definition(second, second_digest)
+        is False
+    )
+    assert ["/usr/bin/systemctl", "--user", "daemon-reload"] in fake.commands
+
+
 def test_launchd_running_start_is_noop_but_restart_kickstarts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
