@@ -1877,7 +1877,7 @@
     auditDetailGeneration += 1;
     elements.auditDetailTitle.textContent = "No record selected";
     elements.auditDetailMeta.textContent = auditMachine;
-    elements.auditDetailBody.textContent = message;
+    renderAuditDetailMessage(elements.auditDetailBody, message);
   }
 
   function resetAuditWorkspace(machine) {
@@ -2004,13 +2004,124 @@
     return button;
   }
 
+  function isAuditRecord(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function cleanAuditValue(value) {
+    if (value === null || value === undefined || value === "") return undefined;
+    if (Array.isArray(value)) {
+      const items = value.map(cleanAuditValue).filter((item) => item !== undefined);
+      return items.length ? items : undefined;
+    }
+    if (isAuditRecord(value)) {
+      const entries = Object.entries(value)
+        .map(([key, item]) => [key, cleanAuditValue(item)])
+        .filter(([, item]) => item !== undefined);
+      return entries.length ? Object.fromEntries(entries) : undefined;
+    }
+    return value;
+  }
+
+  function parseAuditJsonString(value) {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return value;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+
+  function unwrapAuditToolEnvelope(value) {
+    if (!isAuditRecord(value) || !("data" in value)) return value;
+    const allowed = new Set(["ok", "message", "data", "error", "error_type"]);
+    if (Object.keys(value).some((key) => !allowed.has(key))) return value;
+    const data = cleanAuditValue(value.data);
+    const message = cleanAuditValue(value.message);
+    const error = cleanAuditValue(value.error);
+    const errorType = cleanAuditValue(value.error_type);
+    if (value.ok === false || error !== undefined || errorType !== undefined) {
+      return cleanAuditValue({ message, error, error_type: errorType, data });
+    }
+    return data ?? message;
+  }
+
+  function auditInput(entry) {
+    if (entry.input !== undefined) return entry.input;
+    if (isAuditRecord(entry.arguments)) {
+      return entry.arguments.keyword_args ?? entry.arguments;
+    }
+    const fallback = {};
+    for (const key of ["command", "cwd", "path", "url", "session", "machine"]) {
+      if (entry[key] !== undefined) fallback[key] = entry[key];
+    }
+    return cleanAuditValue(fallback);
+  }
+
+  function auditOutput(entry) {
+    if (entry.output !== undefined) return entry.output;
+    if (entry.result !== undefined) return entry.result;
+    const fallback = {};
+    for (const key of [
+      "ok",
+      "error",
+      "error_type",
+      "exit_code",
+      "timed_out",
+      "duration_ms",
+      "stdout",
+      "stderr",
+      "truncated",
+    ]) {
+      if (entry[key] !== undefined) fallback[key] = entry[key];
+    }
+    return cleanAuditValue(fallback);
+  }
+
+  function auditValueSource(value, emptyLabel) {
+    const parsed = typeof value === "string" ? parseAuditJsonString(value) : value;
+    const cleaned = cleanAuditValue(unwrapAuditToolEnvelope(parsed));
+    if (cleaned === undefined) return { source: emptyLabel, language: "plain" };
+    if (typeof cleaned === "string") return { source: cleaned, language: "plain" };
+    return { source: JSON.stringify(cleaned, null, 2), language: "json" };
+  }
+
+  function renderAuditValue(target, value, emptyLabel) {
+    const pre = document.createElement("pre");
+    pre.className = "audit-detail-json";
+    const { source, language } = auditValueSource(value, emptyLabel);
+    if (window.LsmSyntax) window.LsmSyntax.render(pre, source, language);
+    else pre.textContent = source;
+    target.append(pre);
+  }
+
+  function renderAuditDetailMessage(target, message) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state audit-detail-message";
+    empty.textContent = message;
+    target.replaceChildren(empty);
+  }
+
+  function auditCallPanel(title) {
+    const panel = document.createElement("section");
+    panel.className = "audit-call-panel";
+    panel.setAttribute("aria-label", title);
+    const heading = document.createElement("div");
+    heading.className = "audit-call-panel-heading";
+    heading.textContent = title;
+    const body = document.createElement("div");
+    body.className = "audit-call-panel-body";
+    panel.append(heading, body);
+    return { panel, body };
+  }
+
   function renderAuditDetailInto(entry, target) {
-    const detail = { ...entry };
-    const preview = detail.image_preview && typeof detail.image_preview === "object"
-      ? detail.image_preview
-      : null;
-    delete detail.image_preview;
-    const fragment = document.createDocumentFragment();
+    const requestPanel = auditCallPanel("Call request");
+    renderAuditValue(requestPanel.body, auditInput(entry), "No input recorded");
+
+    const resultPanel = auditCallPanel("Call result");
+    const preview = isAuditRecord(entry.image_preview) ? entry.image_preview : null;
     if (preview && preview.data_base64 && preview.mime_type) {
       const figure = document.createElement("figure");
       figure.className = "audit-image-preview";
@@ -2020,20 +2131,15 @@
       const caption = document.createElement("figcaption");
       caption.textContent = `${text(preview.path, "image result")} · ${formatFileBytes(preview.bytes)}`;
       figure.append(image, caption);
-      fragment.append(figure);
-    } else if (detail.image_preview_error) {
+      resultPanel.body.append(figure);
+    } else if (entry.image_preview_error) {
       const warning = document.createElement("div");
       warning.className = "audit-preview-error";
-      warning.textContent = `Image preview unavailable: ${detail.image_preview_error}`;
-      fragment.append(warning);
+      warning.textContent = `Image preview unavailable: ${entry.image_preview_error}`;
+      resultPanel.body.append(warning);
     }
-    const pre = document.createElement("pre");
-    pre.className = "audit-detail-json";
-    const source = JSON.stringify(detail, null, 2);
-    if (window.LsmSyntax) window.LsmSyntax.render(pre, source, "json");
-    else pre.textContent = source;
-    fragment.append(pre);
-    target.replaceChildren(fragment);
+    renderAuditValue(resultPanel.body, auditOutput(entry), "No output recorded");
+    target.replaceChildren(requestPanel.panel, resultPanel.panel);
   }
 
   function renderAuditList() {
@@ -2086,7 +2192,7 @@
       auditEntries.find((entry) => entry.id === entryId) || {},
     );
     elements.auditDetailMeta.textContent = "Loading details";
-    elements.auditDetailBody.textContent = `Loading ${requestedMachine}:${entryId}`;
+    renderAuditDetailMessage(elements.auditDetailBody, `Loading ${requestedMachine}:${entryId}`);
     try {
       const params = new URLSearchParams({
         machine: requestedMachine,
@@ -2113,7 +2219,10 @@
         entryId !== auditSelectedId
       ) return null;
       elements.auditDetailMeta.textContent = "Details unavailable";
-      elements.auditDetailBody.textContent = error instanceof Error ? error.message : String(error);
+      renderAuditDetailMessage(
+        elements.auditDetailBody,
+        error instanceof Error ? error.message : String(error),
+      );
       return null;
     }
   }
@@ -2158,7 +2267,7 @@
     sessionAuditDetailGeneration += 1;
     elements.sessionAuditDetailTitle.textContent = "No record selected";
     elements.sessionAuditDetailMeta.textContent = todoSessionId || todoMachine;
-    elements.sessionAuditDetailBody.textContent = message;
+    renderAuditDetailMessage(elements.sessionAuditDetailBody, message);
   }
 
   function resetSessionAuditWorkspace(message = "Select a session") {
@@ -2225,7 +2334,7 @@
       sessionAuditEntries.find((entry) => entry.id === entryId) || {},
     );
     elements.sessionAuditDetailMeta.textContent = "Loading details";
-    elements.sessionAuditDetailBody.textContent = `Loading ${requestedSession}:${entryId}`;
+    renderAuditDetailMessage(elements.sessionAuditDetailBody, `Loading ${requestedSession}:${entryId}`);
     try {
       const params = new URLSearchParams({
         machine: requestedMachine,
@@ -2255,7 +2364,10 @@
         entryId !== sessionAuditSelectedId
       ) return null;
       elements.sessionAuditDetailMeta.textContent = "Details unavailable";
-      elements.sessionAuditDetailBody.textContent = error instanceof Error ? error.message : String(error);
+      renderAuditDetailMessage(
+        elements.sessionAuditDetailBody,
+        error instanceof Error ? error.message : String(error),
+      );
       return null;
     }
   }

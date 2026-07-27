@@ -972,7 +972,7 @@ h2 {
   gap: 0.45rem;
   max-height: 72rem;
   overflow: auto;
-  padding: 0.55rem;
+  padding: 0.9rem;
 }
 
 .session-entry {
@@ -2266,17 +2266,55 @@ h2 {
 
 
 .audit-detail-body {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
   min-width: 0;
   min-height: 24rem;
-  overflow: auto;
-  border: 1px solid rgba(151, 184, 202, 0.1);
+  overflow: hidden;
+}
+
+.session-audit-layout .audit-detail-body {
+  min-height: 18rem;
+}
+
+.audit-call-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(151, 184, 202, 0.13);
   border-radius: 0.55rem;
   background: rgba(3, 8, 12, 0.78);
-  padding: 0.75rem;
+}
+
+.audit-call-panel-heading {
+  border-bottom: 1px solid rgba(151, 184, 202, 0.1);
+  padding: 0.48rem 0.7rem;
+  color: #a9f4d0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.audit-call-panel-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.7rem;
+}
+
+.audit-detail-message {
+  grid-row: 1 / -1;
+  align-self: center;
+  justify-self: center;
 }
 
 .audit-detail-json {
   min-width: 0;
+  min-height: 0;
   margin: 0;
   overflow: visible;
   border: 0;

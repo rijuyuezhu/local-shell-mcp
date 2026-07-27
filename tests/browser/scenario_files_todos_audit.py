@@ -77,6 +77,12 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
             f'#session-list .session-entry[data-session-id="{session_id}"]'
         )
     ).to_have_attribute("aria-current", "true")
+    session_entry_box = page.locator(
+        "#session-list .session-entry"
+    ).first.bounding_box()
+    session_detail_box = page.locator(".session-detail-header").bounding_box()
+    assert session_entry_box is not None and session_detail_box is not None
+    assert abs(session_entry_box["y"] - session_detail_box["y"]) < 1
 
     page.locator("#todo-add").click()
     row = page.locator("#todo-list .todo-row").last
@@ -131,6 +137,15 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         page.locator("#session-audit-list .audit-entry").first
     ).to_be_visible()
     page.locator("#session-audit-list .audit-entry").first.click()
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel")
+    ).to_have_count(2)
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel").nth(0)
+    ).to_contain_text("Call request")
+    expect(
+        page.locator("#session-audit-detail-body .audit-call-panel").nth(1)
+    ).to_contain_text("Call result")
     expect(page.locator("#session-audit-detail-body")).to_contain_text(
         "audit-scope.txt"
     )
@@ -144,6 +159,15 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
     page.locator("#audit-refresh").click()
     expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
     page.locator("#audit-list .audit-entry").first.click()
+    expect(page.locator("#audit-detail-body .audit-call-panel")).to_have_count(
+        2
+    )
+    expect(
+        page.locator("#audit-detail-body .audit-call-panel").nth(0)
+    ).to_contain_text("Call request")
+    expect(
+        page.locator("#audit-detail-body .audit-call-panel").nth(1)
+    ).to_contain_text("Call result")
     expect(page.locator("#audit-detail-body")).to_contain_text(
         "audit-scope.txt"
     )
