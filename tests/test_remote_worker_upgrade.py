@@ -861,6 +861,9 @@ def test_join_script_installs_persistent_verified_runtime():
         .read_text(encoding="utf-8")
     )
     assert 'RUNTIME_DIR="$STATE_DIR/runtime"' in script
+    assert 'LAUNCHER="$STATE_DIR/run"' in script
+    assert "prepare_profile" in script
+    assert "install_launcher" in script
     assert "?manifest=1" in script
     assert "Cache-Control: no-cache" in script
     assert "sha256" in script
@@ -870,6 +873,9 @@ def test_join_script_installs_persistent_verified_runtime():
         'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"' in script
     )
     assert 'ARGS=(connect --server "$SERVER" --invite "$INVITE"' in script
+    assert '--profile "$PROFILE_ID"' in script
+    assert 'run "$PROFILE_ID"' in script
+    assert '"$PROFILE_DIR/worker.log"' in script
     assert "--persist" not in script
     assert "ARGS=(--server" not in script
     assert 'rm -rf "$RUNTIME_DIR"' not in script

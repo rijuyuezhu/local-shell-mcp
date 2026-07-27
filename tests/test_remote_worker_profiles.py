@@ -1,5 +1,6 @@
 import argparse
 import os
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,19 @@ def test_profile_runtime_state_is_isolated(
     assert os.environ["LOCAL_SHELL_MCP_STATE_DIR"] == str(
         tmp_path / "profiles" / profile_id / "state"
     )
+
+
+def test_reconnect_command_is_credential_free_and_shell_safe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_dir = tmp_path / "worker state"
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(state_dir))
+
+    command = worker.worker_reconnect_command("p_abcdefgh")
+
+    assert shlex.split(command) == [str(state_dir / "run"), "p_abcdefgh"]
+    assert "access" not in command
+    assert "invite" not in command
 
 
 def _parser() -> argparse.ArgumentParser:

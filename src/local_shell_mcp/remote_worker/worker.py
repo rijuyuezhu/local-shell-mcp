@@ -5,6 +5,7 @@ import contextlib
 import json
 import math
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -27,6 +28,7 @@ from .compat import _jsonable as to_jsonable
 from .state import (
     activate_worker_profile,
     worker_identity_path,
+    worker_launcher_path,
     worker_profile_dir,
     worker_state_dir,
 )
@@ -528,6 +530,16 @@ def worker_info(workdir: str, profile_id: str | None = None) -> dict[str, Any]:
     return info
 
 
+def worker_reconnect_command(profile_id: str) -> str:
+    """Return the credential-free command that restarts one local profile."""
+    return " ".join(
+        (
+            shlex.quote(str(worker_launcher_path())),
+            shlex.quote(profile_id),
+        )
+    )
+
+
 def _worker_poll_payload(
     worker_version: str,
     running_runtime: dict[str, str],
@@ -763,6 +775,8 @@ async def _run_worker_locked(
     print(f"Name:    {machine_name}")
     print(f"Workdir: {workdir}")
     print("Status: connected")
+    if profile_id is not None:
+        print(f"Reconnect: {worker_reconnect_command(profile_id)}")
     print(
         "Keep this process running while ChatGPT should access this machine. Press Ctrl-C to disconnect.",
         flush=True,

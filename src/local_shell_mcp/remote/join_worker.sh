@@ -6,6 +6,7 @@ BUNDLE_URL="$SERVER__REMOTE_WORKER_BUNDLE_PATH__"
 INVITE=""
 NAME=""
 WORKDIR=""
+PROFILE_ID=""
 BACKGROUND=0
 TMPDIR=""
 PYTHON_BIN=""
@@ -13,10 +14,13 @@ UV_BIN=""
 STATE_DIR="${LOCAL_SHELL_MCP_WORKER_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/local-shell-mcp-worker}"
 RUNTIME_DIR="$STATE_DIR/runtime"
 RUNTIME_METADATA="$STATE_DIR/runtime.json"
+PYTHON_PATH="$STATE_DIR/python"
+LAUNCHER="$STATE_DIR/run"
+PROFILE_DIR=""
 
 usage() {
   cat >&2 <<'EOF'
-usage: join_worker.sh --invite CODE [--name NAME] [--workdir PATH] [--background]
+usage: join_worker.sh --invite CODE [--name NAME] [--workdir PATH] [--profile ID] [--background]
 EOF
 }
 
@@ -35,6 +39,7 @@ parse_args() {
       --invite) INVITE="${2:-}"; shift 2 ;;
       --name) NAME="${2:-}"; shift 2 ;;
       --workdir) WORKDIR="${2:-}"; shift 2 ;;
+      --profile) PROFILE_ID="${2:-}"; shift 2 ;;
       --background) BACKGROUND=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) usage; die "unknown argument: $1" ;;
@@ -109,6 +114,68 @@ find_or_install_python() {
   if [ -z "$PYTHON_BIN" ] || ! python_supports_worker "$PYTHON_BIN"; then
     die "python >= 3.14 is required; install python3.14 or uv and retry"
   fi
+}
+
+prepare_profile() {
+  if [ -z "$PROFILE_ID" ]; then
+    while :; do
+      PROFILE_ID="p_$($PYTHON_BIN -c 'import secrets; print(secrets.token_hex(8))')"
+      [ ! -e "$STATE_DIR/profiles/$PROFILE_ID" ] && break
+    done
+  fi
+  "$PYTHON_BIN" - "$PROFILE_ID" <<'PY'
+import re
+import sys
+
+if not re.fullmatch(r"p_[A-Za-z0-9_-]{8,64}", sys.argv[1]):
+    raise SystemExit("invalid remote worker profile id")
+PY
+  PROFILE_DIR="$STATE_DIR/profiles/$PROFILE_ID"
+  if [ -f "$PROFILE_DIR/identity.json" ]; then
+    die "worker profile already exists; reconnect with $LAUNCHER $PROFILE_ID"
+  fi
+  mkdir -p "$PROFILE_DIR"
+  chmod 700 "$PROFILE_DIR" 2>/dev/null || true
+}
+
+install_launcher() {
+  local temporary_python temporary_launcher
+  temporary_python="$PYTHON_PATH.tmp.$$"
+  temporary_launcher="$LAUNCHER.tmp.$$"
+  printf '%s\n' "$PYTHON_BIN" > "$temporary_python"
+  chmod 600 "$temporary_python" 2>/dev/null || true
+  mv -f "$temporary_python" "$PYTHON_PATH"
+
+  cat > "$temporary_launcher" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+PROFILE_ID="${1:-}"
+if [ "$#" -ne 1 ] || [[ ! "$PROFILE_ID" =~ ^p_[A-Za-z0-9_-]{8,64}$ ]]; then
+  echo "usage: $0 PROFILE_ID" >&2
+  exit 2
+fi
+
+PYTHON_BIN=""
+IFS= read -r PYTHON_BIN < "$STATE_DIR/python" || true
+if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
+  echo "stored worker Python is unavailable; run a fresh invite command" >&2
+  exit 1
+fi
+
+RUNTIME_DIR="$STATE_DIR/runtime"
+if [ ! -d "$RUNTIME_DIR/local_shell_mcp" ]; then
+  echo "stored worker runtime is unavailable; run a fresh invite command" >&2
+  exit 1
+fi
+
+export LOCAL_SHELL_MCP_WORKER_STATE_DIR="$STATE_DIR"
+export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PYTHON_BIN" -m local_shell_mcp.remote_worker run "$PROFILE_ID"
+EOF
+  chmod 700 "$temporary_launcher"
+  mv -f "$temporary_launcher" "$LAUNCHER"
 }
 
 download_manifest() {
@@ -313,17 +380,18 @@ PY
 }
 
 worker_args() {
-  ARGS=(connect --server "$SERVER" --invite "$INVITE" --workdir "$WORKDIR")
+  ARGS=(connect --server "$SERVER" --invite "$INVITE" --workdir "$WORKDIR" --profile "$PROFILE_ID")
   if [ -n "$NAME" ]; then ARGS+=(--name "$NAME"); fi
 }
 
 start_worker() {
   echo "Starting worker with $PYTHON_BIN..." >&2
+  printf 'Worker profile: %s\nReconnect with:\n  %q %q\n' "$PROFILE_ID" "$LAUNCHER" "$PROFILE_ID" >&2
   export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
   worker_args
   if [ "$BACKGROUND" = "1" ]; then
-    nohup "$PYTHON_BIN" -m local_shell_mcp.remote_worker "${ARGS[@]}" > "$STATE_DIR/worker.log" 2>&1 &
-    echo "local-shell-mcp worker started in background. Log: $STATE_DIR/worker.log"
+    nohup "$PYTHON_BIN" -m local_shell_mcp.remote_worker "${ARGS[@]}" > "$PROFILE_DIR/worker.log" 2>&1 &
+    echo "local-shell-mcp worker started in background. Log: $PROFILE_DIR/worker.log"
   else
     exec "$PYTHON_BIN" -m local_shell_mcp.remote_worker "${ARGS[@]}"
   fi
@@ -337,9 +405,11 @@ main() {
   TMPDIR="$(mktemp -d "$STATE_DIR/install.XXXXXX")"
   trap cleanup EXIT
   find_or_install_python
+  prepare_profile
   download_manifest
   download_bundle
   install_bundle
+  install_launcher
   start_worker
 }
 
