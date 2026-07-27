@@ -213,6 +213,25 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         "audit-scope.txt"
     )
 
+    empty_write = harness.api(
+        "POST",
+        "/tools/write_file",
+        body={
+            "session_id": session_id,
+            "path": "empty-audit.txt",
+            "content": "",
+            "overwrite": True,
+        },
+    )
+    assert empty_write["status"] == 200
+    page.locator("#audit-search").fill("write_file")
+    page.locator("#audit-refresh").click()
+    expect(page.locator("#audit-list .audit-entry").first).to_be_visible()
+    page.locator("#audit-list .audit-entry").first.click()
+    request_text = page.locator("#audit-detail-body .audit-call-panel").nth(0)
+    expect(request_text).to_contain_text("empty-audit.txt")
+    expect(request_text).to_contain_text('"content": ""')
+
     page.locator("#audit-operation").select_option("")
     page.locator("#audit-search").fill("oauth_client_approved")
     page.locator("#audit-refresh").click()

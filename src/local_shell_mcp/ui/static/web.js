@@ -2009,16 +2009,16 @@
   }
 
   function cleanAuditValue(value) {
-    if (value === null || value === undefined || value === "") return undefined;
+    if (value === null || value === undefined) return undefined;
     if (Array.isArray(value)) {
       const items = value.map(cleanAuditValue).filter((item) => item !== undefined);
-      return items.length ? items : undefined;
+      return items;
     }
     if (isAuditRecord(value)) {
       const entries = Object.entries(value)
         .map(([key, item]) => [key, cleanAuditValue(item)])
         .filter(([, item]) => item !== undefined);
-      return entries.length ? Object.fromEntries(entries) : undefined;
+      return Object.fromEntries(entries);
     }
     return value;
   }
@@ -2056,7 +2056,7 @@
     for (const key of ["command", "cwd", "path", "url", "session", "machine"]) {
       if (entry[key] !== undefined) fallback[key] = entry[key];
     }
-    return cleanAuditValue(fallback);
+    return Object.keys(fallback).length ? cleanAuditValue(fallback) : undefined;
   }
 
   const AUDIT_DETAIL_METADATA_FIELDS = new Set([
@@ -2099,7 +2099,8 @@
     for (const [key, value] of Object.entries(entry)) {
       if (!AUDIT_DETAIL_METADATA_FIELDS.has(key)) details[key] = value;
     }
-    return cleanAuditValue(details);
+    const cleaned = cleanAuditValue(details);
+    return isAuditRecord(cleaned) && Object.keys(cleaned).length ? cleaned : undefined;
   }
 
   function auditOutput(entry) {
@@ -2121,7 +2122,7 @@
       ]) {
         if (entry[key] !== undefined) fallback[key] = entry[key];
       }
-      output = cleanAuditValue(fallback);
+      output = Object.keys(fallback).length ? cleanAuditValue(fallback) : undefined;
     }
     const related = cleanAuditValue(entry.related_events);
     const details = auditSupplementalDetails(entry);

@@ -42,6 +42,12 @@ describe("audit formatting", () => {
     ).toBe('{\n  "path": "a.txt"\n}')
   })
 
+  test("preserves meaningful empty payload values", () => {
+    expect(
+      formatAuditValue({ content: "", items: [], options: {} }, "empty"),
+    ).toBe('{\n  "content": "",\n  "items": [],\n  "options": {}\n}')
+  })
+
   test("describes paired start/end records as one coalesced call", () => {
     expect(auditAggregationLabel({
       ...entry("call", 1),

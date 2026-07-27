@@ -76,16 +76,16 @@ export function selectionAfterRefresh(
 }
 
 function cleanAuditValue(value: unknown): unknown {
-  if (value === null || value === undefined || value === "") return undefined
+  if (value === null || value === undefined) return undefined
   if (Array.isArray(value)) {
     const items = value.map(cleanAuditValue).filter((item) => item !== undefined)
-    return items.length ? items : undefined
+    return items
   }
   if (isRecord(value)) {
     const entries = Object.entries(value)
       .map(([key, item]) => [key, cleanAuditValue(item)] as const)
       .filter(([, item]) => item !== undefined)
-    return entries.length ? Object.fromEntries(entries) : undefined
+    return Object.fromEntries(entries)
   }
   return value
 }
@@ -145,7 +145,7 @@ export function auditInput(entry: AuditEntry): unknown {
   for (const key of ["command", "cwd", "path", "url", "session", "machine"]) {
     if (entry[key] !== undefined) input[key] = entry[key]
   }
-  return cleanAuditValue(input)
+  return Object.keys(input).length ? cleanAuditValue(input) : undefined
 }
 
 export function auditOutput(entry: AuditEntry): unknown {
@@ -167,7 +167,7 @@ export function auditOutput(entry: AuditEntry): unknown {
     ]) {
       if (entry[key] !== undefined) fallback[key] = entry[key]
     }
-    output = cleanAuditValue(fallback)
+    output = Object.keys(fallback).length ? cleanAuditValue(fallback) : undefined
   }
   const related = cleanAuditValue(entry.related_events)
   if (related === undefined) return output
