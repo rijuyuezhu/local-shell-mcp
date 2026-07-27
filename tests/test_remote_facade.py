@@ -6,6 +6,7 @@ import local_shell_mcp.ops.remote as remote_ops
 import local_shell_mcp.ops.search as search_ops
 import local_shell_mcp.ops.session as session_ops
 import local_shell_mcp.ops.shell as shell_ops
+import local_shell_mcp.remote.service as remote_service
 import local_shell_mcp.tools.ops.jobs as job_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.mcp.app import build_mcp
@@ -25,6 +26,59 @@ async def test_remote_admin_lists(monkeypatch):
 
     assert result.action == "list"
     assert result.data == {"machines": [], "counts": {"total": 0}}
+
+
+@pytest.mark.asyncio
+async def test_remote_admin_returns_reconnect_command(monkeypatch):
+    monkeypatch.setattr(
+        remote_ops,
+        "remote_reconnect_command",
+        lambda machine: {
+            "machine": machine,
+            "profile_id": "p_abcdefgh",
+            "command": "/state/run p_abcdefgh",
+        },
+    )
+
+    result = await remote_ops.remote_admin_execute(
+        "reconnect_command", {"machine": "worker-a"}
+    )
+
+    assert result.action == "reconnect_command"
+    assert result.data == {
+        "machine": "worker-a",
+        "profile_id": "p_abcdefgh",
+        "command": "/state/run p_abcdefgh",
+    }
+
+
+def test_remote_service_delegates_reconnect_and_rename(monkeypatch):
+    calls = []
+
+    class Manager:
+        def reconnect_command(self, machine):
+            calls.append(("reconnect", machine))
+            return {"machine": machine, "command": "run profile"}
+
+        def rename(self, machine, new_name):
+            calls.append(("rename", machine, new_name))
+            return {"old_name": machine, "new_name": new_name}
+
+    manager = Manager()
+    monkeypatch.setattr(remote_service, "remote_manager", lambda: manager)
+
+    assert remote_service.remote_reconnect_command("edge-a") == {
+        "machine": "edge-a",
+        "command": "run profile",
+    }
+    assert remote_service.rename_remote_machine("edge-a", "edge-b") == {
+        "old_name": "edge-a",
+        "new_name": "edge-b",
+    }
+    assert calls == [
+        ("reconnect", "edge-a"),
+        ("rename", "edge-a", "edge-b"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -50,6 +104,40 @@ async def test_remote_admin_is_exposed_in_mcp(tmp_path, monkeypatch):
         "action": "list",
         "data": {"machines": [], "counts": {"total": 0}},
     }
+
+
+@pytest.mark.asyncio
+async def test_remote_reconnect_command_is_exposed_in_mcp(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    clear_settings_cache()
+    monkeypatch.setattr(
+        remote_ops,
+        "remote_reconnect_command",
+        lambda machine: {
+            "machine": machine,
+            "profile_id": "p_abcdefgh",
+            "command": "/state/run p_abcdefgh",
+        },
+    )
+
+    result = mcp_structured(
+        await build_mcp().call_tool(
+            "remote_admin",
+            {
+                "action": "reconnect_command",
+                "args": {"machine": "worker-a"},
+            },
+        )
+    )
+
+    assert result["action"] == "reconnect_command"
+    assert result["data"]["profile_id"] == "p_abcdefgh"
+    assert result["data"]["command"] == "/state/run p_abcdefgh"
 
 
 def _remote_read_payload(worker_session_id="WORKER12"):

@@ -1,10 +1,10 @@
 """Remote worker-side tool dispatch, process loop, and CLI helpers."""
 
 import asyncio
-import contextlib
 import json
 import math
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -13,20 +13,38 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 from pathlib import Path
 from typing import Any, cast
 
 from ..agent_bridge.redaction import _redact_text
 from ..errors import tool_error_payload
-from ..remote.constants import (
-    REMOTE_API_PREFIX,
-    REMOTE_WORKER_IDENTITY_FILE_NAME,
-)
+from ..remote.constants import REMOTE_API_PREFIX
 from ..remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
 from ..version import version_info
 from . import runtime as worker_runtime
 from .compat import _jsonable as to_jsonable
+from .identity import (
+    delete_worker_identity as _delete_persisted_worker_identity,
+)
+from .identity import (
+    load_worker_identity as _load_persisted_worker_identity,
+)
+from .identity import (
+    read_worker_identity as _read_persisted_worker_identity,
+)
+from .identity import (
+    write_worker_identity as _write_persisted_worker_identity,
+)
+from .profiles import update_worker_profile
+from .state import (
+    activate_worker_profile,
+    activate_worker_runtime,
+    active_worker_profile_id,
+    worker_identity_path,
+    worker_launcher_path,
+    worker_profile_dir,
+    worker_state_dir,
+)
 
 
 class WorkerHttpError(RuntimeError):
@@ -259,13 +277,7 @@ async def _worker_post_json_forever(
 
 def _worker_state_dir() -> Path:
     """Return the state directory used to persist this worker identity."""
-    configured = os.getenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR")
-    if configured:
-        return Path(configured).expanduser()
-    xdg_state_home = os.getenv("XDG_STATE_HOME")
-    if xdg_state_home:
-        return Path(xdg_state_home).expanduser() / "local-shell-mcp-worker"
-    return Path.home() / ".local" / "state" / "local-shell-mcp-worker"
+    return worker_state_dir()
 
 
 def _normalized_env_path(path: str) -> str:
@@ -282,7 +294,9 @@ def _env_is_absent_or_default(name: str, default: str) -> bool:
     )
 
 
-def _configure_worker_runtime_env(workdir: str) -> None:
+def _configure_worker_runtime_env(
+    workdir: str, profile_id: str | None = None
+) -> None:
     """Configure worker-local runtime paths before loading normal settings."""
     if _env_is_absent_or_default(
         "LOCAL_SHELL_MCP_WORKSPACE_ROOT", "/workspace"
@@ -291,69 +305,44 @@ def _configure_worker_runtime_env(workdir: str) -> None:
     if _env_is_absent_or_default(
         "LOCAL_SHELL_MCP_STATE_DIR", "/workspace/.local-shell-mcp"
     ):
-        os.environ["LOCAL_SHELL_MCP_STATE_DIR"] = str(
-            _worker_state_dir() / "runtime"
+        runtime_state = (
+            worker_profile_dir(profile_id) / "state"
+            if profile_id is not None
+            else _worker_state_dir() / "runtime"
         )
+        os.environ["LOCAL_SHELL_MCP_STATE_DIR"] = str(runtime_state)
     os.environ["LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL"] = "true"
 
 
-def _worker_identity_path() -> Path:
+def _worker_identity_path(profile_id: str | None = None) -> Path:
     """Return the JSON identity file path for this worker process."""
-    return _worker_state_dir() / REMOTE_WORKER_IDENTITY_FILE_NAME
+    return worker_identity_path(profile_id)
 
 
 def _read_worker_identity(
-    server: str | None = None, requested_name: str | None = None
+    server: str | None = None,
+    requested_name: str | None = None,
+    profile_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Read a stored worker identity, optionally matching server and name."""
-    path = _worker_identity_path()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    if not isinstance(data, dict):
-        return None
-    if server is not None and data.get("server") != server:
-        return None
-    stored_name = str(data.get("name") or "")
-    if requested_name and stored_name != requested_name:
-        return None
-    if not stored_name or not str(data.get("access") or ""):
-        return None
-    return data
+    return _read_persisted_worker_identity(server, requested_name, profile_id)
 
 
-def load_worker_identity() -> dict[str, Any]:
+def load_worker_identity(profile_id: str | None = None) -> dict[str, Any]:
     """Load the complete stored identity required by ``worker run``."""
-    identity = _read_worker_identity()
-    if identity is None:
-        raise ValueError("no stored worker identity; run worker enroll first")
-    required = ("server", "name", "access", "workdir")
-    missing = [name for name in required if not str(identity.get(name) or "")]
-    if missing:
-        raise ValueError(
-            f"stored worker identity is incomplete: missing {missing[0]}"
-        )
-    return identity
+    return _load_persisted_worker_identity(profile_id)
 
 
-def _write_worker_identity(data: dict[str, Any]) -> None:
-    """Persist a worker identity atomically with owner-only permissions where possible."""
-    path = _worker_identity_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
-    tmp_path.write_text(
-        json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
-    )
-    with contextlib.suppress(OSError):
-        tmp_path.chmod(0o600)
-    tmp_path.replace(path)
+def _write_worker_identity(
+    data: dict[str, Any], profile_id: str | None = None
+) -> None:
+    """Persist a worker identity atomically with owner-only permissions."""
+    _write_persisted_worker_identity(data, profile_id)
 
 
-def _delete_worker_identity() -> None:
+def _delete_worker_identity(profile_id: str | None = None) -> None:
     """Remove the stored worker identity after the control server rejects it."""
-    with contextlib.suppress(FileNotFoundError):
-        _worker_identity_path().unlink()
+    _delete_persisted_worker_identity(profile_id)
 
 
 def _worker_identity_rejected(exc: Exception) -> bool:
@@ -372,6 +361,7 @@ async def _worker_resume_or_none(
     payload: dict[str, Any],
     headers: dict[str, str],
     timeout: float | None = None,
+    profile_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Try to resume a worker identity, retrying transient failures indefinitely."""
     attempt = 0
@@ -387,7 +377,7 @@ async def _worker_resume_or_none(
                     file=sys.stderr,
                     flush=True,
                 )
-                _delete_worker_identity()
+                _delete_worker_identity(profile_id)
                 return None
             if not _worker_error_is_retryable(exc):
                 raise
@@ -505,9 +495,9 @@ def worker_capabilities() -> list[str]:
     ]
 
 
-def worker_info(workdir: str) -> dict[str, Any]:
+def worker_info(workdir: str, profile_id: str | None = None) -> dict[str, Any]:
     """Return worker identity, workspace, platform, Python, and capability metadata."""
-    return {
+    info = {
         "lsm_version": str(version_info().get("version") or ""),
         "hostname": socket.gethostname(),
         "user": os.getenv("USER") or os.getenv("USERNAME") or "unknown",
@@ -516,6 +506,22 @@ def worker_info(workdir: str) -> dict[str, Any]:
         "python": sys.version.split()[0],
         "platform": sys.platform,
     }
+    if profile_id is not None:
+        info["profile_id"] = profile_id
+        info["launcher_path"] = str(worker_launcher_path())
+    return info
+
+
+def _format_reconnect_command(argv: list[str], *, windows: bool) -> str:
+    """Format one reconnect argv for the target platform's command shell."""
+    return subprocess.list2cmdline(argv) if windows else shlex.join(argv)
+
+
+def worker_reconnect_command(profile_id: str) -> str:
+    """Return the credential-free command that restarts one local profile."""
+    return _format_reconnect_command(
+        [str(worker_launcher_path()), profile_id], windows=os.name == "nt"
+    )
 
 
 def _worker_poll_payload(
@@ -556,6 +562,22 @@ async def _install_and_reexec_worker(
         raise RuntimeError(
             "installed worker runtime does not match instruction"
         )
+    profile_id = active_worker_profile_id()
+    activate_worker_runtime(expected_digest)
+    if profile_id is not None:
+        identity = load_worker_identity(profile_id)
+        update_worker_profile(
+            profile_id,
+            runtime_sha256=expected_digest,
+            runtime_version=expected_version,
+            server=str(identity["server"]),
+            name=str(identity["name"]),
+            workdir=str(identity["workdir"]),
+        )
+    if os.getenv("LOCAL_SHELL_MCP_WORKER_MANAGED") == "1":
+        from .service import ensure_launcher
+
+        ensure_launcher(expected_digest, profile_id)
     print(
         f"Status: worker runtime {expected_version} ({expected_digest[:12]}) installed; restarting.",
         file=sys.stderr,
@@ -570,10 +592,15 @@ async def _enroll_or_resume_worker(
     invite: str,
     name: str | None = None,
     workdir: str | None = None,
+    profile_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Enroll or resume one identity and persist it without entering the poll loop."""
+    profile_id = activate_worker_profile(profile_id)
     resolved_workdir = str(Path(workdir or os.getcwd()).expanduser().resolve())
-    _configure_worker_runtime_env(resolved_workdir)
+    if profile_id is None:
+        _configure_worker_runtime_env(resolved_workdir)
+    else:
+        _configure_worker_runtime_env(resolved_workdir, profile_id)
     from ..config.settings import clear_settings_cache
 
     clear_settings_cache()
@@ -583,21 +610,38 @@ async def _enroll_or_resume_worker(
         "name": name,
         "workdir": resolved_workdir,
         "capabilities": worker_capabilities(),
-        "info": worker_info(resolved_workdir),
+        "info": worker_info(resolved_workdir, profile_id),
+        "runtime": worker_runtime.worker_runtime_report(
+            str(version_info().get("version") or "")
+        ),
     }
-    identity = _read_worker_identity(server, name)
+    identity = (
+        _read_worker_identity(server, name)
+        if profile_id is None
+        else _read_worker_identity(server, name, profile_id)
+    )
     body: dict[str, Any] | None = None
     access = ""
     if identity:
         access = str(identity["access"])
         resume_payload = {**register_payload, "name": str(identity["name"])}
         resume_headers = {"Author" + "ization": "B" + "earer " + access}
-        body = await _worker_resume_or_none(
-            f"{server}{REMOTE_API_PREFIX}/resume",
-            resume_payload,
-            resume_headers,
-            30,
-        )
+        resume_url = f"{server}{REMOTE_API_PREFIX}/resume"
+        if profile_id is None:
+            body = await _worker_resume_or_none(
+                resume_url,
+                resume_payload,
+                resume_headers,
+                30,
+            )
+        else:
+            body = await _worker_resume_or_none(
+                resume_url,
+                resume_payload,
+                resume_headers,
+                30,
+                profile_id,
+            )
     if body is None:
         if not invite:
             raise ValueError(
@@ -626,7 +670,27 @@ async def _enroll_or_resume_worker(
         "access": access,
         "workdir": resolved_workdir,
     }
-    _write_worker_identity(stored)
+    migration_source = identity.get("migration_source") if identity else None
+    if isinstance(migration_source, str) and migration_source:
+        stored["migration_source"] = migration_source
+    if profile_id is not None:
+        stored["profile_id"] = profile_id
+        _write_worker_identity(stored, profile_id)
+        runtime_identity = worker_runtime.current_runtime_identity()
+        runtime_digest = str(runtime_identity.get("sha256") or "")
+        if runtime_digest:
+            update_worker_profile(
+                profile_id,
+                runtime_sha256=runtime_digest,
+                runtime_version=str(
+                    runtime_identity.get("bundle_version") or ""
+                ),
+                server=server,
+                name=machine_name,
+                workdir=resolved_workdir,
+            )
+    else:
+        _write_worker_identity(stored)
     return stored, data
 
 
@@ -635,14 +699,24 @@ async def enroll_worker(
     invite: str,
     name: str | None = None,
     workdir: str | None = None,
+    profile_id: str | None = None,
 ) -> dict[str, Any]:
     """Enroll or resume one worker identity and exit without polling."""
     from .lifecycle import worker_run_lock
 
-    with worker_run_lock():
-        identity, _data = await _enroll_or_resume_worker(
-            server, invite, name, workdir
-        )
+    profile_id = activate_worker_profile(profile_id)
+    lock = (
+        worker_run_lock() if profile_id is None else worker_run_lock(profile_id)
+    )
+    with lock:
+        if profile_id is None:
+            identity, _data = await _enroll_or_resume_worker(
+                server, invite, name, workdir
+            )
+        else:
+            identity, _data = await _enroll_or_resume_worker(
+                server, invite, name, workdir, profile_id
+            )
     return identity
 
 
@@ -651,23 +725,52 @@ async def run_worker(
     invite: str,
     name: str | None = None,
     workdir: str | None = None,
+    profile_id: str | None = None,
 ) -> None:
     """Run one worker process while holding its lifecycle lock."""
     from .lifecycle import worker_run_lock
 
-    with worker_run_lock():
-        await _run_worker_locked(server, invite, name, workdir)
+    profile_id = activate_worker_profile(profile_id)
+    lock = (
+        worker_run_lock() if profile_id is None else worker_run_lock(profile_id)
+    )
+    with lock:
+        if profile_id is None:
+            await _run_worker_locked(server, invite, name, workdir)
+        else:
+            await _run_worker_locked(server, invite, name, workdir, profile_id)
 
 
-async def run_stored_worker() -> None:
+async def run_stored_worker(profile_id: str | None = None) -> None:
     """Run using only the private persisted identity."""
-    identity = load_worker_identity()
-    await run_worker(
+    profile_id = activate_worker_profile(profile_id)
+    if profile_id is None:
+        from .lifecycle import worker_run_lock
+        from .migration import migrate_legacy_worker_state
+
+        with worker_run_lock():
+            migrated = await asyncio.to_thread(migrate_legacy_worker_state)
+        if migrated is not None:
+            profile_id = str(migrated["profile_id"])
+            activate_worker_profile(profile_id)
+            activate_worker_runtime(str(migrated["runtime_sha256"]))
+            worker_runtime.reexec_worker()
+            raise RuntimeError("worker migration restart returned unexpectedly")
+    identity = (
+        load_worker_identity()
+        if profile_id is None
+        else load_worker_identity(profile_id)
+    )
+    run_args = (
         str(identity["server"]),
         "",
         str(identity["name"]),
         str(identity["workdir"]),
     )
+    if profile_id is None:
+        await run_worker(*run_args)
+    else:
+        await run_worker(*run_args, profile_id)
 
 
 async def _run_worker_locked(
@@ -675,10 +778,11 @@ async def _run_worker_locked(
     invite: str,
     name: str | None = None,
     workdir: str | None = None,
+    profile_id: str | None = None,
 ) -> None:
     """Enroll or resume, then poll and execute jobs under the worker lock."""
     identity, data = await _enroll_or_resume_worker(
-        server, invite, name, workdir
+        server, invite, name, workdir, profile_id
     )
     server = str(identity["server"])
     machine_name = str(identity["name"])
@@ -686,19 +790,32 @@ async def _run_worker_locked(
     workdir = str(identity["workdir"])
     heartbeat_interval_s = float(data.get("heartbeat_interval_s") or 15)
     poll_request_timeout_s = _worker_poll_request_timeout_s(data)
-    _write_worker_identity(
-        {
-            "server": server,
-            "name": machine_name,
-            "access": access,
-            "workdir": workdir,
-        }
-    )
+    upgrade = data.get("upgrade")
+    if isinstance(upgrade, dict) and upgrade.get("required") is True:
+        worker_version = str(version_info().get("version") or "")
+        attempt = 0
+        while True:
+            try:
+                await _install_and_reexec_worker(
+                    upgrade,
+                    server=server,
+                    worker_version=worker_version,
+                )
+                raise RuntimeError("worker upgrade returned unexpectedly")
+            except SystemExit:
+                raise
+            except Exception as exc:
+                delay_s = _worker_retry_delay(attempt)
+                attempt += 1
+                _worker_log_retry("upgrade", exc, delay_s)
+                await asyncio.sleep(delay_s)
     print("local-shell-mcp worker")
     print(f"Server:  {server}")
     print(f"Name:    {machine_name}")
     print(f"Workdir: {workdir}")
     print("Status: connected")
+    if profile_id is not None:
+        print(f"Reconnect: {worker_reconnect_command(profile_id)}")
     print(
         "Keep this process running while ChatGPT should access this machine. Press Ctrl-C to disconnect.",
         flush=True,

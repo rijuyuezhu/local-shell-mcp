@@ -27,6 +27,11 @@ def _add_enrollment_args(parser: argparse.ArgumentParser) -> None:
     _add_invite_args(parser)
     parser.add_argument("--name", default=None)
     parser.add_argument("--workdir", default=None)
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="Store and run this enrollment as an independent worker profile",
+    )
 
 
 def _read_invite(args: argparse.Namespace) -> str:
@@ -57,6 +62,7 @@ def _safe_identity(identity: dict[str, Any]) -> dict[str, Any]:
         "server": str(identity.get("server") or ""),
         "name": str(identity.get("name") or ""),
         "workdir": str(identity.get("workdir") or ""),
+        "profile_id": str(identity.get("profile_id") or ""),
         "enrolled": bool(identity.get("access")),
     }
 
@@ -100,13 +106,16 @@ def _enroll_from_args(args: argparse.Namespace) -> None:
     from .worker import enroll_worker
 
     _mark_worker_runtime()
+    enroll_args = (
+        args.server,
+        _invite_or_exit(args),
+        args.name,
+        args.workdir,
+    )
     identity = _run_async(
-        enroll_worker(
-            args.server,
-            _invite_or_exit(args),
-            args.name,
-            args.workdir,
-        )
+        enroll_worker(*enroll_args)
+        if args.profile is None
+        else enroll_worker(*enroll_args, args.profile)
     )
     _print_json(_safe_identity(identity))
 
@@ -115,29 +124,51 @@ def _connect_from_args(args: argparse.Namespace) -> None:
     from .worker import run_worker
 
     _mark_worker_runtime()
+    run_args = (
+        args.server,
+        _invite_or_exit(args),
+        args.name,
+        args.workdir,
+    )
     _run_async(
-        run_worker(
-            args.server,
-            _invite_or_exit(args),
-            args.name,
-            args.workdir,
-        )
+        run_worker(*run_args)
+        if args.profile is None
+        else run_worker(*run_args, args.profile)
     )
 
 
-def _run_stored_from_args(_args: argparse.Namespace) -> None:
+def _run_stored_from_args(args: argparse.Namespace) -> None:
     from .service import prepare_worker_service_environment
     from .worker import run_stored_worker
 
     prepare_worker_service_environment()
     _mark_worker_runtime()
-    _run_async(run_stored_worker())
+    _run_async(
+        run_stored_worker()
+        if args.profile is None
+        else run_stored_worker(args.profile)
+    )
 
 
-def _load_identity() -> dict[str, Any]:
+def _load_identity(profile_id: str | None = None) -> dict[str, Any]:
     from .worker import load_worker_identity
 
-    return load_worker_identity()
+    return (
+        load_worker_identity()
+        if profile_id is None
+        else load_worker_identity(profile_id)
+    )
+
+
+def _migrate_from_args(_args: argparse.Namespace) -> None:
+    from .lifecycle import worker_run_lock
+    from .migration import migrate_legacy_worker_state
+
+    with worker_run_lock():
+        result = migrate_legacy_worker_state()
+    if result is None:
+        raise ValueError("no legacy worker identity is available to migrate")
+    _print_json(result)
 
 
 def _install_service_from_args(args: argparse.Namespace) -> None:
@@ -145,9 +176,13 @@ def _install_service_from_args(args: argparse.Namespace) -> None:
 
     if service_manager() == "unsupported":
         install_service({}, start=not args.no_start)
-    _print_raw(
-        status_json(install_service(_load_identity(), start=not args.no_start))
+    profile_id = getattr(args, "profile", None)
+    identity = (
+        _load_identity()
+        if profile_id is None
+        else _load_identity(str(profile_id))
     )
+    _print_raw(status_json(install_service(identity, start=not args.no_start)))
 
 
 def _uninstall_service_from_args(_args: argparse.Namespace) -> None:
@@ -187,6 +222,7 @@ def _logs_from_args(args: argparse.Namespace) -> None:
 
 
 def _update_from_args(args: argparse.Namespace) -> None:
+    from .profiles import read_worker_profile, update_worker_profile
     from .runtime import update_installed_runtime
     from .service import (
         refresh_installed_service_definition,
@@ -194,12 +230,43 @@ def _update_from_args(args: argparse.Namespace) -> None:
         service_status,
     )
 
-    identity = _load_identity()
-    before = service_status()
-    result = update_installed_runtime(
-        str(identity["server"]), force=bool(args.force)
+    requested_profile = getattr(args, "profile", None)
+    identity = (
+        _load_identity()
+        if requested_profile is None
+        else _load_identity(str(requested_profile))
     )
-    definition_changed = refresh_installed_service_definition(identity)
+    profile_id = str(identity.get("profile_id") or "") or None
+    before = service_status()
+    if profile_id is None:
+        result = update_installed_runtime(
+            str(identity["server"]), force=bool(args.force)
+        )
+    else:
+        profile = read_worker_profile(profile_id)
+        current_version = str(profile.get("runtime_version") or "")
+        if not current_version:
+            raise ValueError("worker profile runtime version is unavailable")
+        result = update_installed_runtime(
+            str(identity["server"]),
+            force=bool(args.force),
+            current_version=current_version,
+        )
+    digest = str(result.get("sha256") or "")
+    version = str(result.get("version") or "")
+    if profile_id is not None:
+        update_worker_profile(
+            profile_id,
+            runtime_sha256=digest,
+            runtime_version=version,
+            server=str(identity["server"]),
+            name=str(identity["name"]),
+            workdir=str(identity["workdir"]),
+        )
+    definition_changed = refresh_installed_service_definition(
+        identity,
+        digest or None,
+    )
     restarted = False
     if before.running and (result.get("updated") or definition_changed):
         restart_service()
@@ -267,10 +334,28 @@ def add_worker_subcommands(parser: argparse.ArgumentParser) -> None:
     connect.set_defaults(handler=_connect_from_args)
 
     run = subparsers.add_parser("run", help="Run using stored worker identity")
+    run.add_argument(
+        "profile",
+        nargs="?",
+        default=None,
+        help="Optional profile id; omitted to migrate or run the legacy identity",
+    )
     run.set_defaults(handler=_run_stored_from_args)
+
+    migrate = subparsers.add_parser(
+        "migrate",
+        help="Migrate the legacy single-worker identity into a profile",
+    )
+    migrate.set_defaults(handler=_service_handler(_migrate_from_args))
 
     install = subparsers.add_parser(
         "install-service", help="Install the native per-user worker service"
+    )
+    install.add_argument(
+        "profile",
+        nargs="?",
+        default=None,
+        help="Optional profile id to bind to the single native worker service",
     )
     install.add_argument("--no-start", action="store_true")
     install.set_defaults(handler=_service_handler(_install_service_from_args))
@@ -305,6 +390,12 @@ def add_worker_subcommands(parser: argparse.ArgumentParser) -> None:
 
     update = subparsers.add_parser(
         "update", help="Install the latest verified worker runtime"
+    )
+    update.add_argument(
+        "profile",
+        nargs="?",
+        default=None,
+        help="Optional profile id whose runtime and service binding are updated",
     )
     update.add_argument("--force", action="store_true")
     update.set_defaults(handler=_service_handler(_update_from_args))

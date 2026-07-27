@@ -22,6 +22,14 @@ from ..utils.private_files import (
     atomic_write_private_text,
 )
 from . import runtime
+from .profiles import read_worker_profile
+from .state import (
+    WORKER_PROFILE_ID_ENV,
+    WORKER_RUNTIME_DIGEST_ENV,
+    active_worker_runtime_digest,
+    worker_profile_dir,
+    worker_runtime_dir_for_digest,
+)
 
 _SERVICE_NAME = "local-shell-mcp-worker"
 _LAUNCHD_LABEL = "com.fwerkor.local-shell-mcp-worker"
@@ -251,29 +259,68 @@ def _launchd_path() -> str:
     return _LAUNCHD_PATH_SEPARATOR.join(entries)
 
 
-def _launcher_text() -> str:
-    return """\
+def _launcher_text(
+    runtime_digest: str | None = None,
+    profile_id: str | None = None,
+) -> str:
+    selected = (
+        active_worker_runtime_digest()
+        if runtime_digest is None
+        else runtime_digest
+    )
+    if profile_id is not None:
+        worker_profile_dir(profile_id)
+        if selected is None:
+            raise ValueError(
+                "profile-bound worker service requires a runtime digest"
+            )
+        profile_setup = (
+            f"os.environ[{WORKER_PROFILE_ID_ENV!r}] = {profile_id!r}"
+        )
+        run_args = json.dumps(["run", profile_id])
+    else:
+        profile_setup = ""
+        run_args = json.dumps(["run"])
+    if selected is not None:
+        worker_runtime_dir_for_digest(selected)
+        runtime_setup = f"""\
+runtime_digest = {selected!r}
+runtime_dir = state_dir / "runtimes" / runtime_digest
+if not runtime_dir.is_dir():
+    raise SystemExit("managed worker runtime is unavailable")
+sys.path.insert(0, str(runtime_dir))
+os.environ[{WORKER_RUNTIME_DIGEST_ENV!r}] = runtime_digest
+"""
+    else:
+        runtime_setup = """\
+runtime_dir = state_dir / "runtime"
+if runtime_dir.is_dir():
+    sys.path.insert(0, str(runtime_dir))
+"""
+    return f"""\
 
 import os
 import sys
 from pathlib import Path
 
 state_dir = Path(__file__).resolve().parents[1]
-runtime_dir = state_dir / "runtime"
-if runtime_dir.is_dir():
-    sys.path.insert(0, str(runtime_dir))
+{runtime_setup.rstrip()}
 os.environ.setdefault("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(state_dir))
+{profile_setup}
 os.environ["LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME"] = "1"
 os.environ["LOCAL_SHELL_MCP_WORKER_MANAGED"] = "1"
 from local_shell_mcp.remote_worker.compat import main
-main(["run"])
+main({run_args})
 """
 
 
-def ensure_launcher() -> tuple[Path, bool]:
+def ensure_launcher(
+    runtime_digest: str | None = None,
+    profile_id: str | None = None,
+) -> tuple[Path, bool]:
     """Install the stable private launcher and report whether content changed."""
     path = launcher_path()
-    content = _launcher_text()
+    content = _launcher_text(runtime_digest, profile_id)
     changed = path.is_symlink() or not path.is_file()
     if not changed:
         try:
@@ -325,6 +372,20 @@ def systemd_unit_text(workdir: str) -> str:
             "",
         ]
     )
+
+
+def _write_systemd_unit(workdir: str) -> tuple[Path, bool]:
+    path = systemd_unit_path()
+    content = systemd_unit_text(workdir)
+    changed = path.is_symlink() or not path.is_file()
+    if not changed:
+        try:
+            changed = path.read_text(encoding="utf-8") != content
+        except OSError:
+            changed = True
+    if changed:
+        atomic_write_private_text(path, content)
+    return path, changed
 
 
 def launchd_plist_bytes(workdir: str) -> bytes:
@@ -379,13 +440,32 @@ def _installed_launchd_workdir() -> str | None:
     return workdir if isinstance(workdir, str) and workdir else None
 
 
-def refresh_installed_service_definition(identity: dict[str, Any]) -> bool:
-    """Refresh an installed launchd definition without changing service state."""
-    path = launchd_plist_path()
-    if service_manager() != "launchd" or not path.is_file():
+def refresh_installed_service_definition(
+    identity: dict[str, Any],
+    runtime_digest: str | None = None,
+) -> bool:
+    """Refresh an installed managed launcher without changing service state."""
+    manager = service_manager()
+    path = systemd_unit_path() if manager == "systemd" else launchd_plist_path()
+    if manager == "unsupported" or not path.is_file():
         return False
     workdir = _identity_workdir(identity)
-    _launcher, launcher_changed = ensure_launcher()
+    profile_id = _identity_profile_id(identity)
+    selected_digest = (
+        _identity_runtime_digest(identity)
+        if runtime_digest is None
+        else runtime_digest
+    )
+    _launcher, launcher_changed = ensure_launcher(selected_digest, profile_id)
+    if manager == "systemd":
+        executable = _manager_executable(manager)
+        if executable is None:
+            raise WorkerServiceError(
+                "systemd user-service manager is unavailable"
+            )
+        _path, definition_changed = _write_systemd_unit(workdir)
+        _run_checked([executable, "--user", "daemon-reload"])
+        return launcher_changed or definition_changed
     _path, definition_changed = _write_launchd_plist(workdir)
     return launcher_changed or definition_changed
 
@@ -406,7 +486,6 @@ def prepare_worker_service_environment(
         return None
     active_environ = os.environ if environ is None else environ
     active_environ["PATH"] = _launchd_path()
-    ensure_launcher()
     refreshed, _changed = _write_launchd_plist(workdir)
     return refreshed
 
@@ -614,6 +693,45 @@ def _require_supported_available() -> tuple[ServiceManager, str]:
     return manager, executable
 
 
+def _identity_profile_id(identity: dict[str, Any]) -> str | None:
+    raw_profile_id = identity.get("profile_id")
+    if raw_profile_id is None or raw_profile_id == "":
+        return None
+    if not isinstance(raw_profile_id, str):
+        raise WorkerServiceError(
+            "stored worker identity has an invalid profile id"
+        )
+    try:
+        worker_profile_dir(raw_profile_id)
+    except ValueError as exc:
+        raise WorkerServiceError(
+            "stored worker identity has an invalid profile id"
+        ) from exc
+    return raw_profile_id
+
+
+def _identity_runtime_digest(identity: dict[str, Any]) -> str | None:
+    profile_id = _identity_profile_id(identity)
+    if profile_id is None:
+        return active_worker_runtime_digest()
+    try:
+        profile = read_worker_profile(profile_id)
+    except (OSError, ValueError) as exc:
+        raise WorkerServiceError(
+            "stored worker profile is unavailable"
+        ) from exc
+    digest = str(profile.get("runtime_sha256") or "")
+    try:
+        installed = runtime.runtime_identity(digest)
+    except ValueError as exc:
+        raise WorkerServiceError(
+            "stored worker profile runtime is invalid"
+        ) from exc
+    if installed.get("sha256") != digest:
+        raise WorkerServiceError("stored worker profile runtime is unavailable")
+    return digest
+
+
 def _identity_workdir(identity: dict[str, Any]) -> str:
     workdir = str(identity.get("workdir") or "")
     if not workdir:
@@ -627,16 +745,13 @@ def install_service(
     """Install and enable the native per-user worker service idempotently."""
     manager, executable = _require_supported_available()
     workdir = _identity_workdir(identity)
+    profile_id = _identity_profile_id(identity)
+    runtime_digest = _identity_runtime_digest(identity)
     before = service_status()
-    _launcher, launcher_changed = ensure_launcher()
+    _launcher, launcher_changed = ensure_launcher(runtime_digest, profile_id)
     if manager == "systemd":
-        path = systemd_unit_path()
-        content = systemd_unit_text(workdir)
-        changed = launcher_changed or (
-            not path.is_file() or path.read_text(encoding="utf-8") != content
-        )
-        if changed:
-            atomic_write_private_text(path, content)
+        path, definition_changed = _write_systemd_unit(workdir)
+        changed = launcher_changed or definition_changed
         _run_checked([executable, "--user", "daemon-reload"])
         command = [executable, "--user", "enable"]
         if start:

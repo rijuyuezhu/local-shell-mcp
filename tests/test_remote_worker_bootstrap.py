@@ -13,6 +13,41 @@ from pathlib import Path
 import pytest
 
 
+def _managed_runtime_report() -> dict[str, object]:
+    from local_shell_mcp.remote.bundle import worker_bundle_manifest
+
+    manifest = worker_bundle_manifest()
+    return {
+        "protocol_version": 1,
+        "runtime_kind": "managed_bundle",
+        "worker_version": str(manifest["bundle_version"]),
+        "bundle_version": str(manifest["bundle_version"]),
+        "bundle_sha256": str(manifest["sha256"]),
+    }
+
+
+def _managed_poll_report(**extra: object) -> dict[str, object]:
+    report = _managed_runtime_report()
+    report["protocol_version"] = 2
+    report.update(extra)
+    return report
+
+
+@pytest.mark.parametrize(
+    "info",
+    [
+        {"profile_id": [], "launcher_path": "/state/run"},
+        {"profile_id": "p_abcdefgh", "launcher_path": {}},
+    ],
+)
+def test_reconnect_metadata_ignores_non_string_fields(
+    info: dict[str, object],
+) -> None:
+    from local_shell_mcp.remote.manager import _worker_reconnect_metadata
+
+    assert _worker_reconnect_metadata(info) == (None, None)
+
+
 def test_remote_worker_entrypoint_import_is_dependency_light():
     script = """
 import asyncio
@@ -714,6 +749,7 @@ async def test_remote_manager_persists_workers_and_resumes(
             "workdir": str(tmp_path),
             "capabilities": ["shell"],
             "info": {"hostname": "remote-host"},
+            "runtime": _managed_runtime_report(),
         }
     )
     assert registered["poll_timeout_s"] == 25
@@ -726,7 +762,11 @@ async def test_remote_manager_persists_workers_and_resumes(
 
     resumed = await reloaded.resume_worker(
         registered["token"],
-        {"name": "worker-a", "workdir": str(tmp_path / "remote")},
+        {
+            "name": "worker-a",
+            "workdir": str(tmp_path / "remote"),
+            "runtime": _managed_runtime_report(),
+        },
     )
     assert resumed["name"] == "worker-a"
     assert resumed["token"] == registered["token"]
@@ -736,6 +776,47 @@ async def test_remote_manager_persists_workers_and_resumes(
         "offline": 0,
         "total": 1,
     }
+
+
+@pytest.mark.asyncio
+async def test_remote_manager_resume_uses_token_name_after_rename(
+    tmp_path, monkeypatch
+):
+    from local_shell_mcp.config.settings import clear_settings_cache
+    from local_shell_mcp.remote.manager import RemoteManager
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+
+    manager = RemoteManager()
+    invite = await manager.create_invite(name="worker-old")
+    registered = await manager.register_worker(
+        {
+            "invite": invite.code,
+            "workdir": str(tmp_path),
+            "capabilities": ["shell"],
+            "info": {"hostname": "remote-host"},
+            "runtime": _managed_runtime_report(),
+        }
+    )
+    manager.rename("worker-old", "worker-renamed")
+
+    resumed = await manager.resume_worker(
+        registered["token"],
+        {
+            "name": "worker-old",
+            "workdir": str(tmp_path / "remote"),
+            "runtime": _managed_runtime_report(),
+        },
+    )
+
+    assert resumed["name"] == "worker-renamed"
+    inventory = manager.list_machines()
+    assert [machine.name for machine in inventory.machines] == [
+        "worker-renamed"
+    ]
+    assert inventory.counts == {"online": 1, "offline": 0, "total": 1}
 
 
 @pytest.mark.asyncio
@@ -758,7 +839,10 @@ async def test_remote_manager_list_machines_reports_counts_and_details(
         name="recent-worker", token="recent", last_seen=now - 5
     )
     stale = RemoteWorker(
-        name="stale-worker", token="stale", last_seen=now - 500
+        name="stale-worker",
+        token="stale",
+        last_seen=now - 500,
+        info={"profile_id": [], "launcher_path": {}},
     )
     manager.workers = {recent.name: recent, stale.name: stale}
     manager.tokens = {recent.token: recent.name, stale.token: stale.name}
@@ -774,6 +858,8 @@ async def test_remote_manager_list_machines_reports_counts_and_details(
     assert result.machines[0].last_seen_age_s == 5
     assert result.machines[0].queue_depth == 1
     assert result.machines[0].offline_after_s == 60
+    assert result.machines[1].profile_id is None
+    assert result.machines[1].reconnect_command is None
 
 
 def _configure_remote_state(tmp_path, monkeypatch, **overrides):
@@ -889,7 +975,11 @@ async def test_remote_registry_recovers_from_backup(tmp_path, monkeypatch):
     manager = RemoteManager()
     invite = await manager.create_invite(name="backup-worker")
     registered = await manager.register_worker(
-        {"invite": invite.code, "workdir": str(tmp_path)}
+        {
+            "invite": invite.code,
+            "workdir": str(tmp_path),
+            "runtime": _managed_runtime_report(),
+        }
     )
     manager._registry_path().write_text("{broken", encoding="utf-8")
 
@@ -973,7 +1063,7 @@ async def test_remote_poll_skips_cancelled_job_and_delivers_next(
     worker.queue.put_nowait({"id": "cancelled", "tool": "read", "args": {}})
     worker.queue.put_nowait({"id": "next", "tool": "read", "args": {}})
 
-    result = await manager.poll("token")
+    result = await manager.poll("token", _managed_poll_report())
 
     assert result["job"]["id"] == "next"
     assert "cancelled" not in manager.cancelled_jobs

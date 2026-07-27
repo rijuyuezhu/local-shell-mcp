@@ -5,7 +5,6 @@ import json
 import os
 import re
 import secrets
-import shlex
 import shutil
 import subprocess
 import sys
@@ -104,17 +103,6 @@ def _worker_env(workspace: Path, tmux_tmpdir: Path) -> dict[str, str]:
         }
     )
     return env
-
-
-def _invite_code(command: str) -> str:
-    argv = shlex.split(command)
-    for index, value in enumerate(argv[:-1]):
-        if value == "--invite":
-            return argv[index + 1]
-    match = re.search(r"--invite(?:=|\s+)([^\s'\"]+)", command)
-    if match:
-        return match.group(1)
-    raise AssertionError(f"unable to parse invite code from command: {command}")
 
 
 @dataclass
@@ -507,26 +495,16 @@ class BrowserHarness:
             self.page.locator("#remote-invite-result-dialog")
         ).to_be_visible()
         command = self.page.locator("#remote-invite-command").inner_text()
-        invite = _invite_code(command)
         self.page.locator("#remote-invite-done").click()
 
+        worker_env = _worker_env(self.remote_workspace, self.remote_tmux_tmpdir)
+        worker_env["LOCAL_SHELL_MCP_WORKER_STATE_DIR"] = str(
+            self.remote_workspace / ".local-shell-mcp-worker"
+        )
         self.worker = _start_logged_process(
-            [
-                sys.executable,
-                "-m",
-                "local_shell_mcp.remote_worker",
-                "connect",
-                "--server",
-                self.base_url,
-                "--invite",
-                invite,
-                "--name",
-                machine,
-                "--workdir",
-                str(self.remote_workspace),
-            ],
+            ["bash", "-c", command],
             cwd=PROJECT_ROOT,
-            env=_worker_env(self.remote_workspace, self.remote_tmux_tmpdir),
+            env=worker_env,
             stdout_path=self.artifacts / "worker.stdout.log",
             stderr_path=self.artifacts / "worker.stderr.log",
         )
@@ -546,6 +524,15 @@ class BrowserHarness:
                 ):
                     self.page.locator("#remote-refresh").click()
                     self.page.wait_for_timeout(300)
+                    expect(
+                        self.page.locator("#remote-detail-profile")
+                    ).not_to_have_text("—")
+                    expect(
+                        self.page.locator("#remote-detail-reconnect")
+                    ).to_contain_text("/run")
+                    expect(
+                        self.page.locator("#remote-reconnect-copy")
+                    ).to_be_enabled()
                     return
             time.sleep(0.1)
         raise AssertionError(f"remote worker {machine!r} did not become online")

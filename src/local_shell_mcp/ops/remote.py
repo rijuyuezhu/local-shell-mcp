@@ -6,6 +6,7 @@ from ..remote.service import (
     call_remote_worker_tool,
     create_remote_invite,
     list_remote_machines,
+    remote_reconnect_command,
     rename_remote_machine,
     revoke_remote_machine,
 )
@@ -63,10 +64,12 @@ async def remote_admin_execute(
                 _required_str(args, "machine"),
                 _required_str(args, "new_name"),
             )
+        case "reconnect_command":
+            result = remote_reconnect_command(_required_str(args, "machine"))
         case _:
             raise ValueError(
                 "Unsupported remote admin action "
-                f"{action!r}; supported: invite, list, revoke, rename"
+                f"{action!r}; supported: invite, list, revoke, rename, reconnect_command"
             )
     return RemoteAdminOutput(action=action, data=_json_dict(result))
 

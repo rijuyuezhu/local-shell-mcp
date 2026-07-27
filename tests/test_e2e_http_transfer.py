@@ -1,6 +1,7 @@
 import hashlib
 import os
 
+import httpx
 import pytest
 
 from tests.e2e_helpers import streamable_http_tool_client
@@ -26,8 +27,19 @@ async def _enroll_worker(client, base_url, machine, workspace):
             "args": {"name": machine, "workdir": str(workspace), "ttl_s": 120},
         },
     )
+    async with httpx.AsyncClient(timeout=20) as http_client:
+        bundle_response = await http_client.get(
+            f"{base_url}/remote/worker-bundle.tgz"
+        )
+    bundle_response.raise_for_status()
+    bundle_path = workspace / "worker-bundle.tgz"
+    bundle_path.write_bytes(bundle_response.content)
     worker = start_worker_process(
-        base_url, _data(invite)["code"], machine, workspace
+        base_url,
+        _data(invite)["code"],
+        machine,
+        workspace,
+        bundle_path,
     )
     await wait_for_machine(client, worker, machine, workspace)
     return worker

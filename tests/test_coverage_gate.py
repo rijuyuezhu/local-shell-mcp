@@ -1,11 +1,24 @@
 import json
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "validation" / "check-coverage.py"
+
+
+def test_coverage_paths_canonicalize_managed_runtime_sources() -> None:
+    config = tomllib.loads(
+        (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    paths = config["tool"]["coverage"]["paths"]["source"]
+
+    assert paths[0] == "src/local_shell_mcp"
+    assert "local_shell_mcp" in paths
+    assert "*/.local-shell-mcp-worker/runtimes/*/local_shell_mcp" in paths
+    assert "*/runtimes/*/local_shell_mcp" in paths
 
 
 def _entry(percent: float, statements: int = 10) -> dict[str, Any]:

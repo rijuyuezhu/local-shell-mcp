@@ -189,14 +189,14 @@ RemoteRecursiveArg = Annotated[
     ),
 ]
 RemoteAdminActionArg = Annotated[
-    Literal["invite", "list", "revoke", "rename"],
+    Literal["invite", "list", "revoke", "rename", "reconnect_command"],
     Field(
-        description="Remote control-plane action: invite, list, revoke, or rename workers."
+        description="Remote control-plane action: invite, list, revoke, rename, or retrieve a reconnect command."
     ),
 ]
 RemoteAdminArgsArg = Annotated[
     dict[str, Any],
     Field(
-        description="Action-specific control-plane arguments. invite accepts name, workdir, ttl_s; list accepts {}; revoke accepts machine; rename accepts machine and new_name."
+        description="Action-specific control-plane arguments. invite accepts name, workdir, ttl_s; list accepts {}; revoke and reconnect_command accept machine; rename accepts machine and new_name."
     ),
 ]

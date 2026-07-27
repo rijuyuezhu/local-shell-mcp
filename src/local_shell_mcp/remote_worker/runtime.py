@@ -21,12 +21,20 @@ from .. import __version__
 from ..remote.constants import (
     REMOTE_WORKER_MANIFEST_PATH,
     REMOTE_WORKER_POLL_PROTOCOL_VERSION,
+    REMOTE_WORKER_RUNTIME_KIND,
+    REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION,
 )
+from ..utils.private_files import private_file_lock
 from .state import (
     runtime_metadata_path,
+    worker_install_lock_path,
     worker_runtime_dir,
+    worker_runtime_dir_for_digest,
+    worker_runtimes_dir,
     worker_state_dir,
 )
+
+__all__ = ("worker_state_dir",)
 
 POLL_PROTOCOL_VERSION = REMOTE_WORKER_POLL_PROTOCOL_VERSION
 MANIFEST_SCHEMA_VERSION = 1
@@ -38,19 +46,24 @@ _REQUIRED_RUNTIME_FILES = (
     "local_shell_mcp/remote_worker/__init__.py",
     "local_shell_mcp/remote_worker/__main__.py",
     "local_shell_mcp/remote_worker/compat.py",
+    "local_shell_mcp/remote_worker/identity.py",
     "local_shell_mcp/remote_worker/lifecycle.py",
+    "local_shell_mcp/remote_worker/migration.py",
+    "local_shell_mcp/remote_worker/profile_launcher.py",
+    "local_shell_mcp/remote_worker/profiles.py",
     "local_shell_mcp/remote_worker/state.py",
     "local_shell_mcp/remote_worker/worker.py",
 )
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _RELEASE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
+_RUNTIME_MODULE_PATH = Path("local_shell_mcp/remote_worker/runtime.py")
 
 
-def read_runtime_metadata() -> dict[str, Any]:
+def read_runtime_metadata(digest: str | None = None) -> dict[str, Any]:
     """Read valid runtime metadata, returning an empty object when absent."""
     try:
         decoded = json.loads(
-            runtime_metadata_path().read_text(encoding="utf-8")
+            runtime_metadata_path(digest).read_text(encoding="utf-8")
         )
     except FileNotFoundError, OSError, ValueError, json.JSONDecodeError:
         return {}
@@ -63,10 +76,10 @@ def read_runtime_metadata() -> dict[str, Any]:
     return decoded
 
 
-def current_runtime_identity() -> dict[str, str]:
-    """Return the installed digest/version only for a complete runtime."""
-    metadata = read_runtime_metadata()
-    runtime = worker_runtime_dir()
+def runtime_identity(digest: str | None = None) -> dict[str, str]:
+    """Return one installed digest/version only for a complete runtime."""
+    metadata = read_runtime_metadata(digest)
+    runtime = worker_runtime_dir(digest)
     if not metadata or not all(
         (runtime / item).is_file() for item in _REQUIRED_RUNTIME_FILES
     ):
@@ -75,6 +88,21 @@ def current_runtime_identity() -> dict[str, str]:
         "sha256": str(metadata["sha256"]),
         "bundle_version": str(metadata["bundle_version"]),
     }
+
+
+def current_runtime_identity() -> dict[str, str]:
+    """Return identity only when this module executes from the selected runtime."""
+    identity = runtime_identity()
+    if not identity.get("sha256"):
+        return identity
+    selected_module = (worker_runtime_dir() / _RUNTIME_MODULE_PATH).resolve()
+    try:
+        executing_module = Path(__file__).resolve()
+    except OSError:
+        return {"sha256": "", "bundle_version": ""}
+    if executing_module != selected_module:
+        return {"sha256": "", "bundle_version": ""}
+    return identity
 
 
 def worker_poll_payload(
@@ -89,9 +117,30 @@ def worker_poll_payload(
     )
     return {
         "protocol_version": POLL_PROTOCOL_VERSION,
+        "runtime_kind": (
+            REMOTE_WORKER_RUNTIME_KIND
+            if identity.get("sha256")
+            else "unmanaged_source"
+        ),
         "worker_version": worker_version,
         "bundle_sha256": str(identity.get("sha256") or ""),
         "bundle_version": str(identity.get("bundle_version") or ""),
+    }
+
+
+def worker_runtime_report(worker_version: str) -> dict[str, Any]:
+    """Describe whether this process is running a verified managed bundle."""
+    identity = current_runtime_identity()
+    digest = str(identity.get("sha256") or "")
+    bundle_version = str(identity.get("bundle_version") or "")
+    return {
+        "protocol_version": REMOTE_WORKER_RUNTIME_PROTOCOL_VERSION,
+        "runtime_kind": REMOTE_WORKER_RUNTIME_KIND
+        if digest
+        else "unmanaged_source",
+        "worker_version": worker_version,
+        "bundle_version": bundle_version,
+        "bundle_sha256": digest,
     }
 
 
@@ -358,8 +407,10 @@ def safe_extract_bundle(archive: Path, destination: Path) -> None:
         raise ValueError(f"worker bundle is incomplete: missing {missing[0]}")
 
 
-def _write_runtime_metadata(data: dict[str, Any]) -> None:
-    path = runtime_metadata_path()
+def _write_runtime_metadata(
+    data: dict[str, Any], digest: str | None = None
+) -> None:
+    path = runtime_metadata_path(digest)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -408,76 +459,73 @@ def install_runtime(
         raise ValueError("worker upgrade instruction has invalid version")
     _reject_downgrade(current_version, expected_version)
 
-    runtime = worker_runtime_dir()
-    current = current_runtime_identity()
-    if not force and current["sha256"] == expected_digest and runtime.is_dir():
-        return {
-            "updated": False,
-            "sha256": expected_digest,
-            "version": expected_version,
-            "runtime": str(runtime),
-        }
+    runtime = worker_runtime_dir_for_digest(expected_digest)
+    runtimes = worker_runtimes_dir()
+    runtimes.mkdir(parents=True, exist_ok=True)
+    with private_file_lock(worker_install_lock_path()):
+        current = runtime_identity(expected_digest)
+        if (
+            not force
+            and current["sha256"] == expected_digest
+            and runtime.is_dir()
+        ):
+            return {
+                "updated": False,
+                "sha256": expected_digest,
+                "version": expected_version,
+                "runtime": str(runtime),
+            }
 
-    manifest = fetch_manifest(
-        server,
-        manifest_path=manifest_path,
-        expected_version=expected_version,
-        expected_digest=expected_digest,
-    )
-    payload = _fetch_bytes(
-        str(manifest["url"]),
-        server=server,
-        timeout=120,
-        max_bytes=int(manifest["size"]),
-    )
-    if len(payload) != int(manifest["size"]):
-        raise ValueError("worker bundle size does not match manifest")
-    actual_digest = hashlib.sha256(payload).hexdigest()
-    if actual_digest != expected_digest:
-        raise ValueError(
-            "worker bundle checksum does not match poll instruction"
+        manifest = fetch_manifest(
+            server,
+            manifest_path=manifest_path,
+            expected_version=expected_version,
+            expected_digest=expected_digest,
         )
-
-    state_dir = worker_state_dir()
-    state_dir.mkdir(parents=True, exist_ok=True)
-    old_metadata = None
-    metadata_path = runtime_metadata_path()
-    with contextlib.suppress(OSError):
-        old_metadata = metadata_path.read_bytes()
-
-    backup = state_dir / f"runtime.previous.{uuid.uuid4().hex}"
-    with tempfile.TemporaryDirectory(
-        prefix="runtime-install-", dir=state_dir
-    ) as temporary:
-        temporary_path = Path(temporary)
-        archive = temporary_path / "worker.tgz"
-        extracted = temporary_path / "runtime"
-        archive.write_bytes(payload)
-        safe_extract_bundle(archive, extracted)
-        try:
-            if runtime.exists():
-                os.replace(runtime, backup)
-            os.replace(extracted, runtime)
-            _write_runtime_metadata(
-                {
-                    "schema_version": 1,
-                    "bundle_version": expected_version,
-                    "sha256": expected_digest,
-                    "size": len(payload),
-                    "installed_at": time.time(),
-                }
+        payload = _fetch_bytes(
+            str(manifest["url"]),
+            server=server,
+            timeout=120,
+            max_bytes=int(manifest["size"]),
+        )
+        if len(payload) != int(manifest["size"]):
+            raise ValueError("worker bundle size does not match manifest")
+        actual_digest = hashlib.sha256(payload).hexdigest()
+        if actual_digest != expected_digest:
+            raise ValueError(
+                "worker bundle checksum does not match poll instruction"
             )
-        except Exception:
-            shutil.rmtree(runtime, ignore_errors=True)
-            if backup.exists():
-                os.replace(backup, runtime)
-            if old_metadata is None:
-                metadata_path.unlink(missing_ok=True)
-            else:
-                metadata_path.write_bytes(old_metadata)
-            raise
-        finally:
-            shutil.rmtree(backup, ignore_errors=True)
+
+        backup = runtimes / f"{expected_digest}.previous.{uuid.uuid4().hex}"
+        with tempfile.TemporaryDirectory(
+            prefix=f"{expected_digest}.install-", dir=runtimes
+        ) as temporary:
+            temporary_path = Path(temporary)
+            archive = temporary_path / "worker.tgz"
+            extracted = temporary_path / "runtime"
+            archive.write_bytes(payload)
+            safe_extract_bundle(archive, extracted)
+            try:
+                if runtime.exists():
+                    os.replace(runtime, backup)
+                os.replace(extracted, runtime)
+                _write_runtime_metadata(
+                    {
+                        "schema_version": 1,
+                        "bundle_version": expected_version,
+                        "sha256": expected_digest,
+                        "size": len(payload),
+                        "installed_at": time.time(),
+                    },
+                    expected_digest,
+                )
+            except Exception:
+                shutil.rmtree(runtime, ignore_errors=True)
+                if backup.exists():
+                    os.replace(backup, runtime)
+                raise
+            finally:
+                shutil.rmtree(backup, ignore_errors=True)
 
     return {
         "updated": True,
@@ -520,16 +568,21 @@ def worker_reexec_argv() -> list[str]:
 
 
 def update_installed_runtime(
-    server: str, *, force: bool = False
+    server: str,
+    *,
+    force: bool = False,
+    current_version: str | None = None,
 ) -> dict[str, Any]:
     """Install the controller's latest verified worker bundle without restarting."""
     from ..version import version_info
 
     manifest = fetch_latest_manifest(server)
-    current = current_runtime_identity()
-    current_version = str(current.get("bundle_version") or "") or str(
-        version_info().get("version") or ""
-    )
+    selected_version = str(current_version or "")
+    if not selected_version:
+        current = current_runtime_identity()
+        selected_version = str(current.get("bundle_version") or "") or str(
+            version_info().get("version") or ""
+        )
     return install_runtime(
         server,
         {
@@ -537,7 +590,7 @@ def update_installed_runtime(
             "sha256": str(manifest["sha256"]),
             "manifest_path": REMOTE_WORKER_MANIFEST_PATH,
         },
-        current_version=current_version,
+        current_version=selected_version,
         force=force,
     )
 
@@ -553,13 +606,21 @@ def reexec_worker() -> None:
     inherited = prepare_worker_lock_reexec()
     try:
         environment = reexec_environment()
+        runtime = worker_runtime_dir()
         if sys.platform == "win32":
             subprocess.Popen(  # noqa: S603
                 argv,
                 env=environment,
+                cwd=runtime,
                 close_fds=False,
             )
             raise SystemExit(0)
-        os.execve(argv[0], argv, environment)
+        previous_cwd = Path.cwd()
+        try:
+            os.chdir(runtime)
+            os.execve(argv[0], argv, environment)
+        finally:
+            with contextlib.suppress(OSError):
+                os.chdir(previous_cwd)
     finally:
         cancel_worker_lock_reexec(inherited)

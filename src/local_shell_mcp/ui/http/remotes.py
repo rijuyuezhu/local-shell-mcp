@@ -1,6 +1,7 @@
 """Authenticated Human UI control-plane APIs for remote workers."""
 
 import math
+import re
 from typing import Any
 
 from fastapi import HTTPException
@@ -26,6 +27,8 @@ UI_REMOTE_PATH_MAX_BYTES = 4_096
 UI_REMOTE_CAPABILITIES_MAX = 64
 UI_REMOTE_CAPABILITY_MAX_BYTES = 128
 UI_REMOTE_COMMAND_MAX_BYTES = 16_384
+UI_REMOTE_PROFILE_ID_MAX_BYTES = 128
+UI_REMOTE_RECONNECT_COMMAND_MAX_BYTES = 8_192
 UI_REMOTE_VERSION_MAX_BYTES = 256
 UI_REMOTE_SMALL_INFO_MAX_BYTES = 512
 UI_REMOTE_INFO_KEYS = {
@@ -37,6 +40,7 @@ UI_REMOTE_INFO_KEYS = {
     "cwd": UI_REMOTE_PATH_MAX_BYTES,
     "workdir": UI_REMOTE_PATH_MAX_BYTES,
 }
+_UI_REMOTE_PROFILE_ID_RE = re.compile(r"p_[A-Za-z0-9_-]{8,64}")
 
 
 class _InviteBody(BaseModel):
@@ -196,10 +200,32 @@ def _machine_row(value: Any) -> dict[str, Any]:
     last_seen = _finite_number(value.get("last_seen", 0.0), field="last_seen")
     last_seen_age = value.get("last_seen_age_s")
     offline_after = value.get("offline_after_s")
+    raw_profile_id = value.get("profile_id")
+    raw_reconnect_command = value.get("reconnect_command")
+    if raw_profile_id is None and raw_reconnect_command is None:
+        profile_id = None
+        reconnect_command = None
+    else:
+        profile_id = _bounded_text(
+            raw_profile_id,
+            field="profile_id",
+            max_bytes=UI_REMOTE_PROFILE_ID_MAX_BYTES,
+            allow_empty=False,
+        )
+        if not _UI_REMOTE_PROFILE_ID_RE.fullmatch(profile_id):
+            raise ValueError("profile_id is invalid")
+        reconnect_command = _bounded_text(
+            raw_reconnect_command,
+            field="reconnect_command",
+            max_bytes=UI_REMOTE_RECONNECT_COMMAND_MAX_BYTES,
+            allow_empty=False,
+        )
     return {
         "name": _machine_name(value.get("name")),
         "status": status,
         "workdir": _optional_path(value.get("workdir"), field="workdir"),
+        "profile_id": profile_id,
+        "reconnect_command": reconnect_command,
         "last_seen": last_seen,
         "last_seen_age_s": None
         if last_seen_age is None

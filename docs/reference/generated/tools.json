@@ -766,14 +766,14 @@
           {
             "items": [
               {
-                "description": "Remote control-plane action: invite, list, revoke, or rename workers.",
+                "description": "Remote control-plane action: invite, list, revoke, rename, or retrieve a reconnect command.",
                 "head": {
                   "code": "action"
                 },
-                "note": "(invite / list / revoke / rename, required)"
+                "note": "(invite / list / revoke / rename / reconnect_command, required)"
               },
               {
-                "description": "Action-specific control-plane arguments. invite accepts name, workdir, ttl_s; list accepts {}; revoke accepts machine; rename accepts machine and new_name.",
+                "description": "Action-specific control-plane arguments. invite accepts name, workdir, ttl_s; list accepts {}; revoke and reconnect_command accept machine; rename accepts machine and new_name.",
                 "head": {
                   "code": "args"
                 },
@@ -781,7 +781,7 @@
               }
             ]
           },
-          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, apply_patch, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
+          "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, action=\"rename\" gives a worker a stable name, and action=\"reconnect_command\" returns a credential-free command to run on the worker machine for a profile-aware registration.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, apply_patch, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Reconnect commands contain no invite or bearer credential. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted."
         ]
       ]
     },
@@ -5498,23 +5498,24 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, and action=\"rename\" gives a worker a stable name.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, apply_patch, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
+      "description": "Run compact remote-worker control-plane actions. Use this only to administer worker connections: action=\"list\" discovers connected worker names for session_start(target=\"remote\", machine=...), action=\"invite\" creates a one-time join command, action=\"revoke\" removes a stale or untrusted worker, action=\"rename\" gives a worker a stable name, and action=\"reconnect_command\" returns a credential-free command to run on the worker machine for a profile-aware registration.\n\nDo not use remote_admin for normal remote code work. For that, create a remote agent/workspace session with session_start(target=\"remote\", machine=..., workdir=...) and then use ordinary session-bound tools such as read, search, hashline_edit, edit_lines, apply_patch, bash, job, write_file, delete_file_or_dir, tree_view, glob_search, and secret_scan. Invite output is sensitive because it grants enrollment capability. Reconnect commands contain no invite or bearer credential. Defaults: invite ttl_s defaults to configured remote_invite_ttl_s=600 seconds when omitted.",
       "inputSchema": {
         "properties": {
           "action": {
-            "description": "Remote control-plane action: invite, list, revoke, or rename workers.",
+            "description": "Remote control-plane action: invite, list, revoke, rename, or retrieve a reconnect command.",
             "enum": [
               "invite",
               "list",
               "revoke",
-              "rename"
+              "rename",
+              "reconnect_command"
             ],
             "title": "Action",
             "type": "string"
           },
           "args": {
             "additionalProperties": true,
-            "description": "Action-specific control-plane arguments. invite accepts name, workdir, ttl_s; list accepts {}; revoke accepts machine; rename accepts machine and new_name.",
+            "description": "Action-specific control-plane arguments. invite accepts name, workdir, ttl_s; list accepts {}; revoke and reconnect_command accept machine; rename accepts machine and new_name.",
             "title": "Args",
             "type": "object"
           }

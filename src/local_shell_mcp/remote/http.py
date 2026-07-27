@@ -15,7 +15,7 @@ from .constants import (
     REMOTE_JOIN_PATH,
     REMOTE_WORKER_BUNDLE_PATH,
 )
-from .manager import remote_manager
+from .manager import WorkerRuntimeCompatibilityError, remote_manager
 from .responses import _error, _ok
 
 JOIN_SCRIPT_RESOURCE = "join_worker.sh"
@@ -63,6 +63,8 @@ async def register_endpoint(request: Request) -> JSONResponse:
         return JSONResponse(
             _ok(await remote_manager().register_worker(await request.json()))
         )
+    except WorkerRuntimeCompatibilityError as exc:
+        return _error(str(exc), type(exc).__name__, 409)
     except Exception as exc:
         return _error(str(exc), type(exc).__name__, 400)
 
@@ -77,6 +79,8 @@ async def resume_endpoint(request: Request) -> JSONResponse:
                 )
             )
         )
+    except WorkerRuntimeCompatibilityError as exc:
+        return _error(str(exc), type(exc).__name__, 409)
     except Exception as exc:
         return _error(str(exc), type(exc).__name__, 401)
 
@@ -90,6 +94,8 @@ async def poll_endpoint(request: Request) -> JSONResponse:
         )
     except PermissionError as exc:
         return _error(str(exc), type(exc).__name__, 401)
+    except WorkerRuntimeCompatibilityError as exc:
+        return _error(str(exc), type(exc).__name__, 409)
     except ValueError as exc:
         return _error(str(exc), type(exc).__name__, 400)
     except Exception as exc:

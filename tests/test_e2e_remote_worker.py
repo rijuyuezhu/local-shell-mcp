@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -13,6 +15,7 @@ import httpx
 import pytest
 from mcp.types import ImageContent
 
+from local_shell_mcp import __version__
 from tests.e2e_helpers import (
     PROJECT_ROOT,
     SRC_ROOT,
@@ -151,8 +154,33 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
 
 
 def start_worker_process(
-    base_url: str, invite: str, machine: str, remote_workspace: Path
+    base_url: str,
+    invite: str,
+    machine: str,
+    remote_workspace: Path,
+    bundle_path: Path,
 ) -> subprocess.Popen[Any]:
+    state_dir = remote_workspace / ".local-shell-mcp-worker"
+    digest = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+    runtime_dir = state_dir / "runtimes" / digest
+    runtime_dir.mkdir(parents=True)
+    with tarfile.open(bundle_path) as bundle:
+        bundle.extractall(runtime_dir, filter="data")
+    (runtime_dir / "runtime.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "bundle_version": __version__,
+                "sha256": digest,
+                "size": bundle_path.stat().st_size,
+                "installed_at": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    env = worker_env(remote_workspace)
+    env["PYTHONPATH"] = os.pathsep.join((str(runtime_dir), env["PYTHONPATH"]))
+    env["LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"] = digest
     return start_logged_process(
         [
             sys.executable,
@@ -167,9 +195,11 @@ def start_worker_process(
             machine,
             "--workdir",
             str(remote_workspace),
+            "--profile",
+            "p_e2e00000",
         ],
         cwd=PROJECT_ROOT,
-        env=worker_env(remote_workspace),
+        env=env,
         stdout_path=remote_workspace / "worker.stdout.log",
         stderr_path=remote_workspace / "worker.stderr.log",
     )
@@ -253,7 +283,15 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "__REMOTE_WORKER_BUNDLE_PATH__" not in join_script
         assert f"SERVER={base_url}" in join_script
         assert 'BUNDLE_URL="$SERVER/remote/worker-bundle.tgz"' in join_script
-        assert 'RUNTIME_DIR="$STATE_DIR/runtime"' in join_script
+        assert (
+            'RUNTIME_DIR="$STATE_DIR/runtimes/$RUNTIME_DIGEST"' in join_script
+        )
+        assert "runtime_is_installed" in join_script
+        assert "Reusing worker runtime" in join_script
+        assert (
+            'export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"'
+            in join_script
+        )
         assert (
             'export PYTHONPATH="$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"'
             in join_script
@@ -263,7 +301,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "Downloading worker manifest" in join_script
         assert "Downloading worker bundle" in join_script
         assert "Cache-Control: no-cache" in join_script
-        assert "Verifying and installing worker runtime" in join_script
+        assert "Preparing shared worker runtime" in join_script
         assert "os.replace(staging, runtime)" in join_script
         assert "member.isreg()" in join_script
         assert "curl -fSs" in join_script
@@ -282,6 +320,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert "local_shell_mcp/remote_worker/__main__.py" in names
             assert "local_shell_mcp/remote_worker/worker.py" in names
             assert "local_shell_mcp/remote_worker/compat.py" in names
+            assert "local_shell_mcp/remote_worker/profiles.py" in names
             assert "local_shell_mcp/remote_worker/runtime.py" in names
             assert "local_shell_mcp/remote_worker/cli.py" in names
             assert "local_shell_mcp/remote_worker/service.py" in names
@@ -297,7 +336,11 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             assert all(name.endswith(".py") for name in names)
 
         worker = start_worker_process(
-            base_url, invite["code"], machine, remote_workspace
+            base_url,
+            invite["code"],
+            machine,
+            remote_workspace,
+            bundle_path,
         )
         try:
             row = await wait_for_machine(

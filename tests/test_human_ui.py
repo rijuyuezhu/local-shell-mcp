@@ -84,6 +84,8 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert 'id="remotes-panel"' in index.text
     assert 'id="remote-invite-dialog"' in index.text
     assert 'id="remote-invite-result-dialog"' in index.text
+    assert 'id="remote-reconnect-copy"' in index.text
+    assert 'id="remote-detail-reconnect"' in index.text
     assert 'id="remote-rename-dialog"' in index.text
     assert 'id="remote-revoke-dialog"' in index.text
     assert 'id="terminal-machine"' in index.text

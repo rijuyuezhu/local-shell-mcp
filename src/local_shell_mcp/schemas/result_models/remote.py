@@ -39,6 +39,14 @@ class RemoteMachineInfo(BaseModel):
     workdir: str | None = Field(
         default=None, description="Worker-side working directory, when known."
     )
+    profile_id: str | None = Field(
+        default=None,
+        description="Worker-local profile identifier used for reconnecting, when available.",
+    )
+    reconnect_command: str | None = Field(
+        default=None,
+        description="Credential-free shell command that restarts this profile on its worker machine.",
+    )
     last_seen: float = Field(
         description="Unix timestamp of the last worker heartbeat."
     )
@@ -90,6 +98,16 @@ class RemoteRenameMachineOutput(BaseModel):
 
     old_name: str = Field(description="Previous remote worker name.")
     new_name: str = Field(description="New remote worker name.")
+
+
+class RemoteReconnectCommandOutput(BaseModel):
+    """Credential-free command for restarting one registered worker profile."""
+
+    machine: str = Field(description="Registered remote worker name.")
+    profile_id: str = Field(description="Worker-local profile identifier.")
+    command: str = Field(
+        description="Shell command to run on the worker machine to reconnect this profile."
+    )
 
 
 class RemoteEndpoint(BaseModel):

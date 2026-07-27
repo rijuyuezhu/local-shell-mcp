@@ -16,6 +16,10 @@ import local_shell_mcp.remote_worker.runtime as runtime
 import local_shell_mcp.remote_worker.service as service
 import local_shell_mcp.remote_worker.worker as worker
 from local_shell_mcp.main import _build_parser
+from local_shell_mcp.remote_worker.profiles import (
+    read_worker_profile,
+    update_worker_profile,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +43,31 @@ def _identity(tmp_path: Path) -> dict[str, str]:
         "access": "private-worker-access",
         "workdir": str(workdir),
     }
+
+
+def _profile_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    profile_id: str = "p_abcdefgh",
+    digest: str = "a" * 64,
+) -> dict[str, str]:
+    identity = {**_identity(tmp_path), "profile_id": profile_id}
+    worker._write_worker_identity(identity, profile_id)
+    update_worker_profile(
+        profile_id,
+        runtime_sha256=digest,
+        runtime_version="4.0.0",
+        server=identity["server"],
+        name=identity["name"],
+        workdir=identity["workdir"],
+    )
+    monkeypatch.setattr(
+        service.runtime,
+        "runtime_identity",
+        lambda selected: {"sha256": selected, "version": "4.0.0"},
+    )
+    return identity
 
 
 class _SystemdFake:
@@ -139,6 +168,31 @@ def test_systemd_install_is_private_idempotent_and_credential_free(
     assert first_uninstall.changed is True
     assert second_uninstall.changed is False
     assert not unit.exists()
+
+
+def test_systemd_service_binds_one_profile_and_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    digest = "b" * 64
+    identity = _profile_identity(
+        tmp_path, monkeypatch, profile_id="p_abcdefgh", digest=digest
+    )
+
+    first = service.install_service(identity, start=False)
+    second = service.install_service(identity, start=False)
+
+    assert first.changed is True
+    assert second.changed is False
+    assert fake.enabled is True
+    launcher = service.launcher_path().read_text(encoding="utf-8")
+    assert f"runtime_digest = {digest!r}" in launcher
+    assert (
+        "os.environ['LOCAL_SHELL_MCP_WORKER_PROFILE_ID'] = 'p_abcdefgh'"
+    ) in launcher
+    assert 'main(["run", "p_abcdefgh"])' in launcher
+    assert identity["access"] not in launcher
+    assert identity["server"] not in launcher
 
 
 def test_systemd_no_start_status_and_mutations(
@@ -375,6 +429,23 @@ def test_prepare_launchd_environment_repairs_running_worker_and_plist(
     assert "/opt/local/bin" in entries
     refreshed = plistlib.loads(path.read_bytes())
     assert refreshed["EnvironmentVariables"]["PATH"] == environment["PATH"]
+
+
+def test_prepare_launchd_environment_preserves_profile_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_launchd(monkeypatch)
+    identity = _profile_identity(tmp_path, monkeypatch)
+    service.install_service(identity, start=False)
+    launcher = service.launcher_path()
+    original = launcher.read_text(encoding="utf-8")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+
+    assert service.prepare_worker_service_environment({}) == (
+        service.launchd_plist_path()
+    )
+    assert launcher.read_text(encoding="utf-8") == original
+    assert 'main(["run", "p_abcdefgh"])' in original
 
 
 def test_prepare_launchd_environment_rejects_symlinked_plist(
@@ -620,21 +691,23 @@ def test_update_restarts_only_previously_running_service(
     )
     monkeypatch.setattr(service, "service_status", lambda: running)
     restarts: list[bool] = []
-    refreshes: list[dict[str, str]] = []
+    refreshes: list[tuple[dict[str, str], str | None]] = []
     monkeypatch.setattr(
         service, "restart_service", lambda: restarts.append(True)
     )
     monkeypatch.setattr(
         service,
         "refresh_installed_service_definition",
-        lambda identity: refreshes.append(identity) or False,
+        lambda identity, runtime_digest=None: (
+            refreshes.append((identity, runtime_digest)) or False
+        ),
     )
 
     worker_cli._update_from_args(argparse.Namespace(force=True))
     result = json.loads(capsys.readouterr().out)
     assert result["service_restarted"] is True
     assert restarts == [True]
-    assert refreshes == [{"server": "https://controller.test"}]
+    assert refreshes == [({"server": "https://controller.test"}, "a" * 64)]
 
     stopped = service.WorkerServiceStatus(
         1,
@@ -655,9 +728,73 @@ def test_update_restarts_only_previously_running_service(
     assert json.loads(capsys.readouterr().out)["service_restarted"] is False
     assert restarts == []
     assert refreshes == [
-        {"server": "https://controller.test"},
-        {"server": "https://controller.test"},
+        ({"server": "https://controller.test"}, "a" * 64),
+        ({"server": "https://controller.test"}, "a" * 64),
     ]
+
+
+def test_cli_install_and_update_bind_explicit_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    profile_id = "p_abcdefgh"
+    identity = _profile_identity(tmp_path, monkeypatch, profile_id=profile_id)
+    installs: list[tuple[dict[str, str], bool]] = []
+    monkeypatch.setattr(service, "service_manager", lambda: "systemd")
+    monkeypatch.setattr(
+        service,
+        "install_service",
+        lambda selected, start=True: (
+            installs.append((selected, start))
+            or _service_result("install-service")
+        ),
+    )
+
+    install_args = _build_parser().parse_args(
+        ["worker", "install-service", profile_id, "--no-start"]
+    )
+    install_args.handler(install_args)
+
+    assert installs == [(identity, False)]
+    assert json.loads(capsys.readouterr().out)["action"] == "install-service"
+
+    new_digest = "c" * 64
+    monkeypatch.setattr(service, "service_status", _stopped_status)
+    updates: list[tuple[str, bool, str | None]] = []
+
+    def update_runtime(
+        server: str,
+        *,
+        force: bool = False,
+        current_version: str | None = None,
+    ) -> dict[str, Any]:
+        updates.append((server, force, current_version))
+        return {
+            "updated": True,
+            "version": "4.1.0",
+            "sha256": new_digest,
+        }
+
+    monkeypatch.setattr(runtime, "update_installed_runtime", update_runtime)
+    refreshes: list[tuple[dict[str, str], str | None]] = []
+    monkeypatch.setattr(
+        service,
+        "refresh_installed_service_definition",
+        lambda selected, runtime_digest=None: (
+            refreshes.append((selected, runtime_digest)) or False
+        ),
+    )
+
+    update_args = _build_parser().parse_args(
+        ["worker", "update", profile_id, "--force"]
+    )
+    update_args.handler(update_args)
+
+    profile = read_worker_profile(profile_id)
+    assert profile["runtime_sha256"] == new_digest
+    assert profile["runtime_version"] == "4.1.0"
+    assert updates == [(identity["server"], True, "4.0.0")]
+    assert refreshes == [(identity, new_digest)]
+    assert json.loads(capsys.readouterr().out)["service_restarted"] is False
 
 
 def test_update_fetches_latest_manifest_and_propagates_force(
@@ -691,6 +828,13 @@ def test_update_fetches_latest_manifest_and_propagates_force(
     )
     assert result["version"] == "4.0.0"
     assert calls[0][2:] == ("3.9.1", True)
+
+    calls.clear()
+    runtime.update_installed_runtime(
+        "https://controller.test",
+        current_version="3.8.0",
+    )
+    assert calls[0][2:] == ("3.8.0", False)
 
 
 def _stopped_status(
@@ -1008,6 +1152,80 @@ def test_changed_launcher_restarts_running_systemd_service(
     assert any(command[2] == "restart" for command in fake.commands)
 
 
+def test_managed_launcher_binds_content_addressed_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure_systemd(monkeypatch)
+    identity = _identity(tmp_path)
+    service.install_service(identity, start=False)
+    digest = "a" * 64
+
+    changed = service.refresh_installed_service_definition(identity, digest)
+
+    assert changed is True
+    launcher = service.launcher_path().read_text(encoding="utf-8")
+    assert f"runtime_digest = {digest!r}" in launcher
+    assert 'runtime_dir = state_dir / "runtimes" / runtime_digest' in launcher
+    assert "LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256" in launcher
+    assert 'runtime_dir = state_dir / "runtime"' not in launcher
+    with pytest.raises(ValueError, match="runtime digest"):
+        service._launcher_text("invalid")
+
+
+def test_systemd_profile_rebind_updates_unit_workdir_and_reloads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _configure_systemd(monkeypatch)
+    first = _profile_identity(
+        tmp_path,
+        monkeypatch,
+        profile_id="p_abcdefgh",
+        digest="a" * 64,
+    )
+    service.install_service(first, start=False)
+
+    second_workdir = tmp_path / "second workdir"
+    second_workdir.mkdir()
+    second_profile = "p_ijklmnop"
+    second_digest = "b" * 64
+    second = {
+        **first,
+        "profile_id": second_profile,
+        "workdir": str(second_workdir),
+    }
+    worker._write_worker_identity(second, second_profile)
+    update_worker_profile(
+        second_profile,
+        runtime_sha256=second_digest,
+        runtime_version="4.1.0",
+        server=second["server"],
+        name=second["name"],
+        workdir=second["workdir"],
+    )
+    fake.commands.clear()
+
+    changed = service.refresh_installed_service_definition(
+        second,
+        second_digest,
+    )
+
+    assert changed is True
+    assert service.systemd_unit_path().read_text(encoding="utf-8") == (
+        service.systemd_unit_text(str(second_workdir.resolve()))
+    )
+    launcher = service.launcher_path().read_text(encoding="utf-8")
+    assert f"runtime_digest = {second_digest!r}" in launcher
+    assert f'main(["run", "{second_profile}"])' in launcher
+    assert ["/usr/bin/systemctl", "--user", "daemon-reload"] in fake.commands
+
+    fake.commands.clear()
+    assert (
+        service.refresh_installed_service_definition(second, second_digest)
+        is False
+    )
+    assert ["/usr/bin/systemctl", "--user", "daemon-reload"] in fake.commands
+
+
 def test_launchd_running_start_is_noop_but_restart_kickstarts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1169,15 +1387,17 @@ def test_update_no_change_does_not_restart(
         "restart_service",
         lambda: pytest.fail("restarted unchanged runtime"),
     )
-    refreshed: list[dict[str, str]] = []
+    refreshed: list[tuple[dict[str, str], str | None]] = []
     monkeypatch.setattr(
         service,
         "refresh_installed_service_definition",
-        lambda identity: refreshed.append(identity) or False,
+        lambda identity, runtime_digest=None: (
+            refreshed.append((identity, runtime_digest)) or False
+        ),
     )
     worker_cli._update_from_args(argparse.Namespace(force=False))
     assert json.loads(capsys.readouterr().out)["service_restarted"] is False
-    assert refreshed == [{"server": "https://controller.test"}]
+    assert refreshed == [({"server": "https://controller.test"}, "a" * 64)]
 
 
 def test_real_systemd_user_status_smoke_when_available(monkeypatch):
