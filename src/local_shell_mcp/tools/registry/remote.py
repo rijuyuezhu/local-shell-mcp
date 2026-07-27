@@ -7,10 +7,12 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ...audit import (
+    audit_query_snapshot,
     get_audit_entry,
     get_session_audit_entry,
     query_audit,
     query_session_audit,
+    summarize_audit_entry,
 )
 from ...config.settings import Settings
 from ...ops.remote import (
@@ -18,6 +20,7 @@ from ...ops.remote import (
     remote_worker_tool_execute,
 )
 from ...ops.shell import start_persistent_shell_execute
+from ...ops.todo import read_todos_execute
 from ...remote.tool_specs import REMOTE_WORKER_TOOL_SPECS
 from ...schemas.input_models.remote import (
     RemoteAdminActionArg,
@@ -43,9 +46,8 @@ def _remote_tools_enabled(settings: Settings) -> bool:
     return settings.remote_enabled and settings.mode == "mcp"
 
 
-async def _query_audit_handler(args: dict[str, Any]) -> dict[str, Any]:
-    log_session_id = str(args.get("log_session_id") or "")
-    filters = {
+def _audit_filters(args: dict[str, Any]) -> dict[str, Any]:
+    return {
         "limit": int(args.get("limit") or 300),
         "event": args.get("event"),
         "operation": args.get("operation"),
@@ -55,11 +57,31 @@ async def _query_audit_handler(args: dict[str, Any]) -> dict[str, Any]:
         "end_ts": args.get("end_ts"),
         "sort": str(args.get("sort") or "desc"),
     }
+
+
+async def _query_audit_handler(args: dict[str, Any]) -> dict[str, Any]:
+    log_session_id = str(args.get("log_session_id") or "")
+    filters = _audit_filters(args)
     if log_session_id:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             query_session_audit, log_session_id, **filters
         )
-    return await asyncio.to_thread(query_audit, **filters)
+    else:
+        result = await asyncio.to_thread(query_audit, **filters)
+    if bool(args.get("snapshot", False)):
+        return audit_query_snapshot(
+            result, selected_id=str(args.get("selected_id") or "")
+        )
+    if bool(args.get("summary_only", False)):
+        return {
+            **result,
+            "entries": [
+                summarize_audit_entry(entry)
+                for entry in result.get("entries", [])
+                if isinstance(entry, dict)
+            ],
+        }
+    return result
 
 
 async def _get_audit_entry_handler(args: dict[str, Any]) -> dict[str, Any]:
@@ -84,6 +106,30 @@ async def _dashboard_snapshot_handler(
     args: dict[str, Any],  # noqa: ARG001
 ) -> dict[str, Any]:
     return await asyncio.to_thread(dashboard_snapshot)
+
+
+async def _ui_session_snapshot_handler(args: dict[str, Any]) -> dict[str, Any]:
+    session_id = str(args["session_id"])
+    filters = _audit_filters(args)
+    filters.pop("session", None)
+    todos, audit_result = await asyncio.gather(
+        asyncio.to_thread(
+            read_todos_execute,
+            session_id,
+            touch_session=False,
+        ),
+        asyncio.to_thread(
+            query_session_audit,
+            session_id,
+            **filters,
+        ),
+    )
+    return {
+        "todos": todos.model_dump(mode="json"),
+        "audit": audit_query_snapshot(
+            audit_result, selected_id=str(args.get("selected_id") or "")
+        ),
+    }
 
 
 async def _start_persistent_shell_handler(args: dict[str, Any]) -> Any:
@@ -139,6 +185,7 @@ _REMOTE_INTERNAL_HANDLERS: Mapping[str, ToolHandler] = {
     "dashboard_snapshot": _dashboard_snapshot_handler,
     "query_audit": _query_audit_handler,
     "get_audit_entry": _get_audit_entry_handler,
+    "ui_session_snapshot": _ui_session_snapshot_handler,
 }
 
 

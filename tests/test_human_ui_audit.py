@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import local_shell_mcp.tools.registry.remote as remote_registry_module
 import local_shell_mcp.ui.http.audit as ui_audit_module
 import local_shell_mcp.ui.http.common as ui_common_module
+import local_shell_mcp.ui.http.session_snapshot as ui_session_snapshot_module
 from local_shell_mcp.audit import (
     audit,
     audit_tool_call_end,
@@ -23,6 +24,7 @@ from local_shell_mcp.oauth.core.scopes import (
     SCOPE_SHELL_WRITE,
 )
 from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
+from local_shell_mcp.ops.todo import write_todos_execute
 from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_ORIGIN_ARG,
     REMOTE_WORKER_ORIGIN_HUMAN_UI,
@@ -280,13 +282,25 @@ class _FakeRemoteAudit:
         if self.worker_session_id:
             entry["session"] = self.worker_session_id
         if tool == "query_audit":
+            list_entry = (
+                {
+                    name: value
+                    for name, value in entry.items()
+                    if name not in {"input", "output"}
+                }
+                if args.get("summary_only")
+                else entry
+            )
+            data = {
+                "entries": [list_entry],
+                "count": 1,
+                "total_matched": 1,
+            }
+            if args.get("snapshot"):
+                data["entry"] = entry
             return {
                 "ok": True,
-                "data": {
-                    "entries": [entry],
-                    "count": 1,
-                    "total_matched": 1,
-                },
+                "data": data,
             }
         assert tool == "get_audit_entry"
         expected = {
@@ -350,6 +364,175 @@ def test_remote_audit_uses_process_scoped_native_worker_rpc(
         "get_audit_entry",
     ]
     assert fake.calls[0][1]["operation"] == "shell"
+    assert fake.calls[0][1]["summary_only"] is True
+
+
+def test_remote_audit_snapshot_returns_selected_preview_in_one_rpc(
+    monkeypatch, tmp_path
+):
+    fake = _FakeRemoteAudit()
+    client = _remote_client(monkeypatch, tmp_path, fake)
+
+    response = client.get(
+        "/api/ui/audit",
+        params={
+            "machine": "edge",
+            "operation": "shell",
+            "include_selected": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["entries"][0]["id"] == "call:remote-shell"
+    assert "input" not in data["entries"][0]
+    assert data["entry"]["input"] == {"command": "printf safe"}
+    assert data["entry"]["output"] == {"stdout": "safe"}
+    assert [call[0] for call in fake.calls] == ["query_audit"]
+    assert fake.calls[0][1]["snapshot"] is True
+
+
+def test_local_session_snapshot_returns_todos_and_selected_audit_preview(
+    monkeypatch, tmp_path
+):
+    client = _client(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    session = get_tool_session_store().create_session(
+        workdir=workspace,
+        label="local snapshot",
+    )
+    write_todos_execute(
+        [
+            {
+                "id": "todo-1",
+                "content": "inspect snapshot",
+                "status": "in_progress",
+                "priority": "high",
+            }
+        ],
+        session.session_id,
+        expected_revision=0,
+        touch_session=False,
+    )
+    call_id = "local-session-snapshot"
+    session_ids = audit_tool_call_start(
+        call_id=call_id,
+        transport="http",
+        tool="read",
+        input={"session_id": session.session_id, "path": "notes.txt"},
+    )
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="http",
+        tool="read",
+        ok=True,
+        duration_ms=2,
+        output={"content": "snapshot"},
+        session_ids=session_ids,
+    )
+
+    response = client.get(
+        "/api/ui/sessions/snapshot",
+        params={
+            "machine": "local",
+            "session_id": session.session_id,
+            "operation": "files",
+            "limit": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["todos"][0]["content"] == "inspect snapshot"
+    assert data["audit"]["entries"][0]["id"] == f"call:{call_id}"
+    assert "input" not in data["audit"]["entries"][0]
+    assert data["audit"]["entry"]["input"]["path"] == "notes.txt"
+    assert data["audit"]["entry"]["output"] == {"content": "snapshot"}
+
+
+def test_remote_session_snapshot_uses_one_session_worker_rpc(
+    monkeypatch, tmp_path
+):
+    fake = _FakeRemoteAudit()
+    client = _remote_client(monkeypatch, tmp_path, fake)
+    session = get_tool_session_store().create_session(
+        target="remote",
+        machine="edge",
+        workdir="/srv/project",
+        worker_session_id="worker01",
+        label="remote snapshot",
+    )
+    calls: list[tuple[str, dict[str, Any], int | None, str]] = []
+
+    async def snapshot_call(
+        called_session,
+        tool: str,
+        args: dict[str, Any],
+        timeout_s: int | None = None,
+        *,
+        audit_origin: str,
+    ) -> dict[str, Any]:
+        assert called_session.session_id == session.session_id
+        calls.append((tool, dict(args), timeout_s, audit_origin))
+        entry = {
+            "id": "call:remote-snapshot",
+            "ts": 3.0,
+            "event": "tool_call",
+            "tool": "bash",
+            "operation": "shell",
+            "session": "worker01",
+            "input": {"command": "printf snapshot"},
+            "output": {"stdout": "snapshot"},
+        }
+        return {
+            "todos": {
+                "revision": 4,
+                "updated_at": 2.0,
+                "todos": [
+                    {
+                        "id": "remote-todo",
+                        "content": "remote state",
+                        "status": "pending",
+                        "priority": "medium",
+                    }
+                ],
+            },
+            "audit": {
+                "entries": [entry],
+                "count": 1,
+                "total_matched": 1,
+                "entry": entry,
+            },
+        }
+
+    monkeypatch.setattr(
+        ui_session_snapshot_module,
+        "call_remote_session_tool",
+        snapshot_call,
+    )
+
+    response = client.get(
+        "/api/ui/sessions/snapshot",
+        params={
+            "machine": "edge",
+            "session_id": session.session_id,
+            "operation": "shell",
+            "limit": 25,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["todos"][0]["content"] == "remote state"
+    assert data["audit"]["entries"][0]["session"] == session.session_id
+    assert data["audit"]["entry"]["input"] == {"command": "printf snapshot"}
+    assert len(calls) == 1
+    tool, args, timeout_s, origin = calls[0]
+    assert tool == "ui_session_snapshot"
+    assert args["operation"] == "shell"
+    assert args["limit"] == 25
+    assert timeout_s is not None
+    assert origin == REMOTE_WORKER_ORIGIN_HUMAN_UI
 
 
 def test_remote_audit_maps_public_session_filters_to_worker_ids(
@@ -402,7 +585,7 @@ async def test_remote_audit_builds_session_projection_once_per_query(
     ) -> dict[str, Any]:
         assert machine == "edge"
         assert tool == "query_audit"
-        assert args == {}
+        assert args == {"summary_only": True}
         entries = [
             {
                 "id": f"call:remote-{index}",
@@ -612,6 +795,62 @@ async def test_remote_worker_dispatch_exposes_process_scoped_audit(
     assert listing["count"] == 1
     assert listing["entries"][0]["id"] == "call:worker-read"
     assert detail["output"] == {"content": "remote"}
+
+
+@pytest.mark.asyncio
+async def test_remote_worker_dispatch_returns_session_snapshot_in_one_job(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "worker"
+    _configure(monkeypatch, workspace)
+    session = get_tool_session_store().create_session(
+        workdir=workspace,
+        label="worker snapshot",
+    )
+    write_todos_execute(
+        [
+            {
+                "id": "worker-todo",
+                "content": "return combined state",
+                "status": "pending",
+                "priority": "high",
+            }
+        ],
+        session.session_id,
+        expected_revision=0,
+        touch_session=False,
+    )
+    call_id = "worker-snapshot-read"
+    session_ids = audit_tool_call_start(
+        call_id=call_id,
+        transport="worker",
+        tool="read",
+        input={"session_id": session.session_id, "path": "remote.txt"},
+    )
+    audit_tool_call_end(
+        call_id=call_id,
+        transport="worker",
+        tool="read",
+        ok=True,
+        duration_ms=1,
+        output={"content": "remote"},
+        session_ids=session_ids,
+    )
+
+    snapshot = await execute_worker_tool(
+        "ui_session_snapshot",
+        {
+            "session_id": session.session_id,
+            "operation": "files",
+            "limit": 10,
+            REMOTE_WORKER_ORIGIN_ARG: REMOTE_WORKER_ORIGIN_HUMAN_UI,
+        },
+    )
+
+    assert snapshot["todos"]["todos"][0]["content"] == ("return combined state")
+    assert snapshot["audit"]["entries"][0]["id"] == f"call:{call_id}"
+    assert "input" not in snapshot["audit"]["entries"][0]
+    assert snapshot["audit"]["entry"]["input"]["path"] == "remote.txt"
 
 
 @pytest.mark.asyncio

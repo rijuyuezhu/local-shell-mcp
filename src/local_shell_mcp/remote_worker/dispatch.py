@@ -19,6 +19,19 @@ from local_shell_mcp.remote.tool_specs import (
 type WorkerHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 
 
+def _audit_filters(args: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "limit": int(args.get("limit") or 300),
+        "event": args.get("event"),
+        "operation": args.get("operation"),
+        "session": args.get("session"),
+        "search": args.get("search"),
+        "start_ts": args.get("start_ts"),
+        "end_ts": args.get("end_ts"),
+        "sort": str(args.get("sort") or "desc"),
+    }
+
+
 async def _session_start(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.session import session_start_execute
 
@@ -40,24 +53,35 @@ async def _session_change_cwd(args: dict[str, Any]) -> Any:
 
 
 async def _query_audit(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.audit import query_audit, query_session_audit
+    from local_shell_mcp.audit import (
+        audit_query_snapshot,
+        query_audit,
+        query_session_audit,
+        summarize_audit_entry,
+    )
 
     log_session_id = str(args.get("log_session_id") or "")
-    filters = {
-        "limit": int(args.get("limit") or 300),
-        "event": args.get("event"),
-        "operation": args.get("operation"),
-        "session": args.get("session"),
-        "search": args.get("search"),
-        "start_ts": args.get("start_ts"),
-        "end_ts": args.get("end_ts"),
-        "sort": str(args.get("sort") or "desc"),
-    }
+    filters = _audit_filters(args)
     if log_session_id:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             query_session_audit, log_session_id, **filters
         )
-    return await asyncio.to_thread(query_audit, **filters)
+    else:
+        result = await asyncio.to_thread(query_audit, **filters)
+    if bool(args.get("snapshot", False)):
+        return audit_query_snapshot(
+            result, selected_id=str(args.get("selected_id") or "")
+        )
+    if bool(args.get("summary_only", False)):
+        return {
+            **result,
+            "entries": [
+                summarize_audit_entry(entry)
+                for entry in result.get("entries", [])
+                if isinstance(entry, dict)
+            ],
+        }
+    return result
 
 
 async def _get_audit_entry(args: dict[str, Any]) -> Any:
@@ -78,6 +102,26 @@ async def _get_audit_entry(args: dict[str, Any]) -> Any:
         entry_id,
         include_full_payloads=include_full_payloads,
     )
+
+
+async def _ui_session_snapshot(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.audit import audit_query_snapshot, query_session_audit
+    from local_shell_mcp.ops.todo import read_todos_execute
+
+    session_id = str(args["session_id"])
+    filters = _audit_filters(args)
+    filters.pop("session", None)
+    todos_task = asyncio.to_thread(
+        read_todos_execute, session_id, touch_session=False
+    )
+    audit_task = asyncio.to_thread(query_session_audit, session_id, **filters)
+    todos, audit_result = await asyncio.gather(todos_task, audit_task)
+    return {
+        "todos": todos.model_dump(mode="json"),
+        "audit": audit_query_snapshot(
+            audit_result, selected_id=str(args.get("selected_id") or "")
+        ),
+    }
 
 
 async def _dashboard_snapshot(args: dict[str, Any]) -> Any:  # noqa: ARG001
@@ -578,6 +622,7 @@ _HANDLERS: dict[str, WorkerHandler] = {
     "dashboard_snapshot": _dashboard_snapshot,
     "query_audit": _query_audit,
     "get_audit_entry": _get_audit_entry,
+    "ui_session_snapshot": _ui_session_snapshot,
     "read_todos": _read_todos,
     "write_todos": _write_todos,
     "list_agent_skills": _list_agent_skills,

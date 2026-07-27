@@ -1496,14 +1496,64 @@
     setTodoControls();
   }
 
+  function sessionSnapshotPath() {
+    const params = new URLSearchParams({
+      machine: todoMachine,
+      session_id: todoSessionId,
+      limit: elements.sessionAuditLimit.value || "300",
+      sort: elements.sessionAuditSort.value || "desc",
+    });
+    if (sessionAuditSelectedId) params.set("selected_id", sessionAuditSelectedId);
+    if (elements.sessionAuditOperation.value) params.set("operation", elements.sessionAuditOperation.value);
+    if (elements.sessionAuditSearch.value.trim()) params.set("search", elements.sessionAuditSearch.value.trim());
+    return `/sessions/snapshot?${params.toString()}`;
+  }
+
   async function refreshSelectedSessionResources() {
-    if (!todoSessionId) return;
-    const results = await Promise.allSettled([
-      refreshTodos({ force: true }),
-      refreshSessionAudit(),
-    ]);
-    for (const result of results) {
-      if (result.status === "rejected" && result.reason?.authenticationRequired) throw result.reason;
+    if (!todoSessionId || !todoMachineOnline()) return null;
+    const todoRequestGeneration = ++todoGeneration;
+    const auditRequestGeneration = ++sessionAuditGeneration;
+    const requestedMachine = todoMachine;
+    const requestedSession = todoSessionId;
+    const previousSelection = sessionAuditSelectedId;
+    sessionAuditLoading = true;
+    elements.todoState.textContent = `Loading ${requestedSession}`;
+    elements.sessionAuditState.textContent = `Loading ${requestedSession}`;
+    setTodoControls();
+    try {
+      const payload = await request(sessionSnapshotPath());
+      if (
+        todoRequestGeneration !== todoGeneration ||
+        auditRequestGeneration !== sessionAuditGeneration ||
+        requestedMachine !== todoMachine ||
+        requestedSession !== todoSessionId
+      ) return null;
+      applyTodoPayload(payload, requestedSession);
+      if (!payload.audit || typeof payload.audit !== "object") {
+        throw new Error("Session snapshot returned malformed Audit state");
+      }
+      applySessionAuditPayload(payload.audit, requestedSession, previousSelection);
+      return payload;
+    } catch (error) {
+      if (
+        todoRequestGeneration !== todoGeneration ||
+        auditRequestGeneration !== sessionAuditGeneration ||
+        requestedMachine !== todoMachine ||
+        requestedSession !== todoSessionId
+      ) return null;
+      const message = error instanceof Error ? error.message : String(error);
+      elements.todoState.textContent = message;
+      sessionAuditEntries = [];
+      sessionAuditSelectedId = "";
+      renderSessionAuditList();
+      elements.sessionAuditState.textContent = message;
+      if (error?.authenticationRequired) throw error;
+      return null;
+    } finally {
+      if (auditRequestGeneration === sessionAuditGeneration) {
+        sessionAuditLoading = false;
+      }
+      setTodoControls();
     }
   }
 
@@ -1781,6 +1831,24 @@
     return `/todos?${new URLSearchParams({ machine: todoMachine, session_id: todoSessionId }).toString()}`;
   }
 
+  function applyTodoPayload(payload, requestedSession) {
+    todoItems = Array.isArray(payload.todos)
+      ? payload.todos.map((item) => ({
+          id: text(item.id, ""),
+          content: text(item.content, ""),
+          status: text(item.status, "pending"),
+          priority: text(item.priority, "medium"),
+        }))
+      : [];
+    todoRevision = Number.isInteger(payload.revision) && payload.revision >= 0 ? payload.revision : 0;
+    if (payload.limits && typeof payload.limits === "object") {
+      todoLimits = { ...todoLimits, ...payload.limits };
+    }
+    todoDirty = false;
+    renderTodos();
+    elements.todoState.textContent = `${requestedSession} · loaded ${todoItems.length} todos`;
+  }
+
   async function refreshTodos({ force = false } = {}) {
     if (!todoSessionId || (!force && (todoDirty || todoMutationBusy))) return null;
     const generation = ++todoGeneration;
@@ -1791,21 +1859,7 @@
     try {
       const payload = await request(todoQuery());
       if (generation !== todoGeneration || requestedMachine !== todoMachine || requestedSession !== todoSessionId) return null;
-      todoItems = Array.isArray(payload.todos)
-        ? payload.todos.map((item) => ({
-            id: text(item.id, ""),
-            content: text(item.content, ""),
-            status: text(item.status, "pending"),
-            priority: text(item.priority, "medium"),
-          }))
-        : [];
-      todoRevision = Number.isInteger(payload.revision) && payload.revision >= 0 ? payload.revision : 0;
-      if (payload.limits && typeof payload.limits === "object") {
-        todoLimits = { ...todoLimits, ...payload.limits };
-      }
-      todoDirty = false;
-      renderTodos();
-      elements.todoState.textContent = `${requestedSession} · loaded ${todoItems.length} todos`;
+      applyTodoPayload(payload, requestedSession);
       return payload;
     } catch (error) {
       if (generation !== todoGeneration || requestedMachine !== todoMachine || requestedSession !== todoSessionId) return null;
@@ -2230,7 +2284,9 @@
       scope: "global",
       limit: elements.auditLimit.value || "300",
       sort: elements.auditSort.value || "desc",
+      include_selected: "true",
     });
+    if (auditSelectedId) params.set("selected_id", auditSelectedId);
     const filters = [
       ["operation", elements.auditOperation.value],
       ["event", elements.auditEvent.value.trim()],
@@ -2259,7 +2315,6 @@
         machine: requestedMachine,
         scope: "global",
         id: entryId,
-        include_full_payloads: "true",
       });
       const payload = await request(`/audit/detail?${params.toString()}`);
       if (
@@ -2307,7 +2362,17 @@
       elements.auditSummary.textContent = `${auditEntries.length} shown · ${total} matched · ${requestedMachine} · Global`;
       elements.auditState.textContent = `${requestedMachine} · loaded ${auditEntries.length} global records`;
       renderAuditList();
-      if (auditSelectedId) void loadAuditDetail(auditSelectedId);
+      const selected = payload && payload.entry && typeof payload.entry === "object" ? payload.entry : null;
+      if (selected && selected.id === auditSelectedId) {
+        elements.auditDetailTitle.textContent = auditEntryTitle(selected);
+        elements.auditDetailMeta.textContent = `${requestedMachine} · Global · ${auditTimestamp(selected.ts)}`;
+        renderAuditDetailInto(selected, elements.auditDetailBody);
+      } else if (payload && payload.entry_error) {
+        elements.auditDetailMeta.textContent = "Details unavailable";
+        renderAuditDetailMessage(elements.auditDetailBody, text(payload.entry_error));
+      } else if (auditSelectedId) {
+        void loadAuditDetail(auditSelectedId);
+      }
       return payload;
     } catch (error) {
       if (generation !== auditGeneration || requestedMachine !== auditMachine) return null;
@@ -2370,6 +2435,34 @@
     }
   }
 
+  function renderSessionAuditDetailEntry(entry, requestedSession) {
+    elements.sessionAuditDetailTitle.textContent = auditEntryTitle(entry);
+    elements.sessionAuditDetailMeta.textContent = `${requestedSession} · ${auditTimestamp(entry.ts)}`;
+    renderAuditDetailInto(entry, elements.sessionAuditDetailBody);
+  }
+
+  function applySessionAuditPayload(payload, requestedSession, previousSelection) {
+    sessionAuditEntries = Array.isArray(payload.entries)
+      ? payload.entries.map((entry) => ({ ...entry }))
+      : [];
+    sessionAuditSelectedId = sessionAuditEntries.some((entry) => entry.id === previousSelection)
+      ? previousSelection
+      : text(sessionAuditEntries[0] && sessionAuditEntries[0].id, "");
+    const total = Number.isInteger(payload.total_matched) ? payload.total_matched : sessionAuditEntries.length;
+    elements.sessionAuditSummary.textContent = `${sessionAuditEntries.length} shown · ${total} matched · ${requestedSession}`;
+    elements.sessionAuditState.textContent = `${requestedSession} · loaded ${sessionAuditEntries.length} records`;
+    renderSessionAuditList();
+    const selected = payload && payload.entry && typeof payload.entry === "object" ? payload.entry : null;
+    if (selected && selected.id === sessionAuditSelectedId) {
+      renderSessionAuditDetailEntry(selected, requestedSession);
+    } else if (payload && payload.entry_error) {
+      elements.sessionAuditDetailMeta.textContent = "Details unavailable";
+      renderAuditDetailMessage(elements.sessionAuditDetailBody, text(payload.entry_error));
+    } else if (sessionAuditSelectedId) {
+      void loadSessionAuditDetail(sessionAuditSelectedId);
+    }
+  }
+
   function sessionAuditQueryPath() {
     const params = new URLSearchParams({
       machine: todoMachine,
@@ -2377,7 +2470,9 @@
       session: todoSessionId,
       limit: elements.sessionAuditLimit.value || "300",
       sort: elements.sessionAuditSort.value || "desc",
+      include_selected: "true",
     });
+    if (sessionAuditSelectedId) params.set("selected_id", sessionAuditSelectedId);
     if (elements.sessionAuditOperation.value) params.set("operation", elements.sessionAuditOperation.value);
     if (elements.sessionAuditSearch.value.trim()) params.set("search", elements.sessionAuditSearch.value.trim());
     return `/audit?${params.toString()}`;
@@ -2402,7 +2497,6 @@
         scope: "session",
         session: requestedSession,
         id: entryId,
-        include_full_payloads: "true",
       });
       const payload = await request(`/audit/detail?${params.toString()}`);
       if (
@@ -2413,9 +2507,7 @@
       ) return null;
       const entry = payload && payload.entry && typeof payload.entry === "object" ? payload.entry : null;
       if (!entry) throw new Error("Session Audit detail response was malformed");
-      elements.sessionAuditDetailTitle.textContent = auditEntryTitle(entry);
-      elements.sessionAuditDetailMeta.textContent = `${requestedSession} · ${auditTimestamp(entry.ts)}`;
-      renderAuditDetailInto(entry, elements.sessionAuditDetailBody);
+      renderSessionAuditDetailEntry(entry, requestedSession);
       return entry;
     } catch (error) {
       if (
@@ -2449,17 +2541,7 @@
         requestedMachine !== todoMachine ||
         requestedSession !== todoSessionId
       ) return null;
-      sessionAuditEntries = Array.isArray(payload.entries)
-        ? payload.entries.map((entry) => ({ ...entry }))
-        : [];
-      sessionAuditSelectedId = sessionAuditEntries.some((entry) => entry.id === previousSelection)
-        ? previousSelection
-        : text(sessionAuditEntries[0] && sessionAuditEntries[0].id, "");
-      const total = Number.isInteger(payload.total_matched) ? payload.total_matched : sessionAuditEntries.length;
-      elements.sessionAuditSummary.textContent = `${sessionAuditEntries.length} shown · ${total} matched · ${requestedSession}`;
-      elements.sessionAuditState.textContent = `${requestedSession} · loaded ${sessionAuditEntries.length} records`;
-      renderSessionAuditList();
-      if (sessionAuditSelectedId) void loadSessionAuditDetail(sessionAuditSelectedId);
+      applySessionAuditPayload(payload, requestedSession, previousSelection);
       return payload;
     } catch (error) {
       if (

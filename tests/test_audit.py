@@ -17,12 +17,14 @@ from local_shell_mcp.audit import (
     _coalesce_audit_records,
     audit,
     audit_call_context,
+    audit_query_snapshot,
     audit_tool_call_end,
     audit_tool_call_start,
     get_audit_entry,
     get_session_audit_entry,
     query_audit,
     query_session_audit,
+    summarize_audit_entry,
 )
 from local_shell_mcp.audit import core as audit_core
 from local_shell_mcp.audit.payloads import AUDIT_PAYLOAD_KEY
@@ -486,6 +488,48 @@ def test_query_audit_pairs_calls_folds_children_and_hides_auth(
     assert entry["related_events"][0]["url"].endswith("/download/<redacted>")
     assert "_source_indexes" not in entry
     assert get_audit_entry("call:call-1") == entry
+
+
+def test_audit_query_snapshot_summarizes_list_and_keeps_selected_preview():
+    first = {
+        "id": "call:first",
+        "ts": 1.0,
+        "event": "tool_call",
+        "node": "local",
+        "operation": "files",
+        "tool": "read",
+        "input": {"path": "first.txt"},
+        "output": {"content": "first"},
+        "related_events": [{"event": "child"}],
+    }
+    second = {
+        "id": "call:second",
+        "ts": 2.0,
+        "event": "tool_call",
+        "node": "local",
+        "operation": "shell",
+        "tool": "bash",
+        "input": {"command": "true"},
+        "output": {"ok": True},
+    }
+
+    summary = summarize_audit_entry(first)
+    snapshot = audit_query_snapshot(
+        {
+            "entries": [first, second],
+            "count": 2,
+            "total_matched": 2,
+            "failed_matched": 0,
+        },
+        selected_id="call:second",
+    )
+
+    assert "input" not in summary
+    assert "output" not in summary
+    assert summary["related_event_count"] == 1
+    assert snapshot["entries"] == [summary, summarize_audit_entry(second)]
+    assert snapshot["entry"] == second
+    assert snapshot["failed_matched"] == 0
 
 
 def test_query_audit_filters_sorts_limits_and_skips_malformed_lines(
