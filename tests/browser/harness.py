@@ -489,15 +489,35 @@ class BrowserHarness:
             "key => Boolean(sessionStorage.getItem(key))",
             LEGACY_TOKEN_STORAGE_KEY,
         )
-        cookies = {cookie["name"]: cookie for cookie in self.context.cookies()}
-        session_cookie = cookies[UI_SESSION_COOKIE]
-        csrf_cookie = cookies[UI_CSRF_COOKIE]
-        assert session_cookie["httpOnly"] is True
-        assert csrf_cookie["httpOnly"] is False
-        assert session_cookie["sameSite"] == "Strict"
-        assert csrf_cookie["sameSite"] == "Strict"
-        assert float(session_cookie["expires"]) > time.time() + 300
-        assert float(csrf_cookie["expires"]) > time.time() + 300
+        cookies = self.context.cookies()
+        session_cookie = next(
+            (
+                cookie
+                for cookie in cookies
+                if cookie.get("name") == UI_SESSION_COOKIE
+            ),
+            None,
+        )
+        csrf_cookie = next(
+            (
+                cookie
+                for cookie in cookies
+                if cookie.get("name") == UI_CSRF_COOKIE
+            ),
+            None,
+        )
+        assert session_cookie is not None
+        assert csrf_cookie is not None
+        assert session_cookie.get("httpOnly") is True
+        assert csrf_cookie.get("httpOnly") is False
+        assert session_cookie.get("sameSite") == "Strict"
+        assert csrf_cookie.get("sameSite") == "Strict"
+        session_expires = session_cookie.get("expires")
+        csrf_expires = csrf_cookie.get("expires")
+        assert isinstance(session_expires, int | float)
+        assert isinstance(csrf_expires, int | float)
+        assert session_expires > time.time() + 300
+        assert csrf_expires > time.time() + 300
 
         restored_page = self.context.new_page()
         restored = restored_page.goto(
