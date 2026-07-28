@@ -8,6 +8,7 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
+import idna
 import jwt
 
 from ..config.settings import get_settings
@@ -53,7 +54,14 @@ def canonical_ui_origin(url: str) -> str:
     try:
         address = ipaddress.ip_address(hostname)
     except ValueError:
-        host = hostname.encode("idna").decode("ascii").lower()
+        try:
+            host = idna.encode(
+                hostname,
+                uts46=True,
+                transitional=False,
+            ).decode("ascii")
+        except idna.IDNAError as exc:
+            raise ValueError("Human UI origin hostname is invalid") from exc
     else:
         host = address.compressed.lower()
         if address.version == 6:

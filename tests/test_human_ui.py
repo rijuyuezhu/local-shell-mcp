@@ -629,6 +629,13 @@ def test_ui_origins_use_browser_canonicalization(monkeypatch, tmp_path):
 
     assert canonical_ui_origin(configured) == canonical
     assert canonical_ui_origin("http://Example.COM:80") == "http://example.com"
+    assert canonical_ui_origin("https://faß.de") == "https://xn--fa-hia.de"
+    assert canonical_ui_origin("https://xn--fa-hia.de") == (
+        "https://xn--fa-hia.de"
+    )
+    assert canonical_ui_origin("https://例え.テスト") == (
+        "https://xn--r8jz45g.xn--zckzah"
+    )
     assert canonical_ui_origin("https://[2001:0DB8::1]:443") == (
         "https://[2001:db8::1]"
     )
