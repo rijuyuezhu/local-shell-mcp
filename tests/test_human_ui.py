@@ -31,6 +31,7 @@ from local_shell_mcp.ui.session import (
     UI_SESSION_BINDING_HEADER,
     UI_SESSION_BINDING_PROTOCOL_PREFIX,
     UI_SESSION_BINDING_STORAGE_KEY,
+    UI_SESSION_ESTABLISHED_STORAGE_KEY,
     canonical_ui_origin,
     is_valid_ui_origin,
     issue_ui_session,
@@ -367,6 +368,10 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
         == UI_SESSION_BINDING_PROTOCOL_PREFIX
     )
     assert runtime["sessionBindingStorageKey"] == UI_SESSION_BINDING_STORAGE_KEY
+    assert (
+        runtime["sessionEstablishedStorageKey"]
+        == UI_SESSION_ESTABLISHED_STORAGE_KEY
+    )
 
     invalid_session = client.get(
         "/api/ui/bootstrap",

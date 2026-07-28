@@ -20,6 +20,7 @@ UI_CSRF_HEADER = "x-local-shell-mcp-ui-csrf"
 UI_SESSION_BINDING_HEADER = "x-local-shell-mcp-ui-binding"
 UI_SESSION_BINDING_PROTOCOL_PREFIX = "lsm-ui-binding."
 UI_SESSION_BINDING_STORAGE_KEY = "local-shell-mcp-ui-session-binding"
+UI_SESSION_ESTABLISHED_STORAGE_KEY = "local-shell-mcp-ui-session-established"
 UI_SESSION_TOKEN_USE = "human-ui-session"
 _UI_SESSION_BINDING_MIN_LENGTH = 43
 _UI_SESSION_BINDING_MAX_LENGTH = 128

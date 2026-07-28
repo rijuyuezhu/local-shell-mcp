@@ -29,6 +29,7 @@ from ..session import (
     UI_SESSION_BINDING_HEADER,
     UI_SESSION_BINDING_PROTOCOL_PREFIX,
     UI_SESSION_BINDING_STORAGE_KEY,
+    UI_SESSION_ESTABLISHED_STORAGE_KEY,
     ui_csrf_cookie_name,
 )
 from .audit import api_audit, api_audit_detail
@@ -122,6 +123,7 @@ def _ui_index_html(settings: Settings) -> str:
                 "sessionBindingHeaderName": UI_SESSION_BINDING_HEADER,
                 "sessionBindingProtocolPrefix": UI_SESSION_BINDING_PROTOCOL_PREFIX,
                 "sessionBindingStorageKey": UI_SESSION_BINDING_STORAGE_KEY,
+                "sessionEstablishedStorageKey": UI_SESSION_ESTABLISHED_STORAGE_KEY,
                 "oauth": oauth,
             },
             separators=(",", ":"),

@@ -23,6 +23,9 @@
   const sessionBindingStorageKey = String(
     config.sessionBindingStorageKey || "local-shell-mcp-ui-session-binding",
   );
+  const sessionEstablishedStorageKey = String(
+    config.sessionEstablishedStorageKey || "local-shell-mcp-ui-session-established",
+  );
   sessionStorage.removeItem(legacyTokenStorageKey);
   const viewDefinitions = Object.freeze({
     overview: {
@@ -445,6 +448,19 @@
     }
   }
 
+  function announceSessionEstablished() {
+    try {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      localStorage.setItem(
+        sessionEstablishedStorageKey,
+        `${Date.now()}.${base64Url(bytes)}`,
+      );
+    } catch {
+      // The current tab can still use the new cookie when cross-tab signaling is unavailable.
+    }
+  }
+
   async function request(path, options = {}) {
     const headers = { Accept: "application/json", ...(options.headers || {}) };
     const bindingToken = sessionBindingToken();
@@ -675,7 +691,7 @@
         result.error_description || result.error || result.detail || "OAuth session exchange failed.",
       );
     }
-
+    announceSessionEstablished();
     sessionStorage.removeItem(pendingStorageKey);
     cleanCallbackUrl();
     return true;
@@ -3811,6 +3827,7 @@
       if (!response.ok || !result.ok) {
         throw new Error(result.message || result.detail || "Unable to establish Human UI session.");
       }
+      announceSessionEstablished();
       elements.tokenInput.value = "";
       await load();
     } catch (error) {
@@ -4225,7 +4242,11 @@
   window.addEventListener("popstate", restoreViewFromLocation);
   window.addEventListener("hashchange", restoreViewFromLocation);
   window.addEventListener("storage", (event) => {
-    if (event.key !== sessionBindingStorageKey) return;
+    if (event.key === sessionBindingStorageKey) {
+      if (event.oldValue === null && event.newValue !== null) return;
+    } else if (event.key !== sessionEstablishedStorageKey) {
+      return;
+    }
     closeTerminalSocket();
     void load();
   });

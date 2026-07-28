@@ -30,6 +30,7 @@ from local_shell_mcp.ui.session import (
     UI_CSRF_HEADER,
     UI_SESSION_BINDING_HEADER,
     UI_SESSION_BINDING_STORAGE_KEY,
+    UI_SESSION_ESTABLISHED_STORAGE_KEY,
     ui_csrf_cookie_name,
     ui_session_cookie_name,
 )
@@ -504,6 +505,13 @@ class BrowserHarness:
         unauthenticated = self.api("GET", "/api/ui/bootstrap")
         assert unauthenticated["status"] == 401
 
+        waiting_page = self.context.new_page()
+        waiting = waiting_page.goto(
+            f"{self.base_url}/ui", wait_until="domcontentloaded"
+        )
+        assert waiting is not None and waiting.status == 200
+        expect(waiting_page.locator("#auth-panel")).to_be_visible()
+
         self.page.locator("#oauth-login").click()
         self.page.wait_for_url(re.compile(r"/oauth/authorize\?"))
         self.page.locator('input[name="pin"]').fill(self.admin_pin)
@@ -511,6 +519,23 @@ class BrowserHarness:
         self.page.wait_for_url(re.compile(r"/ui/callback"))
         expect(self.page.locator("#connection-state")).to_have_text("Connected")
         expect(self.page.locator("#auth-panel")).to_be_hidden()
+        expect(waiting_page.locator("#connection-state")).to_have_text(
+            "Connected"
+        )
+        expect(waiting_page.locator("#auth-panel")).to_be_hidden()
+        established_signal = self.page.evaluate(
+            "key => localStorage.getItem(key) || ''",
+            UI_SESSION_ESTABLISHED_STORAGE_KEY,
+        )
+        assert isinstance(established_signal, str) and established_signal
+        assert (
+            waiting_page.evaluate(
+                "key => localStorage.getItem(key) || ''",
+                UI_SESSION_ESTABLISHED_STORAGE_KEY,
+            )
+            == established_signal
+        )
+        waiting_page.close()
         assert not self.page.evaluate(
             "key => Boolean(sessionStorage.getItem(key))",
             LEGACY_TOKEN_STORAGE_KEY,
