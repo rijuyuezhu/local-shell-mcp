@@ -274,6 +274,13 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     assert runtime["csrfCookieName"] == csrf_cookie_name
     assert runtime["csrfHeaderName"] == UI_CSRF_HEADER
 
+    invalid_session = client.get(
+        "/api/ui/bootstrap",
+        headers={"Cookie": f"{session_cookie_name}=not-a-jwt"},
+    )
+    assert invalid_session.status_code == 401
+    assert invalid_session.json()["detail"] == "Invalid Human UI session"
+
     callback = f"{base_url}/ui/callback"
     registration = client.post(
         "/oauth/register",
