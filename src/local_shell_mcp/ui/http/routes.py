@@ -46,6 +46,7 @@ from .session import (
     api_ui_session_logout,
     api_ui_session_oauth,
     api_ui_session_token,
+    ui_request_origin,
 )
 from .session_snapshot import api_session_snapshot
 from .sessions import api_session_action, api_sessions
@@ -88,7 +89,7 @@ def _ui_asset_revision() -> str:
     return digest.hexdigest()[:16]
 
 
-def _ui_index_html(settings: Settings) -> str:
+def _ui_index_html(settings: Settings, origin: str) -> str:
     """Load the browser shell and inject non-sensitive runtime configuration."""
     path = _assets_dir() / "index.html"
     if not path.is_file():
@@ -118,7 +119,7 @@ def _ui_index_html(settings: Settings) -> str:
                 "authMode": settings.auth_mode,
                 "wallpaper": settings.ui_wallpaper,
                 "opentuiAvailable": tui_runtime_available(settings),
-                "csrfCookieName": ui_csrf_cookie_name(),
+                "csrfCookieName": ui_csrf_cookie_name(origin),
                 "csrfHeaderName": UI_CSRF_HEADER,
                 "sessionBindingHeaderName": UI_SESSION_BINDING_HEADER,
                 "sessionBindingProtocolPrefix": UI_SESSION_BINDING_PROTOCOL_PREFIX,
@@ -153,10 +154,17 @@ def _index_headers() -> dict[str, str]:
     }
 
 
-async def ui_index(request: Request) -> Response:  # noqa: ARG001
+async def ui_index(request: Request) -> Response:
     """Serve the public browser shell; API calls remain authenticated."""
     settings = get_settings()
-    return HTMLResponse(_ui_index_html(settings), headers=_index_headers())
+    try:
+        origin = ui_request_origin(request)
+    except UnicodeError, ValueError:
+        return Response("Invalid Human UI request origin", status_code=400)
+    return HTMLResponse(
+        _ui_index_html(settings, origin),
+        headers=_index_headers(),
+    )
 
 
 async def ui_asset(request: Request) -> Response:

@@ -837,14 +837,16 @@ def _authorize_websocket(
         except jwt.PyJWTError:
             return False, 4401, "Invalid OAuth bearer token"
     else:
+        if not websocket.headers.get("origin", "").strip():
+            return False, 4401, "OAuth authentication required"
+        if not has_valid_ui_origin(websocket):
+            return False, 4403, "Invalid Human UI WebSocket origin"
         try:
             claims = ui_session_claims(websocket)
         except jwt.PyJWTError:
             return False, 4401, "Invalid Human UI session"
         if claims is None:
             return False, 4401, "OAuth authentication required"
-        if not has_valid_ui_origin(websocket):
-            return False, 4403, "Invalid Human UI WebSocket origin"
 
     granted = scope_set(str(claims.get("scope") or ""))
     required = [SCOPE_SHELL_READ, SCOPE_SHELL_EXECUTE]
