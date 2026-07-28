@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import ipaddress
 import secrets
 import time
 from typing import Any
@@ -35,9 +36,27 @@ def ui_session_audience() -> str:
 
 
 def canonical_ui_origin(url: str) -> str:
-    """Return a canonical browser origin, retaining an explicit port."""
+    """Return an origin serialized with browser-compatible URL semantics."""
     parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}"
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname
+    if not scheme or hostname is None:
+        raise ValueError("Human UI origin must include a scheme and hostname")
+
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        host = hostname.encode("idna").decode("ascii").lower()
+    else:
+        host = address.compressed.lower()
+        if address.version == 6:
+            host = f"[{host}]"
+
+    port = parsed.port
+    default_port = {"http": 80, "https": 443}.get(scheme)
+    if port is not None and port != default_port:
+        host = f"{host}:{port}"
+    return f"{scheme}://{host}"
 
 
 def ui_origin() -> str:
@@ -68,9 +87,13 @@ def ui_csrf_cookie_name(origin: str | None = None) -> str:
 
 def is_valid_ui_origin(submitted: str) -> bool:
     """Return whether a submitted browser origin matches the configured origin."""
-    submitted = submitted.rstrip("/")
-    expected = ui_origin().rstrip("/")
-    return bool(submitted) and hmac.compare_digest(submitted, expected)
+    if not submitted:
+        return False
+    try:
+        normalized = canonical_ui_origin(submitted)
+    except UnicodeError, ValueError:
+        return False
+    return hmac.compare_digest(normalized, ui_origin())
 
 
 def _csrf_digest(token: str) -> str:

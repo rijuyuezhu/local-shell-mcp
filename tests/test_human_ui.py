@@ -28,6 +28,8 @@ from local_shell_mcp.ui.security import (
 )
 from local_shell_mcp.ui.session import (
     UI_CSRF_HEADER,
+    canonical_ui_origin,
+    is_valid_ui_origin,
     issue_ui_session,
     ui_csrf_cookie_name,
     ui_session_cookie_name,
@@ -436,6 +438,31 @@ def test_ui_cookie_names_are_isolated_by_full_origin():
     assert ui_csrf_cookie_name(f"{first_origin}/ui") == ui_csrf_cookie_name(
         first_origin
     )
+
+
+def test_ui_origins_use_browser_canonicalization(monkeypatch, tmp_path):
+    configured = "HTTPS://Local-Shell-MCP.Example:443/ui"
+    canonical = "https://local-shell-mcp.example"
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        base_url=configured,
+    )
+
+    assert canonical_ui_origin(configured) == canonical
+    assert canonical_ui_origin("http://Example.COM:80") == "http://example.com"
+    assert canonical_ui_origin("https://[2001:0DB8::1]:443") == (
+        "https://[2001:db8::1]"
+    )
+    assert is_valid_ui_origin(canonical)
+    assert is_valid_ui_origin("https://LOCAL-SHELL-MCP.EXAMPLE:443")
+    assert not is_valid_ui_origin("https://local-shell-mcp.example:444")
+    assert not is_valid_ui_origin("null")
+    assert ui_session_cookie_name(configured) == ui_session_cookie_name(
+        canonical
+    )
+    assert ui_csrf_cookie_name(configured) == ui_csrf_cookie_name(canonical)
 
 
 def test_existing_bearer_can_be_converted_without_exposing_it_to_storage(
