@@ -9,9 +9,24 @@
     ? String(config.wallpaper)
     : "aurora";
   document.body.dataset.wallpaper = wallpaper;
-  const tokenStorageKey = "local-shell-mcp-ui-access-token";
+  const legacyTokenStorageKey = "local-shell-mcp-ui-access-token";
   const pendingStorageKey = "local-shell-mcp-ui-oauth-pending";
   const pendingMaxAgeMs = 10 * 60 * 1000;
+  const csrfCookieName = String(config.csrfCookieName || "");
+  const csrfHeaderName = String(config.csrfHeaderName || "x-local-shell-mcp-ui-csrf");
+  const sessionBindingHeaderName = String(
+    config.sessionBindingHeaderName || "x-local-shell-mcp-ui-binding",
+  );
+  const sessionBindingProtocolPrefix = String(
+    config.sessionBindingProtocolPrefix || "lsm-ui-binding.",
+  );
+  const sessionBindingStorageKey = String(
+    config.sessionBindingStorageKey || "local-shell-mcp-ui-session-binding",
+  );
+  const sessionEstablishedStorageKey = String(
+    config.sessionEstablishedStorageKey || "local-shell-mcp-ui-session-established",
+  );
+  sessionStorage.removeItem(legacyTokenStorageKey);
   const viewDefinitions = Object.freeze({
     overview: {
       title: "Overview",
@@ -47,7 +62,7 @@
     },
   });
   const encoder = new TextEncoder();
-  let accessToken = sessionStorage.getItem(tokenStorageKey) || "";
+  let authenticated = config.authMode !== "oauth";
   let terminalSocket = null;
   let terminalSocketMachine = "";
   let terminalMachine = "local";
@@ -358,9 +373,13 @@
     elements.connectionState.className = `status status-${state}`;
   }
 
-  function clearAccessToken() {
-    accessToken = "";
-    sessionStorage.removeItem(tokenStorageKey);
+  function cookieValue(name) {
+    const prefix = `${encodeURIComponent(name)}=`;
+    for (const part of document.cookie.split(";")) {
+      const item = part.trim();
+      if (item.startsWith(prefix)) return decodeURIComponent(item.slice(prefix.length));
+    }
+    return "";
   }
 
   function oauthAvailable() {
@@ -368,6 +387,7 @@
   }
 
   function showAuthentication(message, detail) {
+    authenticated = false;
     elements.authPanel.hidden = false;
     elements.oauthLogin.hidden = !oauthAvailable();
     elements.oauthLogin.disabled = false;
@@ -378,9 +398,10 @@
   }
 
   function hideAuthentication() {
+    authenticated = true;
     elements.authPanel.hidden = true;
     elements.tokenInput.removeAttribute("aria-invalid");
-    elements.signOut.hidden = config.authMode !== "oauth" || !accessToken;
+    elements.signOut.hidden = config.authMode !== "oauth";
   }
 
   async function responsePayload(response) {
@@ -391,9 +412,64 @@
     }
   }
 
+  function validSessionBindingToken(value) {
+    return /^[A-Za-z0-9_-]{43,128}$/.test(String(value || ""));
+  }
+
+  function sessionBindingToken() {
+    if (config.authMode !== "oauth") return "";
+    try {
+      const value = localStorage.getItem(sessionBindingStorageKey) || "";
+      return validSessionBindingToken(value) ? value : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function ensureSessionBindingToken() {
+    const existing = sessionBindingToken();
+    if (existing) return existing;
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const created = base64Url(bytes);
+    try {
+      localStorage.setItem(sessionBindingStorageKey, created);
+    } catch {
+      throw new Error("Persistent browser storage is unavailable for secure session binding.");
+    }
+    return created;
+  }
+
+  function clearSessionBindingToken() {
+    try {
+      localStorage.removeItem(sessionBindingStorageKey);
+    } catch {
+      // The server-side session is still cleared when browser storage is unavailable.
+    }
+  }
+
+  function announceSessionEstablished() {
+    try {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      localStorage.setItem(
+        sessionEstablishedStorageKey,
+        `${Date.now()}.${base64Url(bytes)}`,
+      );
+    } catch {
+      // The current tab can still use the new cookie when cross-tab signaling is unavailable.
+    }
+  }
+
   async function request(path, options = {}) {
     const headers = { Accept: "application/json", ...(options.headers || {}) };
-    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    const bindingToken = sessionBindingToken();
+    if (bindingToken) headers[sessionBindingHeaderName] = bindingToken;
+    const method = String(options.method || "GET").toUpperCase();
+    if (!new Set(["GET", "HEAD", "OPTIONS"]).has(method)) {
+      const csrfToken = cookieValue(csrfCookieName);
+      if (csrfToken) headers[csrfHeaderName] = csrfToken;
+    }
     const response = await fetch(`${apiPrefix}${path}`, {
       ...options,
       headers,
@@ -504,6 +580,7 @@
     elements.oauthLogin.disabled = true;
     elements.authDetail.textContent = "Preparing a secure OAuth authorization request…";
     try {
+      ensureSessionBindingToken();
       const redirectUri = callbackUrl();
       const registration = await fetch(oauthEndpoint("registrationEndpoint"), {
         method: "POST",
@@ -597,20 +674,24 @@
       resource: String(oauth.resource || ""),
       code_verifier: pending.verifier,
     });
-    const response = await fetch(oauthEndpoint("tokenEndpoint"), {
+    const response = await fetch(oauthEndpoint("sessionOAuthEndpoint"), {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+        [sessionBindingHeaderName]: ensureSessionBindingToken(),
+      },
       body: form,
       cache: "no-store",
       credentials: "same-origin",
     });
     const result = await responsePayload(response);
-    if (!response.ok || typeof result.access_token !== "string" || !result.access_token) {
-      throw new Error(result.error_description || result.error || "OAuth token exchange failed.");
+    if (!response.ok || !result.ok) {
+      throw new Error(
+        result.error_description || result.error || result.detail || "OAuth session exchange failed.",
+      );
     }
-
-    accessToken = result.access_token;
-    sessionStorage.setItem(tokenStorageKey, accessToken);
+    announceSessionEstablished();
     sessionStorage.removeItem(pendingStorageKey);
     cleanCallbackUrl();
     return true;
@@ -685,7 +766,7 @@
   function startDashboardPolling() {
     stopDashboardPolling();
     dashboardTimer = window.setInterval(() => {
-      if ((config.authMode !== "oauth" || accessToken) && dashboardMachineOnline()) {
+      if ((config.authMode !== "oauth" || authenticated) && dashboardMachineOnline()) {
         refreshDashboardInBackground();
       }
     }, 5000);
@@ -1245,7 +1326,7 @@
   function startRemotePolling() {
     stopRemotePolling();
     remoteTimer = globalThis.setInterval(() => {
-      if (config.authMode !== "oauth" || accessToken) refreshRemotesInBackground();
+      if (config.authMode !== "oauth" || authenticated) refreshRemotesInBackground();
     }, 4000);
   }
 
@@ -2815,7 +2896,8 @@
 
   function terminalSocketProtocols() {
     const protocols = ["lsm-ui-terminal"];
-    if (accessToken) protocols.push(`bearer.${base64Url(encoder.encode(accessToken))}`);
+    const bindingToken = sessionBindingToken();
+    if (bindingToken) protocols.push(`${sessionBindingProtocolPrefix}${bindingToken}`);
     return protocols;
   }
 
@@ -3106,7 +3188,6 @@
       terminalReady = false;
       setTerminalControls(false);
       if (event.code === 4401 || event.code === 4403) {
-        clearAccessToken();
         showAuthentication("Authentication required", event.reason || "Terminal authorization failed.");
       } else {
         elements.terminalState.textContent = event.reason || `Disconnected · ${requestedMachine}`;
@@ -3696,7 +3777,6 @@
         resetDashboardWorkspace("local");
         resetRemotes("Authentication required");
         elements.dashboardState.textContent = "Authentication required";
-        clearAccessToken();
         showAuthentication("Authentication required");
       } else {
         setConnection("Unavailable", "error");
@@ -3712,11 +3792,9 @@
       await finishOAuthCallback();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (accessToken) {
-        await load();
-        if (elements.authPanel.hidden) {
-          elements.lastUpdated.textContent = `OAuth callback ignored: ${message}`;
-        }
+      await load();
+      if (elements.authPanel.hidden) {
+        elements.lastUpdated.textContent = `OAuth callback ignored: ${message}`;
       } else {
         showAuthentication("Unable to sign in", message);
       }
@@ -3725,13 +3803,41 @@
     await load();
   }
 
-  elements.authForm.addEventListener("submit", (event) => {
+  elements.authForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     closeTerminalSocket();
-    accessToken = elements.tokenInput.value.trim();
-    if (accessToken) sessionStorage.setItem(tokenStorageKey, accessToken);
-    else sessionStorage.removeItem(tokenStorageKey);
-    void load();
+    const token = elements.tokenInput.value.trim();
+    if (!token) {
+      showAuthentication("Access token required", "Paste a valid OAuth access token.");
+      return;
+    }
+    elements.tokenInput.disabled = true;
+    try {
+      const response = await fetch(oauthEndpoint("sessionTokenEndpoint"), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          [sessionBindingHeaderName]: ensureSessionBindingToken(),
+        },
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const result = await responsePayload(response);
+      if (!response.ok || !result.ok) {
+        throw new Error(result.message || result.detail || "Unable to establish Human UI session.");
+      }
+      announceSessionEstablished();
+      elements.tokenInput.value = "";
+      await load();
+    } catch (error) {
+      showAuthentication(
+        "Unable to sign in",
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      elements.tokenInput.disabled = false;
+    }
   });
 
   elements.terminalStartForm.addEventListener("submit", async (event) => {
@@ -4097,7 +4203,12 @@
 
   elements.oauthLogin.addEventListener("click", () => void startOAuth());
   elements.refresh.addEventListener("click", () => void load());
-  elements.signOut.addEventListener("click", () => {
+  elements.signOut.addEventListener("click", async () => {
+    try {
+      await request("/session/logout", { method: "POST" });
+    } catch {
+      // Local UI state is still cleared when the server session already expired.
+    }
     terminalLoading = false;
     resetTerminalWorkspace("local");
     stopDashboardPolling();
@@ -4114,10 +4225,10 @@
     elements.todoState.textContent = "Authentication required";
     elements.sessionAuditState.textContent = "Authentication required";
     elements.auditState.textContent = "Authentication required";
-    clearAccessToken();
     sessionStorage.removeItem(pendingStorageKey);
+    clearSessionBindingToken();
     elements.tokenInput.value = "";
-    showAuthentication("Signed out", "The browser token was removed from this tab.");
+    showAuthentication("Signed out", "The persistent browser session was cleared.");
   });
 
   for (const item of elements.appNavItems) {
@@ -4130,6 +4241,15 @@
   const restoreViewFromLocation = () => setActiveView(viewFromLocation(), { syncHash: false });
   window.addEventListener("popstate", restoreViewFromLocation);
   window.addEventListener("hashchange", restoreViewFromLocation);
+  window.addEventListener("storage", (event) => {
+    if (event.key === sessionBindingStorageKey) {
+      if (event.oldValue === null && event.newValue !== null) return;
+    } else if (event.key !== sessionEstablishedStorageKey) {
+      return;
+    }
+    closeTerminalSocket();
+    void load();
+  });
 
   window.addEventListener("resize", () => window.requestAnimationFrame(sendTerminalResize));
   window.addEventListener("beforeunload", () => {
@@ -4149,6 +4269,6 @@
     ) {
       terminalSocket.send(JSON.stringify({ type: "ping" }));
     }
-    if (config.authMode !== "oauth" || accessToken) void load();
+    if (config.authMode !== "oauth" || authenticated) void load();
   }, 30000);
 })();

@@ -12,7 +12,12 @@
   if (!config.opentuiAvailable) return;
 
   const uiPath = String(config.uiPath || "/ui").replace(/\/$/, "");
-  const tokenStorageKey = "local-shell-mcp-ui-access-token";
+  const sessionBindingProtocolPrefix = String(
+    config.sessionBindingProtocolPrefix || "lsm-ui-binding.",
+  );
+  const sessionBindingStorageKey = String(
+    config.sessionBindingStorageKey || "local-shell-mcp-ui-session-binding",
+  );
   const encoder = new TextEncoder();
   let terminal = null;
   let fitAddon = null;
@@ -22,17 +27,17 @@
   let reconnectTimer = null;
   let intentionalStop = false;
 
-  function base64Url(bytes) {
-    let binary = "";
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
-
   function protocols() {
-    const result = ["lsm-ui-terminal"];
-    const token = sessionStorage.getItem(tokenStorageKey) || "";
-    if (token) result.push(`bearer.${base64Url(encoder.encode(token))}`);
-    return result;
+    const values = ["lsm-ui-terminal"];
+    try {
+      const bindingToken = localStorage.getItem(sessionBindingStorageKey) || "";
+      if (/^[A-Za-z0-9_-]{43,128}$/.test(bindingToken)) {
+        values.push(`${sessionBindingProtocolPrefix}${bindingToken}`);
+      }
+    } catch {
+      // The WebSocket will be rejected when persistent origin binding is unavailable.
+    }
+    return values;
   }
 
   function ensureTerminal() {
@@ -163,6 +168,11 @@
     });
   }
   window.addEventListener("resize", () => window.requestAnimationFrame(sendResize));
+  window.addEventListener("storage", (event) => {
+    if (event.key === sessionBindingStorageKey && !event.newValue) {
+      stop("Authentication required");
+    }
+  });
   window.addEventListener("beforeunload", () => {
     dataSubscription?.dispose();
     binarySubscription?.dispose();

@@ -3,7 +3,7 @@ import time
 
 from playwright.sync_api import Route, expect
 
-from tests.browser.harness import TOKEN_STORAGE_KEY, BrowserHarness
+from tests.browser.harness import BrowserHarness
 
 
 def _file_entry(harness: BrowserHarness, path: str):
@@ -289,9 +289,7 @@ def run_files_todos_audit(harness: BrowserHarness) -> None:
         page.locator("#audit-detail-body .audit-call-panel").nth(1)
     ).not_to_contain_text("No output recorded")
 
-    full_token = page.evaluate(
-        "key => sessionStorage.getItem(key)", TOKEN_STORAGE_KEY
-    )
+    full_token = harness.api_token
     assert isinstance(full_token, str) and full_token
     read_only_token = harness.issue_token("audit:read shell:read remote:use")
     harness.set_token(read_only_token)

@@ -20,6 +20,7 @@ dependencies = [
     "authlib>=1.7.2",
     "fastapi>=0.138.1",
     "httpx>=0.28.1",
+    "idna>=3.10",
     "mcp>=1.28.0",
     "pathspec>=1.1.1",
     "pillow>=12.1.1",

@@ -72,6 +72,7 @@ from .common import (
 from .common import (
     require_remote_machine as _require_remote_machine,
 )
+from .session import has_valid_ui_origin, ui_session_claims
 
 UI_TERMINAL_SUBPROTOCOL = "lsm-ui-terminal"
 UI_TERMINAL_INPUT_MAX_BYTES = 65_536
@@ -828,13 +829,23 @@ def _authorize_websocket(
     """Authorize a browser WebSocket without trusting localhost proxy hops."""
     if get_settings().auth_mode == "none":
         return True, 1000, ""
+
     token = _websocket_token(websocket)
-    if not token:
-        return False, 4401, "OAuth authentication required"
-    try:
-        claims = validate_bearer_token(token)
-    except jwt.PyJWTError:
-        return False, 4401, "Invalid OAuth bearer token"
+    if token:
+        try:
+            claims = validate_bearer_token(token)
+        except jwt.PyJWTError:
+            return False, 4401, "Invalid OAuth bearer token"
+    else:
+        try:
+            claims = ui_session_claims(websocket)
+        except jwt.PyJWTError:
+            return False, 4401, "Invalid Human UI session"
+        if claims is None:
+            return False, 4401, "OAuth authentication required"
+        if not has_valid_ui_origin(websocket):
+            return False, 4403, "Invalid Human UI WebSocket origin"
+
     granted = scope_set(str(claims.get("scope") or ""))
     required = [SCOPE_SHELL_READ, SCOPE_SHELL_EXECUTE]
     if machine != "local":

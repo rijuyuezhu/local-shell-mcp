@@ -2,18 +2,20 @@
 
 from collections.abc import Iterable
 
+import jwt
 from fastapi import HTTPException, Request
 from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ...ui.http.session import has_valid_ui_csrf, ui_session_claims
 from ...ui.security import (
     has_valid_ui_local_token,
     is_loopback_connection,
     is_ui_api_path,
 )
 from ..core.context import bind_oauth_claims, reset_oauth_claims
-from .auth import verify_request
+from .auth import request_authentication_is_bypassed, verify_request
 
 
 def _public_route_matches(route: BaseRoute, scope: Scope) -> bool:
@@ -50,24 +52,48 @@ class AuthMiddleware:
             return
 
         request = Request(scope, receive)
+        ui_request = is_ui_api_path(str(scope.get("path") or ""))
         if (
-            is_ui_api_path(str(scope.get("path") or ""))
+            ui_request
             and is_loopback_connection(request)
             and has_valid_ui_local_token(request)
         ):
             await self.app(scope, receive, send)
             return
 
-        try:
-            claims = verify_request(request)
-        except HTTPException as exc:
-            response = JSONResponse(
-                {"detail": exc.detail},
-                status_code=exc.status_code,
-                headers=exc.headers or {},
-            )
-            await response(scope, receive, send)
-            return
+        claims = None
+        if (
+            ui_request
+            and not request_authentication_is_bypassed(request)
+            and "authorization" not in request.headers
+        ):
+            try:
+                claims = ui_session_claims(request)
+            except jwt.PyJWTError:
+                response = JSONResponse(
+                    {"detail": "Invalid Human UI session"}, status_code=401
+                )
+                await response(scope, receive, send)
+                return
+            if claims is not None and not has_valid_ui_csrf(request, claims):
+                response = JSONResponse(
+                    {"detail": "Human UI CSRF validation failed"},
+                    status_code=403,
+                )
+                await response(scope, receive, send)
+                return
+
+        if claims is None:
+            try:
+                claims = verify_request(request)
+            except HTTPException as exc:
+                response = JSONResponse(
+                    {"detail": exc.detail},
+                    status_code=exc.status_code,
+                    headers=exc.headers or {},
+                )
+                await response(scope, receive, send)
+                return
 
         claims_token = bind_oauth_claims(claims)
         try:

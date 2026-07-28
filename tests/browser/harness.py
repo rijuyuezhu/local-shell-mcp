@@ -24,10 +24,19 @@ from playwright.sync_api import (
     expect,
 )
 
+from local_shell_mcp.oauth.core.scopes import default_scope
 from local_shell_mcp.ui.contracts import POSIX_TUI_EXECUTABLE_NAME
+from local_shell_mcp.ui.session import (
+    UI_CSRF_HEADER,
+    UI_SESSION_BINDING_HEADER,
+    UI_SESSION_BINDING_STORAGE_KEY,
+    UI_SESSION_ESTABLISHED_STORAGE_KEY,
+    ui_csrf_cookie_name,
+    ui_session_cookie_name,
+)
 from tests.e2e_helpers import PROJECT_ROOT, SRC_ROOT, free_tcp_port, server_env
 
-TOKEN_STORAGE_KEY = "local-shell-mcp-ui-access-token"
+LEGACY_TOKEN_STORAGE_KEY = "local-shell-mcp-ui-access-token"
 
 
 def _start_logged_process(
@@ -122,6 +131,7 @@ class BrowserHarness:
     page: Page
     server: subprocess.Popen[Any]
     worker: subprocess.Popen[Any] | None = None
+    api_token: str | None = None
     terminal_sessions: list[tuple[str, str]] = field(default_factory=list)
     console_messages: list[str] = field(default_factory=list)
     console_errors: list[str] = field(default_factory=list)
@@ -354,14 +364,39 @@ class BrowserHarness:
     ) -> dict[str, Any]:
         result = self.page.evaluate(
             """
-            async ({method, path, body, tokenKey}) => {
-              const token = sessionStorage.getItem(tokenKey) || "";
-              const headers = token ? {Authorization: `Bearer ${token}`} : {};
+            async ({
+              method,
+              path,
+              body,
+              token,
+              csrfCookieName,
+              csrfHeaderName,
+              bindingHeaderName,
+              bindingStorageKey,
+            }) => {
+              const headers = {};
+              const uiRequest = path.startsWith("/api/ui/");
+              const unsafe = !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+              if (uiRequest) {
+                const binding = localStorage.getItem(bindingStorageKey) || "";
+                if (binding) headers[bindingHeaderName] = binding;
+              }
+              if (uiRequest && unsafe) {
+                const prefix = `${encodeURIComponent(csrfCookieName)}=`;
+                const csrf = document.cookie
+                  .split(";")
+                  .map((value) => value.trim())
+                  .find((value) => value.startsWith(prefix));
+                if (csrf) headers[csrfHeaderName] = decodeURIComponent(csrf.slice(prefix.length));
+              } else if (!uiRequest && token) {
+                headers.Authorization = `Bearer ${token}`;
+              }
               if (body !== null) headers["Content-Type"] = "application/json";
               const response = await fetch(path, {
                 method,
                 headers,
                 body: body === null ? undefined : JSON.stringify(body),
+                credentials: "same-origin",
               });
               let payload = null;
               try { payload = await response.json(); } catch (_) {}
@@ -372,7 +407,11 @@ class BrowserHarness:
                 "method": method,
                 "path": path,
                 "body": body,
-                "tokenKey": TOKEN_STORAGE_KEY,
+                "token": self.api_token,
+                "csrfCookieName": ui_csrf_cookie_name(self.base_url),
+                "csrfHeaderName": UI_CSRF_HEADER,
+                "bindingHeaderName": UI_SESSION_BINDING_HEADER,
+                "bindingStorageKey": UI_SESSION_BINDING_STORAGE_KEY,
             },
         )
         assert isinstance(result, dict)
@@ -432,10 +471,30 @@ class BrowserHarness:
             return str(exchange.json()["access_token"])
 
     def set_token(self, token: str) -> None:
-        self.page.evaluate(
-            "([key, value]) => sessionStorage.setItem(key, value)",
-            [TOKEN_STORAGE_KEY, token],
+        result = self.page.evaluate(
+            """
+            async ({token, bindingHeaderName, bindingStorageKey}) => {
+              const binding = localStorage.getItem(bindingStorageKey) || "";
+              const response = await fetch("/api/ui/session/token", {
+                method: "POST",
+                headers: {
+                  Accept: "application/json",
+                  Authorization: `Bearer ${token}`,
+                  [bindingHeaderName]: binding,
+                },
+                credentials: "same-origin",
+              });
+              return {status: response.status, payload: await response.json()};
+            }
+            """,
+            {
+                "token": token,
+                "bindingHeaderName": UI_SESSION_BINDING_HEADER,
+                "bindingStorageKey": UI_SESSION_BINDING_STORAGE_KEY,
+            },
         )
+        assert result["status"] == 200, result
+        self.api_token = token
 
     def login(self) -> None:
         response = self.page.goto(
@@ -446,6 +505,13 @@ class BrowserHarness:
         unauthenticated = self.api("GET", "/api/ui/bootstrap")
         assert unauthenticated["status"] == 401
 
+        waiting_page = self.context.new_page()
+        waiting = waiting_page.goto(
+            f"{self.base_url}/ui", wait_until="domcontentloaded"
+        )
+        assert waiting is not None and waiting.status == 200
+        expect(waiting_page.locator("#auth-panel")).to_be_visible()
+
         self.page.locator("#oauth-login").click()
         self.page.wait_for_url(re.compile(r"/oauth/authorize\?"))
         self.page.locator('input[name="pin"]').fill(self.admin_pin)
@@ -453,9 +519,89 @@ class BrowserHarness:
         self.page.wait_for_url(re.compile(r"/ui/callback"))
         expect(self.page.locator("#connection-state")).to_have_text("Connected")
         expect(self.page.locator("#auth-panel")).to_be_hidden()
-        assert self.page.evaluate(
-            "key => Boolean(sessionStorage.getItem(key))", TOKEN_STORAGE_KEY
+        expect(waiting_page.locator("#connection-state")).to_have_text(
+            "Connected"
         )
+        expect(waiting_page.locator("#auth-panel")).to_be_hidden()
+        established_signal = self.page.evaluate(
+            "key => localStorage.getItem(key) || ''",
+            UI_SESSION_ESTABLISHED_STORAGE_KEY,
+        )
+        assert isinstance(established_signal, str) and established_signal
+        assert (
+            waiting_page.evaluate(
+                "key => localStorage.getItem(key) || ''",
+                UI_SESSION_ESTABLISHED_STORAGE_KEY,
+            )
+            == established_signal
+        )
+        waiting_page.close()
+        assert not self.page.evaluate(
+            "key => Boolean(sessionStorage.getItem(key))",
+            LEGACY_TOKEN_STORAGE_KEY,
+        )
+        binding = self.page.evaluate(
+            "key => localStorage.getItem(key) || ''",
+            UI_SESSION_BINDING_STORAGE_KEY,
+        )
+        assert isinstance(binding, str) and re.fullmatch(
+            r"[A-Za-z0-9_-]{43,128}", binding
+        )
+        cookies = self.context.cookies()
+        session_cookie = next(
+            (
+                cookie
+                for cookie in cookies
+                if cookie.get("name") == ui_session_cookie_name(self.base_url)
+            ),
+            None,
+        )
+        csrf_cookie = next(
+            (
+                cookie
+                for cookie in cookies
+                if cookie.get("name") == ui_csrf_cookie_name(self.base_url)
+            ),
+            None,
+        )
+        assert session_cookie is not None
+        assert csrf_cookie is not None
+        assert session_cookie.get("httpOnly") is True
+        assert csrf_cookie.get("httpOnly") is False
+        assert session_cookie.get("sameSite") == "Strict"
+        assert csrf_cookie.get("sameSite") == "Strict"
+        session_expires = session_cookie.get("expires")
+        csrf_expires = csrf_cookie.get("expires")
+        assert isinstance(session_expires, int | float)
+        assert isinstance(csrf_expires, int | float)
+        assert session_expires > time.time() + 300
+        assert csrf_expires > time.time() + 300
+
+        restored_page = self.context.new_page()
+        restored = restored_page.goto(
+            f"{self.base_url}/ui", wait_until="domcontentloaded"
+        )
+        assert restored is not None and restored.status == 200
+        expect(restored_page.locator("#connection-state")).to_have_text(
+            "Connected"
+        )
+        expect(restored_page.locator("#auth-panel")).to_be_hidden()
+        assert not restored_page.evaluate(
+            "key => Boolean(sessionStorage.getItem(key))",
+            LEGACY_TOKEN_STORAGE_KEY,
+        )
+        assert (
+            restored_page.evaluate(
+                "key => localStorage.getItem(key) || ''",
+                UI_SESSION_BINDING_STORAGE_KEY,
+            )
+            == binding
+        )
+        self.page.close()
+        self.page = restored_page
+        self._attach_diagnostics()
+
+        self.api_token = self.issue_token(default_scope())
         self.console_errors = [
             line
             for line in self.console_errors

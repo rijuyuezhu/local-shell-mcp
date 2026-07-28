@@ -6,7 +6,7 @@ from authlib.oauth2.rfc6749.errors import MissingAuthorizationError, OAuth2Error
 from fastapi import HTTPException, Request
 
 from ...audit import audit
-from ...config.settings import get_settings
+from ...config.settings import Settings, get_settings
 from ..core.urls import protected_resource_metadata_url
 from ..protocol.bearer import bearer_resource_protector
 
@@ -19,6 +19,19 @@ def client_host(request: Request) -> str:
 def is_localhost(request: Request) -> bool:
     """Return whether the request came from a localhost peer."""
     return client_host(request) in {"127.0.0.1", "::1", "localhost"}
+
+
+def request_authentication_is_bypassed(
+    request: Request, settings: Settings | None = None
+) -> bool:
+    """Return whether configured policy bypasses credentials for this request."""
+    resolved = settings or get_settings()
+    return resolved.auth_mode == "none" or (
+        resolved.auth_mode == "oauth"
+        and resolved.auth_bypass_localhost
+        and resolved.mode == "http"
+        and is_localhost(request)
+    )
 
 
 def bearer_challenge(*, error: str | None = None) -> str:
@@ -59,15 +72,9 @@ def verify_oauth(request: Request) -> dict[str, Any]:
 def verify_request(request: Request) -> dict[str, Any] | None:
     """Verify one HTTP request according to the configured auth mode. It returns the bearer claims if the request is authenticated, or None if not."""
     settings = get_settings()
+    if request_authentication_is_bypassed(request, settings):
+        return None
     match settings.auth_mode:
-        case "none":
-            return None
-        case "oauth" if (
-            settings.auth_bypass_localhost
-            and is_localhost(request)
-            and settings.mode == "http"
-        ):
-            return None
         case "oauth":
             claims = verify_oauth(request)
         case _:
