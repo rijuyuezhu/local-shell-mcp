@@ -27,9 +27,9 @@ from playwright.sync_api import (
 from local_shell_mcp.oauth.core.scopes import default_scope
 from local_shell_mcp.ui.contracts import POSIX_TUI_EXECUTABLE_NAME
 from local_shell_mcp.ui.session import (
-    UI_CSRF_COOKIE,
     UI_CSRF_HEADER,
-    UI_SESSION_COOKIE,
+    ui_csrf_cookie_name,
+    ui_session_cookie_name,
 )
 from tests.e2e_helpers import PROJECT_ROOT, SRC_ROOT, free_tcp_port, server_env
 
@@ -392,7 +392,7 @@ class BrowserHarness:
                 "path": path,
                 "body": body,
                 "token": self.api_token,
-                "csrfCookieName": UI_CSRF_COOKIE,
+                "csrfCookieName": ui_csrf_cookie_name(self.base_url),
                 "csrfHeaderName": UI_CSRF_HEADER,
             },
         )
@@ -494,7 +494,7 @@ class BrowserHarness:
             (
                 cookie
                 for cookie in cookies
-                if cookie.get("name") == UI_SESSION_COOKIE
+                if cookie.get("name") == ui_session_cookie_name(self.base_url)
             ),
             None,
         )
@@ -502,7 +502,7 @@ class BrowserHarness:
             (
                 cookie
                 for cookie in cookies
-                if cookie.get("name") == UI_CSRF_COOKIE
+                if cookie.get("name") == ui_csrf_cookie_name(self.base_url)
             ),
             None,
         )

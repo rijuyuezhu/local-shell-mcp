@@ -13,8 +13,8 @@ from ..config.settings import get_settings
 from ..oauth.core.security import oauth_signing_secret
 from ..oauth.core.urls import base_url, issuer_url
 
-UI_SESSION_COOKIE = "local-shell-mcp-ui-session"
-UI_CSRF_COOKIE = "local-shell-mcp-ui-csrf"
+UI_SESSION_COOKIE_PREFIX = "local-shell-mcp-ui-session"
+UI_CSRF_COOKIE_PREFIX = "local-shell-mcp-ui-csrf"
 UI_CSRF_HEADER = "x-local-shell-mcp-ui-csrf"
 UI_SESSION_TOKEN_USE = "human-ui-session"
 
@@ -34,10 +34,36 @@ def ui_session_audience() -> str:
     return f"{base_url()}{settings.ui_path}"
 
 
+def canonical_ui_origin(url: str) -> str:
+    """Return a canonical browser origin, retaining an explicit port."""
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def ui_origin() -> str:
     """Return the canonical browser origin configured for the service."""
-    parsed = urlparse(base_url())
-    return f"{parsed.scheme}://{parsed.netloc}"
+    return canonical_ui_origin(base_url())
+
+
+def _ui_cookie_namespace(origin: str) -> str:
+    """Return a stable namespace so same-host service ports cannot collide."""
+    return hashlib.sha256(origin.encode("utf-8")).hexdigest()[:12]
+
+
+def ui_session_cookie_name(origin: str | None = None) -> str:
+    """Return the origin-scoped Human UI session cookie name."""
+    resolved_origin = (
+        ui_origin() if origin is None else canonical_ui_origin(origin)
+    )
+    return f"{UI_SESSION_COOKIE_PREFIX}-{_ui_cookie_namespace(resolved_origin)}"
+
+
+def ui_csrf_cookie_name(origin: str | None = None) -> str:
+    """Return the origin-scoped Human UI CSRF cookie name."""
+    resolved_origin = (
+        ui_origin() if origin is None else canonical_ui_origin(origin)
+    )
+    return f"{UI_CSRF_COOKIE_PREFIX}-{_ui_cookie_namespace(resolved_origin)}"
 
 
 def is_valid_ui_origin(submitted: str) -> bool:

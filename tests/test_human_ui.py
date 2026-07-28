@@ -27,10 +27,10 @@ from local_shell_mcp.ui.security import (
     get_or_create_ui_local_token,
 )
 from local_shell_mcp.ui.session import (
-    UI_CSRF_COOKIE,
     UI_CSRF_HEADER,
-    UI_SESSION_COOKIE,
     issue_ui_session,
+    ui_csrf_cookie_name,
+    ui_session_cookie_name,
     validate_ui_session,
 )
 
@@ -269,7 +269,9 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
         "sessionTokenEndpoint": "/api/ui/session/token",
         "sessionLogoutEndpoint": "/api/ui/session/logout",
     }
-    assert runtime["csrfCookieName"] == UI_CSRF_COOKIE
+    csrf_cookie_name = ui_csrf_cookie_name(base_url)
+    session_cookie_name = ui_session_cookie_name(base_url)
+    assert runtime["csrfCookieName"] == csrf_cookie_name
     assert runtime["csrfHeaderName"] == UI_CSRF_HEADER
 
     callback = f"{base_url}/ui/callback"
@@ -338,10 +340,12 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     session_cookie = next(
         value
         for value in set_cookies
-        if value.startswith(f"{UI_SESSION_COOKIE}=")
+        if value.startswith(f"{session_cookie_name}=")
     )
     csrf_cookie = next(
-        value for value in set_cookies if value.startswith(f"{UI_CSRF_COOKIE}=")
+        value
+        for value in set_cookies
+        if value.startswith(f"{csrf_cookie_name}=")
     )
     assert "HttpOnly" in session_cookie
     assert "HttpOnly" not in csrf_cookie
@@ -362,7 +366,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     unrelated = client.get("/tools/list_persistent_shells")
     assert unrelated.status_code == 401
 
-    csrf_token = client.cookies.get(UI_CSRF_COOKIE)
+    csrf_token = client.cookies.get(csrf_cookie_name)
     assert csrf_token
     logout = client.post(
         "/api/ui/session/logout",
@@ -407,6 +411,24 @@ def test_ui_session_token_is_cryptographically_isolated_from_oauth_bearer(
 
     with pytest.raises(jwt.ExpiredSignatureError):
         issue_ui_session({**bearer_claims, "exp": int(time.time()) - 1})
+
+
+def test_ui_cookie_names_are_isolated_by_full_origin():
+    first_origin = "https://local-shell-mcp.example:8443"
+    second_origin = "https://local-shell-mcp.example:9443"
+
+    assert ui_session_cookie_name(first_origin) != ui_session_cookie_name(
+        second_origin
+    )
+    assert ui_csrf_cookie_name(first_origin) != ui_csrf_cookie_name(
+        second_origin
+    )
+    assert ui_session_cookie_name(
+        f"{first_origin}/ui"
+    ) == ui_session_cookie_name(first_origin)
+    assert ui_csrf_cookie_name(f"{first_origin}/ui") == ui_csrf_cookie_name(
+        first_origin
+    )
 
 
 def test_existing_bearer_can_be_converted_without_exposing_it_to_storage(

@@ -27,7 +27,7 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
-from local_shell_mcp.ui.session import UI_SESSION_COOKIE
+from local_shell_mcp.ui.session import ui_session_cookie_name
 
 BASE_URL = "https://local-shell-mcp.example"
 
@@ -345,9 +345,10 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_configured_origin(
         headers={"Origin": BASE_URL, "Authorization": f"Bearer {token}"},
     )
     assert session.status_code == 200
-    session_cookie = client.cookies.get(UI_SESSION_COOKIE)
+    session_cookie_name = ui_session_cookie_name(BASE_URL)
+    session_cookie = client.cookies.get(session_cookie_name)
     assert session_cookie
-    cookie_header = f"{UI_SESSION_COOKIE}={session_cookie}"
+    cookie_header = f"{session_cookie_name}={session_cookie}"
 
     with (
         pytest.raises(WebSocketDisconnect) as wrong_origin,

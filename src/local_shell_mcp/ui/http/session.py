@@ -14,12 +14,12 @@ from ...oauth.http.requests import parse_token_request
 from ...oauth.http.responses import oauth_error
 from ...oauth.protocol.token_codec import validate_bearer_token
 from ..session import (
-    UI_CSRF_COOKIE,
     UI_CSRF_HEADER,
-    UI_SESSION_COOKIE,
     has_valid_ui_csrf_tokens,
     is_valid_ui_origin,
     issue_ui_session,
+    ui_csrf_cookie_name,
+    ui_session_cookie_name,
     validate_ui_session,
 )
 
@@ -33,7 +33,7 @@ def has_valid_ui_origin(connection: HTTPConnection) -> bool:
 
 def ui_session_claims(connection: HTTPConnection) -> dict[str, object] | None:
     """Return validated Human UI session claims, or None without a cookie."""
-    token = connection.cookies.get(UI_SESSION_COOKIE, "").strip()
+    token = connection.cookies.get(ui_session_cookie_name(), "").strip()
     if not token:
         return None
     return validate_ui_session(token)
@@ -49,7 +49,7 @@ def has_valid_ui_csrf(
     if not has_valid_ui_origin(connection):
         return False
     return has_valid_ui_csrf_tokens(
-        connection.cookies.get(UI_CSRF_COOKIE, "").strip(),
+        connection.cookies.get(ui_csrf_cookie_name(), "").strip(),
         connection.headers.get(UI_CSRF_HEADER, "").strip(),
         claims,
     )
@@ -71,13 +71,13 @@ def set_ui_session_cookies(
         "max_age": max_age,
     }
     response.set_cookie(
-        UI_SESSION_COOKIE,
+        ui_session_cookie_name(),
         session_token,
         httponly=True,
         **cookie_options,
     )
     response.set_cookie(
-        UI_CSRF_COOKIE,
+        ui_csrf_cookie_name(),
         csrf_token,
         httponly=False,
         **cookie_options,
@@ -87,8 +87,8 @@ def set_ui_session_cookies(
 
 def clear_ui_session_cookies(response: Response) -> None:
     """Expire both Human UI browser cookies."""
-    response.delete_cookie(UI_SESSION_COOKIE, path="/")
-    response.delete_cookie(UI_CSRF_COOKIE, path="/")
+    response.delete_cookie(ui_session_cookie_name(), path="/")
+    response.delete_cookie(ui_csrf_cookie_name(), path="/")
 
 
 def _json_ok(data: object = None, message: str = "") -> JSONResponse:

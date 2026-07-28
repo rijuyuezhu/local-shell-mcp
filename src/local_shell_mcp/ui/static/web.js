@@ -12,7 +12,7 @@
   const legacyTokenStorageKey = "local-shell-mcp-ui-access-token";
   const pendingStorageKey = "local-shell-mcp-ui-oauth-pending";
   const pendingMaxAgeMs = 10 * 60 * 1000;
-  const csrfCookieName = String(config.csrfCookieName || "local-shell-mcp-ui-csrf");
+  const csrfCookieName = String(config.csrfCookieName || "");
   const csrfHeaderName = String(config.csrfHeaderName || "x-local-shell-mcp-ui-csrf");
   sessionStorage.removeItem(legacyTokenStorageKey);
   const viewDefinitions = Object.freeze({
