@@ -32,6 +32,7 @@ from local_shell_mcp.ui.session import (
     UI_SESSION_BINDING_PROTOCOL_PREFIX,
     UI_SESSION_BINDING_STORAGE_KEY,
     UI_SESSION_ESTABLISHED_STORAGE_KEY,
+    UI_SESSION_UNBOUNDED_SOURCE_TTL_S,
     canonical_ui_origin,
     is_valid_ui_origin,
     issue_ui_session,
@@ -546,6 +547,56 @@ def test_ui_session_token_is_cryptographically_isolated_from_oauth_bearer(
             {**bearer_claims, "exp": int(time.time()) - 1},
             UI_SESSION_BINDING,
         )
+
+
+def test_ui_session_remains_persistent_for_unbounded_bearer(
+    monkeypatch, tmp_path
+):
+    base_url = "https://local-shell-mcp.example"
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        base_url=base_url,
+        oauth_access_token_ttl_s=0,
+    )
+    bearer = issue_access_token(
+        client_id="unbounded-browser-test",
+        scope=default_scope(),
+        resource=f"{base_url}/mcp",
+    )
+    bearer_claims = validate_bearer_token(bearer)
+    assert "exp" not in bearer_claims
+
+    session_token, _, max_age = issue_ui_session(
+        bearer_claims, UI_SESSION_BINDING
+    )
+    assert max_age == UI_SESSION_UNBOUNDED_SOURCE_TTL_S
+    session_claims = validate_ui_session(session_token, UI_SESSION_BINDING)
+    assert session_claims["exp"] - session_claims["iat"] == (
+        UI_SESSION_UNBOUNDED_SOURCE_TTL_S
+    )
+
+    client = TestClient(
+        build_http_app(),
+        base_url=base_url,
+        client=("203.0.113.10", 50000),
+    )
+    response = client.post(
+        "/api/ui/session/token",
+        headers={
+            "Origin": base_url,
+            "Authorization": f"Bearer {bearer}",
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
+    )
+    assert response.status_code == 200
+    cookies = response.headers.get_list("set-cookie")
+    assert len(cookies) == 2
+    assert all(
+        f"Max-Age={UI_SESSION_UNBOUNDED_SOURCE_TTL_S}" in cookie
+        for cookie in cookies
+    )
 
 
 def test_ui_cookie_names_are_isolated_by_full_origin():

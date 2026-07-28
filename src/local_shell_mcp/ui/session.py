@@ -21,6 +21,7 @@ UI_SESSION_BINDING_HEADER = "x-local-shell-mcp-ui-binding"
 UI_SESSION_BINDING_PROTOCOL_PREFIX = "lsm-ui-binding."
 UI_SESSION_BINDING_STORAGE_KEY = "local-shell-mcp-ui-session-binding"
 UI_SESSION_ESTABLISHED_STORAGE_KEY = "local-shell-mcp-ui-session-established"
+UI_SESSION_UNBOUNDED_SOURCE_TTL_S = 30 * 24 * 60 * 60
 UI_SESSION_TOKEN_USE = "human-ui-session"
 _UI_SESSION_BINDING_MIN_LENGTH = 43
 _UI_SESSION_BINDING_MAX_LENGTH = 128
@@ -132,10 +133,10 @@ def issue_ui_session(
         raise ValueError("Invalid Human UI session binding token")
     settings = get_settings()
     now = int(time.time())
-    configured_expiry = (
-        now + settings.oauth_access_token_ttl_s
+    configured_expiry = now + (
+        settings.oauth_access_token_ttl_s
         if settings.oauth_access_token_ttl_s > 0
-        else None
+        else UI_SESSION_UNBOUNDED_SOURCE_TTL_S
     )
     source_expiry_value = claims.get("exp")
     source_expiry = (
@@ -144,13 +145,11 @@ def issue_ui_session(
         and not isinstance(source_expiry_value, bool)
         else None
     )
-    expiry_candidates = [
-        value
-        for value in (configured_expiry, source_expiry)
-        if value is not None
-    ]
-    expires_at = min(expiry_candidates) if expiry_candidates else None
-    if expires_at is not None and expires_at <= now:
+    expires_at = min(
+        configured_expiry,
+        source_expiry if source_expiry is not None else configured_expiry,
+    )
+    if expires_at <= now:
         raise jwt.ExpiredSignatureError("OAuth bearer has expired")
 
     csrf_token = secrets.token_urlsafe(32)
@@ -166,9 +165,8 @@ def issue_ui_session(
         "csrf_sha256": _csrf_digest(csrf_token),
         "binding_sha256": _binding_digest(binding_token),
     }
-    max_age = expires_at - now if expires_at is not None else None
-    if expires_at is not None:
-        payload["exp"] = expires_at
+    max_age = expires_at - now
+    payload["exp"] = expires_at
     token = jwt.encode(payload, _session_signing_key(), algorithm="HS256")
     return token, csrf_token, max_age
 
