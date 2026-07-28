@@ -12,7 +12,6 @@
   if (!config.opentuiAvailable) return;
 
   const uiPath = String(config.uiPath || "/ui").replace(/\/$/, "");
-  const tokenStorageKey = "local-shell-mcp-ui-access-token";
   const encoder = new TextEncoder();
   let terminal = null;
   let fitAddon = null;
@@ -22,17 +21,8 @@
   let reconnectTimer = null;
   let intentionalStop = false;
 
-  function base64Url(bytes) {
-    let binary = "";
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
-
   function protocols() {
-    const result = ["lsm-ui-terminal"];
-    const token = sessionStorage.getItem(tokenStorageKey) || "";
-    if (token) result.push(`bearer.${base64Url(encoder.encode(token))}`);
-    return result;
+    return ["lsm-ui-terminal"];
   }
 
   function ensureTerminal() {

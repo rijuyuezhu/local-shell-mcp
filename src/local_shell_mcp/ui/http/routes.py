@@ -24,6 +24,7 @@ from ...remote.manager import remote_manager
 from ...version import version_info
 from ..runtime import tui_runtime_available
 from ..security import UI_API_PREFIX
+from ..session import UI_CSRF_COOKIE, UI_CSRF_HEADER
 from .audit import api_audit, api_audit_detail
 from .dashboard import api_dashboard
 from .files import (
@@ -34,6 +35,11 @@ from .files import (
 )
 from .opentui import ui_opentui_websocket
 from .remotes import api_remote_action, api_remotes
+from .session import (
+    api_ui_session_logout,
+    api_ui_session_oauth,
+    api_ui_session_token,
+)
 from .session_snapshot import api_session_snapshot
 from .sessions import api_session_action, api_sessions
 from .terminals import (
@@ -93,6 +99,9 @@ def _ui_index_html(settings: Settings) -> str:
             "registrationEndpoint": "/oauth/register",
             "authorizationEndpoint": "/oauth/authorize",
             "tokenEndpoint": "/oauth/token",
+            "sessionOAuthEndpoint": UI_API_PREFIX + "/session/oauth",
+            "sessionTokenEndpoint": UI_API_PREFIX + "/session/token",
+            "sessionLogoutEndpoint": UI_API_PREFIX + "/session/logout",
         }
     config = html.escape(
         json.dumps(
@@ -102,6 +111,8 @@ def _ui_index_html(settings: Settings) -> str:
                 "authMode": settings.auth_mode,
                 "wallpaper": settings.ui_wallpaper,
                 "opentuiAvailable": tui_runtime_available(settings),
+                "csrfCookieName": UI_CSRF_COOKIE,
+                "csrfHeaderName": UI_CSRF_HEADER,
                 "oauth": oauth,
             },
             separators=(",", ":"),
@@ -249,6 +260,21 @@ def human_ui_routes(
         Route(ui_path + "/", ui_index, methods=["GET"]),
         Route(ui_path + "/callback", ui_index, methods=["GET"]),
         Route(ui_path + "/assets/{path:path}", ui_asset, methods=["GET"]),
+        Route(
+            UI_API_PREFIX + "/session/oauth",
+            api_ui_session_oauth,
+            methods=["POST"],
+        ),
+        Route(
+            UI_API_PREFIX + "/session/token",
+            api_ui_session_token,
+            methods=["POST"],
+        ),
+        Route(
+            UI_API_PREFIX + "/session/logout",
+            api_ui_session_logout,
+            methods=["POST"],
+        ),
     ]
     protected_routes: list[BaseRoute] = [
         WebSocketRoute(

@@ -27,6 +27,7 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
+from local_shell_mcp.ui.session import UI_SESSION_COOKIE
 
 BASE_URL = "https://local-shell-mcp.example"
 
@@ -315,6 +316,66 @@ def test_terminal_websocket_requires_oauth_and_execute_scope(
     ):
         pass
     assert insufficient.value.code == 4403
+
+
+def test_terminal_websocket_accepts_ui_cookie_only_from_configured_origin(
+    monkeypatch, tmp_path
+):
+    async def fake_list():
+        return ListPersistentShellsOutput(
+            shells=[PersistentShellInfo(shell_id="demo")]
+        )
+
+    async def fake_read(shell_id, lines=200, *, preserve_ansi=False):
+        assert shell_id == "demo"
+        assert lines == 1000
+        assert preserve_ansi is True
+        return ReadPersistentShellOutput(shell_id=shell_id, output="prompt$ ")
+
+    monkeypatch.setattr(
+        terminal_module, "list_persistent_shells_execute", fake_list
+    )
+    monkeypatch.setattr(
+        terminal_module, "read_persistent_shell_output_execute", fake_read
+    )
+    client = _client(monkeypatch, tmp_path, auth_mode="oauth")
+    token = _bearer_token(f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE}")
+    session = client.post(
+        "/api/ui/session/token",
+        headers={"Origin": BASE_URL, "Authorization": f"Bearer {token}"},
+    )
+    assert session.status_code == 200
+    session_cookie = client.cookies.get(UI_SESSION_COOKIE)
+    assert session_cookie
+    cookie_header = f"{UI_SESSION_COOKIE}={session_cookie}"
+
+    with (
+        pytest.raises(WebSocketDisconnect) as wrong_origin,
+        client.websocket_connect(
+            "/ui/ws/terminals/demo",
+            headers={
+                "Origin": "https://attacker.example",
+                "Cookie": cookie_header,
+            },
+            subprotocols=["lsm-ui-terminal"],
+        ),
+    ):
+        pass
+    assert wrong_origin.value.code == 4403
+
+    with client.websocket_connect(
+        "/ui/ws/terminals/demo?lines=1000",
+        headers={"Origin": BASE_URL, "Cookie": cookie_header},
+        subprotocols=["lsm-ui-terminal"],
+    ) as websocket:
+        assert websocket.accepted_subprotocol == "lsm-ui-terminal"
+        assert websocket.receive_json() == {
+            "type": "snapshot",
+            "machine": "local",
+            "shell_id": "demo",
+            "output": "prompt$ ",
+        }
+        websocket.send_json({"type": "close"})
 
 
 def test_terminal_websocket_reports_shell_inventory_failure(

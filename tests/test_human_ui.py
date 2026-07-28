@@ -5,8 +5,10 @@ import json
 import os
 import re
 import stat
+import time
 from urllib.parse import parse_qs, urlparse
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -15,9 +17,21 @@ import local_shell_mcp.ui.http.routes as human_ui_module
 from local_shell_mcp.config.settings import Settings, clear_settings_cache
 from local_shell_mcp.executors.http.app import build_http_app
 from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES
+from local_shell_mcp.oauth.core.scopes import default_scope
+from local_shell_mcp.oauth.protocol.token_codec import (
+    issue_access_token,
+    validate_bearer_token,
+)
 from local_shell_mcp.ui.security import (
     UI_LOCAL_TOKEN_HEADER,
     get_or_create_ui_local_token,
+)
+from local_shell_mcp.ui.session import (
+    UI_CSRF_COOKIE,
+    UI_CSRF_HEADER,
+    UI_SESSION_COOKIE,
+    issue_ui_session,
+    validate_ui_session,
 )
 
 
@@ -251,7 +265,12 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
         "registrationEndpoint": "/oauth/register",
         "authorizationEndpoint": "/oauth/authorize",
         "tokenEndpoint": "/oauth/token",
+        "sessionOAuthEndpoint": "/api/ui/session/oauth",
+        "sessionTokenEndpoint": "/api/ui/session/token",
+        "sessionLogoutEndpoint": "/api/ui/session/logout",
     }
+    assert runtime["csrfCookieName"] == UI_CSRF_COOKIE
+    assert runtime["csrfHeaderName"] == UI_CSRF_HEADER
 
     callback = f"{base_url}/ui/callback"
     registration = client.post(
@@ -301,7 +320,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     assert client.get(approved.headers["location"]).status_code == 200
 
     exchange = client.post(
-        "/oauth/token",
+        "/api/ui/session/oauth",
         data={
             "grant_type": "authorization_code",
             "code": query["code"][0],
@@ -310,14 +329,124 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
             "resource": runtime["oauth"]["resource"],
             "code_verifier": verifier,
         },
+        headers={"Origin": base_url},
     )
     assert exchange.status_code == 200
-    token = exchange.json()["access_token"]
-    bootstrap = client.get(
-        "/api/ui/bootstrap", headers={"Authorization": f"Bearer {token}"}
+    assert exchange.json()["ok"] is True
+    assert "access_token" not in exchange.text
+    set_cookies = exchange.headers.get_list("set-cookie")
+    session_cookie = next(
+        value
+        for value in set_cookies
+        if value.startswith(f"{UI_SESSION_COOKIE}=")
     )
+    csrf_cookie = next(
+        value for value in set_cookies if value.startswith(f"{UI_CSRF_COOKIE}=")
+    )
+    assert "HttpOnly" in session_cookie
+    assert "HttpOnly" not in csrf_cookie
+    for value in (session_cookie, csrf_cookie):
+        assert "Max-Age=3600" in value
+        assert "Path=/" in value
+        assert "SameSite=strict" in value
+        assert "Secure" in value
+
+    bootstrap = client.get("/api/ui/bootstrap")
     assert bootstrap.status_code == 200
     assert bootstrap.json()["data"]["machines"][0]["name"] == "local"
+
+    csrf_rejected = client.post("/api/ui/terminals/start", json={})
+    assert csrf_rejected.status_code == 403
+    assert csrf_rejected.json()["detail"] == "Human UI CSRF validation failed"
+
+    unrelated = client.get("/tools/list_persistent_shells")
+    assert unrelated.status_code == 401
+
+    csrf_token = client.cookies.get(UI_CSRF_COOKIE)
+    assert csrf_token
+    logout = client.post(
+        "/api/ui/session/logout",
+        headers={"Origin": base_url, UI_CSRF_HEADER: csrf_token},
+    )
+    assert logout.status_code == 200
+    assert client.get("/api/ui/bootstrap").status_code == 401
+
+
+def test_ui_session_token_is_cryptographically_isolated_from_oauth_bearer(
+    monkeypatch, tmp_path
+):
+    base_url = "https://local-shell-mcp.example"
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        base_url=base_url,
+    )
+    bearer = issue_access_token(
+        client_id="browser-test",
+        scope=default_scope(),
+        resource=f"{base_url}/mcp",
+    )
+    bearer_claims = validate_bearer_token(bearer)
+    session_token, csrf_token, max_age = issue_ui_session(bearer_claims)
+
+    assert csrf_token
+    assert max_age is not None and 3590 <= max_age <= 3600
+    assert validate_ui_session(session_token)["client_id"] == "browser-test"
+    with pytest.raises(jwt.PyJWTError):
+        validate_bearer_token(session_token)
+    with pytest.raises(jwt.PyJWTError):
+        validate_ui_session(bearer)
+
+    short_expiry = int(time.time()) + 90
+    short_token, _, short_max_age = issue_ui_session(
+        {**bearer_claims, "exp": short_expiry}
+    )
+    assert short_max_age is not None and 1 <= short_max_age <= 90
+    assert validate_ui_session(short_token)["exp"] == short_expiry
+
+    with pytest.raises(jwt.ExpiredSignatureError):
+        issue_ui_session({**bearer_claims, "exp": int(time.time()) - 1})
+
+
+def test_existing_bearer_can_be_converted_without_exposing_it_to_storage(
+    monkeypatch, tmp_path
+):
+    base_url = "https://local-shell-mcp.example"
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        base_url=base_url,
+    )
+    client = TestClient(
+        build_http_app(),
+        base_url=base_url,
+        client=("203.0.113.10", 50000),
+    )
+    token = issue_access_token(
+        client_id="manual-browser-test",
+        scope=default_scope(),
+        resource=f"{base_url}/mcp",
+    )
+
+    rejected = client.post(
+        "/api/ui/session/token",
+        headers={
+            "Origin": "https://attacker.example",
+            "Authorization": f"Bearer {token}",
+        },
+    )
+    assert rejected.status_code == 403
+
+    converted = client.post(
+        "/api/ui/session/token",
+        headers={"Origin": base_url, "Authorization": f"Bearer {token}"},
+    )
+    assert converted.status_code == 200
+    assert token not in converted.text
+    assert "access_token" not in converted.text
+    assert client.get("/api/ui/bootstrap").status_code == 200
 
 
 def test_local_ui_token_bypasses_oauth_only_on_loopback(monkeypatch, tmp_path):
