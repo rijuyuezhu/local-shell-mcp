@@ -8,6 +8,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ...config.settings import get_settings
 from ...ui.http.session import has_valid_ui_csrf, ui_session_claims
 from ...ui.security import (
     has_valid_ui_local_token,
@@ -62,7 +63,11 @@ class AuthMiddleware:
             return
 
         claims = None
-        if ui_request and "authorization" not in request.headers:
+        if (
+            ui_request
+            and get_settings().auth_mode == "oauth"
+            and "authorization" not in request.headers
+        ):
             try:
                 claims = ui_session_claims(request)
             except jwt.PyJWTError:

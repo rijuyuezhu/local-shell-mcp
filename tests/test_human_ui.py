@@ -238,6 +238,46 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert protected.status_code == 401
 
 
+def test_disabled_auth_ignores_stale_ui_session_cookie(monkeypatch, tmp_path):
+    base_url = "https://local-shell-mcp.example"
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        base_url=base_url,
+    )
+    bearer = issue_access_token(
+        client_id="stale-session-test",
+        scope=default_scope(),
+        resource=f"{base_url}/mcp",
+    )
+    session_token, _, _ = issue_ui_session(
+        validate_bearer_token(bearer), UI_SESSION_BINDING
+    )
+
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="none",
+        base_url=base_url,
+    )
+    client = TestClient(
+        build_http_app(),
+        base_url=base_url,
+        client=("203.0.113.10", 50000),
+    )
+    response = client.get(
+        "/api/ui/bootstrap",
+        headers={
+            "Cookie": f"{ui_session_cookie_name(base_url)}={session_token}",
+            "Origin": base_url,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["machines"][0]["name"] == "local"
+
+
 def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     monkeypatch, tmp_path
 ):
