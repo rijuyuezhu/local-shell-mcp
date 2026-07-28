@@ -43,6 +43,57 @@ def ui_session_audience() -> str:
     return f"{base_url()}{settings.ui_path}"
 
 
+def _parse_browser_ipv4_number(part: str) -> int:
+    """Parse one WHATWG IPv4 number component."""
+    radix = 10
+    digits = part
+    if digits[:2].lower() == "0x":
+        radix = 16
+        digits = digits[2:]
+    elif len(digits) >= 2 and digits.startswith("0"):
+        radix = 8
+        digits = digits[1:]
+    if not digits:
+        return 0
+    valid_digits = {
+        8: "01234567",
+        10: "0123456789",
+        16: "0123456789abcdefABCDEF",
+    }[radix]
+    if any(character not in valid_digits for character in digits):
+        raise ValueError("Invalid browser IPv4 number")
+    return int(digits, radix)
+
+
+def _canonical_browser_ipv4(hostname: str) -> str | None:
+    """Return WHATWG-style IPv4 text, or None for a non-numeric hostname."""
+    normalized = hostname.removesuffix(".")
+    parts = normalized.split(".")
+    last_part = parts[-1]
+    try:
+        _parse_browser_ipv4_number(last_part)
+    except ValueError:
+        if not last_part.isascii() or not last_part.isdigit():
+            return None
+
+    if not 1 <= len(parts) <= 4:
+        raise ValueError("Human UI origin IPv4 hostname is invalid")
+    try:
+        numbers = [_parse_browser_ipv4_number(part) for part in parts]
+    except ValueError as exc:
+        raise ValueError("Human UI origin IPv4 hostname is invalid") from exc
+    if any(number > 255 for number in numbers[:-1]):
+        raise ValueError("Human UI origin IPv4 hostname is invalid")
+    last_limit = 256 ** (5 - len(numbers))
+    if numbers[-1] >= last_limit:
+        raise ValueError("Human UI origin IPv4 hostname is invalid")
+
+    ipv4_value = numbers[-1]
+    for index, number in enumerate(numbers[:-1]):
+        ipv4_value += number * 256 ** (3 - index)
+    return str(ipaddress.IPv4Address(ipv4_value))
+
+
 def canonical_ui_origin(url: str) -> str:
     """Return an origin serialized with browser-compatible URL semantics."""
     parsed = urlparse(url)
@@ -51,21 +102,25 @@ def canonical_ui_origin(url: str) -> str:
     if not scheme or hostname is None:
         raise ValueError("Human UI origin must include a scheme and hostname")
 
-    try:
-        address = ipaddress.ip_address(hostname)
-    except ValueError:
-        try:
-            host = idna.encode(
-                hostname,
-                uts46=True,
-                transitional=False,
-            ).decode("ascii")
-        except idna.IDNAError as exc:
-            raise ValueError("Human UI origin hostname is invalid") from exc
+    browser_ipv4 = _canonical_browser_ipv4(hostname)
+    if browser_ipv4 is not None:
+        host = browser_ipv4
     else:
-        host = address.compressed.lower()
-        if address.version == 6:
-            host = f"[{host}]"
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            try:
+                host = idna.encode(
+                    hostname,
+                    uts46=True,
+                    transitional=False,
+                ).decode("ascii")
+            except idna.IDNAError as exc:
+                raise ValueError("Human UI origin hostname is invalid") from exc
+        else:
+            host = address.compressed.lower()
+            if address.version == 6:
+                host = f"[{host}]"
 
     port = parsed.port
     default_port = {"http": 80, "https": 443}.get(scheme)

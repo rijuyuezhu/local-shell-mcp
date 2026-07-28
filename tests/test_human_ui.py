@@ -636,6 +636,14 @@ def test_ui_origins_use_browser_canonicalization(monkeypatch, tmp_path):
     assert canonical_ui_origin("https://例え.テスト") == (
         "https://xn--r8jz45g.xn--zckzah"
     )
+    assert canonical_ui_origin("http://127.1:8765") == ("http://127.0.0.1:8765")
+    assert canonical_ui_origin("http://0x7f.1") == "http://127.0.0.1"
+    assert canonical_ui_origin("http://0177.1") == "http://127.0.0.1"
+    assert canonical_ui_origin("http://2130706433") == "http://127.0.0.1"
+    with pytest.raises(ValueError):
+        canonical_ui_origin("http://256.1.1.1")
+    with pytest.raises(ValueError):
+        canonical_ui_origin("http://1.2.3.4.5")
     assert canonical_ui_origin("https://[2001:0DB8::1]:443") == (
         "https://[2001:db8::1]"
     )
