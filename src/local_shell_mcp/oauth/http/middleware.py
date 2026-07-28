@@ -8,7 +8,6 @@ from starlette.responses import JSONResponse
 from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from ...config.settings import get_settings
 from ...ui.http.session import has_valid_ui_csrf, ui_session_claims
 from ...ui.security import (
     has_valid_ui_local_token,
@@ -16,7 +15,7 @@ from ...ui.security import (
     is_ui_api_path,
 )
 from ..core.context import bind_oauth_claims, reset_oauth_claims
-from .auth import verify_request
+from .auth import request_authentication_is_bypassed, verify_request
 
 
 def _public_route_matches(route: BaseRoute, scope: Scope) -> bool:
@@ -65,7 +64,7 @@ class AuthMiddleware:
         claims = None
         if (
             ui_request
-            and get_settings().auth_mode == "oauth"
+            and not request_authentication_is_bypassed(request)
             and "authorization" not in request.headers
         ):
             try:

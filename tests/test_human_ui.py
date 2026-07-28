@@ -278,6 +278,47 @@ def test_disabled_auth_ignores_stale_ui_session_cookie(monkeypatch, tmp_path):
     assert response.json()["data"]["machines"][0]["name"] == "local"
 
 
+def test_localhost_bypass_ignores_ui_session_cookies(monkeypatch, tmp_path):
+    base_url = "https://local-shell-mcp.example"
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        mode="http",
+        base_url=base_url,
+        auth_bypass_localhost=True,
+    )
+    client = TestClient(
+        build_http_app(),
+        base_url=base_url,
+        client=("127.0.0.1", 50000),
+    )
+    cookie_name = ui_session_cookie_name(base_url)
+
+    invalid = client.get(
+        "/api/ui/bootstrap",
+        headers={"Cookie": f"{cookie_name}=not-a-jwt"},
+    )
+    assert invalid.status_code == 200
+
+    bearer = issue_access_token(
+        client_id="localhost-bypass-test",
+        scope="shell:read",
+        resource=f"{base_url}/mcp",
+    )
+    session_token, _, _ = issue_ui_session(
+        validate_bearer_token(bearer), UI_SESSION_BINDING
+    )
+    reduced_scope = client.get(
+        "/api/ui/remotes",
+        headers={
+            "Cookie": f"{cookie_name}={session_token}",
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
+    )
+    assert reduced_scope.status_code == 200
+
+
 def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     monkeypatch, tmp_path
 ):
