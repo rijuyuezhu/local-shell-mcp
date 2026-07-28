@@ -323,8 +323,16 @@ def test_terminal_websocket_requires_oauth_and_execute_scope(
     assert insufficient.value.code == 4403
 
 
+@pytest.mark.parametrize(
+    "websocket_base",
+    (
+        BASE_URL.replace("https://", "wss://", 1),
+        BASE_URL.replace("https://", "ws://", 1),
+    ),
+    ids=("direct-tls", "tls-terminating-proxy"),
+)
 def test_terminal_websocket_accepts_ui_cookie_only_from_request_origin(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, websocket_base
 ):
     async def fake_list():
         return ListPersistentShellsOutput(
@@ -358,7 +366,6 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_request_origin(
     session_cookie = client.cookies.get(session_cookie_name)
     assert session_cookie
     cookie_header = f"{session_cookie_name}={session_cookie}"
-    websocket_base = BASE_URL.replace("https://", "wss://", 1)
 
     with (
         pytest.raises(WebSocketDisconnect) as wrong_origin,

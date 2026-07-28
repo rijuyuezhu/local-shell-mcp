@@ -322,15 +322,22 @@ def test_localhost_bypass_ignores_ui_session_cookies(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "browser_origin",
+    ("browser_origin", "transport_origin"),
     (
-        "https://local-shell-mcp.example",
-        "http://localhost:8765",
+        (
+            "https://local-shell-mcp.example",
+            "https://local-shell-mcp.example",
+        ),
+        ("http://localhost:8765", "http://localhost:8765"),
+        (
+            "https://local-shell-mcp.example",
+            "http://local-shell-mcp.example",
+        ),
     ),
-    ids=("issuer-origin", "loopback-ui-origin"),
+    ids=("issuer-origin", "loopback-ui-origin", "tls-terminating-proxy"),
 )
 def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
-    monkeypatch, tmp_path, browser_origin
+    monkeypatch, tmp_path, browser_origin, transport_origin
 ):
     base_url = "https://local-shell-mcp.example"
     admin_pin = "12345678"
@@ -345,7 +352,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     )
     client = TestClient(
         build_http_app(),
-        base_url=browser_origin,
+        base_url=transport_origin,
         client=("203.0.113.10", 50000),
     )
 
@@ -479,9 +486,21 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
         else:
             assert "Secure" not in value
 
+    session_value = client.cookies.get(session_cookie_name)
+    csrf_token = client.cookies.get(csrf_cookie_name)
+    assert session_value
+    assert csrf_token
+    cookie_header = (
+        f"{session_cookie_name}={session_value}; "
+        f"{csrf_cookie_name}={csrf_token}"
+    )
+
     bootstrap = client.get(
         "/api/ui/bootstrap",
-        headers={UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING},
+        headers={
+            "Cookie": cookie_header,
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert bootstrap.status_code == 200
     assert bootstrap.json()["data"]["machines"][0]["name"] == "local"
@@ -489,7 +508,10 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     csrf_rejected = client.post(
         "/api/ui/terminals/start",
         json={},
-        headers={UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING},
+        headers={
+            "Cookie": cookie_header,
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert csrf_rejected.status_code == 403
     assert csrf_rejected.json()["detail"] == "Human UI CSRF validation failed"
@@ -497,11 +519,10 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     unrelated = client.get("/tools/list_persistent_shells")
     assert unrelated.status_code == 401
 
-    csrf_token = client.cookies.get(csrf_cookie_name)
-    assert csrf_token
     logout = client.post(
         "/api/ui/session/logout",
         headers={
+            "Cookie": cookie_header,
             "Origin": browser_origin,
             UI_CSRF_HEADER: csrf_token,
             UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,

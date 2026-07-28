@@ -22,6 +22,7 @@ from ..session import (
     is_valid_ui_session_binding_token,
     issue_ui_session,
     ui_csrf_cookie_name,
+    ui_origin,
     ui_session_cookie_name,
     validate_ui_session,
 )
@@ -29,16 +30,45 @@ from ..session import (
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
-def ui_request_origin(connection: HTTPConnection) -> str:
-    """Return the browser origin that targets this HTTP or WebSocket request."""
+def _ui_request_origin_candidates(
+    connection: HTTPConnection,
+) -> tuple[str, str]:
+    """Return transport-scheme and alternate-scheme origins for the Host target."""
     scheme = str(connection.scope.get("scheme") or "").lower()
     scheme = {"ws": "http", "wss": "https"}.get(scheme, scheme)
     if scheme not in {"http", "https"}:
         raise ValueError("Invalid Human UI request scheme")
     authority = connection.headers.get("host", "").strip()
-    if not authority:
+    if not authority or any(character in authority for character in "/?#@\\"):
         raise ValueError("Invalid Human UI request host")
-    return canonical_ui_origin(f"{scheme}://{authority}")
+    alternate_scheme = "https" if scheme == "http" else "http"
+    return (
+        canonical_ui_origin(f"{scheme}://{authority}"),
+        canonical_ui_origin(f"{alternate_scheme}://{authority}"),
+    )
+
+
+def ui_request_origin(connection: HTTPConnection) -> str:
+    """Return the browser-visible origin for this HTTP or WebSocket target."""
+    transport_origin, alternate_origin = _ui_request_origin_candidates(
+        connection
+    )
+    candidates = (transport_origin, alternate_origin)
+
+    configured_origin = ui_origin()
+    if any(
+        is_valid_ui_origin(configured_origin, candidate)
+        for candidate in candidates
+    ):
+        return configured_origin
+
+    submitted_origin = connection.headers.get("origin", "").strip()
+    if submitted_origin and any(
+        is_valid_ui_origin(submitted_origin, candidate)
+        for candidate in candidates
+    ):
+        return canonical_ui_origin(submitted_origin)
+    return transport_origin
 
 
 def has_valid_ui_origin(connection: HTTPConnection) -> bool:
