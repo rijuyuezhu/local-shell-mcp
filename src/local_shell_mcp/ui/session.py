@@ -37,10 +37,13 @@ def _session_signing_key() -> bytes:
     )
 
 
-def ui_session_audience() -> str:
-    """Return the audience used exclusively by Human UI session tokens."""
+def ui_session_audience(origin: str | None = None) -> str:
+    """Return the origin-bound audience used by Human UI session tokens."""
     settings = get_settings()
-    return f"{base_url()}{settings.ui_path}"
+    resolved_origin = (
+        ui_origin() if origin is None else canonical_ui_origin(origin)
+    )
+    return f"{resolved_origin}{settings.ui_path}"
 
 
 def _parse_browser_ipv4_number(part: str) -> int:
@@ -155,15 +158,18 @@ def ui_csrf_cookie_name(origin: str | None = None) -> str:
     return f"{UI_CSRF_COOKIE_PREFIX}-{_ui_cookie_namespace(resolved_origin)}"
 
 
-def is_valid_ui_origin(submitted: str) -> bool:
-    """Return whether a submitted browser origin matches the configured origin."""
+def is_valid_ui_origin(submitted: str, expected: str | None = None) -> bool:
+    """Return whether a submitted browser origin matches an expected origin."""
     if not submitted:
         return False
     try:
         normalized = canonical_ui_origin(submitted)
+        expected_origin = (
+            ui_origin() if expected is None else canonical_ui_origin(expected)
+        )
     except UnicodeError, ValueError:
         return False
-    return hmac.compare_digest(normalized, ui_origin())
+    return hmac.compare_digest(normalized, expected_origin)
 
 
 def _csrf_digest(token: str) -> str:
@@ -189,7 +195,9 @@ def _binding_digest(token: str) -> str:
 
 
 def issue_ui_session(
-    claims: dict[str, Any], binding_token: str
+    claims: dict[str, Any],
+    binding_token: str,
+    origin: str | None = None,
 ) -> tuple[str, str, int | None]:
     """Issue a signed Human UI session token and its double-submit CSRF value."""
     if not is_valid_ui_session_binding_token(binding_token):
@@ -219,7 +227,7 @@ def issue_ui_session(
     payload: dict[str, Any] = {
         "iss": issuer_url(),
         "sub": str(claims.get("sub") or "local-user"),
-        "aud": ui_session_audience(),
+        "aud": ui_session_audience(origin),
         "iat": now,
         "jti": secrets.token_urlsafe(24),
         "client_id": str(claims.get("client_id") or "human-ui"),
@@ -234,13 +242,17 @@ def issue_ui_session(
     return token, csrf_token, max_age
 
 
-def validate_ui_session(token: str, binding_token: str) -> dict[str, Any]:
+def validate_ui_session(
+    token: str,
+    binding_token: str,
+    origin: str | None = None,
+) -> dict[str, Any]:
     """Decode and validate a purpose-isolated Human UI session token."""
     claims = jwt.decode(
         token,
         _session_signing_key(),
         algorithms=["HS256"],
-        audience=ui_session_audience(),
+        audience=ui_session_audience(origin),
         issuer=issuer_url(),
         options={
             "require": [

@@ -323,8 +323,16 @@ def test_terminal_websocket_requires_oauth_and_execute_scope(
     assert insufficient.value.code == 4403
 
 
-def test_terminal_websocket_accepts_ui_cookie_only_from_configured_origin(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize(
+    "websocket_base",
+    (
+        BASE_URL.replace("https://", "wss://", 1),
+        BASE_URL.replace("https://", "ws://", 1),
+    ),
+    ids=("direct-tls", "tls-terminating-proxy"),
+)
+def test_terminal_websocket_accepts_ui_cookie_only_from_request_origin(
+    monkeypatch, tmp_path, websocket_base
 ):
     async def fake_list():
         return ListPersistentShellsOutput(
@@ -362,7 +370,7 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_configured_origin(
     with (
         pytest.raises(WebSocketDisconnect) as wrong_origin,
         client.websocket_connect(
-            "/ui/ws/terminals/demo",
+            f"{websocket_base}/ui/ws/terminals/demo",
             headers={
                 "Origin": "https://attacker.example",
                 "Cookie": cookie_header,
@@ -379,7 +387,7 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_configured_origin(
     with (
         pytest.raises(WebSocketDisconnect) as missing_binding,
         client.websocket_connect(
-            "/ui/ws/terminals/demo",
+            f"{websocket_base}/ui/ws/terminals/demo",
             headers={"Origin": BASE_URL, "Cookie": cookie_header},
             subprotocols=["lsm-ui-terminal"],
         ),
@@ -388,7 +396,7 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_configured_origin(
     assert missing_binding.value.code == 4401
 
     with client.websocket_connect(
-        "/ui/ws/terminals/demo?lines=1000",
+        f"{websocket_base}/ui/ws/terminals/demo?lines=1000",
         headers={"Origin": BASE_URL, "Cookie": cookie_header},
         subprotocols=[
             "lsm-ui-terminal",

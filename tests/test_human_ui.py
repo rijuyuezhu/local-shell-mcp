@@ -321,8 +321,23 @@ def test_localhost_bypass_ignores_ui_session_cookies(monkeypatch, tmp_path):
     assert reduced_scope.status_code == 200
 
 
+@pytest.mark.parametrize(
+    ("browser_origin", "transport_origin"),
+    (
+        (
+            "https://local-shell-mcp.example",
+            "https://local-shell-mcp.example",
+        ),
+        ("http://localhost:8765", "http://localhost:8765"),
+        (
+            "https://local-shell-mcp.example",
+            "http://local-shell-mcp.example",
+        ),
+    ),
+    ids=("issuer-origin", "loopback-ui-origin", "tls-terminating-proxy"),
+)
 def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, browser_origin, transport_origin
 ):
     base_url = "https://local-shell-mcp.example"
     admin_pin = "12345678"
@@ -337,7 +352,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     )
     client = TestClient(
         build_http_app(),
-        base_url=base_url,
+        base_url=transport_origin,
         client=("203.0.113.10", 50000),
     )
 
@@ -359,8 +374,8 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
         "sessionTokenEndpoint": "/api/ui/session/token",
         "sessionLogoutEndpoint": "/api/ui/session/logout",
     }
-    csrf_cookie_name = ui_csrf_cookie_name(base_url)
-    session_cookie_name = ui_session_cookie_name(base_url)
+    csrf_cookie_name = ui_csrf_cookie_name(browser_origin)
+    session_cookie_name = ui_session_cookie_name(browser_origin)
     assert runtime["csrfCookieName"] == csrf_cookie_name
     assert runtime["csrfHeaderName"] == UI_CSRF_HEADER
     assert runtime["sessionBindingHeaderName"] == UI_SESSION_BINDING_HEADER
@@ -384,7 +399,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     assert invalid_session.status_code == 401
     assert invalid_session.json()["detail"] == "Invalid Human UI session"
 
-    callback = f"{base_url}/ui/callback"
+    callback = f"{browser_origin}/ui/callback"
     registration = client.post(
         "/oauth/register",
         json={
@@ -442,7 +457,7 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
             "code_verifier": verifier,
         },
         headers={
-            "Origin": base_url,
+            "Origin": browser_origin,
             UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
         },
     )
@@ -466,11 +481,26 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
         assert "Max-Age=3600" in value
         assert "Path=/" in value
         assert "SameSite=strict" in value
-        assert "Secure" in value
+        if browser_origin.startswith("https://"):
+            assert "Secure" in value
+        else:
+            assert "Secure" not in value
+
+    session_value = client.cookies.get(session_cookie_name)
+    csrf_token = client.cookies.get(csrf_cookie_name)
+    assert session_value
+    assert csrf_token
+    cookie_header = (
+        f"{session_cookie_name}={session_value}; "
+        f"{csrf_cookie_name}={csrf_token}"
+    )
 
     bootstrap = client.get(
         "/api/ui/bootstrap",
-        headers={UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING},
+        headers={
+            "Cookie": cookie_header,
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert bootstrap.status_code == 200
     assert bootstrap.json()["data"]["machines"][0]["name"] == "local"
@@ -478,7 +508,10 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     csrf_rejected = client.post(
         "/api/ui/terminals/start",
         json={},
-        headers={UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING},
+        headers={
+            "Cookie": cookie_header,
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert csrf_rejected.status_code == 403
     assert csrf_rejected.json()["detail"] == "Human UI CSRF validation failed"
@@ -486,12 +519,11 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     unrelated = client.get("/tools/list_persistent_shells")
     assert unrelated.status_code == 401
 
-    csrf_token = client.cookies.get(csrf_cookie_name)
-    assert csrf_token
     logout = client.post(
         "/api/ui/session/logout",
         headers={
-            "Origin": base_url,
+            "Cookie": cookie_header,
+            "Origin": browser_origin,
             UI_CSRF_HEADER: csrf_token,
             UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
         },
@@ -531,6 +563,23 @@ def test_ui_session_token_is_cryptographically_isolated_from_oauth_bearer(
         validate_bearer_token(session_token)
     with pytest.raises(jwt.PyJWTError):
         validate_ui_session(bearer, UI_SESSION_BINDING)
+
+    browser_origin = "http://localhost:8765"
+    origin_session, _, _ = issue_ui_session(
+        bearer_claims,
+        UI_SESSION_BINDING,
+        browser_origin,
+    )
+    assert (
+        validate_ui_session(
+            origin_session,
+            UI_SESSION_BINDING,
+            browser_origin,
+        )["client_id"]
+        == "browser-test"
+    )
+    with pytest.raises(jwt.InvalidAudienceError):
+        validate_ui_session(origin_session, UI_SESSION_BINDING, base_url)
 
     short_expiry = int(time.time()) + 90
     short_token, _, short_max_age = issue_ui_session(

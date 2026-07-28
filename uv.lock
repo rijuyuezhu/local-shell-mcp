@@ -572,7 +572,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.138.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "idna", specifier = ">=3.10" },
-    { name = "mcp", specifier = ">=1.28.0" },
+    { name = "mcp", specifier = ">=1.28.0,<2" },
     { name = "pathspec", specifier = ">=1.1.1" },
     { name = "pillow", specifier = ">=12.1.1" },
     { name = "pydantic", specifier = ">=2.13.4" },
