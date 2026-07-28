@@ -14,6 +14,15 @@
   const pendingMaxAgeMs = 10 * 60 * 1000;
   const csrfCookieName = String(config.csrfCookieName || "");
   const csrfHeaderName = String(config.csrfHeaderName || "x-local-shell-mcp-ui-csrf");
+  const sessionBindingHeaderName = String(
+    config.sessionBindingHeaderName || "x-local-shell-mcp-ui-binding",
+  );
+  const sessionBindingProtocolPrefix = String(
+    config.sessionBindingProtocolPrefix || "lsm-ui-binding.",
+  );
+  const sessionBindingStorageKey = String(
+    config.sessionBindingStorageKey || "local-shell-mcp-ui-session-binding",
+  );
   sessionStorage.removeItem(legacyTokenStorageKey);
   const viewDefinitions = Object.freeze({
     overview: {
@@ -400,8 +409,46 @@
     }
   }
 
+  function validSessionBindingToken(value) {
+    return /^[A-Za-z0-9_-]{43,128}$/.test(String(value || ""));
+  }
+
+  function sessionBindingToken() {
+    if (config.authMode !== "oauth") return "";
+    try {
+      const value = localStorage.getItem(sessionBindingStorageKey) || "";
+      return validSessionBindingToken(value) ? value : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function ensureSessionBindingToken() {
+    const existing = sessionBindingToken();
+    if (existing) return existing;
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const created = base64Url(bytes);
+    try {
+      localStorage.setItem(sessionBindingStorageKey, created);
+    } catch {
+      throw new Error("Persistent browser storage is unavailable for secure session binding.");
+    }
+    return created;
+  }
+
+  function clearSessionBindingToken() {
+    try {
+      localStorage.removeItem(sessionBindingStorageKey);
+    } catch {
+      // The server-side session is still cleared when browser storage is unavailable.
+    }
+  }
+
   async function request(path, options = {}) {
     const headers = { Accept: "application/json", ...(options.headers || {}) };
+    const bindingToken = sessionBindingToken();
+    if (bindingToken) headers[sessionBindingHeaderName] = bindingToken;
     const method = String(options.method || "GET").toUpperCase();
     if (!new Set(["GET", "HEAD", "OPTIONS"]).has(method)) {
       const csrfToken = cookieValue(csrfCookieName);
@@ -517,6 +564,7 @@
     elements.oauthLogin.disabled = true;
     elements.authDetail.textContent = "Preparing a secure OAuth authorization request…";
     try {
+      ensureSessionBindingToken();
       const redirectUri = callbackUrl();
       const registration = await fetch(oauthEndpoint("registrationEndpoint"), {
         method: "POST",
@@ -612,7 +660,11 @@
     });
     const response = await fetch(oauthEndpoint("sessionOAuthEndpoint"), {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+        [sessionBindingHeaderName]: ensureSessionBindingToken(),
+      },
       body: form,
       cache: "no-store",
       credentials: "same-origin",
@@ -2827,7 +2879,10 @@
   }
 
   function terminalSocketProtocols() {
-    return ["lsm-ui-terminal"];
+    const protocols = ["lsm-ui-terminal"];
+    const bindingToken = sessionBindingToken();
+    if (bindingToken) protocols.push(`${sessionBindingProtocolPrefix}${bindingToken}`);
+    return protocols;
   }
 
   function terminalMachineOnline(machine = terminalMachine) {
@@ -3744,7 +3799,11 @@
     try {
       const response = await fetch(oauthEndpoint("sessionTokenEndpoint"), {
         method: "POST",
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          [sessionBindingHeaderName]: ensureSessionBindingToken(),
+        },
         cache: "no-store",
         credentials: "same-origin",
       });
@@ -4150,6 +4209,7 @@
     elements.sessionAuditState.textContent = "Authentication required";
     elements.auditState.textContent = "Authentication required";
     sessionStorage.removeItem(pendingStorageKey);
+    clearSessionBindingToken();
     elements.tokenInput.value = "";
     showAuthentication("Signed out", "The persistent browser session was cleared.");
   });
@@ -4164,6 +4224,11 @@
   const restoreViewFromLocation = () => setActiveView(viewFromLocation(), { syncHash: false });
   window.addEventListener("popstate", restoreViewFromLocation);
   window.addEventListener("hashchange", restoreViewFromLocation);
+  window.addEventListener("storage", (event) => {
+    if (event.key !== sessionBindingStorageKey) return;
+    closeTerminalSocket();
+    void load();
+  });
 
   window.addEventListener("resize", () => window.requestAnimationFrame(sendTerminalResize));
   window.addEventListener("beforeunload", () => {

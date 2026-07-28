@@ -28,6 +28,9 @@ from local_shell_mcp.ui.security import (
 )
 from local_shell_mcp.ui.session import (
     UI_CSRF_HEADER,
+    UI_SESSION_BINDING_HEADER,
+    UI_SESSION_BINDING_PROTOCOL_PREFIX,
+    UI_SESSION_BINDING_STORAGE_KEY,
     canonical_ui_origin,
     is_valid_ui_origin,
     issue_ui_session,
@@ -35,6 +38,8 @@ from local_shell_mcp.ui.session import (
     ui_session_cookie_name,
     validate_ui_session,
 )
+
+UI_SESSION_BINDING = "b" * 43
 
 
 @pytest.fixture(autouse=True)
@@ -275,10 +280,19 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     session_cookie_name = ui_session_cookie_name(base_url)
     assert runtime["csrfCookieName"] == csrf_cookie_name
     assert runtime["csrfHeaderName"] == UI_CSRF_HEADER
+    assert runtime["sessionBindingHeaderName"] == UI_SESSION_BINDING_HEADER
+    assert (
+        runtime["sessionBindingProtocolPrefix"]
+        == UI_SESSION_BINDING_PROTOCOL_PREFIX
+    )
+    assert runtime["sessionBindingStorageKey"] == UI_SESSION_BINDING_STORAGE_KEY
 
     invalid_session = client.get(
         "/api/ui/bootstrap",
-        headers={"Cookie": f"{session_cookie_name}=not-a-jwt"},
+        headers={
+            "Cookie": f"{session_cookie_name}=not-a-jwt",
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert invalid_session.status_code == 401
     assert invalid_session.json()["detail"] == "Invalid Human UI session"
@@ -340,7 +354,10 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
             "resource": runtime["oauth"]["resource"],
             "code_verifier": verifier,
         },
-        headers={"Origin": base_url},
+        headers={
+            "Origin": base_url,
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert exchange.status_code == 200
     assert exchange.json()["ok"] is True
@@ -364,11 +381,18 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
         assert "SameSite=strict" in value
         assert "Secure" in value
 
-    bootstrap = client.get("/api/ui/bootstrap")
+    bootstrap = client.get(
+        "/api/ui/bootstrap",
+        headers={UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING},
+    )
     assert bootstrap.status_code == 200
     assert bootstrap.json()["data"]["machines"][0]["name"] == "local"
 
-    csrf_rejected = client.post("/api/ui/terminals/start", json={})
+    csrf_rejected = client.post(
+        "/api/ui/terminals/start",
+        json={},
+        headers={UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING},
+    )
     assert csrf_rejected.status_code == 403
     assert csrf_rejected.json()["detail"] == "Human UI CSRF validation failed"
 
@@ -379,7 +403,11 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     assert csrf_token
     logout = client.post(
         "/api/ui/session/logout",
-        headers={"Origin": base_url, UI_CSRF_HEADER: csrf_token},
+        headers={
+            "Origin": base_url,
+            UI_CSRF_HEADER: csrf_token,
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert logout.status_code == 200
     assert client.get("/api/ui/bootstrap").status_code == 401
@@ -401,25 +429,37 @@ def test_ui_session_token_is_cryptographically_isolated_from_oauth_bearer(
         resource=f"{base_url}/mcp",
     )
     bearer_claims = validate_bearer_token(bearer)
-    session_token, csrf_token, max_age = issue_ui_session(bearer_claims)
+    session_token, csrf_token, max_age = issue_ui_session(
+        bearer_claims, UI_SESSION_BINDING
+    )
 
     assert csrf_token
     assert max_age is not None and 3590 <= max_age <= 3600
-    assert validate_ui_session(session_token)["client_id"] == "browser-test"
+    assert validate_ui_session(session_token, UI_SESSION_BINDING)[
+        "client_id"
+    ] == ("browser-test")
+    with pytest.raises(jwt.InvalidTokenError):
+        validate_ui_session(session_token, "w" * 43)
     with pytest.raises(jwt.PyJWTError):
         validate_bearer_token(session_token)
     with pytest.raises(jwt.PyJWTError):
-        validate_ui_session(bearer)
+        validate_ui_session(bearer, UI_SESSION_BINDING)
 
     short_expiry = int(time.time()) + 90
     short_token, _, short_max_age = issue_ui_session(
-        {**bearer_claims, "exp": short_expiry}
+        {**bearer_claims, "exp": short_expiry}, UI_SESSION_BINDING
     )
     assert short_max_age is not None and 1 <= short_max_age <= 90
-    assert validate_ui_session(short_token)["exp"] == short_expiry
+    assert (
+        validate_ui_session(short_token, UI_SESSION_BINDING)["exp"]
+        == short_expiry
+    )
 
     with pytest.raises(jwt.ExpiredSignatureError):
-        issue_ui_session({**bearer_claims, "exp": int(time.time()) - 1})
+        issue_ui_session(
+            {**bearer_claims, "exp": int(time.time()) - 1},
+            UI_SESSION_BINDING,
+        )
 
 
 def test_ui_cookie_names_are_isolated_by_full_origin():
@@ -465,6 +505,60 @@ def test_ui_origins_use_browser_canonicalization(monkeypatch, tmp_path):
     assert ui_csrf_cookie_name(configured) == ui_csrf_cookie_name(canonical)
 
 
+def test_ui_session_cookie_cannot_be_replayed_without_origin_binding(
+    monkeypatch, tmp_path
+):
+    base_url = "https://local-shell-mcp.example:8443"
+    _configure_ui(
+        monkeypatch,
+        tmp_path,
+        auth_mode="oauth",
+        base_url=base_url,
+    )
+    bearer = issue_access_token(
+        client_id="sibling-port-test",
+        scope=default_scope(),
+        resource=f"{base_url}/mcp",
+    )
+    session_token, _, _ = issue_ui_session(
+        validate_bearer_token(bearer), UI_SESSION_BINDING
+    )
+    cookie = f"{ui_session_cookie_name(base_url)}={session_token}"
+    client = TestClient(
+        build_http_app(),
+        base_url=base_url,
+        client=("203.0.113.10", 50000),
+    )
+
+    stolen_cookie_headers = {"Cookie": cookie, "Origin": base_url}
+    assert (
+        client.get(
+            "/api/ui/bootstrap", headers=stolen_cookie_headers
+        ).status_code
+        == 401
+    )
+    assert (
+        client.get(
+            "/api/ui/bootstrap",
+            headers={
+                **stolen_cookie_headers,
+                UI_SESSION_BINDING_HEADER: "w" * 43,
+            },
+        ).status_code
+        == 401
+    )
+    assert (
+        client.get(
+            "/api/ui/bootstrap",
+            headers={
+                **stolen_cookie_headers,
+                UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+            },
+        ).status_code
+        == 200
+    )
+
+
 def test_existing_bearer_can_be_converted_without_exposing_it_to_storage(
     monkeypatch, tmp_path
 ):
@@ -491,18 +585,46 @@ def test_existing_bearer_can_be_converted_without_exposing_it_to_storage(
         headers={
             "Origin": "https://attacker.example",
             "Authorization": f"Bearer {token}",
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
         },
     )
     assert rejected.status_code == 403
 
-    converted = client.post(
+    missing_binding = client.post(
         "/api/ui/session/token",
         headers={"Origin": base_url, "Authorization": f"Bearer {token}"},
+    )
+    assert missing_binding.status_code == 400
+    assert (
+        missing_binding.json()["detail"] == "Invalid Human UI session binding"
+    )
+
+    converted = client.post(
+        "/api/ui/session/token",
+        headers={
+            "Origin": base_url,
+            "Authorization": f"Bearer {token}",
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert converted.status_code == 200
     assert token not in converted.text
     assert "access_token" not in converted.text
-    assert client.get("/api/ui/bootstrap").status_code == 200
+    assert (
+        client.get(
+            "/api/ui/bootstrap",
+            headers={UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/ui/bootstrap").status_code == 401
+    assert (
+        client.get(
+            "/api/ui/bootstrap",
+            headers={UI_SESSION_BINDING_HEADER: "w" * 43},
+        ).status_code
+        == 401
+    )
 
 
 def test_local_ui_token_bypasses_oauth_only_on_loopback(monkeypatch, tmp_path):

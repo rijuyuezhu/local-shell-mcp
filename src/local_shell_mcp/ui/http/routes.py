@@ -24,7 +24,13 @@ from ...remote.manager import remote_manager
 from ...version import version_info
 from ..runtime import tui_runtime_available
 from ..security import UI_API_PREFIX
-from ..session import UI_CSRF_HEADER, ui_csrf_cookie_name
+from ..session import (
+    UI_CSRF_HEADER,
+    UI_SESSION_BINDING_HEADER,
+    UI_SESSION_BINDING_PROTOCOL_PREFIX,
+    UI_SESSION_BINDING_STORAGE_KEY,
+    ui_csrf_cookie_name,
+)
 from .audit import api_audit, api_audit_detail
 from .dashboard import api_dashboard
 from .files import (
@@ -113,6 +119,9 @@ def _ui_index_html(settings: Settings) -> str:
                 "opentuiAvailable": tui_runtime_available(settings),
                 "csrfCookieName": ui_csrf_cookie_name(),
                 "csrfHeaderName": UI_CSRF_HEADER,
+                "sessionBindingHeaderName": UI_SESSION_BINDING_HEADER,
+                "sessionBindingProtocolPrefix": UI_SESSION_BINDING_PROTOCOL_PREFIX,
+                "sessionBindingStorageKey": UI_SESSION_BINDING_STORAGE_KEY,
                 "oauth": oauth,
             },
             separators=(",", ":"),

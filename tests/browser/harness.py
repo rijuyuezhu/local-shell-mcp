@@ -28,6 +28,8 @@ from local_shell_mcp.oauth.core.scopes import default_scope
 from local_shell_mcp.ui.contracts import POSIX_TUI_EXECUTABLE_NAME
 from local_shell_mcp.ui.session import (
     UI_CSRF_HEADER,
+    UI_SESSION_BINDING_HEADER,
+    UI_SESSION_BINDING_STORAGE_KEY,
     ui_csrf_cookie_name,
     ui_session_cookie_name,
 )
@@ -361,10 +363,23 @@ class BrowserHarness:
     ) -> dict[str, Any]:
         result = self.page.evaluate(
             """
-            async ({method, path, body, token, csrfCookieName, csrfHeaderName}) => {
+            async ({
+              method,
+              path,
+              body,
+              token,
+              csrfCookieName,
+              csrfHeaderName,
+              bindingHeaderName,
+              bindingStorageKey,
+            }) => {
               const headers = {};
               const uiRequest = path.startsWith("/api/ui/");
               const unsafe = !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+              if (uiRequest) {
+                const binding = localStorage.getItem(bindingStorageKey) || "";
+                if (binding) headers[bindingHeaderName] = binding;
+              }
               if (uiRequest && unsafe) {
                 const prefix = `${encodeURIComponent(csrfCookieName)}=`;
                 const csrf = document.cookie
@@ -394,6 +409,8 @@ class BrowserHarness:
                 "token": self.api_token,
                 "csrfCookieName": ui_csrf_cookie_name(self.base_url),
                 "csrfHeaderName": UI_CSRF_HEADER,
+                "bindingHeaderName": UI_SESSION_BINDING_HEADER,
+                "bindingStorageKey": UI_SESSION_BINDING_STORAGE_KEY,
             },
         )
         assert isinstance(result, dict)
@@ -455,16 +472,25 @@ class BrowserHarness:
     def set_token(self, token: str) -> None:
         result = self.page.evaluate(
             """
-            async (token) => {
+            async ({token, bindingHeaderName, bindingStorageKey}) => {
+              const binding = localStorage.getItem(bindingStorageKey) || "";
               const response = await fetch("/api/ui/session/token", {
                 method: "POST",
-                headers: {Accept: "application/json", Authorization: `Bearer ${token}`},
+                headers: {
+                  Accept: "application/json",
+                  Authorization: `Bearer ${token}`,
+                  [bindingHeaderName]: binding,
+                },
                 credentials: "same-origin",
               });
               return {status: response.status, payload: await response.json()};
             }
             """,
-            token,
+            {
+                "token": token,
+                "bindingHeaderName": UI_SESSION_BINDING_HEADER,
+                "bindingStorageKey": UI_SESSION_BINDING_STORAGE_KEY,
+            },
         )
         assert result["status"] == 200, result
         self.api_token = token
@@ -488,6 +514,13 @@ class BrowserHarness:
         assert not self.page.evaluate(
             "key => Boolean(sessionStorage.getItem(key))",
             LEGACY_TOKEN_STORAGE_KEY,
+        )
+        binding = self.page.evaluate(
+            "key => localStorage.getItem(key) || ''",
+            UI_SESSION_BINDING_STORAGE_KEY,
+        )
+        assert isinstance(binding, str) and re.fullmatch(
+            r"[A-Za-z0-9_-]{43,128}", binding
         )
         cookies = self.context.cookies()
         session_cookie = next(
@@ -531,6 +564,13 @@ class BrowserHarness:
         assert not restored_page.evaluate(
             "key => Boolean(sessionStorage.getItem(key))",
             LEGACY_TOKEN_STORAGE_KEY,
+        )
+        assert (
+            restored_page.evaluate(
+                "key => localStorage.getItem(key) || ''",
+                UI_SESSION_BINDING_STORAGE_KEY,
+            )
+            == binding
         )
         self.page.close()
         self.page = restored_page

@@ -27,9 +27,14 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
-from local_shell_mcp.ui.session import ui_session_cookie_name
+from local_shell_mcp.ui.session import (
+    UI_SESSION_BINDING_HEADER,
+    UI_SESSION_BINDING_PROTOCOL_PREFIX,
+    ui_session_cookie_name,
+)
 
 BASE_URL = "https://local-shell-mcp.example"
+UI_SESSION_BINDING = "b" * 43
 
 
 def test_terminal_settings_are_bounded():
@@ -342,7 +347,11 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_configured_origin(
     token = _bearer_token(f"{SCOPE_SHELL_READ} {SCOPE_SHELL_EXECUTE}")
     session = client.post(
         "/api/ui/session/token",
-        headers={"Origin": BASE_URL, "Authorization": f"Bearer {token}"},
+        headers={
+            "Origin": BASE_URL,
+            "Authorization": f"Bearer {token}",
+            UI_SESSION_BINDING_HEADER: UI_SESSION_BINDING,
+        },
     )
     assert session.status_code == 200
     session_cookie_name = ui_session_cookie_name(BASE_URL)
@@ -358,16 +367,33 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_configured_origin(
                 "Origin": "https://attacker.example",
                 "Cookie": cookie_header,
             },
-            subprotocols=["lsm-ui-terminal"],
+            subprotocols=[
+                "lsm-ui-terminal",
+                f"{UI_SESSION_BINDING_PROTOCOL_PREFIX}{UI_SESSION_BINDING}",
+            ],
         ),
     ):
         pass
     assert wrong_origin.value.code == 4403
 
+    with (
+        pytest.raises(WebSocketDisconnect) as missing_binding,
+        client.websocket_connect(
+            "/ui/ws/terminals/demo",
+            headers={"Origin": BASE_URL, "Cookie": cookie_header},
+            subprotocols=["lsm-ui-terminal"],
+        ),
+    ):
+        pass
+    assert missing_binding.value.code == 4401
+
     with client.websocket_connect(
         "/ui/ws/terminals/demo?lines=1000",
         headers={"Origin": BASE_URL, "Cookie": cookie_header},
-        subprotocols=["lsm-ui-terminal"],
+        subprotocols=[
+            "lsm-ui-terminal",
+            f"{UI_SESSION_BINDING_PROTOCOL_PREFIX}{UI_SESSION_BINDING}",
+        ],
     ) as websocket:
         assert websocket.accepted_subprotocol == "lsm-ui-terminal"
         assert websocket.receive_json() == {

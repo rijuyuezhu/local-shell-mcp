@@ -17,7 +17,12 @@ from ..oauth.core.urls import base_url, issuer_url
 UI_SESSION_COOKIE_PREFIX = "local-shell-mcp-ui-session"
 UI_CSRF_COOKIE_PREFIX = "local-shell-mcp-ui-csrf"
 UI_CSRF_HEADER = "x-local-shell-mcp-ui-csrf"
+UI_SESSION_BINDING_HEADER = "x-local-shell-mcp-ui-binding"
+UI_SESSION_BINDING_PROTOCOL_PREFIX = "lsm-ui-binding."
+UI_SESSION_BINDING_STORAGE_KEY = "local-shell-mcp-ui-session-binding"
 UI_SESSION_TOKEN_USE = "human-ui-session"
+_UI_SESSION_BINDING_MIN_LENGTH = 43
+_UI_SESSION_BINDING_MAX_LENGTH = 128
 
 
 def _session_signing_key() -> bytes:
@@ -100,8 +105,30 @@ def _csrf_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def issue_ui_session(claims: dict[str, Any]) -> tuple[str, str, int | None]:
+def is_valid_ui_session_binding_token(token: str) -> bool:
+    """Return whether an origin-scoped browser binding token is well formed."""
+    if (
+        not _UI_SESSION_BINDING_MIN_LENGTH
+        <= len(token)
+        <= _UI_SESSION_BINDING_MAX_LENGTH
+    ):
+        return False
+    return all(
+        character.isascii() and (character.isalnum() or character in "-_")
+        for character in token
+    )
+
+
+def _binding_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("ascii")).hexdigest()
+
+
+def issue_ui_session(
+    claims: dict[str, Any], binding_token: str
+) -> tuple[str, str, int | None]:
     """Issue a signed Human UI session token and its double-submit CSRF value."""
+    if not is_valid_ui_session_binding_token(binding_token):
+        raise ValueError("Invalid Human UI session binding token")
     settings = get_settings()
     now = int(time.time())
     configured_expiry = (
@@ -136,6 +163,7 @@ def issue_ui_session(claims: dict[str, Any]) -> tuple[str, str, int | None]:
         "scope": str(claims.get("scope") or ""),
         "token_use": UI_SESSION_TOKEN_USE,
         "csrf_sha256": _csrf_digest(csrf_token),
+        "binding_sha256": _binding_digest(binding_token),
     }
     max_age = expires_at - now if expires_at is not None else None
     if expires_at is not None:
@@ -144,7 +172,7 @@ def issue_ui_session(claims: dict[str, Any]) -> tuple[str, str, int | None]:
     return token, csrf_token, max_age
 
 
-def validate_ui_session(token: str) -> dict[str, Any]:
+def validate_ui_session(token: str, binding_token: str) -> dict[str, Any]:
     """Decode and validate a purpose-isolated Human UI session token."""
     claims = jwt.decode(
         token,
@@ -162,11 +190,19 @@ def validate_ui_session(token: str) -> dict[str, Any]:
                 "scope",
                 "token_use",
                 "csrf_sha256",
+                "binding_sha256",
             ]
         },
     )
     if claims.get("token_use") != UI_SESSION_TOKEN_USE:
         raise jwt.InvalidTokenError("Invalid Human UI session token use")
+    if not is_valid_ui_session_binding_token(binding_token):
+        raise jwt.InvalidTokenError("Invalid Human UI session binding")
+    expected_binding = str(claims.get("binding_sha256") or "")
+    if not expected_binding or not hmac.compare_digest(
+        _binding_digest(binding_token), expected_binding
+    ):
+        raise jwt.InvalidTokenError("Invalid Human UI session binding")
     return claims
 
 
