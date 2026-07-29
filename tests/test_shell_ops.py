@@ -648,6 +648,28 @@ async def test_run_shell_command_fast_command_succeeds(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="requires Linux subreaper")
 @pytest.mark.asyncio
+async def test_bounded_command_reaps_same_group_background_child(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    result = await run_shell(
+        "sleep 60 >/dev/null 2>&1 & echo $!",
+        timeout_s=5,
+    )
+    pid = int(result.stdout.strip())
+    try:
+        assert result.ok is True
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux subreaper")
+@pytest.mark.asyncio
 async def test_bounded_command_reaps_descendant_that_escapes_process_group(
     tmp_path, monkeypatch
 ):

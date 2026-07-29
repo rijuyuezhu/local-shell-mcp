@@ -24,7 +24,6 @@ from ..ops.shell import (
     authoritative_persistent_shell_ids_execute,
     check_command_policy,
     kill_persistent_shell_execute,
-    list_persistent_shells_execute,
     read_persistent_shell_output_execute,
     start_persistent_shell_execute,
 )
@@ -1316,7 +1315,7 @@ async def _job_start_execute_unlocked(
     shell_name = _shell_safe_name(f"{display_name}-{job_id}")
     paths, runner_command = _prepare_attempt(job_id, 1, command, resolved_cwd)
     now = _utc()
-    active_shells = _active_shell_ids(await list_persistent_shells_execute())
+    active_shells = await authoritative_persistent_shell_ids_execute()
     job: dict[str, Any] = {
         "job_id": job_id,
         "kind": "shell",
@@ -1343,12 +1342,18 @@ async def _job_start_execute_unlocked(
     operation_id = _begin_job_operation(job, "start")
     try:
         with _store_transaction() as store:
-            store["jobs"] = [
-                _refresh_job_status(row, active_shells, now)
-                for row in store.get("jobs", [])
-                if isinstance(row, dict)
+            retained = [
+                row for row in store.get("jobs", []) if isinstance(row, dict)
             ]
-            _prune_store(store)
+            if active_shells is not None:
+                retained = [
+                    _refresh_job_status(row, active_shells, now)
+                    for row in retained
+                ]
+                store["jobs"] = retained
+                _prune_store(store)
+            else:
+                store["jobs"] = retained
             store["jobs"].append(job)
     except BaseException:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
@@ -1487,14 +1492,12 @@ async def job_tail_execute(
     get_tool_session_store().touch_session(session_id)
     managed = job_id in managed_job_id_set(session_id, [job_id])
     active = (
-        set()
-        if managed
-        else _active_shell_ids(await list_persistent_shells_execute())
+        set() if managed else await authoritative_persistent_shell_ids_execute()
     )
     with _store_transaction() as store:
-        job = _refresh_job_status(
-            _find_session_job(store, session_id, job_id), active
-        )
+        job = _find_session_job(store, session_id, job_id)
+        if active is not None:
+            job = _refresh_job_status(job, active)
         public = _public_job(job)
         log_path = str(job.get("log_path") or "")
         shell_id = _job_shell_id(job)
@@ -1506,22 +1509,23 @@ async def job_tail_execute(
             tail = await read_persistent_shell_output_execute(shell_id, lines)
             output = str(tail.model_dump().get("output", ""))
         except Exception as exc:
-            with _store_transaction() as store:
-                current = _find_session_job(store, session_id, job_id)
-                if (
-                    current.get("status") == "running"
-                    and _job_shell_id(current) == shell_id
-                ):
-                    completed = _utc()
-                    current.update(
-                        {
-                            "status": "lost",
-                            "updated_at": completed,
-                            "completed_at": completed,
-                            "error": str(exc),
-                        }
-                    )
-                public = _public_job(current)
+            if active is not None:
+                with _store_transaction() as store:
+                    current = _find_session_job(store, session_id, job_id)
+                    if (
+                        current.get("status") == "running"
+                        and _job_shell_id(current) == shell_id
+                    ):
+                        completed = _utc()
+                        current.update(
+                            {
+                                "status": "lost",
+                                "updated_at": completed,
+                                "completed_at": completed,
+                                "error": str(exc),
+                            }
+                        )
+                    public = _public_job(current)
 
     message = None
     if public.status in TERMINAL_STATUSES:
@@ -1873,13 +1877,13 @@ async def _job_retry_execute_unlocked(
     managed = job_id in managed_job_id_set(session_id, [job_id])
     if managed:
         return await _retry_managed_job(session_id, job_id)
-    active = _active_shell_ids(await list_persistent_shells_execute())
+    active = await authoritative_persistent_shell_ids_execute()
     operation_id = ""
     try:
         with _store_transaction() as store:
-            job = _refresh_job_status(
-                _find_session_job(store, session_id, job_id), active
-            )
+            job = _find_session_job(store, session_id, job_id)
+            if active is not None:
+                job = _refresh_job_status(job, active)
             if job.get("status") in ACTIVE_STATUSES:
                 raise RuntimeError(f"job is still active: {job_id}")
             attempts = int(job.get("attempts") or 1) + 1

@@ -176,7 +176,7 @@ def test_process_group_alive_handles_platform_results(
         if error is not None:
             raise error
 
-    monkeypatch.setattr(bounded_runner.os, "killpg", fake_killpg)
+    monkeypatch.setattr(bounded_runner.os, "killpg", fake_killpg, raising=False)
 
     assert bounded_runner._process_group_alive(42) is expected
 
@@ -192,7 +192,7 @@ def test_signal_process_group_tolerates_exit_races(error, monkeypatch):
         if error is not None:
             raise error
 
-    monkeypatch.setattr(bounded_runner.os, "killpg", fake_killpg)
+    monkeypatch.setattr(bounded_runner.os, "killpg", fake_killpg, raising=False)
 
     bounded_runner._signal_process_group(42, signal.SIGTERM)
 
@@ -202,24 +202,34 @@ def test_signal_process_group_tolerates_exit_races(error, monkeypatch):
 def test_wait_for_process_group_exit_returns_early(monkeypatch):
     clock = iter([0.0, 0.1, 0.2])
     alive = iter([True, False])
+    reaped = []
     monkeypatch.setattr(bounded_runner.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(
         bounded_runner, "_process_group_alive", lambda _pgid: next(alive)
     )
+    monkeypatch.setattr(
+        bounded_runner, "_reap_children", lambda: reaped.append(True)
+    )
     monkeypatch.setattr(bounded_runner.time, "sleep", lambda _seconds: None)
 
     assert bounded_runner._wait_for_process_group_exit(42, 1.0) is True
+    assert reaped == [True, True]
 
 
 def test_wait_for_process_group_exit_reports_timeout(monkeypatch):
     clock = iter([0.0, 0.5, 1.0])
+    reaped = []
     monkeypatch.setattr(bounded_runner.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(
         bounded_runner, "_process_group_alive", lambda _pgid: True
     )
+    monkeypatch.setattr(
+        bounded_runner, "_reap_children", lambda: reaped.append(True)
+    )
     monkeypatch.setattr(bounded_runner.time, "sleep", lambda _seconds: None)
 
     assert bounded_runner._wait_for_process_group_exit(42, 1.0) is False
+    assert reaped == [True, True]
 
 
 def test_cleanup_process_group_returns_when_already_gone(monkeypatch):
@@ -308,7 +318,8 @@ def test_mirror_signal_resets_and_resends_signal(monkeypatch):
     ]
 
 
-def test_run_bounded_command_reports_missing_shell(capsys):
+def test_run_bounded_command_reports_missing_shell(monkeypatch, capsys):
+    monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     assert (
         bounded_runner.run_bounded_command("/missing/shell", "echo ok") == 127
     )
@@ -316,6 +327,7 @@ def test_run_bounded_command_reports_missing_shell(capsys):
 
 
 def test_run_bounded_command_reports_cleanup_failure(monkeypatch, capsys):
+    monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     process = SimpleNamespace(pid=42, poll=lambda: 0, wait=lambda: 0)
     monkeypatch.setattr(
         bounded_runner.subprocess, "Popen", lambda _args, **_kwargs: process
@@ -331,6 +343,7 @@ def test_run_bounded_command_reports_cleanup_failure(monkeypatch, capsys):
 
 
 def test_run_bounded_command_mirrors_child_signal(monkeypatch):
+    monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     process = SimpleNamespace(
         pid=42,
         poll=lambda: -signal.SIGTERM,
@@ -352,6 +365,7 @@ def test_run_bounded_command_mirrors_child_signal(monkeypatch):
 
 
 def test_run_bounded_command_mirrors_received_signal(monkeypatch):
+    monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     handlers = {}
     process = SimpleNamespace(pid=42, poll=lambda: None)
     monkeypatch.setattr(
@@ -383,6 +397,7 @@ def test_run_bounded_command_mirrors_received_signal(monkeypatch):
 
 
 def test_run_bounded_command_returns_normal_exit_code(monkeypatch):
+    monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     process = SimpleNamespace(pid=42, poll=lambda: 7, wait=lambda: 7)
     monkeypatch.setattr(
         bounded_runner.subprocess, "Popen", lambda _args, **_kwargs: process

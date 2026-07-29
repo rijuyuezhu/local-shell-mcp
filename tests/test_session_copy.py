@@ -10,9 +10,6 @@ import local_shell_mcp.ops.utils.session_copy as session_copy_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.ops.session import session_copy_execute
-from local_shell_mcp.schemas.result_models.shell import (
-    ListPersistentShellsOutput,
-)
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.local_handlers import (
     call_local_tool,
@@ -645,9 +642,11 @@ async def test_session_copy_background_job_reports_progress_and_result(
     dst = store.create_session(workdir="dst")
 
     async def no_shells():
-        return ListPersistentShellsOutput(shells=[])
+        return set()
 
-    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(
+        jobs_ops, "authoritative_persistent_shell_ids_execute", no_shells
+    )
     started = await session_copy_execute(
         src.session_id,
         "payload.bin",
@@ -693,7 +692,7 @@ async def test_session_copy_background_cancel_aborts_transaction(
     aborted: list[dict[str, Any]] = []
 
     async def no_shells():
-        return ListPersistentShellsOutput(shells=[])
+        return set()
 
     async def fake_transfer(_endpoint, tool, args, *, session_bound=True):
         _ = session_bound
@@ -716,7 +715,9 @@ async def test_session_copy_background_cancel_aborts_transaction(
             return {"deleted": True}
         raise AssertionError(f"unexpected tool: {tool}")
 
-    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(
+        jobs_ops, "authoritative_persistent_shell_ids_execute", no_shells
+    )
     monkeypatch.setattr(
         session_copy_ops, "_endpoint_transfer_data", fake_transfer
     )
@@ -751,9 +752,11 @@ async def test_session_copy_background_retry_reuses_durable_payload(
     dst = store.create_session(workdir="dst")
 
     async def no_shells():
-        return ListPersistentShellsOutput(shells=[])
+        return set()
 
-    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(
+        jobs_ops, "authoritative_persistent_shell_ids_execute", no_shells
+    )
     started = await session_copy_execute(
         src.session_id,
         "later.bin",

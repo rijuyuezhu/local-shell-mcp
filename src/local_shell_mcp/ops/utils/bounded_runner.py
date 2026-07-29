@@ -153,9 +153,11 @@ def _wait_for_process_group_exit(
     """Wait briefly for an isolated child process group to disappear."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
+        _reap_children()
         if not _process_group_alive(process_group_id):
             return True
         time.sleep(POLL_INTERVAL_S)
+    _reap_children()
     return not _process_group_alive(process_group_id)
 
 
