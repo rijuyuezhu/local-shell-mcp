@@ -318,6 +318,82 @@ def test_snapshot_count_retention_keeps_newest_records(tmp_path, monkeypatch):
     )
 
 
+def test_snapshot_count_retention_favors_new_insertion_when_timestamps_tie(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS", "1")
+    clear_settings_cache()
+    monkeypatch.setattr(store_module.time, "time", lambda: 100.0)
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    first = store.record_file_snapshot(
+        session_id=session.session_id,
+        path="first.txt",
+        file_sha256="first",
+        total_lines=1,
+        seen_ranges=((1, 1),),
+    )
+    second = store.record_file_snapshot(
+        session_id=session.session_id,
+        path="second.txt",
+        file_sha256="second",
+        total_lines=1,
+        seen_ranges=((1, 1),),
+    )
+
+    reloaded = store_module.ToolSessionStore()
+    assert reloaded.get_snapshot(session.session_id, first.snapshot_id) is None
+    assert (
+        reloaded.get_snapshot(session.session_id, second.snapshot_id) == second
+    )
+    assert second.sequence > first.sequence
+
+
+def test_snapshot_sequence_migrates_legacy_rows_and_favors_new_record(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS", "1")
+    clear_settings_cache()
+    monkeypatch.setattr(store_module.time, "time", lambda: 100.0)
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    legacy = {
+        "session_id": session.session_id,
+        "snapshot_id": "legacy-snapshot",
+        "path": "legacy.txt",
+        "file_sha256": "legacy",
+        "total_lines": 1,
+        "seen_ranges": [[1, 1]],
+        "created_at": 100.0,
+    }
+    store._state_store.write_json(
+        store._state_store.layout.session_snapshots_path(session.session_id),
+        {"snapshots": [legacy]},
+    )
+
+    current = store.record_file_snapshot(
+        session_id=session.session_id,
+        path="current.txt",
+        file_sha256="current",
+        total_lines=1,
+        seen_ranges=((1, 1),),
+    )
+
+    assert store.get_snapshot(session.session_id, "legacy-snapshot") is None
+    assert (
+        store.get_snapshot(session.session_id, current.snapshot_id) == current
+    )
+    assert current.sequence == 2
+
+
 def test_snapshot_metadata_rejects_one_record_over_byte_limit(
     tmp_path, monkeypatch
 ):
@@ -360,6 +436,58 @@ def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
                 }
             ],
         },
+    )
+
+    assert store.require_session(session.session_id) == session
+
+
+@pytest.mark.parametrize("primary_state", ["missing", "corrupt"])
+def test_active_job_backup_protects_expired_session(
+    tmp_path, monkeypatch, primary_state
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    payload = {
+        "version": 1,
+        "jobs": [
+            {
+                "job_id": "job_active",
+                "session_id": session.session_id,
+                "status": "running",
+            }
+        ],
+    }
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_backup_path, payload
+    )
+    if primary_state == "corrupt":
+        store._state_store.layout.jobs_store_path.write_text(
+            "{not-json", encoding="utf-8"
+        )
+
+    assert store.require_session(session.session_id) == session
+
+
+def test_invalid_primary_and_backup_conservatively_protect_sessions(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    store._state_store.layout.jobs_store_path.write_text(
+        "{not-json", encoding="utf-8"
+    )
+    store._state_store.layout.jobs_store_backup_path.write_text(
+        "[]", encoding="utf-8"
     )
 
     assert store.require_session(session.session_id) == session
@@ -684,6 +812,10 @@ def test_pruning_loads_active_job_owners_once(tmp_path, monkeypatch):
     clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
     monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
     clear_settings_cache()
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {"version": 1, "jobs": []},
+    )
     original_read_json = store._state_store.read_json
     job_store_reads = 0
 

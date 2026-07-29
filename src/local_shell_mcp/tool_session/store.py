@@ -95,6 +95,9 @@ class SnapshotRecord:
     created_at: float
     """Unix timestamp when this snapshot was recorded."""
 
+    sequence: int = 0
+    """Durable insertion sequence used to break equal timestamp ties."""
+
 
 def generate_session_id() -> str:
     """Return one opaque 8-character alphanumeric agent session id."""
@@ -224,7 +227,9 @@ class ToolSessionStore:
         )
 
     @staticmethod
-    def _snapshot_from_payload(value: Any) -> SnapshotRecord:
+    def _snapshot_from_payload(
+        value: Any, *, fallback_sequence: int = 0
+    ) -> SnapshotRecord:
         if not isinstance(value, dict):
             raise ValueError("snapshot metadata must be a JSON object")
         payload = cast(dict[str, Any], value)
@@ -236,6 +241,13 @@ class ToolSessionStore:
             if not isinstance(item, list | tuple) or len(item) != 2:
                 raise ValueError("snapshot metadata contains an invalid range")
             normalized_ranges.append((int(item[0]), int(item[1])))
+        sequence = (
+            fallback_sequence
+            if payload.get("sequence") is None
+            else ToolSessionStore._required_int(payload, "sequence")
+        )
+        if sequence < 0:
+            raise ValueError("snapshot metadata contains invalid sequence")
         return SnapshotRecord(
             session_id=str(payload.get("session_id") or ""),
             snapshot_id=str(payload.get("snapshot_id") or ""),
@@ -244,6 +256,7 @@ class ToolSessionStore:
             total_lines=ToolSessionStore._required_int(payload, "total_lines"),
             seen_ranges=tuple(normalized_ranges),
             created_at=ToolSessionStore._required_float(payload, "created_at"),
+            sequence=sequence,
         )
 
     def _reset_for_current_root_locked(self) -> None:
@@ -301,18 +314,28 @@ class ToolSessionStore:
 
     def _active_job_session_ids_locked(self) -> set[str] | None:
         """Load sessions protected by active durable jobs, or None if uncertain."""
-        try:
-            payload = self._state_store.read_json(
-                self._state_store.layout.jobs_store_path,
-                max_bytes=JOB_STORE_READ_MAX_BYTES,
-            )
-        except OSError, TypeError, ValueError:
-            return None
-        if payload is None:
+        primary = self._state_store.layout.jobs_store_path
+        backup = self._state_store.layout.jobs_store_backup_path
+        if not primary.exists() and not backup.exists():
             return set()
-        if not isinstance(payload, dict) or not isinstance(
-            payload.get("jobs"), list
-        ):
+
+        payload: dict[str, Any] | None = None
+        for path in (primary, backup):
+            if not path.exists():
+                continue
+            try:
+                candidate = self._state_store.read_json(
+                    path,
+                    max_bytes=JOB_STORE_READ_MAX_BYTES,
+                )
+            except OSError, TypeError, ValueError:
+                continue
+            if isinstance(candidate, dict) and isinstance(
+                candidate.get("jobs"), list
+            ):
+                payload = candidate
+                break
+        if payload is None:
             return None
         protected: set[str] = set()
         for job in payload["jobs"]:
@@ -517,8 +540,10 @@ class ToolSessionStore:
             payload.get("snapshots"), list
         ):
             raise ValueError("session snapshots must contain a snapshots array")
-        for value in payload["snapshots"]:
-            snapshot = self._snapshot_from_payload(value)
+        for sequence, value in enumerate(payload["snapshots"], start=1):
+            snapshot = self._snapshot_from_payload(
+                value, fallback_sequence=sequence
+            )
             if snapshot.session_id != session_id:
                 raise ValueError(
                     "snapshot owner does not match its session directory"
@@ -565,7 +590,7 @@ class ToolSessionStore:
                 for (owner, _), snapshot in self._snapshots.items()
                 if owner == session_id
             ),
-            key=lambda snapshot: snapshot.created_at,
+            key=lambda snapshot: (snapshot.created_at, snapshot.sequence),
             reverse=True,
         )[: int(settings.max_session_snapshots)]
         maximum_bytes = int(settings.max_session_snapshot_bytes)
@@ -931,15 +956,6 @@ class ToolSessionStore:
         seen_ranges: tuple[tuple[int, int], ...],
     ) -> SnapshotRecord:
         """Durably record a read/search-visible file snapshot."""
-        record = SnapshotRecord(
-            session_id=session_id,
-            snapshot_id=_new_snapshot_id(),
-            path=path,
-            file_sha256=file_sha256,
-            total_lines=total_lines,
-            seen_ranges=seen_ranges,
-            created_at=time.time(),
-        )
         with self._lock:
             self._reset_for_current_root_locked()
             with self._state_store.transaction(
@@ -947,6 +963,24 @@ class ToolSessionStore:
             ):
                 self._require_session_locked(session_id)
                 self._load_snapshots_locked(session_id)
+                next_sequence = 1 + max(
+                    (
+                        snapshot.sequence
+                        for (owner, _), snapshot in self._snapshots.items()
+                        if owner == session_id
+                    ),
+                    default=0,
+                )
+                record = SnapshotRecord(
+                    session_id=session_id,
+                    snapshot_id=_new_snapshot_id(),
+                    path=path,
+                    file_sha256=file_sha256,
+                    total_lines=total_lines,
+                    seen_ranges=seen_ranges,
+                    created_at=time.time(),
+                    sequence=next_sequence,
+                )
                 maximum_bytes = int(get_settings().max_session_snapshot_bytes)
                 if (
                     self._encoded_snapshot_payload_bytes([record])
