@@ -103,6 +103,17 @@ def generate_session_id() -> str:
     )
 
 
+def _valid_session_id(value: Any) -> str | None:
+    """Return one normalized agent session id, or None for invalid input."""
+    if not isinstance(value, str):
+        return None
+    if len(value) != SESSION_ID_LENGTH or any(
+        character not in SESSION_ID_ALPHABET for character in value
+    ):
+        return None
+    return value
+
+
 def _new_snapshot_id() -> str:
     """Return an opaque snapshot id for one displayed file view."""
     return secrets.token_hex(6)
@@ -155,10 +166,8 @@ class ToolSessionStore:
         if not isinstance(value, dict):
             raise ValueError("session metadata must be a JSON object")
         payload = cast(dict[str, Any], value)
-        session_id = str(payload.get("session_id") or "")
-        if len(session_id) != SESSION_ID_LENGTH or any(
-            character not in SESSION_ID_ALPHABET for character in session_id
-        ):
+        session_id = _valid_session_id(payload.get("session_id"))
+        if session_id is None:
             raise ValueError("session metadata contains an invalid session_id")
         target_value = str(payload.get("target") or "")
         if target_value not in {"local", "remote"}:
@@ -267,8 +276,31 @@ class ToolSessionStore:
             if key[0] != session_id
         }
 
-    def _active_job_owner_ids_locked(self) -> set[str] | None:
-        """Load active durable-job owners once, or return None if uncertain."""
+    def _managed_payload_session_ids_locked(self, payload: Any) -> set[str]:
+        """Return existing agent sessions referenced by managed-job payloads."""
+        protected: set[str] = set()
+        pending = [payload]
+        while pending:
+            current = pending.pop()
+            if isinstance(current, dict):
+                for key, value in current.items():
+                    if isinstance(key, str) and (
+                        key == "session_id" or key.endswith("_session_id")
+                    ):
+                        session_id = _valid_session_id(value)
+                        if (
+                            session_id is not None
+                            and self._metadata_path(session_id).exists()
+                        ):
+                            protected.add(session_id)
+                    if isinstance(value, dict | list):
+                        pending.append(value)
+            elif isinstance(current, list):
+                pending.extend(current)
+        return protected
+
+    def _active_job_session_ids_locked(self) -> set[str] | None:
+        """Load sessions protected by active durable jobs, or None if uncertain."""
         try:
             payload = self._state_store.read_json(
                 self._state_store.layout.jobs_store_path,
@@ -282,15 +314,15 @@ class ToolSessionStore:
             payload.get("jobs"), list
         ):
             return None
-        owners: set[str] = set()
+        protected: set[str] = set()
         for job in payload["jobs"]:
             if not isinstance(job, dict):
                 continue
-            session_id = str(job.get("session_id") or "")
+            session_id = _valid_session_id(job.get("session_id"))
             status = str(job.get("status") or "")
             kind = str(job.get("kind") or "shell")
             if (
-                session_id
+                session_id is not None
                 and status in ACTIVE_JOB_STATUSES
                 and (
                     kind != "managed"
@@ -299,8 +331,14 @@ class ToolSessionStore:
                 )
                 and not self._job_has_durable_completion_locked(job, status)
             ):
-                owners.add(session_id)
-        return owners
+                protected.add(session_id)
+                if kind == "managed":
+                    protected.update(
+                        self._managed_payload_session_ids_locked(
+                            job.get("managed_payload")
+                        )
+                    )
+        return protected
 
     def _job_has_durable_completion_locked(
         self, job: dict[str, Any], status: str
@@ -322,17 +360,18 @@ class ToolSessionStore:
 
     @staticmethod
     def _session_has_active_jobs(
-        session_id: str, active_job_owner_ids: set[str] | None
+        session_id: str, active_job_session_ids: set[str] | None
     ) -> bool:
-        """Conservatively treat an unreadable jobs store as active ownership."""
+        """Conservatively treat an unreadable jobs store as active participation."""
         return (
-            active_job_owner_ids is None or session_id in active_job_owner_ids
+            active_job_session_ids is None
+            or session_id in active_job_session_ids
         )
 
     def _session_has_active_jobs_locked(self, session_id: str) -> bool:
-        """Conservatively protect one session that still owns durable jobs."""
+        """Conservatively protect one session participating in durable jobs."""
         return self._session_has_active_jobs(
-            session_id, self._active_job_owner_ids_locked()
+            session_id, self._active_job_session_ids_locked()
         )
 
     @staticmethod
@@ -377,7 +416,7 @@ class ToolSessionStore:
     ) -> list[AgentSession]:
         """Remove expired sessions and inactive overflow beyond the configured cap."""
         sessions = self._read_all_sessions_locked()
-        active_job_owner_ids = self._active_job_owner_ids_locked()
+        active_job_session_ids = self._active_job_session_ids_locked()
         retention_s = int(get_settings().agent_session_retention_s)
         expired = [
             session
@@ -386,7 +425,7 @@ class ToolSessionStore:
             and self._session_expired_by_policy(session, now, retention_s)
             and not session.persistent_shell_ids
             and not self._session_has_active_jobs(
-                session.session_id, active_job_owner_ids
+                session.session_id, active_job_session_ids
             )
         ]
         for session in expired:
@@ -408,7 +447,7 @@ class ToolSessionStore:
                     and session.updated_at < now - SESSION_ACTIVE_WINDOW_S
                     and not session.persistent_shell_ids
                     and not self._session_has_active_jobs(
-                        session.session_id, active_job_owner_ids
+                        session.session_id, active_job_session_ids
                     )
                 ),
                 key=lambda session: (session.updated_at, session.created_at),

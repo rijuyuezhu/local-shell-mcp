@@ -1,10 +1,41 @@
 import argparse
+import contextlib
+import os
+import shlex
 import signal
+import subprocess
+import sys
+import time
 from types import SimpleNamespace
 
 import pytest
 
 from local_shell_mcp.ops.utils import bounded_runner
+
+
+def _install_fake_kqueue_capabilities(monkeypatch, queue_factory):
+    constants = {
+        "KQ_FILTER_PROC": -5,
+        "KQ_EV_ADD": 1,
+        "KQ_EV_ENABLE": 2,
+        "KQ_NOTE_EXIT": 4,
+        "KQ_NOTE_FORK": 8,
+        "KQ_NOTE_TRACK": 16,
+        "KQ_NOTE_CHILD": 32,
+        "KQ_NOTE_TRACKERR": 64,
+    }
+    monkeypatch.setattr(
+        bounded_runner.select, "kqueue", queue_factory, raising=False
+    )
+    monkeypatch.setattr(
+        bounded_runner.select,
+        "kevent",
+        lambda ident, **kwargs: SimpleNamespace(ident=ident, **kwargs),
+        raising=False,
+    )
+    for name, value in constants.items():
+        monkeypatch.setattr(bounded_runner.select, name, value, raising=False)
+    return SimpleNamespace(**constants)
 
 
 def test_shell_command_args_support_native_windows_shells():
@@ -50,6 +81,216 @@ def test_enable_child_subreaper_handles_missing_prctl(monkeypatch):
     )
 
     assert bounded_runner._enable_child_subreaper() is False
+
+
+def test_kqueue_descendant_tracking_requires_every_capability(monkeypatch):
+    _install_fake_kqueue_capabilities(monkeypatch, lambda: None)
+    assert bounded_runner._kqueue_descendant_tracking_available() is True
+
+    monkeypatch.delattr(bounded_runner.select, "KQ_NOTE_TRACKERR")
+    assert bounded_runner._kqueue_descendant_tracking_available() is False
+
+
+def test_kqueue_tracker_registers_and_tracks_children(monkeypatch):
+    class FakeQueue:
+        def __init__(self):
+            self.registrations = []
+            self.batches = []
+            self.closed = False
+
+        def control(self, changes, _max_events, _timeout):
+            if changes is not None:
+                self.registrations.extend(changes)
+                return []
+            return self.batches.pop(0) if self.batches else []
+
+        def close(self):
+            self.closed = True
+
+    queue = FakeQueue()
+    flags = _install_fake_kqueue_capabilities(monkeypatch, lambda: queue)
+    tracker = bounded_runner._KqueueDescendantTracker.create(42)
+
+    assert len(queue.registrations) == 1
+    registration = queue.registrations[0]
+    assert registration.ident == 42
+    assert registration.filter == flags.KQ_FILTER_PROC
+    assert registration.fflags == (
+        flags.KQ_NOTE_EXIT | flags.KQ_NOTE_FORK | flags.KQ_NOTE_TRACK
+    )
+
+    queue.batches.extend(
+        [
+            [SimpleNamespace(ident=43, fflags=flags.KQ_NOTE_CHILD)],
+            [],
+        ]
+    )
+    tracker.poll()
+    assert tracker.live_pids == {42, 43}
+
+    queue.batches.extend(
+        [[SimpleNamespace(ident=43, fflags=flags.KQ_NOTE_EXIT)], []]
+    )
+    tracker.poll()
+    assert tracker.live_pids == {42}
+    tracker.close()
+    assert queue.closed is True
+
+
+def test_kqueue_tracker_marks_track_errors_and_signals_known_pids(
+    monkeypatch,
+):
+    class FakeQueue:
+        def __init__(self):
+            self.batches = []
+
+        def control(self, changes, _max_events, _timeout):
+            if changes is not None:
+                return []
+            return self.batches.pop(0) if self.batches else []
+
+        def close(self):
+            pass
+
+    queue = FakeQueue()
+    flags = _install_fake_kqueue_capabilities(monkeypatch, lambda: queue)
+    tracker = bounded_runner._KqueueDescendantTracker.create(42)
+    queue.batches.extend(
+        [
+            [
+                SimpleNamespace(ident=43, fflags=flags.KQ_NOTE_CHILD),
+                SimpleNamespace(ident=42, fflags=flags.KQ_NOTE_TRACKERR),
+            ],
+            [],
+        ]
+    )
+    killed = []
+    monkeypatch.setattr(
+        bounded_runner.os, "kill", lambda pid, sig: killed.append((pid, sig))
+    )
+
+    tracker.poll()
+    assert tracker.failed is True
+    assert tracker.cleanup() is False
+    assert (43, signal.SIGTERM) in killed
+    assert (42, signal.SIGTERM) in killed
+    assert (43, bounded_runner._force_kill_signal()) in killed
+
+
+def test_select_capability_rejects_missing_value(monkeypatch):
+    monkeypatch.delattr(
+        bounded_runner.select, "missing_capability", raising=False
+    )
+
+    with pytest.raises(RuntimeError, match="missing_capability"):
+        bounded_runner._select_capability("missing_capability")
+
+
+def test_kqueue_tracker_closes_queue_when_registration_fails(monkeypatch):
+    class FakeQueue:
+        closed = False
+
+        def control(self, *_args):
+            raise OSError("registration failed")
+
+        def close(self):
+            self.closed = True
+
+    queue = FakeQueue()
+    _install_fake_kqueue_capabilities(monkeypatch, lambda: queue)
+
+    with pytest.raises(OSError, match="registration failed"):
+        bounded_runner._KqueueDescendantTracker.create(42)
+
+    assert queue.closed is True
+
+
+def test_kqueue_tracker_handles_poll_and_signal_errors(monkeypatch):
+    class FakeQueue:
+        def control(self, changes, _max_events, _timeout):
+            if changes is not None:
+                return []
+            raise OSError("queue failed")
+
+        def close(self):
+            pass
+
+    queue = FakeQueue()
+    _install_fake_kqueue_capabilities(monkeypatch, lambda: queue)
+    tracker = bounded_runner._KqueueDescendantTracker.create(42)
+    tracker.poll()
+    assert tracker.failed is True
+
+    tracker.failed = False
+    tracker.live_pids = {42, 43}
+
+    def fake_kill(pid, _sig):
+        if pid == 43:
+            raise ProcessLookupError
+        raise PermissionError
+
+    monkeypatch.setattr(bounded_runner.os, "kill", fake_kill)
+    tracker.signal_all(signal.SIGTERM)
+    assert tracker.live_pids == {42}
+    assert tracker.failed is True
+
+
+def test_kqueue_tracker_wait_and_graceful_cleanup(monkeypatch):
+    tracker = bounded_runner._KqueueDescendantTracker(
+        SimpleNamespace(control=lambda *_args: [], close=lambda: None), 42
+    )
+    tracker.discard_root()
+    assert tracker.live_pids == set()
+    assert tracker.cleanup() is True
+
+    tracker.live_pids = {43}
+    signals = []
+    monkeypatch.setattr(tracker, "poll", lambda: tracker.live_pids.clear())
+    monkeypatch.setattr(tracker, "signal_all", lambda sig: signals.append(sig))
+    assert tracker.wait_for_empty(1.0) is True
+
+    tracker.live_pids = {43}
+    poll_count = 0
+
+    def clear_after_signal():
+        nonlocal poll_count
+        poll_count += 1
+        if poll_count > 1:
+            tracker.live_pids.clear()
+
+    monkeypatch.setattr(tracker, "poll", clear_after_signal)
+    assert tracker.cleanup() is True
+    assert signals == [signal.SIGTERM]
+
+
+def test_cleanup_kqueue_processes_rechecks_group(monkeypatch):
+    calls = []
+    tracker = bounded_runner._KqueueDescendantTracker(
+        SimpleNamespace(control=lambda *_args: [], close=lambda: None), 42
+    )
+    monkeypatch.setattr(
+        tracker, "discard_root", lambda: calls.append("discard")
+    )
+    monkeypatch.setattr(tracker, "cleanup", lambda: True)
+    monkeypatch.setattr(
+        bounded_runner, "_cleanup_process_group", lambda _pgid: False
+    )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_wait_for_process_group_exit",
+        lambda pgid, timeout: calls.append((pgid, timeout)) or True,
+    )
+
+    assert (
+        bounded_runner._cleanup_kqueue_command_processes(
+            42, tracker, root_exited=True
+        )
+        is True
+    )
+    assert calls == [
+        "discard",
+        (42, bounded_runner.POLL_INTERVAL_S * 5),
+    ]
 
 
 def test_direct_children_parses_procfs_pids(monkeypatch):
@@ -367,7 +608,9 @@ def test_run_bounded_command_mirrors_child_signal(monkeypatch):
 def test_run_bounded_command_mirrors_received_signal(monkeypatch):
     monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     handlers = {}
-    process = SimpleNamespace(pid=42, poll=lambda: None)
+    process = SimpleNamespace(
+        pid=42, poll=lambda: None, wait=lambda timeout=None: -signal.SIGTERM
+    )
     monkeypatch.setattr(
         bounded_runner.subprocess, "Popen", lambda _args, **_kwargs: process
     )
@@ -418,6 +661,9 @@ def test_run_bounded_command_fails_closed_without_containment(
         bounded_runner, "_enable_child_subreaper", lambda: False
     )
     monkeypatch.setattr(
+        bounded_runner, "_kqueue_descendant_tracking_available", lambda: False
+    )
+    monkeypatch.setattr(
         bounded_runner, "_process_group_containment_available", lambda: False
     )
     monkeypatch.setattr(
@@ -427,35 +673,378 @@ def test_run_bounded_command_fails_closed_without_containment(
     )
 
     assert bounded_runner.run_bounded_command("sh", "true") == 125
-    assert "containment is unavailable" in capsys.readouterr().err
+    assert "descendant tracking is unavailable" in capsys.readouterr().err
 
 
-def test_run_bounded_command_uses_process_group_fallback(monkeypatch):
-    calls = []
-    process = SimpleNamespace(pid=42, poll=lambda: 0, wait=lambda: 0)
+def test_run_bounded_command_rejects_process_group_only_containment(
+    monkeypatch, capsys
+):
     monkeypatch.setattr(
         bounded_runner, "_enable_child_subreaper", lambda: False
+    )
+    monkeypatch.setattr(
+        bounded_runner, "_kqueue_descendant_tracking_available", lambda: False
     )
     monkeypatch.setattr(
         bounded_runner, "_process_group_containment_available", lambda: True
     )
 
-    def fake_popen(args, **kwargs):
-        calls.append((args, kwargs))
-        return process
+    monkeypatch.setattr(
+        bounded_runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("command must not start"),
+    )
 
-    monkeypatch.setattr(bounded_runner.subprocess, "Popen", fake_popen)
+    assert bounded_runner.run_bounded_command("sh", "true") == 125
+    assert "descendant tracking is unavailable" in capsys.readouterr().err
+
+
+def test_run_bounded_command_uses_kqueue_tracker(monkeypatch):
+    monkeypatch.setattr(
+        bounded_runner, "_enable_child_subreaper", lambda: False
+    )
+    monkeypatch.setattr(
+        bounded_runner, "_kqueue_descendant_tracking_available", lambda: True
+    )
+    process = SimpleNamespace(pid=42, poll=lambda: 0, wait=lambda: 0)
+    tracker = SimpleNamespace(failed=False, close=lambda: None)
     monkeypatch.setattr(
         bounded_runner,
-        "_cleanup_command_processes",
-        lambda pgid, *, track_descendants: (
-            calls.append((pgid, track_descendants)) or True
+        "_spawn_kqueue_tracked_command",
+        lambda shell, command, *, start_new_session: (process, tracker),
+    )
+    cleanup = []
+    monkeypatch.setattr(
+        bounded_runner,
+        "_cleanup_kqueue_command_processes",
+        lambda pgid, candidate, *, root_exited: (
+            cleanup.append((pgid, candidate, root_exited)) or True
         ),
     )
 
     assert bounded_runner.run_bounded_command("sh", "true") == 0
-    assert calls[0][1]["start_new_session"] is True
-    assert calls[1] == (42, False)
+    assert cleanup == [(42, tracker, True)]
+
+
+def test_run_bounded_command_fails_closed_on_kqueue_track_error(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        bounded_runner, "_enable_child_subreaper", lambda: False
+    )
+    monkeypatch.setattr(
+        bounded_runner, "_kqueue_descendant_tracking_available", lambda: True
+    )
+
+    class FakeProcess:
+        pid = 42
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    class FakeTracker:
+        failed = False
+
+        def poll(self):
+            self.failed = True
+
+        def close(self):
+            pass
+
+    tracker = FakeTracker()
+    monkeypatch.setattr(
+        bounded_runner,
+        "_spawn_kqueue_tracked_command",
+        lambda *_args, **_kwargs: (FakeProcess(), tracker),
+    )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_cleanup_kqueue_command_processes",
+        lambda *_args, **_kwargs: False,
+    )
+
+    assert bounded_runner.run_bounded_command("sh", "true") == 125
+    assert "tracking failed during execution" in capsys.readouterr().err
+
+
+def test_bounded_exec_gate_requires_release_byte(monkeypatch, capsys):
+    closed = []
+    monkeypatch.setattr(bounded_runner.os, "read", lambda _fd, _size: b"")
+    monkeypatch.setattr(
+        bounded_runner.os, "close", lambda fd: closed.append(fd)
+    )
+    monkeypatch.setattr(
+        bounded_runner.os,
+        "execvp",
+        lambda *_args: pytest.fail("shell must not execute"),
+    )
+
+    assert bounded_runner._run_bounded_exec_gate(9, "sh", "true") == 125
+    assert closed == [9]
+    assert "registration failed" in capsys.readouterr().err
+
+
+def test_bounded_exec_gate_releases_shell_with_path_lookup(monkeypatch):
+    class ExecCalled(Exception):
+        pass
+
+    calls = []
+    monkeypatch.setattr(bounded_runner.os, "read", lambda _fd, _size: b"\x01")
+    monkeypatch.setattr(bounded_runner.os, "close", lambda _fd: None)
+
+    def fake_execvp(shell, args):
+        calls.append((shell, args))
+        raise ExecCalled
+
+    monkeypatch.setattr(bounded_runner.os, "execvp", fake_execvp)
+
+    with pytest.raises(ExecCalled):
+        bounded_runner._run_bounded_exec_gate(9, "sh", "echo ok")
+
+    assert calls == [("sh", ["sh", "-lc", "echo ok"])]
+
+
+def test_bounded_exec_gate_reports_read_and_exec_errors(monkeypatch, capsys):
+    def fail_read(_fd, _size):
+        raise OSError("read failed")
+
+    monkeypatch.setattr(bounded_runner.os, "read", fail_read)
+    monkeypatch.setattr(bounded_runner.os, "close", lambda _fd: None)
+    assert bounded_runner._run_bounded_exec_gate(9, "sh", "true") == 125
+    assert "read failed" in capsys.readouterr().err
+
+    monkeypatch.setattr(bounded_runner.os, "read", lambda _fd, _size: b"\x01")
+
+    def fail_exec(*_args):
+        raise OSError("exec failed")
+
+    monkeypatch.setattr(bounded_runner.os, "execvp", fail_exec)
+    assert bounded_runner._run_bounded_exec_gate(9, "sh", "true") == 127
+    assert "exec failed" in capsys.readouterr().err
+
+
+def test_forked_process_poll_and_blocking_wait(monkeypatch):
+    process = bounded_runner._ForkedProcess(42)
+    waits = iter([(0, 0), (42, 7 << 8)])
+    monkeypatch.setattr(
+        bounded_runner.os, "waitpid", lambda _pid, _flags: next(waits)
+    )
+    assert process.poll() is None
+    assert process.poll() == 7
+    assert process.wait() == 7
+
+    process = bounded_runner._ForkedProcess(43)
+    monkeypatch.setattr(
+        bounded_runner.os, "waitpid", lambda _pid, _flags: (43, 0)
+    )
+    assert process.wait() == 0
+
+
+def test_forked_process_handles_reaped_timeout_and_kill(monkeypatch):
+    process = bounded_runner._ForkedProcess(44)
+
+    def already_reaped(*_args):
+        raise ChildProcessError
+
+    monkeypatch.setattr(bounded_runner.os, "waitpid", already_reaped)
+    assert process.poll() is None
+    assert process.wait() == 0
+
+    process = bounded_runner._ForkedProcess(45)
+    clock = iter([0.0, 0.0, 1.0])
+    monkeypatch.setattr(bounded_runner.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(process, "poll", lambda: None)
+    monkeypatch.setattr(bounded_runner.time, "sleep", lambda _seconds: None)
+    with pytest.raises(subprocess.TimeoutExpired):
+        process.wait(timeout=0.5)
+
+    killed = []
+    monkeypatch.setattr(
+        bounded_runner.os, "kill", lambda pid, sig: killed.append((pid, sig))
+    )
+    process.kill()
+    assert killed == [(45, bounded_runner._force_kill_signal())]
+
+    def disappeared(*_args):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(bounded_runner.os, "kill", disappeared)
+    process.kill()
+
+
+def test_spawn_kqueue_command_registers_before_release(monkeypatch):
+    closed = []
+    writes = []
+    tracker = SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(bounded_runner.os, "pipe", lambda: (10, 11))
+    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42)
+    monkeypatch.setattr(
+        bounded_runner.os, "close", lambda fd: closed.append(fd)
+    )
+    monkeypatch.setattr(
+        bounded_runner.os,
+        "write",
+        lambda fd, payload: writes.append((fd, payload)) or len(payload),
+    )
+    monkeypatch.setattr(
+        bounded_runner._KqueueDescendantTracker,
+        "create",
+        lambda _pid: tracker,
+    )
+
+    spawned = bounded_runner._spawn_kqueue_tracked_command(
+        "sh", "true", start_new_session=True
+    )
+
+    assert spawned is not None
+    process, returned_tracker = spawned
+    assert process.pid == 42
+    assert returned_tracker is tracker
+    assert writes == [(11, b"\x01")]
+    assert closed == [10, 11]
+
+
+def test_spawn_kqueue_command_fails_on_tracker_registration(monkeypatch):
+    class FakeProcess:
+        pid = 42
+
+        def __init__(self):
+            self.killed = False
+
+        def wait(self, timeout=None):
+            if timeout is not None:
+                raise subprocess.TimeoutExpired("bounded", timeout)
+            return 0
+
+        def poll(self):
+            return None if not self.killed else -signal.SIGKILL
+
+        def kill(self):
+            self.killed = True
+
+    closed = []
+    fake_process = FakeProcess()
+    monkeypatch.setattr(bounded_runner.os, "pipe", lambda: (10, 11))
+    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42)
+    monkeypatch.setattr(
+        bounded_runner.os, "close", lambda fd: closed.append(fd)
+    )
+    monkeypatch.setattr(
+        bounded_runner, "_ForkedProcess", lambda _pid: fake_process
+    )
+
+    def fail_registration(_pid):
+        raise OSError("register failed")
+
+    monkeypatch.setattr(
+        bounded_runner._KqueueDescendantTracker,
+        "create",
+        fail_registration,
+    )
+
+    assert (
+        bounded_runner._spawn_kqueue_tracked_command(
+            "sh", "true", start_new_session=True
+        )
+        is None
+    )
+    assert fake_process.killed is True
+    assert closed == [10, 11]
+
+
+def test_spawn_kqueue_command_fails_on_gate_release(monkeypatch):
+    class FakeProcess:
+        pid = 42
+
+        def __init__(self):
+            self.killed = False
+
+        def wait(self, timeout=None):
+            if timeout is not None:
+                raise subprocess.TimeoutExpired("bounded", timeout)
+            return 0
+
+        def poll(self):
+            return None if not self.killed else -signal.SIGKILL
+
+        def kill(self):
+            self.killed = True
+
+    fake_process = FakeProcess()
+    tracker = SimpleNamespace(closed=False)
+    tracker.close = lambda: setattr(tracker, "closed", True)
+    monkeypatch.setattr(bounded_runner.os, "pipe", lambda: (10, 11))
+    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42)
+    monkeypatch.setattr(bounded_runner.os, "close", lambda _fd: None)
+    monkeypatch.setattr(
+        bounded_runner, "_ForkedProcess", lambda _pid: fake_process
+    )
+    monkeypatch.setattr(
+        bounded_runner._KqueueDescendantTracker,
+        "create",
+        lambda _pid: tracker,
+    )
+
+    def fail_release(_fd, _payload):
+        raise OSError("release failed")
+
+    monkeypatch.setattr(bounded_runner.os, "write", fail_release)
+
+    assert (
+        bounded_runner._spawn_kqueue_tracked_command(
+            "sh", "true", start_new_session=True
+        )
+        is None
+    )
+    assert tracker.closed is True
+    assert fake_process.killed is True
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin", reason="requires macOS kqueue NOTE_TRACK"
+)
+def test_macos_kqueue_reaps_setsid_escape(tmp_path):
+    pid_path = tmp_path / "escaped.pid"
+    child_code = "import os,time; os.setsid(); time.sleep(30)"
+    parent_code = (
+        "import pathlib,subprocess,sys; "
+        f"child=subprocess.Popen([sys.executable,'-c',{child_code!r}]); "
+        f"pathlib.Path({str(pid_path)!r}).write_text(str(child.pid), encoding='ascii')"
+    )
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(parent_code)}"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "local_shell_mcp.ops.utils.bounded_runner",
+            "--shell",
+            "/bin/sh",
+            "--command",
+            command,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    escaped_pid = int(pid_path.read_text(encoding="ascii"))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(escaped_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.02)
+    else:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(escaped_pid, signal.SIGKILL)
+        pytest.fail("setsid descendant escaped kqueue cleanup")
 
 
 def test_bounded_runner_argparse_handler_exits_with_result(monkeypatch):

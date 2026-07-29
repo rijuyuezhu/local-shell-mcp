@@ -97,6 +97,10 @@ When OAuth authentication is enabled, protected MCP and REST routes authenticate
 
 In the Docker image, the entrypoint normally creates a non-root `agent` user at container startup. By default, its UID/GID are detected from the mounted `/workspace` owner so bind-mounted files stay writable by the host user. Set `DOCKER_AGENT_UID` or `DOCKER_AGENT_GID` only to override that detection. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
 
+## Bounded command containment
+
+On Linux, bounded non-interactive shell commands enable child-subreaper mode so orphaned descendants are adopted, found, terminated, and reaped before the tool returns. On macOS and supported BSD hosts, the runner gates the child before `exec` and registers `EVFILT_PROC` with `NOTE_TRACK`, allowing the kernel to track descendants across `fork()` even if they create a new session or process group. A process group is used as an additional cleanup layer, not as the containment boundary. If neither descendant-tracking mechanism can be established, or kernel tracking reports `NOTE_TRACKERR`, command-mode `bash` fails closed with exit code `125`.
+
 ## Raw terminal streaming
 
 Raw PTY/ConPTY access is equivalent to interactive shell control with the server
@@ -164,6 +168,8 @@ Operational notes:
 ## Durable job metadata and contention journals
 
 Tracked shell and controller-managed jobs persist metadata under `state_dir` with owner-private files and atomic primary/backup replacement. Job-store thread and file locks share a bounded acquisition budget; public contention errors do not reveal the private lock path, while local audit records retain enough detail for diagnosis.
+
+While a current-process managed job is active and lacks a durable completion record, retention and capacity pruning protect its owning session plus every existing, valid agent session referenced by a `session_id` or `*_session_id` field in its durable managed payload. This keeps both source and destination sessions available for background copies and retries. Prior-process managed jobs and durably completed jobs do not extend session lifetime.
 
 Managed-job logs are appended before metadata accounting. If bounded lock retries cannot commit log bytes, progress, or terminal state, the controller writes a bounded `0600` JSON record under the `0700` `state_dir/jobs/deferred` directory. Records use opaque ids, are bound to both the owning session and job, accept only the fixed update operations, reject links/non-regular files, and are replayed in creation order. Applied ids are saved inside the job row before cleanup, making replay idempotent across process loss or failed journal deletion. Invalid rows are audited and removed; rows that cannot be read are retained rather than silently discarded.
 

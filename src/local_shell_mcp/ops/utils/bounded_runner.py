@@ -1,8 +1,10 @@
 """Internal POSIX runner that reaps descendants of one bounded command."""
 
 import argparse
+import contextlib
 import ctypes
 import os
+import select
 import signal
 import subprocess
 import sys
@@ -15,6 +17,7 @@ PR_SET_CHILD_SUBREAPER = 36
 POLL_INTERVAL_S = 0.02
 TERMINATE_GRACE_S = 1.0
 KILL_GRACE_S = 1.0
+KQUEUE_EVENT_BATCH = 256
 
 
 def _shell_command_args(shell: str, command: str) -> list[str]:
@@ -126,6 +129,133 @@ def _process_group_containment_available() -> bool:
     return callable(getattr(os, "killpg", None))
 
 
+def _kqueue_descendant_tracking_available() -> bool:
+    """Return whether this host exposes kernel-tracked fork descendants."""
+    required = (
+        "kqueue",
+        "kevent",
+        "KQ_FILTER_PROC",
+        "KQ_EV_ADD",
+        "KQ_EV_ENABLE",
+        "KQ_NOTE_EXIT",
+        "KQ_NOTE_FORK",
+        "KQ_NOTE_TRACK",
+        "KQ_NOTE_CHILD",
+        "KQ_NOTE_TRACKERR",
+    )
+    return (
+        all(hasattr(select, name) for name in required)
+        and callable(getattr(os, "fork", None))
+        and callable(getattr(os, "waitpid", None))
+    )
+
+
+def _select_capability(name: str) -> Any:
+    """Return one previously validated platform-specific select capability."""
+    value = getattr(select, name, None)
+    if value is None:
+        raise RuntimeError(f"select capability {name} is unavailable")
+    return value
+
+
+class _KqueueDescendantTracker:
+    """Track a process and all fork descendants through EVFILT_PROC."""
+
+    def __init__(self, queue: Any, root_pid: int) -> None:
+        self._queue = queue
+        self.root_pid = root_pid
+        self.live_pids = {root_pid}
+        self.failed = False
+
+    @classmethod
+    def create(cls, root_pid: int) -> _KqueueDescendantTracker:
+        """Register one gated root before it can fork."""
+        queue = _select_capability("kqueue")()
+        try:
+            event = _select_capability("kevent")(
+                root_pid,
+                filter=_select_capability("KQ_FILTER_PROC"),
+                flags=(
+                    _select_capability("KQ_EV_ADD")
+                    | _select_capability("KQ_EV_ENABLE")
+                ),
+                fflags=(
+                    _select_capability("KQ_NOTE_EXIT")
+                    | _select_capability("KQ_NOTE_FORK")
+                    | _select_capability("KQ_NOTE_TRACK")
+                ),
+            )
+            queue.control([event], 0, 0)
+        except BaseException:
+            queue.close()
+            raise
+        return cls(queue, root_pid)
+
+    def poll(self) -> None:
+        """Drain pending process events and update the live descendant set."""
+        while True:
+            try:
+                events = self._queue.control(None, KQUEUE_EVENT_BATCH, 0)
+            except OSError:
+                self.failed = True
+                return
+            if not events:
+                return
+            for event in events:
+                pid = int(event.ident)
+                flags = int(event.fflags)
+                if flags & _select_capability("KQ_NOTE_TRACKERR"):
+                    self.failed = True
+                if flags & _select_capability("KQ_NOTE_CHILD"):
+                    self.live_pids.add(pid)
+                if flags & _select_capability("KQ_NOTE_EXIT"):
+                    self.live_pids.discard(pid)
+
+    def discard_root(self) -> None:
+        """Forget the root after subprocess.wait() has confirmed its exit."""
+        self.live_pids.discard(self.root_pid)
+
+    def signal_all(self, sig: signal.Signals) -> None:
+        """Signal every currently tracked process, including escaped groups."""
+        self.poll()
+        for pid in sorted(self.live_pids, reverse=True):
+            try:
+                os.kill(pid, sig)
+            except ProcessLookupError:
+                self.live_pids.discard(pid)
+            except PermissionError:
+                self.failed = True
+
+    def wait_for_empty(self, timeout_s: float) -> bool:
+        """Wait until every tracked process has emitted NOTE_EXIT."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            self.poll()
+            if self.failed:
+                return False
+            if not self.live_pids:
+                return True
+            time.sleep(POLL_INTERVAL_S)
+        self.poll()
+        return not self.failed and not self.live_pids
+
+    def cleanup(self) -> bool:
+        """Terminate all tracked processes, escalating after a grace period."""
+        self.poll()
+        tracking_failed = self.failed
+        if not self.live_pids:
+            return not tracking_failed
+        self.signal_all(signal.SIGTERM)
+        if self.wait_for_empty(TERMINATE_GRACE_S):
+            return not tracking_failed
+        self.signal_all(_force_kill_signal())
+        return self.wait_for_empty(KILL_GRACE_S) and not tracking_failed
+
+    def close(self) -> None:
+        """Release the kernel event queue."""
+        self._queue.close()
+
+
 def _process_group_alive(process_group_id: int) -> bool:
     """Return whether at least one process remains in the child process group."""
     try:
@@ -189,6 +319,170 @@ def _cleanup_command_processes(
     return group_clean and descendant_clean
 
 
+def _cleanup_kqueue_command_processes(
+    process_group_id: int | None,
+    tracker: _KqueueDescendantTracker,
+    *,
+    root_exited: bool,
+) -> bool:
+    """Clean a process group plus kqueue-tracked session escapees."""
+    if root_exited:
+        tracker.discard_root()
+    group_clean = (
+        True
+        if process_group_id is None
+        else _cleanup_process_group(process_group_id)
+    )
+    descendant_clean = tracker.cleanup()
+    if not group_clean and process_group_id is not None:
+        group_clean = _wait_for_process_group_exit(
+            process_group_id, POLL_INTERVAL_S * 5
+        )
+    return group_clean and descendant_clean
+
+
+def _run_bounded_exec_gate(gate_fd: int, shell: str, command: str) -> int:
+    """Wait for parent containment registration, then replace this process."""
+    try:
+        released = os.read(gate_fd, 1)
+    except OSError as exc:
+        print(
+            f"Unable to read bounded command exec gate: {exc}", file=sys.stderr
+        )
+        return 125
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(gate_fd)
+    if released != b"\x01":
+        print(
+            "Bounded command containment registration failed", file=sys.stderr
+        )
+        return 125
+    try:
+        os.execvp(shell, _shell_command_args(shell, command))
+    except OSError as exc:
+        print(
+            f"Unable to start configured shell {shell!r}: {exc}",
+            file=sys.stderr,
+        )
+        return 127
+
+
+class _ForkedProcess:
+    """Minimal subprocess-compatible handle for one directly forked child."""
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._returncode: int | None = None
+
+    def _record_status(self, status: int) -> int:
+        self._returncode = os.waitstatus_to_exitcode(status)
+        return self._returncode
+
+    def poll(self) -> int | None:
+        """Return the child status without blocking."""
+        if self._returncode is not None:
+            return self._returncode
+        try:
+            waited, status = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError:
+            return self._returncode
+        if waited == 0:
+            return None
+        return self._record_status(status)
+
+    def wait(self, timeout: float | None = None) -> int:
+        """Wait for the child, with the subset of Popen semantics used here."""
+        if self._returncode is not None:
+            return self._returncode
+        if timeout is None:
+            try:
+                _waited, status = os.waitpid(self.pid, 0)
+            except ChildProcessError:
+                self._returncode = 0
+                return self._returncode
+            return self._record_status(status)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            returncode = self.poll()
+            if returncode is not None:
+                return returncode
+            time.sleep(POLL_INTERVAL_S)
+        raise subprocess.TimeoutExpired("bounded command", timeout)
+
+    def kill(self) -> None:
+        """Force the forked child to exit."""
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(self.pid, _force_kill_signal())
+
+
+def _reset_child_signal_handlers() -> None:
+    """Restore termination signals before the forked child waits or execs."""
+    for handled in _handled_signals():
+        signal.signal(handled, signal.SIG_DFL)
+
+
+def _spawn_kqueue_tracked_command(
+    shell: str, command: str, *, start_new_session: bool
+) -> tuple[_ForkedProcess, _KqueueDescendantTracker] | None:
+    """Spawn a gated command and register fork tracking before release."""
+    gate_read, gate_write = os.pipe()
+    try:
+        pid = int(os.fork())
+    except BaseException:
+        os.close(gate_read)
+        os.close(gate_write)
+        raise
+    if pid == 0:
+        exit_code = 125
+        try:
+            os.close(gate_write)
+            _reset_child_signal_handlers()
+            if start_new_session:
+                os.setsid()
+            exit_code = _run_bounded_exec_gate(gate_read, shell, command)
+        except BaseException as exc:
+            print(
+                f"Unable to prepare bounded command child: {exc}",
+                file=sys.stderr,
+            )
+        finally:
+            os._exit(exit_code)
+    process = _ForkedProcess(pid)
+    try:
+        os.close(gate_read)
+    except BaseException:
+        os.close(gate_write)
+        process.kill()
+        process.wait()
+        raise
+    try:
+        tracker = _KqueueDescendantTracker.create(process.pid)
+    except BaseException:
+        os.close(gate_write)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=TERMINATE_GRACE_S)
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        return None
+    try:
+        os.write(gate_write, b"\x01")
+    except OSError:
+        os.close(gate_write)
+        tracker.close()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=TERMINATE_GRACE_S)
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        return None
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(gate_write)
+    return process, tracker
+
+
 def _mirror_signal(signum: int) -> int:
     """Exit through the same signal so the parent observes a negative code."""
     signal.signal(signum, signal.SIG_DFL)
@@ -208,10 +502,13 @@ def _handled_signals() -> tuple[signal.Signals, ...]:
 def run_bounded_command(shell: str, command: str) -> int:
     """Run one command and guarantee that surviving descendants are removed."""
     track_descendants = _enable_child_subreaper()
+    track_with_kqueue = (
+        not track_descendants and _kqueue_descendant_tracking_available()
+    )
     process_group_available = _process_group_containment_available()
-    if not track_descendants and not process_group_available:
+    if not track_descendants and not track_with_kqueue:
         print(
-            "Bounded command containment is unavailable on this host",
+            "Bounded command descendant tracking is unavailable on this host",
             file=sys.stderr,
         )
         return 125
@@ -224,11 +521,26 @@ def run_bounded_command(shell: str, command: str) -> int:
     for handled in _handled_signals():
         signal.signal(handled, remember_signal)
 
+    tracker: _KqueueDescendantTracker | None = None
     try:
-        process = subprocess.Popen(
-            _shell_command_args(shell, command),
-            start_new_session=process_group_available,
-        )
+        if track_with_kqueue:
+            spawned = _spawn_kqueue_tracked_command(
+                shell,
+                command,
+                start_new_session=process_group_available,
+            )
+            if spawned is None:
+                print(
+                    "Bounded command descendant tracking registration failed",
+                    file=sys.stderr,
+                )
+                return 125
+            process, tracker = spawned
+        else:
+            process = subprocess.Popen(
+                _shell_command_args(shell, command),
+                start_new_session=process_group_available,
+            )
     except FileNotFoundError as exc:
         print(
             f"Unable to start configured shell {shell!r}: {exc}",
@@ -236,29 +548,63 @@ def run_bounded_command(shell: str, command: str) -> int:
         )
         return 127
 
-    while process.poll() is None and not received_signal:
-        time.sleep(POLL_INTERVAL_S)
+    try:
+        containment_failed = False
+        while process.poll() is None and not received_signal:
+            if tracker is not None:
+                tracker.poll()
+                if tracker.failed:
+                    containment_failed = True
+                    break
+            time.sleep(POLL_INTERVAL_S)
 
-    if received_signal:
-        _cleanup_command_processes(
-            process.pid if process_group_available else None,
-            track_descendants=track_descendants,
-        )
-        return _mirror_signal(received_signal)
+        process_group_id = process.pid if process_group_available else None
+        if received_signal or containment_failed:
+            if tracker is None:
+                cleaned = _cleanup_command_processes(
+                    process_group_id,
+                    track_descendants=track_descendants,
+                )
+            else:
+                cleaned = _cleanup_kqueue_command_processes(
+                    process_group_id,
+                    tracker,
+                    root_exited=False,
+                )
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=KILL_GRACE_S)
+            if containment_failed or not cleaned:
+                print(
+                    "Bounded command descendant tracking failed during execution",
+                    file=sys.stderr,
+                )
+                return 125
+            return _mirror_signal(received_signal)
 
-    returncode = process.wait()
-    if not _cleanup_command_processes(
-        process.pid if process_group_available else None,
-        track_descendants=track_descendants,
-    ):
-        print(
-            "Bounded command descendants did not exit after forced termination",
-            file=sys.stderr,
-        )
-        return 125
-    if returncode < 0:
-        return _mirror_signal(-returncode)
-    return returncode
+        returncode = process.wait()
+        if tracker is None:
+            cleaned = _cleanup_command_processes(
+                process_group_id,
+                track_descendants=track_descendants,
+            )
+        else:
+            cleaned = _cleanup_kqueue_command_processes(
+                process_group_id,
+                tracker,
+                root_exited=True,
+            )
+        if not cleaned:
+            print(
+                "Bounded command descendants did not exit after forced termination",
+                file=sys.stderr,
+            )
+            return 125
+        if returncode < 0:
+            return _mirror_signal(-returncode)
+        return returncode
+    finally:
+        if tracker is not None:
+            tracker.close()
 
 
 def run_bounded_runner_from_args(args: argparse.Namespace) -> None:

@@ -491,6 +491,86 @@ def test_current_runtime_managed_job_still_protects_expired_session(
     assert store.require_session(session.session_id) == session
 
 
+def test_current_managed_job_protects_destination_session_from_expiry(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    source = store.create_session(workdir=tmp_path)
+    destination = store.create_session(
+        workdir=tmp_path, expires_at=time.time() - 1
+    )
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": "job_copy",
+                    "session_id": source.session_id,
+                    "kind": "managed",
+                    "status": "running",
+                    "runtime_instance_id": store_module.PROCESS_INSTANCE_ID,
+                    "managed_payload": {
+                        "src_session_id": source.session_id,
+                        "dst_session_id": destination.session_id,
+                        "nested": [{"ignored_session_id": "not-valid"}],
+                    },
+                }
+            ],
+        },
+    )
+
+    assert store.require_session(destination.session_id) == destination
+
+
+def test_current_managed_job_destination_blocks_capacity_eviction(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "2")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    source = store.create_session(workdir=tmp_path)
+    destination = store.create_session(workdir=tmp_path)
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": "job_copy",
+                    "session_id": source.session_id,
+                    "kind": "managed",
+                    "status": "running",
+                    "runtime_instance_id": store_module.PROCESS_INSTANCE_ID,
+                    "managed_payload": {
+                        "dst_session_id": destination.session_id
+                    },
+                }
+            ],
+        },
+    )
+    clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
+
+    with pytest.raises(RuntimeError, match="agent session limit reached"):
+        store.create_session(workdir=tmp_path)
+
+    assert {item.session_id for item in store.list_sessions()} == {
+        source.session_id,
+        destination.session_id,
+    }
+
+
 @pytest.mark.parametrize(
     ("status", "path_key"),
     [("running", "status_path"), ("retrying", "pending_status_path")],
