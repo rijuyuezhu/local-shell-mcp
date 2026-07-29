@@ -7837,7 +7837,7 @@
       "annotations": {
         "destructiveHint": true,
         "idempotentHint": false,
-        "openWorldHint": false,
+        "openWorldHint": true,
         "readOnlyHint": false
       },
       "description": "End one explicit local or remote agent/workspace session. Active tracked jobs owned by the session are stopped first; a remote worker session is also ended before controller state is removed. Use this when a task is complete so durable session, job, and persistent-shell capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files.",

@@ -269,7 +269,7 @@ async def _stop_owned_jobs(session_id: str) -> list[str]:
 async def session_end_execute(session_id: str) -> SessionEndOutput:
     """Stop owned work and remove one local or remote session."""
     store = get_tool_session_store()
-    session = store.require_session(session_id)
+    session = store.prepare_session_termination(session_id)
     stopped_jobs = await _stop_owned_jobs(session_id)
     if session.target == "remote":
         from .utils.remote_session import call_remote_session_tool

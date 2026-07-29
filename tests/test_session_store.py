@@ -363,3 +363,61 @@ def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
     )
 
     assert store.require_session(session.session_id) == session
+
+
+def test_expired_remote_session_binding_is_preserved_for_explicit_cleanup(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(
+        target="remote",
+        workdir="/remote/work",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+        expires_at=time.time() - 1,
+    )
+
+    with pytest.raises(ExpiredAgentSessionError, match="call session_end"):
+        store.require_session(session.session_id)
+
+    session_dir = tmp_path / ".state" / "sessions" / session.session_id
+    assert session_dir.exists()
+    assert store.list_sessions() == [session]
+
+    prepared = store.prepare_session_termination(session.session_id)
+    assert prepared.worker_session_id == "WORKER12"
+    assert prepared.expires_at is None
+    assert prepared.termination_requested_at is not None
+    assert store.end_session(session.session_id) == prepared
+    assert not session_dir.exists()
+
+
+def test_inactive_remote_session_is_not_evicted_without_worker_cleanup(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    remote = store.create_session(
+        target="remote",
+        workdir="/remote/work",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+    )
+    clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
+
+    with pytest.raises(RuntimeError, match="agent session limit reached"):
+        store.create_session(workdir=tmp_path)
+
+    assert store.list_sessions() == [remote]

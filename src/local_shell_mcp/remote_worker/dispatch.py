@@ -52,6 +52,12 @@ async def _session_change_cwd(args: dict[str, Any]) -> Any:
     )
 
 
+async def _session_end(args: dict[str, Any]) -> Any:
+    from local_shell_mcp.ops.session import session_end_execute
+
+    return await session_end_execute(str(args.get("session_id") or ""))
+
+
 async def _query_audit(args: dict[str, Any]) -> Any:
     from local_shell_mcp.audit import (
         audit_query_snapshot,
@@ -619,6 +625,7 @@ async def _transfer_http_abort_download(args: dict[str, Any]) -> Any:
 _HANDLERS: dict[str, WorkerHandler] = {
     "session_start": _session_start,
     "session_change_cwd": _session_change_cwd,
+    "session_end": _session_end,
     "dashboard_snapshot": _dashboard_snapshot,
     "query_audit": _query_audit,
     "get_audit_entry": _get_audit_entry,

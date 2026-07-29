@@ -119,6 +119,15 @@ def _mirror_signal(signum: int) -> int:
     return 128 + signum
 
 
+def _handled_signals() -> tuple[signal.Signals, ...]:
+    """Return only termination signals available on the current platform."""
+    return tuple(
+        handled
+        for name in ("SIGINT", "SIGTERM", "SIGHUP")
+        if (handled := getattr(signal, name, None)) is not None
+    )
+
+
 def run_bounded_command(shell: str, command: str) -> int:
     """Run one command and guarantee that surviving descendants are removed."""
     _enable_child_subreaper()
@@ -128,8 +137,7 @@ def run_bounded_command(shell: str, command: str) -> int:
         nonlocal received_signal
         received_signal = received_signal or signum
 
-    handled_signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-    for handled in handled_signals:
+    for handled in _handled_signals():
         signal.signal(handled, remember_signal)
 
     try:

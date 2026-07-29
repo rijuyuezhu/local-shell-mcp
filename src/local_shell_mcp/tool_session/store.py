@@ -311,7 +311,7 @@ class ToolSessionStore:
         expired = [
             session
             for session in sessions.values()
-            if self._session_expired(session, now)
+            if session.target == "local" and self._session_expired(session, now)
         ]
         for session in expired:
             with self._state_store.transaction(
@@ -328,7 +328,8 @@ class ToolSessionStore:
                 (
                     session
                     for session in sessions.values()
-                    if session.updated_at < now - SESSION_ACTIVE_WINDOW_S
+                    if session.target == "local"
+                    and session.updated_at < now - SESSION_ACTIVE_WINDOW_S
                     and not self._session_has_active_jobs_locked(
                         session.session_id
                     )
@@ -363,16 +364,24 @@ class ToolSessionStore:
         self._sessions[session_id] = session
         return session
 
-    def _require_session_locked(self, session_id: str) -> AgentSession:
+    def _require_session_locked(
+        self, session_id: str, *, allow_expired: bool = False
+    ) -> AgentSession:
         session = self._load_session_locked(session_id)
         if session is None:
             raise UnknownAgentSessionError(
                 f"unknown session_id {session_id!r}; call session_start first"
             )
-        if self._session_expired(session, time.time()):
-            self._remove_session_state_locked(session_id)
+        if not allow_expired and self._session_expired(session, time.time()):
+            if session.target == "local":
+                self._remove_session_state_locked(session_id)
             raise ExpiredAgentSessionError(
-                f"expired session_id {session_id!r}; call session_start again"
+                f"expired session_id {session_id!r}; "
+                + (
+                    "call session_end to release its remote worker binding"
+                    if session.target == "remote"
+                    else "call session_start again"
+                )
             )
         return session
 
@@ -538,6 +547,29 @@ class ToolSessionStore:
             ):
                 return self._require_session_locked(session_id)
 
+    def prepare_session_termination(self, session_id: str) -> AgentSession:
+        """Make a known session cleanup-only even after its expiry boundary."""
+        with self._lock:
+            self._reset_for_current_root_locked()
+            with self._state_store.transaction(
+                self._transaction_path(session_id)
+            ):
+                session = self._require_session_locked(
+                    session_id, allow_expired=True
+                )
+                now = time.time()
+                updated = replace(
+                    session,
+                    updated_at=now,
+                    expires_at=None,
+                    termination_requested_at=(
+                        session.termination_requested_at or now
+                    ),
+                )
+                self._write_session_locked(updated)
+                self._sessions[session_id] = updated
+                return updated
+
     def touch_session(self, session_id: str) -> AgentSession:
         """Refresh a session's durable updated timestamp."""
         with self._lock:
@@ -571,8 +603,24 @@ class ToolSessionStore:
                 self._sessions[session_id] = updated
                 return updated
 
-    def assert_tool_call_allowed(self, session_ids: tuple[str, ...]) -> None:
+    def assert_tool_call_allowed(
+        self,
+        session_ids: tuple[str, ...],
+        *,
+        termination_cleanup: bool = False,
+    ) -> None:
         """Reject tool work when any referenced session requested termination."""
+        if termination_cleanup:
+            for session_id in dict.fromkeys(session_ids):
+                with self._lock:
+                    self._reset_for_current_root_locked()
+                    with self._state_store.transaction(
+                        self._transaction_path(session_id)
+                    ):
+                        self._require_session_locked(
+                            session_id, allow_expired=True
+                        )
+            return
         sessions = [
             self.require_session(session_id)
             for session_id in dict.fromkeys(session_ids)
@@ -655,7 +703,9 @@ class ToolSessionStore:
                     self._transaction_path(session_id)
                 ),
             ):
-                session = self._require_session_locked(session_id)
+                session = self._require_session_locked(
+                    session_id, allow_expired=True
+                )
                 self._remove_session_state_locked(session_id)
                 return session
 
@@ -798,11 +848,15 @@ def tool_input_session_ids(value: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys(found))
 
 
-def enforce_tool_session_control(value: Any) -> None:
+def enforce_tool_session_control(
+    value: Any, *, termination_cleanup: bool = False
+) -> None:
     """Apply persisted immediate-stop policy to one model tool invocation."""
     session_ids = tool_input_session_ids(value)
     if session_ids:
-        get_tool_session_store().assert_tool_call_allowed(session_ids)
+        get_tool_session_store().assert_tool_call_allowed(
+            session_ids, termination_cleanup=termination_cleanup
+        )
 
 
 _STORE = ToolSessionStore()

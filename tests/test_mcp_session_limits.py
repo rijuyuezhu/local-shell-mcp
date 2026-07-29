@@ -195,6 +195,71 @@ def test_session_limit_fails_loudly_for_incompatible_sdk_manager():
         )
 
 
+def test_session_limit_fails_loudly_for_incompatible_owner_mapping():
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    manager = SimpleNamespace(
+        stateless=False,
+        _server_instances={},
+        _session_owners=object(),
+    )
+    with pytest.raises(RuntimeError, match="_session_owners"):
+        McpSessionLimitMiddleware(
+            app,
+            session_manager=manager,
+            max_sessions=1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_stateless_and_headerless_responses_do_not_leak_reservations():
+    messages: list[Message] = []
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Message) -> None:
+        messages.append(message)
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        await send(
+            {"type": "http.response.start", "status": 400, "headers": []}
+        )
+        await send({"type": "http.response.body", "body": b""})
+
+    stateless = McpSessionLimitMiddleware(
+        app,
+        session_manager=SimpleNamespace(stateless=True),
+        max_sessions=1,
+    )
+    scope: Scope = {
+        "type": "http",
+        "path": "/mcp",
+        "method": "POST",
+        "headers": [],
+    }
+    await stateless(scope, receive, send)
+
+    stateful = McpSessionLimitMiddleware(
+        app,
+        session_manager=SimpleNamespace(
+            stateless=False,
+            _server_instances={},
+            _session_owners=None,
+        ),
+        max_sessions=1,
+    )
+    await stateful(scope, receive, send)
+
+    assert stateful._pending_creations == 0
+    assert [
+        message["status"]
+        for message in messages
+        if message["type"] == "http.response.start"
+    ] == [400, 400]
+
+
 @pytest.mark.asyncio
 async def test_pending_initialize_reserves_capacity_without_holding_lock():
     entered = asyncio.Event()
