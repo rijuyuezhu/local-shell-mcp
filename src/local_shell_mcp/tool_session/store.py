@@ -267,13 +267,37 @@ class ToolSessionStore:
             payload.get("jobs"), list
         ):
             return None
-        return {
-            str(job.get("session_id") or "")
-            for job in payload["jobs"]
-            if isinstance(job, dict)
-            and str(job.get("session_id") or "")
-            and str(job.get("status") or "") in ACTIVE_JOB_STATUSES
-        }
+        owners: set[str] = set()
+        for job in payload["jobs"]:
+            if not isinstance(job, dict):
+                continue
+            session_id = str(job.get("session_id") or "")
+            status = str(job.get("status") or "")
+            if (
+                session_id
+                and status in ACTIVE_JOB_STATUSES
+                and not self._job_has_durable_completion_locked(job, status)
+            ):
+                owners.add(session_id)
+        return owners
+
+    def _job_has_durable_completion_locked(
+        self, job: dict[str, Any], status: str
+    ) -> bool:
+        """Return whether the runner already persisted terminal job metadata."""
+        status_key = (
+            "pending_status_path" if status == "retrying" else "status_path"
+        )
+        raw_path = job.get(status_key)
+        if not raw_path:
+            return False
+        try:
+            payload = self._state_store.read_json(
+                Path(str(raw_path)), max_bytes=SESSION_METADATA_MAX_BYTES
+            )
+        except OSError, TypeError, ValueError:
+            return False
+        return isinstance(payload, dict)
 
     @staticmethod
     def _session_has_active_jobs(

@@ -342,21 +342,24 @@ async def _spawn_process(
         "stderr": asyncio.subprocess.PIPE,
         **process_group,
     }
-    shell_name = os.path.basename(shell).lower()
+    shell_candidate = shell
+    if not os.path.isabs(shell) and os.path.dirname(shell):
+        shell_candidate = os.path.abspath(os.path.join(cwd, shell))
+    resolved_shell = shutil.which(shell_candidate, path=child_env.get("PATH"))
+    if resolved_shell is None:
+        raise ShellExecutableNotFoundError(
+            shell,
+            command,
+            cwd,
+            "configured shell executable was not found or is not executable",
+        )
+    shell_name = os.path.basename(resolved_shell).lower()
     try:
         if shell_name in {"cmd", "cmd.exe"}:
             return await asyncio.create_subprocess_shell(
                 command,
-                executable=shell,
+                executable=resolved_shell,
                 **common,
-            )
-        resolved_shell = shutil.which(shell, path=child_env.get("PATH"))
-        if resolved_shell is None:
-            raise ShellExecutableNotFoundError(
-                shell,
-                command,
-                cwd,
-                "configured shell executable was not found or is not executable",
             )
         return await asyncio.create_subprocess_exec(
             *_bounded_runner_argv(resolved_shell, command),

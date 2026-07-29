@@ -365,6 +365,44 @@ def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
     assert store.require_session(session.session_id) == session
 
 
+@pytest.mark.parametrize(
+    ("status", "path_key"),
+    [("running", "status_path"), ("retrying", "pending_status_path")],
+)
+def test_durable_job_completion_no_longer_blocks_session_expiry(
+    tmp_path, monkeypatch, status, path_key
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    status_path = tmp_path / ".state" / "jobs" / f"job_{status}.status.json"
+    store._state_store.write_json(
+        status_path,
+        {"exit_code": 0, "completed_at": time.time()},
+    )
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": f"job_{status}",
+                    "session_id": session.session_id,
+                    "status": status,
+                    path_key: str(status_path),
+                }
+            ],
+        },
+    )
+
+    with pytest.raises(ExpiredAgentSessionError):
+        store.require_session(session.session_id)
+
+
 def test_expired_remote_session_binding_is_preserved_for_explicit_cleanup(
     tmp_path, monkeypatch
 ):

@@ -378,6 +378,7 @@ async def test_spawn_process_uses_native_shell_api_for_cmd(monkeypatch):
     monkeypatch.setattr(
         shell_ops, "_effective_shell_executable", lambda: "cmd.exe"
     )
+    monkeypatch.setattr(shell_ops.shutil, "which", lambda command, **_: command)
     monkeypatch.setattr(shell_ops, "_subprocess_env", lambda: {"BASE": "1"})
     monkeypatch.setattr(
         shell_ops.asyncio, "create_subprocess_shell", fake_shell
@@ -392,6 +393,35 @@ async def test_spawn_process_uses_native_shell_api_for_cmd(monkeypatch):
     assert calls[0][0] == "echo hi"
     assert calls[0][1]["executable"] == "cmd.exe"
     assert calls[0][1]["env"] == {"BASE": "1", "EXTRA": "2"}
+
+
+@pytest.mark.asyncio
+async def test_spawn_process_resolves_relative_shell_from_command_cwd(
+    tmp_path, monkeypatch
+):
+    shell = tmp_path / "bin" / "custom-shell"
+    shell.parent.mkdir()
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    shell.chmod(0o700)
+    monkeypatch.setattr(
+        shell_ops, "_effective_shell_executable", lambda: "bin/custom-shell"
+    )
+    calls = []
+    sentinel = object()
+
+    async def fake_exec(*args, **kwargs):
+        calls.append((args, kwargs))
+        return sentinel
+
+    monkeypatch.setattr(shell_ops.asyncio, "create_subprocess_exec", fake_exec)
+
+    result = await shell_ops._spawn_process("echo hi", str(tmp_path))
+
+    assert result is sentinel
+    argv = calls[0][0]
+    shell_index = argv.index("--shell") + 1
+    assert argv[shell_index] == str(shell)
+    assert calls[0][1]["cwd"] == str(tmp_path)
 
 
 def test_run_shell_command_timeout_allows_explicit_cap(tmp_path, monkeypatch):
