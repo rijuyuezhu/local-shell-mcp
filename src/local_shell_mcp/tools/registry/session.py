@@ -3,6 +3,7 @@
 from ...ops.session import (
     session_change_cwd_execute,
     session_copy_execute,
+    session_end_execute,
     session_start_execute,
 )
 from ...schemas.input_models.session import (
@@ -20,6 +21,7 @@ from ...schemas.input_models.session import (
 from ...schemas.result_models.jobs import JobStartOutput
 from ...schemas.result_models.session import (
     SessionCopyOutput,
+    SessionEndOutput,
     SessionStartOutput,
 )
 from ..contracts import McpToolContext
@@ -46,6 +48,10 @@ def _session_change_cwd_description(_context: McpToolContext) -> str:
 
 def _session_copy_description(_context: McpToolContext) -> str:
     return """Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Same-worker remote copies stream raw bounded chunks inside that worker; other routes use the authenticated, checksummed control-plane transfer. By default the call waits and returns SessionCopyOutput. Set background=true for long transfers to return a managed job immediately, then use the job companion with src_session_id to poll structured progress, cancel safely, or retry from the beginning after interruption. The response includes the selected route and whether the sessions share a target, session id, or remote machine."""
+
+
+def _session_end_description(_context: McpToolContext) -> str:
+    return """End one explicit local or remote agent/workspace session. Active tracked jobs owned by the session are stopped first; a remote worker session is also ended before controller state is removed. Use this when a task is complete so durable session, job, and persistent-shell capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files."""
 
 
 @session_tool(
@@ -76,6 +82,17 @@ async def session_change_cwd(
 ) -> SessionStartOutput:
     """Change an explicit agent/workspace session workdir."""
     return await session_change_cwd_execute(session_id, workdir)
+
+
+@session_tool(
+    http_method="POST",
+    http_path="/tools/session_end",
+    description=_session_end_description,
+    oauth_scopes=("shell:execute",),
+)
+async def session_end(session_id: SessionIdArg) -> SessionEndOutput:
+    """Stop owned work and end an explicit agent/workspace session."""
+    return await session_end_execute(session_id)
 
 
 @session_tool(

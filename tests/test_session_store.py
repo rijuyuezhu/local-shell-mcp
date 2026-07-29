@@ -1,4 +1,5 @@
 import re
+import time
 
 import pytest
 
@@ -6,6 +7,7 @@ from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.tool_session import store as store_module
 from local_shell_mcp.tool_session.store import (
     SESSION_TERMINATION_PROMPT,
+    ExpiredAgentSessionError,
     SessionTerminationRequestedError,
     UnknownAgentSessionError,
     get_tool_session_store,
@@ -206,3 +208,158 @@ def test_tool_input_session_ids_only_reads_semantic_argument_envelopes():
             },
         }
     ) == ("TOP00001", "SRC00001", "DST00001", "SOURCE01", "DEST0001")
+
+
+def test_explicit_session_expiry_is_enforced_and_removes_state(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+
+    with pytest.raises(ExpiredAgentSessionError, match="expired session_id"):
+        store.require_session(session.session_id)
+
+    session_dir = tmp_path / ".state" / "sessions" / session.session_id
+    assert not session_dir.exists()
+
+
+def test_idle_retention_prunes_sessions_when_listing(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "1")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    clock[0] = 102.0
+
+    assert store.list_sessions() == []
+    session_dir = tmp_path / ".state" / "sessions" / session.session_id
+    assert not session_dir.exists()
+
+
+def test_active_session_capacity_is_rejected_without_eviction(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    store.create_session(workdir=tmp_path)
+
+    with pytest.raises(RuntimeError, match="agent session limit reached"):
+        store.create_session(workdir=tmp_path)
+
+
+def test_inactive_session_is_evicted_to_make_capacity(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    first = store.create_session(workdir=tmp_path)
+    clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
+
+    second = store.create_session(workdir=tmp_path)
+
+    with pytest.raises(UnknownAgentSessionError):
+        store.require_session(first.session_id)
+    assert store.require_session(second.session_id) == second
+
+
+def test_snapshot_count_retention_keeps_newest_records(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS", "2")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    records = []
+    for index in range(3):
+        clock[0] += 1
+        records.append(
+            store.record_file_snapshot(
+                session_id=session.session_id,
+                path=f"{index}.txt",
+                file_sha256=str(index),
+                total_lines=1,
+                seen_ranges=((1, 1),),
+            )
+        )
+
+    assert (
+        store.get_snapshot(session.session_id, records[0].snapshot_id) is None
+    )
+    assert (
+        store.get_snapshot(session.session_id, records[1].snapshot_id)
+        is not None
+    )
+    assert (
+        store.get_snapshot(session.session_id, records[2].snapshot_id)
+        is not None
+    )
+
+
+def test_snapshot_metadata_rejects_one_record_over_byte_limit(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOT_BYTES", "1024")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+
+    with pytest.raises(ValueError, match="max_session_snapshot_bytes"):
+        store.record_file_snapshot(
+            session_id=session.session_id,
+            path="large.txt",
+            file_sha256="a" * 64,
+            total_lines=2_000,
+            seen_ranges=tuple((line, line) for line in range(1, 2_001)),
+        )
+
+
+def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": "job_active",
+                    "session_id": session.session_id,
+                    "status": "running",
+                }
+            ],
+        },
+    )
+
+    assert store.require_session(session.session_id) == session

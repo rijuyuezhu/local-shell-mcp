@@ -1,3 +1,5 @@
+import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -147,3 +149,101 @@ def test_stateful_mcp_sessions_have_idle_timeout_and_capacity_limit(
             "/mcp", json=_initialize_payload(), headers=_mcp_headers()
         )
         assert replacement.status_code == 200
+
+
+def test_idle_session_expiry_releases_capacity_without_delete(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MCP_SESSION_IDLE_TIMEOUT_S", "1")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MCP_MAX_SESSIONS", "1")
+    clear_settings_cache()
+
+    mcp = build_mcp()
+    app = build_mcp_http_app(mcp)
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        first = client.post(
+            "/mcp", json=_initialize_payload(), headers=_mcp_headers()
+        )
+        blocked = client.post(
+            "/mcp", json=_initialize_payload(), headers=_mcp_headers()
+        )
+        time.sleep(1.25)
+        replacement = client.post(
+            "/mcp", json=_initialize_payload(), headers=_mcp_headers()
+        )
+
+    assert first.status_code == 200
+    assert blocked.status_code == 429
+    assert replacement.status_code == 200
+
+
+def test_session_limit_fails_loudly_for_incompatible_sdk_manager():
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    manager = SimpleNamespace(stateless=False)
+    with pytest.raises(RuntimeError, match="_server_instances"):
+        McpSessionLimitMiddleware(
+            app,
+            session_manager=manager,
+            max_sessions=1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_pending_initialize_reserves_capacity_without_holding_lock():
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    responses: list[list[Message]] = [[], []]
+
+    async def send_first(message: Message) -> None:
+        responses[0].append(message)
+
+    async def send_second(message: Message) -> None:
+        responses[1].append(message)
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        entered.set()
+        await release.wait()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"mcp-session-id", b"created")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b""})
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    manager = SimpleNamespace(
+        stateless=False,
+        _server_instances={},
+        _session_owners={},
+    )
+    limiter = McpSessionLimitMiddleware(
+        app,
+        session_manager=manager,
+        max_sessions=1,
+    )
+    scope: Scope = {
+        "type": "http",
+        "path": "/mcp",
+        "method": "POST",
+        "headers": [],
+    }
+
+    first = asyncio.create_task(limiter(scope, receive, send_first))
+    await entered.wait()
+    await limiter(scope, receive, send_second)
+    release.set()
+    await first
+
+    assert responses[1][0]["status"] == 429
+    assert limiter._pending_creations == 0

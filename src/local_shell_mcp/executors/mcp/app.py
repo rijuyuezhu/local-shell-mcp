@@ -9,12 +9,14 @@ from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
 from starlette.routing import BaseRoute, Mount
 
+from ...audit import audit
 from ...config.settings import get_settings
 from ...http.public_routes import public_http_routes
 from ...http.request_limits import install_request_body_limit
 from ...oauth.core.security import validate_public_oauth_configuration
 from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
+from ...ops.shell import tool_timeout_s
 from ...remote.http import remote_routes
 from ...remote.transfer_gateway import build_transfer_gateway_router
 from ...tools.contracts import McpToolContext
@@ -118,9 +120,16 @@ def build_mcp_http_app(mcp: FastMCP) -> Starlette:
         if session_manager is not None and not bool(
             getattr(session_manager, "stateless", False)
         ):
-            session_manager.session_idle_timeout = max(
-                1, get_settings().mcp_session_idle_timeout_s
-            )
+            settings = get_settings()
+            idle_timeout_s = max(1, settings.mcp_session_idle_timeout_s)
+            session_manager.session_idle_timeout = idle_timeout_s
+            maximum_tool_watchdog_s = tool_timeout_s("bash")
+            if idle_timeout_s <= maximum_tool_watchdog_s:
+                audit(
+                    "mcp_session_idle_timeout_risk",
+                    idle_timeout_s=idle_timeout_s,
+                    maximum_tool_watchdog_s=maximum_tool_watchdog_s,
+                )
         mcp_settings = getattr(mcp, "settings", None)
         return _build_authenticated_mcp_http_app(
             inner,

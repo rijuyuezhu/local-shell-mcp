@@ -68,6 +68,7 @@ INTERNAL_SHELL_DEFAULT_TIMEOUT_S = 60
 INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
 _COMMAND_SEMAPHORE_SIZE: int | None = None
+_PERSISTENT_SHELL_CREATION_LOCK: asyncio.Lock | None = None
 
 
 def _env_name(*parts: str) -> str:
@@ -232,6 +233,14 @@ def _command_semaphore() -> asyncio.Semaphore:
     return _COMMAND_SEMAPHORE
 
 
+def _persistent_shell_creation_lock() -> asyncio.Lock:
+    """Serialize persistent-shell capacity checks and creation."""
+    global _PERSISTENT_SHELL_CREATION_LOCK
+    if _PERSISTENT_SHELL_CREATION_LOCK is None:
+        _PERSISTENT_SHELL_CREATION_LOCK = asyncio.Lock()
+    return _PERSISTENT_SHELL_CREATION_LOCK
+
+
 def _subprocess_env() -> dict[str, str]:
     """Return the environment exposed to user shell commands."""
     blocked_names = {
@@ -296,12 +305,31 @@ def _validated_env_overrides(env: dict[str, str] | None) -> dict[str, str]:
     return normalized
 
 
+def _bounded_runner_argv(shell: str, command: str) -> list[str]:
+    """Build the internal descendant-reaping runner invocation."""
+    arguments = [
+        "bounded-runner",
+        "--shell",
+        shell,
+        "--command",
+        command,
+    ]
+    if _is_frozen_app():
+        return [sys.executable, *arguments]
+    return [
+        sys.executable,
+        "-m",
+        "local_shell_mcp.ops.utils.bounded_runner",
+        *arguments[1:],
+    ]
+
+
 async def _spawn_process(
     command: str,
     cwd: str,
     env: dict[str, str] | None = None,
 ) -> asyncio.subprocess.Process:
-    """Start a native shell command in its own process group."""
+    """Start a bounded shell command in a descendant-reaping process group."""
     shell = _effective_shell_executable()
     child_env = _subprocess_env()
     child_env.update(_validated_env_overrides(env))
@@ -322,8 +350,16 @@ async def _spawn_process(
                 executable=shell,
                 **common,
             )
+        resolved_shell = shutil.which(shell, path=child_env.get("PATH"))
+        if resolved_shell is None:
+            raise ShellExecutableNotFoundError(
+                shell,
+                command,
+                cwd,
+                "configured shell executable was not found or is not executable",
+            )
         return await asyncio.create_subprocess_exec(
-            *_shell_command_args(shell, command),
+            *_bounded_runner_argv(resolved_shell, command),
             **common,
         )
     except FileNotFoundError as exc:
@@ -840,16 +876,19 @@ def _use_conpty_persistent_shell_backend() -> bool:
     return os.name == "nt"
 
 
-async def start_persistent_shell_execute(
+async def _start_persistent_shell_locked(
     cwd: str = ".", name: str | None = None, command: str | None = None
 ) -> StartPersistentShellOutput:
-    """Start a platform-native persistent shell in a resolved working directory."""
+    """Start a persistent shell while the creation lock is held."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
     shells = await list_persistent_shells_execute()
     max_sessions = max(1, get_settings().max_tmux_sessions)
     if len(shells.shells) >= max_sessions:
+        active = ", ".join(shell.shell_id for shell in shells.shells)
         raise RuntimeError(
-            f"Refusing to start more than {max_sessions} persistent shell sessions"
+            f"Refusing to start more than {max_sessions} persistent shell "
+            f"sessions; active shell ids: {active or '<unknown>'}. Use "
+            "list_persistent_shells and kill_persistent_shell to release capacity."
         )
     shell_id = _tmux_session_name(name)
     if _use_conpty_persistent_shell_backend():
@@ -916,6 +955,14 @@ async def start_persistent_shell_execute(
         command=initial,
         backend="tmux",
     )
+
+
+async def start_persistent_shell_execute(
+    cwd: str = ".", name: str | None = None, command: str | None = None
+) -> StartPersistentShellOutput:
+    """Start one persistent shell without racing the configured capacity."""
+    async with _persistent_shell_creation_lock():
+        return await _start_persistent_shell_locked(cwd, name, command)
 
 
 async def send_persistent_shell_input_execute(

@@ -1274,6 +1274,7 @@ async def job_start_execute(
     shell_name = _shell_safe_name(f"{display_name}-{job_id}")
     paths, runner_command = _prepare_attempt(job_id, 1, command, resolved_cwd)
     now = _utc()
+    active_shells = _active_shell_ids(await list_persistent_shells_execute())
     job: dict[str, Any] = {
         "job_id": job_id,
         "kind": "shell",
@@ -1300,6 +1301,12 @@ async def job_start_execute(
     operation_id = _begin_job_operation(job, "start")
     try:
         with _store_transaction() as store:
+            store["jobs"] = [
+                _refresh_job_status(row, active_shells, now)
+                for row in store.get("jobs", [])
+                if isinstance(row, dict)
+            ]
+            _prune_store(store)
             store["jobs"].append(job)
     except BaseException:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)

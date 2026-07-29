@@ -1,11 +1,11 @@
 {
-  "count": 40,
+  "count": 41,
   "sections": [
     {
       "body": [
         "Generated tool count: ",
         {
-          "code": "40"
+          "code": "41"
         },
         "."
       ],
@@ -1088,6 +1088,23 @@
             ]
           },
           "Copy one file or directory between two explicit agent/workspace sessions. Source and destination may be any pair of local or remote sessions; paths resolve inside their respective session workdirs. Same-worker remote copies stream raw bounded chunks inside that worker; other routes use the authenticated, checksummed control-plane transfer. By default the call waits and returns SessionCopyOutput. Set background=true for long transfers to return a managed job immediately, then use the job companion with src_session_id to poll structured progress, cancel safely, or retry from the beginning after interruption. The response includes the selected route and whether the sessions share a target, session id, or remote machine."
+        ],
+        [
+          {
+            "code": "session_end"
+          },
+          {
+            "items": [
+              {
+                "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+                "head": {
+                  "code": "session_id"
+                },
+                "note": "(string, required)"
+              }
+            ]
+          },
+          "End one explicit local or remote agent/workspace session. Active tracked jobs owned by the session are stopped first; a remote worker session is also ended before controller state is removed. Use this when a task is complete so durable session, job, and persistent-shell capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files."
         ],
         [
           {
@@ -6717,6 +6734,11 @@
           "SessionPolicyEnvironment": {
             "description": "Safe effective limits and modes that influence tool selection.",
             "properties": {
+              "agent_session_retention_s": {
+                "description": "Idle retention for durable agent/workspace sessions.",
+                "title": "Agent Session Retention S",
+                "type": "integer"
+              },
               "authentication_mode": {
                 "description": "Inbound server authentication mode.",
                 "enum": [
@@ -6730,6 +6752,11 @@
                 "description": "Whether full-control mode is active.",
                 "title": "Full Control",
                 "type": "boolean"
+              },
+              "max_agent_sessions": {
+                "description": "Maximum durable agent/workspace sessions.",
+                "title": "Max Agent Sessions",
+                "type": "integer"
               },
               "max_audit_event_bytes": {
                 "description": "Maximum retained bytes for one audit event.",
@@ -6769,6 +6796,16 @@
               "max_search_results": {
                 "description": "Maximum search result count.",
                 "title": "Max Search Results",
+                "type": "integer"
+              },
+              "max_session_snapshot_bytes": {
+                "description": "Maximum grounding-snapshot metadata bytes per session.",
+                "title": "Max Session Snapshot Bytes",
+                "type": "integer"
+              },
+              "max_session_snapshots": {
+                "description": "Maximum grounding snapshots retained per session.",
+                "title": "Max Session Snapshots",
                 "type": "integer"
               },
               "max_transfer_archive_entries": {
@@ -6833,6 +6870,10 @@
               "shell_default_timeout_s",
               "shell_max_timeout_s",
               "max_output_bytes",
+              "max_agent_sessions",
+              "agent_session_retention_s",
+              "max_session_snapshots",
+              "max_session_snapshot_bytes",
               "max_file_read_bytes",
               "max_file_write_bytes",
               "max_search_results",
@@ -7794,6 +7835,95 @@
     },
     {
       "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "End one explicit local or remote agent/workspace session. Active tracked jobs owned by the session are stopped first; a remote worker session is also ended before controller state is removed. Use this when a task is complete so durable session, job, and persistent-shell capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files.",
+      "inputSchema": {
+        "properties": {
+          "session_id": {
+            "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
+            "maxLength": 8,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9]{8}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "session_endArguments",
+        "type": "object"
+      },
+      "meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "shell:execute"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "name": "session_end",
+      "outputSchema": {
+        "description": "Result of ending one explicit agent/workspace session.",
+        "properties": {
+          "ended": {
+            "description": "Whether durable session state was removed.",
+            "title": "Ended",
+            "type": "boolean"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Remote worker formerly bound to the session.",
+            "title": "Machine"
+          },
+          "session_id": {
+            "description": "Ended agent/workspace session id.",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "stopped_jobs": {
+            "description": "Tracked job ids stopped before session removal.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stopped Jobs",
+            "type": "array"
+          },
+          "target": {
+            "description": "Execution target formerly bound to the session.",
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "target",
+          "ended"
+        ],
+        "title": "SessionEndOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": true,
@@ -8037,6 +8167,11 @@
           "SessionPolicyEnvironment": {
             "description": "Safe effective limits and modes that influence tool selection.",
             "properties": {
+              "agent_session_retention_s": {
+                "description": "Idle retention for durable agent/workspace sessions.",
+                "title": "Agent Session Retention S",
+                "type": "integer"
+              },
               "authentication_mode": {
                 "description": "Inbound server authentication mode.",
                 "enum": [
@@ -8050,6 +8185,11 @@
                 "description": "Whether full-control mode is active.",
                 "title": "Full Control",
                 "type": "boolean"
+              },
+              "max_agent_sessions": {
+                "description": "Maximum durable agent/workspace sessions.",
+                "title": "Max Agent Sessions",
+                "type": "integer"
               },
               "max_audit_event_bytes": {
                 "description": "Maximum retained bytes for one audit event.",
@@ -8089,6 +8229,16 @@
               "max_search_results": {
                 "description": "Maximum search result count.",
                 "title": "Max Search Results",
+                "type": "integer"
+              },
+              "max_session_snapshot_bytes": {
+                "description": "Maximum grounding-snapshot metadata bytes per session.",
+                "title": "Max Session Snapshot Bytes",
+                "type": "integer"
+              },
+              "max_session_snapshots": {
+                "description": "Maximum grounding snapshots retained per session.",
+                "title": "Max Session Snapshots",
                 "type": "integer"
               },
               "max_transfer_archive_entries": {
@@ -8153,6 +8303,10 @@
               "shell_default_timeout_s",
               "shell_max_timeout_s",
               "max_output_bytes",
+              "max_agent_sessions",
+              "agent_session_retention_s",
+              "max_session_snapshots",
+              "max_session_snapshot_bytes",
               "max_file_read_bytes",
               "max_file_write_bytes",
               "max_search_results",

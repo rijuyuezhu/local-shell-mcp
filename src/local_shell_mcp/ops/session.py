@@ -11,6 +11,7 @@ from ..schemas.result_models.jobs import JobStartOutput
 from ..schemas.result_models.session import (
     GitSessionInfo,
     SessionCopyOutput,
+    SessionEndOutput,
     SessionStartOutput,
 )
 from ..tool_session.environment import collect_session_environment
@@ -244,6 +245,44 @@ async def session_change_cwd_execute(
         session_id, worker_output.workdir
     )
     return _rebind_remote_output(worker_output, updated)
+
+
+async def _stop_owned_jobs(session_id: str) -> list[str]:
+    """Stop every active tracked job before its owning session disappears."""
+    from ..jobs.runtime import job_list_execute, job_stop_execute
+
+    listed = await job_list_execute(session_id, include_finished=False)
+    stopped: list[str] = []
+    for job in listed.jobs:
+        result = await job_stop_execute(session_id, job.job_id)
+        if result.killed or result.job.status in {
+            "succeeded",
+            "failed",
+            "exited",
+            "stopped",
+            "lost",
+        }:
+            stopped.append(job.job_id)
+    return stopped
+
+
+async def session_end_execute(session_id: str) -> SessionEndOutput:
+    """Stop owned work and remove one local or remote session."""
+    store = get_tool_session_store()
+    session = store.require_session(session_id)
+    stopped_jobs = await _stop_owned_jobs(session_id)
+    if session.target == "remote":
+        from .utils.remote_session import call_remote_session_tool
+
+        await call_remote_session_tool(session, "session_end", {})
+    ended = store.end_session(session_id)
+    return SessionEndOutput(
+        session_id=ended.session_id,
+        target=ended.target,
+        machine=ended.machine,
+        ended=True,
+        stopped_jobs=stopped_jobs,
+    )
 
 
 @overload

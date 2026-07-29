@@ -1,6 +1,7 @@
 """Durable state for explicit agent/workspace sessions and grounding snapshots."""
 
 import hashlib
+import json
 import secrets
 import string
 import threading
@@ -10,6 +11,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from ..config.settings import get_settings
 from ..ops.utils.path import resolve_path
 from ..persistence import StateStore, get_state_store
 
@@ -18,6 +20,8 @@ SESSION_ID_LENGTH = 8
 SESSION_METADATA_MAX_BYTES = 256_000
 SESSION_SNAPSHOTS_MAX_BYTES = 16_000_000
 SESSION_ACTIVE_WINDOW_S = 5 * 60 * 60
+JOB_STORE_READ_MAX_BYTES = 64 * 1024 * 1024
+ACTIVE_JOB_STATUSES = {"starting", "running", "stopping", "retrying"}
 SESSION_TERMINATION_PROMPT = (
     "This session was marked for immediate termination by the human control "
     "plane. Stop immediately. Do not perform any further work or call any more "
@@ -102,6 +106,10 @@ def _new_snapshot_id() -> str:
 
 class UnknownAgentSessionError(ValueError):
     """Raised when a tool call references a missing agent session."""
+
+
+class ExpiredAgentSessionError(UnknownAgentSessionError):
+    """Raised when a durable agent session has passed its retention boundary."""
 
 
 class SessionTerminationRequestedError(ValueError):
@@ -231,6 +239,116 @@ class ToolSessionStore:
     def _transaction_path(self, session_id: str) -> Path:
         return self._state_store.layout.session_transaction_path(session_id)
 
+    def _remove_session_state_locked(self, session_id: str) -> None:
+        """Remove one session directory and all process-local cached state."""
+        self._state_store.remove(
+            self._state_store.layout.session_dir(session_id),
+            recursive=True,
+        )
+        self._sessions.pop(session_id, None)
+        self._snapshots = {
+            key: value
+            for key, value in self._snapshots.items()
+            if key[0] != session_id
+        }
+
+    def _session_has_active_jobs_locked(self, session_id: str) -> bool:
+        """Conservatively protect sessions that still own active durable jobs."""
+        try:
+            payload = self._state_store.read_json(
+                self._state_store.layout.jobs_store_path,
+                max_bytes=JOB_STORE_READ_MAX_BYTES,
+            )
+        except OSError, TypeError, ValueError:
+            return True
+        if payload is None:
+            return False
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("jobs"), list
+        ):
+            return True
+        return any(
+            isinstance(job, dict)
+            and str(job.get("session_id") or "") == session_id
+            and str(job.get("status") or "") in ACTIVE_JOB_STATUSES
+            for job in payload["jobs"]
+        )
+
+    def _session_expired(self, session: AgentSession, now: float) -> bool:
+        """Return whether explicit expiry or idle retention invalidates a session."""
+        retention_s = int(get_settings().agent_session_retention_s)
+        expired = (
+            session.expires_at is not None and session.expires_at <= now
+        ) or (retention_s > 0 and session.updated_at < now - retention_s)
+        return expired and not self._session_has_active_jobs_locked(
+            session.session_id
+        )
+
+    def _read_all_sessions_locked(self) -> dict[str, AgentSession]:
+        """Load valid durable session metadata without applying retention."""
+        sessions: dict[str, AgentSession] = {}
+        for directory in self._state_store.iter_directories(
+            self._state_store.layout.sessions_dir
+        ):
+            try:
+                session = self._session_from_payload(
+                    self._state_store.read_json(
+                        directory / "session.json",
+                        max_bytes=SESSION_METADATA_MAX_BYTES,
+                    )
+                )
+            except OSError, TypeError, ValueError:
+                continue
+            if session.session_id == directory.name:
+                sessions[session.session_id] = session
+        return sessions
+
+    def _prune_sessions_locked(
+        self, now: float, *, reserve_slots: int = 0
+    ) -> list[AgentSession]:
+        """Remove expired sessions and inactive overflow beyond the configured cap."""
+        sessions = self._read_all_sessions_locked()
+        expired = [
+            session
+            for session in sessions.values()
+            if self._session_expired(session, now)
+        ]
+        for session in expired:
+            with self._state_store.transaction(
+                self._transaction_path(session.session_id)
+            ):
+                self._remove_session_state_locked(session.session_id)
+            sessions.pop(session.session_id, None)
+
+        maximum = int(get_settings().max_agent_sessions)
+        target = max(0, maximum - max(0, reserve_slots))
+        overflow = max(0, len(sessions) - target)
+        if overflow:
+            inactive = sorted(
+                (
+                    session
+                    for session in sessions.values()
+                    if session.updated_at < now - SESSION_ACTIVE_WINDOW_S
+                    and not self._session_has_active_jobs_locked(
+                        session.session_id
+                    )
+                ),
+                key=lambda session: (session.updated_at, session.created_at),
+            )
+            for session in inactive[:overflow]:
+                with self._state_store.transaction(
+                    self._transaction_path(session.session_id)
+                ):
+                    self._remove_session_state_locked(session.session_id)
+                sessions.pop(session.session_id, None)
+
+        self._sessions = sessions
+        return sorted(
+            sessions.values(),
+            key=lambda session: (session.updated_at, session.created_at),
+            reverse=True,
+        )
+
     def _load_session_locked(self, session_id: str) -> AgentSession | None:
         value = self._state_store.read_json(
             self._metadata_path(session_id),
@@ -250,6 +368,11 @@ class ToolSessionStore:
         if session is None:
             raise UnknownAgentSessionError(
                 f"unknown session_id {session_id!r}; call session_start first"
+            )
+        if self._session_expired(session, time.time()):
+            self._remove_session_state_locked(session_id)
+            raise ExpiredAgentSessionError(
+                f"expired session_id {session_id!r}; call session_start again"
             )
         return session
 
@@ -294,6 +417,54 @@ class ToolSessionStore:
             return
         self._state_store.write_json(path, {"snapshots": snapshots})
 
+    @staticmethod
+    def _encoded_snapshot_payload_bytes(
+        snapshots: list[SnapshotRecord],
+    ) -> int:
+        """Return exact bytes produced by StateStore.write_json for snapshots."""
+        encoded = json.dumps(
+            {"snapshots": [asdict(snapshot) for snapshot in snapshots]},
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=2,
+            sort_keys=True,
+        )
+        return len((encoded + "\n").encode("utf-8"))
+
+    def _prune_snapshots_locked(self, session_id: str) -> None:
+        """Keep the newest per-session snapshots within count and byte limits."""
+        settings = get_settings()
+        snapshots = sorted(
+            (
+                snapshot
+                for (owner, _), snapshot in self._snapshots.items()
+                if owner == session_id
+            ),
+            key=lambda snapshot: snapshot.created_at,
+            reverse=True,
+        )[: int(settings.max_session_snapshots)]
+        maximum_bytes = int(settings.max_session_snapshot_bytes)
+        low = 0
+        high = len(snapshots)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if (
+                self._encoded_snapshot_payload_bytes(snapshots[:middle])
+                <= maximum_bytes
+            ):
+                low = middle
+            else:
+                high = middle - 1
+        kept = snapshots[:low]
+        self._snapshots = {
+            key: value
+            for key, value in self._snapshots.items()
+            if key[0] != session_id
+        }
+        self._snapshots.update(
+            {(session_id, snapshot.snapshot_id): snapshot for snapshot in kept}
+        )
+
     def create_session(
         self,
         *,
@@ -325,13 +496,20 @@ class ToolSessionStore:
             self._reset_for_current_root_locked()
             registry = self._state_store.layout.sessions_dir / ".registry"
             with self._state_store.transaction(registry):
+                now = time.time()
+                sessions = self._prune_sessions_locked(now, reserve_slots=1)
+                maximum = int(get_settings().max_agent_sessions)
+                if len(sessions) >= maximum:
+                    raise RuntimeError(
+                        "agent session limit reached: "
+                        f"{maximum}; end an active session or wait for retention cleanup"
+                    )
                 for _ in range(16):
                     session_id = generate_session_id()
                     if not self._metadata_path(session_id).exists():
                         break
                 else:
                     raise RuntimeError("failed to allocate a unique session_id")
-                now = time.time()
                 session = AgentSession(
                     session_id=session_id,
                     target=target,
@@ -478,43 +656,16 @@ class ToolSessionStore:
                 ),
             ):
                 session = self._require_session_locked(session_id)
-                self._state_store.remove(
-                    self._state_store.layout.session_dir(session_id),
-                    recursive=True,
-                )
-                self._sessions.pop(session_id, None)
-                self._snapshots = {
-                    key: value
-                    for key, value in self._snapshots.items()
-                    if key[0] != session_id
-                }
+                self._remove_session_state_locked(session_id)
                 return session
 
     def list_sessions(self) -> list[AgentSession]:
         """Return all durable sessions ordered by most recent activity."""
         with self._lock:
             self._reset_for_current_root_locked()
-            sessions: dict[str, AgentSession] = {}
-            for directory in self._state_store.iter_directories(
-                self._state_store.layout.sessions_dir
-            ):
-                try:
-                    session = self._session_from_payload(
-                        self._state_store.read_json(
-                            directory / "session.json",
-                            max_bytes=SESSION_METADATA_MAX_BYTES,
-                        )
-                    )
-                except OSError, TypeError, ValueError:
-                    continue
-                if session.session_id == directory.name:
-                    sessions[session.session_id] = session
-            self._sessions = sessions
-            return sorted(
-                sessions.values(),
-                key=lambda session: (session.updated_at, session.created_at),
-                reverse=True,
-            )
+            registry = self._state_store.layout.sessions_dir / ".registry"
+            with self._state_store.transaction(registry):
+                return self._prune_sessions_locked(time.time())
 
     def record_file_snapshot(
         self,
@@ -542,7 +693,16 @@ class ToolSessionStore:
             ):
                 self._require_session_locked(session_id)
                 self._load_snapshots_locked(session_id)
+                maximum_bytes = int(get_settings().max_session_snapshot_bytes)
+                if (
+                    self._encoded_snapshot_payload_bytes([record])
+                    > maximum_bytes
+                ):
+                    raise ValueError(
+                        "snapshot metadata exceeds max_session_snapshot_bytes"
+                    )
                 self._snapshots[(session_id, record.snapshot_id)] = record
+                self._prune_snapshots_locked(session_id)
                 self._write_snapshots_locked(session_id)
                 return record
 

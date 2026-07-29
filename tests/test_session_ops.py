@@ -87,3 +87,70 @@ async def test_session_change_cwd_refreshes_environment_git_and_instructions(
         "playwright",
         "opentui",
     }
+
+
+@pytest.mark.asyncio
+async def test_session_end_stops_jobs_before_removing_local_state(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    calls: list[str] = []
+
+    async def fake_stop_owned_jobs(session_id: str) -> list[str]:
+        calls.append(session_id)
+        assert store.require_session(session_id) == session
+        return ["job_one"]
+
+    monkeypatch.setattr(session_ops, "_stop_owned_jobs", fake_stop_owned_jobs)
+
+    result = await session_ops.session_end_execute(session.session_id)
+
+    assert calls == [session.session_id]
+    assert result.ended is True
+    assert result.stopped_jobs == ["job_one"]
+    with pytest.raises(ValueError, match="unknown session_id"):
+        store.require_session(session.session_id)
+
+
+@pytest.mark.asyncio
+async def test_remote_session_end_removes_worker_before_controller_state(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(
+        target="remote",
+        workdir="/remote/work",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+    )
+    calls: list[tuple[str, str]] = []
+
+    async def fake_stop_owned_jobs(session_id: str) -> list[str]:
+        return []
+
+    async def fake_remote_call(remote_session, tool, args):
+        calls.append((remote_session.session_id, tool))
+        assert args == {}
+        assert store.require_session(remote_session.session_id) == session
+        return {"ended": True}
+
+    monkeypatch.setattr(session_ops, "_stop_owned_jobs", fake_stop_owned_jobs)
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.utils.remote_session.call_remote_session_tool",
+        fake_remote_call,
+    )
+
+    result = await session_ops.session_end_execute(session.session_id)
+
+    assert calls == [(session.session_id, "session_end")]
+    assert result.target == "remote"
+    assert result.machine == "worker-a"
+    with pytest.raises(ValueError, match="unknown session_id"):
+        store.require_session(session.session_id)

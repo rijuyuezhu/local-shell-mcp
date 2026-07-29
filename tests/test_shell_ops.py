@@ -1,5 +1,7 @@
 import asyncio
+import contextlib
 import os
+import signal
 import sys
 
 import pytest
@@ -56,6 +58,34 @@ def test_shell_command_args_are_native_for_supported_shells():
         "-NonInteractive",
         "-Command",
         "Write-Output hi",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_persistent_shell_creation_is_serialized(monkeypatch):
+    monkeypatch.setattr(shell_ops, "_PERSISTENT_SHELL_CREATION_LOCK", None)
+    active = 0
+    peak = 0
+
+    async def fake_start(cwd=".", name=None, command=None):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.02)
+        active -= 1
+        return (cwd, name, command)
+
+    monkeypatch.setattr(shell_ops, "_start_persistent_shell_locked", fake_start)
+
+    results = await asyncio.gather(
+        shell_ops.start_persistent_shell_execute(".", "one", "echo one"),
+        shell_ops.start_persistent_shell_execute(".", "two", "echo two"),
+    )
+
+    assert peak == 1
+    assert results == [
+        (".", "one", "echo one"),
+        (".", "two", "echo two"),
     ]
 
 
@@ -427,6 +457,50 @@ async def test_run_shell_command_fast_command_succeeds(tmp_path, monkeypatch):
     assert result.ok is True
     assert result.timed_out is False
     assert "ok" in result.stdout
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux subreaper")
+@pytest.mark.asyncio
+async def test_bounded_command_reaps_descendant_that_escapes_process_group(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    result = await run_shell(
+        "setsid sleep 60 >/dev/null 2>&1 & echo $!",
+        timeout_s=5,
+    )
+    pid = int(result.stdout.strip())
+    try:
+        assert result.ok is True
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux subreaper")
+@pytest.mark.asyncio
+async def test_timed_out_bounded_command_reaps_escaped_descendant(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+
+    result = await run_shell(
+        "setsid sleep 60 >/dev/null 2>&1 & echo $!; sleep 60",
+        timeout_s=1,
+    )
+    pid = int(result.stdout.strip())
+    try:
+        assert result.timed_out is True
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
 
 
 @pytest.mark.asyncio

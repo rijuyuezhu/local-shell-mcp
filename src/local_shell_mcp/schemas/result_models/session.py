@@ -187,6 +187,18 @@ class SessionPolicyEnvironment(BaseModel):
     max_output_bytes: int = Field(
         description="Maximum bounded command output bytes."
     )
+    max_agent_sessions: int = Field(
+        description="Maximum durable agent/workspace sessions."
+    )
+    agent_session_retention_s: int = Field(
+        description="Idle retention for durable agent/workspace sessions."
+    )
+    max_session_snapshots: int = Field(
+        description="Maximum grounding snapshots retained per session."
+    )
+    max_session_snapshot_bytes: int = Field(
+        description="Maximum grounding-snapshot metadata bytes per session."
+    )
     max_file_read_bytes: int = Field(
         description="Maximum bytes read from one file."
     )
@@ -278,6 +290,25 @@ class SessionStartOutput(BaseModel):
     )
     message: str = Field(
         description="Short model-facing instruction for using this session."
+    )
+
+
+class SessionEndOutput(BaseModel):
+    """Result of ending one explicit agent/workspace session."""
+
+    session_id: str = Field(description="Ended agent/workspace session id.")
+    target: Literal["local", "remote"] = Field(
+        description="Execution target formerly bound to the session."
+    )
+    machine: str | None = Field(
+        default=None, description="Remote worker formerly bound to the session."
+    )
+    ended: bool = Field(
+        description="Whether durable session state was removed."
+    )
+    stopped_jobs: list[str] = Field(
+        default_factory=list,
+        description="Tracked job ids stopped before session removal.",
     )
 
 
