@@ -47,6 +47,7 @@ from ..utils.private_files import (
     private_file_lock,
     write_private_text,
 )
+from ..utils.runtime_identity import PROCESS_INSTANCE_ID
 from ..utils.serialization import to_jsonable
 
 JOB_STORE_FILE_NAME = "jobs.json"
@@ -1220,6 +1221,7 @@ async def _start_managed_job_unlocked(
         "kind": "managed",
         "managed_kind": normalized_kind,
         "managed_payload": normalized_payload,
+        "runtime_instance_id": PROCESS_INSTANCE_ID,
         "name": display_name,
         "status": "running",
         "command": command or normalized_kind,
@@ -1352,7 +1354,10 @@ async def _job_start_execute_unlocked(
     try:
         try:
             shell = await start_persistent_shell_execute(
-                str(resolved_cwd), shell_name, runner_command
+                str(resolved_cwd),
+                shell_name,
+                runner_command,
+                owner_session_id=session_id,
             )
         except Exception as exc:
             _remove_attempt_paths(paths)
@@ -1672,6 +1677,7 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
                     "error": None,
                     "log_truncated": False,
                     "output_bytes": 0,
+                    "runtime_instance_id": PROCESS_INSTANCE_ID,
                 }
             )
             operation_id = _begin_job_operation(job, "retry")
@@ -1805,7 +1811,10 @@ async def _job_retry_execute_unlocked(
                     }
                 )
             shell = await start_persistent_shell_execute(
-                str(resolved_cwd), shell_name, runner_command
+                str(resolved_cwd),
+                shell_name,
+                runner_command,
+                owner_session_id=session_id,
             )
         except Exception as exc:
             _remove_attempt_paths(paths)

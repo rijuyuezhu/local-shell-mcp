@@ -298,7 +298,9 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
     monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
 
     started = await shell_ops.start_persistent_shell_execute(
-        cwd=str(tmp_path), name="configured-shell"
+        cwd=str(tmp_path),
+        name="configured-shell",
+        owner_session_id="SESSION1",
     )
 
     assert started.command == str(shell)
@@ -313,6 +315,16 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
                 str(tmp_path),
             ],
             10,
+        ),
+        (
+            [
+                "set-option",
+                "-t",
+                "configured-shell",
+                "@local-shell-mcp-session-id",
+                "SESSION1",
+            ],
+            5,
         ),
         (["has-session", "-t", "=configured-shell"], 5),
     ]

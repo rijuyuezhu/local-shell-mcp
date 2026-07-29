@@ -40,6 +40,7 @@ from ..terminal.contracts import (
     PERSISTENT_SHELL_MIN_ROWS,
 )
 from ..terminal.tmux import require_tmux, resolve_tmux, tmux_env_overrides
+from ..tool_session.lifecycle import session_lifecycle_lock
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -69,6 +70,7 @@ INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
 _COMMAND_SEMAPHORE_SIZE: int | None = None
 _PERSISTENT_SHELL_CREATION_LOCK: asyncio.Lock | None = None
+_TMUX_OWNER_OPTION = "@local-shell-mcp-session-id"
 
 
 def _env_name(*parts: str) -> str:
@@ -316,10 +318,12 @@ def _bounded_runner_argv(shell: str, command: str) -> list[str]:
     ]
     if _is_frozen_app():
         return [sys.executable, *arguments]
+    runner_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "utils", "bounded_runner.py")
+    )
     return [
         sys.executable,
-        "-m",
-        "local_shell_mcp.ops.utils.bounded_runner",
+        runner_path,
         *arguments[1:],
     ]
 
@@ -590,13 +594,32 @@ async def bash_execute(
     name: str | None = None,
 ) -> ShellExecutionOutput:
     """Run a shell command via bounded, tracked-job, or PTY mode inside a session."""
+    if pty:
+        async with session_lifecycle_lock(session_id):
+            session = get_tool_session_store().touch_session(session_id)
+            if session.target == "remote":
+                raise ValueError(
+                    "PTY shell mode is not available for remote sessions; "
+                    "use bounded commands or async jobs instead"
+                )
+            resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
+            cwd_text = str(resolved_cwd)
+            command_with_env = _command_with_env(command, env)
+            result = await start_persistent_shell_execute(
+                cwd_text,
+                name,
+                command_with_env,
+                owner_session_id=session_id,
+            )
+            return ShellExecutionOutput(
+                mode="pty",
+                command=command,
+                cwd=cwd_text,
+                result=_as_result_dict(result),
+            )
+
     session = get_tool_session_store().touch_session(session_id)
     if session.target == "remote":
-        if pty:
-            raise ValueError(
-                "PTY shell mode is not available for remote sessions; "
-                "use bounded commands or async jobs instead"
-            )
         data = await call_remote_session_tool(
             session,
             "bash",
@@ -617,16 +640,6 @@ async def bash_execute(
     resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
     cwd_text = str(resolved_cwd)
     command_with_env = _command_with_env(command, env)
-    if pty:
-        result = await start_persistent_shell_execute(
-            cwd_text, name, command_with_env
-        )
-        return ShellExecutionOutput(
-            mode="pty",
-            command=command,
-            cwd=cwd_text,
-            result=_as_result_dict(result),
-        )
     if async_:
         from ..jobs.runtime import job_start_execute
 
@@ -880,7 +893,11 @@ def _use_conpty_persistent_shell_backend() -> bool:
 
 
 async def _start_persistent_shell_locked(
-    cwd: str = ".", name: str | None = None, command: str | None = None
+    cwd: str = ".",
+    name: str | None = None,
+    command: str | None = None,
+    *,
+    owner_session_id: str | None = None,
 ) -> StartPersistentShellOutput:
     """Start a persistent shell while the creation lock is held."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
@@ -905,6 +922,7 @@ async def _start_persistent_shell_locked(
             shell_id=shell_id,
             cwd=resolved_cwd,
             command=command,
+            owner_session_id=owner_session_id,
         )
 
     configured_shell = _resolved_tmux_shell(str(resolved_cwd))
@@ -933,6 +951,21 @@ async def _start_persistent_shell_locked(
     result = await tmux(cmd)
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
+    if owner_session_id is not None:
+        owner_result = await tmux(
+            [
+                "set-option",
+                "-t",
+                shell_id,
+                _TMUX_OWNER_OPTION,
+                owner_session_id,
+            ],
+            timeout_s=5,
+        )
+        if not owner_result.ok:
+            with contextlib.suppress(Exception):
+                await tmux(["kill-session", "-t", f"={shell_id}"], timeout_s=5)
+            raise RuntimeError(owner_result.stderr or owner_result.stdout)
     if command is None:
         alive = await tmux(["has-session", "-t", f"={shell_id}"], timeout_s=5)
         if not alive.ok:
@@ -961,11 +994,20 @@ async def _start_persistent_shell_locked(
 
 
 async def start_persistent_shell_execute(
-    cwd: str = ".", name: str | None = None, command: str | None = None
+    cwd: str = ".",
+    name: str | None = None,
+    command: str | None = None,
+    *,
+    owner_session_id: str | None = None,
 ) -> StartPersistentShellOutput:
     """Start one persistent shell without racing the configured capacity."""
     async with _persistent_shell_creation_lock():
-        return await _start_persistent_shell_locked(cwd, name, command)
+        return await _start_persistent_shell_locked(
+            cwd,
+            name,
+            command,
+            owner_session_id=owner_session_id,
+        )
 
 
 async def send_persistent_shell_input_execute(
@@ -1106,6 +1148,33 @@ async def kill_persistent_shell_execute(
         stderr=result.stderr,
         backend="tmux",
     )
+
+
+async def list_owned_persistent_shell_ids_execute(
+    owner_session_id: str,
+) -> list[str]:
+    """Return live persistent shell ids assigned to one explicit session."""
+    if _use_conpty_persistent_shell_backend():
+        return await conpty.list_owned_shell_ids(owner_session_id)
+    selection = resolve_tmux()
+    if selection.path is None and selection.source == "unavailable":
+        return []
+    result = await tmux(
+        [
+            "list-sessions",
+            "-F",
+            f"#{{session_name}}\t#{{{_TMUX_OWNER_OPTION}}}",
+        ],
+        timeout_s=5,
+    )
+    if not result.ok:
+        return []
+    owned: list[str] = []
+    for line in result.stdout.splitlines():
+        shell_id, _, owner = line.partition("\t")
+        if shell_id and owner == owner_session_id:
+            owned.append(shell_id)
+    return owned
 
 
 async def list_persistent_shells_execute() -> ListPersistentShellsOutput:

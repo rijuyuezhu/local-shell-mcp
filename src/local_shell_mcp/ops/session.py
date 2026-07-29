@@ -290,6 +290,22 @@ async def _stop_owned_jobs(session_id: str) -> list[str]:
     return stopped
 
 
+async def _stop_owned_shells(session_id: str) -> list[str]:
+    """Stop every persistent shell assigned to one explicit session."""
+    from .shell import (
+        kill_persistent_shell_execute,
+        list_owned_persistent_shell_ids_execute,
+    )
+
+    shell_ids = await list_owned_persistent_shell_ids_execute(session_id)
+    stopped: list[str] = []
+    for shell_id in shell_ids:
+        result = await kill_persistent_shell_execute(shell_id)
+        if result.killed:
+            stopped.append(shell_id)
+    return stopped
+
+
 async def session_end_execute(session_id: str) -> SessionEndOutput:
     """End one session while excluding concurrent job admission and retry."""
     async with session_lifecycle_lock(session_id):
@@ -301,6 +317,9 @@ async def _session_end_execute_unlocked(session_id: str) -> SessionEndOutput:
     store = get_tool_session_store()
     session = store.prepare_session_termination(session_id)
     stopped_jobs = await _stop_owned_jobs(session_id)
+    stopped_shells: list[str] = []
+    if session.target == "local":
+        stopped_shells = await _stop_owned_shells(session_id)
     if session.target == "remote":
         from .utils.remote_session import call_remote_session_tool
 
@@ -312,6 +331,7 @@ async def _session_end_execute_unlocked(session_id: str) -> SessionEndOutput:
         machine=ended.machine,
         ended=True,
         stopped_jobs=stopped_jobs,
+        stopped_shells=stopped_shells,
     )
 
 

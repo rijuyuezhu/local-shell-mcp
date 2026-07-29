@@ -194,13 +194,21 @@ async def test_session_end_stops_jobs_before_removing_local_state(
         assert prepared.termination_requested_at is not None
         return ["job_one"]
 
+    async def fake_stop_owned_shells(session_id: str) -> list[str]:
+        assert session_id == session.session_id
+        return ["shell_one"]
+
     monkeypatch.setattr(session_ops, "_stop_owned_jobs", fake_stop_owned_jobs)
+    monkeypatch.setattr(
+        session_ops, "_stop_owned_shells", fake_stop_owned_shells
+    )
 
     result = await session_ops.session_end_execute(session.session_id)
 
     assert calls == [session.session_id]
     assert result.ended is True
     assert result.stopped_jobs == ["job_one"]
+    assert result.stopped_shells == ["shell_one"]
     with pytest.raises(ValueError, match="unknown session_id"):
         store.require_session(session.session_id)
 
@@ -239,6 +247,32 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
         "finished",
     ]
     assert calls == [("SESSION1", False)]
+
+
+@pytest.mark.asyncio
+async def test_stop_owned_shells_kills_only_matching_owner(monkeypatch):
+    listed: list[str] = []
+    killed: list[str] = []
+
+    async def fake_list(session_id: str):
+        listed.append(session_id)
+        return ["owned"]
+
+    async def fake_kill(shell_id: str):
+        killed.append(shell_id)
+        return SimpleNamespace(killed=True)
+
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        fake_list,
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.kill_persistent_shell_execute", fake_kill
+    )
+
+    assert await session_ops._stop_owned_shells("SESSION1") == ["owned"]
+    assert listed == ["SESSION1"]
+    assert killed == ["owned"]
 
 
 @pytest.mark.asyncio

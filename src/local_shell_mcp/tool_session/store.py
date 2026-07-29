@@ -14,6 +14,7 @@ from typing import Any, Literal, cast
 from ..config.settings import get_settings
 from ..ops.utils.path import resolve_path
 from ..persistence import StateStore, get_state_store
+from ..utils.runtime_identity import PROCESS_INSTANCE_ID
 
 SESSION_ID_ALPHABET = string.ascii_letters + string.digits
 SESSION_ID_LENGTH = 8
@@ -273,9 +274,15 @@ class ToolSessionStore:
                 continue
             session_id = str(job.get("session_id") or "")
             status = str(job.get("status") or "")
+            kind = str(job.get("kind") or "shell")
             if (
                 session_id
                 and status in ACTIVE_JOB_STATUSES
+                and (
+                    kind != "managed"
+                    or str(job.get("runtime_instance_id") or "")
+                    == PROCESS_INSTANCE_ID
+                )
                 and not self._job_has_durable_completion_locked(job, status)
             ):
                 owners.add(session_id)

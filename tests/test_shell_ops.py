@@ -61,14 +61,30 @@ def test_shell_command_args_are_native_for_supported_shells():
     ]
 
 
+def test_bounded_runner_uses_trusted_absolute_script(monkeypatch):
+    monkeypatch.setattr(shell_ops, "_is_frozen_app", lambda: False)
+
+    argv = shell_ops._bounded_runner_argv("/bin/sh", "echo hi")
+
+    assert argv[0] == sys.executable
+    assert os.path.isabs(argv[1])
+    assert argv[1].endswith(
+        os.path.join("local_shell_mcp", "ops", "utils", "bounded_runner.py")
+    )
+    assert "-m" not in argv
+
+
 @pytest.mark.asyncio
 async def test_persistent_shell_creation_is_serialized(monkeypatch):
     monkeypatch.setattr(shell_ops, "_PERSISTENT_SHELL_CREATION_LOCK", None)
     active = 0
     peak = 0
 
-    async def fake_start(cwd=".", name=None, command=None):
+    async def fake_start(
+        cwd=".", name=None, command=None, *, owner_session_id=None
+    ):
         nonlocal active, peak
+        assert owner_session_id is None
         active += 1
         peak = max(peak, active)
         await asyncio.sleep(0.02)

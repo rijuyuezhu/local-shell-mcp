@@ -365,6 +365,65 @@ def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
     assert store.require_session(session.session_id) == session
 
 
+def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": "job_stale_managed",
+                    "session_id": session.session_id,
+                    "kind": "managed",
+                    "status": "running",
+                    "runtime_instance_id": "previous-process",
+                }
+            ],
+        },
+    )
+
+    with pytest.raises(ExpiredAgentSessionError):
+        store.require_session(session.session_id)
+
+
+def test_current_runtime_managed_job_still_protects_expired_session(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": "job_current_managed",
+                    "session_id": session.session_id,
+                    "kind": "managed",
+                    "status": "running",
+                    "runtime_instance_id": store_module.PROCESS_INSTANCE_ID,
+                }
+            ],
+        },
+    )
+
+    assert store.require_session(session.session_id) == session
+
+
 @pytest.mark.parametrize(
     ("status", "path_key"),
     [("running", "status_path"), ("retrying", "pending_status_path")],

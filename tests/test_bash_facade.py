@@ -123,8 +123,10 @@ async def test_shell_execution_routes_pty_to_persistent_shell(
     session_id = _create_session()
     calls = []
 
-    async def fake_start_shell(cwd=".", name=None, command=None):
-        calls.append((cwd, name, command))
+    async def fake_start_shell(
+        cwd=".", name=None, command=None, *, owner_session_id=None
+    ):
+        calls.append((cwd, name, command, owner_session_id))
         return StartPersistentShellOutput.model_validate(
             {
                 "shell_id": "shell-1",
@@ -145,7 +147,7 @@ async def test_shell_execution_routes_pty_to_persistent_shell(
 
     assert result.mode == "pty"
     assert result.result["shell_id"] == "shell-1"
-    assert calls == [(str(tmp_path), "server", "python -i")]
+    assert calls == [(str(tmp_path), "server", "python -i", session_id)]
 
 
 @pytest.mark.asyncio

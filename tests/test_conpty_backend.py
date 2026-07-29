@@ -395,7 +395,10 @@ async def test_shell_ops_delegate_persistent_shells_to_conpty(
     monkeypatch.setattr(conpty, "kill_shell", fake_kill)
 
     started = await shell_ops.start_persistent_shell_execute(
-        cwd=".", name="windows-demo", command=None
+        cwd=".",
+        name="windows-demo",
+        command=None,
+        owner_session_id="SESSION1",
     )
     assert started.backend == "conpty"
     await shell_ops.send_persistent_shell_input_execute(
@@ -424,4 +427,5 @@ async def test_shell_ops_delegate_persistent_shells_to_conpty(
     assert start_kwargs["shell_id"] == "windows-demo"
     assert start_kwargs["cwd"] == tmp_path
     assert start_kwargs["command"] is None
+    assert start_kwargs["owner_session_id"] == "SESSION1"
     clear_settings_cache()

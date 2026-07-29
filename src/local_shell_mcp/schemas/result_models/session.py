@@ -310,6 +310,10 @@ class SessionEndOutput(BaseModel):
         default_factory=list,
         description="Tracked job ids stopped before session removal.",
     )
+    stopped_shells: list[str] = Field(
+        default_factory=list,
+        description="Persistent shell ids stopped before session removal.",
+    )
 
 
 class SessionCopyEndpoint(BaseModel):

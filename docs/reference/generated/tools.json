@@ -7903,6 +7903,14 @@
             "title": "Stopped Jobs",
             "type": "array"
           },
+          "stopped_shells": {
+            "description": "Persistent shell ids stopped before session removal.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stopped Shells",
+            "type": "array"
+          },
           "target": {
             "description": "Execution target formerly bound to the session.",
             "enum": [

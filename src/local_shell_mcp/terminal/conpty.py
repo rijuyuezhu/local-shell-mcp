@@ -238,6 +238,7 @@ class _ConPtySession:
     cwd: Path
     command: str
     created: int
+    owner_session_id: str | None = None
     output: _TailBuffer = field(
         default_factory=lambda: _TailBuffer(CONPTY_BUFFER_BYTES)
     )
@@ -413,6 +414,7 @@ async def start_shell(
     shell_id: str,
     cwd: Path,
     command: str | None,
+    owner_session_id: str | None = None,
 ) -> StartPersistentShellOutput:
     """Start and register one Windows ConPTY persistent shell."""
     if not is_available():
@@ -452,6 +454,7 @@ async def start_shell(
         cwd=cwd,
         command=initial,
         created=int(time.time()),
+        owner_session_id=owner_session_id,
     )
     with _SESSIONS_LOCK:
         duplicate = shell_id in _SESSIONS
@@ -610,6 +613,17 @@ async def list_shells() -> ListPersistentShellsOutput:
             for session in sessions
         ]
     )
+
+
+async def list_owned_shell_ids(owner_session_id: str) -> list[str]:
+    """Return live ConPTY shell ids owned by one explicit agent session."""
+    await list_shells()
+    with _SESSIONS_LOCK:
+        return sorted(
+            session.shell_id
+            for session in _SESSIONS.values()
+            if session.owner_session_id == owner_session_id
+        )
 
 
 class ConPtyRawAttachment:
