@@ -942,10 +942,15 @@ async def _start_persistent_shell_locked(
 ) -> StartPersistentShellOutput:
     """Start a persistent shell while the creation lock is held."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
-    shells = await list_persistent_shells_execute()
+    active_shell_ids = await authoritative_persistent_shell_ids_execute()
+    if active_shell_ids is None:
+        raise RuntimeError(
+            "Persistent shell inventory is unavailable; refusing to start a new "
+            "session until the backend can report active shells authoritatively."
+        )
     max_sessions = max(1, get_settings().max_tmux_sessions)
-    if len(shells.shells) >= max_sessions:
-        active = ", ".join(shell.shell_id for shell in shells.shells)
+    if len(active_shell_ids) >= max_sessions:
+        active = ", ".join(sorted(active_shell_ids))
         raise RuntimeError(
             f"Refusing to start more than {max_sessions} persistent shell "
             f"sessions; active shell ids: {active or '<unknown>'}. Use "
