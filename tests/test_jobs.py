@@ -1081,6 +1081,11 @@ async def test_reconcile_shell_jobs_is_conservative_without_inventory(
         "job_id": "unknown-job",
         "shell_id": "unknown-shell",
     }
+    store = {"jobs": [row]}
+
+    @contextmanager
+    def fake_transaction():
+        yield store
 
     async def uncertain_inventory():
         return None
@@ -1090,16 +1095,55 @@ async def test_reconcile_shell_jobs_is_conservative_without_inventory(
         "authoritative_persistent_shell_ids_execute",
         uncertain_inventory,
     )
-    monkeypatch.setattr(
-        jobs_ops,
-        "_store_transaction",
-        lambda: pytest.fail(
-            "uncertain inventory must not mutate the job store"
-        ),
-    )
+    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(jobs_ops, "_prune_store", lambda _store: None)
 
     assert await jobs_ops.job_reconcile_shell_jobs_execute() is False
     assert row["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_shell_jobs_applies_durable_completion_without_inventory(
+    monkeypatch,
+):
+    row = {
+        "kind": "shell",
+        "status": "running",
+        "job_id": "completed-job",
+        "shell_id": "unknown-shell",
+    }
+    store = {"jobs": [row]}
+
+    @contextmanager
+    def fake_transaction():
+        yield store
+
+    async def uncertain_inventory():
+        return None
+
+    monkeypatch.setattr(
+        jobs_ops,
+        "authoritative_persistent_shell_ids_execute",
+        uncertain_inventory,
+    )
+    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(jobs_ops, "_prune_store", lambda _store: None)
+    monkeypatch.setattr(
+        jobs_ops,
+        "_read_status",
+        lambda _job: {
+            "exit_code": 0,
+            "completed_at": 5.0,
+            "error": None,
+            "log_truncated": False,
+            "output_bytes": 0,
+        },
+    )
+
+    assert await jobs_ops.job_reconcile_shell_jobs_execute() is False
+    assert row["status"] == "succeeded"
+    assert row["exit_code"] == 0
+    assert row["completed_at"] == 5.0
 
 
 @pytest.mark.asyncio
@@ -1175,16 +1219,69 @@ async def test_job_list_preserves_running_state_when_inventory_is_uncertain(
         "authoritative_persistent_shell_ids_execute",
         uncertain_inventory,
     )
-    monkeypatch.setattr(
-        jobs_ops,
-        "_refresh_job_status",
-        lambda *_args: pytest.fail("uncertain inventory must not refresh jobs"),
-    )
 
     result = await jobs_ops.job_list_execute("SESSION1")
 
     assert result.jobs[0].status == "running"
     assert row["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_job_list_applies_durable_completion_when_inventory_is_uncertain(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session(str(tmp_path))
+    paths = jobs_ops._attempt_paths("job_durable", 1)
+    paths["status"].write_text(
+        json.dumps(
+            {
+                "exit_code": 0,
+                "completed_at": 5.0,
+                "error": None,
+                "log_truncated": False,
+                "output_bytes": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    jobs_ops._save_store(
+        {
+            "version": jobs_ops.JOB_STORE_VERSION,
+            "jobs": [
+                {
+                    "job_id": "job_durable",
+                    "kind": "shell",
+                    "name": "durable",
+                    "status": "running",
+                    "command": "echo done",
+                    "cwd": str(tmp_path),
+                    "session_id": session_id,
+                    "shell_id": "shell_durable",
+                    "status_path": str(paths["status"]),
+                    "created_at": 1.0,
+                    "updated_at": 2.0,
+                    "attempts": 1,
+                }
+            ],
+        }
+    )
+
+    async def uncertain_inventory():
+        return None
+
+    monkeypatch.setattr(
+        jobs_ops,
+        "authoritative_persistent_shell_ids_execute",
+        uncertain_inventory,
+    )
+
+    result = await jobs_ops.job_list_execute(session_id)
+
+    assert result.jobs[0].status == "succeeded"
+    assert result.jobs[0].exit_code == 0
+    assert result.jobs[0].completed_at == 5.0
+    assert jobs_ops._load_store()["jobs"][0]["status"] == "succeeded"
 
 
 @pytest.mark.asyncio
@@ -1229,11 +1326,6 @@ async def test_job_stop_attempts_kill_when_inventory_is_uncertain(monkeypatch):
         jobs_ops,
         "authoritative_persistent_shell_ids_execute",
         uncertain_inventory,
-    )
-    monkeypatch.setattr(
-        jobs_ops,
-        "_refresh_job_status",
-        lambda *_args: pytest.fail("uncertain inventory must not refresh jobs"),
     )
     monkeypatch.setattr(jobs_ops, "kill_persistent_shell_execute", fake_kill)
 
@@ -1288,11 +1380,6 @@ async def test_job_start_preserves_existing_jobs_when_inventory_is_uncertain(
         uncertain_inventory,
     )
     monkeypatch.setattr(
-        jobs_ops,
-        "_refresh_job_status",
-        lambda *_args: pytest.fail("uncertain inventory must not refresh jobs"),
-    )
-    monkeypatch.setattr(
         jobs_ops, "start_persistent_shell_execute", fake_start_shell
     )
 
@@ -1341,11 +1428,6 @@ async def test_job_tail_preserves_running_state_when_inventory_is_uncertain(
         uncertain_inventory,
     )
     monkeypatch.setattr(
-        jobs_ops,
-        "_refresh_job_status",
-        lambda *_args: pytest.fail("uncertain inventory must not refresh jobs"),
-    )
-    monkeypatch.setattr(
         jobs_ops, "read_persistent_shell_output_execute", failed_tail
     )
 
@@ -1383,11 +1465,6 @@ async def test_job_retry_rejects_running_job_when_inventory_is_uncertain(
         jobs_ops,
         "authoritative_persistent_shell_ids_execute",
         uncertain_inventory,
-    )
-    monkeypatch.setattr(
-        jobs_ops,
-        "_refresh_job_status",
-        lambda *_args: pytest.fail("uncertain inventory must not refresh jobs"),
     )
     monkeypatch.setattr(
         jobs_ops,

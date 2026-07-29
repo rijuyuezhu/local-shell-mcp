@@ -710,9 +710,11 @@ def _clear_job_operation(job: dict[str, Any]) -> None:
 
 
 def _refresh_job_status(
-    job: dict[str, Any], active_shells: set[str], now: float | None = None
+    job: dict[str, Any],
+    active_shells: set[str] | None,
+    now: float | None = None,
 ) -> dict[str, Any]:
-    """Recover interrupted transitions and apply durable runner completion state."""
+    """Apply durable completion and authoritative live-shell reconciliation."""
     status = str(job.get("status") or "unknown")
     if status not in ACTIVE_STATUSES:
         return job
@@ -752,9 +754,11 @@ def _refresh_job_status(
     if status == "starting":
         status_payload = _read_status(job)
         shell_id = _job_shell_id(job)
-        _clear_job_operation(job)
         if status_payload is not None:
             return _apply_status_payload(job, status_payload, updated)
+        if active_shells is None:
+            return job
+        _clear_job_operation(job)
         if shell_id and shell_id in active_shells:
             job.update(
                 {
@@ -785,6 +789,8 @@ def _refresh_job_status(
             _adopt_pending_retry(job)
             _clear_pending_retry(job)
             return _apply_status_payload(job, status_payload, updated)
+        if active_shells is None:
+            return job
         if pending_shell and pending_shell in active_shells:
             _adopt_pending_retry(job)
             _clear_pending_retry(job)
@@ -819,6 +825,8 @@ def _refresh_job_status(
     shell_id = _job_shell_id(job)
     if status_payload is not None:
         return _apply_status_payload(job, status_payload, updated)
+    if active_shells is None:
+        return job
 
     if status == "stopping":
         _clear_job_operation(job)
@@ -1343,17 +1351,12 @@ async def _job_start_execute_unlocked(
     try:
         with _store_transaction() as store:
             retained = [
-                row for row in store.get("jobs", []) if isinstance(row, dict)
+                _refresh_job_status(row, active_shells, now)
+                for row in store.get("jobs", [])
+                if isinstance(row, dict)
             ]
-            if active_shells is not None:
-                retained = [
-                    _refresh_job_status(row, active_shells, now)
-                    for row in retained
-                ]
-                store["jobs"] = retained
-                _prune_store(store)
-            else:
-                store["jobs"] = retained
+            store["jobs"] = retained
+            _prune_store(store)
             store["jobs"].append(job)
     except BaseException:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
@@ -1438,10 +1441,8 @@ async def _job_start_execute_unlocked(
 
 
 async def job_reconcile_shell_jobs_execute() -> bool:
-    """Reconcile durable shell-job state when the live inventory is authoritative."""
+    """Reconcile durable state and, when available, live shell membership."""
     active_shells = await authoritative_persistent_shell_ids_execute()
-    if active_shells is None:
-        return False
     now = _utc()
     with _store_transaction() as store:
         jobs = store.get("jobs", [])
@@ -1454,7 +1455,7 @@ async def job_reconcile_shell_jobs_execute() -> bool:
                 continue
             _refresh_job_status(row, active_shells, now)
         _prune_store(store)
-    return True
+    return active_shells is not None
 
 
 async def job_list_execute(
@@ -1466,7 +1467,7 @@ async def job_list_execute(
     now = _utc()
     with _store_transaction() as store:
         jobs = [
-            row if active is None else _refresh_job_status(row, active, now)
+            _refresh_job_status(row, active, now)
             for row in store.get("jobs", [])
         ]
         store["jobs"] = jobs
@@ -1496,8 +1497,7 @@ async def job_tail_execute(
     )
     with _store_transaction() as store:
         job = _find_session_job(store, session_id, job_id)
-        if active is not None:
-            job = _refresh_job_status(job, active)
+        job = _refresh_job_status(job, active)
         public = _public_job(job)
         log_path = str(job.get("log_path") or "")
         shell_id = _job_shell_id(job)
@@ -1661,8 +1661,7 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
     try:
         with _store_transaction() as store:
             job = _find_session_job(store, session_id, job_id)
-            if active is not None:
-                job = _refresh_job_status(job, active)
+            job = _refresh_job_status(job, active)
             if job.get("status") != "running":
                 return JobStopOutput(
                     job=_public_job(job), killed=False, stderr=""
@@ -1882,8 +1881,7 @@ async def _job_retry_execute_unlocked(
     try:
         with _store_transaction() as store:
             job = _find_session_job(store, session_id, job_id)
-            if active is not None:
-                job = _refresh_job_status(job, active)
+            job = _refresh_job_status(job, active)
             if job.get("status") in ACTIVE_STATUSES:
                 raise RuntimeError(f"job is still active: {job_id}")
             attempts = int(job.get("attempts") or 1) + 1

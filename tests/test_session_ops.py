@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -341,6 +342,68 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
         "target-copy",
     ]
     assert calls == [("SESSION1", False)]
+
+
+@pytest.mark.asyncio
+async def test_stop_owned_jobs_consumes_durable_completion_without_inventory(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    paths = jobs_runtime._attempt_paths("job_completed", 1)
+    paths["status"].write_text(
+        json.dumps(
+            {
+                "exit_code": 0,
+                "completed_at": 5.0,
+                "error": None,
+                "log_truncated": False,
+                "output_bytes": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    jobs_runtime._save_store(
+        {
+            "version": jobs_runtime.JOB_STORE_VERSION,
+            "jobs": [
+                {
+                    "job_id": "job_completed",
+                    "kind": "shell",
+                    "name": "completed",
+                    "status": "running",
+                    "command": "echo done",
+                    "cwd": str(tmp_path),
+                    "session_id": session.session_id,
+                    "shell_id": "shell_completed",
+                    "status_path": str(paths["status"]),
+                    "created_at": 1.0,
+                    "updated_at": 2.0,
+                    "attempts": 1,
+                }
+            ],
+        }
+    )
+
+    async def uncertain_inventory():
+        return None
+
+    async def unexpected_stop(_session_id: str, _job_id: str):
+        raise AssertionError("durably completed job must not be stopped")
+
+    monkeypatch.setattr(
+        jobs_runtime,
+        "authoritative_persistent_shell_ids_execute",
+        uncertain_inventory,
+    )
+    monkeypatch.setattr(jobs_runtime, "job_stop_execute", unexpected_stop)
+
+    assert await session_ops._stop_owned_jobs(session.session_id) == []
+    assert jobs_runtime._load_store()["jobs"][0]["status"] == "succeeded"
 
 
 @pytest.mark.asyncio
