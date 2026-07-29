@@ -171,6 +171,8 @@ Tracked shell and controller-managed jobs persist metadata under `state_dir` wit
 
 While a current-process managed job is active and lacks a durable completion record, retention and capacity pruning protect its owning session plus every existing, valid agent session referenced by a `session_id` or `*_session_id` field in its durable managed payload. This keeps both source and destination sessions available for background copies and retries. Prior-process managed jobs and durably completed jobs do not extend session lifetime.
 
+Session teardown reads the complete durable job set and treats `lost` shell jobs as unconfirmed until authoritative shell inventory either permits another stop attempt or proves the shell absent. Tagged persistent-shell discovery is also three-state: a successful query or a confirmed absent tmux server is authoritative, while backend resolution, permission, timeout, and other inventory failures preserve the session metadata and fail teardown closed.
+
 Managed-job logs are appended before metadata accounting. If bounded lock retries cannot commit log bytes, progress, or terminal state, the controller writes a bounded `0600` JSON record under the `0700` `state_dir/jobs/deferred` directory. Records use opaque ids, are bound to both the owning session and job, accept only the fixed update operations, reject links/non-regular files, and are replayed in creation order. Applied ids are saved inside the job row before cleanup, making replay idempotent across process loss or failed journal deletion. Invalid rows are audited and removed; rows that cannot be read are retained rather than silently discarded.
 
 ## Remote worker identity and user services

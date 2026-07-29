@@ -1662,12 +1662,38 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
         with _store_transaction() as store:
             job = _find_session_job(store, session_id, job_id)
             job = _refresh_job_status(job, active)
+            managed = str(job.get("kind") or "shell") == "managed"
+            shell_id = _job_shell_id(job)
+            if job.get("status") == "lost" and not managed:
+                if active is None:
+                    return JobStopOutput(
+                        job=_public_job(job), killed=False, stderr=""
+                    )
+                if shell_id not in active:
+                    completed = _utc()
+                    job.update(
+                        {
+                            "status": "stopped",
+                            "updated_at": completed,
+                            "completed_at": completed,
+                            "exit_code": None,
+                            "error": None,
+                        }
+                    )
+                    return JobStopOutput(
+                        job=_public_job(job), killed=False, stderr=""
+                    )
+                job.update(
+                    {
+                        "status": "running",
+                        "updated_at": _utc(),
+                        "completed_at": None,
+                    }
+                )
             if job.get("status") != "running":
                 return JobStopOutput(
                     job=_public_job(job), killed=False, stderr=""
                 )
-            managed = str(job.get("kind") or "shell") == "managed"
-            shell_id = _job_shell_id(job)
             job["status"] = "stopping"
             job["updated_at"] = _utc()
             operation_id = _begin_job_operation(job, "stop")
@@ -1695,19 +1721,26 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
                     and _job_operation_matches(job, operation_id)
                 ):
                     completed = _utc()
-                    job["status"] = "running" if still_active else "lost"
+                    job["status"] = "running" if still_active else "stopped"
                     job["updated_at"] = completed
                     job["error"] = (
                         f"stop failed: {public_error_type(exc)}: {exc}"
                     )
                     if not still_active:
                         job["completed_at"] = completed
+                    else:
+                        job["completed_at"] = None
                     _clear_job_operation(job)
             raise
 
         data = result.model_dump()
         killed = bool(data.get("killed"))
         stderr = str(data.get("stderr") or "")
+        active_after_stop: set[str] | None = None
+        if not killed:
+            active_after_stop = (
+                await authoritative_persistent_shell_ids_execute()
+            )
         with _store_transaction() as store:
             job = _find_session_job(store, session_id, job_id)
             if (
@@ -1716,14 +1749,22 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
                 and _job_operation_matches(job, operation_id)
             ):
                 completed = _utc()
+                if killed:
+                    status = "stopped"
+                elif active_after_stop is None or shell_id in active_after_stop:
+                    status = "running"
+                else:
+                    status = "stopped"
                 job.update(
                     {
-                        "status": "stopped" if killed else "lost",
+                        "status": status,
                         "updated_at": completed,
-                        "completed_at": completed,
+                        "completed_at": completed
+                        if status == "stopped"
+                        else None,
                         "exit_code": None,
                         "error": None
-                        if killed
+                        if status == "stopped"
                         else stderr or "shell was not stopped",
                     }
                 )

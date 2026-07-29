@@ -278,17 +278,19 @@ async def session_change_cwd_execute(
 async def _stop_owned_jobs(session_id: str) -> list[str]:
     """Stop every active tracked job before its owning session disappears."""
     from ..jobs.runtime import (
+        CONFIRMED_TERMINAL_STATUSES,
         job_list_execute,
         job_stop_execute,
         job_stop_managed_references_execute,
     )
 
-    listed = await job_list_execute(session_id, include_finished=False)
+    listed = await job_list_execute(session_id, include_finished=True)
     stopped: list[str] = []
-    confirmed_terminal_statuses = {"succeeded", "failed", "exited", "stopped"}
     for job in listed.jobs:
+        if job.status in CONFIRMED_TERMINAL_STATUSES:
+            continue
         result = await job_stop_execute(session_id, job.job_id)
-        if result.killed or result.job.status in confirmed_terminal_statuses:
+        if result.killed or result.job.status in CONFIRMED_TERMINAL_STATUSES:
             stopped.append(job.job_id)
             continue
         raise RuntimeError(
@@ -321,6 +323,11 @@ async def _stop_owned_shells(session_id: str) -> list[str]:
     discovered_shell_ids = await list_owned_persistent_shell_ids_execute(
         session_id
     )
+    if discovered_shell_ids is None:
+        raise RuntimeError(
+            "persistent shell ownership could not be determined; refusing to "
+            "remove the session"
+        )
     shell_ids = tuple(
         dict.fromkeys((*durable_shell_ids, *discovered_shell_ids))
     )

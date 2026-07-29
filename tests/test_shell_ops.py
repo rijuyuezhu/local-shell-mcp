@@ -212,6 +212,98 @@ async def test_list_persistent_shells_preserves_owners_on_unknown_tmux_failure(
     assert reconciled == []
 
 
+@pytest.mark.asyncio
+async def test_list_owned_shells_returns_none_on_unknown_tmux_failure(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "resolve_tmux",
+        lambda: SimpleNamespace(path="/usr/bin/tmux", source="system"),
+    )
+
+    async def failed_tmux(_args, timeout_s=10):  # noqa: ARG001
+        return CommandResult(
+            ok=False,
+            exit_code=1,
+            duration_ms=1,
+            cwd=".",
+            command="tmux list-sessions",
+            stderr="permission denied",
+        )
+
+    monkeypatch.setattr(shell_ops, "tmux", failed_tmux)
+
+    assert (
+        await shell_ops.list_owned_persistent_shell_ids_execute("SESSION1")
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_owned_shells_treats_absent_server_as_authoritative_empty(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "resolve_tmux",
+        lambda: SimpleNamespace(path="/usr/bin/tmux", source="system"),
+    )
+
+    async def absent_tmux(_args, timeout_s=10):  # noqa: ARG001
+        return CommandResult(
+            ok=False,
+            exit_code=1,
+            duration_ms=1,
+            cwd=".",
+            command="tmux list-sessions",
+            stderr="error connecting to /tmp/tmux/default (No such file or directory)",
+        )
+
+    monkeypatch.setattr(shell_ops, "tmux", absent_tmux)
+
+    assert (
+        await shell_ops.list_owned_persistent_shell_ids_execute("SESSION1")
+        == []
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_owned_shells_filters_owner_from_authoritative_inventory(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "resolve_tmux",
+        lambda: SimpleNamespace(path="/usr/bin/tmux", source="system"),
+    )
+
+    async def listed_tmux(_args, timeout_s=10):  # noqa: ARG001
+        return CommandResult(
+            ok=True,
+            exit_code=0,
+            duration_ms=1,
+            cwd=".",
+            command="tmux list-sessions",
+            stdout="owned\tSESSION1\nother\tSESSION2\n",
+        )
+
+    monkeypatch.setattr(shell_ops, "tmux", listed_tmux)
+
+    assert await shell_ops.list_owned_persistent_shell_ids_execute(
+        "SESSION1"
+    ) == ["owned"]
+
+
 def test_command_with_env_uses_powershell_assignments(monkeypatch):
     monkeypatch.setattr(
         shell_ops, "_effective_shell_executable", lambda: "pwsh.exe"

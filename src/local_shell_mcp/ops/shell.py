@@ -1209,13 +1209,13 @@ async def kill_persistent_shell_execute(
 
 async def list_owned_persistent_shell_ids_execute(
     owner_session_id: str,
-) -> list[str]:
-    """Return live persistent shell ids assigned to one explicit session."""
+) -> list[str] | None:
+    """Return owned shell ids, or None when discovery is non-authoritative."""
     if _use_conpty_persistent_shell_backend():
         return await conpty.list_owned_shell_ids(owner_session_id)
     selection = resolve_tmux()
     if selection.path is None and selection.source == "unavailable":
-        return []
+        return None
     result = await tmux(
         [
             "list-sessions",
@@ -1225,7 +1225,7 @@ async def list_owned_persistent_shell_ids_execute(
         timeout_s=5,
     )
     if not result.ok:
-        return []
+        return [] if _tmux_server_absent(result) else None
     owned: list[str] = []
     for line in result.stdout.splitlines():
         shell_id, _, owner = line.partition("\t")

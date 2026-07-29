@@ -292,13 +292,72 @@ async def test_session_end_preserves_local_state_when_pty_cleanup_fails(
 
 
 @pytest.mark.asyncio
+async def test_session_end_retry_rechecks_lost_job_before_deleting_session(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    stop_calls = 0
+
+    async def fake_list(_session_id: str, include_finished: bool):
+        assert include_finished is True
+        return SimpleNamespace(
+            jobs=[SimpleNamespace(job_id="job_one", status="lost")]
+        )
+
+    async def fake_stop(_session_id: str, _job_id: str):
+        nonlocal stop_calls
+        stop_calls += 1
+        status = "lost" if stop_calls == 1 else "stopped"
+        return SimpleNamespace(
+            killed=False,
+            job=SimpleNamespace(status=status),
+        )
+
+    async def fake_stop_references(*_args, **_kwargs):
+        return []
+
+    async def no_shells(_session_id: str):
+        return []
+
+    monkeypatch.setattr(
+        "local_shell_mcp.jobs.runtime.job_list_execute", fake_list
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.jobs.runtime.job_stop_execute", fake_stop
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",
+        fake_stop_references,
+    )
+    monkeypatch.setattr(session_ops, "_stop_owned_shells", no_shells)
+
+    with pytest.raises(RuntimeError, match="status='lost'"):
+        await session_ops.session_end_execute(session.session_id)
+
+    retained = store.require_session(session.session_id)
+    assert retained.termination_requested_at is not None
+
+    result = await session_ops.session_end_execute(session.session_id)
+
+    assert result.ended is True
+    assert result.stopped_jobs == ["job_one"]
+    assert stop_calls == 2
+    with pytest.raises(ValueError, match="unknown session_id"):
+        store.require_session(session.session_id)
+
+
+@pytest.mark.asyncio
 async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
     monkeypatch,
 ):
     jobs = [
-        SimpleNamespace(job_id="killed"),
-        SimpleNamespace(job_id="finished"),
-        SimpleNamespace(job_id="stopped"),
+        SimpleNamespace(job_id="killed", status="running"),
+        SimpleNamespace(job_id="finished", status="succeeded"),
+        SimpleNamespace(job_id="stopped", status="stopped"),
     ]
     calls: list[tuple[str, bool]] = []
 
@@ -307,13 +366,10 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
         return SimpleNamespace(jobs=jobs)
 
     async def fake_stop(session_id: str, job_id: str):
-        status = {
-            "finished": "succeeded",
-            "stopped": "stopped",
-        }.get(job_id, "running")
+        assert job_id == "killed"
         return SimpleNamespace(
             killed=job_id == "killed",
-            job=SimpleNamespace(status=status),
+            job=SimpleNamespace(status="running"),
         )
 
     async def fake_stop_references(
@@ -337,11 +393,9 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
 
     assert await session_ops._stop_owned_jobs("SESSION1") == [
         "killed",
-        "finished",
-        "stopped",
         "target-copy",
     ]
-    assert calls == [("SESSION1", False)]
+    assert calls == [("SESSION1", True)]
 
 
 @pytest.mark.asyncio
@@ -410,8 +464,10 @@ async def test_stop_owned_jobs_consumes_durable_completion_without_inventory(
 @pytest.mark.parametrize("status", ["running", "starting", "stopping", "lost"])
 async def test_stop_owned_jobs_rejects_unconfirmed_stop(status, monkeypatch):
     async def fake_list(_session_id: str, include_finished: bool):
-        assert include_finished is False
-        return SimpleNamespace(jobs=[SimpleNamespace(job_id="job_one")])
+        assert include_finished is True
+        return SimpleNamespace(
+            jobs=[SimpleNamespace(job_id="job_one", status=status)]
+        )
 
     async def fake_stop(_session_id: str, _job_id: str):
         return SimpleNamespace(killed=False, job=SimpleNamespace(status=status))
@@ -434,6 +490,36 @@ async def test_stop_owned_jobs_rejects_unconfirmed_stop(status, monkeypatch):
 
     with pytest.raises(RuntimeError, match=f"status='{status}'"):
         await session_ops._stop_owned_jobs("SESSION1")
+
+
+@pytest.mark.asyncio
+async def test_stop_owned_shells_rejects_unknown_owner_inventory(monkeypatch):
+    async def fake_inventory():
+        return SimpleNamespace(shells=[])
+
+    async def uncertain_owned(_session_id: str):
+        return None
+
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.list_persistent_shells_execute",
+        fake_inventory,
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        uncertain_owned,
+    )
+    monkeypatch.setattr(
+        session_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            require_session=lambda _session_id: SimpleNamespace(
+                persistent_shell_ids=()
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="ownership could not be determined"):
+        await session_ops._stop_owned_shells("SESSION1")
 
 
 @pytest.mark.asyncio
