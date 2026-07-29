@@ -406,6 +406,11 @@ async def test_spawn_process_resolves_relative_shell_from_command_cwd(
     monkeypatch.setattr(
         shell_ops, "_effective_shell_executable", lambda: "bin/custom-shell"
     )
+    monkeypatch.setattr(
+        shell_ops.shutil,
+        "which",
+        lambda command, **_: command,
+    )
     calls = []
     sentinel = object()
 

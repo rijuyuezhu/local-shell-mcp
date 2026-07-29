@@ -129,6 +129,11 @@ async def test_bounded_shell_reports_vanished_cwd(
     monkeypatch.setattr(
         shell_ops, "_effective_shell_executable", lambda: "/bin/sh"
     )
+    monkeypatch.setattr(
+        shell_ops.shutil,
+        "which",
+        lambda command, **_: command,
+    )
     monkeypatch.setattr(shell_ops.asyncio, "create_subprocess_exec", fail_spawn)
 
     with pytest.raises(PathNotFoundError) as raised:
