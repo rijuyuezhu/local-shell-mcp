@@ -11,8 +11,8 @@ from typing import Any, Literal, cast
 from ...config.settings import get_settings
 from ...jobs.runtime import (
     ManagedJobContext,
+    _start_managed_job_unlocked,
     register_managed_job_handler,
-    start_managed_job,
 )
 from ...remote.transfer_gateway import (
     TransferGatewayStore,
@@ -24,6 +24,7 @@ from ...schemas.result_models.session import (
     SessionCopyOutput,
     SessionCopyRelation,
 )
+from ...tool_session.lifecycle import session_lifecycle_locks
 from ...tool_session.store import AgentSession, get_tool_session_store
 from ...utils.serialization import to_jsonable
 from ..transfer import (
@@ -1004,31 +1005,32 @@ async def session_copy_job_execute(
     chunk_size: int | None = None,
 ) -> JobStartOutput:
     """Start a controller-managed session copy and return its tracked job."""
-    store = get_tool_session_store()
-    store.touch_session(src_session_id)
-    store.touch_session(dst_session_id)
-    normalized_chunk_size = normalize_chunk_size(chunk_size)
-    payload = {
-        "src_session_id": src_session_id,
-        "src_path": src_path,
-        "dst_session_id": dst_session_id,
-        "dst_path": dst_path,
-        "kind": kind,
-        "overwrite": overwrite,
-        "chunk_size": normalized_chunk_size,
-    }
-    destination_name = PurePath(dst_path).name or "artifact"
-    return await start_managed_job(
-        src_session_id,
-        SESSION_COPY_MANAGED_KIND,
-        payload,
-        name=f"copy-{destination_name}"[:80],
-        command=(
-            f"session_copy {src_session_id}:{src_path} -> "
-            f"{dst_session_id}:{dst_path}"
-        ),
-        cwd=".",
-    )
+    async with session_lifecycle_locks((src_session_id, dst_session_id)):
+        store = get_tool_session_store()
+        store.touch_session(src_session_id)
+        store.touch_session(dst_session_id)
+        normalized_chunk_size = normalize_chunk_size(chunk_size)
+        payload = {
+            "src_session_id": src_session_id,
+            "src_path": src_path,
+            "dst_session_id": dst_session_id,
+            "dst_path": dst_path,
+            "kind": kind,
+            "overwrite": overwrite,
+            "chunk_size": normalized_chunk_size,
+        }
+        destination_name = PurePath(dst_path).name or "artifact"
+        return await _start_managed_job_unlocked(
+            src_session_id,
+            SESSION_COPY_MANAGED_KIND,
+            payload,
+            name=f"copy-{destination_name}"[:80],
+            command=(
+                f"session_copy {src_session_id}:{src_path} -> "
+                f"{dst_session_id}:{dst_path}"
+            ),
+            cwd=".",
+        )
 
 
 register_managed_job_handler(SESSION_COPY_MANAGED_KIND, _run_session_copy_job)

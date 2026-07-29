@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -905,6 +906,111 @@ async def test_managed_job_tracks_progress_stop_retry_and_result(
     assert current.result == {"value": 7}
     assert current.progress == {"phase": "waiting", "value": 7}
     jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_managed_reference_stop_cancels_job_owned_by_source_session(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    source_session_id = _create_session()
+    destination_session_id = "DEST0001"
+    entered = asyncio.Event()
+
+    async def handler(_context, _payload):
+        entered.set()
+        await asyncio.Event().wait()
+
+    jobs_ops.register_managed_job_handler("test-managed-reference", handler)
+    started = await jobs_ops.start_managed_job(
+        source_session_id,
+        "test-managed-reference",
+        {"dst_session_id": destination_session_id},
+    )
+    await entered.wait()
+
+    stopped = await jobs_ops.job_stop_managed_references_execute(
+        destination_session_id,
+        managed_kind="test-managed-reference",
+        payload_key="dst_session_id",
+    )
+
+    assert stopped == [started.job_id]
+    current = (await jobs_ops.job_list_execute(source_session_id)).jobs[0]
+    assert current.status == "stopped"
+    assert jobs_ops._job_lifecycle_session_ids(
+        source_session_id, started.job_id
+    ) == tuple(sorted((source_session_id, destination_session_id)))
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_managed_reference_stop_filters_unrelated_rows(monkeypatch):
+    rows = [
+        "not-a-row",
+        {"kind": "shell", "status": "running"},
+        {
+            "kind": "managed",
+            "managed_kind": "other",
+            "status": "running",
+        },
+        {
+            "kind": "managed",
+            "managed_kind": "copy",
+            "status": "stopped",
+        },
+        {
+            "kind": "managed",
+            "managed_kind": "copy",
+            "status": "running",
+            "managed_payload": None,
+        },
+        {
+            "kind": "managed",
+            "managed_kind": "copy",
+            "status": "running",
+            "managed_payload": {"dst_session_id": "OTHER"},
+        },
+        {
+            "kind": "managed",
+            "managed_kind": "copy",
+            "status": "running",
+            "managed_payload": {"dst_session_id": "DEST0001"},
+            "session_id": "",
+            "job_id": "missing-owner",
+        },
+        {
+            "kind": "managed",
+            "managed_kind": "copy",
+            "status": "running",
+            "managed_payload": {"dst_session_id": "DEST0001"},
+            "session_id": "SOURCE01",
+            "job_id": "job_target",
+        },
+    ]
+
+    @contextmanager
+    def fake_transaction():
+        yield {"jobs": rows}
+
+    async def fake_stop(session_id: str, job_id: str):
+        assert (session_id, job_id) == ("SOURCE01", "job_target")
+        return SimpleNamespace(
+            killed=False, job=SimpleNamespace(status="succeeded")
+        )
+
+    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(
+        jobs_ops, "_refresh_job_status", lambda row, _active: row
+    )
+    monkeypatch.setattr(
+        jobs_ops, "_stop_managed_job_without_session_admission", fake_stop
+    )
+
+    assert await jobs_ops.job_stop_managed_references_execute(
+        "DEST0001", managed_kind="copy", payload_key="dst_session_id"
+    ) == ["job_target"]
 
 
 def test_managed_job_validation_and_lost_recovery():

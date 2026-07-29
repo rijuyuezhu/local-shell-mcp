@@ -2,8 +2,8 @@
 
 import asyncio
 import threading
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator, Iterable
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 
 
@@ -46,6 +46,18 @@ async def session_lifecycle_lock(session_id: str) -> AsyncGenerator[None]:
             entry.users -= 1
             if entry.users == 0 and _ENTRIES.get(session_id) is entry:
                 _ENTRIES.pop(session_id, None)
+
+
+@asynccontextmanager
+async def session_lifecycle_locks(
+    session_ids: Iterable[str],
+) -> AsyncGenerator[None]:
+    """Acquire multiple session lifecycle locks in a stable deadlock-free order."""
+    normalized = sorted({str(session_id) for session_id in session_ids})
+    async with AsyncExitStack() as stack:
+        for session_id in normalized:
+            await stack.enter_async_context(session_lifecycle_lock(session_id))
+        yield
 
 
 def reset_session_lifecycle_locks_for_tests() -> None:

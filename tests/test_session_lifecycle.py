@@ -82,3 +82,14 @@ async def test_reset_lifecycle_locks_rejects_active_entries():
     await task
     lifecycle.reset_session_lifecycle_locks_for_tests()
     assert lifecycle._ENTRIES == {}
+
+
+@pytest.mark.asyncio
+async def test_multiple_lifecycle_locks_are_sorted_and_deduplicated():
+    async with lifecycle.session_lifecycle_locks(
+        ("SESSION2", "SESSION1", "SESSION2")
+    ):
+        assert set(lifecycle._ENTRIES) == {"SESSION1", "SESSION2"}
+        assert all(entry.lock.locked() for entry in lifecycle._ENTRIES.values())
+
+    assert lifecycle._ENTRIES == {}

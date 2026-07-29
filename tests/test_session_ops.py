@@ -235,16 +235,29 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
             job=SimpleNamespace(status=status),
         )
 
+    async def fake_stop_references(
+        referenced_session_id: str, *, managed_kind: str, payload_key: str
+    ) -> list[str]:
+        assert referenced_session_id == "SESSION1"
+        assert managed_kind == "session-copy"
+        assert payload_key == "dst_session_id"
+        return ["target-copy"]
+
     monkeypatch.setattr(
         "local_shell_mcp.jobs.runtime.job_list_execute", fake_list
     )
     monkeypatch.setattr(
         "local_shell_mcp.jobs.runtime.job_stop_execute", fake_stop
     )
+    monkeypatch.setattr(
+        "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",
+        fake_stop_references,
+    )
 
     assert await session_ops._stop_owned_jobs("SESSION1") == [
         "killed",
         "finished",
+        "target-copy",
     ]
     assert calls == [("SESSION1", False)]
 

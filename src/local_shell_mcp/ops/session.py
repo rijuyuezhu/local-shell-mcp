@@ -273,7 +273,11 @@ async def session_change_cwd_execute(
 
 async def _stop_owned_jobs(session_id: str) -> list[str]:
     """Stop every active tracked job before its owning session disappears."""
-    from ..jobs.runtime import job_list_execute, job_stop_execute
+    from ..jobs.runtime import (
+        job_list_execute,
+        job_stop_execute,
+        job_stop_managed_references_execute,
+    )
 
     listed = await job_list_execute(session_id, include_finished=False)
     stopped: list[str] = []
@@ -287,6 +291,12 @@ async def _stop_owned_jobs(session_id: str) -> list[str]:
             "lost",
         }:
             stopped.append(job.job_id)
+    referenced = await job_stop_managed_references_execute(
+        session_id,
+        managed_kind="session-copy",
+        payload_key="dst_session_id",
+    )
+    stopped.extend(job_id for job_id in referenced if job_id not in stopped)
     return stopped
 
 

@@ -37,7 +37,10 @@ from ..schemas.result_models.jobs import (
     JobStopOutput,
     JobTailOutput,
 )
-from ..tool_session.lifecycle import session_lifecycle_lock
+from ..tool_session.lifecycle import (
+    session_lifecycle_lock,
+    session_lifecycle_locks,
+)
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -1548,6 +1551,74 @@ async def _stop_managed_job(
     return JobStopOutput(job=public, killed=killed, stderr="")
 
 
+async def _stop_managed_job_without_session_admission(
+    session_id: str,
+    job_id: str,
+) -> JobStopOutput:
+    """Stop one managed job when its owner session may already be terminating."""
+    operation_id = ""
+    try:
+        with _store_transaction() as store:
+            job = _refresh_job_status(
+                _find_session_job(store, session_id, job_id), set()
+            )
+            if job.get("status") != "running":
+                return JobStopOutput(
+                    job=_public_job(job), killed=False, stderr=""
+                )
+            if str(job.get("kind") or "shell") != "managed":
+                raise RuntimeError(f"job is not controller-managed: {job_id}")
+            job["status"] = "stopping"
+            job["updated_at"] = _utc()
+            operation_id = _begin_job_operation(job, "stop")
+    except BaseException:
+        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        raise
+    try:
+        return await _stop_managed_job(session_id, job_id, operation_id)
+    finally:
+        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+
+
+async def job_stop_managed_references_execute(
+    referenced_session_id: str,
+    *,
+    managed_kind: str,
+    payload_key: str,
+) -> list[str]:
+    """Stop active managed jobs whose durable payload references one session."""
+    candidates: list[tuple[str, str]] = []
+    with _store_transaction() as store:
+        for row in store.get("jobs", []):
+            if not isinstance(row, dict):
+                continue
+            job = _refresh_job_status(row, set())
+            if (
+                str(job.get("kind") or "shell") != "managed"
+                or str(job.get("managed_kind") or "") != managed_kind
+                or job.get("status") != "running"
+            ):
+                continue
+            payload = job.get("managed_payload")
+            if not isinstance(payload, dict):
+                continue
+            if str(payload.get(payload_key) or "") != referenced_session_id:
+                continue
+            owner_session_id = str(job.get("session_id") or "")
+            job_id = str(job.get("job_id") or "")
+            if owner_session_id and job_id:
+                candidates.append((owner_session_id, job_id))
+
+    stopped: list[str] = []
+    for owner_session_id, job_id in candidates:
+        result = await _stop_managed_job_without_session_admission(
+            owner_session_id, job_id
+        )
+        if result.killed or result.job.status in TERMINAL_STATUSES:
+            stopped.append(job_id)
+    return stopped
+
+
 async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
     """Stop one tracked command through a serialized lifecycle transition."""
     get_tool_session_store().touch_session(session_id)
@@ -1744,9 +1815,27 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
 
 
+def _job_lifecycle_session_ids(session_id: str, job_id: str) -> tuple[str, ...]:
+    """Return all session ids whose lifecycle constrains one job retry."""
+    session_ids = {session_id}
+    with _store_transaction() as store:
+        job = _find_session_job(store, session_id, job_id)
+        if str(job.get("kind") or "shell") == "managed":
+            payload = job.get("managed_payload")
+            if isinstance(payload, dict):
+                destination = str(payload.get("dst_session_id") or "")
+                if destination:
+                    session_ids.add(destination)
+    return tuple(sorted(session_ids))
+
+
 async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
     """Retry one job under session lifecycle admission."""
-    async with session_lifecycle_lock(session_id):
+    lifecycle_session_ids = _job_lifecycle_session_ids(session_id, job_id)
+    async with session_lifecycle_locks(lifecycle_session_ids):
+        store = get_tool_session_store()
+        for lifecycle_session_id in lifecycle_session_ids:
+            store.touch_session(lifecycle_session_id)
         return await _job_retry_execute_unlocked(session_id, job_id)
 
 
