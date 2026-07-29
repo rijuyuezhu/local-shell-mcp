@@ -42,20 +42,25 @@ def _enable_child_subreaper() -> bool:
     return result == 0
 
 
-def _direct_children(pid: int) -> list[int]:
-    """Return Linux procfs child pids for one process."""
+def _direct_children(pid: int) -> list[int] | None:
+    """Return Linux procfs child pids, or None when unavailable."""
     path = Path(f"/proc/{pid}/task/{pid}/children")
     try:
         raw = path.read_text(encoding="ascii").strip()
-    except OSError:
-        return []
-    return [int(value) for value in raw.split() if value.isdigit()]
+    except OSError, UnicodeError:
+        return None
+    values = raw.split()
+    if any(not value.isdigit() for value in values):
+        return None
+    return [int(value) for value in values]
 
 
-def _descendants(pid: int) -> list[int]:
-    """Return all currently visible descendants, deepest children last."""
+def _descendants(pid: int) -> list[int] | None:
+    """Return all visible descendants, or None when procfs is uncertain."""
     found: list[int] = []
     pending = _direct_children(pid)
+    if pending is None:
+        return None
     seen: set[int] = set()
     while pending:
         child = pending.pop()
@@ -63,19 +68,27 @@ def _descendants(pid: int) -> list[int]:
             continue
         seen.add(child)
         found.append(child)
-        pending.extend(_direct_children(child))
+        children = _direct_children(child)
+        if children is None:
+            return None
+        pending.extend(children)
     return found
 
 
-def _signal_descendants(sig: signal.Signals) -> None:
-    """Signal every process owned by this one-command runner."""
-    for pid in reversed(_descendants(os.getpid())):
+def _signal_descendants(sig: signal.Signals) -> bool:
+    """Signal every known descendant, failing when enumeration is uncertain."""
+    descendants = _descendants(os.getpid())
+    if descendants is None:
+        return False
+    signalled = True
+    for pid in reversed(descendants):
         try:
             os.kill(pid, sig)
         except ProcessLookupError:
             continue
         except PermissionError:
-            continue
+            signalled = False
+    return signalled
 
 
 def _force_kill_signal() -> signal.Signals:
@@ -88,11 +101,15 @@ def _wait_for_no_descendants(timeout_s: float) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         _reap_children()
-        if not _descendants(os.getpid()):
+        descendants = _descendants(os.getpid())
+        if descendants is None:
+            return False
+        if not descendants:
             return True
         time.sleep(POLL_INTERVAL_S)
     _reap_children()
-    return not _descendants(os.getpid())
+    descendants = _descendants(os.getpid())
+    return descendants is not None and not descendants
 
 
 def _reap_children() -> None:
@@ -112,13 +129,18 @@ def _reap_children() -> None:
 
 def _cleanup_descendants() -> bool:
     """Terminate descendants left behind after a bounded command returns."""
-    if not _descendants(os.getpid()):
+    descendants = _descendants(os.getpid())
+    if descendants is None:
+        return False
+    if not descendants:
         return True
-    _signal_descendants(signal.SIGTERM)
+    if not _signal_descendants(signal.SIGTERM):
+        return False
     if _wait_for_no_descendants(TERMINATE_GRACE_S):
         _reap_children()
         return True
-    _signal_descendants(_force_kill_signal())
+    if not _signal_descendants(_force_kill_signal()):
+        return False
     cleaned = _wait_for_no_descendants(KILL_GRACE_S)
     _reap_children()
     return cleaned
@@ -509,6 +531,12 @@ def run_bounded_command(shell: str, command: str) -> int:
     if not track_descendants and not track_with_kqueue:
         print(
             "Bounded command descendant tracking is unavailable on this host",
+            file=sys.stderr,
+        )
+        return 125
+    if track_descendants and _descendants(os.getpid()) is None:
+        print(
+            "Bounded command procfs descendant tracking is unavailable",
             file=sys.stderr,
         )
         return 125

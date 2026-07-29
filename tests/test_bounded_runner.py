@@ -294,12 +294,33 @@ def test_cleanup_kqueue_processes_rechecks_group(monkeypatch):
 
 
 def test_direct_children_parses_procfs_pids(monkeypatch):
-    fake_path = SimpleNamespace(
-        read_text=lambda *, encoding: "12 34 ignored 56\n"
-    )
+    fake_path = SimpleNamespace(read_text=lambda *, encoding: "12 34 56\n")
     monkeypatch.setattr(bounded_runner, "Path", lambda _path: fake_path)
 
     assert bounded_runner._direct_children(7) == [12, 34, 56]
+
+
+@pytest.mark.parametrize("failure", [OSError("denied"), UnicodeError("bad")])
+def test_direct_children_reports_unavailable_procfs(monkeypatch, failure):
+    def fail_read(*, encoding):  # noqa: ARG001
+        raise failure
+
+    monkeypatch.setattr(
+        bounded_runner,
+        "Path",
+        lambda _path: SimpleNamespace(read_text=fail_read),
+    )
+
+    assert bounded_runner._direct_children(7) is None
+
+
+def test_direct_children_rejects_malformed_procfs(monkeypatch):
+    fake_path = SimpleNamespace(
+        read_text=lambda *, encoding: "12 unexpected 56\n"
+    )
+    monkeypatch.setattr(bounded_runner, "Path", lambda _path: fake_path)
+
+    assert bounded_runner._direct_children(7) is None
 
 
 def test_wait_for_no_descendants_reaps_until_empty(monkeypatch):
@@ -317,6 +338,14 @@ def test_wait_for_no_descendants_reaps_until_empty(monkeypatch):
 
     assert bounded_runner._wait_for_no_descendants(1.0) is True
     assert reaped == [True, True]
+
+
+def test_wait_for_no_descendants_fails_on_unknown_inventory(monkeypatch):
+    monkeypatch.setattr(bounded_runner.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(bounded_runner, "_reap_children", lambda: None)
+    monkeypatch.setattr(bounded_runner, "_descendants", lambda _pid: None)
+
+    assert bounded_runner._wait_for_no_descendants(1.0) is False
 
 
 def test_reap_children_stops_when_no_child_is_ready(monkeypatch):
@@ -347,10 +376,22 @@ def test_process_tree_helpers_handle_races_and_cycles(monkeypatch):
 
     monkeypatch.setattr(bounded_runner, "_direct_children", fake_children)
 
-    assert set(bounded_runner._descendants(1)) == {1, 2, 3}
+    descendants = bounded_runner._descendants(1)
+    assert descendants is not None
+    assert set(descendants) == {1, 2, 3}
 
 
-def test_signal_descendants_ignores_disappeared_and_forbidden_processes(
+def test_descendants_propagates_unknown_child_inventory(monkeypatch):
+    monkeypatch.setattr(
+        bounded_runner,
+        "_direct_children",
+        lambda pid: [2] if pid == 1 else None,
+    )
+
+    assert bounded_runner._descendants(1) is None
+
+
+def test_signal_descendants_reports_forbidden_processes(
     monkeypatch,
 ):
     monkeypatch.setattr(bounded_runner, "_descendants", lambda _pid: [1, 2])
@@ -362,7 +403,18 @@ def test_signal_descendants_ignores_disappeared_and_forbidden_processes(
 
     monkeypatch.setattr(bounded_runner.os, "kill", fake_kill)
 
-    bounded_runner._signal_descendants(signal.SIGTERM)
+    assert bounded_runner._signal_descendants(signal.SIGTERM) is False
+
+
+def test_signal_descendants_fails_on_unknown_inventory(monkeypatch):
+    monkeypatch.setattr(bounded_runner, "_descendants", lambda _pid: None)
+    monkeypatch.setattr(
+        bounded_runner.os,
+        "kill",
+        lambda *_args: pytest.fail("unknown descendants must not be signalled"),
+    )
+
+    assert bounded_runner._signal_descendants(signal.SIGTERM) is False
 
 
 def test_cleanup_descendants_escalates_to_sigkill(monkeypatch):
@@ -370,7 +422,9 @@ def test_cleanup_descendants_escalates_to_sigkill(monkeypatch):
     waits = iter([False, True])
     monkeypatch.setattr(bounded_runner, "_descendants", lambda _pid: [2])
     monkeypatch.setattr(
-        bounded_runner, "_signal_descendants", lambda sig: signals.append(sig)
+        bounded_runner,
+        "_signal_descendants",
+        lambda sig: signals.append(sig) or True,
     )
     monkeypatch.setattr(
         bounded_runner, "_wait_for_no_descendants", lambda _timeout: next(waits)
@@ -385,7 +439,9 @@ def test_cleanup_descendants_returns_after_graceful_term(monkeypatch):
     signals = []
     monkeypatch.setattr(bounded_runner, "_descendants", lambda _pid: [2])
     monkeypatch.setattr(
-        bounded_runner, "_signal_descendants", lambda sig: signals.append(sig)
+        bounded_runner,
+        "_signal_descendants",
+        lambda sig: signals.append(sig) or True,
     )
     monkeypatch.setattr(
         bounded_runner, "_wait_for_no_descendants", lambda _timeout: True
@@ -394,6 +450,12 @@ def test_cleanup_descendants_returns_after_graceful_term(monkeypatch):
 
     assert bounded_runner._cleanup_descendants() is True
     assert signals == [signal.SIGTERM]
+
+
+def test_cleanup_descendants_fails_on_unknown_inventory(monkeypatch):
+    monkeypatch.setattr(bounded_runner, "_descendants", lambda _pid: None)
+
+    assert bounded_runner._cleanup_descendants() is False
 
 
 def test_force_kill_signal_falls_back_to_sigterm(monkeypatch):
@@ -565,6 +627,23 @@ def test_run_bounded_command_reports_missing_shell(monkeypatch, capsys):
         bounded_runner.run_bounded_command("/missing/shell", "echo ok") == 127
     )
     assert "Unable to start configured shell" in capsys.readouterr().err
+
+
+def test_run_bounded_command_fails_closed_when_procfs_is_unavailable(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
+    monkeypatch.setattr(bounded_runner, "_descendants", lambda _pid: None)
+    monkeypatch.setattr(
+        bounded_runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("command must not start"),
+    )
+
+    assert bounded_runner.run_bounded_command("sh", "true") == 125
+    assert (
+        "procfs descendant tracking is unavailable" in capsys.readouterr().err
+    )
 
 
 def test_run_bounded_command_reports_cleanup_failure(monkeypatch, capsys):
