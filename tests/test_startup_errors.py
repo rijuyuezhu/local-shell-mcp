@@ -652,6 +652,53 @@ async def test_persistent_shell_rejects_uncertain_inventory_before_creation(
 
 
 @pytest.mark.asyncio
+async def test_persistent_shell_accepts_missing_tmux_socket_as_empty_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    shell = tmp_path / "shell"
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    shell.chmod(0o700)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    clear_settings_cache()
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "resolve_tmux",
+        lambda: TmuxSelection("/usr/bin/tmux", "system", "tmux"),
+    )
+    monkeypatch.setattr(
+        shell_ops.shutil, "which", lambda executable, **_kwargs: executable
+    )
+    calls: list[list[str]] = []
+
+    async def fake_tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
+        del timeout_s
+        calls.append(args)
+        if args[0] == "list-sessions":
+            return _tmux_result(
+                ok=False,
+                stderr=(
+                    "error connecting to /tmp/isolated/tmux-1000/default "
+                    "(No such file or directory)"
+                ),
+            )
+        return _tmux_result(ok=True)
+
+    monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+
+    started = await shell_ops.start_persistent_shell_execute(
+        cwd=str(tmp_path), name="fresh", command="echo ready"
+    )
+
+    assert started.shell_id == "fresh"
+    assert calls[0][0] == "list-sessions"
+    assert calls[1][:4] == ["new-session", "-d", "-s", "fresh"]
+
+
+@pytest.mark.asyncio
 async def test_persistent_tmux_creation_and_send_errors_are_reported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

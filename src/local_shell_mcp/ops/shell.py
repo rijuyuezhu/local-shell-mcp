@@ -904,7 +904,12 @@ def _tmux_server_absent(result: CommandResult) -> bool:
     """Return whether tmux conclusively reported that no server is running."""
     detail = f"{result.stderr}\n{result.stdout}".lower()
     return (
-        "no server running" in detail or "failed to connect to server" in detail
+        "no server running" in detail
+        or "failed to connect to server" in detail
+        or (
+            "error connecting to " in detail
+            and "no such file or directory" in detail
+        )
     )
 
 

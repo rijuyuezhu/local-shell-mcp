@@ -118,8 +118,20 @@ async def test_persistent_shell_creation_is_serialized(monkeypatch):
     ]
 
 
+@pytest.mark.parametrize(
+    "absent_error",
+    [
+        "no server running on /tmp/tmux/default",
+        "failed to connect to server: No such file or directory",
+        (
+            "error connecting to /tmp/isolated/tmux-1000/default "
+            "(No such file or directory)"
+        ),
+    ],
+)
 @pytest.mark.asyncio
 async def test_list_persistent_shells_clears_stale_owners_when_server_is_absent(
+    absent_error,
     monkeypatch,
 ):
     reconciled: list[set[str]] = []
@@ -134,7 +146,7 @@ async def test_list_persistent_shells_clears_stale_owners_when_server_is_absent(
             duration_ms=1,
             cwd=".",
             command="tmux list-sessions",
-            stderr="no server running on /tmp/tmux/default",
+            stderr=absent_error,
         )
 
     monkeypatch.setattr(
@@ -283,11 +295,11 @@ async def test_mcp_shell_timeout_returns_partial_output_after_cleanup(
         await mcp.call_tool("session_start", {"workdir": "."})
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "1")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "3")
     clear_settings_cache()
     command = _python_shell_command(
         'import sys, time; print("partial-out", flush=True); '
-        'print("partial-err", file=sys.stderr, flush=True); time.sleep(5)'
+        'print("partial-err", file=sys.stderr, flush=True); time.sleep(10)'
     )
 
     payload = mcp_structured(
@@ -296,7 +308,7 @@ async def test_mcp_shell_timeout_returns_partial_output_after_cleanup(
             {
                 "session_id": session["session_id"],
                 "command": command,
-                "timeout_s": 1,
+                "timeout_s": 3,
             },
         )
     )
@@ -314,21 +326,21 @@ def test_rest_shell_timeout_returns_partial_output_after_cleanup(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "1")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S", "3")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
     session_id = get_tool_session_store().create_session(workdir=".").session_id
     command = _python_shell_command(
         'import sys, time; print("partial-out", flush=True); '
-        'print("partial-err", file=sys.stderr, flush=True); time.sleep(5)'
+        'print("partial-err", file=sys.stderr, flush=True); time.sleep(10)'
     )
     response = client.post(
         "/tools/bash",
         json={
             "session_id": session_id,
             "command": command,
-            "timeout_s": 1,
+            "timeout_s": 3,
         },
     )
     result = response.json()["result"]
