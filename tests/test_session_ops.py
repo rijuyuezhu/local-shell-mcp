@@ -57,6 +57,53 @@ async def test_local_session_start_offloads_orientation(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_session_start_reconciles_stale_shell_job_before_capacity_check(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    stale_session = store.create_session(workdir=tmp_path, expires_at=0)
+    jobs_runtime._save_store(
+        {
+            "version": jobs_runtime.JOB_STORE_VERSION,
+            "jobs": [
+                {
+                    "kind": "shell",
+                    "status": "running",
+                    "job_id": "job_stale",
+                    "session_id": stale_session.session_id,
+                    "shell_id": "missing-shell",
+                    "command": "sleep 60",
+                    "cwd": str(tmp_path),
+                    "created_at": 1.0,
+                    "updated_at": 1.0,
+                }
+            ],
+        }
+    )
+
+    async def empty_inventory():
+        return set()
+
+    monkeypatch.setattr(
+        jobs_runtime,
+        "authoritative_persistent_shell_ids_execute",
+        empty_inventory,
+    )
+
+    result = await session_ops.session_start_execute(".")
+
+    assert result.session_id != stale_session.session_id
+    with pytest.raises(ValueError, match="unknown session_id"):
+        store.require_session(stale_session.session_id)
+    assert jobs_runtime._load_store()["jobs"][0]["status"] == "lost"
+
+
+@pytest.mark.asyncio
 async def test_session_start_rejects_unknown_target():
     with pytest.raises(ValueError, match="target must be"):
         await session_ops.session_start_execute(".", target="elsewhere")
@@ -250,7 +297,7 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
     jobs = [
         SimpleNamespace(job_id="killed"),
         SimpleNamespace(job_id="finished"),
-        SimpleNamespace(job_id="running"),
+        SimpleNamespace(job_id="stopped"),
     ]
     calls: list[tuple[str, bool]] = []
 
@@ -259,7 +306,10 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
         return SimpleNamespace(jobs=jobs)
 
     async def fake_stop(session_id: str, job_id: str):
-        status = "succeeded" if job_id == "finished" else "running"
+        status = {
+            "finished": "succeeded",
+            "stopped": "stopped",
+        }.get(job_id, "running")
         return SimpleNamespace(
             killed=job_id == "killed",
             job=SimpleNamespace(status=status),
@@ -287,9 +337,40 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
     assert await session_ops._stop_owned_jobs("SESSION1") == [
         "killed",
         "finished",
+        "stopped",
         "target-copy",
     ]
     assert calls == [("SESSION1", False)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["running", "starting", "stopping", "lost"])
+async def test_stop_owned_jobs_rejects_unconfirmed_stop(status, monkeypatch):
+    async def fake_list(_session_id: str, include_finished: bool):
+        assert include_finished is False
+        return SimpleNamespace(jobs=[SimpleNamespace(job_id="job_one")])
+
+    async def fake_stop(_session_id: str, _job_id: str):
+        return SimpleNamespace(killed=False, job=SimpleNamespace(status=status))
+
+    async def unexpected_references(*_args, **_kwargs):
+        raise AssertionError(
+            "reference cleanup must not run after an ambiguous stop"
+        )
+
+    monkeypatch.setattr(
+        "local_shell_mcp.jobs.runtime.job_list_execute", fake_list
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.jobs.runtime.job_stop_execute", fake_stop
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",
+        unexpected_references,
+    )
+
+    with pytest.raises(RuntimeError, match=f"status='{status}'"):
+        await session_ops._stop_owned_jobs("SESSION1")
 
 
 @pytest.mark.asyncio

@@ -161,6 +161,132 @@ def test_force_kill_signal_falls_back_to_sigterm(monkeypatch):
     assert bounded_runner._force_kill_signal() == signal.SIGTERM
 
 
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (None, True),
+        (ProcessLookupError(), False),
+        (PermissionError(), True),
+    ],
+)
+def test_process_group_alive_handles_platform_results(
+    error, expected, monkeypatch
+):
+    def fake_killpg(_pgid, _signal):
+        if error is not None:
+            raise error
+
+    monkeypatch.setattr(bounded_runner.os, "killpg", fake_killpg)
+
+    assert bounded_runner._process_group_alive(42) is expected
+
+
+@pytest.mark.parametrize(
+    "error", [None, ProcessLookupError(), PermissionError()]
+)
+def test_signal_process_group_tolerates_exit_races(error, monkeypatch):
+    calls = []
+
+    def fake_killpg(pgid, sig):
+        calls.append((pgid, sig))
+        if error is not None:
+            raise error
+
+    monkeypatch.setattr(bounded_runner.os, "killpg", fake_killpg)
+
+    bounded_runner._signal_process_group(42, signal.SIGTERM)
+
+    assert calls == [(42, signal.SIGTERM)]
+
+
+def test_wait_for_process_group_exit_returns_early(monkeypatch):
+    clock = iter([0.0, 0.1, 0.2])
+    alive = iter([True, False])
+    monkeypatch.setattr(bounded_runner.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(
+        bounded_runner, "_process_group_alive", lambda _pgid: next(alive)
+    )
+    monkeypatch.setattr(bounded_runner.time, "sleep", lambda _seconds: None)
+
+    assert bounded_runner._wait_for_process_group_exit(42, 1.0) is True
+
+
+def test_wait_for_process_group_exit_reports_timeout(monkeypatch):
+    clock = iter([0.0, 0.5, 1.0])
+    monkeypatch.setattr(bounded_runner.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(
+        bounded_runner, "_process_group_alive", lambda _pgid: True
+    )
+    monkeypatch.setattr(bounded_runner.time, "sleep", lambda _seconds: None)
+
+    assert bounded_runner._wait_for_process_group_exit(42, 1.0) is False
+
+
+def test_cleanup_process_group_returns_when_already_gone(monkeypatch):
+    monkeypatch.setattr(
+        bounded_runner, "_process_group_alive", lambda _pgid: False
+    )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_signal_process_group",
+        lambda *_args: pytest.fail("no signal is needed"),
+    )
+
+    assert bounded_runner._cleanup_process_group(42) is True
+
+
+def test_cleanup_process_group_escalates_after_term_timeout(monkeypatch):
+    signals = []
+    waits = iter([False, True])
+    monkeypatch.setattr(
+        bounded_runner, "_process_group_alive", lambda _pgid: True
+    )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_signal_process_group",
+        lambda pgid, sig: signals.append((pgid, sig)),
+    )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_wait_for_process_group_exit",
+        lambda _pgid, _timeout: next(waits),
+    )
+
+    assert bounded_runner._cleanup_process_group(42) is True
+    assert signals == [
+        (42, signal.SIGTERM),
+        (42, bounded_runner._force_kill_signal()),
+    ]
+
+
+def test_cleanup_command_processes_rechecks_group_after_reaping(monkeypatch):
+    waits = []
+    monkeypatch.setattr(
+        bounded_runner, "_cleanup_process_group", lambda _pgid: False
+    )
+    monkeypatch.setattr(bounded_runner, "_cleanup_descendants", lambda: True)
+    monkeypatch.setattr(
+        bounded_runner,
+        "_wait_for_process_group_exit",
+        lambda pgid, timeout: waits.append((pgid, timeout)) or True,
+    )
+
+    assert (
+        bounded_runner._cleanup_command_processes(42, track_descendants=True)
+        is True
+    )
+    assert waits == [(42, bounded_runner.POLL_INTERVAL_S * 5)]
+
+
+def test_cleanup_command_processes_reports_descendant_failure(monkeypatch):
+    monkeypatch.setattr(bounded_runner, "_cleanup_descendants", lambda: False)
+
+    assert (
+        bounded_runner._cleanup_command_processes(None, track_descendants=True)
+        is False
+    )
+
+
 def test_mirror_signal_resets_and_resends_signal(monkeypatch):
     calls = []
     monkeypatch.setattr(
@@ -190,11 +316,15 @@ def test_run_bounded_command_reports_missing_shell(capsys):
 
 
 def test_run_bounded_command_reports_cleanup_failure(monkeypatch, capsys):
-    process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+    process = SimpleNamespace(pid=42, poll=lambda: 0, wait=lambda: 0)
     monkeypatch.setattr(
-        bounded_runner.subprocess, "Popen", lambda _args: process
+        bounded_runner.subprocess, "Popen", lambda _args, **_kwargs: process
     )
-    monkeypatch.setattr(bounded_runner, "_cleanup_descendants", lambda: False)
+    monkeypatch.setattr(
+        bounded_runner,
+        "_cleanup_command_processes",
+        lambda _pgid, *, track_descendants: False,
+    )
 
     assert bounded_runner.run_bounded_command("sh", "true") == 125
     assert "did not exit after forced termination" in capsys.readouterr().err
@@ -202,12 +332,18 @@ def test_run_bounded_command_reports_cleanup_failure(monkeypatch, capsys):
 
 def test_run_bounded_command_mirrors_child_signal(monkeypatch):
     process = SimpleNamespace(
-        poll=lambda: -signal.SIGTERM, wait=lambda: -signal.SIGTERM
+        pid=42,
+        poll=lambda: -signal.SIGTERM,
+        wait=lambda: -signal.SIGTERM,
     )
     monkeypatch.setattr(
-        bounded_runner.subprocess, "Popen", lambda _args: process
+        bounded_runner.subprocess, "Popen", lambda _args, **_kwargs: process
     )
-    monkeypatch.setattr(bounded_runner, "_cleanup_descendants", lambda: True)
+    monkeypatch.setattr(
+        bounded_runner,
+        "_cleanup_command_processes",
+        lambda _pgid, *, track_descendants: True,
+    )
     monkeypatch.setattr(
         bounded_runner, "_mirror_signal", lambda signum: 128 + signum
     )
@@ -217,9 +353,9 @@ def test_run_bounded_command_mirrors_child_signal(monkeypatch):
 
 def test_run_bounded_command_mirrors_received_signal(monkeypatch):
     handlers = {}
-    process = SimpleNamespace(poll=lambda: None)
+    process = SimpleNamespace(pid=42, poll=lambda: None)
     monkeypatch.setattr(
-        bounded_runner.subprocess, "Popen", lambda _args: process
+        bounded_runner.subprocess, "Popen", lambda _args, **_kwargs: process
     )
     monkeypatch.setattr(
         bounded_runner, "_handled_signals", lambda: (signal.SIGTERM,)
@@ -234,7 +370,11 @@ def test_run_bounded_command_mirrors_received_signal(monkeypatch):
         "sleep",
         lambda _seconds: handlers[signal.SIGTERM](signal.SIGTERM, None),
     )
-    monkeypatch.setattr(bounded_runner, "_cleanup_descendants", lambda: True)
+    monkeypatch.setattr(
+        bounded_runner,
+        "_cleanup_command_processes",
+        lambda _pgid, *, track_descendants: True,
+    )
     monkeypatch.setattr(
         bounded_runner, "_mirror_signal", lambda signum: 128 + signum
     )
@@ -243,13 +383,64 @@ def test_run_bounded_command_mirrors_received_signal(monkeypatch):
 
 
 def test_run_bounded_command_returns_normal_exit_code(monkeypatch):
-    process = SimpleNamespace(poll=lambda: 7, wait=lambda: 7)
+    process = SimpleNamespace(pid=42, poll=lambda: 7, wait=lambda: 7)
     monkeypatch.setattr(
-        bounded_runner.subprocess, "Popen", lambda _args: process
+        bounded_runner.subprocess, "Popen", lambda _args, **_kwargs: process
     )
-    monkeypatch.setattr(bounded_runner, "_cleanup_descendants", lambda: True)
+    monkeypatch.setattr(
+        bounded_runner,
+        "_cleanup_command_processes",
+        lambda _pgid, *, track_descendants: True,
+    )
 
     assert bounded_runner.run_bounded_command("sh", "false") == 7
+
+
+def test_run_bounded_command_fails_closed_without_containment(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        bounded_runner, "_enable_child_subreaper", lambda: False
+    )
+    monkeypatch.setattr(
+        bounded_runner, "_process_group_containment_available", lambda: False
+    )
+    monkeypatch.setattr(
+        bounded_runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("command must not start"),
+    )
+
+    assert bounded_runner.run_bounded_command("sh", "true") == 125
+    assert "containment is unavailable" in capsys.readouterr().err
+
+
+def test_run_bounded_command_uses_process_group_fallback(monkeypatch):
+    calls = []
+    process = SimpleNamespace(pid=42, poll=lambda: 0, wait=lambda: 0)
+    monkeypatch.setattr(
+        bounded_runner, "_enable_child_subreaper", lambda: False
+    )
+    monkeypatch.setattr(
+        bounded_runner, "_process_group_containment_available", lambda: True
+    )
+
+    def fake_popen(args, **kwargs):
+        calls.append((args, kwargs))
+        return process
+
+    monkeypatch.setattr(bounded_runner.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        bounded_runner,
+        "_cleanup_command_processes",
+        lambda pgid, *, track_descendants: (
+            calls.append((pgid, track_descendants)) or True
+        ),
+    )
+
+    assert bounded_runner.run_bounded_command("sh", "true") == 0
+    assert calls[0][1]["start_new_session"] is True
+    assert calls[1] == (42, False)
 
 
 def test_bounded_runner_argparse_handler_exits_with_result(monkeypatch):

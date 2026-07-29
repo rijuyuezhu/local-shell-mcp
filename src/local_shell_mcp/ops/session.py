@@ -185,9 +185,9 @@ async def session_start_execute(
 ) -> SessionStartOutput:
     """Create an explicit agent/workspace session."""
     if target in {"local", "remote"}:
-        from .shell import list_persistent_shells_execute
+        from ..jobs.runtime import job_reconcile_shell_jobs_execute
 
-        await list_persistent_shells_execute()
+        await job_reconcile_shell_jobs_execute()
     if target == "local":
         return await asyncio.to_thread(
             _start_local_session,
@@ -285,16 +285,16 @@ async def _stop_owned_jobs(session_id: str) -> list[str]:
 
     listed = await job_list_execute(session_id, include_finished=False)
     stopped: list[str] = []
+    confirmed_terminal_statuses = {"succeeded", "failed", "exited", "stopped"}
     for job in listed.jobs:
         result = await job_stop_execute(session_id, job.job_id)
-        if result.killed or result.job.status in {
-            "succeeded",
-            "failed",
-            "exited",
-            "stopped",
-            "lost",
-        }:
+        if result.killed or result.job.status in confirmed_terminal_statuses:
             stopped.append(job.job_id)
+            continue
+        raise RuntimeError(
+            "tracked job could not be confirmed stopped: "
+            f"{job.job_id}: status={result.job.status!r}"
+        )
     referenced = await job_stop_managed_references_execute(
         session_id,
         managed_kind="session-copy",

@@ -21,6 +21,7 @@ from ..config.settings import get_settings
 from ..errors import public_error_type
 from ..ops.shell import (
     _subprocess_env,
+    authoritative_persistent_shell_ids_execute,
     check_command_policy,
     kill_persistent_shell_execute,
     list_persistent_shells_execute,
@@ -65,6 +66,7 @@ MANAGED_DEFERRED_UPDATE_VERSION = 1
 MANAGED_DEFERRED_APPLIED_KEY = "managed_deferred_update_ids"
 MANAGED_DEFERRED_MAX_RECORD_BYTES = 524_288
 TERMINAL_STATUSES = {"succeeded", "failed", "exited", "stopped", "lost"}
+CONFIRMED_TERMINAL_STATUSES = {"succeeded", "failed", "exited", "stopped"}
 ACTIVE_STATUSES = {"starting", "running", "stopping", "retrying"}
 _JOB_STORE_THREAD_LOCK = threading.RLock()
 _MANAGED_DEFERRED_SEQUENCE_LOCK = threading.Lock()
@@ -1430,16 +1432,36 @@ async def _job_start_execute_unlocked(
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
 
 
+async def job_reconcile_shell_jobs_execute() -> bool:
+    """Reconcile durable shell-job state when the live inventory is authoritative."""
+    active_shells = await authoritative_persistent_shell_ids_execute()
+    if active_shells is None:
+        return False
+    now = _utc()
+    with _store_transaction() as store:
+        jobs = store.get("jobs", [])
+        if not isinstance(jobs, list):
+            return True
+        for row in jobs:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("kind") or "shell") == "managed":
+                continue
+            _refresh_job_status(row, active_shells, now)
+        _prune_store(store)
+    return True
+
+
 async def job_list_execute(
     session_id: str, include_finished: bool = True
 ) -> JobListOutput:
     """List and recover tracked jobs owned by one agent session."""
     get_tool_session_store().touch_session(session_id)
-    active = _active_shell_ids(await list_persistent_shells_execute())
+    active = await authoritative_persistent_shell_ids_execute()
     now = _utc()
     with _store_transaction() as store:
         jobs = [
-            _refresh_job_status(row, active, now)
+            row if active is None else _refresh_job_status(row, active, now)
             for row in store.get("jobs", [])
         ]
         store["jobs"] = jobs
@@ -1613,8 +1635,13 @@ async def job_stop_managed_references_execute(
         result = await _stop_managed_job_without_session_admission(
             owner_session_id, job_id
         )
-        if result.killed or result.job.status in TERMINAL_STATUSES:
+        if result.killed or result.job.status in CONFIRMED_TERMINAL_STATUSES:
             stopped.append(job_id)
+            continue
+        raise RuntimeError(
+            "managed job could not be confirmed stopped: "
+            f"{job_id}: status={result.job.status!r}"
+        )
     return stopped
 
 
@@ -1623,17 +1650,15 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
     get_tool_session_store().touch_session(session_id)
     managed = job_id in managed_job_id_set(session_id, [job_id])
     active = (
-        set()
-        if managed
-        else _active_shell_ids(await list_persistent_shells_execute())
+        set() if managed else await authoritative_persistent_shell_ids_execute()
     )
     operation_id = ""
     shell_id = ""
     try:
         with _store_transaction() as store:
-            job = _refresh_job_status(
-                _find_session_job(store, session_id, job_id), active
-            )
+            job = _find_session_job(store, session_id, job_id)
+            if active is not None:
+                job = _refresh_job_status(job, active)
             if job.get("status") != "running":
                 return JobStopOutput(
                     job=_public_job(job), killed=False, stderr=""
@@ -1654,9 +1679,11 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
             result = await kill_persistent_shell_execute(shell_id)
         except Exception as exc:
             still_active = True
-            with contextlib.suppress(Exception):
-                shells = await list_persistent_shells_execute()
-                still_active = shell_id in _active_shell_ids(shells)
+            active_after_failure = (
+                await authoritative_persistent_shell_ids_execute()
+            )
+            if active_after_failure is not None:
+                still_active = shell_id in active_after_failure
             with _store_transaction() as store:
                 job = _find_session_job(store, session_id, job_id)
                 if (

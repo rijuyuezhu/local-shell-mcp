@@ -121,6 +121,72 @@ def _cleanup_descendants() -> bool:
     return cleaned
 
 
+def _process_group_containment_available() -> bool:
+    """Return whether this host can isolate and signal a child process group."""
+    return callable(getattr(os, "killpg", None))
+
+
+def _process_group_alive(process_group_id: int) -> bool:
+    """Return whether at least one process remains in the child process group."""
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _signal_process_group(process_group_id: int, sig: signal.Signals) -> None:
+    """Signal one isolated child process group while tolerating exit races."""
+    try:
+        os.killpg(process_group_id, sig)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        return
+
+
+def _wait_for_process_group_exit(
+    process_group_id: int, timeout_s: float
+) -> bool:
+    """Wait briefly for an isolated child process group to disappear."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if not _process_group_alive(process_group_id):
+            return True
+        time.sleep(POLL_INTERVAL_S)
+    return not _process_group_alive(process_group_id)
+
+
+def _cleanup_process_group(process_group_id: int) -> bool:
+    """Terminate a child process group, escalating after a grace period."""
+    if not _process_group_alive(process_group_id):
+        return True
+    _signal_process_group(process_group_id, signal.SIGTERM)
+    if _wait_for_process_group_exit(process_group_id, TERMINATE_GRACE_S):
+        return True
+    _signal_process_group(process_group_id, _force_kill_signal())
+    return _wait_for_process_group_exit(process_group_id, KILL_GRACE_S)
+
+
+def _cleanup_command_processes(
+    process_group_id: int | None, *, track_descendants: bool
+) -> bool:
+    """Clean the isolated process group and any subreaper-adopted escapees."""
+    group_clean = (
+        True
+        if process_group_id is None
+        else _cleanup_process_group(process_group_id)
+    )
+    descendant_clean = _cleanup_descendants() if track_descendants else True
+    if not group_clean and process_group_id is not None:
+        group_clean = _wait_for_process_group_exit(
+            process_group_id, POLL_INTERVAL_S * 5
+        )
+    return group_clean and descendant_clean
+
+
 def _mirror_signal(signum: int) -> int:
     """Exit through the same signal so the parent observes a negative code."""
     signal.signal(signum, signal.SIG_DFL)
@@ -139,7 +205,14 @@ def _handled_signals() -> tuple[signal.Signals, ...]:
 
 def run_bounded_command(shell: str, command: str) -> int:
     """Run one command and guarantee that surviving descendants are removed."""
-    _enable_child_subreaper()
+    track_descendants = _enable_child_subreaper()
+    process_group_available = _process_group_containment_available()
+    if not track_descendants and not process_group_available:
+        print(
+            "Bounded command containment is unavailable on this host",
+            file=sys.stderr,
+        )
+        return 125
     received_signal = 0
 
     def remember_signal(signum: int, _frame: FrameType | None) -> None:
@@ -150,7 +223,10 @@ def run_bounded_command(shell: str, command: str) -> int:
         signal.signal(handled, remember_signal)
 
     try:
-        process = subprocess.Popen(_shell_command_args(shell, command))
+        process = subprocess.Popen(
+            _shell_command_args(shell, command),
+            start_new_session=process_group_available,
+        )
     except FileNotFoundError as exc:
         print(
             f"Unable to start configured shell {shell!r}: {exc}",
@@ -162,11 +238,17 @@ def run_bounded_command(shell: str, command: str) -> int:
         time.sleep(POLL_INTERVAL_S)
 
     if received_signal:
-        _cleanup_descendants()
+        _cleanup_command_processes(
+            process.pid if process_group_available else None,
+            track_descendants=track_descendants,
+        )
         return _mirror_signal(received_signal)
 
     returncode = process.wait()
-    if not _cleanup_descendants():
+    if not _cleanup_command_processes(
+        process.pid if process_group_available else None,
+        track_descendants=track_descendants,
+    ):
         print(
             "Bounded command descendants did not exit after forced termination",
             file=sys.stderr,

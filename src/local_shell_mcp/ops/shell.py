@@ -1224,17 +1224,19 @@ async def list_owned_persistent_shell_ids_execute(
     return owned
 
 
-async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
-    """List active persistent shells managed by local-shell-mcp."""
+async def _persistent_shell_inventory_execute() -> tuple[
+    ListPersistentShellsOutput, bool
+]:
+    """Return the shell inventory and whether an empty result is authoritative."""
     if _use_conpty_persistent_shell_backend():
         output = await conpty.list_shells()
         get_tool_session_store().reconcile_persistent_shells(
             _persistent_shell_ids(output)
         )
-        return output
+        return output, True
     selection = resolve_tmux()
     if selection.path is None and selection.source == "unavailable":
-        return ListPersistentShellsOutput(shells=[])
+        return ListPersistentShellsOutput(shells=[]), False
     result = await tmux(
         [
             "list-sessions",
@@ -1246,7 +1248,8 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
     if not result.ok:
         if _tmux_server_absent(result):
             get_tool_session_store().reconcile_persistent_shells(set())
-        return ListPersistentShellsOutput(shells=[])
+            return ListPersistentShellsOutput(shells=[]), True
+        return ListPersistentShellsOutput(shells=[]), False
     shells = []
     for line in result.stdout.splitlines():
         parts = line.split("\t")
@@ -1263,4 +1266,21 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
     get_tool_session_store().reconcile_persistent_shells(
         _persistent_shell_ids(output)
     )
+    return output, True
+
+
+async def authoritative_persistent_shell_ids_execute() -> set[str] | None:
+    """Return live shell ids, or None when the backend inventory is uncertain."""
+    try:
+        output, authoritative = await _persistent_shell_inventory_execute()
+    except Exception:
+        return None
+    if not authoritative:
+        return None
+    return _persistent_shell_ids(output)
+
+
+async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
+    """List active persistent shells managed by local-shell-mcp."""
+    output, _authoritative = await _persistent_shell_inventory_execute()
     return output
