@@ -75,6 +75,11 @@ def _signal_descendants(sig: signal.Signals) -> None:
             continue
 
 
+def _force_kill_signal() -> signal.Signals:
+    """Return the strongest process signal available on this platform."""
+    return getattr(signal, "SIGKILL", signal.SIGTERM)
+
+
 def _wait_for_no_descendants(timeout_s: float) -> bool:
     """Wait briefly for all command descendants to exit."""
     deadline = time.monotonic() + timeout_s
@@ -106,7 +111,7 @@ def _cleanup_descendants() -> bool:
     if _wait_for_no_descendants(TERMINATE_GRACE_S):
         _reap_children()
         return True
-    _signal_descendants(signal.SIGKILL)
+    _signal_descendants(_force_kill_signal())
     cleaned = _wait_for_no_descendants(KILL_GRACE_S)
     _reap_children()
     return cleaned
@@ -159,7 +164,7 @@ def run_bounded_command(shell: str, command: str) -> int:
     returncode = process.wait()
     if not _cleanup_descendants():
         print(
-            "Bounded command descendants did not exit after SIGKILL",
+            "Bounded command descendants did not exit after forced termination",
             file=sys.stderr,
         )
         return 125

@@ -125,3 +125,19 @@ async def start_worker_session(
         timeout_s,
     )
     return _remote_result_data(result, tool="session_start", machine=machine)
+
+
+async def end_worker_session(
+    *,
+    machine: str,
+    worker_session_id: str,
+    timeout_s: int | None = None,
+) -> dict[str, Any]:
+    """Release a worker-side session before or without controller registration."""
+    result = await call_remote_worker_tool(
+        machine,
+        "session_end",
+        {"session_id": worker_session_id},
+        timeout_s,
+    )
+    return _remote_result_data(result, tool="session_end", machine=machine)

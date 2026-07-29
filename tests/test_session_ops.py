@@ -1,9 +1,12 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.jobs import runtime as jobs_runtime
 from local_shell_mcp.ops import session as session_ops
+from local_shell_mcp.ops.utils import remote_session as remote_session_ops
 from local_shell_mcp.remote_worker import dispatch as worker_dispatch
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import session as session_registry
@@ -57,6 +60,82 @@ async def test_local_session_start_offloads_orientation(tmp_path, monkeypatch):
 async def test_session_start_rejects_unknown_target():
     with pytest.raises(ValueError, match="target must be"):
         await session_ops.session_start_execute(".", target="elsewhere")
+
+
+@pytest.mark.asyncio
+async def test_remote_session_start_releases_worker_when_admission_fails(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    orientation = session_ops._session_output(
+        store.create_session(workdir=tmp_path)
+    ).model_copy(update={"session_id": "WORKER12", "workdir": "/remote/work"})
+    store.clear()
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    store.create_session(workdir=tmp_path)
+    released: list[tuple[str, str]] = []
+
+    async def fake_start_worker_session(**_kwargs):
+        return orientation.model_dump()
+
+    async def fake_end_worker_session(*, machine, worker_session_id):
+        released.append((machine, worker_session_id))
+
+    monkeypatch.setattr(
+        session_ops, "start_worker_session", fake_start_worker_session
+    )
+    monkeypatch.setattr(
+        session_ops, "end_worker_session", fake_end_worker_session
+    )
+
+    with pytest.raises(RuntimeError, match="agent session limit reached"):
+        await session_ops.session_start_execute(
+            "/remote/work", target="remote", machine="worker-a"
+        )
+
+    assert released == [("worker-a", "WORKER12")]
+
+
+@pytest.mark.asyncio
+async def test_end_worker_session_dispatches_worker_session_id(monkeypatch):
+    calls = []
+
+    async def fake_call(machine, tool, args, timeout_s):
+        calls.append((machine, tool, args, timeout_s))
+        return SimpleNamespace(ok=True)
+
+    monkeypatch.setattr(
+        remote_session_ops, "call_remote_worker_tool", fake_call
+    )
+    monkeypatch.setattr(
+        remote_session_ops,
+        "_remote_result_data",
+        lambda result, *, tool, machine: {
+            "result": result,
+            "tool": tool,
+            "machine": machine,
+        },
+    )
+
+    result = await remote_session_ops.end_worker_session(
+        machine="worker-a",
+        worker_session_id="WORKER12",
+        timeout_s=30,
+    )
+
+    assert calls == [
+        (
+            "worker-a",
+            "session_end",
+            {"session_id": "WORKER12"},
+            30,
+        )
+    ]
+    assert result["tool"] == "session_end"
 
 
 @pytest.mark.asyncio
@@ -160,6 +239,44 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
         "finished",
     ]
     assert calls == [("SESSION1", False)]
+
+
+@pytest.mark.asyncio
+async def test_session_end_waits_for_in_flight_job_admission(monkeypatch):
+    job_entered = asyncio.Event()
+    release_job = asyncio.Event()
+    end_entered = asyncio.Event()
+
+    async def fake_job_start(*_args, **_kwargs):
+        job_entered.set()
+        await release_job.wait()
+        return SimpleNamespace(job_id="job_one")
+
+    async def fake_session_end(session_id: str):
+        end_entered.set()
+        return SimpleNamespace(session_id=session_id, ended=True)
+
+    monkeypatch.setattr(
+        jobs_runtime, "_job_start_execute_unlocked", fake_job_start
+    )
+    monkeypatch.setattr(
+        session_ops, "_session_end_execute_unlocked", fake_session_end
+    )
+
+    job_task = asyncio.create_task(
+        jobs_runtime.job_start_execute("SESSION1", "echo ok")
+    )
+    await job_entered.wait()
+    end_task = asyncio.create_task(session_ops.session_end_execute("SESSION1"))
+    await asyncio.sleep(0)
+    assert not end_entered.is_set()
+
+    release_job.set()
+    await job_task
+    result = await end_task
+
+    assert end_entered.is_set()
+    assert result.ended is True
 
 
 @pytest.mark.asyncio

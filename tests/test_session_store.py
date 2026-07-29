@@ -421,3 +421,35 @@ def test_inactive_remote_session_is_not_evicted_without_worker_cleanup(
         store.create_session(workdir=tmp_path)
 
     assert store.list_sessions() == [remote]
+
+
+def test_pruning_loads_active_job_owners_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "3")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    for _ in range(3):
+        store.create_session(workdir=tmp_path)
+        clock[0] += 1
+
+    clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    original_read_json = store._state_store.read_json
+    job_store_reads = 0
+
+    def counted_read_json(path, *, max_bytes=None):
+        nonlocal job_store_reads
+        if path == store._state_store.layout.jobs_store_path:
+            job_store_reads += 1
+        return original_read_json(path, max_bytes=max_bytes)
+
+    monkeypatch.setattr(store._state_store, "read_json", counted_read_json)
+
+    assert len(store.list_sessions()) == 1
+    assert job_store_reads == 1

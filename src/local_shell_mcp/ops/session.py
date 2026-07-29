@@ -15,6 +15,7 @@ from ..schemas.result_models.session import (
     SessionStartOutput,
 )
 from ..tool_session.environment import collect_session_environment
+from ..tool_session.lifecycle import session_lifecycle_lock
 from ..tool_session.store import AgentSession, get_tool_session_store
 
 _INSTRUCTION_FILE_NAMES = (
@@ -40,6 +41,17 @@ async def start_worker_session(
         machine=machine,
         workdir=workdir,
         label=label,
+    )
+
+
+async def end_worker_session(*, machine: str, worker_session_id: str) -> None:
+    """Release a worker session when controller registration cannot complete."""
+    from .utils.remote_session import (
+        end_worker_session as end_worker_session_impl,
+    )
+
+    await end_worker_session_impl(
+        machine=machine, worker_session_id=worker_session_id
     )
 
 
@@ -198,13 +210,25 @@ async def session_start_execute(
         raise RuntimeError(
             "remote session_start did not return worker session_id"
         )
-    session = get_tool_session_store().create_session(
-        target="remote",
-        workdir=worker_output.workdir,
-        machine=machine,
-        worker_session_id=worker_session_id,
-        label=label,
-    )
+    try:
+        session = get_tool_session_store().create_session(
+            target="remote",
+            workdir=worker_output.workdir,
+            machine=machine,
+            worker_session_id=worker_session_id,
+            label=label,
+        )
+    except Exception as admission_error:
+        try:
+            await end_worker_session(
+                machine=machine, worker_session_id=worker_session_id
+            )
+        except Exception as cleanup_error:
+            raise RuntimeError(
+                "controller session admission failed and the worker session "
+                f"could not be released: {cleanup_error}"
+            ) from admission_error
+        raise
     return _rebind_remote_output(worker_output, session)
 
 
@@ -267,6 +291,12 @@ async def _stop_owned_jobs(session_id: str) -> list[str]:
 
 
 async def session_end_execute(session_id: str) -> SessionEndOutput:
+    """End one session while excluding concurrent job admission and retry."""
+    async with session_lifecycle_lock(session_id):
+        return await _session_end_execute_unlocked(session_id)
+
+
+async def _session_end_execute_unlocked(session_id: str) -> SessionEndOutput:
     """Stop owned work and remove one local or remote session."""
     store = get_tool_session_store()
     session = store.prepare_session_termination(session_id)

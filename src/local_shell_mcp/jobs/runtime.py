@@ -37,6 +37,7 @@ from ..schemas.result_models.jobs import (
     JobStopOutput,
     JobTailOutput,
 )
+from ..tool_session.lifecycle import session_lifecycle_lock
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -1181,6 +1182,27 @@ async def start_managed_job(
     command: str | None = None,
     cwd: str = ".",
 ) -> JobStartOutput:
+    """Start one controller-managed task under session lifecycle admission."""
+    async with session_lifecycle_lock(session_id):
+        return await _start_managed_job_unlocked(
+            session_id,
+            kind,
+            payload,
+            name=name,
+            command=command,
+            cwd=cwd,
+        )
+
+
+async def _start_managed_job_unlocked(
+    session_id: str,
+    kind: str,
+    payload: dict[str, Any],
+    *,
+    name: str | None = None,
+    command: str | None = None,
+    cwd: str = ".",
+) -> JobStartOutput:
     """Start one controller-managed task owned by an explicit agent session."""
     get_tool_session_store().touch_session(session_id)
     normalized_kind = kind.strip()
@@ -1261,6 +1283,19 @@ def reset_managed_jobs_for_tests(*, clear_handlers: bool = False) -> None:
 
 
 async def job_start_execute(
+    session_id: str,
+    command: str,
+    cwd: str = ".",
+    name: str | None = None,
+) -> JobStartOutput:
+    """Start one durable command under session lifecycle admission."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_start_execute_unlocked(
+            session_id, command, cwd=cwd, name=name
+        )
+
+
+async def _job_start_execute_unlocked(
     session_id: str,
     command: str,
     cwd: str = ".",
@@ -1704,6 +1739,14 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
 
 
 async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
+    """Retry one job under session lifecycle admission."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_retry_execute_unlocked(session_id, job_id)
+
+
+async def _job_retry_execute_unlocked(
+    session_id: str, job_id: str
+) -> JobRetryOutput:
     """Retry a terminal job with durable two-phase state transitions."""
     session = get_tool_session_store().touch_session(session_id)
     managed = job_id in managed_job_id_set(session_id, [job_id])

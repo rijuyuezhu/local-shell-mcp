@@ -89,7 +89,13 @@ def test_cleanup_descendants_escalates_to_sigkill(monkeypatch):
     monkeypatch.setattr(bounded_runner, "_reap_children", lambda: None)
 
     assert bounded_runner._cleanup_descendants() is True
-    assert signals == [signal.SIGTERM, signal.SIGKILL]
+    assert signals == [signal.SIGTERM, bounded_runner._force_kill_signal()]
+
+
+def test_force_kill_signal_falls_back_to_sigterm(monkeypatch):
+    monkeypatch.delattr(bounded_runner.signal, "SIGKILL", raising=False)
+
+    assert bounded_runner._force_kill_signal() == signal.SIGTERM
 
 
 def test_mirror_signal_resets_and_resends_signal(monkeypatch):
@@ -128,7 +134,7 @@ def test_run_bounded_command_reports_cleanup_failure(monkeypatch, capsys):
     monkeypatch.setattr(bounded_runner, "_cleanup_descendants", lambda: False)
 
     assert bounded_runner.run_bounded_command("sh", "true") == 125
-    assert "did not exit after SIGKILL" in capsys.readouterr().err
+    assert "did not exit after forced termination" in capsys.readouterr().err
 
 
 def test_run_bounded_command_mirrors_child_signal(monkeypatch):

@@ -252,37 +252,59 @@ class ToolSessionStore:
             if key[0] != session_id
         }
 
-    def _session_has_active_jobs_locked(self, session_id: str) -> bool:
-        """Conservatively protect sessions that still own active durable jobs."""
+    def _active_job_owner_ids_locked(self) -> set[str] | None:
+        """Load active durable-job owners once, or return None if uncertain."""
         try:
             payload = self._state_store.read_json(
                 self._state_store.layout.jobs_store_path,
                 max_bytes=JOB_STORE_READ_MAX_BYTES,
             )
         except OSError, TypeError, ValueError:
-            return True
+            return None
         if payload is None:
-            return False
+            return set()
         if not isinstance(payload, dict) or not isinstance(
             payload.get("jobs"), list
         ):
-            return True
-        return any(
-            isinstance(job, dict)
-            and str(job.get("session_id") or "") == session_id
-            and str(job.get("status") or "") in ACTIVE_JOB_STATUSES
+            return None
+        return {
+            str(job.get("session_id") or "")
             for job in payload["jobs"]
+            if isinstance(job, dict)
+            and str(job.get("session_id") or "")
+            and str(job.get("status") or "") in ACTIVE_JOB_STATUSES
+        }
+
+    @staticmethod
+    def _session_has_active_jobs(
+        session_id: str, active_job_owner_ids: set[str] | None
+    ) -> bool:
+        """Conservatively treat an unreadable jobs store as active ownership."""
+        return (
+            active_job_owner_ids is None or session_id in active_job_owner_ids
         )
+
+    def _session_has_active_jobs_locked(self, session_id: str) -> bool:
+        """Conservatively protect one session that still owns durable jobs."""
+        return self._session_has_active_jobs(
+            session_id, self._active_job_owner_ids_locked()
+        )
+
+    @staticmethod
+    def _session_expired_by_policy(
+        session: AgentSession, now: float, retention_s: int
+    ) -> bool:
+        """Return expiry before active-job ownership is considered."""
+        return (
+            session.expires_at is not None and session.expires_at <= now
+        ) or (retention_s > 0 and session.updated_at < now - retention_s)
 
     def _session_expired(self, session: AgentSession, now: float) -> bool:
         """Return whether explicit expiry or idle retention invalidates a session."""
         retention_s = int(get_settings().agent_session_retention_s)
-        expired = (
-            session.expires_at is not None and session.expires_at <= now
-        ) or (retention_s > 0 and session.updated_at < now - retention_s)
-        return expired and not self._session_has_active_jobs_locked(
-            session.session_id
-        )
+        return self._session_expired_by_policy(
+            session, now, retention_s
+        ) and not self._session_has_active_jobs_locked(session.session_id)
 
     def _read_all_sessions_locked(self) -> dict[str, AgentSession]:
         """Load valid durable session metadata without applying retention."""
@@ -308,10 +330,16 @@ class ToolSessionStore:
     ) -> list[AgentSession]:
         """Remove expired sessions and inactive overflow beyond the configured cap."""
         sessions = self._read_all_sessions_locked()
+        active_job_owner_ids = self._active_job_owner_ids_locked()
+        retention_s = int(get_settings().agent_session_retention_s)
         expired = [
             session
             for session in sessions.values()
-            if session.target == "local" and self._session_expired(session, now)
+            if session.target == "local"
+            and self._session_expired_by_policy(session, now, retention_s)
+            and not self._session_has_active_jobs(
+                session.session_id, active_job_owner_ids
+            )
         ]
         for session in expired:
             with self._state_store.transaction(
@@ -330,8 +358,8 @@ class ToolSessionStore:
                     for session in sessions.values()
                     if session.target == "local"
                     and session.updated_at < now - SESSION_ACTIVE_WINDOW_S
-                    and not self._session_has_active_jobs_locked(
-                        session.session_id
+                    and not self._session_has_active_jobs(
+                        session.session_id, active_job_owner_ids
                     )
                 ),
                 key=lambda session: (session.updated_at, session.created_at),
