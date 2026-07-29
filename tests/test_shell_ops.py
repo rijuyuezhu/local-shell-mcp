@@ -3,6 +3,7 @@ import contextlib
 import os
 import signal
 import sys
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -74,6 +75,18 @@ def test_bounded_runner_uses_trusted_absolute_script(monkeypatch):
     assert "-m" not in argv
 
 
+def test_persistent_shell_ids_accepts_models_and_compatibility_dicts():
+    assert shell_ops._persistent_shell_ids(
+        SimpleNamespace(
+            shells=[
+                SimpleNamespace(shell_id="model-shell"),
+                {"shell_id": "dict-shell"},
+                {"session_id": "legacy-shell"},
+            ]
+        )
+    ) == {"model-shell", "dict-shell", "legacy-shell"}
+
+
 @pytest.mark.asyncio
 async def test_persistent_shell_creation_is_serialized(monkeypatch):
     monkeypatch.setattr(shell_ops, "_PERSISTENT_SHELL_CREATION_LOCK", None)
@@ -103,6 +116,82 @@ async def test_persistent_shell_creation_is_serialized(monkeypatch):
         (".", "one", "echo one"),
         (".", "two", "echo two"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_list_persistent_shells_clears_stale_owners_when_server_is_absent(
+    monkeypatch,
+):
+    reconciled: list[set[str]] = []
+
+    async def fake_tmux(_args, timeout_s=10):  # noqa: ARG001
+        return CommandResult(
+            ok=False,
+            exit_code=1,
+            duration_ms=1,
+            cwd=".",
+            command="tmux list-sessions",
+            stderr="no server running on /tmp/tmux/default",
+        )
+
+    monkeypatch.setattr(
+        shell_ops,
+        "resolve_tmux",
+        lambda: SimpleNamespace(path="/usr/bin/tmux", source="system"),
+    )
+    monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+    monkeypatch.setattr(
+        shell_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            reconcile_persistent_shells=lambda shell_ids: reconciled.append(
+                shell_ids
+            )
+        ),
+    )
+
+    result = await shell_ops.list_persistent_shells_execute()
+
+    assert result.shells == []
+    assert reconciled == [set()]
+
+
+@pytest.mark.asyncio
+async def test_list_persistent_shells_preserves_owners_on_unknown_tmux_failure(
+    monkeypatch,
+):
+    reconciled: list[set[str]] = []
+
+    async def fake_tmux(_args, timeout_s=10):  # noqa: ARG001
+        return CommandResult(
+            ok=False,
+            exit_code=1,
+            duration_ms=1,
+            cwd=".",
+            command="tmux list-sessions",
+            stderr="permission denied",
+        )
+
+    monkeypatch.setattr(
+        shell_ops,
+        "resolve_tmux",
+        lambda: SimpleNamespace(path="/usr/bin/tmux", source="system"),
+    )
+    monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+    monkeypatch.setattr(
+        shell_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            reconcile_persistent_shells=lambda shell_ids: reconciled.append(
+                shell_ids
+            )
+        ),
+    )
+
+    result = await shell_ops.list_persistent_shells_execute()
+
+    assert result.shells == []
+    assert reconciled == []
 
 
 def test_command_with_env_uses_powershell_assignments(monkeypatch):
@@ -380,35 +469,63 @@ def test_run_shell_command_timeout_uses_ten_second_default(
 
 
 @pytest.mark.asyncio
-async def test_spawn_process_uses_native_shell_api_for_cmd(monkeypatch):
+async def test_spawn_process_uses_native_exec_for_cmd_on_windows(monkeypatch):
     calls = []
     sentinel = object()
 
-    async def fake_shell(command: str, **kwargs):
-        calls.append((command, kwargs))
+    async def fake_exec(*args, **kwargs):
+        calls.append((args, kwargs))
         return sentinel
 
-    async def unexpected_exec(*args, **kwargs):
-        raise AssertionError("cmd.exe must use create_subprocess_shell")
-
+    monkeypatch.setattr(shell_ops.os, "name", "nt")
+    monkeypatch.setattr(
+        shell_ops, "new_process_group_kwargs", lambda: {"creationflags": 512}
+    )
     monkeypatch.setattr(
         shell_ops, "_effective_shell_executable", lambda: "cmd.exe"
     )
     monkeypatch.setattr(shell_ops.shutil, "which", lambda command, **_: command)
     monkeypatch.setattr(shell_ops, "_subprocess_env", lambda: {"BASE": "1"})
-    monkeypatch.setattr(
-        shell_ops.asyncio, "create_subprocess_shell", fake_shell
-    )
-    monkeypatch.setattr(
-        shell_ops.asyncio, "create_subprocess_exec", unexpected_exec
-    )
+    monkeypatch.setattr(shell_ops.asyncio, "create_subprocess_exec", fake_exec)
 
     result = await shell_ops._spawn_process("echo hi", ".", {"EXTRA": "2"})
 
     assert result is sentinel
-    assert calls[0][0] == "echo hi"
-    assert calls[0][1]["executable"] == "cmd.exe"
+    assert calls[0][0] == ("cmd.exe", "/D", "/S", "/C", "echo hi")
     assert calls[0][1]["env"] == {"BASE": "1", "EXTRA": "2"}
+
+
+@pytest.mark.asyncio
+async def test_spawn_process_uses_native_exec_for_powershell_on_windows(
+    monkeypatch,
+):
+    calls = []
+    sentinel = object()
+
+    async def fake_exec(*args, **kwargs):
+        calls.append((args, kwargs))
+        return sentinel
+
+    monkeypatch.setattr(shell_ops.os, "name", "nt")
+    monkeypatch.setattr(
+        shell_ops, "new_process_group_kwargs", lambda: {"creationflags": 512}
+    )
+    monkeypatch.setattr(
+        shell_ops, "_effective_shell_executable", lambda: "pwsh.exe"
+    )
+    monkeypatch.setattr(shell_ops.shutil, "which", lambda command, **_: command)
+    monkeypatch.setattr(shell_ops.asyncio, "create_subprocess_exec", fake_exec)
+
+    result = await shell_ops._spawn_process("Write-Output hi", ".")
+
+    assert result is sentinel
+    assert calls[0][0] == (
+        "pwsh.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Write-Output hi",
+    )
 
 
 @pytest.mark.asyncio

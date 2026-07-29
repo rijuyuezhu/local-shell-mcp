@@ -12,6 +12,7 @@ from ...schemas.input_models.session import (
     SessionCopyKindArg,
     SessionCopyOverwriteArg,
     SessionCopyPathArg,
+    SessionEndForceArg,
     SessionIdArg,
     SessionLabelArg,
     SessionMachineArg,
@@ -51,7 +52,7 @@ def _session_copy_description(_context: McpToolContext) -> str:
 
 
 def _session_end_description(_context: McpToolContext) -> str:
-    return """End one explicit local or remote agent/workspace session. Active tracked jobs owned by the session are stopped first; a remote worker session is also ended before controller state is removed. Use this when a task is complete so durable session, job, and persistent-shell capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files."""
+    return """End one explicit local or remote agent/workspace session. Active tracked jobs and persistent PTYs owned by the session are stopped before controller state is removed. A remote worker session is also ended first; when that worker is permanently unreachable, force=true releases only the controller binding and reports that remote cleanup was not confirmed. Force never bypasses local job or PTY cleanup and may leave orphaned worker-side work. Use session_end when a task is complete so durable capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files."""
 
 
 @session_tool(
@@ -90,9 +91,11 @@ async def session_change_cwd(
     description=_session_end_description,
     oauth_scopes=("shell:execute",),
 )
-async def session_end(session_id: SessionIdArg) -> SessionEndOutput:
+async def session_end(
+    session_id: SessionIdArg, force: SessionEndForceArg = False
+) -> SessionEndOutput:
     """Stop owned work and end an explicit agent/workspace session."""
-    return await session_end_execute(session_id)
+    return await session_end_execute(session_id, force=force)
 
 
 @session_tool(

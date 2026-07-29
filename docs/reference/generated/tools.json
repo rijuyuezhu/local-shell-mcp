@@ -1096,6 +1096,13 @@
           {
             "items": [
               {
+                "description": "For a remote session only, release the controller binding even when the paired worker cannot be reached. This may leave orphaned worker-side work and does not bypass local job or PTY cleanup.",
+                "head": {
+                  "code": "force"
+                },
+                "note": "(boolean, optional)"
+              },
+              {
                 "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
                 "head": {
                   "code": "session_id"
@@ -1104,7 +1111,7 @@
               }
             ]
           },
-          "End one explicit local or remote agent/workspace session. Active tracked jobs owned by the session are stopped first; a remote worker session is also ended before controller state is removed. Use this when a task is complete so durable session, job, and persistent-shell capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files."
+          "End one explicit local or remote agent/workspace session. Active tracked jobs and persistent PTYs owned by the session are stopped before controller state is removed. A remote worker session is also ended first; when that worker is permanently unreachable, force=true releases only the controller binding and reports that remote cleanup was not confirmed. Force never bypasses local job or PTY cleanup and may leave orphaned worker-side work. Use session_end when a task is complete so durable capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files."
         ],
         [
           {
@@ -7840,9 +7847,15 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "End one explicit local or remote agent/workspace session. Active tracked jobs owned by the session are stopped first; a remote worker session is also ended before controller state is removed. Use this when a task is complete so durable session, job, and persistent-shell capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files.",
+      "description": "End one explicit local or remote agent/workspace session. Active tracked jobs and persistent PTYs owned by the session are stopped before controller state is removed. A remote worker session is also ended first; when that worker is permanently unreachable, force=true releases only the controller binding and reports that remote cleanup was not confirmed. Force never bypasses local job or PTY cleanup and may leave orphaned worker-side work. Use session_end when a task is complete so durable capacity is released without restarting the server. This is destructive for running work in that session but does not delete workspace files.",
       "inputSchema": {
         "properties": {
+          "force": {
+            "default": false,
+            "description": "For a remote session only, release the controller binding even when the paired worker cannot be reached. This may leave orphaned worker-side work and does not bypass local job or PTY cleanup.",
+            "title": "Force",
+            "type": "boolean"
+          },
           "session_id": {
             "description": "8-character alphanumeric agent/workspace session_id returned by session_start.",
             "maxLength": 8,
@@ -7877,6 +7890,12 @@
             "title": "Ended",
             "type": "boolean"
           },
+          "force_released": {
+            "default": false,
+            "description": "Whether controller state was released despite failed remote cleanup.",
+            "title": "Force Released",
+            "type": "boolean"
+          },
           "machine": {
             "anyOf": [
               {
@@ -7889,6 +7908,19 @@
             "default": null,
             "description": "Remote worker formerly bound to the session.",
             "title": "Machine"
+          },
+          "remote_cleanup_succeeded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Whether the paired worker session was released, for remote sessions.",
+            "title": "Remote Cleanup Succeeded"
           },
           "session_id": {
             "description": "Ended agent/workspace session id.",

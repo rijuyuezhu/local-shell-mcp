@@ -365,6 +365,73 @@ def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
     assert store.require_session(session.session_id) == session
 
 
+def test_expired_session_with_persistent_shell_is_preserved(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=101.0)
+    registered = store.register_persistent_shell(
+        session.session_id, "shell-one"
+    )
+    clock[0] = 102.0
+
+    assert registered.persistent_shell_ids == ("shell-one",)
+    assert store.require_session(session.session_id) == registered
+
+
+def test_persistent_shell_registry_releases_and_reconciles(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    first = store.create_session(workdir=tmp_path)
+    second = store.create_session(workdir=tmp_path)
+    store.register_persistent_shell(first.session_id, "shell-one")
+    store.register_persistent_shell(first.session_id, "shell-two")
+    store.register_persistent_shell(second.session_id, "shell-three")
+
+    store.release_persistent_shell("shell-one")
+    assert store.require_session(first.session_id).persistent_shell_ids == (
+        "shell-two",
+    )
+
+    store.reconcile_persistent_shells({"shell-three"})
+    assert store.require_session(first.session_id).persistent_shell_ids == ()
+    assert store.require_session(second.session_id).persistent_shell_ids == (
+        "shell-three",
+    )
+
+
+def test_inactive_session_with_persistent_shell_is_not_evicted(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    store.register_persistent_shell(session.session_id, "shell-one")
+    clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
+
+    with pytest.raises(RuntimeError, match="agent session limit reached"):
+        store.create_session(workdir=tmp_path)
+
+
 def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
     tmp_path, monkeypatch
 ):

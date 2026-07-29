@@ -357,12 +357,10 @@ async def _spawn_process(
             cwd,
             "configured shell executable was not found or is not executable",
         )
-    shell_name = os.path.basename(resolved_shell).lower()
     try:
-        if shell_name in {"cmd", "cmd.exe"}:
-            return await asyncio.create_subprocess_shell(
-                command,
-                executable=resolved_shell,
+        if os.name == "nt":
+            return await asyncio.create_subprocess_exec(
+                *_shell_command_args(resolved_shell, command),
                 **common,
             )
         return await asyncio.create_subprocess_exec(
@@ -611,6 +609,14 @@ async def bash_execute(
                 command_with_env,
                 owner_session_id=session_id,
             )
+            try:
+                get_tool_session_store().register_persistent_shell(
+                    session_id, result.shell_id
+                )
+            except BaseException:
+                with contextlib.suppress(Exception):
+                    await kill_persistent_shell_execute(result.shell_id)
+                raise
             return ShellExecutionOutput(
                 mode="pty",
                 command=command,
@@ -887,6 +893,34 @@ async def tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
     )
 
 
+def _tmux_server_absent(result: CommandResult) -> bool:
+    """Return whether tmux conclusively reported that no server is running."""
+    detail = f"{result.stderr}\n{result.stdout}".lower()
+    return (
+        "no server running" in detail or "failed to connect to server" in detail
+    )
+
+
+def _persistent_shell_ids(output: Any) -> set[str]:
+    """Extract shell ids from native models and compatibility-shim dictionaries."""
+    data = output.model_dump() if hasattr(output, "model_dump") else output
+    if isinstance(data, dict):
+        items = data.get("shells", data.get("sessions", []))
+    else:
+        items = getattr(output, "shells", getattr(output, "sessions", []))
+    shell_ids: set[str] = set()
+    for item in items:
+        value = (
+            item.get("shell_id") or item.get("session_id")
+            if isinstance(item, dict)
+            else getattr(item, "shell_id", None)
+            or getattr(item, "session_id", None)
+        )
+        if value:
+            shell_ids.add(str(value))
+    return shell_ids
+
+
 def _use_conpty_persistent_shell_backend() -> bool:
     """Return whether persistent shells should use the Windows ConPTY backend."""
     return os.name == "nt"
@@ -1134,7 +1168,10 @@ async def kill_persistent_shell_execute(
 ) -> KillPersistentShellOutput:
     """Terminate a persistent shell by its normalized shell id."""
     if _use_conpty_persistent_shell_backend():
-        return await conpty.kill_shell(shell_id)
+        result = await conpty.kill_shell(shell_id)
+        if result.killed:
+            get_tool_session_store().release_persistent_shell(shell_id)
+        return result
     result = await tmux(["kill-session", "-t", shell_id])
     audit(
         "kill_persistent_shell",
@@ -1142,12 +1179,15 @@ async def kill_persistent_shell_execute(
         ok=result.ok,
         backend="tmux",
     )
-    return KillPersistentShellOutput(
+    output = KillPersistentShellOutput(
         shell_id=shell_id,
         killed=result.ok,
         stderr=result.stderr,
         backend="tmux",
     )
+    if output.killed:
+        get_tool_session_store().release_persistent_shell(shell_id)
+    return output
 
 
 async def list_owned_persistent_shell_ids_execute(
@@ -1180,7 +1220,11 @@ async def list_owned_persistent_shell_ids_execute(
 async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
     """List active persistent shells managed by local-shell-mcp."""
     if _use_conpty_persistent_shell_backend():
-        return await conpty.list_shells()
+        output = await conpty.list_shells()
+        get_tool_session_store().reconcile_persistent_shells(
+            _persistent_shell_ids(output)
+        )
+        return output
     selection = resolve_tmux()
     if selection.path is None and selection.source == "unavailable":
         return ListPersistentShellsOutput(shells=[])
@@ -1193,6 +1237,8 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
         timeout_s=5,
     )
     if not result.ok:
+        if _tmux_server_absent(result):
+            get_tool_session_store().reconcile_persistent_shells(set())
         return ListPersistentShellsOutput(shells=[])
     shells = []
     for line in result.stdout.splitlines():
@@ -1206,4 +1252,8 @@ async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
                     "backend": "tmux",
                 }
             )
-    return ListPersistentShellsOutput(shells=shells)
+    output = ListPersistentShellsOutput(shells=shells)
+    get_tool_session_store().reconcile_persistent_shells(
+        _persistent_shell_ids(output)
+    )
+    return output

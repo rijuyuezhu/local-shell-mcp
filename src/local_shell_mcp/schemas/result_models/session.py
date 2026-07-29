@@ -314,6 +314,14 @@ class SessionEndOutput(BaseModel):
         default_factory=list,
         description="Persistent shell ids stopped before session removal.",
     )
+    remote_cleanup_succeeded: bool | None = Field(
+        default=None,
+        description="Whether the paired worker session was released, for remote sessions.",
+    )
+    force_released: bool = Field(
+        default=False,
+        description="Whether controller state was released despite failed remote cleanup.",
+    )
 
 
 class SessionCopyEndpoint(BaseModel):

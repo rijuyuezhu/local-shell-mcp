@@ -39,6 +39,12 @@ SessionLabelArg = Annotated[
         description="Optional human-readable label for this agent session.",
     ),
 ]
+SessionEndForceArg = Annotated[
+    bool,
+    Field(
+        description="For a remote session only, release the controller binding even when the paired worker cannot be reached. This may leave orphaned worker-side work and does not bypass local job or PTY cleanup."
+    ),
+]
 
 
 SessionCopyPathArg = Annotated[

@@ -214,6 +214,36 @@ async def test_session_end_stops_jobs_before_removing_local_state(
 
 
 @pytest.mark.asyncio
+async def test_session_end_preserves_local_state_when_pty_cleanup_fails(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    store.register_persistent_shell(session.session_id, "shell_one")
+
+    async def fake_stop_owned_jobs(_session_id: str) -> list[str]:
+        return []
+
+    async def failing_stop_owned_shells(_session_id: str) -> list[str]:
+        raise RuntimeError("persistent shell could not be stopped")
+
+    monkeypatch.setattr(session_ops, "_stop_owned_jobs", fake_stop_owned_jobs)
+    monkeypatch.setattr(
+        session_ops, "_stop_owned_shells", failing_stop_owned_shells
+    )
+
+    with pytest.raises(RuntimeError, match="could not be stopped"):
+        await session_ops.session_end_execute(session.session_id)
+
+    retained = store.require_session(session.session_id)
+    assert retained.persistent_shell_ids == ("shell_one",)
+    assert retained.termination_requested_at is not None
+
+
+@pytest.mark.asyncio
 async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
     monkeypatch,
 ):
@@ -267,6 +297,9 @@ async def test_stop_owned_shells_kills_only_matching_owner(monkeypatch):
     listed: list[str] = []
     killed: list[str] = []
 
+    async def fake_inventory():
+        return SimpleNamespace(shells=[])
+
     async def fake_list(session_id: str):
         listed.append(session_id)
         return ["owned"]
@@ -280,7 +313,20 @@ async def test_stop_owned_shells_kills_only_matching_owner(monkeypatch):
         fake_list,
     )
     monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.list_persistent_shells_execute",
+        fake_inventory,
+    )
+    monkeypatch.setattr(
         "local_shell_mcp.ops.shell.kill_persistent_shell_execute", fake_kill
+    )
+    monkeypatch.setattr(
+        session_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            require_session=lambda _session_id: SimpleNamespace(
+                persistent_shell_ids=("owned",)
+            )
+        ),
     )
 
     assert await session_ops._stop_owned_shells("SESSION1") == ["owned"]
@@ -299,7 +345,8 @@ async def test_session_end_waits_for_in_flight_job_admission(monkeypatch):
         await release_job.wait()
         return SimpleNamespace(job_id="job_one")
 
-    async def fake_session_end(session_id: str):
+    async def fake_session_end(session_id: str, *, force: bool = False):
+        assert force is False
         end_entered.set()
         return SimpleNamespace(session_id=session_id, ended=True)
 
@@ -364,6 +411,8 @@ async def test_remote_session_end_removes_worker_before_controller_state(
     assert calls == [(session.session_id, "session_end")]
     assert result.target == "remote"
     assert result.machine == "worker-a"
+    assert result.remote_cleanup_succeeded is True
+    assert result.force_released is False
     with pytest.raises(ValueError, match="unknown session_id"):
         store.require_session(session.session_id)
 
@@ -408,35 +457,85 @@ async def test_expired_remote_session_end_can_still_release_worker_binding(
 
     assert result.ended is True
     assert calls == ["WORKER12"]
+    assert result.remote_cleanup_succeeded is True
+    assert result.force_released is False
+
+
+@pytest.mark.asyncio
+async def test_remote_session_force_release_survives_worker_failure(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(
+        target="remote",
+        workdir="/remote/work",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+    )
+
+    async def fake_stop_owned_jobs(_session_id: str) -> list[str]:
+        return []
+
+    async def failing_remote_call(_remote_session, _tool, _args):
+        raise ConnectionError("worker offline")
+
+    monkeypatch.setattr(session_ops, "_stop_owned_jobs", fake_stop_owned_jobs)
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.utils.remote_session.call_remote_session_tool",
+        failing_remote_call,
+    )
+
+    with pytest.raises(ConnectionError, match="worker offline"):
+        await session_ops.session_end_execute(session.session_id)
+    assert (
+        store.require_session(session.session_id).termination_requested_at
+        is not None
+    )
+
+    result = await session_ops.session_end_execute(
+        session.session_id, force=True
+    )
+
+    assert result.ended is True
+    assert result.remote_cleanup_succeeded is False
+    assert result.force_released is True
+    with pytest.raises(ValueError, match="unknown session_id"):
+        store.require_session(session.session_id)
+    replacement = store.create_session(workdir=tmp_path)
+    assert replacement.target == "local"
 
 
 @pytest.mark.asyncio
 async def test_worker_dispatch_registers_session_end(monkeypatch):
     calls: list[str] = []
 
-    async def fake_session_end(session_id: str):
-        calls.append(session_id)
+    async def fake_session_end(session_id: str, *, force: bool = False):
+        calls.append(f"{session_id}:{force}")
         return {"session_id": session_id, "ended": True}
 
     monkeypatch.setattr(session_ops, "session_end_execute", fake_session_end)
 
     result = await worker_dispatch._HANDLERS["session_end"](
-        {"session_id": "WORKER12"}
+        {"session_id": "WORKER12", "force": True}
     )
 
-    assert calls == ["WORKER12"]
+    assert calls == ["WORKER12:True"]
     assert result["ended"] is True
 
 
 @pytest.mark.asyncio
 async def test_session_end_registry_wrapper_delegates(monkeypatch):
-    async def fake_session_end(session_id: str):
-        return {"session_id": session_id, "ended": True}
+    async def fake_session_end(session_id: str, *, force: bool = False):
+        return {"session_id": session_id, "ended": True, "force": force}
 
     monkeypatch.setattr(
         session_registry, "session_end_execute", fake_session_end
     )
 
-    result = await session_registry.session_end.func("SESSION1")
+    result = await session_registry.session_end.func("SESSION1", True)
 
-    assert result == {"session_id": "SESSION1", "ended": True}
+    assert result["force"] is True

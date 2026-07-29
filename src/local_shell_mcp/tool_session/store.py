@@ -66,6 +66,9 @@ class AgentSession:
     termination_requested_at: float | None = None
     """Unix timestamp when the human control plane requested immediate stop."""
 
+    persistent_shell_ids: tuple[str, ...] = ()
+    """Durable local PTY ids that must keep this session from being pruned."""
+
 
 @dataclass(frozen=True)
 class SnapshotRecord:
@@ -173,6 +176,16 @@ class ToolSessionStore:
             raise ValueError(
                 "remote session metadata is missing its worker binding"
             )
+        shell_ids = payload.get("persistent_shell_ids", [])
+        if not isinstance(shell_ids, list):
+            raise ValueError(
+                "session metadata contains invalid persistent_shell_ids"
+            )
+        normalized_shell_ids = tuple(
+            dict.fromkeys(str(shell_id) for shell_id in shell_ids if shell_id)
+        )
+        if target == "remote":
+            normalized_shell_ids = ()
         return AgentSession(
             session_id=session_id,
             target=target,
@@ -198,6 +211,7 @@ class ToolSessionStore:
                     payload, "termination_requested_at"
                 )
             ),
+            persistent_shell_ids=normalized_shell_ids,
         )
 
     @staticmethod
@@ -333,9 +347,11 @@ class ToolSessionStore:
     def _session_expired(self, session: AgentSession, now: float) -> bool:
         """Return whether explicit expiry or idle retention invalidates a session."""
         retention_s = int(get_settings().agent_session_retention_s)
-        return self._session_expired_by_policy(
-            session, now, retention_s
-        ) and not self._session_has_active_jobs_locked(session.session_id)
+        return (
+            self._session_expired_by_policy(session, now, retention_s)
+            and not session.persistent_shell_ids
+            and not self._session_has_active_jobs_locked(session.session_id)
+        )
 
     def _read_all_sessions_locked(self) -> dict[str, AgentSession]:
         """Load valid durable session metadata without applying retention."""
@@ -368,6 +384,7 @@ class ToolSessionStore:
             for session in sessions.values()
             if session.target == "local"
             and self._session_expired_by_policy(session, now, retention_s)
+            and not session.persistent_shell_ids
             and not self._session_has_active_jobs(
                 session.session_id, active_job_owner_ids
             )
@@ -389,6 +406,7 @@ class ToolSessionStore:
                     for session in sessions.values()
                     if session.target == "local"
                     and session.updated_at < now - SESSION_ACTIVE_WINDOW_S
+                    and not session.persistent_shell_ids
                     and not self._session_has_active_jobs(
                         session.session_id, active_job_owner_ids
                     )
@@ -589,6 +607,7 @@ class ToolSessionStore:
                     expires_at=expires_at,
                     label=label,
                     termination_requested_at=None,
+                    persistent_shell_ids=(),
                 )
                 with self._state_store.transaction(
                     self._transaction_path(session_id)
@@ -641,6 +660,93 @@ class ToolSessionStore:
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
                 return updated
+
+    def register_persistent_shell(
+        self, session_id: str, shell_id: str
+    ) -> AgentSession:
+        """Durably bind one local persistent shell to its owning session."""
+        normalized_shell_id = str(shell_id).strip()
+        if not normalized_shell_id:
+            raise ValueError("shell_id must not be empty")
+        with self._lock:
+            self._reset_for_current_root_locked()
+            with self._state_store.transaction(
+                self._transaction_path(session_id)
+            ):
+                session = self._require_session_locked(session_id)
+                if session.target != "local":
+                    raise ValueError(
+                        "persistent shells require a local session"
+                    )
+                updated = replace(
+                    session,
+                    updated_at=time.time(),
+                    persistent_shell_ids=tuple(
+                        dict.fromkeys(
+                            (*session.persistent_shell_ids, normalized_shell_id)
+                        )
+                    ),
+                )
+                self._write_session_locked(updated)
+                self._sessions[session_id] = updated
+                return updated
+
+    def release_persistent_shell(self, shell_id: str) -> None:
+        """Remove one persistent shell id from every durable local session."""
+        normalized_shell_id = str(shell_id).strip()
+        if not normalized_shell_id:
+            return
+        with self._lock:
+            self._reset_for_current_root_locked()
+            sessions = self._read_all_sessions_locked()
+            for session in sessions.values():
+                if normalized_shell_id not in session.persistent_shell_ids:
+                    continue
+                with self._state_store.transaction(
+                    self._transaction_path(session.session_id)
+                ):
+                    current = self._load_session_locked(session.session_id)
+                    if current is None:
+                        continue
+                    updated = replace(
+                        current,
+                        persistent_shell_ids=tuple(
+                            existing
+                            for existing in current.persistent_shell_ids
+                            if existing != normalized_shell_id
+                        ),
+                    )
+                    self._write_session_locked(updated)
+                    self._sessions[session.session_id] = updated
+
+    def reconcile_persistent_shells(self, live_shell_ids: set[str]) -> None:
+        """Discard durable PTY ownership entries whose shell no longer exists."""
+        live = {str(shell_id) for shell_id in live_shell_ids if shell_id}
+        with self._lock:
+            self._reset_for_current_root_locked()
+            sessions = self._read_all_sessions_locked()
+            for session in sessions.values():
+                if all(
+                    shell_id in live
+                    for shell_id in session.persistent_shell_ids
+                ):
+                    continue
+                with self._state_store.transaction(
+                    self._transaction_path(session.session_id)
+                ):
+                    current = self._load_session_locked(session.session_id)
+                    if current is None:
+                        continue
+                    retained = tuple(
+                        shell_id
+                        for shell_id in current.persistent_shell_ids
+                        if shell_id in live
+                    )
+                    if retained == current.persistent_shell_ids:
+                        continue
+                    updated = replace(current, persistent_shell_ids=retained)
+                    self._write_session_locked(updated)
+                    self._sessions[session.session_id] = updated
 
     def request_termination(self, session_id: str) -> AgentSession:
         """Persist an irreversible immediate-stop request for one session."""

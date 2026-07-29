@@ -184,6 +184,10 @@ async def session_start_execute(
     label: str | None = None,
 ) -> SessionStartOutput:
     """Create an explicit agent/workspace session."""
+    if target in {"local", "remote"}:
+        from .shell import list_persistent_shells_execute
+
+        await list_persistent_shells_execute()
     if target == "local":
         return await asyncio.to_thread(
             _start_local_session,
@@ -305,24 +309,44 @@ async def _stop_owned_shells(session_id: str) -> list[str]:
     from .shell import (
         kill_persistent_shell_execute,
         list_owned_persistent_shell_ids_execute,
+        list_persistent_shells_execute,
     )
 
-    shell_ids = await list_owned_persistent_shell_ids_execute(session_id)
+    await list_persistent_shells_execute()
+    durable_shell_ids = (
+        get_tool_session_store()
+        .require_session(session_id)
+        .persistent_shell_ids
+    )
+    discovered_shell_ids = await list_owned_persistent_shell_ids_execute(
+        session_id
+    )
+    shell_ids = tuple(
+        dict.fromkeys((*durable_shell_ids, *discovered_shell_ids))
+    )
     stopped: list[str] = []
     for shell_id in shell_ids:
         result = await kill_persistent_shell_execute(shell_id)
-        if result.killed:
-            stopped.append(shell_id)
+        if not result.killed:
+            raise RuntimeError(
+                f"persistent shell could not be stopped: {shell_id}: "
+                f"{result.stderr or 'unknown backend error'}"
+            )
+        stopped.append(shell_id)
     return stopped
 
 
-async def session_end_execute(session_id: str) -> SessionEndOutput:
+async def session_end_execute(
+    session_id: str, *, force: bool = False
+) -> SessionEndOutput:
     """End one session while excluding concurrent job admission and retry."""
     async with session_lifecycle_lock(session_id):
-        return await _session_end_execute_unlocked(session_id)
+        return await _session_end_execute_unlocked(session_id, force=force)
 
 
-async def _session_end_execute_unlocked(session_id: str) -> SessionEndOutput:
+async def _session_end_execute_unlocked(
+    session_id: str, *, force: bool = False
+) -> SessionEndOutput:
     """Stop owned work and remove one local or remote session."""
     store = get_tool_session_store()
     session = store.prepare_session_termination(session_id)
@@ -330,10 +354,20 @@ async def _session_end_execute_unlocked(session_id: str) -> SessionEndOutput:
     stopped_shells: list[str] = []
     if session.target == "local":
         stopped_shells = await _stop_owned_shells(session_id)
+    remote_cleanup_succeeded: bool | None = None
+    force_released = False
     if session.target == "remote":
         from .utils.remote_session import call_remote_session_tool
 
-        await call_remote_session_tool(session, "session_end", {})
+        try:
+            await call_remote_session_tool(session, "session_end", {})
+        except Exception:
+            remote_cleanup_succeeded = False
+            if not force:
+                raise
+            force_released = True
+        else:
+            remote_cleanup_succeeded = True
     ended = store.end_session(session_id)
     return SessionEndOutput(
         session_id=ended.session_id,
@@ -342,6 +376,8 @@ async def _session_end_execute_unlocked(session_id: str) -> SessionEndOutput:
         ended=True,
         stopped_jobs=stopped_jobs,
         stopped_shells=stopped_shells,
+        remote_cleanup_succeeded=remote_cleanup_succeeded,
+        force_released=force_released,
     )
 
 

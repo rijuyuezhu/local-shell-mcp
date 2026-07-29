@@ -55,7 +55,10 @@ async def _session_change_cwd(args: dict[str, Any]) -> Any:
 async def _session_end(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.session import session_end_execute
 
-    return await session_end_execute(str(args.get("session_id") or ""))
+    return await session_end_execute(
+        str(args.get("session_id") or ""),
+        force=bool(args.get("force", False)),
+    )
 
 
 async def _query_audit(args: dict[str, Any]) -> Any:

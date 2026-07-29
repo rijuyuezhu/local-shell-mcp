@@ -148,6 +148,41 @@ async def test_shell_execution_routes_pty_to_persistent_shell(
     assert result.mode == "pty"
     assert result.result["shell_id"] == "shell-1"
     assert calls == [(str(tmp_path), "server", "python -i", session_id)]
+    assert get_tool_session_store().require_session(
+        session_id
+    ).persistent_shell_ids == ("shell-1",)
+
+
+@pytest.mark.asyncio
+async def test_pty_registration_failure_rolls_back_shell(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    session_id = _create_session()
+    killed: list[str] = []
+
+    async def fake_start_shell(*_args, **_kwargs):
+        return StartPersistentShellOutput(shell_id="shell-1", backend="tmux")
+
+    async def fake_kill(shell_id: str):
+        killed.append(shell_id)
+
+    store = get_tool_session_store()
+    monkeypatch.setattr(
+        shell_ops, "start_persistent_shell_execute", fake_start_shell
+    )
+    monkeypatch.setattr(shell_ops, "kill_persistent_shell_execute", fake_kill)
+    monkeypatch.setattr(
+        store,
+        "register_persistent_shell",
+        lambda _session_id, _shell_id: (_ for _ in ()).throw(
+            RuntimeError("metadata write failed")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="metadata write failed"):
+        await shell_ops.bash_execute(session_id, "python -i", pty=True)
+
+    assert killed == ["shell-1"]
 
 
 @pytest.mark.asyncio
