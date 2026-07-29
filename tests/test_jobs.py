@@ -947,9 +947,15 @@ async def test_managed_reference_stop_cancels_job_owned_by_source_session(
 
 @pytest.mark.asyncio
 async def test_managed_reference_stop_filters_unrelated_rows(monkeypatch):
+    unrelated_shell = {
+        "kind": "shell",
+        "status": "running",
+        "job_id": "unrelated-shell",
+        "shell_id": "live-shell",
+    }
     rows = [
         "not-a-row",
-        {"kind": "shell", "status": "running"},
+        unrelated_shell,
         {
             "kind": "managed",
             "managed_kind": "other",
@@ -1000,10 +1006,16 @@ async def test_managed_reference_stop_filters_unrelated_rows(monkeypatch):
             killed=False, job=SimpleNamespace(status="succeeded")
         )
 
+    refreshed: list[str] = []
+
+    def fake_refresh(row, _active):
+        refreshed.append(str(row.get("job_id") or ""))
+        if row is unrelated_shell:
+            row["status"] = "lost"
+        return row
+
     monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
-    monkeypatch.setattr(
-        jobs_ops, "_refresh_job_status", lambda row, _active: row
-    )
+    monkeypatch.setattr(jobs_ops, "_refresh_job_status", fake_refresh)
     monkeypatch.setattr(
         jobs_ops, "_stop_managed_job_without_session_admission", fake_stop
     )
@@ -1011,6 +1023,8 @@ async def test_managed_reference_stop_filters_unrelated_rows(monkeypatch):
     assert await jobs_ops.job_stop_managed_references_execute(
         "DEST0001", managed_kind="copy", payload_key="dst_session_id"
     ) == ["job_target"]
+    assert unrelated_shell["status"] == "running"
+    assert refreshed == ["missing-owner", "job_target"]
 
 
 def test_managed_job_validation_and_lost_recovery():

@@ -357,7 +357,14 @@ async def _spawn_process(
             cwd,
             "configured shell executable was not found or is not executable",
         )
+    shell_name = os.path.basename(resolved_shell).lower()
     try:
+        if os.name == "nt" and shell_name in {"cmd", "cmd.exe"}:
+            return await asyncio.create_subprocess_shell(
+                command,
+                executable=resolved_shell,
+                **common,
+            )
         if os.name == "nt":
             return await asyncio.create_subprocess_exec(
                 *_shell_command_args(resolved_shell, command),

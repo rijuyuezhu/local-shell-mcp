@@ -1591,17 +1591,17 @@ async def job_stop_managed_references_execute(
         for row in store.get("jobs", []):
             if not isinstance(row, dict):
                 continue
-            job = _refresh_job_status(row, set())
-            if (
-                str(job.get("kind") or "shell") != "managed"
-                or str(job.get("managed_kind") or "") != managed_kind
-                or job.get("status") != "running"
-            ):
+            if str(row.get("kind") or "shell") != "managed":
                 continue
-            payload = job.get("managed_payload")
+            if str(row.get("managed_kind") or "") != managed_kind:
+                continue
+            payload = row.get("managed_payload")
             if not isinstance(payload, dict):
                 continue
             if str(payload.get(payload_key) or "") != referenced_session_id:
+                continue
+            job = _refresh_job_status(row, set())
+            if job.get("status") != "running":
                 continue
             owner_session_id = str(job.get("session_id") or "")
             job_id = str(job.get("job_id") or "")

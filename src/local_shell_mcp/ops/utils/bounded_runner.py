@@ -94,9 +94,13 @@ def _wait_for_no_descendants(timeout_s: float) -> bool:
 
 def _reap_children() -> None:
     """Reap any exited descendants adopted through subreaper mode."""
+    waitpid = getattr(os, "waitpid", None)
+    no_hang = getattr(os, "WNOHANG", None)
+    if waitpid is None or no_hang is None:
+        return
     while True:
         try:
-            pid, _status = os.waitpid(-1, os.WNOHANG)
+            pid, _status = waitpid(-1, no_hang)
         except ChildProcessError:
             return
         if pid <= 0:

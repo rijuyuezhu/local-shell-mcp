@@ -123,6 +123,9 @@ async def test_list_persistent_shells_clears_stale_owners_when_server_is_absent(
     monkeypatch,
 ):
     reconciled: list[set[str]] = []
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
 
     async def fake_tmux(_args, timeout_s=10):  # noqa: ARG001
         return CommandResult(
@@ -161,6 +164,9 @@ async def test_list_persistent_shells_preserves_owners_on_unknown_tmux_failure(
     monkeypatch,
 ):
     reconciled: list[set[str]] = []
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
 
     async def fake_tmux(_args, timeout_s=10):  # noqa: ARG001
         return CommandResult(
@@ -469,13 +475,18 @@ def test_run_shell_command_timeout_uses_ten_second_default(
 
 
 @pytest.mark.asyncio
-async def test_spawn_process_uses_native_exec_for_cmd_on_windows(monkeypatch):
+async def test_spawn_process_uses_native_shell_api_for_cmd_on_windows(
+    monkeypatch,
+):
     calls = []
     sentinel = object()
 
-    async def fake_exec(*args, **kwargs):
-        calls.append((args, kwargs))
+    async def fake_shell(command: str, **kwargs):
+        calls.append((command, kwargs))
         return sentinel
+
+    async def unexpected_exec(*_args, **_kwargs):
+        raise AssertionError("cmd.exe must use create_subprocess_shell")
 
     monkeypatch.setattr(shell_ops.os, "name", "nt")
     monkeypatch.setattr(
@@ -486,13 +497,20 @@ async def test_spawn_process_uses_native_exec_for_cmd_on_windows(monkeypatch):
     )
     monkeypatch.setattr(shell_ops.shutil, "which", lambda command, **_: command)
     monkeypatch.setattr(shell_ops, "_subprocess_env", lambda: {"BASE": "1"})
-    monkeypatch.setattr(shell_ops.asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(
+        shell_ops.asyncio, "create_subprocess_shell", fake_shell
+    )
+    monkeypatch.setattr(
+        shell_ops.asyncio, "create_subprocess_exec", unexpected_exec
+    )
 
     result = await shell_ops._spawn_process("echo hi", ".", {"EXTRA": "2"})
 
     assert result is sentinel
-    assert calls[0][0] == ("cmd.exe", "/D", "/S", "/C", "echo hi")
+    assert calls[0][0] == "echo hi"
+    assert calls[0][1]["executable"] == "cmd.exe"
     assert calls[0][1]["env"] == {"BASE": "1", "EXTRA": "2"}
+    assert calls[0][1]["creationflags"] == 512
 
 
 @pytest.mark.asyncio
@@ -532,6 +550,7 @@ async def test_spawn_process_uses_native_exec_for_powershell_on_windows(
 async def test_spawn_process_resolves_relative_shell_from_command_cwd(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(shell_ops.os, "name", "posix")
     shell = tmp_path / "bin" / "custom-shell"
     shell.parent.mkdir()
     shell.write_text("#!/bin/sh\n", encoding="utf-8")

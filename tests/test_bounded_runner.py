@@ -80,8 +80,21 @@ def test_wait_for_no_descendants_reaps_until_empty(monkeypatch):
 
 def test_reap_children_stops_when_no_child_is_ready(monkeypatch):
     results = iter([(10, 0), (0, 0)])
+    monkeypatch.setattr(bounded_runner.os, "WNOHANG", 1, raising=False)
     monkeypatch.setattr(
         bounded_runner.os, "waitpid", lambda _pid, _flags: next(results)
+    )
+
+    bounded_runner._reap_children()
+
+
+def test_reap_children_is_noop_without_nonblocking_wait(monkeypatch):
+    monkeypatch.delattr(bounded_runner.os, "WNOHANG", raising=False)
+    monkeypatch.setattr(
+        bounded_runner.os,
+        "waitpid",
+        lambda *_args: pytest.fail("waitpid must not be called"),
+        raising=False,
     )
 
     bounded_runner._reap_children()
