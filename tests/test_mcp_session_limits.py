@@ -312,3 +312,83 @@ async def test_pending_initialize_reserves_capacity_without_holding_lock():
 
     assert responses[1][0]["status"] == 429
     assert limiter._pending_creations == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelled_initialize_finishes_contended_reservation_release(
+    monkeypatch,
+):
+    controls: asyncio.Queue[tuple[asyncio.Event, asyncio.Event]] = (
+        asyncio.Queue()
+    )
+    release_started: asyncio.Queue[None] = asyncio.Queue()
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        del scope, receive
+        entered, respond = await controls.get()
+        entered.set()
+        await respond.wait()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"mcp-session-id", b"created")],
+            }
+        )
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(_message: Message) -> None:
+        return None
+
+    manager = SimpleNamespace(
+        stateless=False,
+        _server_instances={},
+        _session_owners={},
+    )
+    limiter = McpSessionLimitMiddleware(
+        app,
+        session_manager=manager,
+        max_sessions=1,
+    )
+    original_release = limiter._release_reservation
+
+    async def observed_release() -> None:
+        await release_started.put(None)
+        await original_release()
+
+    monkeypatch.setattr(limiter, "_release_reservation", observed_release)
+    scope: Scope = {
+        "type": "http",
+        "path": "/mcp",
+        "method": "POST",
+        "headers": [],
+    }
+
+    for _ in range(3):
+        entered = asyncio.Event()
+        respond = asyncio.Event()
+        await controls.put((entered, respond))
+        request = asyncio.create_task(limiter(scope, receive, send))
+        await entered.wait()
+        await limiter._creation_lock.acquire()
+        respond.set()
+        await release_started.get()
+
+        request.cancel()
+        await asyncio.sleep(0)
+        assert not request.done()
+        limiter._creation_lock.release()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+        assert limiter._pending_creations == 0
+
+    entered = asyncio.Event()
+    respond = asyncio.Event()
+    await controls.put((entered, respond))
+    final_request = asyncio.create_task(limiter(scope, receive, send))
+    await entered.wait()
+    respond.set()
+    await final_request
+    assert limiter._pending_creations == 0

@@ -11,6 +11,7 @@ import pytest
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import runtime as jobs_runtime
 from local_shell_mcp.ops import session as session_ops
+from local_shell_mcp.ops import shell as shell_ops
 from local_shell_mcp.ops.utils import remote_session as remote_session_ops
 from local_shell_mcp.remote_worker import dispatch as worker_dispatch
 from local_shell_mcp.tool_session.store import get_tool_session_store
@@ -799,6 +800,37 @@ async def test_stop_owned_shells_rejects_unknown_owner_inventory(monkeypatch):
 
     with pytest.raises(RuntimeError, match="ownership could not be determined"):
         await session_ops._stop_owned_shells("SESSION1")
+
+
+@pytest.mark.asyncio
+async def test_session_end_preserves_peer_owned_conpty_shell(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    store.register_persistent_shell(session.session_id, "peer-conpty")
+
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+
+    async def no_local_owned_shells(_owner_session_id: str):
+        return []
+
+    monkeypatch.setattr(
+        shell_ops.conpty, "list_owned_shell_ids", no_local_owned_shells
+    )
+
+    with pytest.raises(RuntimeError, match="ownership could not be determined"):
+        await session_ops.session_end_execute(session.session_id)
+
+    retained = store.require_session(session.session_id)
+    assert retained.persistent_shell_ids == ("peer-conpty",)
+    assert retained.termination_requested_at is not None
 
 
 @pytest.mark.asyncio

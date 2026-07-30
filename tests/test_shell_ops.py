@@ -76,6 +76,20 @@ def test_bounded_runner_uses_trusted_absolute_script(monkeypatch):
     assert "-m" not in argv
 
 
+def test_bounded_runner_uses_frozen_cli_subcommand(monkeypatch):
+    monkeypatch.setattr(shell_ops, "_is_frozen_app", lambda: True)
+    monkeypatch.setattr(shell_ops.sys, "executable", "/app/local-shell-mcp")
+
+    assert shell_ops._bounded_runner_argv("/bin/sh", "echo hi") == [
+        "/app/local-shell-mcp",
+        "bounded-runner",
+        "--shell",
+        "/bin/sh",
+        "--command",
+        "echo hi",
+    ]
+
+
 def test_persistent_shell_ids_accepts_models_and_compatibility_dicts():
     assert shell_ops._persistent_shell_ids(
         SimpleNamespace(
@@ -727,6 +741,113 @@ async def test_list_owned_shells_filters_owner_from_authoritative_inventory(
     assert await shell_ops.list_owned_persistent_shell_ids_execute(
         "SESSION1"
     ) == ["owned"]
+
+
+@pytest.mark.asyncio
+async def test_conpty_owned_inventory_is_unknown_for_peer_durable_shell(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+
+    async def no_local_shells(_owner_session_id: str):
+        return []
+
+    monkeypatch.setattr(
+        shell_ops.conpty, "list_owned_shell_ids", no_local_shells
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            require_session=lambda _session_id: SimpleNamespace(
+                persistent_shell_ids=("peer-shell",)
+            )
+        ),
+    )
+
+    assert (
+        await shell_ops.list_owned_persistent_shell_ids_execute("SESSION1")
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_conpty_owned_inventory_accepts_current_process_shells(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+
+    async def local_shells(_owner_session_id: str):
+        return ["local-shell"]
+
+    monkeypatch.setattr(shell_ops.conpty, "list_owned_shell_ids", local_shells)
+    monkeypatch.setattr(
+        shell_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            require_session=lambda _session_id: SimpleNamespace(
+                persistent_shell_ids=("local-shell",)
+            )
+        ),
+    )
+
+    assert await shell_ops.list_owned_persistent_shell_ids_execute(
+        "SESSION1"
+    ) == ["local-shell"]
+
+
+@pytest.mark.asyncio
+async def test_conpty_authoritative_inventory_unions_durable_peer_ids(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+
+    async def local_shells():
+        return SimpleNamespace(shells=[SimpleNamespace(shell_id="local-shell")])
+
+    monkeypatch.setattr(shell_ops.conpty, "list_shells", local_shells)
+    monkeypatch.setattr(
+        shell_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            persistent_shell_ids=lambda: {"peer-shell"},
+        ),
+    )
+
+    assert await shell_ops.authoritative_persistent_shell_ids_execute() == {
+        "local-shell",
+        "peer-shell",
+    }
+
+
+@pytest.mark.asyncio
+async def test_conpty_listing_does_not_reconcile_peer_durable_ids(monkeypatch):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+
+    async def no_local_shells():
+        return SimpleNamespace(shells=[])
+
+    monkeypatch.setattr(shell_ops.conpty, "list_shells", no_local_shells)
+    monkeypatch.setattr(
+        shell_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            reconcile_persistent_shells=lambda _ids: pytest.fail(
+                "process-local ConPTY inventory must not reconcile durable peers"
+            )
+        ),
+    )
+
+    result = await shell_ops.list_persistent_shells_execute()
+    assert result.shells == []
 
 
 def test_command_with_env_uses_powershell_assignments(monkeypatch):

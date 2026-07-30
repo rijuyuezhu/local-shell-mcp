@@ -766,6 +766,22 @@ def test_scoped_shell_reservation_rollback_preserves_other_session(
     )
 
 
+def test_persistent_shell_ids_unions_all_durable_sessions(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    first = store.create_session(workdir=tmp_path)
+    second = store.create_session(workdir=tmp_path)
+    store.register_persistent_shell(first.session_id, "shell-one")
+    store.register_persistent_shell(second.session_id, "shell-two")
+
+    assert store.persistent_shell_ids() == {"shell-one", "shell-two"}
+
+
 def test_inactive_session_with_persistent_shell_is_not_evicted(
     tmp_path, monkeypatch
 ):

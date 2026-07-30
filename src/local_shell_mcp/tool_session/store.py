@@ -929,6 +929,18 @@ class ToolSessionStore:
                     self._write_session_locked(updated)
                     self._sessions[session.session_id] = updated
 
+    def persistent_shell_ids(self) -> set[str]:
+        """Return all durable persistent shell ids without pruning sessions."""
+        with self._lock:
+            self._reset_for_current_root_locked()
+            registry = self._state_store.layout.sessions_dir / ".registry"
+            with self._state_store.transaction(registry):
+                return {
+                    shell_id
+                    for session in self._read_all_sessions_locked().values()
+                    for shell_id in session.persistent_shell_ids
+                }
+
     def reconcile_session_persistent_shells(
         self, session_id: str, owned_shell_ids: set[str]
     ) -> AgentSession:

@@ -123,9 +123,29 @@ class McpSessionLimitMiddleware:
             self._pending_creations += 1
 
         reservation_active = True
+        reservation_release_task: asyncio.Task[None] | None = None
+
+        async def release_active_reservation() -> None:
+            """Finish one release before propagating caller cancellation."""
+            nonlocal reservation_active, reservation_release_task
+            if not reservation_active:
+                return
+            if reservation_release_task is None:
+                reservation_release_task = asyncio.create_task(
+                    self._release_reservation()
+                )
+            cancellation: asyncio.CancelledError | None = None
+            while not reservation_release_task.done():
+                try:
+                    await asyncio.shield(reservation_release_task)
+                except asyncio.CancelledError as exc:
+                    cancellation = cancellation or exc
+            reservation_release_task.result()
+            reservation_active = False
+            if cancellation is not None:
+                raise cancellation
 
         async def send_with_release(message: Message) -> None:
-            nonlocal reservation_active
             if (
                 message.get("type") == "http.response.start"
                 and reservation_active
@@ -135,8 +155,7 @@ class McpSessionLimitMiddleware:
                     bytes(name).lower() == b"mcp-session-id"
                     for name, _ in headers
                 ):
-                    reservation_active = False
-                    await self._release_reservation()
+                    await release_active_reservation()
                     audit(
                         "mcp_session_created",
                         active_sessions=self._active_session_count(),
@@ -148,4 +167,4 @@ class McpSessionLimitMiddleware:
             await self.app(scope, receive, send_with_release)
         finally:
             if reservation_active:
-                await self._release_reservation()
+                await release_active_reservation()

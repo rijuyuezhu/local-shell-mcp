@@ -47,6 +47,7 @@ from ..tool_session.store import (
 )
 from ..utils.processes import new_process_group_kwargs
 from ..utils.serialization import to_jsonable
+from .utils.bounded_runner import bounded_runner_argv
 from .utils.path import (
     relative_display,
     resolve_path,
@@ -313,23 +314,11 @@ def _validated_env_overrides(env: dict[str, str] | None) -> dict[str, str]:
 
 def _bounded_runner_argv(shell: str, command: str) -> list[str]:
     """Build the internal descendant-reaping runner invocation."""
-    arguments = [
-        "bounded-runner",
-        "--shell",
+    return bounded_runner_argv(
         shell,
-        "--command",
         command,
-    ]
-    if _is_frozen_app():
-        return [sys.executable, *arguments]
-    runner_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "utils", "bounded_runner.py")
+        frozen=_is_frozen_app(),
     )
-    return [
-        sys.executable,
-        runner_path,
-        *arguments[1:],
-    ]
 
 
 async def _spawn_process(
@@ -1312,7 +1301,15 @@ async def list_owned_persistent_shell_ids_execute(
 ) -> list[str] | None:
     """Return owned shell ids, or None when discovery is non-authoritative."""
     if _use_conpty_persistent_shell_backend():
-        return await conpty.list_owned_shell_ids(owner_session_id)
+        try:
+            session = get_tool_session_store().require_session(owner_session_id)
+            durable_ids = set(session.persistent_shell_ids)
+            local_ids = set(await conpty.list_owned_shell_ids(owner_session_id))
+        except Exception:
+            return None
+        if not durable_ids.issubset(local_ids):
+            return None
+        return sorted(local_ids)
     selection = resolve_tmux()
     if selection.path is None and selection.source == "unavailable":
         return None
@@ -1340,10 +1337,7 @@ async def _persistent_shell_inventory_execute() -> tuple[
     """Return the shell inventory and whether an empty result is authoritative."""
     if _use_conpty_persistent_shell_backend():
         output = await conpty.list_shells()
-        get_tool_session_store().reconcile_persistent_shells(
-            _persistent_shell_ids(output)
-        )
-        return output, True
+        return output, False
     selection = resolve_tmux()
     if selection.path is None and selection.source == "unavailable":
         return ListPersistentShellsOutput(shells=[]), False
@@ -1381,6 +1375,15 @@ async def _persistent_shell_inventory_execute() -> tuple[
 
 async def authoritative_persistent_shell_ids_execute() -> set[str] | None:
     """Return live shell ids, or None when the backend inventory is uncertain."""
+    if _use_conpty_persistent_shell_backend():
+        try:
+            output = await conpty.list_shells()
+            return (
+                _persistent_shell_ids(output)
+                | get_tool_session_store().persistent_shell_ids()
+            )
+        except Exception:
+            return None
     try:
         output, authoritative = await _persistent_shell_inventory_execute()
     except Exception:

@@ -38,6 +38,27 @@ _MACOS_LIBPROC: Any | None = None
 _MACOS_LIBPROC_LOADED = False
 
 
+def bounded_runner_argv(
+    shell: str,
+    command: str,
+    *extra_arguments: str,
+    frozen: bool | None = None,
+) -> list[str]:
+    """Build one trusted invocation of the private bounded-runner CLI."""
+    arguments = [
+        "--shell",
+        shell,
+        "--command",
+        command,
+        *extra_arguments,
+    ]
+    if frozen is None:
+        frozen = bool(getattr(sys, "frozen", False))
+    if frozen:
+        return [sys.executable, "bounded-runner", *arguments]
+    return [sys.executable, str(Path(__file__).resolve()), *arguments]
+
+
 class _ProcPidCoalitionInfo(ctypes.Structure):
     """Public XNU proc_pidcoalitioninfo layout for resource/jetsam ids."""
 
@@ -659,13 +680,8 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
         label = f"local-shell-mcp.bounded.{os.getpid()}.{uuid.uuid4().hex}"
         payload = {
             "Label": label,
-            "ProgramArguments": [
-                sys.executable,
-                "-m",
-                "local_shell_mcp.ops.utils.bounded_runner",
-                "--shell",
+            "ProgramArguments": bounded_runner_argv(
                 shell,
-                "--command",
                 command,
                 "--launchd-child-status",
                 str(status_path),
@@ -679,7 +695,7 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
                 str(coalition_path),
                 "--launchd-child-release",
                 str(release_path),
-            ],
+            ),
             "WorkingDirectory": os.getcwd(),
             "EnvironmentVariables": dict(os.environ),
             "RunAtLoad": True,
