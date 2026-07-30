@@ -6,7 +6,17 @@ For a container deployment, use [Docker Compose](docker-compose.md) instead.
 
 ## Prerequisites
 
-You need a Linux host or VM with `git`, `uv`, Python 3.14+, `tmux`, `ripgrep`, and `cloudflared`; a project workspace; a Cloudflare Tunnel token; and a ChatGPT client that can add a custom MCP connector.
+You need:
+
+- a Linux or macOS host with `git`, `uv`, Python 3.14+, `tmux`, `ripgrep`, and `cloudflared`;
+- a project directory that the agent may read and modify—use an existing checkout, or create an empty directory such as `mkdir -p ~/Projects/my-project`;
+- a Cloudflare account and a domain managed by Cloudflare—follow Cloudflare's [domain onboarding guide](https://developers.cloudflare.com/fundamentals/manage-domains/add-site/) when starting with a domain from another registrar; and
+- a ChatGPT plan and role that can add a custom MCP app.
+
+!!! note "ChatGPT plan availability"
+    Full read/write MCP currently requires Business (formerly Team), Enterprise, or Edu. Pro supports read/fetch-only custom MCP connections. Check [OpenAI's current availability notes](https://help.openai.com/en/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta) before setup.
+
+[Step 4](#4-create-and-start-the-tunnel) shows where to create the tunnel and obtain its token. On macOS, install missing command-line tools with Homebrew or another package manager. The service example later in this guide uses Linux systemd; macOS users can run the helper in the foreground or configure it with launchd.
 
 ## 1. Install
 
@@ -38,6 +48,8 @@ CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 
 `LOCAL_SHELL_MCP_BASE_URL` is the public origin without `/mcp`. Keep the state directory private: it contains credentials and activity data used by the service.
 
+Leave the example `CLOUDFLARE_TUNNEL_TOKEN` value in place for now. You will replace it with the token copied from Cloudflare in [Step 4](#4-create-and-start-the-tunnel); the detailed dashboard flow is in [Cloudflare Tunnel](cloudflare-tunnel.md).
+
 For every setting and precedence rule, see [Configuration](../reference/configuration.md).
 
 ## 3. Smoke-test locally
@@ -57,21 +69,28 @@ curl -i http://127.0.0.1:8765/healthz
 
 A successful health check confirms that the local service is running.
 
-## 4. Start the tunnel
+## 4. Create and start the tunnel
 
-The repository helper starts the server and Cloudflare Tunnel together:
+Follow [Cloudflare Tunnel](cloudflare-tunnel.md) to:
+
+1. create a remotely managed tunnel in the Cloudflare dashboard;
+2. add a published application route from your public hostname to `http://127.0.0.1:8765`;
+3. copy the tunnel token into `CLOUDFLARE_TUNNEL_TOKEN` in `.env`; and
+4. set `LOCAL_SHELL_MCP_BASE_URL` to the same public HTTPS origin.
+
+Then start the server and tunnel together:
 
 ```bash
 scripts/run-with-cloudflare-tunnel.sh
 ```
 
-Configure the tunnel hostname to route to `http://127.0.0.1:8765`. The public MCP endpoint is:
+The public MCP endpoint is:
 
 ```text
 https://your-public-host.example.com/mcp
 ```
 
-See [Cloudflare Tunnel](cloudflare-tunnel.md) for the Cloudflare setup and common routing mistakes.
+The Cloudflare guide also covers the Docker target and common routing mistakes.
 
 ## 5. Keep it running
 

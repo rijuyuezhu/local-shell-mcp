@@ -2,48 +2,39 @@
 
 A remote MCP client needs a public HTTPS endpoint. Cloudflare Tunnel can forward a public hostname to the local `local-shell-mcp` service while the server's own OAuth flow protects `/mcp`.
 
-## Create the tunnel
+## Create the tunnel and obtain its token
 
-In Cloudflare Zero Trust:
+Follow Cloudflare's [Create a tunnel in the dashboard](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/) guide:
 
-1. create a tunnel;
-2. add a public hostname such as `mcp.example.com`;
-3. route it to the service.
+1. sign in to Cloudflare and open **Networking → Tunnels**;
+2. create a remotely managed tunnel and give it a recognizable name;
+3. copy the installation command shown for the connector; the long `eyJ...` value after `--token` is the tunnel token; and
+4. add a **Published application** route for a hostname such as `mcp.example.com`.
 
-Use this target for a local process:
+The token authorizes a connector to run this tunnel, so keep it private. Cloudflare also documents how to [retrieve a tunnel token later](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/remote-tunnel-permissions/#get-the-tunnel-token).
+
+## Choose the service target
+
+For the [local source setup](quickstart.md#3-smoke-test-locally), set the published application's service URL to:
 
 ```text
 http://127.0.0.1:8765
 ```
 
-Use this target for the tunnel container in the repository's Compose setup:
+For the repository's [Docker Compose setup](docker-compose.md#start), set it to:
 
 ```text
 http://local-shell-mcp:8765
 ```
 
-Add the public origin and tunnel token to `.env`:
+Add the public origin and copied token to `.env`:
 
 ```env
-CLOUDFLARE_TUNNEL_TOKEN=...
+CLOUDFLARE_TUNNEL_TOKEN=eyJ...
 LOCAL_SHELL_MCP_BASE_URL=https://mcp.example.com
 ```
 
-`LOCAL_SHELL_MCP_BASE_URL` is the origin only. Do not append `/mcp`.
-
-## Run from a source checkout
-
-```bash
-scripts/run-with-cloudflare-tunnel.sh
-```
-
-For unattended use, run the helper with your preferred service manager.
-
-## Run with Docker Compose
-
-```bash
-docker compose --profile tunnel up -d
-```
+`LOCAL_SHELL_MCP_BASE_URL` is the origin only. Do not append `/mcp`. Return to [Quickstart](quickstart.md#4-create-and-start-the-tunnel) or [Docker Compose](docker-compose.md#start) to start the selected deployment.
 
 ## Verify
 

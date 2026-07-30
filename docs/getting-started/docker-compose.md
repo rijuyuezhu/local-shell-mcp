@@ -18,6 +18,8 @@ LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 ```
 
+Replace `your-cloudflare-tunnel-token` after following [Cloudflare Tunnel](cloudflare-tunnel.md) to create the tunnel and copy its token.
+
 Leave `DOCKER_AGENT_UID` and `DOCKER_AGENT_GID` empty for the normal setup. Set them only when the mounted workspace needs a specific host UID/GID.
 
 ## Start
