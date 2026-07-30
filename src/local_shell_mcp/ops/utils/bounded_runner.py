@@ -48,6 +48,16 @@ def _direct_children(pid: int) -> list[int] | None:
     path = PROCFS_ROOT / str(pid) / "task" / str(pid) / "children"
     try:
         raw = path.read_text(encoding="ascii").strip()
+    except FileNotFoundError:
+        try:
+            (PROCFS_ROOT / str(pid)).stat()
+        except FileNotFoundError:
+            # The process was reaped after its parent listed the pid.
+            return []
+        except OSError:
+            return None
+        # The process is still visible but this optional procfs entry is absent.
+        return None
     except OSError, UnicodeError:
         return None
     values = raw.split()

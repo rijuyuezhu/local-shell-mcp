@@ -118,6 +118,106 @@ async def test_persistent_shell_creation_is_serialized(monkeypatch):
     ]
 
 
+@pytest.mark.asyncio
+async def test_tmux_start_cancellation_cleans_created_session(
+    tmp_path, monkeypatch
+):
+    owner_tag_started = asyncio.Event()
+    block_owner_tag = asyncio.Event()
+    calls: list[list[str]] = []
+
+    def result(*, ok: bool = True, stderr: str = "") -> CommandResult:
+        return CommandResult(
+            ok=ok,
+            exit_code=0 if ok else 1,
+            timed_out=False,
+            duration_ms=1,
+            cwd=str(tmp_path),
+            command="tmux",
+            stdout="",
+            stderr=stderr,
+        )
+
+    async def empty_inventory():
+        return set()
+
+    async def fake_tmux(args: list[str], timeout_s: int = 10):  # noqa: ARG001
+        calls.append(args)
+        if args[0] == "new-session":
+            return result()
+        if args[0] == "set-option":
+            owner_tag_started.set()
+            await block_owner_tag.wait()
+            return result()
+        if args[0] == "kill-session":
+            return result()
+        raise AssertionError(f"unexpected tmux call: {args}")
+
+    monkeypatch.setattr(
+        shell_ops, "authoritative_persistent_shell_ids_execute", empty_inventory
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "get_settings",
+        lambda: SimpleNamespace(max_tmux_sessions=8),
+    )
+    monkeypatch.setattr(
+        shell_ops, "resolve_path", lambda *_args, **_kwargs: tmp_path
+    )
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(shell_ops, "_tmux_session_name", lambda _name: "owned")
+    monkeypatch.setattr(
+        shell_ops, "_resolved_tmux_shell", lambda _cwd: "/bin/sh"
+    )
+    monkeypatch.setattr(
+        shell_ops.shutil, "which", lambda *_args, **_kwargs: "/bin/sh"
+    )
+    monkeypatch.setattr(
+        shell_ops, "check_command_policy", lambda _command: None
+    )
+    monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+
+    task = asyncio.create_task(
+        shell_ops._start_persistent_shell_locked(
+            str(tmp_path),
+            "owned",
+            "sleep 60",
+            owner_session_id="SESSION1",
+        )
+    )
+    await owner_tag_started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert ["kill-session", "-t", "=owned"] in calls
+
+
+@pytest.mark.asyncio
+async def test_failed_tmux_start_cleanup_must_be_authoritative(
+    tmp_path, monkeypatch
+):
+    async def failed_cleanup(_args: list[str], timeout_s: int = 10):  # noqa: ARG001
+        return CommandResult(
+            ok=False,
+            exit_code=1,
+            timed_out=False,
+            duration_ms=1,
+            cwd=str(tmp_path),
+            command="tmux",
+            stdout="",
+            stderr="permission denied",
+        )
+
+    monkeypatch.setattr(shell_ops, "tmux", failed_cleanup)
+
+    with pytest.raises(RuntimeError, match="permission denied"):
+        await shell_ops._cleanup_failed_tmux_start("owned")
+
+
 @pytest.mark.parametrize(
     "absent_error",
     [

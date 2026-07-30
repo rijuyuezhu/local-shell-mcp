@@ -306,13 +306,23 @@ def test_direct_children_parses_procfs_pids(tmp_path, monkeypatch):
 def test_direct_children_reports_unavailable_procfs(
     tmp_path, monkeypatch, contents
 ):
+    process_dir = tmp_path / "7"
+    process_dir.mkdir()
     if contents is not None:
-        children_path = tmp_path / "7" / "task" / "7" / "children"
+        children_path = process_dir / "task" / "7" / "children"
         children_path.parent.mkdir(parents=True)
         children_path.write_bytes(contents)
     monkeypatch.setattr(bounded_runner, "PROCFS_ROOT", tmp_path)
 
     assert bounded_runner._direct_children(7) is None
+
+
+def test_direct_children_treats_vanished_process_as_empty(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(bounded_runner, "PROCFS_ROOT", tmp_path)
+
+    assert bounded_runner._direct_children(7) == []
 
 
 def test_direct_children_rejects_malformed_procfs(tmp_path, monkeypatch):
@@ -380,6 +390,17 @@ def test_process_tree_helpers_handle_races_and_cycles(monkeypatch):
     descendants = bounded_runner._descendants(1)
     assert descendants is not None
     assert set(descendants) == {1, 2, 3}
+
+
+def test_children_file_traversal_tolerates_reaped_descendant(
+    tmp_path, monkeypatch
+):
+    children_path = tmp_path / "1" / "task" / "1" / "children"
+    children_path.parent.mkdir(parents=True)
+    children_path.write_text("2\n", encoding="ascii")
+    monkeypatch.setattr(bounded_runner, "PROCFS_ROOT", tmp_path)
+
+    assert bounded_runner._descendants_from_children_files(1) == [2]
 
 
 def test_descendants_falls_back_to_procfs_parent_map(monkeypatch):

@@ -27,7 +27,7 @@ async def _enroll_worker(client, base_url, machine, workspace):
             "args": {"name": machine, "workdir": str(workspace), "ttl_s": 120},
         },
     )
-    async with httpx.AsyncClient(timeout=20) as http_client:
+    async with httpx.AsyncClient(timeout=20, trust_env=False) as http_client:
         bundle_response = await http_client.get(
             f"{base_url}/remote/worker-bundle.tgz"
         )

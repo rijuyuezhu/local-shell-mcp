@@ -275,7 +275,9 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert invite["join_url"] == f"{base_url}/join"
         assert "curl -fsSL" in invite["command"]
 
-        async with httpx.AsyncClient(timeout=10) as http_client:
+        async with httpx.AsyncClient(
+            timeout=10, trust_env=False
+        ) as http_client:
             join_response = await http_client.get(invite["join_url"])
         join_response.raise_for_status()
         join_script = join_response.text
@@ -308,7 +310,9 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "-m local_shell_mcp.remote_worker" in join_script
         assert "python3 -m local_shell_mcp.main worker" not in join_script
 
-        async with httpx.AsyncClient(timeout=20) as http_client:
+        async with httpx.AsyncClient(
+            timeout=20, trust_env=False
+        ) as http_client:
             bundle_response = await http_client.get(
                 f"{base_url}/remote/worker-bundle.tgz"
             )
@@ -501,7 +505,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
             remote_download_source.write_text(
                 "changed after link creation", encoding="utf-8"
             )
-            async with httpx.AsyncClient() as download_client:
+            async with httpx.AsyncClient(trust_env=False) as download_client:
                 download_response = await download_client.get(
                     remote_link["url"]
                 )

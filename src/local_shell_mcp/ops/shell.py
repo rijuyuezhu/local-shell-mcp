@@ -938,6 +938,25 @@ def _use_conpty_persistent_shell_backend() -> bool:
     return os.name == "nt"
 
 
+async def _cleanup_failed_tmux_start(shell_id: str) -> None:
+    """Kill a newly created tmux session despite creator cancellation."""
+    cleanup = asyncio.create_task(
+        tmux(["kill-session", "-t", f"={shell_id}"], timeout_s=5)
+    )
+    while not cleanup.done():
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            continue
+    result = cleanup.result()
+    if not result.ok and not _tmux_server_absent(result):
+        raise RuntimeError(
+            result.stderr
+            or result.stdout
+            or f"failed to clean up persistent shell {shell_id}"
+        )
+
+
 async def _start_persistent_shell_locked(
     cwd: str = ".",
     name: str | None = None,
@@ -1002,46 +1021,51 @@ async def _start_persistent_shell_locked(
     result = await tmux(cmd)
     if not result.ok:
         raise RuntimeError(result.stderr or result.stdout)
-    if owner_session_id is not None:
-        owner_result = await tmux(
-            [
-                "set-option",
-                "-t",
-                shell_id,
-                _TMUX_OWNER_OPTION,
-                owner_session_id,
-            ],
-            timeout_s=5,
-        )
-        if not owner_result.ok:
-            with contextlib.suppress(Exception):
-                await tmux(["kill-session", "-t", f"={shell_id}"], timeout_s=5)
-            raise RuntimeError(owner_result.stderr or owner_result.stdout)
-    if command is None:
-        alive = await tmux(["has-session", "-t", f"={shell_id}"], timeout_s=5)
-        if not alive.ok:
-            with contextlib.suppress(Exception):
-                await tmux(["kill-session", "-t", f"={shell_id}"], timeout_s=5)
-            detail = (alive.stderr or alive.stdout).strip()
-            message = (
-                f"Persistent shell session exited during startup: {shell_id}"
+    try:
+        if owner_session_id is not None:
+            owner_result = await tmux(
+                [
+                    "set-option",
+                    "-t",
+                    shell_id,
+                    _TMUX_OWNER_OPTION,
+                    owner_session_id,
+                ],
+                timeout_s=5,
             )
-            if detail:
-                message += f" ({detail})"
-            raise RuntimeError(message)
-    audit(
-        "start_persistent_shell",
-        shell_id=shell_id,
-        cwd=str(resolved_cwd),
-        command=initial,
-        backend="tmux",
-    )
-    return StartPersistentShellOutput(
-        shell_id=shell_id,
-        cwd=relative_display(resolved_cwd),
-        command=initial,
-        backend="tmux",
-    )
+            if not owner_result.ok:
+                raise RuntimeError(owner_result.stderr or owner_result.stdout)
+        if command is None:
+            alive = await tmux(
+                ["has-session", "-t", f"={shell_id}"], timeout_s=5
+            )
+            if not alive.ok:
+                detail = (alive.stderr or alive.stdout).strip()
+                message = f"Persistent shell session exited during startup: {shell_id}"
+                if detail:
+                    message += f" ({detail})"
+                raise RuntimeError(message)
+        audit(
+            "start_persistent_shell",
+            shell_id=shell_id,
+            cwd=str(resolved_cwd),
+            command=initial,
+            backend="tmux",
+        )
+        return StartPersistentShellOutput(
+            shell_id=shell_id,
+            cwd=relative_display(resolved_cwd),
+            command=initial,
+            backend="tmux",
+        )
+    except BaseException:
+        try:
+            await _cleanup_failed_tmux_start(shell_id)
+        except Exception as cleanup_error:
+            raise RuntimeError(
+                f"persistent shell startup failed and cleanup was not confirmed: {shell_id}"
+            ) from cleanup_error
+        raise
 
 
 async def start_persistent_shell_execute(

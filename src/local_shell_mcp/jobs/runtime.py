@@ -219,13 +219,23 @@ def _remove_attempt_files(job_id: str, keep_attempt: int | None = None) -> None:
             path.unlink()
 
 
+def _job_is_retention_terminal(job: dict[str, Any]) -> bool:
+    """Return whether one row is safe to evict as completed history."""
+    status = str(job.get("status") or "")
+    return status in TERMINAL_STATUSES and not (
+        str(job.get("kind") or "shell") == "shell"
+        and status == "lost"
+        and not bool(job.get("shell_absence_confirmed"))
+    )
+
+
 def _prune_store(store: dict[str, Any]) -> None:
     """Bound retained terminal jobs while never deleting active operations."""
     jobs = [row for row in store.get("jobs", []) if isinstance(row, dict)]
     max_jobs = max(0, int(get_settings().max_jobs))
-    active = [row for row in jobs if row.get("status") not in TERMINAL_STATUSES]
+    active = [row for row in jobs if not _job_is_retention_terminal(row)]
     finished = sorted(
-        (row for row in jobs if row.get("status") in TERMINAL_STATUSES),
+        (row for row in jobs if _job_is_retention_terminal(row)),
         key=lambda row: float(
             row.get("updated_at") or row.get("created_at") or 0
         ),
@@ -652,6 +662,7 @@ def _apply_status_payload(
             "output_bytes": int(status_payload.get("output_bytes") or 0),
         }
     )
+    job.pop("shell_absence_confirmed", None)
     _clear_job_operation(job)
     return job
 
@@ -716,6 +727,29 @@ def _refresh_job_status(
 ) -> dict[str, Any]:
     """Apply durable completion and authoritative live-shell reconciliation."""
     status = str(job.get("status") or "unknown")
+    kind = str(job.get("kind") or "shell")
+    if status == "lost" and kind == "shell":
+        updated = now or _utc()
+        status_payload = _read_status(job)
+        if status_payload is not None:
+            return _apply_status_payload(job, status_payload, updated)
+        if active_shells is None:
+            return job
+        shell_id = _job_shell_id(job)
+        if shell_id and shell_id in active_shells:
+            job.pop("shell_absence_confirmed", None)
+            job.update(
+                {
+                    "status": "running",
+                    "updated_at": updated,
+                    "completed_at": None,
+                    "exit_code": None,
+                    "error": "recovered a lost job whose shell is still active",
+                }
+            )
+        else:
+            job["shell_absence_confirmed"] = True
+        return job
     if status not in ACTIVE_STATUSES:
         return job
 
@@ -859,6 +893,7 @@ def _refresh_job_status(
             "completed_at": updated,
             "exit_code": None,
             "error": "job shell exited without a durable completion record",
+            "shell_absence_confirmed": True,
         }
     )
     return job
@@ -1517,14 +1552,26 @@ async def job_tail_execute(
                         and _job_shell_id(current) == shell_id
                     ):
                         completed = _utc()
-                        current.update(
-                            {
-                                "status": "lost",
-                                "updated_at": completed,
-                                "completed_at": completed,
-                                "error": str(exc),
-                            }
-                        )
+                        if shell_id in active:
+                            current.update(
+                                {
+                                    "updated_at": completed,
+                                    "error": (
+                                        "persistent shell output capture failed: "
+                                        f"{exc}"
+                                    ),
+                                }
+                            )
+                        else:
+                            current.update(
+                                {
+                                    "status": "lost",
+                                    "updated_at": completed,
+                                    "completed_at": completed,
+                                    "error": str(exc),
+                                    "shell_absence_confirmed": True,
+                                }
+                            )
                     public = _public_job(current)
 
     message = None

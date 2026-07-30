@@ -344,9 +344,14 @@ class ToolSessionStore:
             session_id = _valid_session_id(job.get("session_id"))
             status = str(job.get("status") or "")
             kind = str(job.get("kind") or "shell")
+            protective_status = status in ACTIVE_JOB_STATUSES or (
+                kind == "shell"
+                and status == "lost"
+                and not bool(job.get("shell_absence_confirmed"))
+            )
             if (
                 session_id is not None
-                and status in ACTIVE_JOB_STATUSES
+                and protective_status
                 and (
                     kind != "managed"
                     or str(job.get("runtime_instance_id") or "")

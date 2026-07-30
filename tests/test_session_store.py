@@ -441,6 +441,66 @@ def test_expired_session_with_active_job_is_preserved(tmp_path, monkeypatch):
     assert store.require_session(session.session_id) == session
 
 
+def test_expired_session_with_unconfirmed_lost_shell_job_is_preserved(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": "job_lost",
+                    "kind": "shell",
+                    "session_id": session.session_id,
+                    "shell_id": "shell_unknown",
+                    "status": "lost",
+                }
+            ],
+        },
+    )
+
+    assert store.require_session(session.session_id) == session
+
+
+def test_confirmed_absent_lost_shell_job_does_not_block_expiry(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": "job_lost",
+                    "kind": "shell",
+                    "session_id": session.session_id,
+                    "shell_id": "shell_missing",
+                    "status": "lost",
+                    "shell_absence_confirmed": True,
+                }
+            ],
+        },
+    )
+
+    with pytest.raises(ExpiredAgentSessionError):
+        store.require_session(session.session_id)
+
+
 @pytest.mark.parametrize("primary_state", ["missing", "corrupt"])
 def test_active_job_backup_protects_expired_session(
     tmp_path, monkeypatch, primary_state

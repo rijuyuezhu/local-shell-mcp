@@ -99,7 +99,7 @@ In the Docker image, the entrypoint normally creates a non-root `agent` user at 
 
 ## Bounded command containment
 
-On Linux, bounded non-interactive shell commands enable child-subreaper mode so orphaned descendants are adopted, found, terminated, and reaped before the tool returns. The runner prefers `/proc/<pid>/task/<pid>/children` and falls back to an authoritative PPid graph built from numeric `/proc/<pid>/status` entries when that optional children file is absent. If both procfs enumeration paths are unreadable or malformed, execution fails closed before launch or during cleanup rather than treating the child set as empty. On macOS and supported BSD hosts, the runner gates the child before `exec` and registers `EVFILT_PROC` with `NOTE_TRACK`, allowing the kernel to track descendants across `fork()` even if they create a new session or process group. A process group is used as an additional cleanup layer, not as the containment boundary. If neither descendant-tracking mechanism can be established, or kernel tracking reports `NOTE_TRACKERR`, command-mode `bash` fails closed with exit code `125`.
+On Linux, bounded non-interactive shell commands enable child-subreaper mode so orphaned descendants are adopted, found, terminated, and reaped before the tool returns. The runner prefers `/proc/<pid>/task/<pid>/children` and falls back to an authoritative PPid graph built from numeric `/proc/<pid>/status` entries when that optional children file is absent. A descendant that disappears between parent enumeration and recursive inspection is treated as reaped, while an unreadable live process remains uncertain. If both procfs enumeration paths are unreadable or malformed, execution fails closed before launch or during cleanup rather than treating the child set as empty. On macOS and supported BSD hosts, the runner gates the child before `exec` and registers `EVFILT_PROC` with `NOTE_TRACK`, allowing the kernel to track descendants across `fork()` even if they create a new session or process group. A process group is used as an additional cleanup layer, not as the containment boundary. If neither descendant-tracking mechanism can be established, or kernel tracking reports `NOTE_TRACKERR`, command-mode `bash` fails closed with exit code `125`.
 
 ## Raw terminal streaming
 
@@ -119,6 +119,11 @@ nodes/canvas output, and no navigable OSC 8 links. Closing a raw attachment
 releases only that bridge and deliberately leaves the persistent tmux/ConPTY
 shell alive. See [Human interface](guides/human-interface.md#terminals) for the
 protocol and resource limits.
+
+For session-owned PTY creation, tmux ownership tagging and startup validation
+form one cleanup domain after `new-session` succeeds. Cancellation or any other
+failure before initialization completes kills the newly created session before
+the request exits, preventing an untagged shell from escaping session teardown.
 
 ## Browser Human UI policy
 
@@ -173,7 +178,7 @@ While a current-process managed job is active and lacks a durable completion rec
 
 Session pruning reads the durable job registry with the same primary-then-backup recovery rule used by the job runtime. A valid `jobs.json.bak` continues to protect active job sessions when the primary is missing or invalid; if neither copy can be trusted, pruning remains conservative rather than declaring the active-job set empty.
 
-Session teardown reads the complete durable job set and treats `lost` shell jobs as unconfirmed until authoritative shell inventory either permits another stop attempt or proves the shell absent. Tagged persistent-shell discovery is also three-state: a successful query or a confirmed absent tmux server is authoritative, while backend resolution, permission, timeout, and other inventory failures preserve the session metadata and fail teardown closed.
+Session teardown and session/job-store pruning read the complete durable job set and treat `lost` shell jobs as unconfirmed until authoritative shell inventory either recovers the live job or proves the shell absent. Transient output-capture failure does not mark an authoritatively live shell job terminal, and unconfirmed `lost` rows remain protected from both job-history eviction and session retention/capacity pruning. Tagged persistent-shell discovery is also three-state: a successful query or a confirmed absent tmux server is authoritative, while backend resolution, permission, timeout, and other inventory failures preserve the session metadata and fail teardown closed.
 
 File snapshot metadata includes a durable insertion sequence in addition to its timestamp. Count and byte pruning order by both values so two snapshots created at the same clock value still retain the later insertion deterministically; legacy rows receive migration sequences when loaded.
 

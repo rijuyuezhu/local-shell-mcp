@@ -555,6 +555,39 @@ def test_job_store_retention_keeps_active_and_newest_finished(
     assert all(path.exists() for path in new_paths.values())
 
 
+def test_job_store_retention_keeps_unconfirmed_lost_shell(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch, max_jobs=1)
+    store = {
+        "version": jobs_ops.JOB_STORE_VERSION,
+        "jobs": [
+            {
+                "job_id": "lost-live",
+                "kind": "shell",
+                "status": "lost",
+                "shell_id": "shell-unknown",
+                "created_at": 1.0,
+                "updated_at": 1.0,
+            },
+            {
+                "job_id": "finished",
+                "kind": "shell",
+                "status": "succeeded",
+                "shell_absence_confirmed": True,
+                "created_at": 2.0,
+                "updated_at": 2.0,
+            },
+        ],
+    }
+
+    jobs_ops._save_store(store)
+
+    assert [row["job_id"] for row in jobs_ops._load_store()["jobs"]] == [
+        "lost-live"
+    ]
+
+
 @pytest.mark.asyncio
 async def test_job_start_failure_is_persisted_as_failed(tmp_path, monkeypatch):
     _configure_job_state(tmp_path, monkeypatch)
@@ -1589,6 +1622,128 @@ async def test_job_tail_preserves_running_state_when_inventory_is_uncertain(
 
     assert result.job.status == "running"
     assert jobs_ops._load_store()["jobs"][0]["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_job_tail_preserves_running_state_when_live_shell_capture_fails(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session(str(tmp_path))
+    row = {
+        "job_id": "job_running",
+        "kind": "shell",
+        "name": "running",
+        "status": "running",
+        "command": "sleep 60",
+        "cwd": str(tmp_path),
+        "session_id": session_id,
+        "shell_id": "shell_running",
+        "log_path": str(tmp_path / "missing.log"),
+        "created_at": 1.0,
+        "updated_at": 1.0,
+        "attempts": 1,
+    }
+    jobs_ops._save_store({"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]})
+
+    async def live_inventory():
+        return {"shell_running"}
+
+    async def failed_tail(_shell_id: str, _lines: int):
+        raise RuntimeError("temporary shell backend failure")
+
+    monkeypatch.setattr(
+        jobs_ops,
+        "authoritative_persistent_shell_ids_execute",
+        live_inventory,
+    )
+    monkeypatch.setattr(
+        jobs_ops, "read_persistent_shell_output_execute", failed_tail
+    )
+
+    result = await jobs_ops.job_tail_execute(session_id, "job_running")
+    stored = jobs_ops._load_store()["jobs"][0]
+
+    assert result.job.status == "running"
+    assert stored["status"] == "running"
+    assert "capture failed" in stored["error"]
+    assert "shell_absence_confirmed" not in stored
+
+
+@pytest.mark.asyncio
+async def test_job_tail_marks_lost_only_after_authoritative_shell_absence(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session(str(tmp_path))
+    row = {
+        "job_id": "job_running",
+        "kind": "shell",
+        "name": "running",
+        "status": "running",
+        "command": "sleep 60",
+        "cwd": str(tmp_path),
+        "session_id": session_id,
+        "shell_id": "shell_running",
+        "log_path": str(tmp_path / "missing.log"),
+        "created_at": 1.0,
+        "updated_at": 1.0,
+        "attempts": 1,
+    }
+    jobs_ops._save_store({"version": jobs_ops.JOB_STORE_VERSION, "jobs": [row]})
+
+    async def absent_inventory():
+        return set()
+
+    async def failed_tail(_shell_id: str, _lines: int):
+        raise RuntimeError("shell disappeared")
+
+    monkeypatch.setattr(
+        jobs_ops,
+        "authoritative_persistent_shell_ids_execute",
+        absent_inventory,
+    )
+    monkeypatch.setattr(
+        jobs_ops, "read_persistent_shell_output_execute", failed_tail
+    )
+
+    result = await jobs_ops.job_tail_execute(session_id, "job_running")
+    stored = jobs_ops._load_store()["jobs"][0]
+
+    assert result.job.status == "lost"
+    assert stored["status"] == "lost"
+    assert stored["shell_absence_confirmed"] is True
+
+
+def test_refresh_lost_shell_job_recovers_live_shell():
+    row = {
+        "job_id": "job_lost",
+        "kind": "shell",
+        "status": "lost",
+        "shell_id": "shell_live",
+        "completed_at": 2.0,
+        "error": "capture failed",
+    }
+
+    refreshed = jobs_ops._refresh_job_status(row, {"shell_live"}, now=3.0)
+
+    assert refreshed["status"] == "running"
+    assert refreshed["completed_at"] is None
+    assert "shell_absence_confirmed" not in refreshed
+
+
+def test_refresh_lost_shell_job_records_authoritative_absence():
+    row = {
+        "job_id": "job_lost",
+        "kind": "shell",
+        "status": "lost",
+        "shell_id": "shell_missing",
+    }
+
+    refreshed = jobs_ops._refresh_job_status(row, set(), now=3.0)
+
+    assert refreshed["status"] == "lost"
+    assert refreshed["shell_absence_confirmed"] is True
 
 
 @pytest.mark.asyncio
