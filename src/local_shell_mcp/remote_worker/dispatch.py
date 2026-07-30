@@ -449,6 +449,16 @@ async def _secret_scan(args: dict[str, Any]) -> Any:
     )
 
 
+def _transfer_session_id(
+    args: dict[str, Any],
+    *,
+    session_key: str = "session_id",
+    workdir_key: str = "workdir",
+) -> Any:
+    """Prefer an immutable workdir binding over a mutable worker session id."""
+    return None if args.get(workdir_key) is not None else args.get(session_key)
+
+
 async def _transfer_stat(args: dict[str, Any]) -> Any:
     from local_shell_mcp.ops.transfer import transfer_stat
 
@@ -456,7 +466,8 @@ async def _transfer_stat(args: dict[str, Any]) -> Any:
         transfer_stat,
         str(args["path"]),
         bool(args.get("sha256", True)),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
     )
 
 
@@ -469,8 +480,18 @@ async def _transfer_copy_file(args: dict[str, Any]) -> Any:
         str(args["destination_path"]),
         bool(args.get("overwrite", True)),
         args.get("chunk_size"),
-        source_session_id=args.get("source_session_id"),
-        destination_session_id=args.get("destination_session_id"),
+        source_session_id=_transfer_session_id(
+            args,
+            session_key="source_session_id",
+            workdir_key="source_workdir",
+        ),
+        destination_session_id=_transfer_session_id(
+            args,
+            session_key="destination_session_id",
+            workdir_key="destination_workdir",
+        ),
+        source_workdir=args.get("source_workdir"),
+        destination_workdir=args.get("destination_workdir"),
     )
 
 
@@ -482,7 +503,8 @@ async def _transfer_read_chunk(args: dict[str, Any]) -> Any:
         str(args["path"]),
         int(args.get("offset") or 0),
         args.get("chunk_size"),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
     )
 
 
@@ -494,7 +516,8 @@ async def _transfer_begin_write(args: dict[str, Any]) -> Any:
         str(args["path"]),
         bool(args.get("overwrite", True)),
         args.get("expected_bytes"),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
     )
 
 
@@ -508,7 +531,8 @@ async def _transfer_write_chunk(args: dict[str, Any]) -> Any:
         int(args["offset"]),
         str(args["data_b64"]),
         args.get("expected_sha256"),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
     )
 
 
@@ -521,7 +545,8 @@ async def _transfer_finish_write(args: dict[str, Any]) -> Any:
         str(args["transfer_id"]),
         args.get("expected_bytes"),
         args.get("expected_sha256"),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
     )
 
 
@@ -532,7 +557,8 @@ async def _transfer_abort_write(args: dict[str, Any]) -> Any:
         transfer_abort_write,
         str(args["path"]),
         str(args["transfer_id"]),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
     )
 
 
@@ -553,7 +579,8 @@ async def _transfer_pack_dir(args: dict[str, Any]) -> Any:
         transfer_pack_dir,
         str(args["path"]),
         str(args.get("compression") or "gz"),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
     )
 
 
@@ -566,7 +593,8 @@ async def _transfer_unpack_archive(args: dict[str, Any]) -> Any:
         str(args["dst_path"]),
         bool(args.get("overwrite", True)),
         bool(args.get("cleanup_archive", True)),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
     )
 
 
@@ -582,7 +610,8 @@ async def _transfer_http_upload(args: dict[str, Any]) -> Any:
     return await asyncio.to_thread(
         upload_file,
         path=str(args["path"]),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
         url=str(args["url"]),
         controller_url=str(args["controller_url"]),
         authorization=str(args["authorization"]),
@@ -600,7 +629,8 @@ async def _transfer_http_download(args: dict[str, Any]) -> Any:
     return await asyncio.to_thread(
         download_file,
         path=str(args["path"]),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
         url=str(args["url"]),
         controller_url=str(args["controller_url"]),
         authorization=str(args["authorization"]),
@@ -620,7 +650,8 @@ async def _transfer_http_abort_download(args: dict[str, Any]) -> Any:
     return await asyncio.to_thread(
         abort_download,
         path=str(args["path"]),
-        session_id=args.get("session_id"),
+        session_id=_transfer_session_id(args),
+        workdir=args.get("workdir"),
         transfer_id=str(args["transfer_id"]),
     )
 

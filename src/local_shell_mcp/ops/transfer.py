@@ -91,12 +91,25 @@ def _resolve_transfer_path(
     *,
     must_exist: bool = False,
     session_id: str | None = None,
+    workdir: str | None = None,
     allow_temp: bool = True,
 ) -> Path:
     """Resolve one readable user/session path, allowing internal scratch paths."""
+    if session_id is not None and workdir is not None:
+        raise ValueError("session_id and workdir are mutually exclusive")
     if session_id is not None:
         session = get_tool_session_store().touch_session(session_id)
         return resolve_session_path(session, path, must_exist=must_exist)
+    if workdir is not None:
+        base = resolve_path(workdir, must_exist=True)
+        raw = Path(path)
+        candidate = raw if raw.is_absolute() else base / raw
+        resolved = resolve_path(candidate, must_exist=must_exist)
+        try:
+            resolved.relative_to(base)
+        except ValueError as exc:
+            raise ValueError(f"Path escapes session workdir: {path}") from exc
+        return resolved
     try:
         return resolve_path(path, must_exist=must_exist)
     except ValueError:
@@ -109,9 +122,12 @@ def _resolve_transfer_destination(
     path: str | Path,
     *,
     session_id: str | None = None,
+    workdir: str | None = None,
     allow_temp: bool = True,
 ) -> Path:
     """Resolve a destination without following its final directory entry."""
+    if session_id is not None and workdir is not None:
+        raise ValueError("session_id and workdir are mutually exclusive")
     if session_id is not None:
         session = get_tool_session_store().touch_session(session_id)
         return resolve_session_path(
@@ -119,6 +135,16 @@ def _resolve_transfer_destination(
             path,
             follow_final_symlink=False,
         )
+    if workdir is not None:
+        base = resolve_path(workdir, must_exist=True)
+        raw = Path(path)
+        candidate = raw if raw.is_absolute() else base / raw
+        resolved = resolve_path(candidate, follow_final_symlink=False)
+        try:
+            resolved.parent.relative_to(base)
+        except ValueError as exc:
+            raise ValueError(f"Path escapes session workdir: {path}") from exc
+        return resolved
     try:
         return resolve_path(path, follow_final_symlink=False)
     except ValueError:
@@ -128,11 +154,15 @@ def _resolve_transfer_destination(
 
 
 def transfer_stat(
-    path: str, sha256: bool = True, *, session_id: str | None = None
+    path: str,
+    sha256: bool = True,
+    *,
+    session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferStatOutput:
     """Return transfer metadata for one workspace or session path."""
     source = _resolve_transfer_path(
-        path, must_exist=True, session_id=session_id
+        path, must_exist=True, session_id=session_id, workdir=workdir
     )
     source_stat = source.stat()
     if source.is_file():
@@ -164,10 +194,11 @@ def transfer_read_chunk(
     chunk_size: int | None = None,
     *,
     session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferReadChunkOutput:
     """Read one bounded binary chunk and encode it for transport."""
     source = _resolve_transfer_path(
-        path, must_exist=True, session_id=session_id
+        path, must_exist=True, session_id=session_id, workdir=workdir
     )
     if not source.is_file():
         raise IsADirectoryError(str(source))
@@ -443,16 +474,20 @@ def transfer_copy_file(
     *,
     source_session_id: str | None = None,
     destination_session_id: str | None = None,
+    source_workdir: str | None = None,
+    destination_workdir: str | None = None,
 ) -> TransferCopyFileOutput:
     """Stream a file within one worker and atomically publish the destination."""
     source = _resolve_transfer_path(
         source_path,
         must_exist=True,
         session_id=source_session_id,
+        workdir=source_workdir,
     )
     destination = _resolve_transfer_destination(
         destination_path,
         session_id=destination_session_id,
+        workdir=destination_workdir,
     )
     limit = normalize_chunk_size(chunk_size)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -585,9 +620,12 @@ def transfer_begin_write(
     transfer_id: str | None = None,
     *,
     session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferBeginWriteOutput:
     """Create or safely resume a private transactional chunked write."""
-    destination = _resolve_transfer_destination(path, session_id=session_id)
+    destination = _resolve_transfer_destination(
+        path, session_id=session_id, workdir=workdir
+    )
     expected = None if expected_bytes is None else int(expected_bytes)
     if expected is not None and expected < 0:
         raise ValueError("expected_bytes must be >= 0")
@@ -681,9 +719,12 @@ def transfer_write_bytes(
     expected_sha256: str | None = None,
     *,
     session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferWriteChunkOutput:
     """Write one raw validated chunk into an active transactional destination."""
-    destination = _resolve_transfer_destination(path, session_id=session_id)
+    destination = _resolve_transfer_destination(
+        path, session_id=session_id, workdir=workdir
+    )
     temporary = _transfer_temp_path(destination, transfer_id)
     start = int(offset)
     if start < 0:
@@ -726,6 +767,7 @@ def transfer_write_chunk(
     expected_sha256: str | None = None,
     *,
     session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferWriteChunkOutput:
     """Decode and write one validated chunk from the JSON control channel."""
     try:
@@ -739,6 +781,7 @@ def transfer_write_chunk(
         data,
         expected_sha256,
         session_id=session_id,
+        workdir=workdir,
     )
 
 
@@ -749,9 +792,12 @@ def transfer_finish_write(
     expected_sha256: str | None = None,
     *,
     session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferFinishWriteOutput:
     """Validate and atomically publish a completed chunked write."""
-    destination = _resolve_transfer_destination(path, session_id=session_id)
+    destination = _resolve_transfer_destination(
+        path, session_id=session_id, workdir=workdir
+    )
     temporary = _transfer_temp_path(destination, transfer_id)
     metadata_path = _transfer_metadata_path(temporary)
     with path_locks([destination, temporary]):
@@ -813,10 +859,16 @@ def transfer_finish_write(
 
 
 def transfer_abort_write(
-    path: str, transfer_id: str, *, session_id: str | None = None
+    path: str,
+    transfer_id: str,
+    *,
+    session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferAbortWriteOutput:
     """Abort an active chunked write and remove its private state."""
-    destination = _resolve_transfer_destination(path, session_id=session_id)
+    destination = _resolve_transfer_destination(
+        path, session_id=session_id, workdir=workdir
+    )
     temporary = _transfer_temp_path(destination, transfer_id)
     metadata_path = _transfer_metadata_path(temporary)
     deleted = False
@@ -881,14 +933,18 @@ def transfer_delete_temp_path(path: str) -> TransferDeleteTempPathOutput:
 
 
 def transfer_pack_dir(
-    path: str, compression: str = "gz", *, session_id: str | None = None
+    path: str,
+    compression: str = "gz",
+    *,
+    session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferPackDirOutput:
     """Pack a directory into a bounded temporary archive for transfer."""
     prune_temp_dir(minimum_age_s=_TRANSFER_TMP_PRUNE_MINIMUM_AGE_S)
     if compression not in {"gz", "none"}:
         raise ValueError("compression must be 'gz' or 'none'")
     source = _resolve_transfer_path(
-        path, must_exist=True, session_id=session_id
+        path, must_exist=True, session_id=session_id, workdir=workdir
     )
     if not source.is_dir():
         raise NotADirectoryError(str(source))
@@ -971,12 +1027,15 @@ def transfer_unpack_archive(
     cleanup_archive: bool = True,
     *,
     session_id: str | None = None,
+    workdir: str | None = None,
 ) -> TransferUnpackArchiveOutput:
     """Validate in staging and transactionally replace a directory destination."""
     archive = _resolve_transfer_path(archive_path, must_exist=True)
     if not archive.is_file():
         raise FileNotFoundError(str(archive))
-    destination = _resolve_transfer_destination(dst_path, session_id=session_id)
+    destination = _resolve_transfer_destination(
+        dst_path, session_id=session_id, workdir=workdir
+    )
     destination.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
         tempfile.mkdtemp(
