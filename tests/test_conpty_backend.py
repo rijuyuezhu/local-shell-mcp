@@ -145,6 +145,91 @@ async def test_conpty_spawn_failure_releases_shell_lease(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_conpty_spawn_cancellation_waits_and_closes_process(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    spawn_started = threading.Event()
+    allow_spawn = threading.Event()
+    process = FakePty()
+
+    def delayed_spawn(*_args):
+        spawn_started.set()
+        if not allow_spawn.wait(2):
+            raise RuntimeError("spawn was not released")
+        return process
+
+    monkeypatch.setattr(conpty, "_spawn_pty", delayed_spawn)
+    task = asyncio.create_task(
+        conpty.start_shell(
+            shell_id="cancelled-shell", cwd=tmp_path, command=None
+        )
+    )
+    assert await asyncio.to_thread(spawn_started.wait, 2)
+
+    task.cancel()
+    await asyncio.sleep(0)
+    assert task.done() is False
+    allow_spawn.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert process.closed is True
+    assert process.close_calls[-1] is True
+    assert conpty.has_session("cancelled-shell") is False
+    assert conpty.authoritative_shell_ids() == set()
+
+
+@pytest.mark.asyncio
+async def test_conpty_spawn_cancellation_keeps_uncertain_cleanup_visible(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    spawn_started = threading.Event()
+    allow_spawn = threading.Event()
+    process = FakePty()
+    process.close_errors.append(RuntimeError("close failed"))
+
+    def delayed_spawn(*_args):
+        spawn_started.set()
+        if not allow_spawn.wait(2):
+            raise RuntimeError("spawn was not released")
+        return process
+
+    monkeypatch.setattr(conpty, "_spawn_pty", delayed_spawn)
+    task = asyncio.create_task(
+        conpty.start_shell(
+            shell_id="cancelled-cleanup-uncertain",
+            cwd=tmp_path,
+            command=None,
+        )
+    )
+    assert await asyncio.to_thread(spawn_started.wait, 2)
+
+    task.cancel()
+    allow_spawn.set()
+
+    with pytest.raises(
+        conpty.ConPtyCleanupUncertainError,
+        match="cleanup was not confirmed",
+    ):
+        await task
+
+    assert conpty.has_session("cancelled-cleanup-uncertain") is True
+    assert conpty.authoritative_shell_ids() == {"cancelled-cleanup-uncertain"}
+
+    killed = await conpty.kill_shell("cancelled-cleanup-uncertain")
+    assert killed.killed is True
+    assert conpty.has_session("cancelled-cleanup-uncertain") is False
+    assert conpty.authoritative_shell_ids() == set()
+
+
+@pytest.mark.asyncio
 async def test_conpty_persistent_shell_and_raw_attachment(
     monkeypatch, tmp_path
 ):

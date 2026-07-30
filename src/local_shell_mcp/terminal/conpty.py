@@ -561,16 +561,28 @@ async def start_shell(
     initial = initial_command(command)
     args = _persistent_shell_args(command)
     lease = _ConPtyShellLease(shell_id)
+    cancelled: asyncio.CancelledError | None = None
     try:
         await asyncio.to_thread(lease.acquire)
-        try:
-            process = await asyncio.to_thread(
+        spawn_task = asyncio.create_task(
+            asyncio.to_thread(
                 _spawn_pty,
                 args,
                 cwd,
                 CONPTY_DEFAULT_COLUMNS,
                 CONPTY_DEFAULT_ROWS,
             )
+        )
+        try:
+            process = await asyncio.shield(spawn_task)
+        except asyncio.CancelledError as exc:
+            cancelled = exc
+            while not spawn_task.done():
+                try:
+                    await asyncio.shield(spawn_task)
+                except asyncio.CancelledError:
+                    continue
+            process = spawn_task.result()
         except FileNotFoundError as exc:
             raise process_start_not_found_error(
                 exc,
@@ -600,6 +612,22 @@ async def start_shell(
         raise RuntimeError(
             f"Persistent shell session already exists: {shell_id}"
         )
+    if cancelled is not None:
+        cleanup_task = asyncio.create_task(
+            asyncio.to_thread(session.close, force=True)
+        )
+        while not cleanup_task.done():
+            try:
+                await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError:
+                continue
+        cleanup_error = cleanup_task.result()
+        if cleanup_error:
+            raise ConPtyCleanupUncertainError(
+                "ConPTY startup was cancelled and cleanup was not confirmed: "
+                f"{shell_id}: {cleanup_error}"
+            ) from cancelled
+        raise cancelled
     try:
         session.start_reader()
     except Exception as exc:
