@@ -845,8 +845,20 @@ class ToolSessionStore:
                 self._sessions[session_id] = updated
                 return updated
 
-    def reserve_persistent_shell(self, session_id: str, shell_id: str) -> bool:
-        """Durably reserve one shell id and report whether this call added it."""
+    def reserve_persistent_shell(
+        self,
+        session_id: str,
+        shell_id: str,
+        *,
+        exclusive: bool = False,
+    ) -> bool:
+        """Durably reserve one shell id and report whether this call added it.
+
+        Exclusive reservations reject ownership already recorded by another
+        session. Persistent-shell admission holds its cross-process lock while
+        using this mode, so the check and subsequent backend spawn are globally
+        serialized.
+        """
         normalized_shell_id = str(shell_id).strip()
         if not normalized_shell_id:
             raise ValueError("shell_id must not be empty")
@@ -860,6 +872,17 @@ class ToolSessionStore:
                     raise ValueError(
                         "persistent shells require a local session"
                     )
+                if exclusive:
+                    for other in self._read_all_sessions_locked().values():
+                        if (
+                            other.session_id != session_id
+                            and normalized_shell_id
+                            in other.persistent_shell_ids
+                        ):
+                            raise RuntimeError(
+                                "persistent shell id is already reserved by "
+                                f"another session: {normalized_shell_id}"
+                            )
                 if normalized_shell_id in session.persistent_shell_ids:
                     return False
                 updated = replace(

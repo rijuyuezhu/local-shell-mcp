@@ -1462,6 +1462,7 @@ async def _job_start_execute_unlocked(
                 str(resolved_cwd),
                 shell_name,
                 runner_command,
+                owner_session_id=session_id,
             )
         except Exception as exc:
             _remove_attempt_paths(paths)
@@ -2101,6 +2102,7 @@ async def _job_retry_execute_unlocked(
                 str(resolved_cwd),
                 shell_name,
                 runner_command,
+                owner_session_id=session_id,
             )
         except Exception as exc:
             _remove_attempt_paths(paths)

@@ -126,10 +126,16 @@ releases only that bridge and deliberately leaves the persistent tmux/ConPTY
 shell alive. See [Human interface](guides/human-interface.md#terminals) for the
 protocol and resource limits.
 
-For session-owned PTY creation, tmux ownership tagging and startup validation
-form one cleanup domain after `new-session` succeeds. Cancellation or any other
-failure before initialization completes kills the newly created session before
-the request exits, preventing an untagged shell from escaping session teardown.
+Persistent-shell admission is serialized per backend across server processes.
+Owner-bound tmux and ConPTY shells reserve globally unique durable ownership
+before backend creation. During tmux startup, reconciliation preserves the
+current in-flight reservation while the same admission lock is held;
+`new-session` and owner tagging remain one command sequence, and confirmed
+startup failure rolls back only that request's newly added reservation. ConPTY
+shells acquire a per-shell cross-process liveness lease before spawn and hold it
+through natural exit or explicit close, so peer processes share authoritative
+capacity/name state and process death releases the slot through the operating
+system.
 
 Session admission, retry, foreground shell/Python execution, synchronous copy,
 and teardown share deterministic per-session lifecycle locks. Each lock combines
@@ -191,7 +197,7 @@ While a current-process managed job is active and lacks a durable completion rec
 
 Session pruning reads the durable job registry with the same primary-then-backup recovery rule used by the job runtime. A valid `jobs.json.bak` continues to protect active job sessions when the primary is missing or invalid; if neither copy can be trusted, pruning remains conservative rather than declaring the active-job set empty. Expiry and capacity candidates are only hints: before deletion the store acquires the candidate session transaction and job-store lock, reloads current metadata and active work, and rechecks both eligibility and current overflow. A concurrent touch, PTY registration, or job admission therefore prevents stale-candidate deletion.
 
-Session teardown and session/job-store pruning read the complete durable job set and treat `lost` shell jobs as unconfirmed until authoritative shell inventory either recovers the live job or proves the shell absent. Transient output-capture failure does not mark an authoritatively live shell job terminal, and unconfirmed `lost` rows remain protected from both job-history eviction and session retention/capacity pruning. Tagged persistent-shell discovery is also three-state: a successful query or a confirmed absent tmux server is authoritative, while backend resolution, permission, timeout, and other inventory failures preserve the session metadata and fail teardown closed. Durable PTY ids are retention hints only; teardown reconciles one session's stored ids against the backend owner tag and kills only shells whose current owner still matches, so an unrelated shell that reuses a stale name is not terminated. ConPTY registries are process-local: their UI list never globally reconciles durable ownership, all durable ConPTY ids continue to count for conservative admission, and teardown fails closed when a durable owner id is absent from the current process registry rather than treating peer-owned shells as gone.
+Session teardown and session/job-store pruning read the complete durable job set and treat `lost` shell jobs as unconfirmed until authoritative shell inventory either recovers the live job or proves the shell absent. Transient output-capture failure does not mark an authoritatively live shell job terminal, and unconfirmed `lost` rows remain protected from both job-history eviction and session retention/capacity pruning. Tagged persistent-shell discovery is also three-state: a successful query or a confirmed absent tmux server is authoritative, while backend resolution, permission, timeout, and other inventory failures preserve the session metadata and fail teardown closed. Durable PTY ids are retention hints only; teardown reconciles one session's stored ids against the backend owner tag and kills only shells whose current owner still matches, so an unrelated shell that reuses a stale name is not terminated. ConPTY UI registries remain process-local, but backend admission and reconciliation use per-shell cross-process liveness leases as the authoritative inventory. A live peer lease protects capacity, ownership, and teardown; an unlocked stale lease permits durable metadata cleanup; lock-file I/O uncertainty remains fail closed.
 
 Stateful MCP initialization reserves capacity before entering the SDK. Reservation release runs as a single cancellation-shielded task: pending capacity is decremented under the creation lock before cancellation is propagated, and repeated cancellation cannot double-release or permanently consume a slot.
 

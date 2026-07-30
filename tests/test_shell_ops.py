@@ -115,10 +115,12 @@ async def test_persistent_shell_creation_is_serialized(monkeypatch):
         *,
         owner_session_id=None,
         shell_id=None,
+        preserve_shell_ids=None,
     ):
         nonlocal active, peak
         assert owner_session_id is None
         assert shell_id is None
+        assert preserve_shell_ids is None
         active += 1
         peak = max(peak, active)
         await asyncio.sleep(0.02)
@@ -140,11 +142,63 @@ async def test_persistent_shell_creation_is_serialized(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_persistent_shell_admission_reenters_only_in_same_task(
+    monkeypatch,
+):
+    gate = asyncio.Lock()
+    events: list[tuple[str, str]] = []
+    child_entered = asyncio.Event()
+
+    @contextlib.asynccontextmanager
+    async def fake_cross_process_lock(namespace: str, key: str):
+        async with gate:
+            events.append(("enter", f"{namespace}:{key}"))
+            try:
+                yield
+            finally:
+                events.append(("exit", f"{namespace}:{key}"))
+
+    async def child():
+        async with shell_ops._persistent_shell_admission_lock():
+            child_entered.set()
+
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops, "cross_process_lock", fake_cross_process_lock
+    )
+
+    async with (
+        shell_ops._persistent_shell_admission_lock(),
+        shell_ops._persistent_shell_admission_lock(),
+    ):
+        task = asyncio.create_task(child())
+        await asyncio.sleep(0)
+        assert not child_entered.is_set()
+
+    await task
+    assert events == [
+        ("enter", "persistent-shell-admission:tmux"),
+        ("exit", "persistent-shell-admission:tmux"),
+        ("enter", "persistent-shell-admission:tmux"),
+        ("exit", "persistent-shell-admission:tmux"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_owned_tmux_shell_is_reserved_before_backend_start(monkeypatch):
     events: list[tuple[str, str]] = []
 
     class FakeStore:
-        def reserve_persistent_shell(self, session_id: str, shell_id: str):
+        def reserve_persistent_shell(
+            self,
+            session_id: str,
+            shell_id: str,
+            *,
+            exclusive: bool = False,
+        ):
+            assert exclusive is True
             events.append(("reserve", f"{session_id}:{shell_id}"))
             return True
 
@@ -160,10 +214,12 @@ async def test_owned_tmux_shell_is_reserved_before_backend_start(monkeypatch):
         *,
         owner_session_id=None,
         shell_id=None,
+        preserve_shell_ids=None,
     ):
         assert (cwd, name, command) == (".", "owned", "echo ok")
         assert owner_session_id == "SESSION1"
         assert shell_id == "reserved-shell"
+        assert preserve_shell_ids is None
         events.append(("start", shell_id))
         return SimpleNamespace(shell_id=shell_id)
 
@@ -191,13 +247,151 @@ async def test_owned_tmux_shell_is_reserved_before_backend_start(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_owned_conpty_shell_uses_shared_admission_and_reservation(
+    monkeypatch,
+):
+    events: list[tuple[str, str]] = []
+
+    class FakeStore:
+        def reserve_persistent_shell(
+            self,
+            session_id: str,
+            shell_id: str,
+            *,
+            exclusive: bool = False,
+        ) -> bool:
+            assert exclusive is True
+            events.append(("reserve", f"{session_id}:{shell_id}"))
+            return True
+
+    @contextlib.asynccontextmanager
+    async def fake_cross_process_lock(namespace: str, key: str):
+        events.append(("lock-enter", f"{namespace}:{key}"))
+        try:
+            yield
+        finally:
+            events.append(("lock-exit", f"{namespace}:{key}"))
+
+    async def fake_start(
+        cwd=".",
+        name=None,
+        command=None,
+        *,
+        owner_session_id=None,
+        shell_id=None,
+    ):
+        assert (cwd, name, command) == (".", "owned", "echo ok")
+        assert owner_session_id == "SESSION1"
+        assert shell_id == "conpty-shell"
+        assert shell_ops._PERSISTENT_SHELL_PRESERVE_IDS.get() == frozenset(
+            {"conpty-shell"}
+        )
+        events.append(("start", shell_id))
+        return SimpleNamespace(shell_id=shell_id)
+
+    monkeypatch.setattr(shell_ops, "_PERSISTENT_SHELL_CREATION_LOCK", None)
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+    monkeypatch.setattr(
+        shell_ops, "_tmux_session_name", lambda _name: "conpty-shell"
+    )
+    monkeypatch.setattr(
+        shell_ops, "cross_process_lock", fake_cross_process_lock
+    )
+    monkeypatch.setattr(shell_ops, "get_tool_session_store", FakeStore)
+    monkeypatch.setattr(shell_ops, "_start_persistent_shell_locked", fake_start)
+
+    result = await shell_ops.start_persistent_shell_execute(
+        ".", "owned", "echo ok", owner_session_id="SESSION1"
+    )
+
+    assert result.shell_id == "conpty-shell"
+    assert events == [
+        (
+            "lock-enter",
+            "persistent-shell-admission:conpty",
+        ),
+        ("reserve", "SESSION1:conpty-shell"),
+        ("start", "conpty-shell"),
+        (
+            "lock-exit",
+            "persistent-shell-admission:conpty",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tmux_reconciliation_preserves_inflight_reservation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    assert store.reserve_persistent_shell(
+        session.session_id, "reserved-shell", exclusive=True
+    )
+
+    async def fake_tmux(args: list[str], timeout_s: int = 10):
+        _ = timeout_s
+        assert args[0] == "list-sessions"
+        return CommandResult(
+            ok=True,
+            exit_code=0,
+            timed_out=False,
+            duration_ms=1,
+            cwd=str(tmp_path),
+            command="tmux",
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "resolve_tmux",
+        lambda: SimpleNamespace(path="/usr/bin/tmux", source="system"),
+    )
+    monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+
+    token = shell_ops._PERSISTENT_SHELL_PRESERVE_IDS.set(
+        frozenset({"reserved-shell"})
+    )
+    try:
+        assert (
+            await shell_ops.authoritative_persistent_shell_ids_execute()
+            == set()
+        )
+    finally:
+        shell_ops._PERSISTENT_SHELL_PRESERVE_IDS.reset(token)
+
+    assert store.require_session(session.session_id).persistent_shell_ids == (
+        "reserved-shell",
+    )
+    assert await shell_ops.authoritative_persistent_shell_ids_execute() == set()
+    assert store.require_session(session.session_id).persistent_shell_ids == ()
+
+
+@pytest.mark.asyncio
 async def test_owned_tmux_shell_rolls_back_reservation_after_confirmed_failure(
     monkeypatch,
 ):
     events: list[tuple[str, str]] = []
 
     class FakeStore:
-        def reserve_persistent_shell(self, session_id: str, shell_id: str):
+        def reserve_persistent_shell(
+            self,
+            session_id: str,
+            shell_id: str,
+            *,
+            exclusive: bool = False,
+        ):
+            assert exclusive is True
             events.append(("reserve", f"{session_id}:{shell_id}"))
             return True
 
@@ -240,7 +434,14 @@ async def test_owned_tmux_shell_keeps_reservation_when_cleanup_is_uncertain(
     events: list[tuple[str, str]] = []
 
     class FakeStore:
-        def reserve_persistent_shell(self, session_id: str, shell_id: str):
+        def reserve_persistent_shell(
+            self,
+            session_id: str,
+            shell_id: str,
+            *,
+            exclusive: bool = False,
+        ):
+            assert exclusive is True
             events.append(("reserve", f"{session_id}:{shell_id}"))
             return True
 
@@ -288,7 +489,14 @@ async def test_owned_tmux_name_collision_preserves_existing_ownership(
     events: list[tuple[str, str]] = []
 
     class FakeStore:
-        def reserve_persistent_shell(self, session_id: str, shell_id: str):
+        def reserve_persistent_shell(
+            self,
+            session_id: str,
+            shell_id: str,
+            *,
+            exclusive: bool = False,
+        ):
+            assert exclusive is True
             events.append(("reserve", f"{session_id}:{shell_id}"))
             return reservation_added
 
@@ -297,7 +505,8 @@ async def test_owned_tmux_name_collision_preserves_existing_ownership(
         ) -> None:
             events.append(("release", f"{session_id}:{shell_id}"))
 
-    async def active_inventory():
+    async def active_inventory(*, preserve_shell_ids=None):
+        assert preserve_shell_ids == {"existing-shell"}
         return {"existing-shell"}
 
     async def unexpected_tmux(*_args, **_kwargs):
@@ -311,7 +520,7 @@ async def test_owned_tmux_name_collision_preserves_existing_ownership(
     )
     monkeypatch.setattr(
         shell_ops,
-        "authoritative_persistent_shell_ids_execute",
+        "_authoritative_persistent_shell_ids_locked",
         active_inventory,
     )
     monkeypatch.setattr(
@@ -375,7 +584,8 @@ shell_ops.shutil.which = lambda *_args, **_kwargs: "/bin/sh"
 shell_ops.check_command_policy = lambda _command: None
 shell_ops.relative_display = lambda _path: "."
 
-async def inventory():
+async def inventory(*, preserve_shell_ids=None):
+    assert preserve_shell_ids == set()
     if not active_path.exists():
         return set()
     return {
@@ -400,7 +610,7 @@ async def fake_tmux(args, timeout_s=10):
     await asyncio.sleep(0.2)
     return SimpleNamespace(ok=True, stdout="", stderr="")
 
-shell_ops.authoritative_persistent_shell_ids_execute = inventory
+shell_ops._authoritative_persistent_shell_ids_locked = inventory
 shell_ops.tmux = fake_tmux
 while not barrier_path.exists():
     time.sleep(0.01)
@@ -451,6 +661,136 @@ else:
                 process.wait(timeout=5)
 
 
+@pytest.mark.parametrize(
+    ("owner_bound", "names", "max_sessions", "error_text"),
+    [
+        (
+            False,
+            ("conpty-one", "conpty-two"),
+            1,
+            "Refusing to start more than 1 persistent shell",
+        ),
+        (
+            True,
+            ("shared-conpty", "shared-conpty"),
+            2,
+            "already reserved by another session",
+        ),
+    ],
+)
+def test_conpty_admission_is_shared_across_processes(
+    tmp_path,
+    monkeypatch,
+    owner_bound,
+    names,
+    max_sessions,
+    error_text,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_dir = tmp_path / ".state"
+    barrier_path = tmp_path / "start-both"
+    result_paths = [tmp_path / "result-one", tmp_path / "result-two"]
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS", str(max_sessions))
+    clear_settings_cache()
+
+    script = r"""
+import asyncio
+import time
+from pathlib import Path
+
+import local_shell_mcp.ops.shell as shell_ops
+import local_shell_mcp.terminal.conpty as conpty
+from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.tool_session.store import get_tool_session_store
+
+workspace = Path(__import__("sys").argv[1])
+barrier_path = Path(__import__("sys").argv[2])
+result_path = Path(__import__("sys").argv[3])
+shell_name = __import__("sys").argv[4]
+owner_bound = __import__("sys").argv[5] == "1"
+clear_settings_cache()
+shell_ops._PERSISTENT_SHELL_CREATION_LOCK = None
+shell_ops._use_conpty_persistent_shell_backend = lambda: True
+shell_ops.resolve_path = lambda *_args, **_kwargs: workspace
+shell_ops._tmux_session_name = lambda name: str(name)
+shell_ops.check_command_policy = lambda _command: None
+conpty.is_available = lambda: True
+conpty.relative_display = lambda path: str(path)
+
+class FakePty:
+    exitstatus = None
+
+    def isalive(self):
+        return True
+
+    def read(self, _size=None):
+        time.sleep(0.02)
+        return ""
+
+    def close(self, force=False):
+        _ = force
+
+conpty._spawn_pty = lambda *_args: FakePty()
+owner_session_id = None
+if owner_bound:
+    owner_session_id = get_tool_session_store().create_session(
+        workdir=workspace
+    ).session_id
+while not barrier_path.exists():
+    time.sleep(0.01)
+try:
+    output = asyncio.run(
+        shell_ops.start_persistent_shell_execute(
+            ".",
+            shell_name,
+            "echo ready",
+            owner_session_id=owner_session_id,
+        )
+    )
+except Exception as exc:
+    result_path.write_text(f"error:{exc}", encoding="utf-8")
+else:
+    result_path.write_text(f"ok:{output.shell_id}", encoding="utf-8")
+    time.sleep(0.75)
+"""
+    processes = [
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                script,
+                str(workspace),
+                str(barrier_path),
+                str(result_path),
+                name,
+                "1" if owner_bound else "0",
+            ],
+            env=os.environ.copy(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for result_path, name in zip(result_paths, names, strict=True)
+    ]
+    try:
+        barrier_path.write_text("start", encoding="utf-8")
+        for process in processes:
+            assert process.wait(timeout=10) == 0
+        results = [path.read_text(encoding="utf-8") for path in result_paths]
+        assert sum(result.startswith("ok:") for result in results) == 1
+        errors = [result for result in results if result.startswith("error:")]
+        assert len(errors) == 1
+        assert error_text in errors[0]
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+
+
 @pytest.mark.asyncio
 async def test_tmux_start_cancellation_cleans_created_session(
     tmp_path, monkeypatch
@@ -471,7 +811,8 @@ async def test_tmux_start_cancellation_cleans_created_session(
             stderr=stderr,
         )
 
-    async def empty_inventory():
+    async def empty_inventory(*, preserve_shell_ids=None):
+        assert preserve_shell_ids is None
         return set()
 
     async def fake_tmux(args: list[str], timeout_s: int = 10):  # noqa: ARG001
@@ -801,22 +1142,26 @@ async def test_conpty_owned_inventory_accepts_current_process_shells(
 
 
 @pytest.mark.asyncio
-async def test_conpty_authoritative_inventory_unions_durable_peer_ids(
+async def test_conpty_authoritative_inventory_reconciles_from_live_leases(
     monkeypatch,
 ):
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
     )
 
-    async def local_shells():
-        return SimpleNamespace(shells=[SimpleNamespace(shell_id="local-shell")])
-
-    monkeypatch.setattr(shell_ops.conpty, "list_shells", local_shells)
+    reconciled: list[set[str]] = []
+    monkeypatch.setattr(
+        shell_ops.conpty,
+        "authoritative_shell_ids",
+        lambda: {"local-shell", "peer-shell"},
+    )
     monkeypatch.setattr(
         shell_ops,
         "get_tool_session_store",
         lambda: SimpleNamespace(
-            persistent_shell_ids=lambda: {"peer-shell"},
+            reconcile_persistent_shells=lambda shell_ids: reconciled.append(
+                set(shell_ids)
+            ),
         ),
     )
 
@@ -824,6 +1169,34 @@ async def test_conpty_authoritative_inventory_unions_durable_peer_ids(
         "local-shell",
         "peer-shell",
     }
+    assert reconciled == [{"local-shell", "peer-shell"}]
+
+
+@pytest.mark.asyncio
+async def test_conpty_authoritative_inventory_clears_dead_durable_ids(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+    reconciled: list[set[str]] = []
+    monkeypatch.setattr(
+        shell_ops.conpty, "authoritative_shell_ids", lambda: {"local-shell"}
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            reconcile_persistent_shells=lambda shell_ids: reconciled.append(
+                set(shell_ids)
+            ),
+        ),
+    )
+
+    assert await shell_ops.authoritative_persistent_shell_ids_execute() == {
+        "local-shell"
+    }
+    assert reconciled == [{"local-shell"}]
 
 
 @pytest.mark.asyncio

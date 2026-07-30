@@ -824,13 +824,19 @@ async def test_session_end_preserves_peer_owned_conpty_shell(
     monkeypatch.setattr(
         shell_ops.conpty, "list_owned_shell_ids", no_local_owned_shells
     )
+    peer_lease = shell_ops.conpty._ConPtyShellLease("peer-conpty")
+    peer_lease.acquire()
+    try:
+        with pytest.raises(
+            RuntimeError, match="ownership could not be determined"
+        ):
+            await session_ops.session_end_execute(session.session_id)
 
-    with pytest.raises(RuntimeError, match="ownership could not be determined"):
-        await session_ops.session_end_execute(session.session_id)
-
-    retained = store.require_session(session.session_id)
-    assert retained.persistent_shell_ids == ("peer-conpty",)
-    assert retained.termination_requested_at is not None
+        retained = store.require_session(session.session_id)
+        assert retained.persistent_shell_ids == ("peer-conpty",)
+        assert retained.termination_requested_at is not None
+    finally:
+        peer_lease.release()
 
 
 @pytest.mark.asyncio

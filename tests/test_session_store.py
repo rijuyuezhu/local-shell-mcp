@@ -766,6 +766,33 @@ def test_scoped_shell_reservation_rollback_preserves_other_session(
     )
 
 
+def test_exclusive_shell_reservation_rejects_other_session_owner(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    first = store.create_session(workdir=tmp_path)
+    second = store.create_session(workdir=tmp_path)
+
+    assert store.reserve_persistent_shell(
+        first.session_id, "shared-name", exclusive=True
+    )
+    with pytest.raises(
+        RuntimeError, match="already reserved by another session"
+    ):
+        store.reserve_persistent_shell(
+            second.session_id, "shared-name", exclusive=True
+        )
+
+    assert store.require_session(first.session_id).persistent_shell_ids == (
+        "shared-name",
+    )
+    assert store.require_session(second.session_id).persistent_shell_ids == ()
+
+
 def test_persistent_shell_ids_unions_all_durable_sessions(
     tmp_path, monkeypatch
 ):

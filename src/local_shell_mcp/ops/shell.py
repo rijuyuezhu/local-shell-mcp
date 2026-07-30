@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import contextvars
 import os
 import re
 import shlex
@@ -71,6 +72,12 @@ INTERNAL_SHELL_MAX_TIMEOUT_S = 3600
 _COMMAND_SEMAPHORE: asyncio.Semaphore | None = None
 _COMMAND_SEMAPHORE_SIZE: int | None = None
 _PERSISTENT_SHELL_CREATION_LOCK: asyncio.Lock | None = None
+_PERSISTENT_SHELL_ADMISSION_OWNER = contextvars.ContextVar[object | None](
+    "persistent_shell_admission_owner", default=None
+)
+_PERSISTENT_SHELL_PRESERVE_IDS = contextvars.ContextVar(
+    "persistent_shell_preserve_ids", default=frozenset()
+)
 _TMUX_OWNER_OPTION = "@local-shell-mcp-session-id"
 
 
@@ -246,6 +253,26 @@ def _persistent_shell_creation_lock() -> asyncio.Lock:
     if _PERSISTENT_SHELL_CREATION_LOCK is None:
         _PERSISTENT_SHELL_CREATION_LOCK = asyncio.Lock()
     return _PERSISTENT_SHELL_CREATION_LOCK
+
+
+@contextlib.asynccontextmanager
+async def _persistent_shell_admission_lock():
+    """Hold the backend admission lock once for the current task."""
+    task = asyncio.current_task()
+    if task is None:
+        raise RuntimeError(
+            "persistent shell admission requires an asyncio task"
+        )
+    if _PERSISTENT_SHELL_ADMISSION_OWNER.get() is task:
+        yield
+        return
+    backend = "conpty" if _use_conpty_persistent_shell_backend() else "tmux"
+    async with cross_process_lock("persistent-shell-admission", backend):
+        token = _PERSISTENT_SHELL_ADMISSION_OWNER.set(task)
+        try:
+            yield
+        finally:
+            _PERSISTENT_SHELL_ADMISSION_OWNER.reset(token)
 
 
 def _subprocess_env() -> dict[str, str]:
@@ -986,13 +1013,13 @@ async def _start_persistent_shell_locked(
 ) -> StartPersistentShellOutput:
     """Start a persistent shell while the creation lock is held."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
+    shell_id = shell_id or _tmux_session_name(name)
     active_shell_ids = await authoritative_persistent_shell_ids_execute()
     if active_shell_ids is None:
         raise RuntimeError(
             "Persistent shell inventory is unavailable; refusing to start a new "
             "session until the backend can report active shells authoritatively."
         )
-    shell_id = shell_id or _tmux_session_name(name)
     if shell_id in active_shell_ids:
         raise RuntimeError(
             f"Persistent shell id already exists: {shell_id}. Choose a different "
@@ -1099,28 +1126,29 @@ async def start_persistent_shell_execute(
     owner_session_id: str | None = None,
 ) -> StartPersistentShellOutput:
     """Start one persistent shell without racing the configured capacity."""
-    async with _persistent_shell_creation_lock():
-        if _use_conpty_persistent_shell_backend():
-            return await _start_persistent_shell_locked(
-                cwd,
-                name,
-                command,
-                owner_session_id=owner_session_id,
+    async with (
+        _persistent_shell_creation_lock(),
+        _persistent_shell_admission_lock(),
+    ):
+        reserved_shell_id = (
+            _tmux_session_name(name) if owner_session_id is not None else None
+        )
+        session_store = None
+        reservation_added = False
+        if reserved_shell_id is not None:
+            assert owner_session_id is not None
+            session_store = get_tool_session_store()
+            reservation_added = session_store.reserve_persistent_shell(
+                owner_session_id,
+                reserved_shell_id,
+                exclusive=True,
             )
-        async with cross_process_lock("persistent-shell-admission", "tmux"):
-            reserved_shell_id = (
-                _tmux_session_name(name)
-                if owner_session_id is not None
-                else None
-            )
-            session_store = None
-            reservation_added = False
-            if reserved_shell_id is not None:
-                assert owner_session_id is not None
-                session_store = get_tool_session_store()
-                reservation_added = session_store.reserve_persistent_shell(
-                    owner_session_id, reserved_shell_id
+        try:
+            token = _PERSISTENT_SHELL_PRESERVE_IDS.set(
+                frozenset(
+                    {reserved_shell_id} if reserved_shell_id is not None else ()
                 )
+            )
             try:
                 return await _start_persistent_shell_locked(
                     cwd,
@@ -1129,25 +1157,27 @@ async def start_persistent_shell_execute(
                     owner_session_id=owner_session_id,
                     shell_id=reserved_shell_id,
                 )
-            except PersistentShellCleanupUncertainError:
-                # Keep the reservation so pruning and teardown remain fail closed
-                # until authoritative backend reconciliation is possible.
-                raise
-            except BaseException:
-                if reserved_shell_id is not None and reservation_added:
-                    assert owner_session_id is not None
-                    assert session_store is not None
-                    try:
-                        session_store.release_session_persistent_shell(
-                            owner_session_id, reserved_shell_id
-                        )
-                    except Exception as rollback_error:
-                        raise RuntimeError(
-                            "persistent shell startup failed and durable ownership "
-                            "rollback was not confirmed: "
-                            f"{reserved_shell_id}"
-                        ) from rollback_error
-                raise
+            finally:
+                _PERSISTENT_SHELL_PRESERVE_IDS.reset(token)
+        except PersistentShellCleanupUncertainError:
+            # Keep the reservation so pruning and teardown remain fail closed
+            # until authoritative backend reconciliation is possible.
+            raise
+        except BaseException:
+            if reserved_shell_id is not None and reservation_added:
+                assert owner_session_id is not None
+                assert session_store is not None
+                try:
+                    session_store.release_session_persistent_shell(
+                        owner_session_id, reserved_shell_id
+                    )
+                except Exception as rollback_error:
+                    raise RuntimeError(
+                        "persistent shell startup failed and durable ownership "
+                        "rollback was not confirmed: "
+                        f"{reserved_shell_id}"
+                    ) from rollback_error
+            raise
 
 
 async def send_persistent_shell_input_execute(
@@ -1331,9 +1361,9 @@ async def list_owned_persistent_shell_ids_execute(
     return owned
 
 
-async def _persistent_shell_inventory_execute() -> tuple[
-    ListPersistentShellsOutput, bool
-]:
+async def _persistent_shell_inventory_execute(
+    *, preserve_shell_ids: set[str] | None = None
+) -> tuple[ListPersistentShellsOutput, bool]:
     """Return the shell inventory and whether an empty result is authoritative."""
     if _use_conpty_persistent_shell_backend():
         output = await conpty.list_shells()
@@ -1351,7 +1381,9 @@ async def _persistent_shell_inventory_execute() -> tuple[
     )
     if not result.ok:
         if _tmux_server_absent(result):
-            get_tool_session_store().reconcile_persistent_shells(set())
+            get_tool_session_store().reconcile_persistent_shells(
+                set(preserve_shell_ids or ())
+            )
             return ListPersistentShellsOutput(shells=[]), True
         return ListPersistentShellsOutput(shells=[]), False
     shells = []
@@ -1368,24 +1400,30 @@ async def _persistent_shell_inventory_execute() -> tuple[
             )
     output = ListPersistentShellsOutput(shells=shells)
     get_tool_session_store().reconcile_persistent_shells(
-        _persistent_shell_ids(output)
+        _persistent_shell_ids(output) | set(preserve_shell_ids or ())
     )
     return output, True
 
 
-async def authoritative_persistent_shell_ids_execute() -> set[str] | None:
-    """Return live shell ids, or None when the backend inventory is uncertain."""
+async def _authoritative_persistent_shell_ids_locked(
+    *, preserve_shell_ids: set[str] | None = None
+) -> set[str] | None:
+    """Return live shell ids while the backend admission lock is held."""
     if _use_conpty_persistent_shell_backend():
         try:
-            output = await conpty.list_shells()
-            return (
-                _persistent_shell_ids(output)
-                | get_tool_session_store().persistent_shell_ids()
+            active = conpty.authoritative_shell_ids()
+            if active is None:
+                return None
+            get_tool_session_store().reconcile_persistent_shells(
+                active | set(preserve_shell_ids or ())
             )
+            return active
         except Exception:
             return None
     try:
-        output, authoritative = await _persistent_shell_inventory_execute()
+        output, authoritative = await _persistent_shell_inventory_execute(
+            preserve_shell_ids=preserve_shell_ids
+        )
     except Exception:
         return None
     if not authoritative:
@@ -1393,7 +1431,21 @@ async def authoritative_persistent_shell_ids_execute() -> set[str] | None:
     return _persistent_shell_ids(output)
 
 
+async def authoritative_persistent_shell_ids_execute() -> set[str] | None:
+    """Return live shell ids, or None when the backend inventory is uncertain."""
+    async with _persistent_shell_admission_lock():
+        preserve_shell_ids = (
+            set(_PERSISTENT_SHELL_PRESERVE_IDS.get())
+            if _PERSISTENT_SHELL_ADMISSION_OWNER.get() is asyncio.current_task()
+            else set()
+        )
+        return await _authoritative_persistent_shell_ids_locked(
+            preserve_shell_ids=preserve_shell_ids
+        )
+
+
 async def list_persistent_shells_execute() -> ListPersistentShellsOutput:
     """List active persistent shells managed by local-shell-mcp."""
-    output, _authoritative = await _persistent_shell_inventory_execute()
-    return output
+    async with _persistent_shell_admission_lock():
+        output, _authoritative = await _persistent_shell_inventory_execute()
+        return output

@@ -161,7 +161,7 @@ async def test_tracked_job_lifecycle_with_backing_shells(tmp_path, monkeypatch):
         *,
         owner_session_id: str | None = None,
     ):
-        assert owner_session_id is None
+        assert owner_session_id == session_id
         nonlocal session_counter
         session_counter += 1
         shell_id = f"shell_{session_counter}"
@@ -263,7 +263,7 @@ async def test_tracked_jobs_are_isolated_by_agent_session(
         *,
         owner_session_id: str | None = None,
     ):
-        assert owner_session_id is None
+        assert owner_session_id == first_session
         return StartPersistentShellOutput.model_validate(
             {"shell_id": f"shell-{name}", "name": name, "cwd": cwd}
         )
@@ -312,7 +312,7 @@ async def test_tracked_job_is_lost_when_shell_disappears_without_status(
         *,
         owner_session_id: str | None = None,
     ):
-        assert owner_session_id is None
+        assert owner_session_id == session_id
         return StartPersistentShellOutput(
             shell_id="missing-shell", name=name, cwd=cwd, command=command
         )
@@ -600,7 +600,7 @@ async def test_job_start_failure_is_persisted_as_failed(tmp_path, monkeypatch):
         *,
         owner_session_id: str | None = None,
     ):
-        assert owner_session_id is None
+        assert owner_session_id == session_id
         raise RuntimeError("tmux unavailable")
 
     monkeypatch.setattr(jobs_ops, "start_persistent_shell_execute", fail_start)
@@ -695,7 +695,7 @@ async def test_job_retry_failure_is_persisted_and_clears_pending_state(
         *,
         owner_session_id: str | None = None,
     ):
-        assert owner_session_id is None
+        assert owner_session_id == session_id
         raise RuntimeError("retry shell unavailable")
 
     monkeypatch.setattr(
@@ -819,7 +819,7 @@ async def test_job_start_does_not_launch_shell_for_invalid_store(
         *,
         owner_session_id: str | None = None,
     ):
-        assert owner_session_id is None
+        assert owner_session_id == session_id
         nonlocal started
         started = True
         return StartPersistentShellOutput(
@@ -851,7 +851,7 @@ async def test_job_start_kills_shell_when_running_state_cannot_be_committed(
         *,
         owner_session_id: str | None = None,
     ):
-        assert owner_session_id is None
+        assert owner_session_id == session_id
         invalid = json.dumps({"version": 99, "jobs": []})
         jobs_ops._job_store_path().write_text(invalid, encoding="utf-8")
         jobs_ops._job_store_backup_path().write_text(invalid, encoding="utf-8")
@@ -1556,7 +1556,7 @@ async def test_job_start_preserves_existing_jobs_when_inventory_is_uncertain(
         *,
         owner_session_id: str | None = None,
     ):
-        assert owner_session_id is None
+        assert owner_session_id == session_id
         return StartPersistentShellOutput(
             shell_id="shell_new", name=name, cwd=cwd, command=command
         )

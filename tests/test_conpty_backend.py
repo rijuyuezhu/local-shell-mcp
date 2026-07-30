@@ -16,6 +16,7 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
+from local_shell_mcp.tool_session.store import get_tool_session_store
 
 
 class FakePty:
@@ -104,6 +105,40 @@ async def _wait_for_output(shell_id: str, marker: bytes) -> bytes:
             return output
         await asyncio.sleep(0.01)
     raise AssertionError(f"ConPTY output did not contain {marker!r}")
+
+
+def test_conpty_shell_lease_reports_live_then_dead(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    lease = conpty._ConPtyShellLease("leased-shell")
+
+    lease.acquire()
+    try:
+        assert conpty.authoritative_shell_ids() == {"leased-shell"}
+    finally:
+        lease.release()
+
+    assert conpty.authoritative_shell_ids() == set()
+
+
+@pytest.mark.asyncio
+async def test_conpty_spawn_failure_releases_shell_lease(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+
+    def fail_spawn(*_args):
+        raise RuntimeError("spawn failed")
+
+    monkeypatch.setattr(conpty, "_spawn_pty", fail_spawn)
+
+    with pytest.raises(RuntimeError, match="spawn failed"):
+        await conpty.start_shell(
+            shell_id="failed-shell", cwd=tmp_path, command=None
+        )
+
+    assert conpty.authoritative_shell_ids() == set()
 
 
 @pytest.mark.asyncio
@@ -288,6 +323,7 @@ async def test_conpty_reader_failure_reaps_session(monkeypatch, tmp_path):
     assert conpty.has_session("reader-failure") is False
     assert process.closed is True
     assert process.close_calls[-1] is True
+    assert conpty.authoritative_shell_ids() == set()
 
 
 def test_conpty_raw_subscriber_overflow_finishes_stream(monkeypatch):
@@ -340,6 +376,10 @@ async def test_shell_ops_delegate_persistent_shells_to_conpty(
         calls.append(("list", (), {}))
         return ListPersistentShellsOutput(shells=[])
 
+    def fake_authoritative_shell_ids():
+        calls.append(("list", (), {}))
+        return set()
+
     async def fake_start(**kwargs):
         calls.append(("start", (), dict(kwargs)))
         return StartPersistentShellOutput(
@@ -388,17 +428,23 @@ async def test_shell_ops_delegate_persistent_shells_to_conpty(
         )
 
     monkeypatch.setattr(conpty, "list_shells", fake_list)
+    monkeypatch.setattr(
+        conpty, "authoritative_shell_ids", fake_authoritative_shell_ids
+    )
     monkeypatch.setattr(conpty, "start_shell", fake_start)
     monkeypatch.setattr(conpty, "send_shell", fake_send)
     monkeypatch.setattr(conpty, "resize_shell", fake_resize)
     monkeypatch.setattr(conpty, "read_shell", fake_read)
     monkeypatch.setattr(conpty, "kill_shell", fake_kill)
+    store = get_tool_session_store()
+    store.clear()
+    owner = store.create_session(workdir=tmp_path)
 
     started = await shell_ops.start_persistent_shell_execute(
         cwd=".",
         name="windows-demo",
         command=None,
-        owner_session_id="SESSION1",
+        owner_session_id=owner.session_id,
     )
     assert started.backend == "conpty"
     await shell_ops.send_persistent_shell_input_execute(
@@ -427,5 +473,5 @@ async def test_shell_ops_delegate_persistent_shells_to_conpty(
     assert start_kwargs["shell_id"] == "windows-demo"
     assert start_kwargs["cwd"] == tmp_path
     assert start_kwargs["command"] is None
-    assert start_kwargs["owner_session_id"] == "SESSION1"
+    assert start_kwargs["owner_session_id"] == owner.session_id
     clear_settings_cache()

@@ -16,6 +16,7 @@ from ..audit import audit
 from ..config.settings import get_settings
 from ..errors import process_start_not_found_error
 from ..ops.utils.path import relative_display
+from ..persistence import get_state_store
 from ..schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
@@ -25,6 +26,7 @@ from ..schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
+from ..utils.private_files import private_file_lock
 
 CONPTY_BACKEND = "conpty"
 CONPTY_BUFFER_BYTES = 1_000_000
@@ -34,12 +36,108 @@ CONPTY_DEFAULT_COLUMNS = 120
 CONPTY_DEFAULT_ROWS = 36
 _CONPTY_WRITE_RETRIES = 50
 _CONPTY_WRITE_RETRY_S = 0.01
+_CONPTY_LEASE_ACQUIRE_TIMEOUT_S = 5.0
+_CONPTY_LEASE_JOIN_TIMEOUT_S = 5.0
+_CONPTY_LEASE_PREFIX = "conpty-shell-"
 _SHELL_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 try:  # pragma: no cover - imported only on Windows installations.
     import winpty  # pyright: ignore[reportMissingImports]
 except ImportError:  # pragma: no cover - exercised through mocked module state.
     winpty = None
+
+
+def _shell_lease_path(shell_id: str) -> Path:
+    """Return one owner-private cross-process lease path for a shell id."""
+    directory = get_state_store().layout.locks_dir
+    directory.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        directory.chmod(0o700)
+    return directory / f"{_CONPTY_LEASE_PREFIX}{shell_id}.lock"
+
+
+class _ConPtyShellLease:
+    """Hold one ConPTY shell liveness lock in a dedicated native thread."""
+
+    def __init__(self, shell_id: str) -> None:
+        self.shell_id = str(shell_id)
+        self.path = _shell_lease_path(self.shell_id)
+        self._acquired = threading.Event()
+        self._release = threading.Event()
+        self._error: BaseException | None = None
+        self._state_lock = threading.Lock()
+        self._released = False
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"conpty-shell-lease-{self.shell_id}",
+            daemon=True,
+        )
+
+    def _run(self) -> None:
+        try:
+            with private_file_lock(
+                self.path,
+                timeout_s=_CONPTY_LEASE_ACQUIRE_TIMEOUT_S,
+            ):
+                self._acquired.set()
+                self._release.wait()
+        except BaseException as exc:
+            self._error = exc
+            self._acquired.set()
+
+    def acquire(self) -> None:
+        """Acquire the lease before spawning the ConPTY process."""
+        self._thread.start()
+        if not self._acquired.wait(_CONPTY_LEASE_ACQUIRE_TIMEOUT_S + 1.0):
+            self._release.set()
+            self._thread.join(_CONPTY_LEASE_JOIN_TIMEOUT_S)
+            if self._thread.is_alive():
+                raise RuntimeError(
+                    "ConPTY shell lease acquisition timed out and the lease "
+                    "thread did not exit"
+                )
+            raise RuntimeError("ConPTY shell lease acquisition timed out")
+        if self._error is not None:
+            raise self._error
+        if not self._thread.is_alive():
+            raise RuntimeError("ConPTY shell lease exited before acquisition")
+
+    def release(self) -> None:
+        """Release the lease after the shell is no longer controllable."""
+        with self._state_lock:
+            if self._released:
+                return
+            self._released = True
+            self._release.set()
+        self._thread.join(_CONPTY_LEASE_JOIN_TIMEOUT_S)
+        if self._thread.is_alive():
+            raise RuntimeError("ConPTY shell lease did not exit")
+        if self._error is not None:
+            raise self._error
+
+
+def authoritative_shell_ids() -> set[str] | None:
+    """Return shell ids with live cross-process ConPTY leases."""
+    directory = get_state_store().layout.locks_dir
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        paths = sorted(directory.glob(f"{_CONPTY_LEASE_PREFIX}*.lock"))
+    except OSError:
+        return None
+    active: set[str] = set()
+    for path in paths:
+        name = path.name
+        shell_id = name[len(_CONPTY_LEASE_PREFIX) : -len(".lock")]
+        if not _SHELL_ID_PATTERN.fullmatch(shell_id):
+            continue
+        try:
+            with private_file_lock(path, timeout_s=0.0):
+                pass
+        except TimeoutError:
+            active.add(shell_id)
+        except OSError:
+            return None
+    return active
 
 
 def _is_windows() -> bool:
@@ -235,6 +333,7 @@ class _RawSubscriber:
 class _ConPtySession:
     shell_id: str
     process: Any
+    lease: _ConPtyShellLease
     cwd: Path
     command: str
     created: int
@@ -296,6 +395,8 @@ class _ConPtySession:
             with _SESSIONS_LOCK:
                 if _SESSIONS.get(self.shell_id) is self:
                     _SESSIONS.pop(self.shell_id, None)
+            with contextlib.suppress(Exception):
+                self.lease.release()
 
     def output_snapshot(self) -> bytes:
         with self.state_lock:
@@ -379,6 +480,12 @@ class _ConPtySession:
             and reader.is_alive()
         ):
             reader.join(timeout=2)
+        if not already_closing:
+            try:
+                self.lease.release()
+            except Exception as exc:
+                lease_error = repr(exc)
+                error = f"{error}; {lease_error}" if error else lease_error
         return error
 
 
@@ -433,24 +540,32 @@ async def start_shell(
             )
     initial = initial_command(command)
     args = _persistent_shell_args(command)
+    lease = _ConPtyShellLease(shell_id)
     try:
-        process = await asyncio.to_thread(
-            _spawn_pty,
-            args,
-            cwd,
-            CONPTY_DEFAULT_COLUMNS,
-            CONPTY_DEFAULT_ROWS,
-        )
-    except FileNotFoundError as exc:
-        raise process_start_not_found_error(
-            exc,
-            executable=str(args[0]),
-            command=initial,
-            cwd=cwd,
-        ) from exc
+        await asyncio.to_thread(lease.acquire)
+        try:
+            process = await asyncio.to_thread(
+                _spawn_pty,
+                args,
+                cwd,
+                CONPTY_DEFAULT_COLUMNS,
+                CONPTY_DEFAULT_ROWS,
+            )
+        except FileNotFoundError as exc:
+            raise process_start_not_found_error(
+                exc,
+                executable=str(args[0]),
+                command=initial,
+                cwd=cwd,
+            ) from exc
+    except BaseException:
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(lease.release)
+        raise
     session = _ConPtySession(
         shell_id=shell_id,
         process=process,
+        lease=lease,
         cwd=cwd,
         command=initial,
         created=int(time.time()),
