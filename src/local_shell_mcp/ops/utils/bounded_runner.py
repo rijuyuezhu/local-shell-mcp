@@ -3,12 +3,16 @@
 import argparse
 import contextlib
 import ctypes
+import json
 import os
+import plistlib
 import select
 import signal
 import subprocess
 import sys
+import tempfile
 import time
+import uuid
 from pathlib import Path
 from types import FrameType
 from typing import Any
@@ -19,6 +23,9 @@ TERMINATE_GRACE_S = 1.0
 KILL_GRACE_S = 1.0
 KQUEUE_EVENT_BATCH = 256
 PROCFS_ROOT = Path("/proc")
+LAUNCHCTL_PATH = Path("/bin/launchctl")
+LAUNCHD_START_TIMEOUT_S = 5.0
+LAUNCHD_CLEANUP_GRACE_S = 0.25
 
 
 def _shell_command_args(shell: str, command: str) -> list[str]:
@@ -226,6 +233,9 @@ def _process_group_containment_available() -> bool:
 
 def _kqueue_descendant_tracking_available() -> bool:
     """Return whether this host exposes kernel-tracked fork descendants."""
+    if sys.platform == "darwin":
+        # XNU has rejected NOTE_TRACK, NOTE_TRACKERR, and NOTE_CHILD since 10.5.
+        return False
     required = (
         "kqueue",
         "kevent",
@@ -243,6 +253,283 @@ def _kqueue_descendant_tracking_available() -> bool:
         and callable(getattr(os, "fork", None))
         and callable(getattr(os, "waitpid", None))
     )
+
+
+def _launchd_containment_available() -> bool:
+    """Return whether macOS launchd can host an isolated bounded job."""
+    return (
+        sys.platform == "darwin"
+        and LAUNCHCTL_PATH.is_file()
+        and os.access(LAUNCHCTL_PATH, os.X_OK)
+    )
+
+
+def _write_private_json(path: Path, payload: dict[str, Any]) -> None:
+    """Atomically write one owner-private launchd child status object."""
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            temporary.unlink()
+        raise
+
+
+def _run_launchd_child(
+    shell: str,
+    command: str,
+    *,
+    status_path: Path,
+    started_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+) -> int:
+    """Run the command inside one launchd job and publish its real status."""
+    stdout_fd = os.open(stdout_path, os.O_WRONLY)
+    stderr_fd = os.open(stderr_path, os.O_WRONLY)
+    returncode = 125
+    try:
+        started_path.write_text("started", encoding="ascii")
+        started_path.chmod(0o600)
+        try:
+            process = subprocess.Popen(
+                _shell_command_args(shell, command),
+                stdout=stdout_fd,
+                stderr=stderr_fd,
+                start_new_session=True,
+            )
+            returncode = int(process.wait())
+        except FileNotFoundError as exc:
+            os.write(
+                stderr_fd,
+                f"Unable to start configured shell {shell!r}: {exc}\n".encode(),
+            )
+            returncode = 127
+        except BaseException as exc:
+            os.write(
+                stderr_fd,
+                f"Unable to run launchd-contained command: {exc}\n".encode(),
+            )
+            returncode = 125
+        _write_private_json(status_path, {"returncode": returncode})
+        # Prevent launchd from restarting a one-shot command whose real status
+        # was non-zero; the parent reads the durable status object instead.
+        return 0
+    finally:
+        os.close(stdout_fd)
+        os.close(stderr_fd)
+
+
+def _drain_launchd_pipe(descriptor: int, stream: Any) -> bool:
+    """Forward every currently available FIFO byte to the runner stream."""
+    drained = False
+    while True:
+        try:
+            chunk = os.read(descriptor, 64 * 1024)
+        except BlockingIOError:
+            break
+        if not chunk:
+            break
+        drained = True
+        binary = getattr(stream, "buffer", None)
+        if binary is not None:
+            binary.write(chunk)
+            binary.flush()
+        else:
+            stream.write(chunk.decode("utf-8", errors="replace"))
+            stream.flush()
+    return drained
+
+
+def _launchd_domain_targets() -> tuple[str, ...]:
+    """Return launchd domains usable by the current unprivileged user."""
+    uid = os.getuid()
+    return (f"gui/{uid}", f"user/{uid}")
+
+
+def _launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run one bounded launchctl control operation."""
+    return subprocess.run(
+        [str(LAUNCHCTL_PATH), *args],
+        capture_output=True,
+        text=True,
+        timeout=LAUNCHD_START_TIMEOUT_S,
+        check=False,
+    )
+
+
+def _bootout_launchd_job(target: str) -> bool:
+    """Remove one launchd service and its non-abandoned process coalition."""
+    try:
+        result = _launchctl(["bootout", target])
+    except OSError, subprocess.TimeoutExpired:
+        return False
+    if result.returncode != 0:
+        return False
+    time.sleep(LAUNCHD_CLEANUP_GRACE_S)
+    return True
+
+
+def _read_launchd_status(path: Path) -> int | None:
+    """Return a validated child status, None while it is not published."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except OSError, UnicodeError, json.JSONDecodeError:
+        return 125
+    value = payload.get("returncode") if isinstance(payload, dict) else None
+    if not isinstance(value, int) or isinstance(value, bool):
+        return 125
+    return value
+
+
+def _run_launchd_bounded_command(shell: str, command: str) -> int:
+    """Run one macOS command in a disposable launchd containment job."""
+    received_signal = 0
+
+    def remember_signal(signum: int, _frame: FrameType | None) -> None:
+        nonlocal received_signal
+        received_signal = received_signal or signum
+
+    for handled in _handled_signals():
+        signal.signal(handled, remember_signal)
+
+    with tempfile.TemporaryDirectory(
+        prefix="local-shell-mcp-bounded-"
+    ) as raw_dir:
+        directory = Path(raw_dir)
+        directory.chmod(0o700)
+        status_path = directory / "status.json"
+        started_path = directory / "started"
+        stdout_path = directory / "stdout.fifo"
+        stderr_path = directory / "stderr.fifo"
+        plist_path = directory / "job.plist"
+        os.mkfifo(stdout_path, 0o600)
+        os.mkfifo(stderr_path, 0o600)
+        stdout_fd = os.open(stdout_path, os.O_RDONLY | os.O_NONBLOCK)
+        stderr_fd = os.open(stderr_path, os.O_RDONLY | os.O_NONBLOCK)
+        stdout_guard = os.open(stdout_path, os.O_WRONLY | os.O_NONBLOCK)
+        stderr_guard = os.open(stderr_path, os.O_WRONLY | os.O_NONBLOCK)
+        label = f"local-shell-mcp.bounded.{os.getpid()}.{uuid.uuid4().hex}"
+        payload = {
+            "Label": label,
+            "ProgramArguments": [
+                sys.executable,
+                "-m",
+                "local_shell_mcp.ops.utils.bounded_runner",
+                "--shell",
+                shell,
+                "--command",
+                command,
+                "--launchd-child-status",
+                str(status_path),
+                "--launchd-child-started",
+                str(started_path),
+                "--launchd-child-stdout",
+                str(stdout_path),
+                "--launchd-child-stderr",
+                str(stderr_path),
+            ],
+            "WorkingDirectory": os.getcwd(),
+            "EnvironmentVariables": dict(os.environ),
+            "RunAtLoad": True,
+            "KeepAlive": False,
+            "AbandonProcessGroup": False,
+            "ProcessType": "Interactive",
+            "StandardOutPath": "/dev/null",
+            "StandardErrorPath": "/dev/null",
+        }
+        with plist_path.open("wb") as handle:
+            plistlib.dump(payload, handle, fmt=plistlib.FMT_XML, sort_keys=True)
+        plist_path.chmod(0o600)
+
+        target: str | None = None
+        cleaned = False
+        bootstrap_errors: list[str] = []
+        try:
+            for domain in dict.fromkeys(_launchd_domain_targets()):
+                try:
+                    result = _launchctl(["bootstrap", domain, str(plist_path)])
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    bootstrap_errors.append(str(exc))
+                    continue
+                if result.returncode == 0:
+                    target = f"{domain}/{label}"
+                    break
+                bootstrap_errors.append(
+                    (
+                        result.stderr
+                        or result.stdout
+                        or "unknown launchctl error"
+                    ).strip()
+                )
+            if target is None:
+                print(
+                    "Bounded command launchd registration failed: "
+                    + "; ".join(error for error in bootstrap_errors if error),
+                    file=sys.stderr,
+                )
+                return 125
+
+            started_deadline = time.monotonic() + LAUNCHD_START_TIMEOUT_S
+            returncode: int | None = None
+            startup_failed = False
+            while returncode is None and not received_signal:
+                _drain_launchd_pipe(stdout_fd, sys.stdout)
+                _drain_launchd_pipe(stderr_fd, sys.stderr)
+                returncode = _read_launchd_status(status_path)
+                if (
+                    returncode is None
+                    and not started_path.exists()
+                    and time.monotonic() >= started_deadline
+                ):
+                    startup_failed = True
+                    break
+                time.sleep(POLL_INTERVAL_S)
+
+            cleaned = _bootout_launchd_job(target)
+            for _ in range(4):
+                stdout_drained = _drain_launchd_pipe(stdout_fd, sys.stdout)
+                stderr_drained = _drain_launchd_pipe(stderr_fd, sys.stderr)
+                if not stdout_drained and not stderr_drained:
+                    break
+                time.sleep(POLL_INTERVAL_S)
+            if not cleaned:
+                print(
+                    "Bounded command launchd containment cleanup failed",
+                    file=sys.stderr,
+                )
+                return 125
+            if startup_failed:
+                print(
+                    "Bounded command launchd child did not start",
+                    file=sys.stderr,
+                )
+                return 125
+            if received_signal:
+                return _mirror_signal(received_signal)
+            if returncode is None:
+                return 125
+            if returncode < 0:
+                return _mirror_signal(-returncode)
+            return returncode
+        finally:
+            if target is not None and not cleaned:
+                _bootout_launchd_job(target)
+            os.close(stdout_guard)
+            os.close(stderr_guard)
+            os.close(stdout_fd)
+            os.close(stderr_fd)
 
 
 def _select_capability(name: str) -> Any:
@@ -596,6 +883,14 @@ def _handled_signals() -> tuple[signal.Signals, ...]:
 
 def run_bounded_command(shell: str, command: str) -> int:
     """Run one command and guarantee that surviving descendants are removed."""
+    if sys.platform == "darwin":
+        if not _launchd_containment_available():
+            print(
+                "Bounded command launchd containment is unavailable",
+                file=sys.stderr,
+            )
+            return 125
+        return _run_launchd_bounded_command(shell, command)
     track_descendants = _enable_child_subreaper()
     track_with_kqueue = (
         not track_descendants and _kqueue_descendant_tracking_available()
@@ -710,7 +1005,41 @@ def run_bounded_command(shell: str, command: str) -> int:
 
 def run_bounded_runner_from_args(args: argparse.Namespace) -> None:
     """Argparse handler for the private bounded-runner subcommand."""
+    launchd_child_status = getattr(args, "launchd_child_status", None)
+    if launchd_child_status is not None:
+        launchd_child_started = getattr(args, "launchd_child_started", None)
+        launchd_child_stdout = getattr(args, "launchd_child_stdout", None)
+        launchd_child_stderr = getattr(args, "launchd_child_stderr", None)
+        if (
+            not isinstance(launchd_child_status, str)
+            or not launchd_child_status
+            or not isinstance(launchd_child_started, str)
+            or not launchd_child_started
+            or not isinstance(launchd_child_stdout, str)
+            or not launchd_child_stdout
+            or not isinstance(launchd_child_stderr, str)
+            or not launchd_child_stderr
+        ):
+            raise SystemExit(125)
+        raise SystemExit(
+            _run_launchd_child(
+                str(args.shell),
+                str(args.command),
+                status_path=Path(launchd_child_status),
+                started_path=Path(launchd_child_started),
+                stdout_path=Path(launchd_child_stdout),
+                stderr_path=Path(launchd_child_stderr),
+            )
+        )
     raise SystemExit(run_bounded_command(str(args.shell), str(args.command)))
+
+
+def _add_launchd_child_arguments(parser: argparse.ArgumentParser) -> None:
+    """Register hidden arguments used only by a launchd-contained child."""
+    parser.add_argument("--launchd-child-status", help=argparse.SUPPRESS)
+    parser.add_argument("--launchd-child-started", help=argparse.SUPPRESS)
+    parser.add_argument("--launchd-child-stdout", help=argparse.SUPPRESS)
+    parser.add_argument("--launchd-child-stderr", help=argparse.SUPPRESS)
 
 
 def register_bounded_runner_cli(subparsers: Any) -> argparse.ArgumentParser:
@@ -722,6 +1051,7 @@ def register_bounded_runner_cli(subparsers: Any) -> argparse.ArgumentParser:
     )
     parser.add_argument("--shell", required=True)
     parser.add_argument("--command", required=True)
+    _add_launchd_child_arguments(parser)
     parser.set_defaults(handler=run_bounded_runner_from_args)
     return parser
 
@@ -734,6 +1064,7 @@ def main() -> None:
     )
     parser.add_argument("--shell", required=True)
     parser.add_argument("--command", required=True)
+    _add_launchd_child_arguments(parser)
     run_bounded_runner_from_args(parser.parse_args())
 
 

@@ -1,10 +1,12 @@
 import argparse
 import contextlib
 import os
+import plistlib
 import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 from types import SimpleNamespace
 
@@ -84,6 +86,7 @@ def test_enable_child_subreaper_handles_missing_prctl(monkeypatch):
 
 
 def test_kqueue_descendant_tracking_requires_every_capability(monkeypatch):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "freebsd14")
     _install_fake_kqueue_capabilities(monkeypatch, lambda: None)
     assert bounded_runner._kqueue_descendant_tracking_available() is True
 
@@ -698,6 +701,7 @@ def test_mirror_signal_resets_and_resends_signal(monkeypatch):
 
 
 def test_run_bounded_command_reports_missing_shell(monkeypatch, capsys):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "linux")
     monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     assert (
         bounded_runner.run_bounded_command("/missing/shell", "echo ok") == 127
@@ -708,6 +712,7 @@ def test_run_bounded_command_reports_missing_shell(monkeypatch, capsys):
 def test_run_bounded_command_fails_closed_when_procfs_is_unavailable(
     monkeypatch, capsys
 ):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "linux")
     monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     monkeypatch.setattr(bounded_runner, "_descendants", lambda _pid: None)
     monkeypatch.setattr(
@@ -723,6 +728,7 @@ def test_run_bounded_command_fails_closed_when_procfs_is_unavailable(
 
 
 def test_run_bounded_command_reports_cleanup_failure(monkeypatch, capsys):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "linux")
     monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     process = SimpleNamespace(pid=42, poll=lambda: 0, wait=lambda: 0)
     monkeypatch.setattr(
@@ -739,6 +745,7 @@ def test_run_bounded_command_reports_cleanup_failure(monkeypatch, capsys):
 
 
 def test_run_bounded_command_mirrors_child_signal(monkeypatch):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "linux")
     monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     process = SimpleNamespace(
         pid=42,
@@ -761,6 +768,7 @@ def test_run_bounded_command_mirrors_child_signal(monkeypatch):
 
 
 def test_run_bounded_command_mirrors_received_signal(monkeypatch):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "linux")
     monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     handlers = {}
     process = SimpleNamespace(
@@ -795,6 +803,7 @@ def test_run_bounded_command_mirrors_received_signal(monkeypatch):
 
 
 def test_run_bounded_command_returns_normal_exit_code(monkeypatch):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "linux")
     monkeypatch.setattr(bounded_runner, "_enable_child_subreaper", lambda: True)
     process = SimpleNamespace(pid=42, poll=lambda: 7, wait=lambda: 7)
     monkeypatch.setattr(
@@ -812,6 +821,7 @@ def test_run_bounded_command_returns_normal_exit_code(monkeypatch):
 def test_run_bounded_command_fails_closed_without_containment(
     monkeypatch, capsys
 ):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "linux")
     monkeypatch.setattr(
         bounded_runner, "_enable_child_subreaper", lambda: False
     )
@@ -834,6 +844,7 @@ def test_run_bounded_command_fails_closed_without_containment(
 def test_run_bounded_command_rejects_process_group_only_containment(
     monkeypatch, capsys
 ):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "linux")
     monkeypatch.setattr(
         bounded_runner, "_enable_child_subreaper", lambda: False
     )
@@ -855,6 +866,7 @@ def test_run_bounded_command_rejects_process_group_only_containment(
 
 
 def test_run_bounded_command_uses_kqueue_tracker(monkeypatch):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "freebsd14")
     monkeypatch.setattr(
         bounded_runner, "_enable_child_subreaper", lambda: False
     )
@@ -884,6 +896,7 @@ def test_run_bounded_command_uses_kqueue_tracker(monkeypatch):
 def test_run_bounded_command_fails_closed_on_kqueue_track_error(
     monkeypatch, capsys
 ):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "freebsd14")
     monkeypatch.setattr(
         bounded_runner, "_enable_child_subreaper", lambda: False
     )
@@ -1159,9 +1172,9 @@ def test_spawn_kqueue_command_fails_on_gate_release(monkeypatch):
 
 
 @pytest.mark.skipif(
-    sys.platform != "darwin", reason="requires macOS kqueue NOTE_TRACK"
+    sys.platform != "darwin", reason="requires macOS launchd containment"
 )
-def test_macos_kqueue_reaps_setsid_escape(tmp_path):
+def test_macos_launchd_reaps_setsid_escape(tmp_path):
     pid_path = tmp_path / "escaped.pid"
     child_code = "import os,time; os.setsid(); time.sleep(30)"
     parent_code = (
@@ -1199,7 +1212,7 @@ def test_macos_kqueue_reaps_setsid_escape(tmp_path):
     else:
         with contextlib.suppress(ProcessLookupError):
             os.kill(escaped_pid, signal.SIGKILL)
-        pytest.fail("setsid descendant escaped kqueue cleanup")
+        pytest.fail("setsid descendant escaped launchd cleanup")
 
 
 def test_bounded_runner_argparse_handler_exits_with_result(monkeypatch):
@@ -1211,6 +1224,281 @@ def test_bounded_runner_argparse_handler_exits_with_result(monkeypatch):
         bounded_runner.run_bounded_runner_from_args(
             argparse.Namespace(shell="sh", command="false")
         )
+
+
+def test_bounded_runner_argparse_rejects_incomplete_launchd_child_args():
+    with pytest.raises(SystemExit, match="125"):
+        bounded_runner.run_bounded_runner_from_args(
+            argparse.Namespace(
+                shell="sh",
+                command="true",
+                launchd_child_status="status.json",
+                launchd_child_started=None,
+                launchd_child_stdout=None,
+                launchd_child_stderr=None,
+            )
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
+def test_launchd_child_streams_output_and_publishes_status(tmp_path):
+    stdout_path = tmp_path / "stdout.fifo"
+    stderr_path = tmp_path / "stderr.fifo"
+    started_path = tmp_path / "started"
+    status_path = tmp_path / "status.json"
+    os.mkfifo(stdout_path, 0o600)
+    os.mkfifo(stderr_path, 0o600)
+    stdout_fd = os.open(stdout_path, os.O_RDONLY | os.O_NONBLOCK)
+    stderr_fd = os.open(stderr_path, os.O_RDONLY | os.O_NONBLOCK)
+    stdout_guard = os.open(stdout_path, os.O_WRONLY | os.O_NONBLOCK)
+    stderr_guard = os.open(stderr_path, os.O_WRONLY | os.O_NONBLOCK)
+    try:
+        assert (
+            bounded_runner._run_launchd_child(
+                "/bin/sh",
+                "printf child-out; printf child-err >&2; exit 7",
+                status_path=status_path,
+                started_path=started_path,
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+            )
+            == 0
+        )
+        assert started_path.read_text(encoding="ascii") == "started"
+        assert bounded_runner._read_launchd_status(status_path) == 7
+        assert os.read(stdout_fd, 1024) == b"child-out"
+        assert os.read(stderr_fd, 1024) == b"child-err"
+    finally:
+        os.close(stdout_guard)
+        os.close(stderr_guard)
+        os.close(stdout_fd)
+        os.close(stderr_fd)
+
+
+def test_run_bounded_command_routes_macos_through_launchd(monkeypatch):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        bounded_runner, "_launchd_containment_available", lambda: True
+    )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_run_launchd_bounded_command",
+        lambda shell, command: (
+            23 if (shell, command) == ("sh", "false") else 99
+        ),
+    )
+
+    assert bounded_runner.run_bounded_command("sh", "false") == 23
+
+
+def test_run_bounded_command_fails_closed_without_launchd(monkeypatch, capsys):
+    monkeypatch.setattr(bounded_runner.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        bounded_runner, "_launchd_containment_available", lambda: False
+    )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_run_launchd_bounded_command",
+        lambda *_args: pytest.fail("command must not start without launchd"),
+    )
+
+    assert bounded_runner.run_bounded_command("sh", "true") == 125
+    assert "launchd containment is unavailable" in capsys.readouterr().err
+
+
+def test_read_launchd_status_fails_closed_on_invalid_payload(tmp_path):
+    status_path = tmp_path / "status.json"
+    assert bounded_runner._read_launchd_status(status_path) is None
+
+    status_path.write_text("{broken", encoding="utf-8")
+    assert bounded_runner._read_launchd_status(status_path) == 125
+
+    status_path.write_text('{"returncode":true}', encoding="utf-8")
+    assert bounded_runner._read_launchd_status(status_path) == 125
+
+    status_path.write_text('{"returncode":"0"}', encoding="utf-8")
+    assert bounded_runner._read_launchd_status(status_path) == 125
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
+def test_launchd_parent_forwards_output_and_real_status(monkeypatch, capsys):
+    child_threads: list[threading.Thread] = []
+
+    def fake_launchctl(args):
+        if args[0] == "bootstrap":
+            with open(args[2], "rb") as handle:
+                payload = plistlib.load(handle)
+            arguments = payload["ProgramArguments"]
+            values = {
+                arguments[index]: arguments[index + 1]
+                for index in range(len(arguments) - 1)
+                if str(arguments[index]).startswith("--launchd-child-")
+            }
+            thread = threading.Thread(
+                target=bounded_runner._run_launchd_child,
+                args=(
+                    arguments[arguments.index("--shell") + 1],
+                    arguments[arguments.index("--command") + 1],
+                ),
+                kwargs={
+                    "status_path": bounded_runner.Path(
+                        values["--launchd-child-status"]
+                    ),
+                    "started_path": bounded_runner.Path(
+                        values["--launchd-child-started"]
+                    ),
+                    "stdout_path": bounded_runner.Path(
+                        values["--launchd-child-stdout"]
+                    ),
+                    "stderr_path": bounded_runner.Path(
+                        values["--launchd-child-stderr"]
+                    ),
+                },
+                daemon=True,
+            )
+            child_threads.append(thread)
+            thread.start()
+            return subprocess.CompletedProcess(args, 0, "", "")
+        assert args[0] == "bootout"
+        for thread in child_threads:
+            thread.join(timeout=2)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(
+        bounded_runner, "_launchd_domain_targets", lambda: ("user/1000",)
+    )
+    monkeypatch.setattr(bounded_runner, "_launchctl", fake_launchctl)
+    monkeypatch.setattr(bounded_runner, "LAUNCHD_CLEANUP_GRACE_S", 0.0)
+
+    assert (
+        bounded_runner._run_launchd_bounded_command(
+            "/bin/sh", "printf parent-out; printf parent-err >&2; exit 9"
+        )
+        == 9
+    )
+    captured = capsys.readouterr()
+    assert captured.out == "parent-out"
+    assert captured.err == "parent-err"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
+def test_launchd_parent_falls_back_to_user_domain(monkeypatch):
+    child_threads: list[threading.Thread] = []
+    calls: list[tuple[str, ...]] = []
+
+    def fake_launchctl(args):
+        calls.append(tuple(args))
+        if args[:2] == ["bootstrap", "gui/1000"]:
+            return subprocess.CompletedProcess(args, 5, "", "gui unavailable")
+        if args[:2] == ["bootstrap", "user/1000"]:
+            with open(args[2], "rb") as handle:
+                payload = plistlib.load(handle)
+            arguments = payload["ProgramArguments"]
+            values = {
+                arguments[index]: arguments[index + 1]
+                for index in range(len(arguments) - 1)
+                if str(arguments[index]).startswith("--launchd-child-")
+            }
+            thread = threading.Thread(
+                target=bounded_runner._run_launchd_child,
+                args=(
+                    arguments[arguments.index("--shell") + 1],
+                    arguments[arguments.index("--command") + 1],
+                ),
+                kwargs={
+                    "status_path": bounded_runner.Path(
+                        values["--launchd-child-status"]
+                    ),
+                    "started_path": bounded_runner.Path(
+                        values["--launchd-child-started"]
+                    ),
+                    "stdout_path": bounded_runner.Path(
+                        values["--launchd-child-stdout"]
+                    ),
+                    "stderr_path": bounded_runner.Path(
+                        values["--launchd-child-stderr"]
+                    ),
+                },
+                daemon=True,
+            )
+            child_threads.append(thread)
+            thread.start()
+            return subprocess.CompletedProcess(args, 0, "", "")
+        assert args[0] == "bootout"
+        for thread in child_threads:
+            thread.join(timeout=2)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(
+        bounded_runner,
+        "_launchd_domain_targets",
+        lambda: ("gui/1000", "user/1000"),
+    )
+    monkeypatch.setattr(bounded_runner, "_launchctl", fake_launchctl)
+    monkeypatch.setattr(bounded_runner, "LAUNCHD_CLEANUP_GRACE_S", 0.0)
+
+    assert bounded_runner._run_launchd_bounded_command("/bin/sh", "exit 0") == 0
+    assert calls[0][:2] == ("bootstrap", "gui/1000")
+    assert calls[1][:2] == ("bootstrap", "user/1000")
+    assert calls[2][0] == "bootout"
+    assert calls[2][1].startswith("user/1000/local-shell-mcp.bounded.")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
+def test_launchd_parent_fails_closed_when_cleanup_is_unconfirmed(
+    monkeypatch, capsys
+):
+    child_threads: list[threading.Thread] = []
+
+    def fake_launchctl(args):
+        if args[0] == "bootstrap":
+            with open(args[2], "rb") as handle:
+                payload = plistlib.load(handle)
+            arguments = payload["ProgramArguments"]
+            values = {
+                arguments[index]: arguments[index + 1]
+                for index in range(len(arguments) - 1)
+                if str(arguments[index]).startswith("--launchd-child-")
+            }
+            thread = threading.Thread(
+                target=bounded_runner._run_launchd_child,
+                args=(
+                    arguments[arguments.index("--shell") + 1],
+                    arguments[arguments.index("--command") + 1],
+                ),
+                kwargs={
+                    "status_path": bounded_runner.Path(
+                        values["--launchd-child-status"]
+                    ),
+                    "started_path": bounded_runner.Path(
+                        values["--launchd-child-started"]
+                    ),
+                    "stdout_path": bounded_runner.Path(
+                        values["--launchd-child-stdout"]
+                    ),
+                    "stderr_path": bounded_runner.Path(
+                        values["--launchd-child-stderr"]
+                    ),
+                },
+                daemon=True,
+            )
+            child_threads.append(thread)
+            thread.start()
+            return subprocess.CompletedProcess(args, 0, "", "")
+        for thread in child_threads:
+            thread.join(timeout=2)
+        return subprocess.CompletedProcess(args, 5, "", "cleanup failed")
+
+    monkeypatch.setattr(
+        bounded_runner, "_launchd_domain_targets", lambda: ("user/1000",)
+    )
+    monkeypatch.setattr(bounded_runner, "_launchctl", fake_launchctl)
+    monkeypatch.setattr(bounded_runner, "LAUNCHD_CLEANUP_GRACE_S", 0.0)
+
+    assert (
+        bounded_runner._run_launchd_bounded_command("/bin/sh", "exit 0") == 125
+    )
+    assert "cleanup failed" in capsys.readouterr().err
 
 
 def test_bounded_runner_main_parses_arguments(monkeypatch):
