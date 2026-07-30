@@ -108,12 +108,11 @@ class _ConPtyShellLease:
             raise RuntimeError("ConPTY shell lease exited before acquisition")
 
     def release(self) -> None:
-        """Release the lease after the shell is no longer controllable."""
+        """Release the lease and wait for any concurrent release to finish."""
         with self._state_lock:
-            if self._released:
-                return
-            self._released = True
-            self._release.set()
+            if not self._released:
+                self._released = True
+                self._release.set()
         self._thread.join(_CONPTY_LEASE_JOIN_TIMEOUT_S)
         if self._thread.is_alive():
             raise RuntimeError("ConPTY shell lease did not exit")
@@ -365,13 +364,13 @@ class _ConPtySession:
         """Release registry state only after process death is confirmed."""
         if self.process_alive():
             return "ConPTY process termination was not confirmed"
-        with _SESSIONS_LOCK:
-            if _SESSIONS.get(self.shell_id) is self:
-                _SESSIONS.pop(self.shell_id, None)
         try:
             self.lease.release()
         except Exception as exc:
             return repr(exc)
+        with _SESSIONS_LOCK:
+            if _SESSIONS.get(self.shell_id) is self:
+                _SESSIONS.pop(self.shell_id, None)
         return ""
 
     def start_reader(self) -> None:
@@ -510,10 +509,15 @@ _SESSIONS_LOCK = threading.RLock()
 
 
 def has_session(shell_id: str) -> bool:
-    """Return whether one live ConPTY persistent shell is registered."""
+    """Return whether one live ConPTY shell remains, reaping dead state."""
     with _SESSIONS_LOCK:
         session = _SESSIONS.get(shell_id)
-    return session is not None and session.process_alive()
+    if session is None:
+        return False
+    if session.process_alive():
+        return True
+    session.close(force=False)
+    return False
 
 
 def _get_session(shell_id: str) -> _ConPtySession:
