@@ -1099,12 +1099,16 @@ async def test_conpty_owned_inventory_is_unknown_for_peer_durable_shell(
         shell_ops.conpty, "list_owned_shell_ids", no_local_shells
     )
     monkeypatch.setattr(
+        shell_ops.conpty, "authoritative_shell_ids", lambda: {"peer-shell"}
+    )
+    monkeypatch.setattr(
         shell_ops,
         "get_tool_session_store",
         lambda: SimpleNamespace(
             require_session=lambda _session_id: SimpleNamespace(
                 persistent_shell_ids=("peer-shell",)
-            )
+            ),
+            release_session_persistent_shell=lambda *_args: None,
         ),
     )
 
@@ -1127,18 +1131,58 @@ async def test_conpty_owned_inventory_accepts_current_process_shells(
 
     monkeypatch.setattr(shell_ops.conpty, "list_owned_shell_ids", local_shells)
     monkeypatch.setattr(
+        shell_ops.conpty, "authoritative_shell_ids", lambda: {"local-shell"}
+    )
+    monkeypatch.setattr(
         shell_ops,
         "get_tool_session_store",
         lambda: SimpleNamespace(
             require_session=lambda _session_id: SimpleNamespace(
                 persistent_shell_ids=("local-shell",)
-            )
+            ),
+            release_session_persistent_shell=lambda *_args: None,
         ),
     )
 
     assert await shell_ops.list_owned_persistent_shell_ids_execute(
         "SESSION1"
     ) == ["local-shell"]
+
+
+@pytest.mark.asyncio
+async def test_conpty_owned_inventory_clears_dead_peer_reservation(monkeypatch):
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+
+    async def no_local_shells(_owner_session_id: str):
+        return []
+
+    released: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        shell_ops.conpty, "list_owned_shell_ids", no_local_shells
+    )
+    monkeypatch.setattr(
+        shell_ops.conpty, "authoritative_shell_ids", lambda: set()
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            require_session=lambda _session_id: SimpleNamespace(
+                persistent_shell_ids=("dead-peer-shell",)
+            ),
+            release_session_persistent_shell=lambda session_id, shell_id: (
+                released.append((session_id, shell_id))
+            ),
+        ),
+    )
+
+    assert (
+        await shell_ops.list_owned_persistent_shell_ids_execute("SESSION1")
+        == []
+    )
+    assert released == [("SESSION1", "dead-peer-shell")]
 
 
 @pytest.mark.asyncio

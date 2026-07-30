@@ -1537,16 +1537,47 @@ async def job_reconcile_shell_jobs_execute() -> bool:
     """Reconcile durable state and, when available, live shell membership."""
     active_shells = await authoritative_persistent_shell_ids_execute()
     now = _utc()
+
     with _store_transaction() as store:
         jobs = store.get("jobs", [])
         if not isinstance(jobs, list):
             return True
-        for row in jobs:
-            if not isinstance(row, dict):
-                continue
-            if str(row.get("kind") or "shell") == "managed":
-                continue
-            _refresh_job_status(row, active_shells, now)
+        owner_session_ids = sorted(
+            {
+                str(row.get("session_id") or "")
+                for row in jobs
+                if isinstance(row, dict)
+                and str(row.get("kind") or "shell") != "managed"
+                and row.get("session_id")
+            }
+        )
+
+    for session_id in owner_session_ids:
+        async with session_lifecycle_lock(session_id):
+            with _store_transaction() as store:
+                jobs = store.get("jobs", [])
+                if not isinstance(jobs, list):
+                    continue
+                for row in jobs:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("kind") or "shell") == "managed":
+                        continue
+                    if str(row.get("session_id") or "") != session_id:
+                        continue
+                    _refresh_job_status(row, active_shells, now)
+
+    with _store_transaction() as store:
+        jobs = store.get("jobs", [])
+        if isinstance(jobs, list):
+            for row in jobs:
+                if not isinstance(row, dict):
+                    continue
+                if str(row.get("kind") or "shell") == "managed":
+                    continue
+                if row.get("session_id"):
+                    continue
+                _refresh_job_status(row, active_shells, now)
         _prune_store(store)
     return active_shells is not None
 

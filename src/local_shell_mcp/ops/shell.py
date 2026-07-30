@@ -1335,11 +1335,24 @@ async def list_owned_persistent_shell_ids_execute(
     """Return owned shell ids, or None when discovery is non-authoritative."""
     if _use_conpty_persistent_shell_backend():
         try:
-            session = get_tool_session_store().require_session(owner_session_id)
+            store = get_tool_session_store()
+            session = store.require_session(owner_session_id)
             durable_ids = set(session.persistent_shell_ids)
             local_ids = set(await conpty.list_owned_shell_ids(owner_session_id))
+            authoritative_ids = conpty.authoritative_shell_ids()
         except Exception:
             return None
+        if authoritative_ids is None:
+            return None
+        dead_durable_ids = durable_ids - authoritative_ids
+        for shell_id in sorted(dead_durable_ids):
+            try:
+                store.release_session_persistent_shell(
+                    owner_session_id, shell_id
+                )
+            except Exception:
+                return None
+        durable_ids -= dead_durable_ids
         if not durable_ids.issubset(local_ids):
             return None
         return sorted(local_ids)

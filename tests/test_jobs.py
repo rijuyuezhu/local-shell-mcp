@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -1102,6 +1102,44 @@ async def test_reconcile_shell_jobs_marks_only_missing_shells_terminal(
     assert stale["status"] == "lost"
     assert live["status"] == "running"
     assert managed["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_shell_jobs_holds_each_owner_lifecycle_lock(
+    monkeypatch,
+):
+    row = {
+        "kind": "shell",
+        "status": "starting",
+        "job_id": "peer-start",
+        "session_id": "SESSION1",
+        "shell_id": "pending-shell",
+    }
+    store = {"jobs": [row]}
+    held: list[str] = []
+
+    @contextmanager
+    def fake_transaction():
+        yield store
+
+    @asynccontextmanager
+    async def fake_lifecycle_lock(session_id: str):
+        held.append(session_id)
+        yield
+
+    async def fake_inventory():
+        return set()
+
+    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(jobs_ops, "session_lifecycle_lock", fake_lifecycle_lock)
+    monkeypatch.setattr(
+        jobs_ops, "authoritative_persistent_shell_ids_execute", fake_inventory
+    )
+    monkeypatch.setattr(jobs_ops, "_prune_store", lambda _store: None)
+
+    assert await jobs_ops.job_reconcile_shell_jobs_execute() is True
+    assert held == ["SESSION1"]
+    assert row["status"] == "failed"
 
 
 @pytest.mark.asyncio
