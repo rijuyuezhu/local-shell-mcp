@@ -25,8 +25,28 @@ KQUEUE_EVENT_BATCH = 256
 PROCFS_ROOT = Path("/proc")
 LAUNCHCTL_PATH = Path("/bin/launchctl")
 LAUNCHD_START_TIMEOUT_S = 5.0
-LAUNCHD_CONTROL_TIMEOUT_S = 1.5
+LAUNCHD_CONTROL_TIMEOUT_S = 1.0
 LAUNCHD_CLEANUP_GRACE_S = 0.25
+MACOS_TERMINATE_GRACE_S = 0.5
+MACOS_KILL_GRACE_S = 0.5
+MACOS_LIBPROC_PATH = "/usr/lib/libproc.dylib"
+PROC_UID_ONLY = 4
+PROC_PIDCOALITIONINFO = 20
+COALITION_NUM_TYPES = 2
+COALITION_TYPE_RESOURCE = 0
+_MACOS_LIBPROC: Any | None = None
+_MACOS_LIBPROC_LOADED = False
+
+
+class _ProcPidCoalitionInfo(ctypes.Structure):
+    """Public XNU proc_pidcoalitioninfo layout for resource/jetsam ids."""
+
+    _fields_ = [
+        ("coalition_id", ctypes.c_uint64 * COALITION_NUM_TYPES),
+        ("reserved1", ctypes.c_uint64),
+        ("reserved2", ctypes.c_uint64),
+        ("reserved3", ctypes.c_uint64),
+    ]
 
 
 def _shell_command_args(shell: str, command: str) -> list[str]:
@@ -262,6 +282,180 @@ def _launchd_containment_available() -> bool:
         sys.platform == "darwin"
         and LAUNCHCTL_PATH.is_file()
         and os.access(LAUNCHCTL_PATH, os.X_OK)
+        and _macos_process_coalition_ids(os.getpid()) is not None
+        and _macos_uid_pids() is not None
+    )
+
+
+def _macos_libproc() -> Any | None:
+    """Load the public macOS libproc process-enumeration interface once."""
+    global _MACOS_LIBPROC, _MACOS_LIBPROC_LOADED
+    if _MACOS_LIBPROC_LOADED:
+        return _MACOS_LIBPROC
+    _MACOS_LIBPROC_LOADED = True
+    if sys.platform != "darwin":
+        return None
+    try:
+        library = ctypes.CDLL(MACOS_LIBPROC_PATH, use_errno=True)
+    except OSError:
+        return None
+    library.proc_listpids.argtypes = [
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.c_int,
+    ]
+    library.proc_listpids.restype = ctypes.c_int
+    library.proc_pidinfo.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint64,
+        ctypes.c_void_p,
+        ctypes.c_int,
+    ]
+    library.proc_pidinfo.restype = ctypes.c_int
+    _MACOS_LIBPROC = library
+    return library
+
+
+def _macos_uid_pids() -> list[int] | None:
+    """Enumerate every process owned by this uid through public libproc."""
+    library = _macos_libproc()
+    if library is None:
+        return None
+    required_bytes = int(
+        library.proc_listpids(PROC_UID_ONLY, os.getuid(), None, 0)
+    )
+    if required_bytes <= 0:
+        return None
+    capacity = max(required_bytes // ctypes.sizeof(ctypes.c_int) + 64, 128)
+    for _ in range(3):
+        buffer = (ctypes.c_int * capacity)()
+        returned_bytes = int(
+            library.proc_listpids(
+                PROC_UID_ONLY,
+                os.getuid(),
+                buffer,
+                ctypes.sizeof(buffer),
+            )
+        )
+        if returned_bytes <= 0:
+            return None
+        count = returned_bytes // ctypes.sizeof(ctypes.c_int)
+        if count < capacity:
+            return [int(pid) for pid in buffer[:count] if int(pid) > 0]
+        capacity *= 2
+    return None
+
+
+def _macos_process_coalition_ids(pid: int) -> tuple[int, int] | None:
+    """Return one process's public resource and jetsam coalition ids."""
+    library = _macos_libproc()
+    if library is None:
+        return None
+    info = _ProcPidCoalitionInfo()
+    size = ctypes.sizeof(info)
+    returned = int(
+        library.proc_pidinfo(
+            int(pid),
+            PROC_PIDCOALITIONINFO,
+            0,
+            ctypes.byref(info),
+            size,
+        )
+    )
+    if returned != size:
+        return None
+    resource = int(info.coalition_id[COALITION_TYPE_RESOURCE])
+    jetsam = int(info.coalition_id[1])
+    if resource <= 0:
+        return None
+    return resource, jetsam
+
+
+def _read_launchd_coalition(path: Path) -> tuple[int, int] | None:
+    """Read and validate the launchd child's kernel coalition identity."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except OSError, UnicodeError, json.JSONDecodeError:
+        return (0, 0)
+    raw = payload.get("coalition_ids") if isinstance(payload, dict) else None
+    if (
+        not isinstance(raw, list)
+        or len(raw) != COALITION_NUM_TYPES
+        or any(
+            not isinstance(value, int) or isinstance(value, bool)
+            for value in raw
+        )
+        or int(raw[COALITION_TYPE_RESOURCE]) <= 0
+    ):
+        return (0, 0)
+    return int(raw[0]), int(raw[1])
+
+
+def _macos_matching_coalition_pids(
+    coalition_ids: tuple[int, int],
+) -> set[int] | None:
+    """Return all current-uid processes in one resource coalition."""
+    pids = _macos_uid_pids()
+    if pids is None:
+        return None
+    resource_id = coalition_ids[COALITION_TYPE_RESOURCE]
+    matching: set[int] = set()
+    for pid in pids:
+        if pid == os.getpid():
+            continue
+        identity = _macos_process_coalition_ids(pid)
+        if identity is None:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                continue
+            except PermissionError:
+                return None
+            return None
+        if identity[COALITION_TYPE_RESOURCE] == resource_id:
+            matching.add(pid)
+    return matching
+
+
+def _terminate_macos_coalition(
+    coalition_ids: tuple[int, int],
+    sig: signal.Signals,
+    timeout_s: float,
+) -> bool:
+    """Repeatedly signal a coalition until it is empty or the deadline expires."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        matching = _macos_matching_coalition_pids(coalition_ids)
+        if matching is None:
+            return False
+        if not matching:
+            return True
+        for pid in sorted(matching, reverse=True):
+            try:
+                os.kill(pid, sig)
+            except ProcessLookupError:
+                continue
+            except PermissionError:
+                return False
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(POLL_INTERVAL_S)
+    matching = _macos_matching_coalition_pids(coalition_ids)
+    return matching == set()
+
+
+def _cleanup_macos_coalition(coalition_ids: tuple[int, int]) -> bool:
+    """Terminate every surviving launchd-job process, including setsid escapes."""
+    if _terminate_macos_coalition(
+        coalition_ids, signal.SIGTERM, MACOS_TERMINATE_GRACE_S
+    ):
+        return True
+    return _terminate_macos_coalition(
+        coalition_ids, signal.SIGKILL, MACOS_KILL_GRACE_S
     )
 
 
@@ -293,15 +487,37 @@ def _run_launchd_child(
     started_path: Path,
     stdout_path: Path,
     stderr_path: Path,
+    coalition_path: Path | None = None,
+    release_path: Path | None = None,
 ) -> int:
     """Run the command inside one launchd job and publish its real status."""
     stdout_fd = os.open(stdout_path, os.O_WRONLY)
     stderr_fd = os.open(stderr_path, os.O_WRONLY)
     returncode = 125
     try:
-        started_path.write_text("started", encoding="ascii")
-        started_path.chmod(0o600)
         try:
+            if (coalition_path is None) != (release_path is None):
+                raise RuntimeError("incomplete launchd coalition gate")
+            if coalition_path is not None and release_path is not None:
+                coalition_ids = _macos_process_coalition_ids(os.getpid())
+                if coalition_ids is None:
+                    raise RuntimeError(
+                        "launchd child coalition identity is unavailable"
+                    )
+                _write_private_json(
+                    coalition_path,
+                    {"coalition_ids": list(coalition_ids)},
+                )
+            started_path.write_text("started", encoding="ascii")
+            started_path.chmod(0o600)
+            if release_path is not None:
+                deadline = time.monotonic() + LAUNCHD_START_TIMEOUT_S
+                while not release_path.exists():
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(
+                            "launchd child was not released by its parent"
+                        )
+                    time.sleep(POLL_INTERVAL_S)
             process = subprocess.Popen(
                 _shell_command_args(shell, command),
                 stdout=stdout_fd,
@@ -369,7 +585,7 @@ def _launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def _bootout_launchd_job(target: str) -> bool:
-    """Remove one launchd service and its non-abandoned process coalition."""
+    """Remove one launchd service; coalition members are cleaned separately."""
     try:
         result = _launchctl(["bootout", target])
     except OSError, subprocess.TimeoutExpired:
@@ -396,6 +612,13 @@ def _read_launchd_status(path: Path) -> int | None:
 
 def _run_launchd_bounded_command(shell: str, command: str) -> int:
     """Run one macOS command in a disposable launchd containment job."""
+    parent_coalition = _macos_process_coalition_ids(os.getpid())
+    if parent_coalition is None:
+        print(
+            "Bounded command coalition identity is unavailable",
+            file=sys.stderr,
+        )
+        return 125
     received_signal = 0
 
     def remember_signal(signum: int, _frame: FrameType | None) -> None:
@@ -412,6 +635,8 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
         directory.chmod(0o700)
         status_path = directory / "status.json"
         started_path = directory / "started"
+        coalition_path = directory / "coalition.json"
+        release_path = directory / "release"
         stdout_path = directory / "stdout.fifo"
         stderr_path = directory / "stderr.fifo"
         plist_path = directory / "job.plist"
@@ -440,6 +665,10 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
                 str(stdout_path),
                 "--launchd-child-stderr",
                 str(stderr_path),
+                "--launchd-child-coalition",
+                str(coalition_path),
+                "--launchd-child-release",
+                str(release_path),
             ],
             "WorkingDirectory": os.getcwd(),
             "EnvironmentVariables": dict(os.environ),
@@ -456,7 +685,10 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
 
         target: str | None = None
         uncertain_target: str | None = None
-        cleaned = False
+        bootout_cleaned = False
+        coalition_cleaned = False
+        coalition_ids: tuple[int, int] | None = None
+        released = False
         bootstrap_errors: list[str] = []
         try:
             for domain in dict.fromkeys(_launchd_domain_targets()):
@@ -496,23 +728,45 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
                 _drain_launchd_pipe(stdout_fd, sys.stdout)
                 _drain_launchd_pipe(stderr_fd, sys.stderr)
                 returncode = _read_launchd_status(status_path)
+                if coalition_ids is None:
+                    candidate = _read_launchd_coalition(coalition_path)
+                    if candidate == (0, 0):
+                        startup_failed = True
+                        break
+                    if candidate is not None:
+                        coalition_ids = candidate
+                        if (
+                            coalition_ids[COALITION_TYPE_RESOURCE]
+                            == parent_coalition[COALITION_TYPE_RESOURCE]
+                        ):
+                            startup_failed = True
+                            break
+                        _write_private_json(release_path, {"release": True})
+                        released = True
                 if (
                     returncode is None
-                    and not started_path.exists()
+                    and (
+                        not started_path.exists()
+                        or coalition_ids is None
+                        or not released
+                    )
                     and time.monotonic() >= started_deadline
                 ):
                     startup_failed = True
                     break
                 time.sleep(POLL_INTERVAL_S)
 
-            cleaned = _bootout_launchd_job(target)
+            bootout_cleaned = _bootout_launchd_job(target)
+            coalition_cleaned = not released
+            if coalition_ids is not None and released:
+                coalition_cleaned = _cleanup_macos_coalition(coalition_ids)
             for _ in range(4):
                 stdout_drained = _drain_launchd_pipe(stdout_fd, sys.stdout)
                 stderr_drained = _drain_launchd_pipe(stderr_fd, sys.stderr)
                 if not stdout_drained and not stderr_drained:
                     break
                 time.sleep(POLL_INTERVAL_S)
-            if not cleaned:
+            if not bootout_cleaned or not coalition_cleaned:
                 print(
                     "Bounded command launchd containment cleanup failed",
                     file=sys.stderr,
@@ -532,10 +786,12 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
                 return _mirror_signal(-returncode)
             return returncode
         finally:
-            if target is not None and not cleaned:
+            if target is not None and not bootout_cleaned:
                 _bootout_launchd_job(target)
             elif uncertain_target is not None:
                 _bootout_launchd_job(uncertain_target)
+            if coalition_ids is not None and released and not coalition_cleaned:
+                _cleanup_macos_coalition(coalition_ids)
             os.close(stdout_guard)
             os.close(stderr_guard)
             os.close(stdout_fd)
@@ -1020,6 +1276,8 @@ def run_bounded_runner_from_args(args: argparse.Namespace) -> None:
         launchd_child_started = getattr(args, "launchd_child_started", None)
         launchd_child_stdout = getattr(args, "launchd_child_stdout", None)
         launchd_child_stderr = getattr(args, "launchd_child_stderr", None)
+        launchd_child_coalition = getattr(args, "launchd_child_coalition", None)
+        launchd_child_release = getattr(args, "launchd_child_release", None)
         if (
             not isinstance(launchd_child_status, str)
             or not launchd_child_status
@@ -1029,6 +1287,10 @@ def run_bounded_runner_from_args(args: argparse.Namespace) -> None:
             or not launchd_child_stdout
             or not isinstance(launchd_child_stderr, str)
             or not launchd_child_stderr
+            or not isinstance(launchd_child_coalition, str)
+            or not launchd_child_coalition
+            or not isinstance(launchd_child_release, str)
+            or not launchd_child_release
         ):
             raise SystemExit(125)
         raise SystemExit(
@@ -1039,6 +1301,8 @@ def run_bounded_runner_from_args(args: argparse.Namespace) -> None:
                 started_path=Path(launchd_child_started),
                 stdout_path=Path(launchd_child_stdout),
                 stderr_path=Path(launchd_child_stderr),
+                coalition_path=Path(launchd_child_coalition),
+                release_path=Path(launchd_child_release),
             )
         )
     raise SystemExit(run_bounded_command(str(args.shell), str(args.command)))
@@ -1050,6 +1314,8 @@ def _add_launchd_child_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--launchd-child-started", help=argparse.SUPPRESS)
     parser.add_argument("--launchd-child-stdout", help=argparse.SUPPRESS)
     parser.add_argument("--launchd-child-stderr", help=argparse.SUPPRESS)
+    parser.add_argument("--launchd-child-coalition", help=argparse.SUPPRESS)
+    parser.add_argument("--launchd-child-release", help=argparse.SUPPRESS)
 
 
 def register_bounded_runner_cli(subparsers: Any) -> argparse.ArgumentParser:

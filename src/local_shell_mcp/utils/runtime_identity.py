@@ -91,8 +91,13 @@ def managed_job_lease_state(
     job_id: str, lease_version: object
 ) -> ManagedJobLeaseState:
     """Classify one durable managed job from its cross-process lease."""
-    if lease_version != MANAGED_JOB_LEASE_VERSION or not str(job_id).strip():
+    if not str(job_id).strip():
         return "unknown"
+    if lease_version != MANAGED_JOB_LEASE_VERSION:
+        # Rows from releases before managed-job leases cannot have a live owner
+        # in this runtime. Treat them as definitively stale so normal refresh
+        # migrates them to the recoverable lost/stopped terminal path.
+        return "dead"
     path = managed_job_lease_path(str(job_id))
     if not path.exists():
         return "unknown"

@@ -523,6 +523,54 @@ async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
 
 
 @pytest.mark.asyncio
+async def test_destination_teardown_migrates_legacy_managed_copy(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    source = store.create_session(workdir=tmp_path)
+    destination = store.create_session(workdir=tmp_path)
+    jobs_runtime._save_store(
+        {
+            "version": jobs_runtime.JOB_STORE_VERSION,
+            "jobs": [
+                {
+                    "job_id": "job_legacy_copy",
+                    "kind": "managed",
+                    "managed_kind": "session-copy",
+                    "managed_payload": {
+                        "src_session_id": source.session_id,
+                        "dst_session_id": destination.session_id,
+                    },
+                    "runtime_instance_id": "previous-runtime",
+                    "session_id": source.session_id,
+                    "status": "running",
+                    "created_at": time.time(),
+                    "updated_at": time.time(),
+                    "attempts": 1,
+                }
+            ],
+        }
+    )
+
+    async def no_shells(_session_id: str) -> list[str]:
+        return []
+
+    monkeypatch.setattr(session_ops, "_stop_owned_shells", no_shells)
+
+    ended = await session_ops.session_end_execute(destination.session_id)
+
+    assert ended.ended is True
+    with pytest.raises(ValueError, match="unknown session_id"):
+        store.require_session(destination.session_id)
+    row = jobs_runtime._load_store()["jobs"][0]
+    assert row["status"] == "lost"
+
+
+@pytest.mark.asyncio
 async def test_session_end_retry_rechecks_lost_job_before_deleting_session(
     tmp_path, monkeypatch
 ):

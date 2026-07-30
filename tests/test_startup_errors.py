@@ -299,11 +299,14 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
         return _tmux_result(ok=True)
 
     monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+    owner_session_id = (
+        get_tool_session_store().create_session(workdir=tmp_path).session_id
+    )
 
     started = await shell_ops.start_persistent_shell_execute(
         cwd=str(tmp_path),
         name="configured-shell",
-        owner_session_id="SESSION1",
+        owner_session_id=owner_session_id,
     )
 
     assert started.command == str(shell)
@@ -316,18 +319,14 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
                 "configured-shell",
                 "-c",
                 str(tmp_path),
-            ],
-            10,
-        ),
-        (
-            [
+                ";",
                 "set-option",
                 "-t",
                 "configured-shell",
                 "@local-shell-mcp-session-id",
-                "SESSION1",
+                owner_session_id,
             ],
-            5,
+            10,
         ),
         (["has-session", "-t", "=configured-shell"], 5),
     ]
@@ -725,6 +724,11 @@ async def test_persistent_tmux_creation_and_send_errors_are_reported(
         args: list[str], timeout_s: int = 10
     ) -> CommandResult:
         del timeout_s
+        if args[0] == "kill-session":
+            return _tmux_result(
+                ok=False,
+                stderr="no server running on /tmp/tmux/default",
+            )
         return _tmux_result(ok=False, stderr=f"failed {args[0]}")
 
     monkeypatch.setattr(shell_ops, "tmux", failed_tmux)

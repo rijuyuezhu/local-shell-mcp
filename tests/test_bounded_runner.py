@@ -40,6 +40,23 @@ def _install_fake_kqueue_capabilities(monkeypatch, queue_factory):
     return SimpleNamespace(**constants)
 
 
+def _install_fake_launchd_coalitions(monkeypatch):
+    """Give in-process launchd parent/child tests distinct coalition identities."""
+    parent_thread = threading.current_thread()
+    monkeypatch.setattr(
+        bounded_runner,
+        "_macos_process_coalition_ids",
+        lambda _pid: (
+            (101, 11)
+            if threading.current_thread() is parent_thread
+            else (202, 22)
+        ),
+    )
+    monkeypatch.setattr(
+        bounded_runner, "_cleanup_macos_coalition", lambda _ids: True
+    )
+
+
 def test_shell_command_args_support_native_windows_shells():
     assert bounded_runner._shell_command_args("pwsh.exe", "echo ok") == [
         "pwsh.exe",
@@ -1275,6 +1292,72 @@ def test_launchd_child_streams_output_and_publishes_status(tmp_path):
         os.close(stderr_fd)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
+def test_launchd_child_waits_for_coalition_release(tmp_path, monkeypatch):
+    stdout_path = tmp_path / "stdout.fifo"
+    stderr_path = tmp_path / "stderr.fifo"
+    started_path = tmp_path / "started"
+    status_path = tmp_path / "status.json"
+    coalition_path = tmp_path / "coalition.json"
+    release_path = tmp_path / "release"
+    os.mkfifo(stdout_path, 0o600)
+    os.mkfifo(stderr_path, 0o600)
+    stdout_fd = os.open(stdout_path, os.O_RDONLY | os.O_NONBLOCK)
+    stderr_fd = os.open(stderr_path, os.O_RDONLY | os.O_NONBLOCK)
+    stdout_guard = os.open(stdout_path, os.O_WRONLY | os.O_NONBLOCK)
+    stderr_guard = os.open(stderr_path, os.O_WRONLY | os.O_NONBLOCK)
+    monkeypatch.setattr(
+        bounded_runner, "_macos_process_coalition_ids", lambda _pid: (202, 22)
+    )
+    result: list[int] = []
+    thread = threading.Thread(
+        target=lambda: result.append(
+            bounded_runner._run_launchd_child(
+                "/bin/sh",
+                "printf gated-output",
+                status_path=status_path,
+                started_path=started_path,
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+                coalition_path=coalition_path,
+                release_path=release_path,
+            )
+        ),
+        daemon=True,
+    )
+    try:
+        thread.start()
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if coalition_path.exists() and started_path.exists():
+                break
+            time.sleep(0.01)
+        else:
+            pytest.fail("launchd child did not publish its coalition gate")
+
+        assert bounded_runner._read_launchd_coalition(coalition_path) == (
+            202,
+            22,
+        )
+        assert not status_path.exists()
+        assert thread.is_alive()
+
+        bounded_runner._write_private_json(release_path, {"release": True})
+        thread.join(timeout=2)
+
+        assert not thread.is_alive()
+        assert result == [0]
+        assert bounded_runner._read_launchd_status(status_path) == 0
+        assert os.read(stdout_fd, 1024) == b"gated-output"
+        with pytest.raises(BlockingIOError):
+            os.read(stderr_fd, 1024)
+    finally:
+        os.close(stdout_guard)
+        os.close(stderr_guard)
+        os.close(stdout_fd)
+        os.close(stderr_fd)
+
+
 def test_run_bounded_command_routes_macos_through_launchd(monkeypatch):
     monkeypatch.setattr(bounded_runner.sys, "platform", "darwin")
     monkeypatch.setattr(
@@ -1320,6 +1403,96 @@ def test_read_launchd_status_fails_closed_on_invalid_payload(tmp_path):
     assert bounded_runner._read_launchd_status(status_path) == 125
 
 
+def test_read_launchd_coalition_validates_resource_identity(tmp_path):
+    coalition_path = tmp_path / "coalition.json"
+    assert bounded_runner._read_launchd_coalition(coalition_path) is None
+
+    coalition_path.write_text("{broken", encoding="utf-8")
+    assert bounded_runner._read_launchd_coalition(coalition_path) == (0, 0)
+
+    coalition_path.write_text('{"coalition_ids":[123,456]}', encoding="utf-8")
+    assert bounded_runner._read_launchd_coalition(coalition_path) == (123, 456)
+
+    coalition_path.write_text('{"coalition_ids":[0,456]}', encoding="utf-8")
+    assert bounded_runner._read_launchd_coalition(coalition_path) == (0, 0)
+
+
+def test_macos_libproc_enumerates_uid_and_reads_coalition(monkeypatch):
+    class FakeLibproc:
+        def proc_listpids(self, _kind, _uid, buffer, _size):
+            if buffer is None:
+                return 2 * bounded_runner.ctypes.sizeof(
+                    bounded_runner.ctypes.c_int
+                )
+            buffer[0] = 111
+            buffer[1] = 222
+            return 2 * bounded_runner.ctypes.sizeof(bounded_runner.ctypes.c_int)
+
+        def proc_pidinfo(self, pid, _flavor, _arg, buffer, size):
+            info = bounded_runner.ctypes.cast(
+                buffer,
+                bounded_runner.ctypes.POINTER(
+                    bounded_runner._ProcPidCoalitionInfo
+                ),
+            ).contents
+            info.coalition_id[0] = pid + 1000
+            info.coalition_id[1] = pid + 2000
+            return size
+
+    monkeypatch.setattr(bounded_runner, "_macos_libproc", lambda: FakeLibproc())
+    monkeypatch.setattr(bounded_runner.os, "getuid", lambda: 501)
+
+    assert bounded_runner._macos_uid_pids() == [111, 222]
+    assert bounded_runner._macos_process_coalition_ids(111) == (1111, 2111)
+
+
+def test_macos_matching_coalition_ignores_exited_processes(monkeypatch):
+    current = os.getpid()
+    monkeypatch.setattr(
+        bounded_runner, "_macos_uid_pids", lambda: [current, 11, 12, 13]
+    )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_macos_process_coalition_ids",
+        lambda pid: {11: (77, 1), 12: (88, 2), 13: None}[pid],
+    )
+
+    def fake_kill(pid, sig):
+        assert sig == 0
+        if pid == 13:
+            raise ProcessLookupError
+
+    monkeypatch.setattr(bounded_runner.os, "kill", fake_kill)
+
+    assert bounded_runner._macos_matching_coalition_pids((77, 9)) == {11}
+
+
+def test_terminate_macos_coalition_repeatedly_signals_new_members(monkeypatch):
+    snapshots = iter(({11}, {11, 12}, {12}, set()))
+    monkeypatch.setattr(
+        bounded_runner,
+        "_macos_matching_coalition_pids",
+        lambda _ids: next(snapshots),
+    )
+    monkeypatch.setattr(bounded_runner.time, "sleep", lambda _delay: None)
+    signals: list[tuple[int, signal.Signals]] = []
+    monkeypatch.setattr(
+        bounded_runner.os,
+        "kill",
+        lambda pid, sig: signals.append((pid, sig)),
+    )
+
+    assert bounded_runner._terminate_macos_coalition(
+        (77, 9), signal.SIGTERM, 1.0
+    )
+    assert signals == [
+        (11, signal.SIGTERM),
+        (12, signal.SIGTERM),
+        (11, signal.SIGTERM),
+        (12, signal.SIGTERM),
+    ]
+
+
 def test_launchctl_operations_reserve_outer_cleanup_headroom(monkeypatch):
     calls = []
 
@@ -1335,8 +1508,13 @@ def test_launchctl_operations_reserve_outer_cleanup_headroom(monkeypatch):
     assert calls[0][1]["timeout"] == bounded_runner.LAUNCHD_CONTROL_TIMEOUT_S
     assert calls[1][1]["timeout"] == bounded_runner.LAUNCHD_CONTROL_TIMEOUT_S
     assert (
-        2 * bounded_runner.LAUNCHD_CONTROL_TIMEOUT_S
-        + 2 * bounded_runner.LAUNCHD_CLEANUP_GRACE_S
+        2
+        * (
+            bounded_runner.LAUNCHD_CONTROL_TIMEOUT_S
+            + bounded_runner.LAUNCHD_CLEANUP_GRACE_S
+            + bounded_runner.MACOS_TERMINATE_GRACE_S
+            + bounded_runner.MACOS_KILL_GRACE_S
+        )
         < 5.0
     )
 
@@ -1345,6 +1523,7 @@ def test_launchctl_operations_reserve_outer_cleanup_headroom(monkeypatch):
 def test_launchd_parent_cleans_uncertain_timed_out_bootstrap(
     monkeypatch, capsys
 ):
+    _install_fake_launchd_coalitions(monkeypatch)
     calls: list[tuple[str, ...]] = []
 
     def fake_launchctl(args):
@@ -1370,6 +1549,7 @@ def test_launchd_parent_cleans_uncertain_timed_out_bootstrap(
 
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
 def test_launchd_parent_forwards_output_and_real_status(monkeypatch, capsys):
+    _install_fake_launchd_coalitions(monkeypatch)
     child_threads: list[threading.Thread] = []
 
     def fake_launchctl(args):
@@ -1401,6 +1581,12 @@ def test_launchd_parent_forwards_output_and_real_status(monkeypatch, capsys):
                     "stderr_path": bounded_runner.Path(
                         values["--launchd-child-stderr"]
                     ),
+                    "coalition_path": bounded_runner.Path(
+                        values["--launchd-child-coalition"]
+                    ),
+                    "release_path": bounded_runner.Path(
+                        values["--launchd-child-release"]
+                    ),
                 },
                 daemon=True,
             )
@@ -1431,6 +1617,7 @@ def test_launchd_parent_forwards_output_and_real_status(monkeypatch, capsys):
 
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
 def test_launchd_parent_falls_back_to_user_domain(monkeypatch):
+    _install_fake_launchd_coalitions(monkeypatch)
     child_threads: list[threading.Thread] = []
     calls: list[tuple[str, ...]] = []
 
@@ -1466,6 +1653,12 @@ def test_launchd_parent_falls_back_to_user_domain(monkeypatch):
                     "stderr_path": bounded_runner.Path(
                         values["--launchd-child-stderr"]
                     ),
+                    "coalition_path": bounded_runner.Path(
+                        values["--launchd-child-coalition"]
+                    ),
+                    "release_path": bounded_runner.Path(
+                        values["--launchd-child-release"]
+                    ),
                 },
                 daemon=True,
             )
@@ -1496,6 +1689,7 @@ def test_launchd_parent_falls_back_to_user_domain(monkeypatch):
 def test_launchd_parent_fails_closed_when_cleanup_is_unconfirmed(
     monkeypatch, capsys
 ):
+    _install_fake_launchd_coalitions(monkeypatch)
     child_threads: list[threading.Thread] = []
     bootout_calls = 0
 
@@ -1528,6 +1722,12 @@ def test_launchd_parent_fails_closed_when_cleanup_is_unconfirmed(
                     ),
                     "stderr_path": bounded_runner.Path(
                         values["--launchd-child-stderr"]
+                    ),
+                    "coalition_path": bounded_runner.Path(
+                        values["--launchd-child-coalition"]
+                    ),
+                    "release_path": bounded_runner.Path(
+                        values["--launchd-child-release"]
                     ),
                 },
                 daemon=True,

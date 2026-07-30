@@ -72,7 +72,7 @@ def test_managed_job_lease_reports_unknown_live_and_dead(tmp_path, monkeypatch):
     assert (
         managed_job_lease_state(job_id, MANAGED_JOB_LEASE_VERSION) == "unknown"
     )
-    assert managed_job_lease_state(job_id, 0) == "unknown"
+    assert managed_job_lease_state(job_id, 0) == "dead"
 
     lease = ManagedJobLease(job_id)
     lease.acquire()
@@ -757,12 +757,34 @@ def test_inactive_session_with_persistent_shell_is_not_evicted(
         store.create_session(workdir=tmp_path)
 
 
+def test_reserved_shell_blocks_expiry_until_authoritative_reconciliation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=101.0)
+    store.register_persistent_shell(session.session_id, "reserved-shell")
+    clock[0] = 102.0
+
+    assert store.require_session(session.session_id).persistent_shell_ids == (
+        "reserved-shell",
+    )
+
+    store.reconcile_persistent_shells(set())
+
+    with pytest.raises(ExpiredAgentSessionError):
+        store.require_session(session.session_id)
+
+
 def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(
-        store_module, "managed_job_lease_state", lambda *_args: "dead"
-    )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
@@ -781,7 +803,6 @@ def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
                     "kind": "managed",
                     "status": "running",
                     "runtime_instance_id": "previous-process",
-                    "managed_lease_version": 1,
                 }
             ],
         },
@@ -789,6 +810,44 @@ def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
 
     with pytest.raises(ExpiredAgentSessionError):
         store.require_session(session.session_id)
+
+
+def test_legacy_managed_job_does_not_protect_payload_endpoint(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    source = store.create_session(workdir=tmp_path)
+    destination = store.create_session(
+        workdir=tmp_path, expires_at=time.time() - 1
+    )
+    store._state_store.write_json(
+        store._state_store.layout.jobs_store_path,
+        {
+            "version": 1,
+            "jobs": [
+                {
+                    "job_id": "job_legacy_copy",
+                    "session_id": source.session_id,
+                    "kind": "managed",
+                    "managed_kind": "session-copy",
+                    "status": "running",
+                    "runtime_instance_id": "previous-process",
+                    "managed_payload": {
+                        "src_session_id": source.session_id,
+                        "dst_session_id": destination.session_id,
+                    },
+                }
+            ],
+        },
+    )
+
+    with pytest.raises(ExpiredAgentSessionError):
+        store.require_session(destination.session_id)
 
 
 def test_live_peer_managed_job_still_protects_expired_session(

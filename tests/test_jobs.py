@@ -1789,9 +1789,7 @@ async def test_job_retry_rejects_running_job_when_inventory_is_uncertain(
     assert jobs_ops._load_store()["jobs"][0]["status"] == "running"
 
 
-def test_managed_job_validation_and_lost_recovery(monkeypatch):
-    monkeypatch.setattr(jobs_ops, "_managed_job_liveness", lambda _job: "dead")
-
+def test_managed_job_validation_and_legacy_lost_recovery():
     async def first_handler(context, payload):  # noqa: ARG001
         return payload
 
@@ -1835,6 +1833,60 @@ def test_managed_job_validation_and_lost_recovery(monkeypatch):
     )
     assert stopping["status"] == "stopped"
     assert stopping["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_managed_job_migrates_to_lost_and_can_retry(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    session_id = _create_session()
+
+    async def handler(_context, payload):
+        return payload
+
+    jobs_ops.register_managed_job_handler("test-legacy-retry", handler)
+    started = await jobs_ops.start_managed_job(
+        session_id, "test-legacy-retry", {"value": 7}
+    )
+    current = None
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        current = (await jobs_ops.job_list_execute(session_id)).jobs[0]
+        if current.status == "succeeded":
+            break
+    assert current is not None
+    assert current.status == "succeeded"
+
+    with jobs_ops._store_transaction() as store:
+        row = jobs_ops._find_session_job(store, session_id, started.job_id)
+        row.update(
+            {
+                "status": "running",
+                "completed_at": None,
+                "exit_code": None,
+                "error": None,
+            }
+        )
+        row.pop("managed_lease_version", None)
+
+    migrated = (await jobs_ops.job_list_execute(session_id)).jobs[0]
+    assert migrated.status == "lost"
+    assert "retry it" in str(migrated.error)
+
+    retried = await jobs_ops.job_retry_execute(session_id, started.job_id)
+    assert retried.attempts == 2
+    current = None
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        current = (await jobs_ops.job_list_execute(session_id)).jobs[0]
+        if current.status == "succeeded":
+            break
+    assert current is not None
+    assert current.status == "succeeded"
+    assert current.result == {"value": 7}
+    jobs_ops.reset_managed_jobs_for_tests()
 
 
 def test_managed_job_lease_registry_rejects_duplicates_and_releases(

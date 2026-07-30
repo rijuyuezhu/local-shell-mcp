@@ -73,6 +73,10 @@ _PERSISTENT_SHELL_CREATION_LOCK: asyncio.Lock | None = None
 _TMUX_OWNER_OPTION = "@local-shell-mcp-session-id"
 
 
+class PersistentShellCleanupUncertainError(RuntimeError):
+    """A failed tmux start may still have a live backend session."""
+
+
 def _env_name(*parts: str) -> str:
     return "".join(parts)
 
@@ -989,6 +993,7 @@ async def _start_persistent_shell_locked(
     command: str | None = None,
     *,
     owner_session_id: str | None = None,
+    shell_id: str | None = None,
 ) -> StartPersistentShellOutput:
     """Start a persistent shell while the creation lock is held."""
     resolved_cwd = resolve_path(cwd, must_exist=True)
@@ -1006,7 +1011,7 @@ async def _start_persistent_shell_locked(
             f"sessions; active shell ids: {active or '<unknown>'}. Use "
             "list_persistent_shells and kill_persistent_shell to release capacity."
         )
-    shell_id = _tmux_session_name(name)
+    shell_id = shell_id or _tmux_session_name(name)
     if _use_conpty_persistent_shell_backend():
         if not conpty.is_available():
             raise RuntimeError(
@@ -1044,23 +1049,21 @@ async def _start_persistent_shell_locked(
     ]
     if command is not None:
         cmd.append(command)
-    result = await tmux(cmd)
-    if not result.ok:
-        raise RuntimeError(result.stderr or result.stdout)
+    if owner_session_id is not None:
+        cmd.extend(
+            [
+                ";",
+                "set-option",
+                "-t",
+                shell_id,
+                _TMUX_OWNER_OPTION,
+                owner_session_id,
+            ]
+        )
     try:
-        if owner_session_id is not None:
-            owner_result = await tmux(
-                [
-                    "set-option",
-                    "-t",
-                    shell_id,
-                    _TMUX_OWNER_OPTION,
-                    owner_session_id,
-                ],
-                timeout_s=5,
-            )
-            if not owner_result.ok:
-                raise RuntimeError(owner_result.stderr or owner_result.stdout)
+        result = await tmux(cmd)
+        if not result.ok:
+            raise RuntimeError(result.stderr or result.stdout)
         if command is None:
             alive = await tmux(
                 ["has-session", "-t", f"={shell_id}"], timeout_s=5
@@ -1088,7 +1091,7 @@ async def _start_persistent_shell_locked(
         try:
             await _cleanup_failed_tmux_start(shell_id)
         except Exception as cleanup_error:
-            raise RuntimeError(
+            raise PersistentShellCleanupUncertainError(
                 f"persistent shell startup failed and cleanup was not confirmed: {shell_id}"
             ) from cleanup_error
         raise
@@ -1111,12 +1114,41 @@ async def start_persistent_shell_execute(
                 owner_session_id=owner_session_id,
             )
         async with cross_process_lock("persistent-shell-admission", "tmux"):
-            return await _start_persistent_shell_locked(
-                cwd,
-                name,
-                command,
-                owner_session_id=owner_session_id,
+            reserved_shell_id = (
+                _tmux_session_name(name)
+                if owner_session_id is not None
+                else None
             )
+            if reserved_shell_id is not None:
+                assert owner_session_id is not None
+                get_tool_session_store().register_persistent_shell(
+                    owner_session_id, reserved_shell_id
+                )
+            try:
+                return await _start_persistent_shell_locked(
+                    cwd,
+                    name,
+                    command,
+                    owner_session_id=owner_session_id,
+                    shell_id=reserved_shell_id,
+                )
+            except PersistentShellCleanupUncertainError:
+                # Keep the reservation so pruning and teardown remain fail closed
+                # until authoritative backend reconciliation is possible.
+                raise
+            except BaseException:
+                if reserved_shell_id is not None:
+                    try:
+                        get_tool_session_store().release_persistent_shell(
+                            reserved_shell_id
+                        )
+                    except Exception as rollback_error:
+                        raise RuntimeError(
+                            "persistent shell startup failed and durable ownership "
+                            "rollback was not confirmed: "
+                            f"{reserved_shell_id}"
+                        ) from rollback_error
+                raise
 
 
 async def send_persistent_shell_input_execute(

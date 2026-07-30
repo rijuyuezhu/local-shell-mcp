@@ -95,10 +95,16 @@ async def test_persistent_shell_creation_is_serialized(monkeypatch):
     peak = 0
 
     async def fake_start(
-        cwd=".", name=None, command=None, *, owner_session_id=None
+        cwd=".",
+        name=None,
+        command=None,
+        *,
+        owner_session_id=None,
+        shell_id=None,
     ):
         nonlocal active, peak
         assert owner_session_id is None
+        assert shell_id is None
         active += 1
         peak = max(peak, active)
         await asyncio.sleep(0.02)
@@ -116,6 +122,138 @@ async def test_persistent_shell_creation_is_serialized(monkeypatch):
     assert results == [
         (".", "one", "echo one"),
         (".", "two", "echo two"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_owned_tmux_shell_is_reserved_before_backend_start(monkeypatch):
+    events: list[tuple[str, str]] = []
+
+    class FakeStore:
+        def register_persistent_shell(self, session_id: str, shell_id: str):
+            events.append(("reserve", f"{session_id}:{shell_id}"))
+
+        def release_persistent_shell(self, shell_id: str) -> None:
+            events.append(("release", shell_id))
+
+    async def fake_start(
+        cwd=".",
+        name=None,
+        command=None,
+        *,
+        owner_session_id=None,
+        shell_id=None,
+    ):
+        assert (cwd, name, command) == (".", "owned", "echo ok")
+        assert owner_session_id == "SESSION1"
+        assert shell_id == "reserved-shell"
+        events.append(("start", shell_id))
+        return SimpleNamespace(shell_id=shell_id)
+
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops, "_tmux_session_name", lambda _name: "reserved-shell"
+    )
+    monkeypatch.setattr(shell_ops, "get_tool_session_store", FakeStore)
+    monkeypatch.setattr(shell_ops, "_start_persistent_shell_locked", fake_start)
+
+    result = await shell_ops.start_persistent_shell_execute(
+        ".",
+        "owned",
+        "echo ok",
+        owner_session_id="SESSION1",
+    )
+
+    assert result.shell_id == "reserved-shell"
+    assert events == [
+        ("reserve", "SESSION1:reserved-shell"),
+        ("start", "reserved-shell"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_owned_tmux_shell_rolls_back_reservation_after_confirmed_failure(
+    monkeypatch,
+):
+    events: list[tuple[str, str]] = []
+
+    class FakeStore:
+        def register_persistent_shell(self, session_id: str, shell_id: str):
+            events.append(("reserve", f"{session_id}:{shell_id}"))
+
+        def release_persistent_shell(self, shell_id: str) -> None:
+            events.append(("release", shell_id))
+
+    async def failing_start(*_args, **_kwargs):
+        events.append(("start", "reserved-shell"))
+        raise RuntimeError("backend start failed")
+
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops, "_tmux_session_name", lambda _name: "reserved-shell"
+    )
+    monkeypatch.setattr(shell_ops, "get_tool_session_store", FakeStore)
+    monkeypatch.setattr(
+        shell_ops, "_start_persistent_shell_locked", failing_start
+    )
+
+    with pytest.raises(RuntimeError, match="backend start failed"):
+        await shell_ops.start_persistent_shell_execute(
+            ".", "owned", owner_session_id="SESSION1"
+        )
+
+    assert events == [
+        ("reserve", "SESSION1:reserved-shell"),
+        ("start", "reserved-shell"),
+        ("release", "reserved-shell"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_owned_tmux_shell_keeps_reservation_when_cleanup_is_uncertain(
+    monkeypatch,
+):
+    events: list[tuple[str, str]] = []
+
+    class FakeStore:
+        def register_persistent_shell(self, session_id: str, shell_id: str):
+            events.append(("reserve", f"{session_id}:{shell_id}"))
+
+        def release_persistent_shell(self, shell_id: str) -> None:
+            events.append(("release", shell_id))
+
+    async def uncertain_start(*_args, **_kwargs):
+        events.append(("start", "reserved-shell"))
+        raise shell_ops.PersistentShellCleanupUncertainError(
+            "cleanup not confirmed"
+        )
+
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops, "_tmux_session_name", lambda _name: "reserved-shell"
+    )
+    monkeypatch.setattr(shell_ops, "get_tool_session_store", FakeStore)
+    monkeypatch.setattr(
+        shell_ops, "_start_persistent_shell_locked", uncertain_start
+    )
+
+    with pytest.raises(
+        shell_ops.PersistentShellCleanupUncertainError,
+        match="cleanup not confirmed",
+    ):
+        await shell_ops.start_persistent_shell_execute(
+            ".", "owned", owner_session_id="SESSION1"
+        )
+
+    assert events == [
+        ("reserve", "SESSION1:reserved-shell"),
+        ("start", "reserved-shell"),
     ]
 
 
@@ -260,8 +398,14 @@ async def test_tmux_start_cancellation_cleans_created_session(
     async def fake_tmux(args: list[str], timeout_s: int = 10):  # noqa: ARG001
         calls.append(args)
         if args[0] == "new-session":
-            return result()
-        if args[0] == "set-option":
+            assert args[-6:] == [
+                ";",
+                "set-option",
+                "-t",
+                "owned",
+                shell_ops._TMUX_OWNER_OPTION,
+                "SESSION1",
+            ]
             owner_tag_started.set()
             await block_owner_tag.wait()
             return result()
