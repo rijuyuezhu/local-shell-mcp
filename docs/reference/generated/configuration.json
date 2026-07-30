@@ -833,6 +833,86 @@
         ],
         [
           {
+            "code": "max_agent_sessions"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-agent-sessions"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS"
+          },
+          "integer",
+          {
+            "code": "256"
+          },
+          "Maximum durable agent/workspace sessions after stale-session pruning."
+        ],
+        [
+          {
+            "code": "agent_session_retention_s"
+          },
+          {
+            "lines": [
+              {
+                "code": "--agent-session-retention-s"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S"
+          },
+          "integer",
+          {
+            "code": "2592000"
+          },
+          "Idle retention for durable agent/workspace sessions; 0 disables age-based expiry."
+        ],
+        [
+          {
+            "code": "max_session_snapshots"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-session-snapshots"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS"
+          },
+          "integer",
+          {
+            "code": "2000"
+          },
+          "Maximum grounding snapshots retained for one agent session."
+        ],
+        [
+          {
+            "code": "max_session_snapshot_bytes"
+          },
+          {
+            "lines": [
+              {
+                "code": "--max-session-snapshot-bytes"
+              }
+            ]
+          },
+          {
+            "code": "LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOT_BYTES"
+          },
+          "integer",
+          {
+            "code": "8388608"
+          },
+          "Maximum encoded grounding-snapshot metadata retained for one session."
+        ],
+        [
+          {
             "code": "max_file_read_bytes"
           },
           {
@@ -2574,6 +2654,58 @@
       "description": "Maximum retained tracked-job records; active jobs are never pruned.",
       "env": "LOCAL_SHELL_MCP_MAX_JOBS",
       "name": "max_jobs",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-agent-sessions",
+      "default": 256,
+      "default_display": "256",
+      "description": "Maximum durable agent/workspace sessions after stale-session pruning.",
+      "env": "LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS",
+      "name": "max_agent_sessions",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--agent-session-retention-s",
+      "default": 2592000,
+      "default_display": "2592000",
+      "description": "Idle retention for durable agent/workspace sessions; 0 disables age-based expiry.",
+      "env": "LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S",
+      "name": "agent_session_retention_s",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-session-snapshots",
+      "default": 2000,
+      "default_display": "2000",
+      "description": "Maximum grounding snapshots retained for one agent session.",
+      "env": "LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOTS",
+      "name": "max_session_snapshots",
+      "nullable": false,
+      "section": "Safety and resource limits",
+      "type": "integer",
+      "unset_cli": null
+    },
+    {
+      "choices": [],
+      "cli": "--max-session-snapshot-bytes",
+      "default": 8388608,
+      "default_display": "8388608",
+      "description": "Maximum encoded grounding-snapshot metadata retained for one session.",
+      "env": "LOCAL_SHELL_MCP_MAX_SESSION_SNAPSHOT_BYTES",
+      "name": "max_session_snapshot_bytes",
       "nullable": false,
       "section": "Safety and resource limits",
       "type": "integer",

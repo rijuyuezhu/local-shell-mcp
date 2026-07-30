@@ -4,15 +4,15 @@ import asyncio
 import contextlib
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePath
 from typing import Any, Literal, cast
 
 from ...config.settings import get_settings
 from ...jobs.runtime import (
     ManagedJobContext,
+    _start_managed_job_unlocked,
     register_managed_job_handler,
-    start_managed_job,
 )
 from ...remote.transfer_gateway import (
     TransferGatewayStore,
@@ -24,6 +24,7 @@ from ...schemas.result_models.session import (
     SessionCopyOutput,
     SessionCopyRelation,
 )
+from ...tool_session.lifecycle import session_lifecycle_locks
 from ...tool_session.store import AgentSession, get_tool_session_store
 from ...utils.serialization import to_jsonable
 from ..transfer import (
@@ -62,18 +63,6 @@ async def call_remote_worker_tool(
     from ...remote.service import call_remote_worker_tool as call_impl
 
     return await call_impl(machine, tool, args, timeout_s)
-
-
-async def call_remote_session_tool(
-    session: AgentSession,
-    tool: str,
-    args: dict[str, Any],
-    timeout_s: int | None = None,
-) -> dict[str, Any]:
-    """Lazily call a session-bound worker tool without controller imports."""
-    from .remote_session import call_remote_session_tool as call_impl
-
-    return await call_impl(session, tool, args, timeout_s)
 
 
 async def _report_progress(
@@ -134,10 +123,20 @@ async def _endpoint_transfer_data(
     """Run a transfer primitive on one copy endpoint."""
     if endpoint.session.target == "remote":
         if session_bound:
-            return await call_remote_session_tool(endpoint.session, tool, args)
+            return await _remote_raw_transfer_data(
+                endpoint,
+                tool,
+                {
+                    **args,
+                    "session_id": _worker_session_id(
+                        endpoint, session_bound=True
+                    ),
+                    "workdir": endpoint.session.workdir,
+                },
+            )
         return await _remote_raw_transfer_data(endpoint, tool, args)
 
-    session_id = endpoint.session.session_id if session_bound else None
+    workdir = endpoint.session.workdir if session_bound else None
     match tool:
         case "transfer_stat":
             return await asyncio.to_thread(
@@ -145,7 +144,7 @@ async def _endpoint_transfer_data(
                     transfer_stat(
                         args["path"],
                         args.get("sha256", True),
-                        session_id=session_id,
+                        workdir=workdir,
                     )
                 )
             )
@@ -156,7 +155,7 @@ async def _endpoint_transfer_data(
                         args["path"],
                         args.get("offset", 0),
                         args.get("chunk_size"),
-                        session_id=session_id,
+                        workdir=workdir,
                     )
                 )
             )
@@ -167,7 +166,7 @@ async def _endpoint_transfer_data(
                         args["path"],
                         args.get("overwrite", True),
                         args.get("expected_bytes"),
-                        session_id=session_id,
+                        workdir=workdir,
                     )
                 )
             )
@@ -180,7 +179,7 @@ async def _endpoint_transfer_data(
                         args["offset"],
                         args["data_b64"],
                         args.get("expected_sha256"),
-                        session_id=session_id,
+                        workdir=workdir,
                     )
                 )
             )
@@ -192,7 +191,7 @@ async def _endpoint_transfer_data(
                         args["transfer_id"],
                         args.get("expected_bytes"),
                         args.get("expected_sha256"),
-                        session_id=session_id,
+                        workdir=workdir,
                     )
                 )
             )
@@ -202,16 +201,14 @@ async def _endpoint_transfer_data(
                     transfer_abort_write(
                         args["path"],
                         args["transfer_id"],
-                        session_id=session_id,
+                        workdir=workdir,
                     )
                 )
             )
         case "transfer_alloc_temp_path":
             return await asyncio.to_thread(
                 lambda: _json_dict(
-                    transfer_alloc_temp_path(
-                        args.get("suffix", ".bin"), session_id=session_id
-                    )
+                    transfer_alloc_temp_path(args.get("suffix", ".bin"))
                 )
             )
         case "transfer_pack_dir":
@@ -220,7 +217,7 @@ async def _endpoint_transfer_data(
                     transfer_pack_dir(
                         args["path"],
                         args.get("compression", "gz"),
-                        session_id=session_id,
+                        workdir=workdir,
                     )
                 )
             )
@@ -232,7 +229,7 @@ async def _endpoint_transfer_data(
                         args["dst_path"],
                         args.get("overwrite", True),
                         args.get("cleanup_archive", True),
-                        session_id=session_id,
+                        workdir=workdir,
                     )
                 )
             )
@@ -323,7 +320,7 @@ def _endpoint_model(session: AgentSession, path: str) -> SessionCopyEndpoint:
 def _worker_session_id(
     endpoint: _Endpoint, *, session_bound: bool
 ) -> str | None:
-    """Return the worker-local session id required by one remote endpoint."""
+    """Return the worker session id for compatibility with raw helper callers."""
     if endpoint.session.target != "remote":
         return None
     session_id = endpoint.session.worker_session_id if session_bound else None
@@ -384,6 +381,7 @@ async def _abort_http_destination(
                 "session_id": _worker_session_id(
                     dst, session_bound=session_bound
                 ),
+                "workdir": dst.session.workdir if session_bound else None,
                 "transfer_id": transfer_id,
             },
         )
@@ -414,7 +412,7 @@ async def _copy_file_http(
         local_snapshot = _resolve_transfer_path(
             src_path,
             must_exist=True,
-            session_id=(src.session.session_id if src_session_bound else None),
+            workdir=(src.session.workdir if src_session_bound else None),
         )
     obj, upload_grant, download_grant = await asyncio.to_thread(
         store.prepare,
@@ -452,6 +450,9 @@ async def _copy_file_http(
                     "session_id": _worker_session_id(
                         src, session_bound=src_session_bound
                     ),
+                    "workdir": src.session.workdir
+                    if src_session_bound
+                    else None,
                     "url": upload_grant.url,
                     "controller_url": settings.resolved_base_url,
                     "authorization": upload_grant.authorization,
@@ -481,6 +482,9 @@ async def _copy_file_http(
                     "session_id": _worker_session_id(
                         dst, session_bound=dst_session_bound
                     ),
+                    "workdir": dst.session.workdir
+                    if dst_session_bound
+                    else None,
                     "url": download_grant.url,
                     "controller_url": settings.resolved_base_url,
                     "authorization": download_grant.authorization,
@@ -497,8 +501,9 @@ async def _copy_file_http(
             destination_result = await copy_spool_to_local_transaction(
                 obj,
                 destination_path=dst_path,
-                destination_session_id=(
-                    dst.session.session_id if dst_session_bound else None
+                destination_session_id=None,
+                destination_workdir=(
+                    dst.session.workdir if dst_session_bound else None
                 ),
                 overwrite=overwrite,
                 chunk_size=http_chunk,
@@ -707,8 +712,14 @@ async def _copy_file(
                 "destination_path": dst_path,
                 "overwrite": overwrite,
                 "chunk_size": chunk_bytes,
+                "source_workdir": (
+                    src.session.workdir if src_session_bound else None
+                ),
                 "source_session_id": _worker_session_id(
                     src, session_bound=src_session_bound
+                ),
+                "destination_workdir": (
+                    dst.session.workdir if dst_session_bound else None
                 ),
                 "destination_session_id": _worker_session_id(
                     dst, session_bound=dst_session_bound
@@ -845,7 +856,7 @@ async def _copy_dir(
     }
 
 
-async def session_copy_execute(
+async def _session_copy_execute_unlocked(
     src_session_id: str,
     src_path: str,
     dst_session_id: str,
@@ -856,11 +867,17 @@ async def session_copy_execute(
     *,
     progress: SessionCopyProgress | None = None,
     resume_key: str | None = None,
+    src_session_snapshot: AgentSession | None = None,
+    dst_session_snapshot: AgentSession | None = None,
 ) -> SessionCopyOutput:
-    """Copy a file or directory between two explicit sessions."""
+    """Copy between sessions whose lifecycle locks are already held."""
     store = get_tool_session_store()
-    src_session = store.touch_session(src_session_id)
-    dst_session = store.touch_session(dst_session_id)
+    src_session = src_session_snapshot or store.touch_session(src_session_id)
+    dst_session = dst_session_snapshot or store.touch_session(dst_session_id)
+    if src_session.session_id != src_session_id:
+        raise ValueError("source session snapshot id mismatch")
+    if dst_session.session_id != dst_session_id:
+        raise ValueError("destination session snapshot id mismatch")
     src = _Endpoint(src_session)
     dst = _Endpoint(dst_session)
     await _report_progress(progress, phase="preparing", bytes_transferred=0)
@@ -927,7 +944,65 @@ async def session_copy_execute(
     )
 
 
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: SessionCopyKind = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    *,
+    progress: SessionCopyProgress | None = None,
+    resume_key: str | None = None,
+) -> SessionCopyOutput:
+    """Copy synchronously while serializing both endpoint lifecycles."""
+    async with session_lifecycle_locks((src_session_id, dst_session_id)):
+        return await _session_copy_execute_unlocked(
+            src_session_id,
+            src_path,
+            dst_session_id,
+            dst_path,
+            kind,
+            overwrite,
+            chunk_size,
+            progress=progress,
+            resume_key=resume_key,
+        )
+
+
 SESSION_COPY_MANAGED_KIND = "session-copy"
+
+
+def _session_binding_payload(session: AgentSession) -> dict[str, Any]:
+    """Persist the endpoint binding needed to keep a background copy stable."""
+    return {
+        "target": session.target,
+        "workdir": session.workdir,
+        "machine": session.machine,
+        "worker_session_id": session.worker_session_id,
+    }
+
+
+def _pinned_session(
+    current: AgentSession, raw_binding: Any, *, label: str
+) -> AgentSession:
+    """Rebuild one endpoint with its creation-time workdir after validation."""
+    if not isinstance(raw_binding, dict):
+        return current
+    target = str(raw_binding.get("target") or current.target)
+    machine = raw_binding.get("machine")
+    worker_session_id = raw_binding.get("worker_session_id")
+    if target != current.target:
+        raise RuntimeError(f"{label} session target changed during copy")
+    if machine != current.machine:
+        raise RuntimeError(f"{label} session machine changed during copy")
+    if worker_session_id != current.worker_session_id:
+        raise RuntimeError(
+            f"{label} worker session binding changed during copy"
+        )
+    workdir = str(raw_binding.get("workdir") or current.workdir)
+    return replace(current, workdir=workdir)
 
 
 async def _run_session_copy_job(
@@ -961,11 +1036,22 @@ async def _run_session_copy_job(
     overwrite = bool(payload.get("overwrite", True))
     raw_chunk_size = payload.get("chunk_size")
     chunk_size = int(raw_chunk_size) if raw_chunk_size is not None else None
+    store = get_tool_session_store()
+    src_session = _pinned_session(
+        store.touch_session(src_session_id),
+        payload.get("src_binding"),
+        label="source",
+    )
+    dst_session = _pinned_session(
+        store.touch_session(dst_session_id),
+        payload.get("dst_binding"),
+        label="destination",
+    )
 
     await context.log(
         f"copying {src_session_id}:{src_path} -> {dst_session_id}:{dst_path}"
     )
-    result = await session_copy_execute(
+    result = await _session_copy_execute_unlocked(
         src_session_id,
         src_path,
         dst_session_id,
@@ -975,6 +1061,8 @@ async def _run_session_copy_job(
         chunk_size,
         progress=report,
         resume_key=context.job_id,
+        src_session_snapshot=src_session,
+        dst_session_snapshot=dst_session,
     )
     total_bytes = int(result.bytes or result.archive_bytes or 0)
     await context.update_progress(
@@ -1004,31 +1092,34 @@ async def session_copy_job_execute(
     chunk_size: int | None = None,
 ) -> JobStartOutput:
     """Start a controller-managed session copy and return its tracked job."""
-    store = get_tool_session_store()
-    store.touch_session(src_session_id)
-    store.touch_session(dst_session_id)
-    normalized_chunk_size = normalize_chunk_size(chunk_size)
-    payload = {
-        "src_session_id": src_session_id,
-        "src_path": src_path,
-        "dst_session_id": dst_session_id,
-        "dst_path": dst_path,
-        "kind": kind,
-        "overwrite": overwrite,
-        "chunk_size": normalized_chunk_size,
-    }
-    destination_name = PurePath(dst_path).name or "artifact"
-    return await start_managed_job(
-        src_session_id,
-        SESSION_COPY_MANAGED_KIND,
-        payload,
-        name=f"copy-{destination_name}"[:80],
-        command=(
-            f"session_copy {src_session_id}:{src_path} -> "
-            f"{dst_session_id}:{dst_path}"
-        ),
-        cwd=".",
-    )
+    async with session_lifecycle_locks((src_session_id, dst_session_id)):
+        store = get_tool_session_store()
+        src_session = store.touch_session(src_session_id)
+        dst_session = store.touch_session(dst_session_id)
+        normalized_chunk_size = normalize_chunk_size(chunk_size)
+        payload = {
+            "src_session_id": src_session_id,
+            "src_path": src_path,
+            "dst_session_id": dst_session_id,
+            "dst_path": dst_path,
+            "kind": kind,
+            "overwrite": overwrite,
+            "chunk_size": normalized_chunk_size,
+            "src_binding": _session_binding_payload(src_session),
+            "dst_binding": _session_binding_payload(dst_session),
+        }
+        destination_name = PurePath(dst_path).name or "artifact"
+        return await _start_managed_job_unlocked(
+            src_session_id,
+            SESSION_COPY_MANAGED_KIND,
+            payload,
+            name=f"copy-{destination_name}"[:80],
+            command=(
+                f"session_copy {src_session_id}:{src_path} -> "
+                f"{dst_session_id}:{dst_path}"
+            ),
+            cwd=".",
+        )
 
 
 register_managed_job_handler(SESSION_COPY_MANAGED_KIND, _run_session_copy_job)

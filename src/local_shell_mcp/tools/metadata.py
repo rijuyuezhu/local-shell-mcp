@@ -48,6 +48,7 @@ _OPEN_WORLD_TOOL_NAMES = frozenset(
         "send_persistent_shell_input",
         "session_change_cwd",
         "session_copy",
+        "session_end",
         "session_start",
     }
 )

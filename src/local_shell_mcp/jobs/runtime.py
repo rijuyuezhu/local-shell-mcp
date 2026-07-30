@@ -21,9 +21,9 @@ from ..config.settings import get_settings
 from ..errors import public_error_type
 from ..ops.shell import (
     _subprocess_env,
+    authoritative_persistent_shell_ids_execute,
     check_command_policy,
     kill_persistent_shell_execute,
-    list_persistent_shells_execute,
     read_persistent_shell_output_execute,
     start_persistent_shell_execute,
 )
@@ -37,6 +37,10 @@ from ..schemas.result_models.jobs import (
     JobStopOutput,
     JobTailOutput,
 )
+from ..tool_session.lifecycle import (
+    session_lifecycle_lock,
+    session_lifecycle_locks,
+)
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -45,6 +49,12 @@ from ..utils.private_files import (
     atomic_write_private_text,
     private_file_lock,
     write_private_text,
+)
+from ..utils.runtime_identity import (
+    MANAGED_JOB_LEASE_VERSION,
+    PROCESS_INSTANCE_ID,
+    ManagedJobLease,
+    managed_job_lease_state,
 )
 from ..utils.serialization import to_jsonable
 
@@ -60,6 +70,7 @@ MANAGED_DEFERRED_UPDATE_VERSION = 1
 MANAGED_DEFERRED_APPLIED_KEY = "managed_deferred_update_ids"
 MANAGED_DEFERRED_MAX_RECORD_BYTES = 524_288
 TERMINAL_STATUSES = {"succeeded", "failed", "exited", "stopped", "lost"}
+CONFIRMED_TERMINAL_STATUSES = {"succeeded", "failed", "exited", "stopped"}
 ACTIVE_STATUSES = {"starting", "running", "stopping", "retrying"}
 _JOB_STORE_THREAD_LOCK = threading.RLock()
 _MANAGED_DEFERRED_SEQUENCE_LOCK = threading.Lock()
@@ -70,11 +81,45 @@ type ManagedJobHandler = Callable[
 ]
 _MANAGED_JOB_HANDLERS: dict[str, ManagedJobHandler] = {}
 _MANAGED_JOB_TASKS: dict[str, asyncio.Task[None]] = {}
+_MANAGED_JOB_LEASES: dict[str, ManagedJobLease] = {}
 
 
 def _utc() -> float:
     """Return the current Unix timestamp."""
     return time.time()
+
+
+def _managed_job_liveness(job: dict[str, Any]) -> str:
+    """Return the authoritative cross-process liveness state for a managed row."""
+    return managed_job_lease_state(
+        str(job.get("job_id") or ""),
+        job.get("managed_lease_version"),
+    )
+
+
+def _managed_job_has_local_task(job: dict[str, Any]) -> bool:
+    """Return whether this process owns one still-running managed task."""
+    if str(job.get("runtime_instance_id") or "") != PROCESS_INSTANCE_ID:
+        return False
+    task = _MANAGED_JOB_TASKS.get(str(job.get("job_id") or ""))
+    return task is not None and not task.done()
+
+
+def _acquire_managed_job_lease(job_id: str) -> ManagedJobLease:
+    """Acquire and retain one job lease before publishing active metadata."""
+    if job_id in _MANAGED_JOB_LEASES:
+        raise RuntimeError(f"managed job lease is already held: {job_id}")
+    lease = ManagedJobLease(job_id)
+    lease.acquire()
+    _MANAGED_JOB_LEASES[job_id] = lease
+    return lease
+
+
+def _release_managed_job_lease(job_id: str) -> None:
+    """Release one process-local managed-job lease after terminal persistence."""
+    lease = _MANAGED_JOB_LEASES.pop(job_id, None)
+    if lease is not None:
+        lease.release()
 
 
 def _job_store_path() -> Path:
@@ -213,13 +258,23 @@ def _remove_attempt_files(job_id: str, keep_attempt: int | None = None) -> None:
             path.unlink()
 
 
+def _job_is_retention_terminal(job: dict[str, Any]) -> bool:
+    """Return whether one row is safe to evict as completed history."""
+    status = str(job.get("status") or "")
+    return status in TERMINAL_STATUSES and not (
+        str(job.get("kind") or "shell") == "shell"
+        and status == "lost"
+        and not bool(job.get("shell_absence_confirmed"))
+    )
+
+
 def _prune_store(store: dict[str, Any]) -> None:
     """Bound retained terminal jobs while never deleting active operations."""
     jobs = [row for row in store.get("jobs", []) if isinstance(row, dict)]
     max_jobs = max(0, int(get_settings().max_jobs))
-    active = [row for row in jobs if row.get("status") not in TERMINAL_STATUSES]
+    active = [row for row in jobs if not _job_is_retention_terminal(row)]
     finished = sorted(
-        (row for row in jobs if row.get("status") in TERMINAL_STATUSES),
+        (row for row in jobs if _job_is_retention_terminal(row)),
         key=lambda row: float(
             row.get("updated_at") or row.get("created_at") or 0
         ),
@@ -646,6 +701,7 @@ def _apply_status_payload(
             "output_bytes": int(status_payload.get("output_bytes") or 0),
         }
     )
+    job.pop("shell_absence_confirmed", None)
     _clear_job_operation(job)
     return job
 
@@ -704,10 +760,35 @@ def _clear_job_operation(job: dict[str, Any]) -> None:
 
 
 def _refresh_job_status(
-    job: dict[str, Any], active_shells: set[str], now: float | None = None
+    job: dict[str, Any],
+    active_shells: set[str] | None,
+    now: float | None = None,
 ) -> dict[str, Any]:
-    """Recover interrupted transitions and apply durable runner completion state."""
+    """Apply durable completion and authoritative live-shell reconciliation."""
     status = str(job.get("status") or "unknown")
+    kind = str(job.get("kind") or "shell")
+    if status == "lost" and kind == "shell":
+        updated = now or _utc()
+        status_payload = _read_status(job)
+        if status_payload is not None:
+            return _apply_status_payload(job, status_payload, updated)
+        if active_shells is None:
+            return job
+        shell_id = _job_shell_id(job)
+        if shell_id and shell_id in active_shells:
+            job.pop("shell_absence_confirmed", None)
+            job.update(
+                {
+                    "status": "running",
+                    "updated_at": updated,
+                    "completed_at": None,
+                    "exit_code": None,
+                    "error": "recovered a lost job whose shell is still active",
+                }
+            )
+        else:
+            job["shell_absence_confirmed"] = True
+        return job
     if status not in ACTIVE_STATUSES:
         return job
 
@@ -718,8 +799,10 @@ def _refresh_job_status(
             for operation in ("start", "stop", "retry")
         ):
             return job
-        task = _MANAGED_JOB_TASKS.get(str(job.get("job_id") or ""))
-        if task is not None and not task.done():
+        if _managed_job_has_local_task(job):
+            return job
+        liveness = _managed_job_liveness(job)
+        if liveness != "dead":
             return job
         _clear_job_operation(job)
         job.update(
@@ -746,9 +829,11 @@ def _refresh_job_status(
     if status == "starting":
         status_payload = _read_status(job)
         shell_id = _job_shell_id(job)
-        _clear_job_operation(job)
         if status_payload is not None:
             return _apply_status_payload(job, status_payload, updated)
+        if active_shells is None:
+            return job
+        _clear_job_operation(job)
         if shell_id and shell_id in active_shells:
             job.update(
                 {
@@ -779,6 +864,8 @@ def _refresh_job_status(
             _adopt_pending_retry(job)
             _clear_pending_retry(job)
             return _apply_status_payload(job, status_payload, updated)
+        if active_shells is None:
+            return job
         if pending_shell and pending_shell in active_shells:
             _adopt_pending_retry(job)
             _clear_pending_retry(job)
@@ -813,6 +900,8 @@ def _refresh_job_status(
     shell_id = _job_shell_id(job)
     if status_payload is not None:
         return _apply_status_payload(job, status_payload, updated)
+    if active_shells is None:
+        return job
 
     if status == "stopping":
         _clear_job_operation(job)
@@ -845,6 +934,7 @@ def _refresh_job_status(
             "completed_at": updated,
             "exit_code": None,
             "error": "job shell exited without a durable completion record",
+            "shell_absence_confirmed": True,
         }
     )
     return job
@@ -1155,6 +1245,7 @@ async def _run_managed_job(
         current = asyncio.current_task()
         if _MANAGED_JOB_TASKS.get(job_id) is current:
             _MANAGED_JOB_TASKS.pop(job_id, None)
+        _release_managed_job_lease(job_id)
 
 
 def _launch_managed_job(
@@ -1165,14 +1256,44 @@ def _launch_managed_job(
     log_path: str,
 ) -> None:
     """Create and retain one process-local managed-job task."""
-    task = asyncio.create_task(
-        _run_managed_job(session_id, job_id, kind, payload, log_path),
-        name=f"managed-job-{job_id}",
-    )
-    _MANAGED_JOB_TASKS[job_id] = task
+    acquired_here = False
+    if job_id not in _MANAGED_JOB_LEASES:
+        _acquire_managed_job_lease(job_id)
+        acquired_here = True
+    try:
+        task = asyncio.create_task(
+            _run_managed_job(session_id, job_id, kind, payload, log_path),
+            name=f"managed-job-{job_id}",
+        )
+        _MANAGED_JOB_TASKS[job_id] = task
+    except BaseException:
+        if acquired_here:
+            _release_managed_job_lease(job_id)
+        raise
 
 
 async def start_managed_job(
+    session_id: str,
+    kind: str,
+    payload: dict[str, Any],
+    *,
+    name: str | None = None,
+    command: str | None = None,
+    cwd: str = ".",
+) -> JobStartOutput:
+    """Start one controller-managed task under session lifecycle admission."""
+    async with session_lifecycle_lock(session_id):
+        return await _start_managed_job_unlocked(
+            session_id,
+            kind,
+            payload,
+            name=name,
+            command=command,
+            cwd=cwd,
+        )
+
+
+async def _start_managed_job_unlocked(
     session_id: str,
     kind: str,
     payload: dict[str, Any],
@@ -1198,6 +1319,8 @@ async def start_managed_job(
         "kind": "managed",
         "managed_kind": normalized_kind,
         "managed_payload": normalized_payload,
+        "runtime_instance_id": PROCESS_INSTANCE_ID,
+        "managed_lease_version": MANAGED_JOB_LEASE_VERSION,
         "name": display_name,
         "status": "running",
         "command": command or normalized_kind,
@@ -1221,6 +1344,7 @@ async def start_managed_job(
         "result": None,
     }
     try:
+        _acquire_managed_job_lease(job_id)
         with _store_transaction() as store:
             store["jobs"].append(job)
         _launch_managed_job(
@@ -1231,6 +1355,7 @@ async def start_managed_job(
             str(paths["log"]),
         )
     except BaseException:
+        _release_managed_job_lease(job_id)
         _remove_attempt_paths(paths)
         with contextlib.suppress(Exception), _store_transaction() as store:
             store["jobs"] = [
@@ -1255,12 +1380,28 @@ def reset_managed_jobs_for_tests(*, clear_handlers: bool = False) -> None:
     for task in tuple(_MANAGED_JOB_TASKS.values()):
         task.cancel()
     _MANAGED_JOB_TASKS.clear()
+    for job_id in tuple(_MANAGED_JOB_LEASES):
+        with contextlib.suppress(Exception):
+            _release_managed_job_lease(job_id)
     _MANAGED_DEFERRED_NEXT_SEQUENCE = None
     if clear_handlers:
         _MANAGED_JOB_HANDLERS.clear()
 
 
 async def job_start_execute(
+    session_id: str,
+    command: str,
+    cwd: str = ".",
+    name: str | None = None,
+) -> JobStartOutput:
+    """Start one durable command under session lifecycle admission."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_start_execute_unlocked(
+            session_id, command, cwd=cwd, name=name
+        )
+
+
+async def _job_start_execute_unlocked(
     session_id: str,
     command: str,
     cwd: str = ".",
@@ -1274,6 +1415,7 @@ async def job_start_execute(
     shell_name = _shell_safe_name(f"{display_name}-{job_id}")
     paths, runner_command = _prepare_attempt(job_id, 1, command, resolved_cwd)
     now = _utc()
+    active_shells = await authoritative_persistent_shell_ids_execute()
     job: dict[str, Any] = {
         "job_id": job_id,
         "kind": "shell",
@@ -1300,6 +1442,15 @@ async def job_start_execute(
     operation_id = _begin_job_operation(job, "start")
     try:
         with _store_transaction() as store:
+            retained = []
+            for row in store.get("jobs", []):
+                if not isinstance(row, dict):
+                    continue
+                if str(row.get("session_id") or "") == session_id:
+                    _refresh_job_status(row, active_shells, now)
+                retained.append(row)
+            store["jobs"] = retained
+            _prune_store(store)
             store["jobs"].append(job)
     except BaseException:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
@@ -1310,7 +1461,10 @@ async def job_start_execute(
     try:
         try:
             shell = await start_persistent_shell_execute(
-                str(resolved_cwd), shell_name, runner_command
+                str(resolved_cwd),
+                shell_name,
+                runner_command,
+                owner_session_id=session_id,
             )
         except Exception as exc:
             _remove_attempt_paths(paths)
@@ -1381,19 +1535,89 @@ async def job_start_execute(
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
 
 
+async def job_reconcile_shell_jobs_execute() -> bool:
+    """Reconcile durable state and, when available, live shell membership."""
+    with _store_transaction() as store:
+        jobs = store.get("jobs", [])
+        if not isinstance(jobs, list):
+            return True
+        owner_session_ids = sorted(
+            {
+                str(row.get("session_id") or "")
+                for row in jobs
+                if isinstance(row, dict)
+                and str(row.get("kind") or "shell") != "managed"
+                and row.get("session_id")
+            }
+        )
+
+    inventory_authoritative = True
+    for session_id in owner_session_ids:
+        async with session_lifecycle_lock(session_id):
+            active_shells = await authoritative_persistent_shell_ids_execute()
+            if active_shells is None:
+                inventory_authoritative = False
+            now = _utc()
+            with _store_transaction() as store:
+                jobs = store.get("jobs", [])
+                if not isinstance(jobs, list):
+                    continue
+                for row in jobs:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("kind") or "shell") == "managed":
+                        continue
+                    if str(row.get("session_id") or "") != session_id:
+                        continue
+                    _refresh_job_status(row, active_shells, now)
+
+    active_shells = await authoritative_persistent_shell_ids_execute()
+    if active_shells is None:
+        inventory_authoritative = False
+    now = _utc()
+    with _store_transaction() as store:
+        jobs = store.get("jobs", [])
+        if isinstance(jobs, list):
+            for row in jobs:
+                if not isinstance(row, dict):
+                    continue
+                if str(row.get("kind") or "shell") == "managed":
+                    continue
+                if row.get("session_id"):
+                    continue
+                _refresh_job_status(row, active_shells, now)
+        _prune_store(store)
+    return inventory_authoritative
+
+
 async def job_list_execute(
     session_id: str, include_finished: bool = True
 ) -> JobListOutput:
-    """List and recover tracked jobs owned by one agent session."""
+    """List one session's jobs under lifecycle-safe reconciliation."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_list_execute_unlocked(
+            session_id, include_finished=include_finished
+        )
+
+
+async def _job_list_execute_unlocked(
+    session_id: str, include_finished: bool = True
+) -> JobListOutput:
+    """List and recover one session's jobs while its lifecycle lock is held."""
     get_tool_session_store().touch_session(session_id)
-    active = _active_shell_ids(await list_persistent_shells_execute())
+    active = await authoritative_persistent_shell_ids_execute()
     now = _utc()
     with _store_transaction() as store:
-        jobs = [
+        jobs = store.get("jobs", [])
+        if not isinstance(jobs, list):
+            jobs = []
+            store["jobs"] = jobs
+        for row in jobs:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("session_id") or "") != session_id:
+                continue
             _refresh_job_status(row, active, now)
-            for row in store.get("jobs", [])
-        ]
-        store["jobs"] = jobs
         _prune_store(store)
         owned = _session_jobs(store["jobs"], session_id)
         rows = [
@@ -1412,18 +1636,23 @@ async def job_list_execute(
 async def job_tail_execute(
     session_id: str, job_id: str, lines: int = 200
 ) -> JobTailOutput:
-    """Read durable recent output and refresh one tracked job."""
+    """Read one job under lifecycle-safe status reconciliation."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_tail_execute_unlocked(session_id, job_id, lines)
+
+
+async def _job_tail_execute_unlocked(
+    session_id: str, job_id: str, lines: int = 200
+) -> JobTailOutput:
+    """Read one job while its owner lifecycle lock is held."""
     get_tool_session_store().touch_session(session_id)
     managed = job_id in managed_job_id_set(session_id, [job_id])
     active = (
-        set()
-        if managed
-        else _active_shell_ids(await list_persistent_shells_execute())
+        set() if managed else await authoritative_persistent_shell_ids_execute()
     )
     with _store_transaction() as store:
-        job = _refresh_job_status(
-            _find_session_job(store, session_id, job_id), active
-        )
+        job = _find_session_job(store, session_id, job_id)
+        job = _refresh_job_status(job, active)
         public = _public_job(job)
         log_path = str(job.get("log_path") or "")
         shell_id = _job_shell_id(job)
@@ -1435,22 +1664,35 @@ async def job_tail_execute(
             tail = await read_persistent_shell_output_execute(shell_id, lines)
             output = str(tail.model_dump().get("output", ""))
         except Exception as exc:
-            with _store_transaction() as store:
-                current = _find_session_job(store, session_id, job_id)
-                if (
-                    current.get("status") == "running"
-                    and _job_shell_id(current) == shell_id
-                ):
-                    completed = _utc()
-                    current.update(
-                        {
-                            "status": "lost",
-                            "updated_at": completed,
-                            "completed_at": completed,
-                            "error": str(exc),
-                        }
-                    )
-                public = _public_job(current)
+            if active is not None:
+                with _store_transaction() as store:
+                    current = _find_session_job(store, session_id, job_id)
+                    if (
+                        current.get("status") == "running"
+                        and _job_shell_id(current) == shell_id
+                    ):
+                        completed = _utc()
+                        if shell_id in active:
+                            current.update(
+                                {
+                                    "updated_at": completed,
+                                    "error": (
+                                        "persistent shell output capture failed: "
+                                        f"{exc}"
+                                    ),
+                                }
+                            )
+                        else:
+                            current.update(
+                                {
+                                    "status": "lost",
+                                    "updated_at": completed,
+                                    "completed_at": completed,
+                                    "error": str(exc),
+                                    "shell_absence_confirmed": True,
+                                }
+                            )
+                    public = _public_job(current)
 
     message = None
     if public.status in TERMINAL_STATUSES:
@@ -1501,28 +1743,148 @@ async def _stop_managed_job(
     return JobStopOutput(job=public, killed=killed, stderr="")
 
 
-async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
-    """Stop one tracked command through a serialized lifecycle transition."""
-    get_tool_session_store().touch_session(session_id)
-    managed = job_id in managed_job_id_set(session_id, [job_id])
-    active = (
-        set()
-        if managed
-        else _active_shell_ids(await list_persistent_shells_execute())
-    )
+async def _stop_managed_job_without_session_admission(
+    session_id: str,
+    job_id: str,
+) -> JobStopOutput:
+    """Stop one managed job when its owner session may already be terminating."""
     operation_id = ""
-    shell_id = ""
     try:
         with _store_transaction() as store:
             job = _refresh_job_status(
-                _find_session_job(store, session_id, job_id), active
+                _find_session_job(store, session_id, job_id), set()
             )
             if job.get("status") != "running":
                 return JobStopOutput(
                     job=_public_job(job), killed=False, stderr=""
                 )
+            if str(job.get("kind") or "shell") != "managed":
+                raise RuntimeError(f"job is not controller-managed: {job_id}")
+            if not _managed_job_has_local_task(job):
+                return JobStopOutput(
+                    job=_public_job(job),
+                    killed=False,
+                    stderr=(
+                        "managed job is owned by another live or uncertain runtime"
+                    ),
+                )
+            job["status"] = "stopping"
+            job["updated_at"] = _utc()
+            operation_id = _begin_job_operation(job, "stop")
+    except BaseException:
+        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        raise
+    try:
+        return await _stop_managed_job(session_id, job_id, operation_id)
+    finally:
+        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+
+
+async def job_stop_managed_references_execute(
+    referenced_session_id: str,
+    *,
+    managed_kind: str,
+    payload_key: str,
+) -> list[str]:
+    """Stop active managed jobs whose durable payload references one session."""
+    candidates: list[tuple[str, str]] = []
+    with _store_transaction() as store:
+        for row in store.get("jobs", []):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("kind") or "shell") != "managed":
+                continue
+            if str(row.get("managed_kind") or "") != managed_kind:
+                continue
+            payload = row.get("managed_payload")
+            if not isinstance(payload, dict):
+                continue
+            if str(payload.get(payload_key) or "") != referenced_session_id:
+                continue
+            job = _refresh_job_status(row, set())
+            if job.get("status") != "running":
+                continue
+            owner_session_id = str(job.get("session_id") or "")
+            job_id = str(job.get("job_id") or "")
+            if owner_session_id and job_id:
+                candidates.append((owner_session_id, job_id))
+
+    stopped: list[str] = []
+    for owner_session_id, job_id in candidates:
+        result = await _stop_managed_job_without_session_admission(
+            owner_session_id, job_id
+        )
+        if result.killed or result.job.status in CONFIRMED_TERMINAL_STATUSES:
+            stopped.append(job_id)
+            continue
+        raise RuntimeError(
+            "managed job could not be confirmed stopped: "
+            f"{job_id}: status={result.job.status!r}"
+        )
+    return stopped
+
+
+async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
+    """Stop one tracked command through a serialized lifecycle transition."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_stop_execute_unlocked(session_id, job_id)
+
+
+async def _job_stop_execute_unlocked(
+    session_id: str, job_id: str
+) -> JobStopOutput:
+    """Stop one tracked command while its owner lifecycle lock is held."""
+    get_tool_session_store().touch_session(session_id)
+    managed = job_id in managed_job_id_set(session_id, [job_id])
+    active = (
+        set() if managed else await authoritative_persistent_shell_ids_execute()
+    )
+    operation_id = ""
+    shell_id = ""
+    try:
+        with _store_transaction() as store:
+            job = _find_session_job(store, session_id, job_id)
+            job = _refresh_job_status(job, active)
             managed = str(job.get("kind") or "shell") == "managed"
             shell_id = _job_shell_id(job)
+            if job.get("status") == "lost" and not managed:
+                if active is None:
+                    return JobStopOutput(
+                        job=_public_job(job), killed=False, stderr=""
+                    )
+                if shell_id not in active:
+                    completed = _utc()
+                    job.update(
+                        {
+                            "status": "stopped",
+                            "updated_at": completed,
+                            "completed_at": completed,
+                            "exit_code": None,
+                            "error": None,
+                        }
+                    )
+                    return JobStopOutput(
+                        job=_public_job(job), killed=False, stderr=""
+                    )
+                job.update(
+                    {
+                        "status": "running",
+                        "updated_at": _utc(),
+                        "completed_at": None,
+                    }
+                )
+            if job.get("status") != "running":
+                return JobStopOutput(
+                    job=_public_job(job), killed=False, stderr=""
+                )
+            if managed and not _managed_job_has_local_task(job):
+                return JobStopOutput(
+                    job=_public_job(job),
+                    killed=False,
+                    stderr=(
+                        "managed job is owned by another live or uncertain runtime"
+                    ),
+                )
             job["status"] = "stopping"
             job["updated_at"] = _utc()
             operation_id = _begin_job_operation(job, "stop")
@@ -1537,9 +1899,11 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
             result = await kill_persistent_shell_execute(shell_id)
         except Exception as exc:
             still_active = True
-            with contextlib.suppress(Exception):
-                shells = await list_persistent_shells_execute()
-                still_active = shell_id in _active_shell_ids(shells)
+            active_after_failure = (
+                await authoritative_persistent_shell_ids_execute()
+            )
+            if active_after_failure is not None:
+                still_active = shell_id in active_after_failure
             with _store_transaction() as store:
                 job = _find_session_job(store, session_id, job_id)
                 if (
@@ -1548,19 +1912,26 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
                     and _job_operation_matches(job, operation_id)
                 ):
                     completed = _utc()
-                    job["status"] = "running" if still_active else "lost"
+                    job["status"] = "running" if still_active else "stopped"
                     job["updated_at"] = completed
                     job["error"] = (
                         f"stop failed: {public_error_type(exc)}: {exc}"
                     )
                     if not still_active:
                         job["completed_at"] = completed
+                    else:
+                        job["completed_at"] = None
                     _clear_job_operation(job)
             raise
 
         data = result.model_dump()
         killed = bool(data.get("killed"))
         stderr = str(data.get("stderr") or "")
+        active_after_stop: set[str] | None = None
+        if not killed:
+            active_after_stop = (
+                await authoritative_persistent_shell_ids_execute()
+            )
         with _store_transaction() as store:
             job = _find_session_job(store, session_id, job_id)
             if (
@@ -1569,14 +1940,22 @@ async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
                 and _job_operation_matches(job, operation_id)
             ):
                 completed = _utc()
+                if killed:
+                    status = "stopped"
+                elif active_after_stop is None or shell_id in active_after_stop:
+                    status = "running"
+                else:
+                    status = "stopped"
                 job.update(
                     {
-                        "status": "stopped" if killed else "lost",
+                        "status": status,
                         "updated_at": completed,
-                        "completed_at": completed,
+                        "completed_at": completed
+                        if status == "stopped"
+                        else None,
                         "exit_code": None,
                         "error": None
-                        if killed
+                        if status == "stopped"
                         else stderr or "shell was not stopped",
                     }
                 )
@@ -1615,8 +1994,15 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
                 job.get("managed_payload"), label="payload"
             )
             attempts = int(job.get("attempts") or 1) + 1
-            paths = _attempt_paths(job_id, attempts)
-            write_private_text(paths["log"], "")
+        _acquire_managed_job_lease(job_id)
+        paths = _attempt_paths(job_id, attempts)
+        write_private_text(paths["log"], "")
+        with _store_transaction() as store:
+            job = _refresh_job_status(
+                _find_session_job(store, session_id, job_id), set()
+            )
+            if job.get("status") in ACTIVE_STATUSES:
+                raise RuntimeError(f"job became active during retry: {job_id}")
             job.update(
                 {
                     "status": "retrying",
@@ -1630,6 +2016,8 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
                     "error": None,
                     "log_truncated": False,
                     "output_bytes": 0,
+                    "runtime_instance_id": PROCESS_INSTANCE_ID,
+                    "managed_lease_version": MANAGED_JOB_LEASE_VERSION,
                 }
             )
             operation_id = _begin_job_operation(job, "retry")
@@ -1672,6 +2060,7 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        _release_managed_job_lease(job_id)
         _remove_attempt_paths(paths)
         if operation_id:
             with contextlib.suppress(Exception), _store_transaction() as store:
@@ -1696,19 +2085,44 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
         _ACTIVE_JOB_OPERATIONS.discard(operation_id)
 
 
+def _job_lifecycle_session_ids(session_id: str, job_id: str) -> tuple[str, ...]:
+    """Return all session ids whose lifecycle constrains one job retry."""
+    session_ids = {session_id}
+    with _store_transaction() as store:
+        job = _find_session_job(store, session_id, job_id)
+        if str(job.get("kind") or "shell") == "managed":
+            payload = job.get("managed_payload")
+            if isinstance(payload, dict):
+                destination = str(payload.get("dst_session_id") or "")
+                if destination:
+                    session_ids.add(destination)
+    return tuple(sorted(session_ids))
+
+
 async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
+    """Retry one job under session lifecycle admission."""
+    lifecycle_session_ids = _job_lifecycle_session_ids(session_id, job_id)
+    async with session_lifecycle_locks(lifecycle_session_ids):
+        store = get_tool_session_store()
+        for lifecycle_session_id in lifecycle_session_ids:
+            store.touch_session(lifecycle_session_id)
+        return await _job_retry_execute_unlocked(session_id, job_id)
+
+
+async def _job_retry_execute_unlocked(
+    session_id: str, job_id: str
+) -> JobRetryOutput:
     """Retry a terminal job with durable two-phase state transitions."""
     session = get_tool_session_store().touch_session(session_id)
     managed = job_id in managed_job_id_set(session_id, [job_id])
     if managed:
         return await _retry_managed_job(session_id, job_id)
-    active = _active_shell_ids(await list_persistent_shells_execute())
+    active = await authoritative_persistent_shell_ids_execute()
     operation_id = ""
     try:
         with _store_transaction() as store:
-            job = _refresh_job_status(
-                _find_session_job(store, session_id, job_id), active
-            )
+            job = _find_session_job(store, session_id, job_id)
+            job = _refresh_job_status(job, active)
             if job.get("status") in ACTIVE_STATUSES:
                 raise RuntimeError(f"job is still active: {job_id}")
             attempts = int(job.get("attempts") or 1) + 1
@@ -1755,7 +2169,10 @@ async def job_retry_execute(session_id: str, job_id: str) -> JobRetryOutput:
                     }
                 )
             shell = await start_persistent_shell_execute(
-                str(resolved_cwd), shell_name, runner_command
+                str(resolved_cwd),
+                shell_name,
+                runner_command,
+                owner_session_id=session_id,
             )
         except Exception as exc:
             _remove_attempt_paths(paths)

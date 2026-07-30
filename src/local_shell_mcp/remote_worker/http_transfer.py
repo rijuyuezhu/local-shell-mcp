@@ -154,11 +154,16 @@ def upload_file(
     expected_sha256: str,
     chunk_size: int,
     timeout_s: float,
+    workdir: str | None = None,
 ) -> dict[str, Any]:
     """Push one immutable worker file with status-based retry and resume."""
     target = _validate_url(url, controller_url)
     source = _resolve_transfer_path(
-        path, must_exist=True, session_id=session_id, allow_temp=True
+        path,
+        must_exist=True,
+        session_id=session_id,
+        workdir=workdir,
+        allow_temp=True,
     )
     chunks = 0
     retries = 0
@@ -329,6 +334,7 @@ def download_file(
     overwrite: bool,
     chunk_size: int,
     timeout_s: float,
+    workdir: str | None = None,
 ) -> dict[str, Any]:
     """Pull one immutable controller object into a resumable local transaction."""
     target = _validate_url(url, controller_url)
@@ -351,6 +357,7 @@ def download_file(
         expected_bytes,
         transfer_id,
         session_id=session_id,
+        workdir=workdir,
     )
     offset = int(begin.offset)
     resumed_bytes = offset
@@ -384,6 +391,7 @@ def download_file(
                 chunk,
                 hashlib.sha256(chunk).hexdigest(),
                 session_id=session_id,
+                workdir=workdir,
             )
             offset += len(chunk)
             chunks += 1
@@ -393,6 +401,7 @@ def download_file(
             expected_bytes,
             expected_sha256,
             session_id=session_id,
+            workdir=workdir,
         )
     except BaseException:
         # Keep a valid partial transaction for restart/retry. Explicit cancellation
@@ -410,9 +419,13 @@ def download_file(
 
 
 def abort_download(
-    *, path: str, session_id: str | None, transfer_id: str
+    *,
+    path: str,
+    session_id: str | None,
+    transfer_id: str,
+    workdir: str | None = None,
 ) -> dict[str, Any]:
     """Explicitly remove a worker-side partial destination transaction."""
     return transfer_abort_write(
-        path, transfer_id, session_id=session_id
+        path, transfer_id, session_id=session_id, workdir=workdir
     ).model_dump(mode="json")

@@ -56,7 +56,9 @@ async def test_http_rest_process_exercises_file_download_links(tmp_path):
         )
         assert link["url"].startswith(f"{base_url}/download/")
 
-        async with httpx.AsyncClient(timeout=10) as http_client:
+        async with httpx.AsyncClient(
+            timeout=10, trust_env=False
+        ) as http_client:
             response = await http_client.get(link["url"])
             assert response.status_code == 200
             assert response.content == payload
@@ -80,6 +82,8 @@ async def test_http_rest_process_exercises_file_download_links(tmp_path):
         )
         assert revoked == {"revoked": True, "token": second["token"]}
 
-        async with httpx.AsyncClient(timeout=10) as http_client:
+        async with httpx.AsyncClient(
+            timeout=10, trust_env=False
+        ) as http_client:
             missing = await http_client.get(second["url"])
         assert missing.status_code == 404

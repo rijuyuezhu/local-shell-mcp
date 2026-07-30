@@ -97,6 +97,16 @@ When OAuth authentication is enabled, protected MCP and REST routes authenticate
 
 In the Docker image, the entrypoint normally creates a non-root `agent` user at container startup. By default, its UID/GID are detected from the mounted `/workspace` owner so bind-mounted files stay writable by the host user. Set `DOCKER_AGENT_UID` or `DOCKER_AGENT_GID` only to override that detection. Set `DOCKER_RUN_AS_ROOT=true` only when the server process itself must run as root in a disposable container or VM.
 
+## Bounded command containment
+
+On Linux, bounded non-interactive shell commands enable child-subreaper mode so orphaned descendants are adopted, found, terminated, and reaped before the tool returns. The runner prefers `/proc/<pid>/task/<pid>/children` and falls back to an authoritative PPid graph built from numeric `/proc/<pid>/status` entries when that optional children file is absent. The fallback requires consecutive authoritative scans before accepting an empty descendant set, so a child adopted after an earlier non-atomic directory snapshot is still discovered. A descendant that disappears between parent enumeration and recursive inspection is treated as reaped, while an unreadable live process remains uncertain. If both procfs enumeration paths are unreadable or malformed, execution fails closed before launch or during cleanup rather than treating the child set as empty. On macOS, each bounded command runs as a disposable launchd job whose child publishes its kernel resource-coalition identity before the user command is released. Source installs invoke that child through the trusted absolute runner script, while frozen bundles invoke the registered `bounded-runner` CLI subcommand; launchd never attempts Python module syntax against a frozen executable. Normal completion, timeout, and signal handling boot out the launchd service and explicitly enumerate, terminate, and recheck every current-UID process in that resource coalition through public libproc APIs, including descendants that created a new POSIX session or process group. The command never starts if the coalition cannot be queried or is not isolated from the parent runner. Supported non-Darwin BSD hosts retain gated `EVFILT_PROC` descendant tracking. A process group remains an additional cleanup layer where available, not the sole containment boundary. If the platform containment mechanism cannot be established or confirmed cleaned, command-mode `bash` fails closed with exit code `125`.
+
+## Cross-process session and job lifecycle
+
+Servers that share one state directory also share lifecycle exclusion. Session admission, foreground execution, workdir changes, job start/retry, and teardown use owner-private per-session file locks in addition to process-local asyncio locks. Session pruning and direct local-expiry cleanup non-blockingly acquire the same lifecycle lease and skip deletion when a local waiter, peer process, or lock-file uncertainty prevents acquisition; a competing request still receives the explicit expiry error. POSIX tmux creation uses a separate global admission lock around authoritative inventory, capacity enforcement, collision rejection, creation, ownership tagging, and startup validation, so concurrent server processes cannot both consume the final configured shell slot or replace an existing named shell. An owned shell id is durably reserved in its session before backend creation, and tmux creation plus owner tagging are issued as one command sequence. Confirmed startup failure rolls the reservation back; uncertain backend cleanup retains it so session pruning remains fail closed until authoritative reconciliation.
+
+Each active controller-managed job acquires an owner-private liveness lease before its durable active row is published and releases it only after terminal state is committed. Peer servers treat a held current-version lease as live, an unlocked known lease as dead, and a missing or unreadable current-version lease as uncertain. Pre-lease durable rows are explicitly migrated to the recoverable `lost`/`stopped` path when no current local task exists, preventing an upgrade from protecting stale sessions forever. Live and uncertain current-version jobs remain protected from session pruning and cannot be cancelled by a process that does not own their task; destination teardown therefore fails closed rather than deleting an endpoint still used by a peer process. Operating-system lock release after process death lets another server reconcile a definitively dead managed job without relying on process-local task registries.
+
 ## Raw terminal streaming
 
 Raw PTY/ConPTY access is equivalent to interactive shell control with the server
@@ -115,6 +125,24 @@ nodes/canvas output, and no navigable OSC 8 links. Closing a raw attachment
 releases only that bridge and deliberately leaves the persistent tmux/ConPTY
 shell alive. See [Human interface](guides/human-interface.md#terminals) for the
 protocol and resource limits.
+
+Persistent-shell admission is serialized per backend across server processes.
+Owner-bound tmux and ConPTY shells reserve globally unique durable ownership
+before backend creation. During tmux startup, reconciliation preserves the
+current in-flight reservation while the same admission lock is held;
+`new-session` and owner tagging remain one command sequence, and confirmed
+startup failure rolls back only that request's newly added reservation. ConPTY
+shells acquire a per-shell cross-process liveness lease before spawn and hold it
+through natural exit or explicit close, so peer processes share authoritative
+capacity/name state and process death releases the slot through the operating
+system.
+
+Session admission, retry, foreground shell/Python execution, synchronous copy,
+and teardown share deterministic per-session lifecycle locks. Each lock combines
+an event-loop-local lock with an owner-private cross-process file lock, so two
+server processes using the same state directory cannot admit work after another
+process has started teardown. Cancellation while waiting releases the local
+entry and its dedicated file-lock thread without leaving a stale holder.
 
 ## Browser Human UI policy
 
@@ -142,7 +170,7 @@ Operational guidance:
 
 ## Session-to-session transfers
 
-`session_copy` moves files and directories between explicit local or remote sessions. Local copies, same-worker copies, and bounded JSON/base64 worker RPC remain available. When a configured public controller origin, payload threshold, and worker capability permit it, large copies use a private resumable HTTP gateway without adding a public ticket tool.
+`session_copy` moves files and directories between explicit local or remote sessions. A foreground copy holds both endpoint lifecycle locks in deterministic order for its complete operation, so teardown cannot remove either endpoint while transfer chunks or rollback cleanup still depend on it. Managed background copies release those admission locks after the durable job is registered and remain stoppable through normal job teardown. Local copies, same-worker copies, and bounded JSON/base64 worker RPC remain available. When a configured public controller origin, payload threshold, and worker capability permit it, large copies use a private resumable HTTP gateway without adding a public ticket tool.
 
 The URL contains only a non-secret object identifier. A separate short-lived Authorization capability is stored only as a SHA-256 hash and is bound to the registered worker identity, upload/download direction, source and destination session ids, expected size and digest, cursor, expiry, nonce, and one active claim. The worker accepts only the controller's exact origin and rejects redirects, userinfo, query strings, fragments, malformed paths, and credential-bearing URLs. Capabilities and private absolute source paths are excluded from metadata, logs, exceptions, process arguments, and service definitions.
 
@@ -164,6 +192,16 @@ Operational notes:
 ## Durable job metadata and contention journals
 
 Tracked shell and controller-managed jobs persist metadata under `state_dir` with owner-private files and atomic primary/backup replacement. Job-store thread and file locks share a bounded acquisition budget; public contention errors do not reveal the private lock path, while local audit records retain enough detail for diagnosis.
+
+While a current-process managed job is active and lacks a durable completion record, retention and capacity pruning protect its owning session plus every existing, valid agent session referenced by a `session_id` or `*_session_id` field in its durable managed payload. This keeps both source and destination sessions available for background copies and retries. Prior-process managed jobs and durably completed jobs do not extend session lifetime.
+
+Session pruning reads the durable job registry with the same primary-then-backup recovery rule used by the job runtime. A valid `jobs.json.bak` continues to protect active job sessions when the primary is missing or invalid; if neither copy can be trusted, pruning remains conservative rather than declaring the active-job set empty. Expiry and capacity candidates are only hints: before deletion the store acquires the candidate session transaction and job-store lock, reloads current metadata and active work, and rechecks both eligibility and current overflow. A concurrent touch, PTY registration, or job admission therefore prevents stale-candidate deletion.
+
+Session teardown and session/job-store pruning read the complete durable job set and treat `lost` shell jobs as unconfirmed until authoritative shell inventory either recovers the live job or proves the shell absent. Transient output-capture failure does not mark an authoritatively live shell job terminal, and unconfirmed `lost` rows remain protected from both job-history eviction and session retention/capacity pruning. Tagged persistent-shell discovery is also three-state: a successful query or a confirmed absent tmux server is authoritative, while backend resolution, permission, timeout, and other inventory failures preserve the session metadata and fail teardown closed. Durable PTY ids are retention hints only; teardown reconciles one session's stored ids against the backend owner tag and kills only shells whose current owner still matches, so an unrelated shell that reuses a stale name is not terminated. ConPTY UI registries remain process-local, but backend admission and reconciliation use per-shell cross-process liveness leases as the authoritative inventory. A live peer lease protects capacity, ownership, and teardown; an unlocked stale lease permits durable metadata cleanup; lock-file I/O uncertainty remains fail closed.
+
+Stateful MCP initialization reserves capacity before entering the SDK. Reservation release runs as a single cancellation-shielded task: pending capacity is decremented under the creation lock before cancellation is propagated, and repeated cancellation cannot double-release or permanently consume a slot.
+
+File snapshot metadata includes a durable insertion sequence in addition to its timestamp. Count and byte pruning order by both values so two snapshots created at the same clock value still retain the later insertion deterministically; legacy rows receive migration sequences when loaded.
 
 Managed-job logs are appended before metadata accounting. If bounded lock retries cannot commit log bytes, progress, or terminal state, the controller writes a bounded `0600` JSON record under the `0700` `state_dir/jobs/deferred` directory. Records use opaque ids, are bound to both the owning session and job, accept only the fixed update operations, reject links/non-regular files, and are replayed in creation order. Applied ids are saved inside the job row before cleanup, making replay idempotent across process loss or failed journal deletion. Invalid rows are audited and removed; rows that cannot be read are retained rather than silently discarded.
 

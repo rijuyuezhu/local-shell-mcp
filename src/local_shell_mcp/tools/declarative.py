@@ -181,7 +181,9 @@ class ToolDefinition:
     async def call_from_mapping(self, args: Mapping[str, Any]) -> Any:
         """Invoke the typed tool function from an HTTP-style argument mapping."""
         _enforce_oauth_scopes(self.required_oauth_scopes())
-        enforce_tool_session_control(dict(args))
+        enforce_tool_session_control(
+            dict(args), termination_cleanup=self.name == "session_end"
+        )
         return await self.func(
             **_tool_kwargs_from_mapping(self.signature, args)
         )
@@ -237,7 +239,10 @@ class ToolDefinition:
             try:
                 _enforce_oauth_scopes(self.required_oauth_scopes())
                 bound = self.signature.bind_partial(*args, **kwargs)
-                enforce_tool_session_control(dict(bound.arguments))
+                enforce_tool_session_control(
+                    dict(bound.arguments),
+                    termination_cleanup=self.name == "session_end",
+                )
                 return await self.func(*args, **kwargs)
             except SessionTerminationRequestedError:
                 raise

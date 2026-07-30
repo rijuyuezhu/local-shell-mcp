@@ -1028,6 +1028,7 @@ async def copy_spool_to_local_transaction(
     *,
     destination_path: str,
     destination_session_id: str | None,
+    destination_workdir: str | None = None,
     overwrite: bool,
     chunk_size: int,
     preserve_partial: bool = False,
@@ -1040,13 +1041,18 @@ async def copy_spool_to_local_transaction(
         transfer_write_bytes,
     )
 
+    destination_scope = (
+        {"workdir": destination_workdir}
+        if destination_workdir is not None
+        else {"session_id": destination_session_id}
+    )
     begin = await asyncio.to_thread(
         transfer_begin_write,
         destination_path,
         overwrite,
         obj.expected_bytes,
         obj.transfer_id,
-        session_id=destination_session_id,
+        **destination_scope,
     )
     transfer_id = begin.transfer_id
     chunks = 0
@@ -1062,7 +1068,7 @@ async def copy_spool_to_local_transaction(
                     offset,
                     chunk,
                     hashlib.sha256(chunk).hexdigest(),
-                    session_id=destination_session_id,
+                    **destination_scope,
                 )
                 offset += len(chunk)
                 chunks += 1
@@ -1072,7 +1078,7 @@ async def copy_spool_to_local_transaction(
             transfer_id,
             obj.expected_bytes,
             obj.expected_sha256,
-            session_id=destination_session_id,
+            **destination_scope,
         )
     except BaseException:
         if not preserve_partial:
@@ -1080,7 +1086,7 @@ async def copy_spool_to_local_transaction(
                 transfer_abort_write,
                 destination_path,
                 transfer_id,
-                session_id=destination_session_id,
+                **destination_scope,
             )
         raise
     return {

@@ -11,9 +11,11 @@ from ..schemas.result_models.jobs import JobStartOutput
 from ..schemas.result_models.session import (
     GitSessionInfo,
     SessionCopyOutput,
+    SessionEndOutput,
     SessionStartOutput,
 )
 from ..tool_session.environment import collect_session_environment
+from ..tool_session.lifecycle import session_lifecycle_lock
 from ..tool_session.store import AgentSession, get_tool_session_store
 
 _INSTRUCTION_FILE_NAMES = (
@@ -39,6 +41,17 @@ async def start_worker_session(
         machine=machine,
         workdir=workdir,
         label=label,
+    )
+
+
+async def end_worker_session(*, machine: str, worker_session_id: str) -> None:
+    """Release a worker session when controller registration cannot complete."""
+    from .utils.remote_session import (
+        end_worker_session as end_worker_session_impl,
+    )
+
+    await end_worker_session_impl(
+        machine=machine, worker_session_id=worker_session_id
     )
 
 
@@ -171,6 +184,10 @@ async def session_start_execute(
     label: str | None = None,
 ) -> SessionStartOutput:
     """Create an explicit agent/workspace session."""
+    if target in {"local", "remote"}:
+        from ..jobs.runtime import job_reconcile_shell_jobs_execute
+
+        await job_reconcile_shell_jobs_execute()
     if target == "local":
         return await asyncio.to_thread(
             _start_local_session,
@@ -197,13 +214,25 @@ async def session_start_execute(
         raise RuntimeError(
             "remote session_start did not return worker session_id"
         )
-    session = get_tool_session_store().create_session(
-        target="remote",
-        workdir=worker_output.workdir,
-        machine=machine,
-        worker_session_id=worker_session_id,
-        label=label,
-    )
+    try:
+        session = get_tool_session_store().create_session(
+            target="remote",
+            workdir=worker_output.workdir,
+            machine=machine,
+            worker_session_id=worker_session_id,
+            label=label,
+        )
+    except Exception as admission_error:
+        try:
+            await end_worker_session(
+                machine=machine, worker_session_id=worker_session_id
+            )
+        except Exception as cleanup_error:
+            raise RuntimeError(
+                "controller session admission failed and the worker session "
+                f"could not be released: {cleanup_error}"
+            ) from admission_error
+        raise
     return _rebind_remote_output(worker_output, session)
 
 
@@ -220,7 +249,15 @@ def _change_local_session_cwd(
 async def session_change_cwd_execute(
     session_id: str, workdir: str
 ) -> SessionStartOutput:
-    """Change a local or remote session workdir and refresh target orientation."""
+    """Serialize one local or remote workdir transition with session teardown."""
+    async with session_lifecycle_lock(session_id):
+        return await _session_change_cwd_execute_unlocked(session_id, workdir)
+
+
+async def _session_change_cwd_execute_unlocked(
+    session_id: str, workdir: str
+) -> SessionStartOutput:
+    """Change a local or remote workdir while the lifecycle lock is held."""
     store = get_tool_session_store()
     session = store.require_session(session_id)
     if session.target == "local":
@@ -244,6 +281,132 @@ async def session_change_cwd_execute(
         session_id, worker_output.workdir
     )
     return _rebind_remote_output(worker_output, updated)
+
+
+async def _stop_owned_jobs(session_id: str) -> list[str]:
+    """Stop every active tracked job before its owning session disappears."""
+    from ..jobs.runtime import (
+        CONFIRMED_TERMINAL_STATUSES,
+        _job_list_execute_unlocked,
+        _job_stop_execute_unlocked,
+        job_stop_managed_references_execute,
+    )
+
+    listed = await _job_list_execute_unlocked(session_id, include_finished=True)
+    stopped: list[str] = []
+    for job in listed.jobs:
+        if job.status in CONFIRMED_TERMINAL_STATUSES:
+            continue
+        result = await _job_stop_execute_unlocked(session_id, job.job_id)
+        if result.killed or result.job.status in CONFIRMED_TERMINAL_STATUSES:
+            stopped.append(job.job_id)
+            continue
+        raise RuntimeError(
+            "tracked job could not be confirmed stopped: "
+            f"{job.job_id}: status={result.job.status!r}"
+        )
+    referenced = await job_stop_managed_references_execute(
+        session_id,
+        managed_kind="session-copy",
+        payload_key="dst_session_id",
+    )
+    stopped.extend(job_id for job_id in referenced if job_id not in stopped)
+    return stopped
+
+
+async def _stop_owned_shells(session_id: str) -> list[str]:
+    """Stop every persistent shell assigned to one explicit session."""
+    from .shell import (
+        authoritative_persistent_shell_ids_execute,
+        kill_persistent_shell_execute,
+        list_owned_persistent_shell_ids_execute,
+    )
+
+    discovered_shell_ids = await list_owned_persistent_shell_ids_execute(
+        session_id
+    )
+    if discovered_shell_ids is None:
+        raise RuntimeError(
+            "persistent shell ownership could not be determined; refusing to "
+            "remove the session"
+        )
+    store = get_tool_session_store()
+    store.reconcile_session_persistent_shells(
+        session_id, set(discovered_shell_ids)
+    )
+    shell_ids = tuple(dict.fromkeys(discovered_shell_ids))
+    stopped: list[str] = []
+    for shell_id in shell_ids:
+        current_owned = await list_owned_persistent_shell_ids_execute(
+            session_id
+        )
+        if current_owned is None:
+            raise RuntimeError(
+                "persistent shell ownership could not be determined; refusing "
+                "to remove the session"
+            )
+        if shell_id not in current_owned:
+            store.reconcile_session_persistent_shells(
+                session_id, set(current_owned)
+            )
+            continue
+        result = await kill_persistent_shell_execute(shell_id)
+        if not result.killed:
+            active_shell_ids = (
+                await authoritative_persistent_shell_ids_execute()
+            )
+            if active_shell_ids is None or shell_id in active_shell_ids:
+                raise RuntimeError(
+                    f"persistent shell could not be stopped: {shell_id}: "
+                    f"{result.stderr or 'unknown backend error'}"
+                )
+        stopped.append(shell_id)
+    return stopped
+
+
+async def session_end_execute(
+    session_id: str, *, force: bool = False
+) -> SessionEndOutput:
+    """End one session while excluding concurrent job admission and retry."""
+    async with session_lifecycle_lock(session_id):
+        return await _session_end_execute_unlocked(session_id, force=force)
+
+
+async def _session_end_execute_unlocked(
+    session_id: str, *, force: bool = False
+) -> SessionEndOutput:
+    """Stop owned work and remove one local or remote session."""
+    store = get_tool_session_store()
+    session = store.prepare_session_termination(session_id)
+    stopped_jobs = await _stop_owned_jobs(session_id)
+    stopped_shells: list[str] = []
+    if session.target == "local":
+        stopped_shells = await _stop_owned_shells(session_id)
+    remote_cleanup_succeeded: bool | None = None
+    force_released = False
+    if session.target == "remote":
+        from .utils.remote_session import call_remote_session_tool
+
+        try:
+            await call_remote_session_tool(session, "session_end", {})
+        except Exception:
+            remote_cleanup_succeeded = False
+            if not force:
+                raise
+            force_released = True
+        else:
+            remote_cleanup_succeeded = True
+    ended = store.end_session(session_id)
+    return SessionEndOutput(
+        session_id=ended.session_id,
+        target=ended.target,
+        machine=ended.machine,
+        ended=True,
+        stopped_jobs=stopped_jobs,
+        stopped_shells=stopped_shells,
+        remote_cleanup_succeeded=remote_cleanup_succeeded,
+        force_released=force_released,
+    )
 
 
 @overload

@@ -41,6 +41,7 @@ LOCAL_MCP_TOOL_NAMES = {
     "fetch",
     "session_start",
     "session_change_cwd",
+    "session_end",
     "session_copy",
     "version",
     "run_python_code",

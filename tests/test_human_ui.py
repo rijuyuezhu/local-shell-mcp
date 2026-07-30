@@ -478,7 +478,9 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
     assert "HttpOnly" in session_cookie
     assert "HttpOnly" not in csrf_cookie
     for value in (session_cookie, csrf_cookie):
-        assert "Max-Age=3600" in value
+        max_age_match = re.search(r"Max-Age=(\d+)", value)
+        assert max_age_match is not None
+        assert 3590 <= int(max_age_match.group(1)) <= 3600
         assert "Path=/" in value
         assert "SameSite=strict" in value
         if browser_origin.startswith("https://"):

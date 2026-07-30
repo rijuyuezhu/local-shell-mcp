@@ -160,6 +160,22 @@ class Settings(BaseSettings):
     """Maximum retained output bytes for one tracked background-job attempt."""
     max_jobs: int = 1_000
     """Maximum retained tracked-job records; active jobs are never pruned."""
+    max_agent_sessions: int = Field(default=256, ge=1, le=10_000)
+    """Maximum durable agent/workspace sessions after stale-session pruning."""
+    agent_session_retention_s: int = Field(
+        default=30 * 24 * 60 * 60,
+        ge=0,
+        le=366 * 24 * 60 * 60,
+    )
+    """Idle retention for durable agent/workspace sessions; 0 disables age-based expiry."""
+    max_session_snapshots: int = Field(default=2_000, ge=1, le=100_000)
+    """Maximum grounding snapshots retained for one agent session."""
+    max_session_snapshot_bytes: int = Field(
+        default=8 * 1024 * 1024,
+        ge=1_024,
+        le=16_000_000,
+    )
+    """Maximum encoded grounding-snapshot metadata retained for one session."""
     max_file_read_bytes: int = 512_000
     """Per-file read limit in bytes."""
     max_view_image_bytes: int = 20 * 1024 * 1024

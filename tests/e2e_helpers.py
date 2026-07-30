@@ -74,7 +74,7 @@ async def wait_for_http_ready(
     base_url: str, process: subprocess.Popen[str]
 ) -> None:
     deadline = asyncio.get_running_loop().time() + 10
-    async with httpx.AsyncClient(timeout=1) as client:
+    async with httpx.AsyncClient(timeout=1, trust_env=False) as client:
         while True:
             if process.poll() is not None:
                 stdout, stderr = process.communicate(timeout=1)
@@ -238,7 +238,7 @@ class RestToolClient:
     ) -> Any:
         method, path = REST_ROUTES[name]
         async with httpx.AsyncClient(
-            base_url=self.base_url, timeout=20
+            base_url=self.base_url, timeout=20, trust_env=False
         ) as client:
             if method == "GET":
                 response = await client.get(path, params=args or {})
@@ -283,7 +283,7 @@ async def streamable_http_tool_client(
     base_url: str,
 ) -> AsyncGenerator[McpSessionToolClient]:
     async with (
-        httpx.AsyncClient(timeout=20) as client,
+        httpx.AsyncClient(timeout=20, trust_env=False) as client,
         streamable_http_client(f"{base_url}/mcp", http_client=client) as (
             read,
             write,

@@ -240,6 +240,26 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     ),
     SettingSpec("max_jobs", "Safety and resource limits", metavar="COUNT"),
     SettingSpec(
+        "max_agent_sessions",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "agent_session_retention_s",
+        "Safety and resource limits",
+        metavar="SECONDS",
+    ),
+    SettingSpec(
+        "max_session_snapshots",
+        "Safety and resource limits",
+        metavar="COUNT",
+    ),
+    SettingSpec(
+        "max_session_snapshot_bytes",
+        "Safety and resource limits",
+        metavar="BYTES",
+    ),
+    SettingSpec(
         "max_file_read_bytes", "Safety and resource limits", metavar="BYTES"
     ),
     SettingSpec(

@@ -9,10 +9,11 @@ import local_shell_mcp.ops.utils.remote_session as remote_session_utils
 import local_shell_mcp.ops.utils.session_copy as session_copy_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import runtime as jobs_ops
-from local_shell_mcp.ops.session import session_copy_execute
-from local_shell_mcp.schemas.result_models.shell import (
-    ListPersistentShellsOutput,
+from local_shell_mcp.ops.session import (
+    session_change_cwd_execute,
+    session_copy_execute,
 )
+from local_shell_mcp.tool_session.lifecycle import session_lifecycle_lock
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.local_handlers import (
     call_local_tool,
@@ -41,10 +42,14 @@ async def _fake_remote_call(
     timeout_s: int | None = None,
 ) -> dict[str, Any]:
     _ = (machine, timeout_s)
+    local_args = dict(args)
+    local_args.pop("workdir", None)
+    local_args.pop("source_workdir", None)
+    local_args.pop("destination_workdir", None)
     try:
         return {
             "ok": True,
-            "data": to_jsonable(await call_local_tool(tool, args)),
+            "data": to_jsonable(await call_local_tool(tool, local_args)),
         }
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "message": str(exc)}
@@ -67,6 +72,44 @@ def _install_fake_remote(monkeypatch):
         remote_session_utils, "call_remote_worker_tool", fake_call
     )
     return calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["SRC00001", "DST00001"])
+async def test_foreground_copy_holds_both_endpoint_lifecycle_locks(
+    monkeypatch, endpoint
+):
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    contender_acquired = asyncio.Event()
+    sentinel = object()
+
+    async def fake_copy(*_args, **_kwargs):
+        entered.set()
+        await release.wait()
+        return sentinel
+
+    async def contend_for_endpoint():
+        async with session_lifecycle_lock(endpoint):
+            contender_acquired.set()
+
+    monkeypatch.setattr(
+        session_copy_ops, "_session_copy_execute_unlocked", fake_copy
+    )
+    copy_task = asyncio.create_task(
+        session_copy_ops.session_copy_execute(
+            "SRC00001", "source.bin", "DST00001", "dest.bin"
+        )
+    )
+    await entered.wait()
+    contender = asyncio.create_task(contend_for_endpoint())
+    await asyncio.sleep(0)
+
+    assert not contender_acquired.is_set()
+    release.set()
+    assert await copy_task is sentinel
+    await contender
+    assert contender_acquired.is_set()
 
 
 @pytest.mark.asyncio
@@ -645,9 +688,11 @@ async def test_session_copy_background_job_reports_progress_and_result(
     dst = store.create_session(workdir="dst")
 
     async def no_shells():
-        return ListPersistentShellsOutput(shells=[])
+        return set()
 
-    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(
+        jobs_ops, "authoritative_persistent_shell_ids_execute", no_shells
+    )
     started = await session_copy_execute(
         src.session_id,
         "payload.bin",
@@ -681,6 +726,78 @@ async def test_session_copy_background_job_reports_progress_and_result(
 
 
 @pytest.mark.asyncio
+async def test_session_copy_background_pins_endpoint_workdirs_across_cwd_changes(
+    tmp_path, monkeypatch
+):
+    root, store = _workspace(tmp_path, monkeypatch)
+    jobs_ops.reset_managed_jobs_for_tests()
+    for directory in ("src-original", "dst-original", "src-new", "dst-new"):
+        (root / directory).mkdir()
+    original_payload = b"original-background-payload" * 1024
+    replacement_payload = b"replacement-after-cwd-change" * 1024
+    (root / "src-original" / "payload.bin").write_bytes(original_payload)
+    (root / "src-new" / "payload.bin").write_bytes(replacement_payload)
+    src = store.create_session(workdir="src-original")
+    dst = store.create_session(workdir="dst-original")
+    first_chunk_read = asyncio.Event()
+    resume_copy = asyncio.Event()
+    original_transfer = session_copy_ops._endpoint_transfer_data
+
+    async def no_shells():
+        return set()
+
+    async def pause_after_first_chunk(
+        endpoint, tool, args, *, session_bound=True
+    ):
+        result = await original_transfer(
+            endpoint, tool, args, session_bound=session_bound
+        )
+        if (
+            tool == "transfer_read_chunk"
+            and endpoint.session.session_id == src.session_id
+            and int(args.get("offset") or 0) == 0
+        ):
+            first_chunk_read.set()
+            await resume_copy.wait()
+        return result
+
+    monkeypatch.setattr(
+        jobs_ops, "authoritative_persistent_shell_ids_execute", no_shells
+    )
+    monkeypatch.setattr(
+        session_copy_ops, "_endpoint_transfer_data", pause_after_first_chunk
+    )
+    await session_copy_execute(
+        src.session_id,
+        "payload.bin",
+        dst.session_id,
+        "copied.bin",
+        chunk_size=1024,
+        background=True,
+    )
+    await asyncio.wait_for(first_chunk_read.wait(), timeout=2)
+
+    await session_change_cwd_execute(src.session_id, "src-new")
+    await session_change_cwd_execute(dst.session_id, "dst-new")
+    resume_copy.set()
+
+    completed = None
+    for _ in range(300):
+        await asyncio.sleep(0.01)
+        completed = (await jobs_ops.job_list_execute(src.session_id)).jobs[0]
+        if completed.status == "succeeded":
+            break
+    assert completed is not None
+    assert completed.status == "succeeded"
+    assert (
+        root / "dst-original" / "copied.bin"
+    ).read_bytes() == original_payload
+    assert not (root / "dst-new" / "copied.bin").exists()
+    assert not list((root / "dst-new").glob(".*local-shell-mcp-transfer*"))
+    jobs_ops.reset_managed_jobs_for_tests()
+
+
+@pytest.mark.asyncio
 async def test_session_copy_background_cancel_aborts_transaction(
     tmp_path, monkeypatch
 ):
@@ -693,7 +810,7 @@ async def test_session_copy_background_cancel_aborts_transaction(
     aborted: list[dict[str, Any]] = []
 
     async def no_shells():
-        return ListPersistentShellsOutput(shells=[])
+        return set()
 
     async def fake_transfer(_endpoint, tool, args, *, session_bound=True):
         _ = session_bound
@@ -716,7 +833,9 @@ async def test_session_copy_background_cancel_aborts_transaction(
             return {"deleted": True}
         raise AssertionError(f"unexpected tool: {tool}")
 
-    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(
+        jobs_ops, "authoritative_persistent_shell_ids_execute", no_shells
+    )
     monkeypatch.setattr(
         session_copy_ops, "_endpoint_transfer_data", fake_transfer
     )
@@ -751,9 +870,11 @@ async def test_session_copy_background_retry_reuses_durable_payload(
     dst = store.create_session(workdir="dst")
 
     async def no_shells():
-        return ListPersistentShellsOutput(shells=[])
+        return set()
 
-    monkeypatch.setattr(jobs_ops, "list_persistent_shells_execute", no_shells)
+    monkeypatch.setattr(
+        jobs_ops, "authoritative_persistent_shell_ids_execute", no_shells
+    )
     started = await session_copy_execute(
         src.session_id,
         "later.bin",

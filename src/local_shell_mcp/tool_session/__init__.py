@@ -5,6 +5,7 @@ from .store import (
     SESSION_ID_LENGTH,
     SESSION_TERMINATION_PROMPT,
     AgentSession,
+    ExpiredAgentSessionError,
     SessionTerminationRequestedError,
     UnknownAgentSessionError,
     enforce_tool_session_control,
@@ -16,6 +17,7 @@ from .store import (
 
 __all__ = [
     "AgentSession",
+    "ExpiredAgentSessionError",
     "SESSION_ACTIVE_WINDOW_S",
     "SESSION_ID_LENGTH",
     "SESSION_TERMINATION_PROMPT",

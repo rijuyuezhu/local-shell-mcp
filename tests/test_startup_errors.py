@@ -28,8 +28,6 @@ from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
 from local_shell_mcp.remote_worker.worker import _handled_remote_exception
 from local_shell_mcp.schemas.result_models.shell import (
     CommandResult,
-    ListPersistentShellsOutput,
-    PersistentShellInfo,
 )
 from local_shell_mcp.terminal.tmux import TmuxSelection
 from local_shell_mcp.tool_session.store import get_tool_session_store
@@ -129,6 +127,11 @@ async def test_bounded_shell_reports_vanished_cwd(
     monkeypatch.setattr(
         shell_ops, "_effective_shell_executable", lambda: "/bin/sh"
     )
+    monkeypatch.setattr(
+        shell_ops.shutil,
+        "which",
+        lambda command, **_: command,
+    )
     monkeypatch.setattr(shell_ops.asyncio, "create_subprocess_exec", fail_spawn)
 
     with pytest.raises(PathNotFoundError) as raised:
@@ -194,6 +197,11 @@ async def test_posix_persistent_shell_preflights_default_executable(
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "authoritative_persistent_shell_ids_execute",
+        lambda: _async_value(set()),
     )
     monkeypatch.setattr(shell_ops.shutil, "which", lambda *args, **kwargs: None)
 
@@ -278,8 +286,8 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
     )
     monkeypatch.setattr(
         shell_ops,
-        "list_persistent_shells_execute",
-        lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+        "authoritative_persistent_shell_ids_execute",
+        lambda: _async_value(set()),
     )
     monkeypatch.setattr(
         shell_ops.shutil, "which", lambda executable, **_kwargs: executable
@@ -291,9 +299,14 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
         return _tmux_result(ok=True)
 
     monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+    owner_session_id = (
+        get_tool_session_store().create_session(workdir=tmp_path).session_id
+    )
 
     started = await shell_ops.start_persistent_shell_execute(
-        cwd=str(tmp_path), name="configured-shell"
+        cwd=str(tmp_path),
+        name="configured-shell",
+        owner_session_id=owner_session_id,
     )
 
     assert started.command == str(shell)
@@ -306,6 +319,12 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
                 "configured-shell",
                 "-c",
                 str(tmp_path),
+                ";",
+                "set-option",
+                "-t",
+                "configured-shell",
+                "@local-shell-mcp-session-id",
+                owner_session_id,
             ],
             10,
         ),
@@ -328,8 +347,8 @@ async def test_persistent_tmux_rejects_default_shell_that_exits(
     )
     monkeypatch.setattr(
         shell_ops,
-        "list_persistent_shells_execute",
-        lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+        "authoritative_persistent_shell_ids_execute",
+        lambda: _async_value(set()),
     )
     monkeypatch.setattr(
         shell_ops.shutil, "which", lambda executable, **_kwargs: executable
@@ -585,12 +604,8 @@ async def test_persistent_shell_enforces_capacity_and_conpty_availability(
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops,
-        "list_persistent_shells_execute",
-        lambda: _async_value(
-            ListPersistentShellsOutput(
-                shells=[PersistentShellInfo(shell_id="busy")]
-            )
-        ),
+        "authoritative_persistent_shell_ids_execute",
+        lambda: _async_value({"busy"}),
     )
 
     with pytest.raises(RuntimeError, match="more than 1"):
@@ -598,8 +613,8 @@ async def test_persistent_shell_enforces_capacity_and_conpty_availability(
 
     monkeypatch.setattr(
         shell_ops,
-        "list_persistent_shells_execute",
-        lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+        "authoritative_persistent_shell_ids_execute",
+        lambda: _async_value(set()),
     )
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
@@ -608,6 +623,78 @@ async def test_persistent_shell_enforces_capacity_and_conpty_availability(
 
     with pytest.raises(RuntimeError, match="pywinpty is required"):
         await shell_ops.start_persistent_shell_execute(cwd=str(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_persistent_shell_rejects_uncertain_inventory_before_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+
+    async def uncertain_inventory() -> None:
+        return None
+
+    async def unexpected_tmux(*_args, **_kwargs):
+        raise AssertionError(
+            "new-session must not run without authoritative inventory"
+        )
+
+    monkeypatch.setattr(
+        shell_ops,
+        "authoritative_persistent_shell_ids_execute",
+        uncertain_inventory,
+    )
+    monkeypatch.setattr(shell_ops, "tmux", unexpected_tmux)
+
+    with pytest.raises(RuntimeError, match="inventory is unavailable"):
+        await shell_ops.start_persistent_shell_execute(cwd=str(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_persistent_shell_accepts_missing_tmux_socket_as_empty_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _configure(tmp_path, monkeypatch)
+    shell = tmp_path / "shell"
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    shell.chmod(0o700)
+    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    clear_settings_cache()
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
+    )
+    monkeypatch.setattr(
+        shell_ops,
+        "resolve_tmux",
+        lambda: TmuxSelection("/usr/bin/tmux", "system", "tmux"),
+    )
+    monkeypatch.setattr(
+        shell_ops.shutil, "which", lambda executable, **_kwargs: executable
+    )
+    calls: list[list[str]] = []
+
+    async def fake_tmux(args: list[str], timeout_s: int = 10) -> CommandResult:
+        del timeout_s
+        calls.append(args)
+        if args[0] == "list-sessions":
+            return _tmux_result(
+                ok=False,
+                stderr=(
+                    "error connecting to /tmp/isolated/tmux-1000/default "
+                    "(No such file or directory)"
+                ),
+            )
+        return _tmux_result(ok=True)
+
+    monkeypatch.setattr(shell_ops, "tmux", fake_tmux)
+
+    started = await shell_ops.start_persistent_shell_execute(
+        cwd=str(tmp_path), name="fresh", command="echo ready"
+    )
+
+    assert started.shell_id == "fresh"
+    assert calls[0][0] == "list-sessions"
+    assert calls[1][:4] == ["new-session", "-d", "-s", "fresh"]
 
 
 @pytest.mark.asyncio
@@ -625,8 +712,8 @@ async def test_persistent_tmux_creation_and_send_errors_are_reported(
     )
     monkeypatch.setattr(
         shell_ops,
-        "list_persistent_shells_execute",
-        lambda: _async_value(ListPersistentShellsOutput(shells=[])),
+        "authoritative_persistent_shell_ids_execute",
+        lambda: _async_value(set()),
     )
 
     monkeypatch.setattr(
@@ -637,6 +724,11 @@ async def test_persistent_tmux_creation_and_send_errors_are_reported(
         args: list[str], timeout_s: int = 10
     ) -> CommandResult:
         del timeout_s
+        if args[0] == "kill-session":
+            return _tmux_result(
+                ok=False,
+                stderr="no server running on /tmp/tmux/default",
+            )
         return _tmux_result(ok=False, stderr=f"failed {args[0]}")
 
     monkeypatch.setattr(shell_ops, "tmux", failed_tmux)
