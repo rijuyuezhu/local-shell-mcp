@@ -104,6 +104,10 @@ def test_enable_child_subreaper_handles_missing_prctl(monkeypatch):
 
 def test_kqueue_descendant_tracking_requires_every_capability(monkeypatch):
     monkeypatch.setattr(bounded_runner.sys, "platform", "freebsd14")
+    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42, raising=False)
+    monkeypatch.setattr(
+        bounded_runner.os, "waitpid", lambda _pid, _flags: (0, 0), raising=False
+    )
     _install_fake_kqueue_capabilities(monkeypatch, lambda: None)
     assert bounded_runner._kqueue_descendant_tracking_available() is True
 
@@ -885,6 +889,9 @@ def test_run_bounded_command_rejects_process_group_only_containment(
 def test_run_bounded_command_uses_kqueue_tracker(monkeypatch):
     monkeypatch.setattr(bounded_runner.sys, "platform", "freebsd14")
     monkeypatch.setattr(
+        bounded_runner, "_process_group_containment_available", lambda: True
+    )
+    monkeypatch.setattr(
         bounded_runner, "_enable_child_subreaper", lambda: False
     )
     monkeypatch.setattr(
@@ -1012,6 +1019,7 @@ def test_bounded_exec_gate_reports_read_and_exec_errors(monkeypatch, capsys):
 
 
 def test_forked_process_poll_and_blocking_wait(monkeypatch):
+    monkeypatch.setattr(bounded_runner.os, "WNOHANG", 1, raising=False)
     process = bounded_runner._ForkedProcess(42)
     waits = iter([(0, 0), (42, 7 << 8)])
     monkeypatch.setattr(
@@ -1029,6 +1037,7 @@ def test_forked_process_poll_and_blocking_wait(monkeypatch):
 
 
 def test_forked_process_handles_reaped_timeout_and_kill(monkeypatch):
+    monkeypatch.setattr(bounded_runner.os, "WNOHANG", 1, raising=False)
     process = bounded_runner._ForkedProcess(44)
 
     def already_reaped(*_args):
@@ -1065,7 +1074,7 @@ def test_spawn_kqueue_command_registers_before_release(monkeypatch):
     writes = []
     tracker = SimpleNamespace(close=lambda: None)
     monkeypatch.setattr(bounded_runner.os, "pipe", lambda: (10, 11))
-    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42)
+    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42, raising=False)
     monkeypatch.setattr(
         bounded_runner.os, "close", lambda fd: closed.append(fd)
     )
@@ -1113,7 +1122,7 @@ def test_spawn_kqueue_command_fails_on_tracker_registration(monkeypatch):
     closed = []
     fake_process = FakeProcess()
     monkeypatch.setattr(bounded_runner.os, "pipe", lambda: (10, 11))
-    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42)
+    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42, raising=False)
     monkeypatch.setattr(
         bounded_runner.os, "close", lambda fd: closed.append(fd)
     )
@@ -1162,7 +1171,7 @@ def test_spawn_kqueue_command_fails_on_gate_release(monkeypatch):
     tracker = SimpleNamespace(closed=False)
     tracker.close = lambda: setattr(tracker, "closed", True)
     monkeypatch.setattr(bounded_runner.os, "pipe", lambda: (10, 11))
-    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42)
+    monkeypatch.setattr(bounded_runner.os, "fork", lambda: 42, raising=False)
     monkeypatch.setattr(bounded_runner.os, "close", lambda _fd: None)
     monkeypatch.setattr(
         bounded_runner, "_ForkedProcess", lambda _pid: fake_process
@@ -1440,7 +1449,7 @@ def test_macos_libproc_enumerates_uid_and_reads_coalition(monkeypatch):
             return size
 
     monkeypatch.setattr(bounded_runner, "_macos_libproc", lambda: FakeLibproc())
-    monkeypatch.setattr(bounded_runner.os, "getuid", lambda: 501)
+    monkeypatch.setattr(bounded_runner.os, "getuid", lambda: 501, raising=False)
 
     assert bounded_runner._macos_uid_pids() == [111, 222]
     assert bounded_runner._macos_process_coalition_ids(111) == (1111, 2111)
