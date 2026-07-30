@@ -1,22 +1,21 @@
 # ChatGPT connector
 
-`local-shell-mcp` can be added to ChatGPT as a custom MCP connector. Public deployments should use the built-in OAuth flow.
+Add `local-shell-mcp` to ChatGPT as a custom MCP connector. Public deployments should use the built-in OAuth flow.
 
-## Before adding the connector
+## Check the server
 
-Confirm:
+Confirm that:
 
-1. The public HTTPS origin routes to the server.
-2. `LOCAL_SHELL_MCP_BASE_URL` exactly matches that origin.
-3. `LOCAL_SHELL_MCP_AUTH_MODE=oauth` is set.
-4. `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` is set to a long random value.
-5. The health endpoint works:
+1. the public HTTPS hostname reaches the server;
+2. `LOCAL_SHELL_MCP_BASE_URL` exactly matches that origin;
+3. OAuth is enabled and the admin PIN is a long random value;
+4. the health endpoint responds.
 
-    ```bash
-    curl -i https://your-public-host.example.com/healthz
-    ```
+```bash
+curl -i https://your-public-host.example.com/healthz
+```
 
-The MCP URL is:
+The connector URL is:
 
 ```text
 https://your-public-host.example.com/mcp
@@ -24,36 +23,31 @@ https://your-public-host.example.com/mcp
 
 ## Add the connector
 
-1. Open ChatGPT settings and find Connectors or custom MCP connectors.
-2. Add a custom MCP connector.
-3. Use the MCP URL ending in `/mcp`.
-4. Complete the OAuth approval flow with `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN`.
-5. Refresh the connector tool list after server or tool-surface changes.
+1. Open ChatGPT settings for connectors or custom MCP servers.
+2. Add the public URL ending in `/mcp`.
+3. Complete the OAuth approval flow with the configured admin PIN.
+4. Refresh the connector's tools after changing the server tool surface.
 
-Regular connector-style clients may expose only `search` and `fetch`. ChatGPT Developer Mode and full MCP clients can expose the complete shell, filesystem, patch, remote-worker, and agent-bridge tools.
+Use a ChatGPT mode that exposes full MCP tools when you need shell, filesystem, Git, remote-worker, or Agent Bridge operations. A limited connector mode may expose only search-style tools.
 
-## Test prompt
-
-```text
-Use local-shell-mcp. Choose an explicit project workdir, then run session_start with that workdir and summarize the returned session_id, workdir, git status, instruction file paths, and the environment capabilities/policy that affect tool choice. Do not edit files yet.
-```
-
-Then:
+## Test it
 
 ```text
-Use local-shell-mcp to run pwd and tell me the output.
+Use local-shell-mcp. Start a session in my project workspace, inspect its instructions and Git status, and summarize what you can access. Do not edit files yet.
 ```
 
-## OAuth behavior
+Then try a harmless command:
 
-On first connection, ChatGPT opens `/oauth/authorize`. After approval, the client exchanges the authorization code for a bearer token and calls `/mcp` with `Authorization: Bearer ...`.
+```text
+Use local-shell-mcp to run pwd in that session and report the output.
+```
 
-Bearer tokens expire after `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S`. Authorization codes expire after `LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S`.
-
-## Common connector mistakes
+## Common mistakes
 
 - The connector URL omits `/mcp`.
-- `LOCAL_SHELL_MCP_BASE_URL` includes `/mcp`; it should be the origin only.
-- The public hostname in Cloudflare does not match `LOCAL_SHELL_MCP_BASE_URL`.
-- The server was restarted with new tool settings, but the connector tool list was not refreshed.
-- `LOCAL_SHELL_MCP_AUTH_MODE=none` is used on a public hostname.
+- The configured base URL includes `/mcp` instead of only the origin.
+- The tunnel hostname and configured base URL do not match.
+- OAuth is disabled on a public deployment.
+- The client cached an older tool list after a server change.
+
+See [Configuration](../reference/configuration.md) for OAuth settings and [Security](../security.md) before granting access to important workspaces.

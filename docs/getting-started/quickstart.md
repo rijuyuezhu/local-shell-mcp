@@ -1,36 +1,27 @@
 # Quickstart
 
-This guide starts `local-shell-mcp` as a local service, exposes it through Cloudflare Tunnel, then connects ChatGPT to the public `/mcp` endpoint.
+This guide runs `local-shell-mcp` locally, exposes it through Cloudflare Tunnel, and connects ChatGPT to the public `/mcp` endpoint.
 
-The local service path is the recommended default because it works without the Docker image platform restriction and matches normal development workflows. Docker Compose is covered separately in [Docker Compose](docker-compose.md).
+For a container deployment, use [Docker Compose](docker-compose.md) instead.
 
 ## Prerequisites
 
-You need:
+You need a Linux host or VM with `git`, `uv`, Python 3.14+, `tmux`, `ripgrep`, and `cloudflared`; a project workspace; a Cloudflare Tunnel token; and a ChatGPT client that can add a custom MCP connector.
 
-- A Linux host or VM that should run the shell/file/Git operations.
-- `git`, `uv`, `python3`, `tmux`, `ripgrep`, and `cloudflared` available on that host. The source-checkout path in this guide uses host tmux; only Linux standalone release binaries contain the fallback helper.
-- A Cloudflare Tunnel token for the public hostname.
-- A workspace directory that you are willing to let an AI coding agent control.
-- A ChatGPT plan and client mode that can add a custom MCP connector.
-
-## 1. Clone and install dependencies
+## 1. Install
 
 ```bash
 git clone https://github.com/rijuyuezhu/local-shell-mcp.git
 cd local-shell-mcp
-uv sync --group dev
-```
-
-For a persistent service, keep this checkout in a stable path such as `~/Code/local-shell-mcp`.
-
-## 2. Create `.env`
-
-```bash
+uv sync
 cp .env.example .env
 ```
 
-Set at least these values:
+Keep the checkout in a stable location if you plan to run it as a service.
+
+## 2. Configure
+
+Set these values in `.env`:
 
 ```env
 LOCAL_SHELL_MCP_MODE=mcp
@@ -40,19 +31,16 @@ LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/your/workspace
 LOCAL_SHELL_MCP_STATE_DIR=/path/to/your/workspace/.local-shell-mcp
 LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
-LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
+LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=replace-with-a-long-random-pin
 LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 ```
 
-Notes:
+`LOCAL_SHELL_MCP_BASE_URL` is the public origin without `/mcp`. Keep the state directory private: it contains credentials and activity data used by the service.
 
-- `LOCAL_SHELL_MCP_BASE_URL` is the public origin only, without `/mcp`.
-- `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` gates the local approval page. Use a long random value.
-- `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false` keeps built-in workspace and command restrictions active.
-- `LOCAL_SHELL_MCP_STATE_DIR` stores audit logs, temporary files, OAuth signing state, private download snapshots/link state, and Agent Bridge public config plus private credentials.
+For every setting and precedence rule, see [Configuration](../reference/configuration.md).
 
-## 3. Start locally for a smoke test
+## 3. Smoke-test locally
 
 ```bash
 set -a
@@ -67,82 +55,49 @@ In another terminal:
 curl -i http://127.0.0.1:8765/healthz
 ```
 
-Stop the foreground process after the health check succeeds.
+A successful health check confirms that the local service is running.
 
-## 4. Start with Cloudflare Tunnel
+## 4. Start the tunnel
 
-The repository includes a helper that starts `local-shell-mcp` with `uv`, then runs `cloudflared` in the same terminal:
+The repository helper starts the server and Cloudflare Tunnel together:
 
 ```bash
 scripts/run-with-cloudflare-tunnel.sh
 ```
 
-The public MCP endpoint should be:
+Configure the tunnel hostname to route to `http://127.0.0.1:8765`. The public MCP endpoint is:
 
 ```text
 https://your-public-host.example.com/mcp
 ```
 
-See [Cloudflare Tunnel](cloudflare-tunnel.md) for the detailed Cloudflare side.
+See [Cloudflare Tunnel](cloudflare-tunnel.md) for the Cloudflare setup and common routing mistakes.
 
-## 5. Install as a user systemd service
+## 5. Keep it running
 
-Create `~/.config/systemd/user/local-shell-mcp.service`:
+For a persistent Linux user service, create a systemd unit with the stable
+checkout as its working directory:
 
 ```ini
-[Unit]
-Description=local-shell-mcp
-After=network.target
-
 [Service]
-Type=simple
 WorkingDirectory=/home/YOU/Code/local-shell-mcp
 ExecStart=/usr/bin/env bash scripts/run-with-cloudflare-tunnel.sh
 Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=default.target
 ```
 
-Then run:
+Enable the unit with `systemctl --user enable --now local-shell-mcp.service`.
+Use `journalctl --user -u local-shell-mcp.service -f` to inspect its logs.
 
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now local-shell-mcp.service
-journalctl --user -u local-shell-mcp.service -f -n 200
-```
+## 6. Connect ChatGPT
 
-Use `systemctl --user restart local-shell-mcp.service` after changing `.env`.
+Add a custom MCP connector using the public `/mcp` URL, then complete OAuth approval with the admin PIN from `.env`. Use a client mode that exposes the full MCP tool surface when you need shell, file, and Git operations.
 
-## 6. Add the ChatGPT connector
+See [ChatGPT connector](chatgpt-connector.md) for the exact UI flow.
 
-Add a custom MCP connector with this URL:
+## 7. Try a first task
 
 ```text
-https://your-public-host.example.com/mcp
+Use local-shell-mcp. Start a session in my project workspace, inspect the repository and its instruction files, then summarize the environment and Git status. Do not change files yet.
 ```
 
-Complete the OAuth approval flow with the PIN from `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN`. For the full shell/filesystem/Git tool surface, use a client mode that exposes full MCP tools.
-
-## 7. Try a first prompt
-
-```text
-Use local-shell-mcp. First choose an explicit project workdir, then run session_start with that workdir and summarize the returned session_id, workdir, git status, instruction file paths, and the environment capabilities/policy that affect tool choice. Do not change files yet.
-```
-
-Then try a repository workflow:
-
-```text
-Use local-shell-mcp to inspect this repository, run the tests, and summarize what you found before making any changes.
-```
-
-## 8. Watch audit logs
-
-Default audit log path:
-
-```bash
-tail -F /path/to/your/workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
-```
-
-Audit state retains bounded references/previews and may retain complete sanitized tool inputs or outputs in private content-addressed payload objects. Credential-like fields and text are redacted on a best-effort basis before storage. Treat the whole audit directory as sensitive and do not publish it without review.
+Continue with [Common workflows](../guides/common-workflows.md), or open the browser interface described in [Human interface](../guides/human-interface.md).

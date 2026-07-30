@@ -97,6 +97,49 @@ tail -F /workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
 
 Audit state can contain prompts, tool inputs, tool outputs, file contents, bounded JSONL previews, and recoverable sanitized payload objects. Credential-like values are redacted on a best-effort basis before storage, but both JSONL and the payload directory must still be treated as sensitive.
 
+## Documentation ownership
+
+Keep documentation at the level owned by each section:
+
+- **Home**, **Getting started**, and **Guides** are for users. Explain the task,
+  prerequisites, commands, expected result, limitations, and recovery steps.
+- **Reference** is generated or contract-oriented. Put exact CLI options, settings,
+  tool arguments, defaults, and server instructions there instead of copying them
+  into several guides.
+- **Architecture**, **Development**, **Security**, and **Maintenance** are for
+  contributors and operators who need design rationale, module ownership, release
+  constraints, or migration history.
+
+Do not turn a user guide into a code walkthrough. Protocol frames, lock ordering,
+byte budgets, state-machine transitions, generated-artifact details, and private
+storage formats belong in source docstrings, tests, architecture notes, or focused
+maintenance records. Link to those sources when the distinction matters to a
+contributor.
+
+When behavior changes:
+
+1. update the public contract or source docstring closest to the implementation;
+2. update or add tests that demonstrate the behavior;
+3. regenerate Reference pages when their source changes;
+4. change a user guide only when the user's workflow, requirement, limitation, or
+   recovery action changed.
+
+Useful implementation entry points are:
+
+- Human UI HTTP/WebSocket adapters: `src/local_shell_mcp/ui/http/`
+- Browser assets: `src/local_shell_mcp/ui/static/`
+- OpenTUI client: `ui-opentui/`
+- Terminal asset build: `ui-terminal/`
+- Remote controller and worker domains: `src/local_shell_mcp/remote/` and
+  `src/local_shell_mcp/remote_worker/`
+- Agent Bridge: `src/local_shell_mcp/agent_bridge/`
+- Audit storage and queries: `src/local_shell_mcp/audit.py` and the corresponding
+  tool/UI adapters
+
+Use nearby tests as the canonical executable description. For native UI packaging
+and release artifacts, also see
+[Native artifact provenance](maintenance/native-artifact-provenance.md).
+
 ## Architecture boundaries
 
 The package is layered around transport-neutral tool behavior. Keep dependency

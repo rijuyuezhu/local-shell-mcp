@@ -1,28 +1,24 @@
 # Docker Compose
 
-Docker Compose runs the model-controlled tools inside a container. Use it when you want a more disposable execution environment or want container-level separation from the host.
+Docker Compose runs model-controlled tools inside a container. Use it for a disposable environment or when you want separation from the host. Published images support Linux `amd64` and `arm64`.
 
-The published Docker image is an Ubuntu 26.04 runtime image with Python and project dependencies installed by `uv`. Release images are published for `linux/amd64` and `linux/arm64` and are combined into a multi-arch manifest.
-
-## Create `.env`
+## Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Minimum public setup:
+Set at least:
 
 ```env
 LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
 LOCAL_SHELL_MCP_AUTH_MODE=oauth
-LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me-long-random-pin
+LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=replace-with-a-long-random-pin
 LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
 ```
 
-Docker Compose passes `.env` into the container with `env_file:`. The Cloudflare sidecar also reads the tunnel token from the same file.
-
-Leave `DOCKER_AGENT_UID` and `DOCKER_AGENT_GID` empty for the default Compose flow. On startup, the Docker entrypoint creates the `agent` user from the owner of the mounted `/workspace` directory. Set those variables only when you need to override the detected host UID/GID.
+Leave `DOCKER_AGENT_UID` and `DOCKER_AGENT_GID` empty for the normal setup. Set them only when the mounted workspace needs a specific host UID/GID.
 
 ## Start
 
@@ -31,7 +27,7 @@ mkdir -p workspaces/default/agent/workspace
 docker compose --profile tunnel up -d
 ```
 
-Check status:
+Check the service and tunnel:
 
 ```bash
 docker compose ps
@@ -40,57 +36,56 @@ docker compose logs --tail=100 cloudflared
 curl -i http://127.0.0.1:8765/healthz
 ```
 
-## Mounted paths
+The `tunnel` profile is optional. Omit `--profile tunnel` when HTTPS is provided separately.
+
+## Mounted data
 
 | Host path or volume | Container path | Purpose |
 |---|---|---|
 | `./workspaces/default/agent/workspace` | `/workspace` | Controlled project workspace |
-| `./workspaces/default` | `/home` | Container home tree |
+| `./workspaces/default` | `/home` | Container home and service state |
 | `local-shell-mcp-credentials` | `/persist/credentials` | Optional persisted developer credentials |
 
-`DOCKER_PERSISTENT_CREDENTIALS=true` persists common GitHub CLI, Git HTTPS, GitCode, SSH, `.netrc`, and GPG state across container rebuilds. Set it to `false` for more disposable authentication state.
+Set `DOCKER_PERSISTENT_CREDENTIALS=false` when Git, SSH, and related login state should be discarded with the container environment.
 
-## Workspace permissions
+## Fix workspace permissions
 
-By default, the entrypoint detects the owner of the mounted `/workspace` directory and creates the runtime `agent` user with that UID/GID. For the standard setup, this means the files created by the container match the host user that created `./workspaces/default/agent/workspace`.
-
-If the container cannot write `/workspace/.local-shell-mcp`, first check the host-side owner:
+If the service cannot write the workspace or its `.local-shell-mcp` state directory, inspect the host owner:
 
 ```bash
-mkdir -p workspaces/default/agent/workspace
 stat -c '%u:%g %n' workspaces/default/agent/workspace
 ```
 
-Then either fix the host ownership or override the runtime agent identity in `.env`:
+Fix the host ownership, or set matching values in `.env`:
 
 ```env
 DOCKER_AGENT_UID=1000
 DOCKER_AGENT_GID=1000
 ```
 
-Restart after changing ownership or `.env`:
+Then restart:
 
 ```bash
 docker compose restart local-shell-mcp
 ```
 
-## Full-control mode
+## Security
 
-Keep this disabled by default:
+Keep full-control mode disabled unless the container or VM is disposable:
 
 ```env
 LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false
 ```
 
-`LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` disables built-in workspace and command restrictions. Use it only in disposable containers or VMs.
+Container isolation is not a substitute for OAuth, narrow workspace mounts, or careful credential handling. Review [Security](../security.md) before public exposure.
 
-## Stop and reset
+## Stop or reset
 
 ```bash
 docker compose down
 ```
 
-Remove the credential volume only when you intentionally want to discard persisted credentials:
+Remove persisted credentials only when you intentionally want to discard them:
 
 ```bash
 docker volume rm local-shell-mcp-credentials
