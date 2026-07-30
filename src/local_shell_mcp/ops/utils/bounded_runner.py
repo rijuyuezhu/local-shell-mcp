@@ -173,6 +173,16 @@ def _descendants(pid: int) -> list[int] | None:
     parents = _procfs_parent_map()
     if parents is None:
         return None
+    descendants = _descendants_from_parent_map(pid, parents)
+    if descendants:
+        return descendants
+
+    # A process can fork after the directory snapshot and exit before its
+    # status is read, leaving the newly adopted child absent from this map.
+    # Never accept an empty fallback result without fresh authoritative proof.
+    parents = _procfs_parent_map()
+    if parents is None:
+        return None
     return _descendants_from_parent_map(pid, parents)
 
 

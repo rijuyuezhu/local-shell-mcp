@@ -599,7 +599,11 @@ class ToolSessionStore:
             )
         if not allow_expired and self._session_expired(session, time.time()):
             if session.target == "local":
-                self._remove_session_state_locked(session_id)
+                with try_session_lifecycle_lease(
+                    session_id
+                ) as lifecycle_available:
+                    if lifecycle_available:
+                        self._remove_session_state_locked(session_id)
             raise ExpiredAgentSessionError(
                 f"expired session_id {session_id!r}; "
                 + (

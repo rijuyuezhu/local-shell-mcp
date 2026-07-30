@@ -13,6 +13,7 @@ from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.tool_session import lifecycle
 from local_shell_mcp.tool_session.store import (
     SESSION_ACTIVE_WINDOW_S,
+    ExpiredAgentSessionError,
     UnknownAgentSessionError,
     get_tool_session_store,
 )
@@ -390,6 +391,72 @@ async def test_overflow_pruning_skips_cross_process_copy_endpoint_leases(
         assert await asyncio.to_thread(process.wait, timeout=5) == 0
 
         assert len(store.list_sessions()) == 1
+    finally:
+        release.touch(exist_ok=True)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        clear_settings_cache()
+
+
+@pytest.mark.asyncio
+async def test_required_expiry_preserves_local_lifecycle_holder(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(
+        workdir=tmp_path,
+        expires_at=time.time() - 1,
+    )
+    metadata_path = store._metadata_path(session.session_id)
+
+    async with lifecycle.session_lifecycle_lock(session.session_id):
+        with pytest.raises(ExpiredAgentSessionError):
+            store.require_session(session.session_id)
+        assert metadata_path.exists()
+
+    with pytest.raises(ExpiredAgentSessionError):
+        store.require_session(session.session_id)
+    assert not metadata_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_required_expiry_preserves_cross_process_lifecycle_holder(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(
+        workdir=tmp_path,
+        expires_at=time.time() - 1,
+    )
+    metadata_path = store._metadata_path(session.session_id)
+    marker = tmp_path / "required-expiry-lease-held"
+    release = tmp_path / "release-required-expiry-lease"
+    process = _start_cross_process_lifecycle_holder(
+        (session.session_id,), marker, release
+    )
+
+    try:
+        await _wait_for_process_marker(process, marker)
+
+        with pytest.raises(ExpiredAgentSessionError):
+            store.require_session(session.session_id)
+        assert metadata_path.exists()
+
+        release.write_text("release", encoding="utf-8")
+        assert await asyncio.to_thread(process.wait, timeout=5) == 0
+
+        with pytest.raises(ExpiredAgentSessionError):
+            store.require_session(session.session_id)
+        assert not metadata_path.exists()
     finally:
         release.touch(exist_ok=True)
         if process.poll() is None:

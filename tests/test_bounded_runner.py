@@ -442,6 +442,42 @@ def test_descendants_falls_back_to_procfs_parent_map(monkeypatch):
     assert bounded_runner._descendants(1) == [2, 3]
 
 
+def test_descendants_rescans_empty_parent_map_for_newly_adopted_child(
+    monkeypatch,
+):
+    parent_maps = iter([{2: 99}, {3: 1}])
+    monkeypatch.setattr(bounded_runner, "_direct_children", lambda _pid: None)
+    monkeypatch.setattr(
+        bounded_runner, "_procfs_parent_map", lambda: next(parent_maps)
+    )
+
+    assert bounded_runner._descendants(1) == [3]
+
+
+def test_descendants_requires_two_authoritative_empty_parent_maps(monkeypatch):
+    scans: list[bool] = []
+    monkeypatch.setattr(bounded_runner, "_direct_children", lambda _pid: None)
+
+    def empty_parent_map():
+        scans.append(True)
+        return {2: 99}
+
+    monkeypatch.setattr(bounded_runner, "_procfs_parent_map", empty_parent_map)
+
+    assert bounded_runner._descendants(1) == []
+    assert scans == [True, True]
+
+
+def test_descendants_fails_closed_when_empty_rescan_is_uncertain(monkeypatch):
+    parent_maps = iter([{2: 99}, None])
+    monkeypatch.setattr(bounded_runner, "_direct_children", lambda _pid: None)
+    monkeypatch.setattr(
+        bounded_runner, "_procfs_parent_map", lambda: next(parent_maps)
+    )
+
+    assert bounded_runner._descendants(1) is None
+
+
 def test_descendants_propagates_unknown_procfs_inventory(monkeypatch):
     monkeypatch.setattr(bounded_runner, "_direct_children", lambda _pid: None)
     monkeypatch.setattr(bounded_runner, "_procfs_parent_map", lambda: None)
