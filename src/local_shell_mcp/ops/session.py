@@ -287,17 +287,17 @@ async def _stop_owned_jobs(session_id: str) -> list[str]:
     """Stop every active tracked job before its owning session disappears."""
     from ..jobs.runtime import (
         CONFIRMED_TERMINAL_STATUSES,
-        job_list_execute,
-        job_stop_execute,
+        _job_list_execute_unlocked,
+        _job_stop_execute_unlocked,
         job_stop_managed_references_execute,
     )
 
-    listed = await job_list_execute(session_id, include_finished=True)
+    listed = await _job_list_execute_unlocked(session_id, include_finished=True)
     stopped: list[str] = []
     for job in listed.jobs:
         if job.status in CONFIRMED_TERMINAL_STATUSES:
             continue
-        result = await job_stop_execute(session_id, job.job_id)
+        result = await _job_stop_execute_unlocked(session_id, job.job_id)
         if result.killed or result.job.status in CONFIRMED_TERMINAL_STATUSES:
             stopped.append(job.job_id)
             continue

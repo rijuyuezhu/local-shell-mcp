@@ -604,10 +604,10 @@ async def test_session_end_retry_rechecks_lost_job_before_deleting_session(
         return []
 
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_list_execute", fake_list
+        "local_shell_mcp.jobs.runtime._job_list_execute_unlocked", fake_list
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_stop_execute", fake_stop
+        "local_shell_mcp.jobs.runtime._job_stop_execute_unlocked", fake_stop
     )
     monkeypatch.setattr(
         "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",
@@ -661,10 +661,10 @@ async def test_stop_owned_jobs_reports_only_stopped_or_terminal_jobs(
         return ["target-copy"]
 
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_list_execute", fake_list
+        "local_shell_mcp.jobs.runtime._job_list_execute_unlocked", fake_list
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_stop_execute", fake_stop
+        "local_shell_mcp.jobs.runtime._job_stop_execute_unlocked", fake_stop
     )
     monkeypatch.setattr(
         "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",
@@ -758,10 +758,10 @@ async def test_stop_owned_jobs_rejects_unconfirmed_stop(status, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_list_execute", fake_list
+        "local_shell_mcp.jobs.runtime._job_list_execute_unlocked", fake_list
     )
     monkeypatch.setattr(
-        "local_shell_mcp.jobs.runtime.job_stop_execute", fake_stop
+        "local_shell_mcp.jobs.runtime._job_stop_execute_unlocked", fake_stop
     )
     monkeypatch.setattr(
         "local_shell_mcp.jobs.runtime.job_stop_managed_references_execute",

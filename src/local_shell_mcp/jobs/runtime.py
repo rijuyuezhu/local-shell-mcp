@@ -1442,11 +1442,13 @@ async def _job_start_execute_unlocked(
     operation_id = _begin_job_operation(job, "start")
     try:
         with _store_transaction() as store:
-            retained = [
-                _refresh_job_status(row, active_shells, now)
-                for row in store.get("jobs", [])
-                if isinstance(row, dict)
-            ]
+            retained = []
+            for row in store.get("jobs", []):
+                if not isinstance(row, dict):
+                    continue
+                if str(row.get("session_id") or "") == session_id:
+                    _refresh_job_status(row, active_shells, now)
+                retained.append(row)
             store["jobs"] = retained
             _prune_store(store)
             store["jobs"].append(job)
@@ -1591,16 +1593,31 @@ async def job_reconcile_shell_jobs_execute() -> bool:
 async def job_list_execute(
     session_id: str, include_finished: bool = True
 ) -> JobListOutput:
-    """List and recover tracked jobs owned by one agent session."""
+    """List one session's jobs under lifecycle-safe reconciliation."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_list_execute_unlocked(
+            session_id, include_finished=include_finished
+        )
+
+
+async def _job_list_execute_unlocked(
+    session_id: str, include_finished: bool = True
+) -> JobListOutput:
+    """List and recover one session's jobs while its lifecycle lock is held."""
     get_tool_session_store().touch_session(session_id)
     active = await authoritative_persistent_shell_ids_execute()
     now = _utc()
     with _store_transaction() as store:
-        jobs = [
+        jobs = store.get("jobs", [])
+        if not isinstance(jobs, list):
+            jobs = []
+            store["jobs"] = jobs
+        for row in jobs:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("session_id") or "") != session_id:
+                continue
             _refresh_job_status(row, active, now)
-            for row in store.get("jobs", [])
-        ]
-        store["jobs"] = jobs
         _prune_store(store)
         owned = _session_jobs(store["jobs"], session_id)
         rows = [
@@ -1619,7 +1636,15 @@ async def job_list_execute(
 async def job_tail_execute(
     session_id: str, job_id: str, lines: int = 200
 ) -> JobTailOutput:
-    """Read durable recent output and refresh one tracked job."""
+    """Read one job under lifecycle-safe status reconciliation."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_tail_execute_unlocked(session_id, job_id, lines)
+
+
+async def _job_tail_execute_unlocked(
+    session_id: str, job_id: str, lines: int = 200
+) -> JobTailOutput:
+    """Read one job while its owner lifecycle lock is held."""
     get_tool_session_store().touch_session(session_id)
     managed = job_id in managed_job_id_set(session_id, [job_id])
     active = (
@@ -1801,6 +1826,14 @@ async def job_stop_managed_references_execute(
 
 async def job_stop_execute(session_id: str, job_id: str) -> JobStopOutput:
     """Stop one tracked command through a serialized lifecycle transition."""
+    async with session_lifecycle_lock(session_id):
+        return await _job_stop_execute_unlocked(session_id, job_id)
+
+
+async def _job_stop_execute_unlocked(
+    session_id: str, job_id: str
+) -> JobStopOutput:
+    """Stop one tracked command while its owner lifecycle lock is held."""
     get_tool_session_store().touch_session(session_id)
     managed = job_id in managed_job_id_set(session_id, [job_id])
     active = (

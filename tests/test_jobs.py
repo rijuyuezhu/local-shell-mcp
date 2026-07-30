@@ -1262,6 +1262,79 @@ async def test_managed_reference_stop_rejects_unconfirmed_result(
 
 
 @pytest.mark.asyncio
+async def test_job_list_samples_inventory_under_owner_lock_only(
+    monkeypatch,
+):
+    requested = {
+        "job_id": "requested-job",
+        "kind": "shell",
+        "name": "requested-job",
+        "status": "starting",
+        "command": "sleep 60",
+        "cwd": ".",
+        "session_id": "SESSION1",
+        "shell_id": "requested-shell",
+        "created_at": 1.0,
+        "updated_at": 1.0,
+        "attempts": 1,
+    }
+    unrelated = {
+        "job_id": "unrelated-job",
+        "kind": "shell",
+        "name": "unrelated-job",
+        "status": "starting",
+        "command": "sleep 60",
+        "cwd": ".",
+        "session_id": "SESSION2",
+        "shell_id": "unrelated-shell",
+        "created_at": 1.0,
+        "updated_at": 1.0,
+        "attempts": 1,
+    }
+    store = {"jobs": [requested, unrelated]}
+    active_locks: list[str] = []
+    inventory_lock_states: list[tuple[str, ...]] = []
+
+    @contextmanager
+    def fake_transaction():
+        yield store
+
+    @asynccontextmanager
+    async def fake_lifecycle_lock(session_id: str):
+        active_locks.append(session_id)
+        requested["status"] = "running"
+        try:
+            yield
+        finally:
+            active_locks.remove(session_id)
+
+    async def fake_inventory():
+        inventory_lock_states.append(tuple(active_locks))
+        return {"requested-shell"} if active_locks else set()
+
+    monkeypatch.setattr(
+        jobs_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(touch_session=lambda _session_id: None),
+    )
+    monkeypatch.setattr(jobs_ops, "session_lifecycle_lock", fake_lifecycle_lock)
+    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(jobs_ops, "_prune_store", lambda _store: None)
+    monkeypatch.setattr(
+        jobs_ops,
+        "authoritative_persistent_shell_ids_execute",
+        fake_inventory,
+    )
+
+    result = await jobs_ops.job_list_execute("SESSION1")
+
+    assert inventory_lock_states == [("SESSION1",)]
+    assert [job.job_id for job in result.jobs] == ["requested-job"]
+    assert requested["status"] == "running"
+    assert unrelated["status"] == "starting"
+
+
+@pytest.mark.asyncio
 async def test_job_list_preserves_running_state_when_inventory_is_uncertain(
     monkeypatch,
 ):
@@ -1626,6 +1699,182 @@ async def test_job_start_preserves_existing_jobs_when_inventory_is_uncertain(
         next(row for row in rows if row["job_id"] == "job_existing")["status"]
         == "running"
     )
+
+
+@pytest.mark.asyncio
+async def test_job_start_does_not_refresh_other_owner_transitions(
+    tmp_path, monkeypatch
+):
+    _configure_job_state(tmp_path, monkeypatch)
+    session_id = _create_session(str(tmp_path))
+    other_session_id = _create_session(str(tmp_path))
+    unrelated = {
+        "job_id": "job_unrelated",
+        "kind": "shell",
+        "name": "unrelated",
+        "status": "starting",
+        "command": "sleep 60",
+        "cwd": str(tmp_path),
+        "session_id": other_session_id,
+        "shell_id": "shell_unrelated",
+        "created_at": 1.0,
+        "updated_at": 1.0,
+        "attempts": 1,
+    }
+    jobs_ops._save_store(
+        {"version": jobs_ops.JOB_STORE_VERSION, "jobs": [unrelated]}
+    )
+
+    async def empty_inventory():
+        return set()
+
+    async def fake_start_shell(
+        cwd: str,
+        name: str | None,
+        command: str | None,
+        *,
+        owner_session_id: str | None = None,
+    ):
+        assert owner_session_id == session_id
+        return StartPersistentShellOutput(
+            shell_id="shell_new", name=name, cwd=cwd, command=command
+        )
+
+    monkeypatch.setattr(
+        jobs_ops,
+        "authoritative_persistent_shell_ids_execute",
+        empty_inventory,
+    )
+    monkeypatch.setattr(
+        jobs_ops, "start_persistent_shell_execute", fake_start_shell
+    )
+
+    await jobs_ops.job_start_execute(session_id, "echo new")
+    rows = jobs_ops._load_store()["jobs"]
+    unrelated_after = next(
+        row for row in rows if row["job_id"] == "job_unrelated"
+    )
+
+    assert unrelated_after["status"] == "starting"
+
+
+@pytest.mark.asyncio
+async def test_job_tail_samples_inventory_under_owner_lock(monkeypatch):
+    row = {
+        "job_id": "job_running",
+        "kind": "shell",
+        "name": "running",
+        "status": "running",
+        "command": "sleep 60",
+        "cwd": ".",
+        "session_id": "SESSION1",
+        "shell_id": "shell_running",
+        "log_path": "unused.log",
+        "created_at": 1.0,
+        "updated_at": 1.0,
+        "attempts": 1,
+    }
+    store = {"jobs": [row]}
+    active_locks: list[str] = []
+    inventory_lock_states: list[tuple[str, ...]] = []
+
+    @contextmanager
+    def fake_transaction():
+        yield store
+
+    @asynccontextmanager
+    async def fake_lifecycle_lock(session_id: str):
+        active_locks.append(session_id)
+        try:
+            yield
+        finally:
+            active_locks.remove(session_id)
+
+    async def live_inventory():
+        inventory_lock_states.append(tuple(active_locks))
+        return {"shell_running"}
+
+    monkeypatch.setattr(
+        jobs_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(touch_session=lambda _session_id: None),
+    )
+    monkeypatch.setattr(jobs_ops, "session_lifecycle_lock", fake_lifecycle_lock)
+    monkeypatch.setattr(jobs_ops, "managed_job_id_set", lambda *_args: set())
+    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(jobs_ops, "_read_log_tail", lambda *_args: "ready")
+    monkeypatch.setattr(
+        jobs_ops,
+        "authoritative_persistent_shell_ids_execute",
+        live_inventory,
+    )
+
+    result = await jobs_ops.job_tail_execute("SESSION1", "job_running")
+
+    assert inventory_lock_states == [("SESSION1",)]
+    assert result.job.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_job_stop_samples_inventory_under_owner_lock(monkeypatch):
+    row = {
+        "job_id": "job_running",
+        "kind": "shell",
+        "name": "running",
+        "status": "running",
+        "command": "sleep 60",
+        "cwd": ".",
+        "session_id": "SESSION1",
+        "shell_id": "shell_running",
+        "created_at": 1.0,
+        "updated_at": 1.0,
+        "attempts": 1,
+    }
+    store = {"jobs": [row]}
+    active_locks: list[str] = []
+    inventory_lock_states: list[tuple[str, ...]] = []
+
+    @contextmanager
+    def fake_transaction():
+        yield store
+
+    @asynccontextmanager
+    async def fake_lifecycle_lock(session_id: str):
+        active_locks.append(session_id)
+        try:
+            yield
+        finally:
+            active_locks.remove(session_id)
+
+    async def live_inventory():
+        inventory_lock_states.append(tuple(active_locks))
+        return {"shell_running"}
+
+    async def fake_kill(shell_id: str):
+        assert active_locks == ["SESSION1"]
+        return KillPersistentShellOutput(shell_id=shell_id, killed=True)
+
+    monkeypatch.setattr(
+        jobs_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(touch_session=lambda _session_id: None),
+    )
+    monkeypatch.setattr(jobs_ops, "session_lifecycle_lock", fake_lifecycle_lock)
+    monkeypatch.setattr(jobs_ops, "managed_job_id_set", lambda *_args: set())
+    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(
+        jobs_ops,
+        "authoritative_persistent_shell_ids_execute",
+        live_inventory,
+    )
+    monkeypatch.setattr(jobs_ops, "kill_persistent_shell_execute", fake_kill)
+    monkeypatch.setattr(jobs_ops, "audit", lambda *_args, **_kwargs: None)
+
+    result = await jobs_ops.job_stop_execute("SESSION1", "job_running")
+
+    assert inventory_lock_states == [("SESSION1",)]
+    assert result.killed is True
+    assert result.job.status == "stopped"
 
 
 @pytest.mark.asyncio
