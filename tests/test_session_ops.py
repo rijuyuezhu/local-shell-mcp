@@ -565,6 +565,96 @@ async def test_stop_owned_shells_kills_only_matching_owner(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stop_owned_shells_accepts_shell_that_exits_during_kill(
+    monkeypatch,
+):
+    async def fake_inventory():
+        return SimpleNamespace(shells=[])
+
+    async def fake_list(_session_id: str):
+        return ["owned"]
+
+    async def fake_kill(_shell_id: str):
+        return SimpleNamespace(killed=False, stderr="session not found")
+
+    async def authoritative_inventory():
+        return set()
+
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.list_persistent_shells_execute",
+        fake_inventory,
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        fake_list,
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.kill_persistent_shell_execute", fake_kill
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.authoritative_persistent_shell_ids_execute",
+        authoritative_inventory,
+    )
+    monkeypatch.setattr(
+        session_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            require_session=lambda _session_id: SimpleNamespace(
+                persistent_shell_ids=("owned",)
+            )
+        ),
+    )
+
+    assert await session_ops._stop_owned_shells("SESSION1") == ["owned"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("active_shell_ids", [None, {"owned"}])
+async def test_stop_owned_shells_rejects_unconfirmed_failed_kill(
+    monkeypatch, active_shell_ids
+):
+    async def fake_inventory():
+        return SimpleNamespace(shells=[])
+
+    async def fake_list(_session_id: str):
+        return ["owned"]
+
+    async def fake_kill(_shell_id: str):
+        return SimpleNamespace(killed=False, stderr="temporary backend failure")
+
+    async def authoritative_inventory():
+        return active_shell_ids
+
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.list_persistent_shells_execute",
+        fake_inventory,
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.list_owned_persistent_shell_ids_execute",
+        fake_list,
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.kill_persistent_shell_execute", fake_kill
+    )
+    monkeypatch.setattr(
+        "local_shell_mcp.ops.shell.authoritative_persistent_shell_ids_execute",
+        authoritative_inventory,
+    )
+    monkeypatch.setattr(
+        session_ops,
+        "get_tool_session_store",
+        lambda: SimpleNamespace(
+            require_session=lambda _session_id: SimpleNamespace(
+                persistent_shell_ids=("owned",)
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="could not be stopped"):
+        await session_ops._stop_owned_shells("SESSION1")
+
+
+@pytest.mark.asyncio
 async def test_session_end_waits_for_in_flight_job_admission(monkeypatch):
     job_entered = asyncio.Event()
     release_job = asyncio.Event()

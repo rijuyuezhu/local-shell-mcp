@@ -309,6 +309,7 @@ async def _stop_owned_jobs(session_id: str) -> list[str]:
 async def _stop_owned_shells(session_id: str) -> list[str]:
     """Stop every persistent shell assigned to one explicit session."""
     from .shell import (
+        authoritative_persistent_shell_ids_execute,
         kill_persistent_shell_execute,
         list_owned_persistent_shell_ids_execute,
         list_persistent_shells_execute,
@@ -335,10 +336,14 @@ async def _stop_owned_shells(session_id: str) -> list[str]:
     for shell_id in shell_ids:
         result = await kill_persistent_shell_execute(shell_id)
         if not result.killed:
-            raise RuntimeError(
-                f"persistent shell could not be stopped: {shell_id}: "
-                f"{result.stderr or 'unknown backend error'}"
+            active_shell_ids = (
+                await authoritative_persistent_shell_ids_execute()
             )
+            if active_shell_ids is None or shell_id in active_shell_ids:
+                raise RuntimeError(
+                    f"persistent shell could not be stopped: {shell_id}: "
+                    f"{result.stderr or 'unknown backend error'}"
+                )
         stopped.append(shell_id)
     return stopped
 
