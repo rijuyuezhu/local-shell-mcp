@@ -312,15 +312,8 @@ async def _stop_owned_shells(session_id: str) -> list[str]:
         authoritative_persistent_shell_ids_execute,
         kill_persistent_shell_execute,
         list_owned_persistent_shell_ids_execute,
-        list_persistent_shells_execute,
     )
 
-    await list_persistent_shells_execute()
-    durable_shell_ids = (
-        get_tool_session_store()
-        .require_session(session_id)
-        .persistent_shell_ids
-    )
     discovered_shell_ids = await list_owned_persistent_shell_ids_execute(
         session_id
     )
@@ -329,11 +322,26 @@ async def _stop_owned_shells(session_id: str) -> list[str]:
             "persistent shell ownership could not be determined; refusing to "
             "remove the session"
         )
-    shell_ids = tuple(
-        dict.fromkeys((*durable_shell_ids, *discovered_shell_ids))
+    store = get_tool_session_store()
+    store.reconcile_session_persistent_shells(
+        session_id, set(discovered_shell_ids)
     )
+    shell_ids = tuple(dict.fromkeys(discovered_shell_ids))
     stopped: list[str] = []
     for shell_id in shell_ids:
+        current_owned = await list_owned_persistent_shell_ids_execute(
+            session_id
+        )
+        if current_owned is None:
+            raise RuntimeError(
+                "persistent shell ownership could not be determined; refusing "
+                "to remove the session"
+            )
+        if shell_id not in current_owned:
+            store.reconcile_session_persistent_shells(
+                session_id, set(current_owned)
+            )
+            continue
         result = await kill_persistent_shell_execute(shell_id)
         if not result.killed:
             active_shell_ids = (

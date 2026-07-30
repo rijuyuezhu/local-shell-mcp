@@ -10,6 +10,7 @@ import local_shell_mcp.ops.utils.session_copy as session_copy_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.ops.session import session_copy_execute
+from local_shell_mcp.tool_session.lifecycle import session_lifecycle_lock
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.local_handlers import (
     call_local_tool,
@@ -64,6 +65,44 @@ def _install_fake_remote(monkeypatch):
         remote_session_utils, "call_remote_worker_tool", fake_call
     )
     return calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["SRC00001", "DST00001"])
+async def test_foreground_copy_holds_both_endpoint_lifecycle_locks(
+    monkeypatch, endpoint
+):
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    contender_acquired = asyncio.Event()
+    sentinel = object()
+
+    async def fake_copy(*_args, **_kwargs):
+        entered.set()
+        await release.wait()
+        return sentinel
+
+    async def contend_for_endpoint():
+        async with session_lifecycle_lock(endpoint):
+            contender_acquired.set()
+
+    monkeypatch.setattr(
+        session_copy_ops, "_session_copy_execute_unlocked", fake_copy
+    )
+    copy_task = asyncio.create_task(
+        session_copy_ops.session_copy_execute(
+            "SRC00001", "source.bin", "DST00001", "dest.bin"
+        )
+    )
+    await entered.wait()
+    contender = asyncio.create_task(contend_for_endpoint())
+    await asyncio.sleep(0)
+
+    assert not contender_acquired.is_set()
+    release.set()
+    assert await copy_task is sentinel
+    await contender
+    assert contender_acquired.is_set()
 
 
 @pytest.mark.asyncio

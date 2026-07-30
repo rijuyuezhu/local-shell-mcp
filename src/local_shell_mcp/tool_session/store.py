@@ -439,6 +439,39 @@ class ToolSessionStore:
                 sessions[session.session_id] = session
         return sessions
 
+    def _expired_prune_eligible_locked(
+        self,
+        session: AgentSession,
+        now: float,
+        retention_s: int,
+        active_job_session_ids: set[str] | None,
+    ) -> bool:
+        """Return whether a freshly loaded session remains expiry-eligible."""
+        return (
+            session.target == "local"
+            and self._session_expired_by_policy(session, now, retention_s)
+            and not session.persistent_shell_ids
+            and not self._session_has_active_jobs(
+                session.session_id, active_job_session_ids
+            )
+        )
+
+    def _overflow_prune_eligible_locked(
+        self,
+        session: AgentSession,
+        now: float,
+        active_job_session_ids: set[str] | None,
+    ) -> bool:
+        """Return whether a freshly loaded session remains overflow-eligible."""
+        return (
+            session.target == "local"
+            and session.updated_at < now - SESSION_ACTIVE_WINDOW_S
+            and not session.persistent_shell_ids
+            and not self._session_has_active_jobs(
+                session.session_id, active_job_session_ids
+            )
+        )
+
     def _prune_sessions_locked(
         self, now: float, *, reserve_slots: int = 0
     ) -> list[AgentSession]:
@@ -449,20 +482,33 @@ class ToolSessionStore:
         expired = [
             session
             for session in sessions.values()
-            if session.target == "local"
-            and self._session_expired_by_policy(session, now, retention_s)
-            and not session.persistent_shell_ids
-            and not self._session_has_active_jobs(
-                session.session_id, active_job_session_ids
+            if self._expired_prune_eligible_locked(
+                session, now, retention_s, active_job_session_ids
             )
         ]
         for session in expired:
-            with self._state_store.transaction(
-                self._transaction_path(session.session_id)
+            with (
+                self._state_store.transaction(
+                    self._transaction_path(session.session_id)
+                ),
+                self._state_store.transaction(
+                    self._state_store.layout.jobs_lock_path
+                ),
             ):
+                current = self._load_session_locked(session.session_id)
+                if current is None:
+                    sessions.pop(session.session_id, None)
+                    continue
+                current_jobs = self._active_job_session_ids_locked()
+                if not self._expired_prune_eligible_locked(
+                    current, now, retention_s, current_jobs
+                ):
+                    sessions[session.session_id] = current
+                    continue
                 self._remove_session_state_locked(session.session_id)
-            sessions.pop(session.session_id, None)
+                sessions.pop(session.session_id, None)
 
+        sessions = self._read_all_sessions_locked()
         maximum = int(get_settings().max_agent_sessions)
         target = max(0, maximum - max(0, reserve_slots))
         overflow = max(0, len(sessions) - target)
@@ -480,12 +526,32 @@ class ToolSessionStore:
                 ),
                 key=lambda session: (session.updated_at, session.created_at),
             )
-            for session in inactive[:overflow]:
-                with self._state_store.transaction(
-                    self._transaction_path(session.session_id)
+            for session in inactive:
+                with (
+                    self._state_store.transaction(
+                        self._transaction_path(session.session_id)
+                    ),
+                    self._state_store.transaction(
+                        self._state_store.layout.jobs_lock_path
+                    ),
                 ):
+                    current_sessions = self._read_all_sessions_locked()
+                    if len(current_sessions) <= target:
+                        sessions = current_sessions
+                        break
+                    current = current_sessions.get(session.session_id)
+                    if current is None:
+                        sessions = current_sessions
+                        continue
+                    current_jobs = self._active_job_session_ids_locked()
+                    if not self._overflow_prune_eligible_locked(
+                        current, now, current_jobs
+                    ):
+                        sessions = current_sessions
+                        continue
                     self._remove_session_state_locked(session.session_id)
-                sessions.pop(session.session_id, None)
+                    current_sessions.pop(session.session_id, None)
+                    sessions = current_sessions
 
         self._sessions = sessions
         return sorted(
@@ -787,6 +853,38 @@ class ToolSessionStore:
                     )
                     self._write_session_locked(updated)
                     self._sessions[session.session_id] = updated
+
+    def reconcile_session_persistent_shells(
+        self, session_id: str, owned_shell_ids: set[str]
+    ) -> AgentSession:
+        """Replace one session's durable PTY ids with authoritative ownership."""
+        normalized = tuple(
+            sorted(
+                {
+                    str(shell_id).strip()
+                    for shell_id in owned_shell_ids
+                    if str(shell_id).strip()
+                }
+            )
+        )
+        with self._lock:
+            self._reset_for_current_root_locked()
+            with self._state_store.transaction(
+                self._transaction_path(session_id)
+            ):
+                current = self._require_session_locked(
+                    session_id, allow_expired=True
+                )
+                if current.target != "local":
+                    raise ValueError(
+                        "persistent shells require a local session"
+                    )
+                if current.persistent_shell_ids == normalized:
+                    return current
+                updated = replace(current, persistent_shell_ids=normalized)
+                self._write_session_locked(updated)
+                self._sessions[session_id] = updated
+                return updated
 
     def reconcile_persistent_shells(self, live_shell_ids: set[str]) -> None:
         """Discard durable PTY ownership entries whose shell no longer exists."""

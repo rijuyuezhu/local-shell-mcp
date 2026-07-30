@@ -846,7 +846,7 @@ async def _copy_dir(
     }
 
 
-async def session_copy_execute(
+async def _session_copy_execute_unlocked(
     src_session_id: str,
     src_path: str,
     dst_session_id: str,
@@ -858,7 +858,7 @@ async def session_copy_execute(
     progress: SessionCopyProgress | None = None,
     resume_key: str | None = None,
 ) -> SessionCopyOutput:
-    """Copy a file or directory between two explicit sessions."""
+    """Copy between sessions whose lifecycle locks are already held."""
     store = get_tool_session_store()
     src_session = store.touch_session(src_session_id)
     dst_session = store.touch_session(dst_session_id)
@@ -928,6 +928,33 @@ async def session_copy_execute(
     )
 
 
+async def session_copy_execute(
+    src_session_id: str,
+    src_path: str,
+    dst_session_id: str,
+    dst_path: str,
+    kind: SessionCopyKind = "auto",
+    overwrite: bool = True,
+    chunk_size: int | None = None,
+    *,
+    progress: SessionCopyProgress | None = None,
+    resume_key: str | None = None,
+) -> SessionCopyOutput:
+    """Copy synchronously while serializing both endpoint lifecycles."""
+    async with session_lifecycle_locks((src_session_id, dst_session_id)):
+        return await _session_copy_execute_unlocked(
+            src_session_id,
+            src_path,
+            dst_session_id,
+            dst_path,
+            kind,
+            overwrite,
+            chunk_size,
+            progress=progress,
+            resume_key=resume_key,
+        )
+
+
 SESSION_COPY_MANAGED_KIND = "session-copy"
 
 
@@ -966,7 +993,7 @@ async def _run_session_copy_job(
     await context.log(
         f"copying {src_session_id}:{src_path} -> {dst_session_id}:{dst_path}"
     )
-    result = await session_copy_execute(
+    result = await _session_copy_execute_unlocked(
         src_session_id,
         src_path,
         dst_session_id,

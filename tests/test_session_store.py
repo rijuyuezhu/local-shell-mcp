@@ -1,5 +1,6 @@
 import re
 import time
+from contextlib import contextmanager
 
 import pytest
 
@@ -600,6 +601,29 @@ def test_persistent_shell_registry_releases_and_reconciles(
     )
 
 
+def test_scoped_shell_reconciliation_does_not_clear_other_session(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    first = store.create_session(workdir=tmp_path)
+    second = store.create_session(workdir=tmp_path)
+    store.register_persistent_shell(first.session_id, "reused")
+    store.register_persistent_shell(second.session_id, "reused")
+
+    reconciled = store.reconcile_session_persistent_shells(
+        first.session_id, set()
+    )
+
+    assert reconciled.persistent_shell_ids == ()
+    assert store.require_session(second.session_id).persistent_shell_ids == (
+        "reused",
+    )
+
+
 def test_inactive_session_with_persistent_shell_is_not_evicted(
     tmp_path, monkeypatch
 ):
@@ -855,6 +879,132 @@ def test_inactive_remote_session_is_not_evicted_without_worker_cleanup(
     assert store.list_sessions() == [remote]
 
 
+def test_expiry_prune_revalidates_concurrent_touch(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "10")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    peer = store_module.ToolSessionStore()
+    clock[0] = 200.0
+    candidate_path = store._transaction_path(session.session_id)
+    original_transaction = store._state_store.transaction
+    injected = False
+
+    @contextmanager
+    def injecting_transaction(path):
+        nonlocal injected
+        if path == candidate_path and not injected:
+            injected = True
+            with original_transaction(candidate_path):
+                current = peer._load_session_locked(session.session_id)
+                assert current is not None
+                updated = store_module.replace(current, updated_at=clock[0])
+                peer._write_session_locked(updated)
+        with original_transaction(path):
+            yield
+
+    monkeypatch.setattr(
+        store._state_store, "transaction", injecting_transaction
+    )
+
+    assert store.list_sessions() == [store.require_session(session.session_id)]
+
+
+def test_expiry_prune_revalidates_concurrent_job_admission(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    session = store.create_session(workdir=tmp_path, expires_at=time.time() - 1)
+    candidate_path = store._transaction_path(session.session_id)
+    jobs_lock_path = store._state_store.layout.jobs_lock_path
+    original_transaction = store._state_store.transaction
+    injected = False
+
+    @contextmanager
+    def injecting_transaction(path):
+        nonlocal injected
+        if path == candidate_path and not injected:
+            injected = True
+            with original_transaction(jobs_lock_path):
+                store._state_store.write_json(
+                    store._state_store.layout.jobs_store_path,
+                    {
+                        "version": 1,
+                        "jobs": [
+                            {
+                                "job_id": "job_active",
+                                "kind": "shell",
+                                "session_id": session.session_id,
+                                "status": "running",
+                            }
+                        ],
+                    },
+                )
+        with original_transaction(path):
+            yield
+
+    monkeypatch.setattr(
+        store._state_store, "transaction", injecting_transaction
+    )
+
+    assert store.list_sessions() == [session]
+
+
+def test_overflow_prune_revalidates_concurrent_touch(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "2")
+    clear_settings_cache()
+    clock = [100.0]
+    monkeypatch.setattr(store_module.time, "time", lambda: clock[0])
+    store = store_module.ToolSessionStore()
+    store.clear()
+    oldest = store.create_session(workdir=tmp_path)
+    clock[0] += 1
+    newer = store.create_session(workdir=tmp_path)
+    peer = store_module.ToolSessionStore()
+    clock[0] += store_module.SESSION_ACTIVE_WINDOW_S + 1
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+    clear_settings_cache()
+    candidate_path = store._transaction_path(oldest.session_id)
+    original_transaction = store._state_store.transaction
+    injected = False
+
+    @contextmanager
+    def injecting_transaction(path):
+        nonlocal injected
+        if path == candidate_path and not injected:
+            injected = True
+            with original_transaction(candidate_path):
+                current = peer._load_session_locked(oldest.session_id)
+                assert current is not None
+                updated = store_module.replace(current, updated_at=clock[0])
+                peer._write_session_locked(updated)
+        with original_transaction(path):
+            yield
+
+    monkeypatch.setattr(
+        store._state_store, "transaction", injecting_transaction
+    )
+
+    assert [item.session_id for item in store.list_sessions()] == [
+        oldest.session_id
+    ]
+    with pytest.raises(UnknownAgentSessionError):
+        store.require_session(newer.session_id)
+
+
 def test_pruning_loads_active_job_owners_once(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
@@ -888,4 +1038,4 @@ def test_pruning_loads_active_job_owners_once(tmp_path, monkeypatch):
     monkeypatch.setattr(store._state_store, "read_json", counted_read_json)
 
     assert len(store.list_sessions()) == 1
-    assert job_store_reads == 1
+    assert job_store_reads == 3
