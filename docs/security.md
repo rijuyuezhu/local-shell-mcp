@@ -125,6 +125,13 @@ form one cleanup domain after `new-session` succeeds. Cancellation or any other
 failure before initialization completes kills the newly created session before
 the request exits, preventing an untagged shell from escaping session teardown.
 
+Session admission, retry, foreground shell/Python execution, synchronous copy,
+and teardown share deterministic per-session lifecycle locks. Each lock combines
+an event-loop-local lock with an owner-private cross-process file lock, so two
+server processes using the same state directory cannot admit work after another
+process has started teardown. Cancellation while waiting releases the local
+entry and its dedicated file-lock thread without leaving a stale holder.
+
 ## Browser Human UI policy
 
 The browser Human UI loads scripts only from the configured origin. Its Content Security Policy permits inline styles required by xterm's runtime layout and narrowly permits `wasm-unsafe-eval` for the bundled xterm Image Addon Sixel decoder; it never enables general `unsafe-eval` or external script origins. OAuth `401` responses clear an invalid tab token, while `403` scope failures preserve the valid token and expose only the bounded missing-scope error.

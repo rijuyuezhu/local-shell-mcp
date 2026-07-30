@@ -1,10 +1,14 @@
+import asyncio
+
 import pytest
 
+import local_shell_mcp.ops.session as session_ops
 import local_shell_mcp.ops.shell as shell_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.schemas.result_models.jobs import JobStartOutput
 from local_shell_mcp.schemas.result_models.shell import (
+    RunShellCommandOutput,
     StartPersistentShellOutput,
 )
 from local_shell_mcp.tool_session.store import get_tool_session_store
@@ -42,6 +46,100 @@ async def test_shell_execution_runs_bounded_command_in_session_workdir(
     assert result.cwd == str(session_dir)
     assert result.result["ok"] is True
     assert result.result["stdout"] == f"hello:{session_dir}"
+
+
+@pytest.mark.asyncio
+async def test_foreground_shell_blocks_session_teardown(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    session_id = _create_session()
+    command_entered = asyncio.Event()
+    release_command = asyncio.Event()
+    teardown_entered = asyncio.Event()
+
+    async def fake_run(command, cwd, timeout_s, max_output_bytes, env):
+        _ = (timeout_s, max_output_bytes, env)
+        command_entered.set()
+        await release_command.wait()
+        return RunShellCommandOutput(
+            ok=True,
+            exit_code=0,
+            duration_ms=1,
+            cwd=cwd,
+            command=command,
+        )
+
+    async def fake_end(session_id_arg: str, *, force: bool = False):
+        _ = (session_id_arg, force)
+        teardown_entered.set()
+        return object()
+
+    monkeypatch.setattr(shell_ops, "run_shell_command_execute", fake_run)
+    monkeypatch.setattr(session_ops, "_session_end_execute_unlocked", fake_end)
+
+    command_task = asyncio.create_task(
+        shell_ops.bash_execute(session_id, "long-running")
+    )
+    await command_entered.wait()
+    teardown_task = asyncio.create_task(
+        session_ops.session_end_execute(session_id)
+    )
+    await asyncio.sleep(0.05)
+    assert not teardown_entered.is_set()
+
+    release_command.set()
+    await command_task
+    await teardown_task
+    assert teardown_entered.is_set()
+
+
+@pytest.mark.asyncio
+async def test_foreground_python_blocks_session_teardown(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    session_id = _create_session()
+    command_entered = asyncio.Event()
+    release_command = asyncio.Event()
+    teardown_entered = asyncio.Event()
+
+    async def fake_run(command, cwd, timeout_s, max_output_bytes, env):
+        _ = (timeout_s, max_output_bytes, env)
+        command_entered.set()
+        await release_command.wait()
+        return RunShellCommandOutput(
+            ok=True,
+            exit_code=0,
+            duration_ms=1,
+            cwd=cwd,
+            command=command,
+        )
+
+    async def fake_end(session_id_arg: str, *, force: bool = False):
+        _ = (session_id_arg, force)
+        teardown_entered.set()
+        return object()
+
+    async def fake_temp_file(*_args, **_kwargs):
+        return tmp_path / "script.py"
+
+    monkeypatch.setattr(shell_ops, "run_shell_command_execute", fake_run)
+    monkeypatch.setattr(shell_ops, "write_temp_text_file", fake_temp_file)
+    monkeypatch.setattr(session_ops, "_session_end_execute_unlocked", fake_end)
+
+    command_task = asyncio.create_task(
+        shell_ops.run_python_code_execute(session_id, "print('hello')")
+    )
+    await command_entered.wait()
+    teardown_task = asyncio.create_task(
+        session_ops.session_end_execute(session_id)
+    )
+    await asyncio.sleep(0.05)
+    assert not teardown_entered.is_set()
+
+    release_command.set()
+    await command_task
+    await teardown_task
+    assert teardown_entered.is_set()
 
 
 @pytest.mark.asyncio

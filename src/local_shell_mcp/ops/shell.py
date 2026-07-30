@@ -631,45 +631,69 @@ async def bash_execute(
                 result=_as_result_dict(result),
             )
 
+    if not async_:
+        async with session_lifecycle_lock(session_id):
+            session = get_tool_session_store().touch_session(session_id)
+            if session.target == "remote":
+                data = await call_remote_session_tool(
+                    session,
+                    "bash",
+                    {
+                        "command": command,
+                        "cwd": cwd,
+                        "timeout_s": timeout_s,
+                        "max_output_bytes": max_output_bytes,
+                        "env": env,
+                        "async_": False,
+                        "pty": False,
+                        "name": name,
+                    },
+                    timeout_s if isinstance(timeout_s, int) else None,
+                )
+                return ShellExecutionOutput.model_validate(data)
+            resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
+            cwd_text = str(resolved_cwd)
+            result = await run_shell_command_execute(
+                command, cwd_text, timeout_s, max_output_bytes, env
+            )
+            return ShellExecutionOutput(
+                mode="command",
+                command=command,
+                cwd=cwd_text,
+                result=_as_result_dict(result),
+            )
+
     session = get_tool_session_store().touch_session(session_id)
     if session.target == "remote":
-        data = await call_remote_session_tool(
-            session,
-            "bash",
-            {
-                "command": command,
-                "cwd": cwd,
-                "timeout_s": timeout_s,
-                "max_output_bytes": max_output_bytes,
-                "env": env,
-                "async_": async_,
-                "pty": pty,
-                "name": name,
-            },
-            timeout_s if isinstance(timeout_s, int) else None,
-        )
-        return ShellExecutionOutput.model_validate(data)
+        async with session_lifecycle_lock(session_id):
+            session = get_tool_session_store().touch_session(session_id)
+            data = await call_remote_session_tool(
+                session,
+                "bash",
+                {
+                    "command": command,
+                    "cwd": cwd,
+                    "timeout_s": timeout_s,
+                    "max_output_bytes": max_output_bytes,
+                    "env": env,
+                    "async_": True,
+                    "pty": False,
+                    "name": name,
+                },
+                timeout_s if isinstance(timeout_s, int) else None,
+            )
+            return ShellExecutionOutput.model_validate(data)
 
     resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
     cwd_text = str(resolved_cwd)
     command_with_env = _command_with_env(command, env)
-    if async_:
-        from ..jobs.runtime import job_start_execute
+    from ..jobs.runtime import job_start_execute
 
-        result = await job_start_execute(
-            session_id, command_with_env, cwd_text, name
-        )
-        return ShellExecutionOutput(
-            mode="job",
-            command=command,
-            cwd=cwd_text,
-            result=_as_result_dict(result),
-        )
-    result = await run_shell_command_execute(
-        command, cwd_text, timeout_s, max_output_bytes, env
+    result = await job_start_execute(
+        session_id, command_with_env, cwd_text, name
     )
     return ShellExecutionOutput(
-        mode="command",
+        mode="job",
         command=command,
         cwd=cwd_text,
         result=_as_result_dict(result),
@@ -690,22 +714,24 @@ async def run_python_code_execute(
     """Write Python code to a temporary file and execute it through shell modes."""
     session = get_tool_session_store().touch_session(session_id)
     if session.target == "remote":
-        data = await call_remote_session_tool(
-            session,
-            "run_python_code",
-            {
-                "code": code,
-                "cwd": cwd,
-                "timeout_s": timeout_s,
-                "max_output_bytes": max_output_bytes,
-                "env": env,
-                "async_": async_,
-                "pty": pty,
-                "name": name,
-            },
-            timeout_s if isinstance(timeout_s, int) else None,
-        )
-        return RunPythonCodeOutput.model_validate(data)
+        async with session_lifecycle_lock(session_id):
+            session = get_tool_session_store().touch_session(session_id)
+            data = await call_remote_session_tool(
+                session,
+                "run_python_code",
+                {
+                    "code": code,
+                    "cwd": cwd,
+                    "timeout_s": timeout_s,
+                    "max_output_bytes": max_output_bytes,
+                    "env": env,
+                    "async_": async_,
+                    "pty": pty,
+                    "name": name,
+                },
+                timeout_s if isinstance(timeout_s, int) else None,
+            )
+            return RunPythonCodeOutput.model_validate(data)
 
     resolved_cwd = resolve_session_path(session, cwd, must_exist=True)
     script_path = await write_temp_text_file(
