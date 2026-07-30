@@ -1535,9 +1535,6 @@ async def _job_start_execute_unlocked(
 
 async def job_reconcile_shell_jobs_execute() -> bool:
     """Reconcile durable state and, when available, live shell membership."""
-    active_shells = await authoritative_persistent_shell_ids_execute()
-    now = _utc()
-
     with _store_transaction() as store:
         jobs = store.get("jobs", [])
         if not isinstance(jobs, list):
@@ -1552,8 +1549,13 @@ async def job_reconcile_shell_jobs_execute() -> bool:
             }
         )
 
+    inventory_authoritative = True
     for session_id in owner_session_ids:
         async with session_lifecycle_lock(session_id):
+            active_shells = await authoritative_persistent_shell_ids_execute()
+            if active_shells is None:
+                inventory_authoritative = False
+            now = _utc()
             with _store_transaction() as store:
                 jobs = store.get("jobs", [])
                 if not isinstance(jobs, list):
@@ -1567,6 +1569,10 @@ async def job_reconcile_shell_jobs_execute() -> bool:
                         continue
                     _refresh_job_status(row, active_shells, now)
 
+    active_shells = await authoritative_persistent_shell_ids_execute()
+    if active_shells is None:
+        inventory_authoritative = False
+    now = _utc()
     with _store_transaction() as store:
         jobs = store.get("jobs", [])
         if isinstance(jobs, list):
@@ -1579,7 +1585,7 @@ async def job_reconcile_shell_jobs_execute() -> bool:
                     continue
                 _refresh_job_status(row, active_shells, now)
         _prune_store(store)
-    return active_shells is not None
+    return inventory_authoritative
 
 
 async def job_list_execute(

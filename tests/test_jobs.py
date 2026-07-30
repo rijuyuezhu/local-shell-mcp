@@ -1105,7 +1105,7 @@ async def test_reconcile_shell_jobs_marks_only_missing_shells_terminal(
 
 
 @pytest.mark.asyncio
-async def test_reconcile_shell_jobs_holds_each_owner_lifecycle_lock(
+async def test_reconcile_shell_jobs_samples_inventory_under_owner_lock(
     monkeypatch,
 ):
     row = {
@@ -1117,6 +1117,8 @@ async def test_reconcile_shell_jobs_holds_each_owner_lifecycle_lock(
     }
     store = {"jobs": [row]}
     held: list[str] = []
+    active_locks: list[str] = []
+    inventory_lock_states: list[tuple[str, ...]] = []
 
     @contextmanager
     def fake_transaction():
@@ -1125,10 +1127,16 @@ async def test_reconcile_shell_jobs_holds_each_owner_lifecycle_lock(
     @asynccontextmanager
     async def fake_lifecycle_lock(session_id: str):
         held.append(session_id)
-        yield
+        active_locks.append(session_id)
+        row["status"] = "running"
+        try:
+            yield
+        finally:
+            active_locks.remove(session_id)
 
     async def fake_inventory():
-        return set()
+        inventory_lock_states.append(tuple(active_locks))
+        return {"pending-shell"} if active_locks else set()
 
     monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
     monkeypatch.setattr(jobs_ops, "session_lifecycle_lock", fake_lifecycle_lock)
@@ -1139,7 +1147,8 @@ async def test_reconcile_shell_jobs_holds_each_owner_lifecycle_lock(
 
     assert await jobs_ops.job_reconcile_shell_jobs_execute() is True
     assert held == ["SESSION1"]
-    assert row["status"] == "failed"
+    assert inventory_lock_states == [("SESSION1",), ()]
+    assert row["status"] == "running"
 
 
 @pytest.mark.asyncio
