@@ -1003,6 +1003,12 @@ async def _start_persistent_shell_locked(
             "Persistent shell inventory is unavailable; refusing to start a new "
             "session until the backend can report active shells authoritatively."
         )
+    shell_id = shell_id or _tmux_session_name(name)
+    if shell_id in active_shell_ids:
+        raise RuntimeError(
+            f"Persistent shell id already exists: {shell_id}. Choose a different "
+            "name or stop the existing shell first."
+        )
     max_sessions = max(1, get_settings().max_tmux_sessions)
     if len(active_shell_ids) >= max_sessions:
         active = ", ".join(sorted(active_shell_ids))
@@ -1011,7 +1017,6 @@ async def _start_persistent_shell_locked(
             f"sessions; active shell ids: {active or '<unknown>'}. Use "
             "list_persistent_shells and kill_persistent_shell to release capacity."
         )
-    shell_id = shell_id or _tmux_session_name(name)
     if _use_conpty_persistent_shell_backend():
         if not conpty.is_available():
             raise RuntimeError(
@@ -1119,9 +1124,12 @@ async def start_persistent_shell_execute(
                 if owner_session_id is not None
                 else None
             )
+            session_store = None
+            reservation_added = False
             if reserved_shell_id is not None:
                 assert owner_session_id is not None
-                get_tool_session_store().register_persistent_shell(
+                session_store = get_tool_session_store()
+                reservation_added = session_store.reserve_persistent_shell(
                     owner_session_id, reserved_shell_id
                 )
             try:
@@ -1137,10 +1145,12 @@ async def start_persistent_shell_execute(
                 # until authoritative backend reconciliation is possible.
                 raise
             except BaseException:
-                if reserved_shell_id is not None:
+                if reserved_shell_id is not None and reservation_added:
+                    assert owner_session_id is not None
+                    assert session_store is not None
                     try:
-                        get_tool_session_store().release_persistent_shell(
-                            reserved_shell_id
+                        session_store.release_session_persistent_shell(
+                            owner_session_id, reserved_shell_id
                         )
                     except Exception as rollback_error:
                         raise RuntimeError(

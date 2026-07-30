@@ -3,15 +3,60 @@ import os
 import subprocess
 import sys
 import threading
+import time
+from dataclasses import asdict, replace
+from pathlib import Path
 
 import pytest
 
+from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.tool_session import lifecycle
 from local_shell_mcp.tool_session.store import (
+    SESSION_ACTIVE_WINDOW_S,
     UnknownAgentSessionError,
     get_tool_session_store,
 )
 from local_shell_mcp.utils.private_files import private_file_lock
+
+
+def _start_cross_process_lifecycle_holder(
+    session_ids: tuple[str, ...], marker: Path, release: Path
+) -> subprocess.Popen[str]:
+    script = f"""
+import asyncio
+from pathlib import Path
+from local_shell_mcp.tool_session.lifecycle import session_lifecycle_locks
+
+async def main():
+    async with session_lifecycle_locks({session_ids!r}):
+        Path({str(marker)!r}).write_text("locked", encoding="utf-8")
+        while not Path({str(release)!r}).exists():
+            await asyncio.sleep(0.01)
+
+asyncio.run(main())
+"""
+    return subprocess.Popen(
+        [sys.executable, "-c", script],
+        env=os.environ.copy(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+async def _wait_for_process_marker(
+    process: subprocess.Popen[str], marker: Path
+) -> None:
+    for _ in range(500):
+        if marker.exists():
+            return
+        if process.poll() is not None:
+            stdout, stderr = process.communicate()
+            raise AssertionError(
+                f"lifecycle holder exited early\nstdout:\n{stdout}\nstderr:\n{stderr}"
+            )
+        await asyncio.sleep(0.01)
+    raise AssertionError("lifecycle holder did not acquire its leases")
 
 
 @pytest.mark.asyncio
@@ -249,3 +294,105 @@ asyncio.run(main())
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_try_lifecycle_lease_skips_local_users_and_lock_uncertainty(
+    monkeypatch,
+):
+    with lifecycle.try_session_lifecycle_lease("SESSION1") as acquired:
+        assert acquired is True
+
+    async with lifecycle.session_lifecycle_lock("SESSION1"):
+        with lifecycle.try_session_lifecycle_lease("SESSION1") as acquired:
+            assert acquired is False
+
+    def fail_lock(*_args, **_kwargs):
+        raise OSError("lock state unavailable")
+
+    monkeypatch.setattr(lifecycle, "private_file_lock", fail_lock)
+    with lifecycle.try_session_lifecycle_lease("SESSION1") as acquired:
+        assert acquired is False
+
+
+@pytest.mark.asyncio
+async def test_expiry_pruning_skips_cross_process_foreground_lease(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(
+        workdir=tmp_path,
+        expires_at=time.time() - 1,
+    )
+    marker = tmp_path / "foreground-lease-held"
+    release = tmp_path / "release-foreground-lease"
+    process = _start_cross_process_lifecycle_holder(
+        (session.session_id,), marker, release
+    )
+
+    try:
+        await _wait_for_process_marker(process, marker)
+
+        listed_ids = {item.session_id for item in store.list_sessions()}
+        assert session.session_id in listed_ids
+
+        release.write_text("release", encoding="utf-8")
+        assert await asyncio.to_thread(process.wait, timeout=5) == 0
+
+        listed_ids = {item.session_id for item in store.list_sessions()}
+        assert session.session_id not in listed_ids
+    finally:
+        release.touch(exist_ok=True)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        clear_settings_cache()
+
+
+@pytest.mark.asyncio
+async def test_overflow_pruning_skips_cross_process_copy_endpoint_leases(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "86400")
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    source = store.create_session(workdir=tmp_path)
+    destination = store.create_session(workdir=tmp_path)
+    stale_updated_at = time.time() - SESSION_ACTIVE_WINDOW_S - 60
+    for session in (source, destination):
+        stale = replace(session, updated_at=stale_updated_at)
+        store._state_store.write_json(
+            store._metadata_path(session.session_id), asdict(stale)
+        )
+
+    marker = tmp_path / "copy-leases-held"
+    release = tmp_path / "release-copy-leases"
+    process = _start_cross_process_lifecycle_holder(
+        (source.session_id, destination.session_id), marker, release
+    )
+
+    try:
+        await _wait_for_process_marker(process, marker)
+        monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_AGENT_SESSIONS", "1")
+        clear_settings_cache()
+
+        listed_ids = {item.session_id for item in store.list_sessions()}
+        assert listed_ids == {source.session_id, destination.session_id}
+
+        release.write_text("release", encoding="utf-8")
+        assert await asyncio.to_thread(process.wait, timeout=5) == 0
+
+        assert len(store.list_sessions()) == 1
+    finally:
+        release.touch(exist_ok=True)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        clear_settings_cache()

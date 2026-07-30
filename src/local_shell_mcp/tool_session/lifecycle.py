@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import hashlib
 import threading
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Generator, Iterable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -181,6 +181,46 @@ async def session_lifecycle_locks(
         for session_id in normalized:
             await stack.enter_async_context(session_lifecycle_lock(session_id))
         yield
+
+
+@contextlib.contextmanager
+def try_session_lifecycle_lease(session_id: str) -> Generator[bool]:
+    """Try to hold one lifecycle file lease without waiting.
+
+    Synchronous pruning cannot await the normal asyncio lifecycle lock while it
+    already holds the session registry transaction. Treat local users, external
+    contention, and lock-file I/O uncertainty as protected so pruning remains
+    fail closed and avoids reverse-order deadlocks.
+    """
+    normalized = str(session_id)
+    with _ENTRIES_LOCK:
+        entry = _ENTRIES.get(normalized)
+        if entry is not None and entry.users:
+            yield False
+            return
+
+    stack = contextlib.ExitStack()
+    try:
+        stack.enter_context(
+            private_file_lock(
+                _lifecycle_lock_path(normalized),
+                timeout_s=0,
+                retry_interval_s=0,
+            )
+        )
+    except OSError, TimeoutError:
+        yield False
+        return
+
+    try:
+        with _ENTRIES_LOCK:
+            entry = _ENTRIES.get(normalized)
+            if entry is not None and entry.users:
+                yield False
+                return
+        yield True
+    finally:
+        stack.close()
 
 
 def reset_session_lifecycle_locks_for_tests() -> None:

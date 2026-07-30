@@ -15,6 +15,7 @@ from ..config.settings import get_settings
 from ..ops.utils.path import resolve_path
 from ..persistence import StateStore, get_state_store
 from ..utils.runtime_identity import managed_job_lease_state
+from .lifecycle import try_session_lifecycle_lease
 
 SESSION_ID_ALPHABET = string.ascii_letters + string.digits
 SESSION_ID_LENGTH = 8
@@ -491,26 +492,31 @@ class ToolSessionStore:
             )
         ]
         for session in expired:
-            with (
-                self._state_store.transaction(
-                    self._transaction_path(session.session_id)
-                ),
-                self._state_store.transaction(
-                    self._state_store.layout.jobs_lock_path
-                ),
-            ):
-                current = self._load_session_locked(session.session_id)
-                if current is None:
-                    sessions.pop(session.session_id, None)
+            with try_session_lifecycle_lease(
+                session.session_id
+            ) as lifecycle_available:
+                if not lifecycle_available:
                     continue
-                current_jobs = self._active_job_session_ids_locked()
-                if not self._expired_prune_eligible_locked(
-                    current, now, retention_s, current_jobs
+                with (
+                    self._state_store.transaction(
+                        self._transaction_path(session.session_id)
+                    ),
+                    self._state_store.transaction(
+                        self._state_store.layout.jobs_lock_path
+                    ),
                 ):
-                    sessions[session.session_id] = current
-                    continue
-                self._remove_session_state_locked(session.session_id)
-                sessions.pop(session.session_id, None)
+                    current = self._load_session_locked(session.session_id)
+                    if current is None:
+                        sessions.pop(session.session_id, None)
+                        continue
+                    current_jobs = self._active_job_session_ids_locked()
+                    if not self._expired_prune_eligible_locked(
+                        current, now, retention_s, current_jobs
+                    ):
+                        sessions[session.session_id] = current
+                        continue
+                    self._remove_session_state_locked(session.session_id)
+                    sessions.pop(session.session_id, None)
 
         sessions = self._read_all_sessions_locked()
         maximum = int(get_settings().max_agent_sessions)
@@ -531,31 +537,36 @@ class ToolSessionStore:
                 key=lambda session: (session.updated_at, session.created_at),
             )
             for session in inactive:
-                with (
-                    self._state_store.transaction(
-                        self._transaction_path(session.session_id)
-                    ),
-                    self._state_store.transaction(
-                        self._state_store.layout.jobs_lock_path
-                    ),
-                ):
-                    current_sessions = self._read_all_sessions_locked()
-                    if len(current_sessions) <= target:
-                        sessions = current_sessions
-                        break
-                    current = current_sessions.get(session.session_id)
-                    if current is None:
-                        sessions = current_sessions
+                with try_session_lifecycle_lease(
+                    session.session_id
+                ) as lifecycle_available:
+                    if not lifecycle_available:
                         continue
-                    current_jobs = self._active_job_session_ids_locked()
-                    if not self._overflow_prune_eligible_locked(
-                        current, now, current_jobs
+                    with (
+                        self._state_store.transaction(
+                            self._transaction_path(session.session_id)
+                        ),
+                        self._state_store.transaction(
+                            self._state_store.layout.jobs_lock_path
+                        ),
                     ):
+                        current_sessions = self._read_all_sessions_locked()
+                        if len(current_sessions) <= target:
+                            sessions = current_sessions
+                            break
+                        current = current_sessions.get(session.session_id)
+                        if current is None:
+                            sessions = current_sessions
+                            continue
+                        current_jobs = self._active_job_session_ids_locked()
+                        if not self._overflow_prune_eligible_locked(
+                            current, now, current_jobs
+                        ):
+                            sessions = current_sessions
+                            continue
+                        self._remove_session_state_locked(session.session_id)
+                        current_sessions.pop(session.session_id, None)
                         sessions = current_sessions
-                        continue
-                    self._remove_session_state_locked(session.session_id)
-                    current_sessions.pop(session.session_id, None)
-                    sessions = current_sessions
 
         self._sessions = sessions
         return sorted(
@@ -826,6 +837,62 @@ class ToolSessionStore:
                         )
                     ),
                 )
+                self._write_session_locked(updated)
+                self._sessions[session_id] = updated
+                return updated
+
+    def reserve_persistent_shell(self, session_id: str, shell_id: str) -> bool:
+        """Durably reserve one shell id and report whether this call added it."""
+        normalized_shell_id = str(shell_id).strip()
+        if not normalized_shell_id:
+            raise ValueError("shell_id must not be empty")
+        with self._lock:
+            self._reset_for_current_root_locked()
+            with self._state_store.transaction(
+                self._transaction_path(session_id)
+            ):
+                session = self._require_session_locked(session_id)
+                if session.target != "local":
+                    raise ValueError(
+                        "persistent shells require a local session"
+                    )
+                if normalized_shell_id in session.persistent_shell_ids:
+                    return False
+                updated = replace(
+                    session,
+                    updated_at=time.time(),
+                    persistent_shell_ids=(
+                        *session.persistent_shell_ids,
+                        normalized_shell_id,
+                    ),
+                )
+                self._write_session_locked(updated)
+                self._sessions[session_id] = updated
+                return True
+
+    def release_session_persistent_shell(
+        self, session_id: str, shell_id: str
+    ) -> AgentSession:
+        """Remove one shell id from exactly one durable session."""
+        normalized_shell_id = str(shell_id).strip()
+        if not normalized_shell_id:
+            raise ValueError("shell_id must not be empty")
+        with self._lock:
+            self._reset_for_current_root_locked()
+            with self._state_store.transaction(
+                self._transaction_path(session_id)
+            ):
+                current = self._require_session_locked(
+                    session_id, allow_expired=True
+                )
+                retained = tuple(
+                    existing
+                    for existing in current.persistent_shell_ids
+                    if existing != normalized_shell_id
+                )
+                if retained == current.persistent_shell_ids:
+                    return current
+                updated = replace(current, persistent_shell_ids=retained)
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
                 return updated

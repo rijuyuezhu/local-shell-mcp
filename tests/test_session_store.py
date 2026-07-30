@@ -737,6 +737,35 @@ def test_scoped_shell_reconciliation_does_not_clear_other_session(
     )
 
 
+def test_scoped_shell_reservation_rollback_preserves_other_session(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    original = store.create_session(workdir=tmp_path)
+    contender = store.create_session(workdir=tmp_path)
+    store.register_persistent_shell(original.session_id, "reused")
+
+    assert (
+        store.reserve_persistent_shell(contender.session_id, "reused") is True
+    )
+    assert (
+        store.reserve_persistent_shell(contender.session_id, "reused") is False
+    )
+
+    rolled_back = store.release_session_persistent_shell(
+        contender.session_id, "reused"
+    )
+
+    assert rolled_back.persistent_shell_ids == ()
+    assert store.require_session(original.session_id).persistent_shell_ids == (
+        "reused",
+    )
+
+
 def test_inactive_session_with_persistent_shell_is_not_evicted(
     tmp_path, monkeypatch
 ):
