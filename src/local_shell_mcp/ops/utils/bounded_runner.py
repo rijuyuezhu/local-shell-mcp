@@ -18,6 +18,7 @@ POLL_INTERVAL_S = 0.02
 TERMINATE_GRACE_S = 1.0
 KILL_GRACE_S = 1.0
 KQUEUE_EVENT_BATCH = 256
+PROCFS_ROOT = Path("/proc")
 
 
 def _shell_command_args(shell: str, command: str) -> list[str]:
@@ -44,7 +45,7 @@ def _enable_child_subreaper() -> bool:
 
 def _direct_children(pid: int) -> list[int] | None:
     """Return Linux procfs child pids, or None when unavailable."""
-    path = Path(f"/proc/{pid}/task/{pid}/children")
+    path = PROCFS_ROOT / str(pid) / "task" / str(pid) / "children"
     try:
         raw = path.read_text(encoding="ascii").strip()
     except OSError, UnicodeError:
@@ -55,8 +56,8 @@ def _direct_children(pid: int) -> list[int] | None:
     return [int(value) for value in values]
 
 
-def _descendants(pid: int) -> list[int] | None:
-    """Return all visible descendants, or None when procfs is uncertain."""
+def _descendants_from_children_files(pid: int) -> list[int] | None:
+    """Return descendants from per-process children files when available."""
     found: list[int] = []
     pending = _direct_children(pid)
     if pending is None:
@@ -73,6 +74,68 @@ def _descendants(pid: int) -> list[int] | None:
             return None
         pending.extend(children)
     return found
+
+
+def _procfs_parent_map() -> dict[int, int] | None:
+    """Build an authoritative pid-to-ppid map from visible procfs status files."""
+    try:
+        entries = tuple(PROCFS_ROOT.iterdir())
+    except OSError:
+        return None
+
+    parents: dict[int, int] = {}
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "status").read_text(encoding="ascii")
+        except FileNotFoundError:
+            # Processes can exit between listing /proc and reading status.
+            continue
+        except OSError, UnicodeError:
+            return None
+
+        parent_value: str | None = None
+        for line in raw.splitlines():
+            if line.startswith("PPid:"):
+                parent_value = line.partition(":")[2].strip()
+                break
+        if parent_value is None or not parent_value.isdigit():
+            return None
+        parents[int(entry.name)] = int(parent_value)
+    return parents
+
+
+def _descendants_from_parent_map(
+    pid: int, parents: dict[int, int]
+) -> list[int]:
+    """Return descendants reachable from one pid in a procfs parent map."""
+    children_by_parent: dict[int, list[int]] = {}
+    for child, parent in parents.items():
+        children_by_parent.setdefault(parent, []).append(child)
+
+    found: list[int] = []
+    pending = list(children_by_parent.get(pid, ()))
+    seen: set[int] = set()
+    while pending:
+        child = pending.pop()
+        if child in seen:
+            continue
+        seen.add(child)
+        found.append(child)
+        pending.extend(children_by_parent.get(child, ()))
+    return found
+
+
+def _descendants(pid: int) -> list[int] | None:
+    """Return all visible descendants, or None when procfs is uncertain."""
+    descendants = _descendants_from_children_files(pid)
+    if descendants is not None:
+        return descendants
+    parents = _procfs_parent_map()
+    if parents is None:
+        return None
+    return _descendants_from_parent_map(pid, parents)
 
 
 def _signal_descendants(sig: signal.Signals) -> bool:

@@ -293,32 +293,33 @@ def test_cleanup_kqueue_processes_rechecks_group(monkeypatch):
     ]
 
 
-def test_direct_children_parses_procfs_pids(monkeypatch):
-    fake_path = SimpleNamespace(read_text=lambda *, encoding: "12 34 56\n")
-    monkeypatch.setattr(bounded_runner, "Path", lambda _path: fake_path)
+def test_direct_children_parses_procfs_pids(tmp_path, monkeypatch):
+    children_path = tmp_path / "7" / "task" / "7" / "children"
+    children_path.parent.mkdir(parents=True)
+    children_path.write_text("12 34 56\n", encoding="ascii")
+    monkeypatch.setattr(bounded_runner, "PROCFS_ROOT", tmp_path)
 
     assert bounded_runner._direct_children(7) == [12, 34, 56]
 
 
-@pytest.mark.parametrize("failure", [OSError("denied"), UnicodeError("bad")])
-def test_direct_children_reports_unavailable_procfs(monkeypatch, failure):
-    def fail_read(*, encoding):  # noqa: ARG001
-        raise failure
-
-    monkeypatch.setattr(
-        bounded_runner,
-        "Path",
-        lambda _path: SimpleNamespace(read_text=fail_read),
-    )
+@pytest.mark.parametrize("contents", [None, b"\xff"])
+def test_direct_children_reports_unavailable_procfs(
+    tmp_path, monkeypatch, contents
+):
+    if contents is not None:
+        children_path = tmp_path / "7" / "task" / "7" / "children"
+        children_path.parent.mkdir(parents=True)
+        children_path.write_bytes(contents)
+    monkeypatch.setattr(bounded_runner, "PROCFS_ROOT", tmp_path)
 
     assert bounded_runner._direct_children(7) is None
 
 
-def test_direct_children_rejects_malformed_procfs(monkeypatch):
-    fake_path = SimpleNamespace(
-        read_text=lambda *, encoding: "12 unexpected 56\n"
-    )
-    monkeypatch.setattr(bounded_runner, "Path", lambda _path: fake_path)
+def test_direct_children_rejects_malformed_procfs(tmp_path, monkeypatch):
+    children_path = tmp_path / "7" / "task" / "7" / "children"
+    children_path.parent.mkdir(parents=True)
+    children_path.write_text("12 unexpected 56\n", encoding="ascii")
+    monkeypatch.setattr(bounded_runner, "PROCFS_ROOT", tmp_path)
 
     assert bounded_runner._direct_children(7) is None
 
@@ -381,14 +382,68 @@ def test_process_tree_helpers_handle_races_and_cycles(monkeypatch):
     assert set(descendants) == {1, 2, 3}
 
 
-def test_descendants_propagates_unknown_child_inventory(monkeypatch):
+def test_descendants_falls_back_to_procfs_parent_map(monkeypatch):
     monkeypatch.setattr(
         bounded_runner,
         "_direct_children",
         lambda pid: [2] if pid == 1 else None,
     )
+    monkeypatch.setattr(
+        bounded_runner,
+        "_procfs_parent_map",
+        lambda: {2: 1, 3: 2, 4: 99},
+    )
+
+    assert bounded_runner._descendants(1) == [2, 3]
+
+
+def test_descendants_propagates_unknown_procfs_inventory(monkeypatch):
+    monkeypatch.setattr(bounded_runner, "_direct_children", lambda _pid: None)
+    monkeypatch.setattr(bounded_runner, "_procfs_parent_map", lambda: None)
 
     assert bounded_runner._descendants(1) is None
+
+
+def test_procfs_parent_map_parses_status_and_ignores_exit_races(
+    tmp_path, monkeypatch
+):
+    proc_root = tmp_path / "proc"
+    for pid, ppid in (("10", "1"), ("11", "10")):
+        process_dir = proc_root / pid
+        process_dir.mkdir(parents=True)
+        (process_dir / "status").write_text(
+            f"Name:\ttest\nPPid:\t{ppid}\n", encoding="ascii"
+        )
+    (proc_root / "12").mkdir()
+    (proc_root / "not-a-pid").mkdir()
+    monkeypatch.setattr(bounded_runner, "PROCFS_ROOT", proc_root)
+
+    assert bounded_runner._procfs_parent_map() == {10: 1, 11: 10}
+
+
+@pytest.mark.parametrize("status", ["Name:\ttest\n", "PPid:\tnot-a-pid\n"])
+def test_procfs_parent_map_rejects_malformed_status(
+    tmp_path, monkeypatch, status
+):
+    proc_root = tmp_path / "proc"
+    process_dir = proc_root / "10"
+    process_dir.mkdir(parents=True)
+    (process_dir / "status").write_text(status, encoding="ascii")
+    monkeypatch.setattr(bounded_runner, "PROCFS_ROOT", proc_root)
+
+    assert bounded_runner._procfs_parent_map() is None
+
+
+def test_procfs_parent_map_rejects_unreadable_root(monkeypatch):
+    monkeypatch.setattr(
+        bounded_runner,
+        "PROCFS_ROOT",
+        SimpleNamespace(
+            iterdir=lambda: (_ for _ in ()).throw(OSError("denied"))
+        ),
+    )
+
+    assert bounded_runner._procfs_parent_map() is None
 
 
 def test_signal_descendants_reports_forbidden_processes(
