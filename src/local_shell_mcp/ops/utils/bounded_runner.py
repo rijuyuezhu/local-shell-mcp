@@ -25,6 +25,7 @@ KQUEUE_EVENT_BATCH = 256
 PROCFS_ROOT = Path("/proc")
 LAUNCHCTL_PATH = Path("/bin/launchctl")
 LAUNCHD_START_TIMEOUT_S = 5.0
+LAUNCHD_CONTROL_TIMEOUT_S = 1.5
 LAUNCHD_CLEANUP_GRACE_S = 0.25
 
 
@@ -362,7 +363,7 @@ def _launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
         [str(LAUNCHCTL_PATH), *args],
         capture_output=True,
         text=True,
-        timeout=LAUNCHD_START_TIMEOUT_S,
+        timeout=LAUNCHD_CONTROL_TIMEOUT_S,
         check=False,
     )
 
@@ -454,13 +455,20 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
         plist_path.chmod(0o600)
 
         target: str | None = None
+        uncertain_target: str | None = None
         cleaned = False
         bootstrap_errors: list[str] = []
         try:
             for domain in dict.fromkeys(_launchd_domain_targets()):
                 try:
                     result = _launchctl(["bootstrap", domain, str(plist_path)])
-                except (OSError, subprocess.TimeoutExpired) as exc:
+                except subprocess.TimeoutExpired as exc:
+                    bootstrap_errors.append(str(exc))
+                    candidate = f"{domain}/{label}"
+                    if not _bootout_launchd_job(candidate):
+                        uncertain_target = candidate
+                    break
+                except OSError as exc:
                     bootstrap_errors.append(str(exc))
                     continue
                 if result.returncode == 0:
@@ -526,6 +534,8 @@ def _run_launchd_bounded_command(shell: str, command: str) -> int:
         finally:
             if target is not None and not cleaned:
                 _bootout_launchd_job(target)
+            elif uncertain_target is not None:
+                _bootout_launchd_job(uncertain_target)
             os.close(stdout_guard)
             os.close(stderr_guard)
             os.close(stdout_fd)

@@ -28,21 +28,26 @@ _ENTRIES_LOCK = threading.Lock()
 _ENTRIES: dict[str, _LifecycleEntry] = {}
 
 
-def _lifecycle_lock_path(session_id: str) -> Path:
-    """Return one opaque owner-private lock path for a session id."""
+def _cross_process_lock_path(namespace: str, key: str) -> Path:
+    """Return one opaque owner-private lock path for a logical resource."""
     directory = get_state_store().layout.locks_dir
     directory.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         directory.chmod(0o700)
-    digest = hashlib.sha256(str(session_id).encode("utf-8")).hexdigest()
-    return directory / f"session-lifecycle-{digest}.lock"
+    digest = hashlib.sha256(f"{namespace}\0{key}".encode()).hexdigest()
+    return directory / f"{namespace}-{digest}.lock"
+
+
+def _lifecycle_lock_path(session_id: str) -> Path:
+    """Return one opaque owner-private lock path for a session id."""
+    return _cross_process_lock_path("session-lifecycle", str(session_id))
 
 
 class _CrossProcessLease:
     """Hold one file lock in a dedicated thread without blocking the event loop."""
 
-    def __init__(self, session_id: str) -> None:
-        self._path = _lifecycle_lock_path(session_id)
+    def __init__(self, path: Path, thread_name: str) -> None:
+        self._path = path
         self._loop = asyncio.get_running_loop()
         self._acquired = asyncio.Event()
         self._release = threading.Event()
@@ -50,7 +55,7 @@ class _CrossProcessLease:
         self._error: BaseException | None = None
         self._thread = threading.Thread(
             target=self._run,
-            name=f"session-lifecycle-{session_id}",
+            name=thread_name,
             daemon=True,
         )
 
@@ -108,6 +113,23 @@ class _CrossProcessLease:
 
 
 @asynccontextmanager
+async def cross_process_lock(
+    namespace: str, key: str = "global"
+) -> AsyncGenerator[None]:
+    """Hold one cancellation-safe owner-private lock across server processes."""
+    path = _cross_process_lock_path(str(namespace), str(key))
+    lease = _CrossProcessLease(path, f"{namespace}-{key}")
+    acquired = False
+    try:
+        await lease.acquire()
+        acquired = True
+        yield
+    finally:
+        if acquired:
+            await lease.release()
+
+
+@asynccontextmanager
 async def session_lifecycle_lock(session_id: str) -> AsyncGenerator[None]:
     """Serialize admission, foreground work, retry, and teardown for one session.
 
@@ -129,7 +151,10 @@ async def session_lifecycle_lock(session_id: str) -> AsyncGenerator[None]:
     try:
         await entry.lock.acquire()
         acquired = True
-        lease = _CrossProcessLease(session_id)
+        lease = _CrossProcessLease(
+            _lifecycle_lock_path(session_id),
+            f"session-lifecycle-{session_id}",
+        )
         await lease.acquire()
         lease_acquired = True
         yield

@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import os
 import signal
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -116,6 +117,121 @@ async def test_persistent_shell_creation_is_serialized(monkeypatch):
         (".", "one", "echo one"),
         (".", "two", "echo two"),
     ]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires the shared tmux backend")
+def test_persistent_shell_capacity_is_shared_across_processes(
+    tmp_path, monkeypatch
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_dir = tmp_path / ".state"
+    active_path = tmp_path / "active-shells"
+    barrier_path = tmp_path / "start-both"
+    result_paths = [tmp_path / "result-one", tmp_path / "result-two"]
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS", "1")
+    clear_settings_cache()
+
+    script = r"""
+import asyncio
+import time
+from pathlib import Path
+from types import SimpleNamespace
+
+import local_shell_mcp.ops.shell as shell_ops
+from local_shell_mcp.config.settings import clear_settings_cache
+
+workspace = Path(__import__("sys").argv[1])
+active_path = Path(__import__("sys").argv[2])
+barrier_path = Path(__import__("sys").argv[3])
+result_path = Path(__import__("sys").argv[4])
+shell_name = __import__("sys").argv[5]
+clear_settings_cache()
+shell_ops._PERSISTENT_SHELL_CREATION_LOCK = None
+shell_ops._use_conpty_persistent_shell_backend = lambda: False
+shell_ops.resolve_path = lambda *_args, **_kwargs: workspace
+shell_ops._tmux_session_name = lambda _name: shell_name
+shell_ops._resolved_tmux_shell = lambda _cwd: "/bin/sh"
+shell_ops.shutil.which = lambda *_args, **_kwargs: "/bin/sh"
+shell_ops.check_command_policy = lambda _command: None
+shell_ops.relative_display = lambda _path: "."
+
+async def inventory():
+    if not active_path.exists():
+        return set()
+    return {
+        value
+        for value in active_path.read_text(encoding="utf-8").splitlines()
+        if value
+    }
+
+async def fake_tmux(args, timeout_s=10):
+    _ = timeout_s
+    if args[0] != "new-session":
+        raise AssertionError(f"unexpected tmux call: {args}")
+    current = []
+    if active_path.exists():
+        current = [
+            value
+            for value in active_path.read_text(encoding="utf-8").splitlines()
+            if value
+        ]
+    current.append(args[args.index("-s") + 1])
+    active_path.write_text("\n".join(current) + "\n", encoding="utf-8")
+    await asyncio.sleep(0.2)
+    return SimpleNamespace(ok=True, stdout="", stderr="")
+
+shell_ops.authoritative_persistent_shell_ids_execute = inventory
+shell_ops.tmux = fake_tmux
+while not barrier_path.exists():
+    time.sleep(0.01)
+try:
+    output = asyncio.run(
+        shell_ops.start_persistent_shell_execute(
+            ".", shell_name, "sleep 1"
+        )
+    )
+except Exception as exc:
+    result_path.write_text(f"error:{exc}", encoding="utf-8")
+else:
+    result_path.write_text(f"ok:{output.shell_id}", encoding="utf-8")
+"""
+    processes = [
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                script,
+                str(workspace),
+                str(active_path),
+                str(barrier_path),
+                str(result_path),
+                name,
+            ],
+            env=os.environ.copy(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for result_path, name in zip(result_paths, ("one", "two"), strict=True)
+    ]
+    try:
+        barrier_path.write_text("start", encoding="utf-8")
+        for process in processes:
+            assert process.wait(timeout=10) == 0
+        results = [path.read_text(encoding="utf-8") for path in result_paths]
+        assert sum(result.startswith("ok:") for result in results) == 1
+        errors = [result for result in results if result.startswith("error:")]
+        assert len(errors) == 1
+        assert "Refusing to start more than 1 persistent shell" in errors[0]
+        assert len(active_path.read_text(encoding="utf-8").splitlines()) == 1
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
 
 
 @pytest.mark.asyncio

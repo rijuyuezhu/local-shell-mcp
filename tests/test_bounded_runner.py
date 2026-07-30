@@ -1320,6 +1320,54 @@ def test_read_launchd_status_fails_closed_on_invalid_payload(tmp_path):
     assert bounded_runner._read_launchd_status(status_path) == 125
 
 
+def test_launchctl_operations_reserve_outer_cleanup_headroom(monkeypatch):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(bounded_runner.subprocess, "run", fake_run)
+
+    bounded_runner._launchctl(["bootstrap", "user/1000", "job.plist"])
+    bounded_runner._launchctl(["bootout", "user/1000/example"])
+
+    assert calls[0][1]["timeout"] == bounded_runner.LAUNCHD_CONTROL_TIMEOUT_S
+    assert calls[1][1]["timeout"] == bounded_runner.LAUNCHD_CONTROL_TIMEOUT_S
+    assert (
+        2 * bounded_runner.LAUNCHD_CONTROL_TIMEOUT_S
+        + 2 * bounded_runner.LAUNCHD_CLEANUP_GRACE_S
+        < 5.0
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
+def test_launchd_parent_cleans_uncertain_timed_out_bootstrap(
+    monkeypatch, capsys
+):
+    calls: list[tuple[str, ...]] = []
+
+    def fake_launchctl(args):
+        calls.append(tuple(args))
+        if args[0] == "bootstrap":
+            raise subprocess.TimeoutExpired(args, 0.01)
+        assert args[0] == "bootout"
+        if sum(call[0] == "bootout" for call in calls) == 1:
+            return subprocess.CompletedProcess(args, 5, "", "cleanup stalled")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(
+        bounded_runner, "_launchd_domain_targets", lambda: ("user/1000",)
+    )
+    monkeypatch.setattr(bounded_runner, "_launchctl", fake_launchctl)
+    monkeypatch.setattr(bounded_runner, "LAUNCHD_CLEANUP_GRACE_S", 0.0)
+
+    assert bounded_runner._run_launchd_bounded_command("/bin/sh", "true") == 125
+    assert [call[0] for call in calls] == ["bootstrap", "bootout", "bootout"]
+    assert calls[1][1] == calls[2][1]
+    assert "registration failed" in capsys.readouterr().err
+
+
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
 def test_launchd_parent_forwards_output_and_real_status(monkeypatch, capsys):
     child_threads: list[threading.Thread] = []
@@ -1449,8 +1497,10 @@ def test_launchd_parent_fails_closed_when_cleanup_is_unconfirmed(
     monkeypatch, capsys
 ):
     child_threads: list[threading.Thread] = []
+    bootout_calls = 0
 
     def fake_launchctl(args):
+        nonlocal bootout_calls
         if args[0] == "bootstrap":
             with open(args[2], "rb") as handle:
                 payload = plistlib.load(handle)
@@ -1485,6 +1535,7 @@ def test_launchd_parent_fails_closed_when_cleanup_is_unconfirmed(
             child_threads.append(thread)
             thread.start()
             return subprocess.CompletedProcess(args, 0, "", "")
+        bootout_calls += 1
         for thread in child_threads:
             thread.join(timeout=2)
         return subprocess.CompletedProcess(args, 5, "", "cleanup failed")
@@ -1499,6 +1550,7 @@ def test_launchd_parent_fails_closed_when_cleanup_is_unconfirmed(
         bounded_runner._run_launchd_bounded_command("/bin/sh", "exit 0") == 125
     )
     assert "cleanup failed" in capsys.readouterr().err
+    assert bootout_calls == 2
 
 
 def test_bounded_runner_main_parses_arguments(monkeypatch):

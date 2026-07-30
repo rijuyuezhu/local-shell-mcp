@@ -249,7 +249,15 @@ def _change_local_session_cwd(
 async def session_change_cwd_execute(
     session_id: str, workdir: str
 ) -> SessionStartOutput:
-    """Change a local or remote session workdir and refresh target orientation."""
+    """Serialize one local or remote workdir transition with session teardown."""
+    async with session_lifecycle_lock(session_id):
+        return await _session_change_cwd_execute_unlocked(session_id, workdir)
+
+
+async def _session_change_cwd_execute_unlocked(
+    session_id: str, workdir: str
+) -> SessionStartOutput:
+    """Change a local or remote workdir while the lifecycle lock is held."""
     store = get_tool_session_store()
     session = store.require_session(session_id)
     if session.target == "local":

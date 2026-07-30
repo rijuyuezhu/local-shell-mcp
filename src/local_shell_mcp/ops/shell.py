@@ -40,7 +40,7 @@ from ..terminal.contracts import (
     PERSISTENT_SHELL_MIN_ROWS,
 )
 from ..terminal.tmux import require_tmux, resolve_tmux, tmux_env_overrides
-from ..tool_session.lifecycle import session_lifecycle_lock
+from ..tool_session.lifecycle import cross_process_lock, session_lifecycle_lock
 from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
@@ -1103,12 +1103,20 @@ async def start_persistent_shell_execute(
 ) -> StartPersistentShellOutput:
     """Start one persistent shell without racing the configured capacity."""
     async with _persistent_shell_creation_lock():
-        return await _start_persistent_shell_locked(
-            cwd,
-            name,
-            command,
-            owner_session_id=owner_session_id,
-        )
+        if _use_conpty_persistent_shell_backend():
+            return await _start_persistent_shell_locked(
+                cwd,
+                name,
+                command,
+                owner_session_id=owner_session_id,
+            )
+        async with cross_process_lock("persistent-shell-admission", "tmux"):
+            return await _start_persistent_shell_locked(
+                cwd,
+                name,
+                command,
+                owner_session_id=owner_session_id,
+            )
 
 
 async def send_persistent_shell_input_execute(

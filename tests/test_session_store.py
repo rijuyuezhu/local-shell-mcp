@@ -1,4 +1,7 @@
+import os
 import re
+import subprocess
+import sys
 import time
 from contextlib import contextmanager
 
@@ -13,6 +16,116 @@ from local_shell_mcp.tool_session.store import (
     UnknownAgentSessionError,
     get_tool_session_store,
 )
+from local_shell_mcp.utils import runtime_identity as runtime_identity_module
+from local_shell_mcp.utils.runtime_identity import (
+    MANAGED_JOB_LEASE_VERSION,
+    ManagedJobLease,
+    managed_job_lease_state,
+)
+
+
+def _start_peer_managed_job_lease(
+    job_id: str, marker, release
+) -> subprocess.Popen[str]:
+    script = f"""
+import time
+from pathlib import Path
+from local_shell_mcp.utils.runtime_identity import ManagedJobLease
+
+lease = ManagedJobLease({job_id!r})
+lease.acquire()
+Path({str(marker)!r}).write_text("live", encoding="utf-8")
+while not Path({str(release)!r}).exists():
+    time.sleep(0.01)
+lease.release()
+"""
+    return subprocess.Popen(
+        [sys.executable, "-c", script],
+        env=os.environ.copy(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _wait_for_peer_marker(
+    process: subprocess.Popen[str], marker, *, timeout_s: float = 5.0
+) -> None:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if marker.exists():
+            return
+        if process.poll() is not None:
+            stdout, stderr = process.communicate()
+            raise AssertionError(
+                f"peer lease process exited early\nstdout:\n{stdout}\nstderr:\n{stderr}"
+            )
+        time.sleep(0.01)
+    raise AssertionError("peer lease process did not acquire its lock")
+
+
+def test_managed_job_lease_reports_unknown_live_and_dead(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    job_id = "job_lease_state"
+
+    assert (
+        managed_job_lease_state(job_id, MANAGED_JOB_LEASE_VERSION) == "unknown"
+    )
+    assert managed_job_lease_state(job_id, 0) == "unknown"
+
+    lease = ManagedJobLease(job_id)
+    lease.acquire()
+    try:
+        assert (
+            managed_job_lease_state(job_id, MANAGED_JOB_LEASE_VERSION) == "live"
+        )
+    finally:
+        lease.release()
+
+    assert managed_job_lease_state(job_id, MANAGED_JOB_LEASE_VERSION) == "dead"
+
+
+def test_managed_job_lease_propagates_lock_acquisition_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+
+    @contextmanager
+    def failing_lock(*_args, **_kwargs):
+        raise OSError("lease lock failed")
+        yield
+
+    monkeypatch.setattr(
+        runtime_identity_module, "private_file_lock", failing_lock
+    )
+
+    with pytest.raises(OSError, match="lease lock failed"):
+        ManagedJobLease("job_lock_error").acquire()
+
+
+def test_managed_job_lease_state_is_unknown_on_lock_io_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    job_id = "job_state_io_error"
+    path = runtime_identity_module.managed_job_lease_path(job_id)
+    path.touch(mode=0o600)
+
+    @contextmanager
+    def failing_lock(*_args, **_kwargs):
+        raise OSError("lease state failed")
+        yield
+
+    monkeypatch.setattr(
+        runtime_identity_module, "private_file_lock", failing_lock
+    )
+
+    assert (
+        managed_job_lease_state(job_id, MANAGED_JOB_LEASE_VERSION) == "unknown"
+    )
 
 
 def test_create_session_returns_8_character_alnum_id(tmp_path, monkeypatch):
@@ -647,6 +760,9 @@ def test_inactive_session_with_persistent_shell_is_not_evicted(
 def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(
+        store_module, "managed_job_lease_state", lambda *_args: "dead"
+    )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
@@ -665,6 +781,7 @@ def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
                     "kind": "managed",
                     "status": "running",
                     "runtime_instance_id": "previous-process",
+                    "managed_lease_version": 1,
                 }
             ],
         },
@@ -674,9 +791,12 @@ def test_stale_managed_job_from_prior_runtime_does_not_block_expiry(
         store.require_session(session.session_id)
 
 
-def test_current_runtime_managed_job_still_protects_expired_session(
+def test_live_peer_managed_job_still_protects_expired_session(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(
+        store_module, "managed_job_lease_state", lambda *_args: "live"
+    )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
@@ -694,7 +814,8 @@ def test_current_runtime_managed_job_still_protects_expired_session(
                     "session_id": session.session_id,
                     "kind": "managed",
                     "status": "running",
-                    "runtime_instance_id": store_module.PROCESS_INSTANCE_ID,
+                    "runtime_instance_id": "peer-process",
+                    "managed_lease_version": 1,
                 }
             ],
         },
@@ -703,9 +824,65 @@ def test_current_runtime_managed_job_still_protects_expired_session(
     assert store.require_session(session.session_id) == session
 
 
+def test_real_peer_managed_job_lease_protects_payload_endpoints_until_exit(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+    source = store.create_session(workdir=tmp_path)
+    destination = store.create_session(
+        workdir=tmp_path, expires_at=time.time() - 1
+    )
+    job_id = "job_peer_retention"
+    marker = tmp_path / "peer-retention-live"
+    release = tmp_path / "release-peer-retention"
+    process = _start_peer_managed_job_lease(job_id, marker, release)
+    try:
+        _wait_for_peer_marker(process, marker)
+        store._state_store.write_json(
+            store._state_store.layout.jobs_store_path,
+            {
+                "version": 2,
+                "jobs": [
+                    {
+                        "job_id": job_id,
+                        "session_id": source.session_id,
+                        "kind": "managed",
+                        "status": "running",
+                        "runtime_instance_id": "peer-runtime",
+                        "managed_lease_version": 1,
+                        "managed_payload": {
+                            "src_session_id": source.session_id,
+                            "dst_session_id": destination.session_id,
+                        },
+                    }
+                ],
+            },
+        )
+
+        assert store.require_session(destination.session_id) == destination
+
+        release.write_text("release", encoding="utf-8")
+        assert process.wait(timeout=5) == 0
+        with pytest.raises(ExpiredAgentSessionError):
+            store.require_session(destination.session_id)
+    finally:
+        release.touch(exist_ok=True)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
 def test_current_managed_job_protects_destination_session_from_expiry(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(
+        store_module, "managed_job_lease_state", lambda *_args: "live"
+    )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
@@ -726,7 +903,8 @@ def test_current_managed_job_protects_destination_session_from_expiry(
                     "session_id": source.session_id,
                     "kind": "managed",
                     "status": "running",
-                    "runtime_instance_id": store_module.PROCESS_INSTANCE_ID,
+                    "runtime_instance_id": "peer-process",
+                    "managed_lease_version": 1,
                     "managed_payload": {
                         "src_session_id": source.session_id,
                         "dst_session_id": destination.session_id,
@@ -743,6 +921,9 @@ def test_current_managed_job_protects_destination_session_from_expiry(
 def test_current_managed_job_destination_blocks_capacity_eviction(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(
+        store_module, "managed_job_lease_state", lambda *_args: "live"
+    )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_SESSION_RETENTION_S", "0")
@@ -764,7 +945,8 @@ def test_current_managed_job_destination_blocks_capacity_eviction(
                     "session_id": source.session_id,
                     "kind": "managed",
                     "status": "running",
-                    "runtime_instance_id": store_module.PROCESS_INSTANCE_ID,
+                    "runtime_instance_id": "peer-process",
+                    "managed_lease_version": 1,
                     "managed_payload": {
                         "dst_session_id": destination.session_id
                     },

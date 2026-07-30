@@ -1,5 +1,9 @@
 import asyncio
 import json
+import os
+import subprocess
+import sys
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +15,46 @@ from local_shell_mcp.ops.utils import remote_session as remote_session_ops
 from local_shell_mcp.remote_worker import dispatch as worker_dispatch
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import session as session_registry
+
+
+def _start_peer_managed_job_lease(
+    job_id: str, marker, release
+) -> subprocess.Popen[str]:
+    script = f"""
+import time
+from pathlib import Path
+from local_shell_mcp.utils.runtime_identity import ManagedJobLease
+
+lease = ManagedJobLease({job_id!r})
+lease.acquire()
+Path({str(marker)!r}).write_text("live", encoding="utf-8")
+while not Path({str(release)!r}).exists():
+    time.sleep(0.01)
+lease.release()
+"""
+    return subprocess.Popen(
+        [sys.executable, "-c", script],
+        env=os.environ.copy(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _wait_for_peer_marker(
+    process: subprocess.Popen[str], marker, *, timeout_s: float = 5.0
+) -> None:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if marker.exists():
+            return
+        if process.poll() is not None:
+            stdout, stderr = process.communicate()
+            raise AssertionError(
+                f"peer lease process exited early\nstdout:\n{stdout}\nstderr:\n{stderr}"
+            )
+        time.sleep(0.01)
+    raise AssertionError("peer lease process did not acquire its lock")
 
 
 def test_git_output_detaches_child_stdin(tmp_path, monkeypatch):
@@ -225,6 +269,123 @@ async def test_session_change_cwd_refreshes_environment_git_and_instructions(
 
 
 @pytest.mark.asyncio
+async def test_local_session_change_cwd_excludes_concurrent_teardown(
+    tmp_path, monkeypatch
+):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=first)
+    change_started = asyncio.Event()
+    release_change = asyncio.Event()
+    teardown_started = asyncio.Event()
+
+    async def blocking_to_thread(function, *args, **kwargs):
+        assert function is session_ops._change_local_session_cwd
+        change_started.set()
+        await release_change.wait()
+        return function(*args, **kwargs)
+
+    async def fake_teardown(session_id: str, *, force: bool = False):
+        assert session_id == session.session_id
+        assert force is False
+        teardown_started.set()
+        return SimpleNamespace(ended=True)
+
+    monkeypatch.setattr(session_ops.asyncio, "to_thread", blocking_to_thread)
+    monkeypatch.setattr(
+        session_ops, "_session_end_execute_unlocked", fake_teardown
+    )
+
+    change_task = asyncio.create_task(
+        session_ops.session_change_cwd_execute(session.session_id, str(second))
+    )
+    await change_started.wait()
+    end_task = asyncio.create_task(
+        session_ops.session_end_execute(session.session_id)
+    )
+    await asyncio.sleep(0.05)
+
+    assert not teardown_started.is_set()
+    release_change.set()
+    changed = await change_task
+    ended = await end_task
+
+    assert changed.workdir == str(second)
+    assert ended.ended is True
+    assert teardown_started.is_set()
+
+
+@pytest.mark.asyncio
+async def test_remote_session_change_cwd_excludes_concurrent_teardown(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(
+        target="remote",
+        workdir="remote-old",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+    )
+    change_started = asyncio.Event()
+    release_change = asyncio.Event()
+    teardown_started = asyncio.Event()
+
+    async def blocking_remote_change(remote_session, tool, args):
+        assert remote_session.session_id == session.session_id
+        assert tool == "session_change_cwd"
+        assert args == {"workdir": "remote-new"}
+        change_started.set()
+        await release_change.wait()
+        payload = session_ops._session_output(remote_session).model_dump(
+            mode="json"
+        )
+        payload["workdir"] = "remote-new"
+        return payload
+
+    async def fake_teardown(session_id: str, *, force: bool = False):
+        assert session_id == session.session_id
+        assert force is False
+        teardown_started.set()
+        return SimpleNamespace(ended=True)
+
+    monkeypatch.setattr(
+        remote_session_ops,
+        "call_remote_session_tool",
+        blocking_remote_change,
+    )
+    monkeypatch.setattr(
+        session_ops, "_session_end_execute_unlocked", fake_teardown
+    )
+
+    change_task = asyncio.create_task(
+        session_ops.session_change_cwd_execute(session.session_id, "remote-new")
+    )
+    await change_started.wait()
+    end_task = asyncio.create_task(
+        session_ops.session_end_execute(session.session_id)
+    )
+    await asyncio.sleep(0.05)
+
+    assert not teardown_started.is_set()
+    release_change.set()
+    changed = await change_task
+    ended = await end_task
+
+    assert changed.workdir == "remote-new"
+    assert ended.ended is True
+    assert teardown_started.is_set()
+
+
+@pytest.mark.asyncio
 async def test_session_end_stops_jobs_before_removing_local_state(
     tmp_path, monkeypatch
 ):
@@ -289,6 +450,76 @@ async def test_session_end_preserves_local_state_when_pty_cleanup_fails(
     retained = store.require_session(session.session_id)
     assert retained.persistent_shell_ids == ("shell_one",)
     assert retained.termination_requested_at is not None
+
+
+@pytest.mark.asyncio
+async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    source = store.create_session(workdir=tmp_path)
+    destination = store.create_session(workdir=tmp_path)
+    job_id = "job_peer_copy"
+    marker = tmp_path / "peer-live"
+    release = tmp_path / "release-peer"
+    process = _start_peer_managed_job_lease(job_id, marker, release)
+
+    async def no_shells(_session_id: str) -> list[str]:
+        return []
+
+    monkeypatch.setattr(session_ops, "_stop_owned_shells", no_shells)
+    try:
+        _wait_for_peer_marker(process, marker)
+        jobs_runtime._save_store(
+            {
+                "version": jobs_runtime.JOB_STORE_VERSION,
+                "jobs": [
+                    {
+                        "job_id": job_id,
+                        "kind": "managed",
+                        "managed_kind": "session-copy",
+                        "managed_payload": {
+                            "src_session_id": source.session_id,
+                            "dst_session_id": destination.session_id,
+                        },
+                        "runtime_instance_id": "peer-runtime",
+                        "managed_lease_version": 1,
+                        "session_id": source.session_id,
+                        "status": "running",
+                        "created_at": time.time(),
+                        "updated_at": time.time(),
+                        "attempts": 1,
+                    }
+                ],
+            }
+        )
+
+        with pytest.raises(
+            RuntimeError, match="could not be confirmed stopped"
+        ):
+            await session_ops.session_end_execute(destination.session_id)
+
+        retained = store.require_session(destination.session_id)
+        assert retained.termination_requested_at is not None
+        row = jobs_runtime._load_store()["jobs"][0]
+        assert row["status"] == "running"
+
+        release.write_text("release", encoding="utf-8")
+        assert await asyncio.to_thread(process.wait, timeout=5) == 0
+
+        ended = await session_ops.session_end_execute(destination.session_id)
+        assert ended.ended is True
+        with pytest.raises(ValueError, match="unknown session_id"):
+            store.require_session(destination.session_id)
+    finally:
+        release.touch(exist_ok=True)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
 
 
 @pytest.mark.asyncio

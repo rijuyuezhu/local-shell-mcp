@@ -14,7 +14,7 @@ from typing import Any, Literal, cast
 from ..config.settings import get_settings
 from ..ops.utils.path import resolve_path
 from ..persistence import StateStore, get_state_store
-from ..utils.runtime_identity import PROCESS_INSTANCE_ID
+from ..utils.runtime_identity import managed_job_lease_state
 
 SESSION_ID_ALPHABET = string.ascii_letters + string.digits
 SESSION_ID_LENGTH = 8
@@ -349,14 +349,18 @@ class ToolSessionStore:
                 and status == "lost"
                 and not bool(job.get("shell_absence_confirmed"))
             )
+            managed_owner_state = (
+                managed_job_lease_state(
+                    str(job.get("job_id") or ""),
+                    job.get("managed_lease_version"),
+                )
+                if kind == "managed"
+                else "live"
+            )
             if (
                 session_id is not None
                 and protective_status
-                and (
-                    kind != "managed"
-                    or str(job.get("runtime_instance_id") or "")
-                    == PROCESS_INSTANCE_ID
-                )
+                and managed_owner_state != "dead"
                 and not self._job_has_durable_completion_locked(job, status)
             ):
                 protected.add(session_id)

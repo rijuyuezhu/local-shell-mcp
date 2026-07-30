@@ -1789,7 +1789,9 @@ async def test_job_retry_rejects_running_job_when_inventory_is_uncertain(
     assert jobs_ops._load_store()["jobs"][0]["status"] == "running"
 
 
-def test_managed_job_validation_and_lost_recovery():
+def test_managed_job_validation_and_lost_recovery(monkeypatch):
+    monkeypatch.setattr(jobs_ops, "_managed_job_liveness", lambda _job: "dead")
+
     async def first_handler(context, payload):  # noqa: ARG001
         return payload
 
@@ -1833,6 +1835,77 @@ def test_managed_job_validation_and_lost_recovery():
     )
     assert stopping["status"] == "stopped"
     assert stopping["error"] is None
+
+
+def test_managed_job_lease_registry_rejects_duplicates_and_releases(
+    monkeypatch,
+):
+    events: list[tuple[str, str]] = []
+
+    class FakeLease:
+        def __init__(self, job_id: str) -> None:
+            self.job_id = job_id
+
+        def acquire(self) -> None:
+            events.append(("acquire", self.job_id))
+
+        def release(self) -> None:
+            events.append(("release", self.job_id))
+
+    monkeypatch.setattr(jobs_ops, "ManagedJobLease", FakeLease)
+    jobs_ops._MANAGED_JOB_LEASES.clear()
+
+    lease = jobs_ops._acquire_managed_job_lease("job_registry")
+    assert lease.job_id == "job_registry"
+    with pytest.raises(RuntimeError, match="already held"):
+        jobs_ops._acquire_managed_job_lease("job_registry")
+
+    jobs_ops._release_managed_job_lease("job_registry")
+    jobs_ops._release_managed_job_lease("job_registry")
+
+    assert events == [
+        ("acquire", "job_registry"),
+        ("release", "job_registry"),
+    ]
+
+
+def test_launch_managed_job_releases_new_lease_when_task_creation_fails(
+    monkeypatch,
+):
+    events: list[tuple[str, str]] = []
+
+    def fake_acquire(job_id: str):
+        events.append(("acquire", job_id))
+        lease = jobs_ops.ManagedJobLease.__new__(jobs_ops.ManagedJobLease)
+        jobs_ops._MANAGED_JOB_LEASES[job_id] = lease
+        return lease
+
+    def fake_release(job_id: str) -> None:
+        events.append(("release", job_id))
+        jobs_ops._MANAGED_JOB_LEASES.pop(job_id, None)
+
+    def fail_create_task(coroutine, *_args, **_kwargs):
+        coroutine.close()
+        raise RuntimeError("task creation failed")
+
+    jobs_ops._MANAGED_JOB_LEASES.clear()
+    monkeypatch.setattr(jobs_ops, "_acquire_managed_job_lease", fake_acquire)
+    monkeypatch.setattr(jobs_ops, "_release_managed_job_lease", fake_release)
+    monkeypatch.setattr(jobs_ops.asyncio, "create_task", fail_create_task)
+
+    with pytest.raises(RuntimeError, match="task creation failed"):
+        jobs_ops._launch_managed_job(
+            "SESSION1",
+            "job_create_failure",
+            "test-kind",
+            {},
+            "job.log",
+        )
+
+    assert events == [
+        ("acquire", "job_create_failure"),
+        ("release", "job_create_failure"),
+    ]
 
 
 @pytest.mark.asyncio
