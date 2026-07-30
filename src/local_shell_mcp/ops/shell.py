@@ -82,7 +82,7 @@ _TMUX_OWNER_OPTION = "@local-shell-mcp-session-id"
 
 
 class PersistentShellCleanupUncertainError(RuntimeError):
-    """A failed tmux start may still have a live backend session."""
+    """A failed persistent-shell start may still have a live backend process."""
 
 
 def _env_name(*parts: str) -> str:
@@ -1040,12 +1040,15 @@ async def _start_persistent_shell_locked(
             )
         initial = conpty.initial_command(command)
         check_command_policy(initial)
-        return await conpty.start_shell(
-            shell_id=shell_id,
-            cwd=resolved_cwd,
-            command=command,
-            owner_session_id=owner_session_id,
-        )
+        try:
+            return await conpty.start_shell(
+                shell_id=shell_id,
+                cwd=resolved_cwd,
+                command=command,
+                owner_session_id=owner_session_id,
+            )
+        except conpty.ConPtyCleanupUncertainError as exc:
+            raise PersistentShellCleanupUncertainError(str(exc)) from exc
 
     configured_shell = _resolved_tmux_shell(str(resolved_cwd))
     if (

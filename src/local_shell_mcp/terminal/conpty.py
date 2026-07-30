@@ -41,6 +41,11 @@ _CONPTY_LEASE_JOIN_TIMEOUT_S = 5.0
 _CONPTY_LEASE_PREFIX = "conpty-shell-"
 _SHELL_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
+
+class ConPtyCleanupUncertainError(RuntimeError):
+    """A failed ConPTY start may still have a live backend process."""
+
+
 try:  # pragma: no cover - imported only on Windows installations.
     import winpty  # pyright: ignore[reportMissingImports]
 except ImportError:  # pragma: no cover - exercised through mocked module state.
@@ -347,9 +352,27 @@ class _ConPtySession:
     reader: threading.Thread | None = None
     closing: bool = False
 
+    def process_alive(self) -> bool:
+        """Return whether the underlying process is still present."""
+        return _pty_is_alive(self.process)
+
     def alive(self) -> bool:
+        """Return whether the shell remains available for interactive use."""
         with self.state_lock:
-            return not self.closing and _pty_is_alive(self.process)
+            return not self.closing and self.process_alive()
+
+    def _finalize_terminated_process(self) -> str:
+        """Release registry state only after process death is confirmed."""
+        if self.process_alive():
+            return "ConPTY process termination was not confirmed"
+        with _SESSIONS_LOCK:
+            if _SESSIONS.get(self.shell_id) is self:
+                _SESSIONS.pop(self.shell_id, None)
+        try:
+            self.lease.release()
+        except Exception as exc:
+            return repr(exc)
+        return ""
 
     def start_reader(self) -> None:
         reader = threading.Thread(
@@ -362,7 +385,7 @@ class _ConPtySession:
 
     def _reader_main(self) -> None:
         try:
-            while self.alive():
+            while self.process_alive():
                 chunk = _read_pty(self.process)
                 if not chunk:
                     if not _pty_is_alive(self.process):
@@ -392,11 +415,7 @@ class _ConPtySession:
             if should_close_process:
                 with contextlib.suppress(Exception):
                     _close_pty_process(self.process, True)
-            with _SESSIONS_LOCK:
-                if _SESSIONS.get(self.shell_id) is self:
-                    _SESSIONS.pop(self.shell_id, None)
-            with contextlib.suppress(Exception):
-                self.lease.release()
+            self._finalize_terminated_process()
 
     def output_snapshot(self) -> bytes:
         with self.state_lock:
@@ -468,7 +487,7 @@ class _ConPtySession:
         for subscriber in subscribers:
             subscriber.finish()
         error = ""
-        if not already_closing:
+        if self.process_alive():
             try:
                 _close_pty_process(self.process, force)
             except Exception as exc:
@@ -480,12 +499,9 @@ class _ConPtySession:
             and reader.is_alive()
         ):
             reader.join(timeout=2)
-        if not already_closing:
-            try:
-                self.lease.release()
-            except Exception as exc:
-                lease_error = repr(exc)
-                error = f"{error}; {lease_error}" if error else lease_error
+        finalize_error = self._finalize_terminated_process()
+        if finalize_error:
+            error = f"{error}; {finalize_error}" if error else finalize_error
         return error
 
 
@@ -497,7 +513,7 @@ def has_session(shell_id: str) -> bool:
     """Return whether one live ConPTY persistent shell is registered."""
     with _SESSIONS_LOCK:
         session = _SESSIONS.get(shell_id)
-    return session is not None and session.alive()
+    return session is not None and session.process_alive()
 
 
 def _get_session(shell_id: str) -> _ConPtySession:
@@ -507,12 +523,11 @@ def _get_session(shell_id: str) -> _ConPtySession:
         session = _SESSIONS.get(shell_id)
     if session is None:
         raise RuntimeError(f"Persistent shell session not found: {shell_id}")
-    if not session.alive():
-        with _SESSIONS_LOCK:
-            if _SESSIONS.get(shell_id) is session:
-                _SESSIONS.pop(shell_id, None)
+    if not session.process_alive():
         session.close(force=False)
         raise RuntimeError(f"Persistent shell session exited: {shell_id}")
+    if not session.alive():
+        raise RuntimeError(f"Persistent shell session is closing: {shell_id}")
     return session
 
 
@@ -529,8 +544,9 @@ async def start_shell(
     if not _SHELL_ID_PATTERN.fullmatch(shell_id):
         raise ValueError("Invalid persistent shell id")
     with _SESSIONS_LOCK:
-        stale = [key for key, value in _SESSIONS.items() if not value.alive()]
-        stale_sessions = [_SESSIONS.pop(key) for key in stale]
+        stale_sessions = [
+            value for value in _SESSIONS.values() if not value.process_alive()
+        ]
     for stale_session in stale_sessions:
         await asyncio.to_thread(stale_session.close, force=False)
     with _SESSIONS_LOCK:
@@ -582,11 +598,13 @@ async def start_shell(
         )
     try:
         session.start_reader()
-    except Exception:
-        with _SESSIONS_LOCK:
-            if _SESSIONS.get(shell_id) is session:
-                _SESSIONS.pop(shell_id, None)
-        await asyncio.to_thread(session.close, force=True)
+    except Exception as exc:
+        cleanup_error = await asyncio.to_thread(session.close, force=True)
+        if cleanup_error:
+            raise ConPtyCleanupUncertainError(
+                "ConPTY startup failed and cleanup was not confirmed: "
+                f"{shell_id}: {cleanup_error}"
+            ) from exc
         raise
     audit(
         "start_persistent_shell",
@@ -682,7 +700,7 @@ async def read_shell(
 async def kill_shell(shell_id: str) -> KillPersistentShellOutput:
     """Terminate and deregister one ConPTY persistent shell."""
     with _SESSIONS_LOCK:
-        session = _SESSIONS.pop(shell_id, None)
+        session = _SESSIONS.get(shell_id)
     if session is None:
         return KillPersistentShellOutput(
             shell_id=shell_id,
@@ -708,11 +726,15 @@ async def kill_shell(shell_id: str) -> KillPersistentShellOutput:
 async def list_shells() -> ListPersistentShellsOutput:
     """List live ConPTY persistent shells and reap stale entries."""
     with _SESSIONS_LOCK:
-        stale = [key for key, value in _SESSIONS.items() if not value.alive()]
-        stale_sessions = [_SESSIONS.pop(key) for key in stale]
-        sessions = list(_SESSIONS.values())
+        stale_sessions = [
+            value for value in _SESSIONS.values() if not value.process_alive()
+        ]
     for stale_session in stale_sessions:
         await asyncio.to_thread(stale_session.close, force=False)
+    with _SESSIONS_LOCK:
+        sessions = [
+            session for session in _SESSIONS.values() if session.process_alive()
+        ]
     return ListPersistentShellsOutput(
         shells=[
             PersistentShellInfo.model_validate(

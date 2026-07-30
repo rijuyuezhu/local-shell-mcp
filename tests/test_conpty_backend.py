@@ -30,6 +30,7 @@ class FakePty:
         self.sizes: list[tuple[int, int]] = []
         self.write_result: int | None = None
         self.write_errors: list[BaseException] = []
+        self.close_errors: list[BaseException] = []
 
     def isalive(self) -> bool:
         return self._alive
@@ -58,6 +59,8 @@ class FakePty:
 
     def close(self, force: bool = False) -> None:
         self.close_calls.append(force)
+        if self.close_errors:
+            raise self.close_errors.pop(0)
         self.closed = True
         self._alive = False
         with self._condition:
@@ -223,6 +226,38 @@ async def test_conpty_persistent_shell_and_raw_attachment(
 
 
 @pytest.mark.asyncio
+async def test_conpty_failed_kill_retains_lease_until_retry_succeeds(
+    monkeypatch, tmp_path
+):
+    process = FakePty()
+    process.close_errors = [OSError("close failed")]
+    monkeypatch.setattr(conpty, "_spawn_pty", lambda *args: process)
+
+    await conpty.start_shell(shell_id="retry-kill", cwd=tmp_path, command=None)
+
+    first = await conpty.kill_shell("retry-kill")
+
+    assert first.killed is False
+    assert first.stderr is not None
+    assert "close failed" in first.stderr
+    assert "termination was not confirmed" in first.stderr
+    assert conpty.has_session("retry-kill") is True
+    assert conpty.authoritative_shell_ids() == {"retry-kill"}
+    assert [
+        shell.shell_id for shell in (await conpty.list_shells()).shells
+    ] == ["retry-kill"]
+    with pytest.raises(RuntimeError, match="session is closing"):
+        await conpty.send_shell("retry-kill", "echo blocked", True)
+
+    second = await conpty.kill_shell("retry-kill")
+
+    assert second.killed is True
+    assert conpty.has_session("retry-kill") is False
+    assert conpty.authoritative_shell_ids() == set()
+    assert process.close_calls == [True, True]
+
+
+@pytest.mark.asyncio
 async def test_conpty_reports_unsupported_resize_without_closing(
     monkeypatch, tmp_path
 ):
@@ -302,6 +337,39 @@ async def test_conpty_reader_start_failure_closes_process(
     assert conpty.has_session("reader-start-failure") is False
     assert process.closed is True
     assert process.close_calls[-1] is True
+
+
+@pytest.mark.asyncio
+async def test_conpty_reader_start_failure_keeps_unconfirmed_cleanup_visible(
+    monkeypatch, tmp_path
+):
+    process = FakePty()
+    process.close_errors = [OSError("close failed")]
+    monkeypatch.setattr(conpty, "_spawn_pty", lambda *args: process)
+    monkeypatch.setattr(
+        conpty._ConPtySession,
+        "start_reader",
+        lambda self: (_ for _ in ()).throw(RuntimeError("thread failed")),
+    )
+
+    with pytest.raises(
+        conpty.ConPtyCleanupUncertainError,
+        match="cleanup was not confirmed",
+    ):
+        await conpty.start_shell(
+            shell_id="reader-cleanup-uncertain",
+            cwd=tmp_path,
+            command=None,
+        )
+
+    assert conpty.has_session("reader-cleanup-uncertain") is True
+    assert conpty.authoritative_shell_ids() == {"reader-cleanup-uncertain"}
+
+    killed = await conpty.kill_shell("reader-cleanup-uncertain")
+
+    assert killed.killed is True
+    assert conpty.has_session("reader-cleanup-uncertain") is False
+    assert conpty.authoritative_shell_ids() == set()
 
 
 @pytest.mark.asyncio

@@ -840,6 +840,79 @@ async def test_session_end_preserves_peer_owned_conpty_shell(
 
 
 @pytest.mark.asyncio
+async def test_session_end_retries_unconfirmed_conpty_termination(
+    tmp_path, monkeypatch
+):
+    class CloseOncePty:
+        exitstatus = None
+
+        def __init__(self) -> None:
+            self.alive = True
+            self.close_calls = 0
+
+        def isalive(self) -> bool:
+            return self.alive
+
+        def read(self, _size=None) -> str:
+            time.sleep(0.01)
+            return ""
+
+        def close(self, force=False) -> None:
+            _ = force
+            self.close_calls += 1
+            if self.close_calls == 1:
+                raise OSError("close failed")
+            self.alive = False
+            self.exitstatus = 0
+
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(workdir=tmp_path)
+    process = CloseOncePty()
+    conpty = shell_ops.conpty
+    conpty.reset_conpty_sessions_for_tests()
+    monkeypatch.setattr(
+        shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
+    )
+    monkeypatch.setattr(conpty, "is_available", lambda: True)
+    monkeypatch.setattr(conpty, "_shell_executable", lambda: "cmd.exe")
+    monkeypatch.setattr(conpty, "_spawn_pty", lambda *_args: process)
+    monkeypatch.setattr(conpty, "relative_display", lambda path: str(path))
+    monkeypatch.setattr(conpty, "audit", lambda *_args, **_kwargs: None)
+
+    await conpty.start_shell(
+        shell_id="owned-conpty",
+        cwd=tmp_path,
+        command=None,
+        owner_session_id=session.session_id,
+    )
+    store.register_persistent_shell(session.session_id, "owned-conpty")
+    try:
+        with pytest.raises(RuntimeError, match="could not be stopped"):
+            await session_ops.session_end_execute(session.session_id)
+
+        retained = store.require_session(session.session_id)
+        assert retained.persistent_shell_ids == ("owned-conpty",)
+        assert retained.termination_requested_at is not None
+        assert conpty.has_session("owned-conpty") is True
+        assert conpty.authoritative_shell_ids() == {"owned-conpty"}
+
+        ended = await session_ops.session_end_execute(session.session_id)
+
+        assert ended.session_id == session.session_id
+        assert ended.stopped_shells == ["owned-conpty"]
+        assert conpty.has_session("owned-conpty") is False
+        assert conpty.authoritative_shell_ids() == set()
+        assert process.close_calls == 2
+    finally:
+        if conpty.has_session("owned-conpty"):
+            await conpty.kill_shell("owned-conpty")
+
+
+@pytest.mark.asyncio
 async def test_stop_owned_shells_kills_only_matching_owner(monkeypatch):
     listed: list[str] = []
     killed: list[str] = []
