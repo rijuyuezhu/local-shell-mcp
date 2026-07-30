@@ -56,7 +56,7 @@ def bounded_runner_argv(
         frozen = bool(getattr(sys, "frozen", False))
     if frozen:
         return [sys.executable, "bounded-runner", *arguments]
-    return [sys.executable, str(Path(__file__).resolve()), *arguments]
+    return [sys.executable, os.path.abspath(__file__), *arguments]
 
 
 class _ProcPidCoalitionInfo(ctypes.Structure):

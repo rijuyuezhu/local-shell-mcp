@@ -1587,6 +1587,30 @@ def test_bounded_runner_argv_uses_frozen_cli_subcommand(monkeypatch):
     ]
 
 
+def test_bounded_runner_argv_uses_platform_native_absolute_script(monkeypatch):
+    monkeypatch.setattr(
+        bounded_runner.Path,
+        "resolve",
+        lambda _self: pytest.fail(
+            "runner argv must not depend on pathlib flavor"
+        ),
+    )
+
+    argv = bounded_runner.bounded_runner_argv(
+        "/bin/sh", "echo ok", frozen=False
+    )
+
+    assert argv[0] == bounded_runner.sys.executable
+    assert os.path.isabs(argv[1])
+    assert argv[1].endswith("bounded_runner.py")
+    assert argv[2:] == [
+        "--shell",
+        "/bin/sh",
+        "--command",
+        "echo ok",
+    ]
+
+
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")
 def test_launchd_plist_uses_frozen_cli_subcommand(monkeypatch):
     _install_fake_launchd_coalitions(monkeypatch)
