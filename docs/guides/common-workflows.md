@@ -14,13 +14,17 @@ Keep using the returned `session_id`. Use `session_change_cwd` when the task mov
 
 ## Inspect before editing
 
-Use directory and search tools to locate the smallest relevant area. Then read the exact files you plan to change.
+Use directory and search tools to locate the smallest relevant area. Then read
+the exact files you plan to change.
 
 ```text
 Find where the HTTP timeout is configured, show me the relevant files and tests, and propose a minimal change. Do not edit yet.
 ```
 
-Useful tools include `tree_view`, `list_files`, `search`, `read`, `read_many`, and `view_image`. Prefer targeted reads over dumping an entire repository.
+Useful tools include `tree_view`, `list_files`, `glob_search`, `search`, `read`,
+and `view_image`. Call `read` once per targeted file; selectors can retrieve
+multiple ordered ranges from the same file. Prefer targeted reads over dumping
+an entire repository.
 
 ## Edit with current file context
 

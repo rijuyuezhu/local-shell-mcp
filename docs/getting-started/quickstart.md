@@ -67,7 +67,9 @@ In another terminal:
 curl -i http://127.0.0.1:8765/healthz
 ```
 
-A successful health check confirms that the local service is running.
+A successful health check confirms that the local service is running. Stop the
+foreground server with Ctrl+C before continuing: the tunnel helper starts its
+own server on the same address.
 
 ## 4. Create and start the tunnel
 
@@ -94,18 +96,35 @@ The Cloudflare guide also covers the Docker target and common routing mistakes.
 
 ## 5. Keep it running
 
-For a persistent Linux user service, create a systemd unit with the stable
-checkout as its working directory:
+For a persistent Linux user service, create
+`~/.config/systemd/user/local-shell-mcp.service` with the stable checkout as its
+working directory:
 
 ```ini
+[Unit]
+Description=local-shell-mcp
+After=network.target
+
 [Service]
+Type=simple
 WorkingDirectory=/home/YOU/Code/local-shell-mcp
 ExecStart=/usr/bin/env bash scripts/run-with-cloudflare-tunnel.sh
 Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
 ```
 
-Enable the unit with `systemctl --user enable --now local-shell-mcp.service`.
-Use `journalctl --user -u local-shell-mcp.service -f` to inspect its logs.
+Reload the user manager, enable the service, and inspect its logs:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now local-shell-mcp.service
+journalctl --user -u local-shell-mcp.service -f -n 200
+```
+
+Use `systemctl --user restart local-shell-mcp.service` after changing `.env`.
 
 ## 6. Connect ChatGPT
 
