@@ -1,6 +1,15 @@
 # local-shell-mcp
 
-`local-shell-mcp` lets ChatGPT and other MCP clients work in a controlled project workspace. It can inspect and edit files, run commands and tests, use Git, manage persistent terminals, and delegate work to registered remote machines.
+`local-shell-mcp` lets ChatGPT and other MCP clients work in a controlled
+project workspace. It can inspect and edit files, run commands and tests, use
+Git, manage persistent terminals, and delegate work to registered remote
+machines.
+
+This project is an independently maintained, session-oriented fork of
+[`fwerkor/local-shell-mcp`](https://github.com/fwerkor/local-shell-mcp). The
+projects now have different tool contracts, lifecycle models, capabilities, and
+release lines. See [Comparison with upstream](comparison.md) for the major
+functional differences.
 
 ## Start here
 

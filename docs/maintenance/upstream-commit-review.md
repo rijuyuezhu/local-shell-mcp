@@ -1,6 +1,11 @@
 # Upstream Commit Implementation Review
 
-This file records the fork decision for every reviewed upstream commit. The review is functional: a commit may be implemented in different modules or through a different public API when the same outcome is fully available. Product-level differences that predate the shared fork point, or arise from fork-only removals and additions, are tracked separately in [Fork and upstream differences](fork-upstream-differences.md).
+This file records the fork decision for every reviewed upstream commit. The
+review is functional: a commit may be implemented in different modules or
+through a different public API when the same outcome is fully available. Start
+with the user-facing [Comparison with upstream](../comparison.md); detailed
+migration and architecture evidence is retained in
+[Fork and upstream differences](fork-upstream-differences.md).
 
 Status values:
 
@@ -11,7 +16,12 @@ Status values:
 - **Superseded by reviewed commits**: merge, generated, or reconciliation history whose constituent behavior is decided in other rows.
 - **Superseded by fork release line**: upstream-only release metadata that must not replace the fork version line.
 
-Do not infer current product parity from status counts alone. In particular, version bumps, translations, merge commits, and obsolete workflow repairs are not missing runtime features, while capabilities that existed before the reviewed range may still differ. The linked tip-to-tip comparison is the authoritative summary of current gaps and fork advantages.
+Do not infer current product parity from status counts alone. In particular,
+version bumps, translations, merge commits, and obsolete workflow repairs are
+not missing runtime features, while capabilities that existed before the
+reviewed range may still differ. The product comparison is the authoritative
+summary of current user-visible differences; this table is chronological
+implementation evidence.
 
 Rows for previously reviewed upstream refs are retained even when later upstream history rewrites make those commits unreachable from the current `upstream/main`. Reachable-current and historical rows therefore coexist; maintenance checks require every current reachable commit to appear exactly once without deleting earlier review evidence.
 
