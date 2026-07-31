@@ -1,6 +1,7 @@
 # VS Code
 
-The VS Code extension is a thin wrapper around the `local-shell-mcp` server. It starts the server with the current VS Code workspace as the controlled workspace and gives you commands to copy the MCP URL and a setup prompt.
+Use the VS Code extension to start `local-shell-mcp` with the current workspace,
+copy its MCP URL, and generate a setup prompt for your client.
 
 ## Install
 

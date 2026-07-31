@@ -95,7 +95,10 @@ def test_cloudflare_helper_path_is_a_documented_executable_interface() -> None:
 
     assert quickstart.count(invocation) == 2
     assert f"ExecStart=/usr/bin/env bash {invocation}" in quickstart
-    assert tunnel.count(invocation) == 1
+    assert "[Quickstart](quickstart.md#4-create-and-start-the-tunnel)" in tunnel
+    assert "[Docker Compose](docker-compose.md#start)" in tunnel
+    assert "create-remote-tunnel/" in tunnel
+    assert "remote-tunnel-permissions/#get-the-tunnel-token" in tunnel
     assert "local_shell_mcp.main server --mode mcp" in helper
 
 

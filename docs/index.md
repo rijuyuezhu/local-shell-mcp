@@ -1,45 +1,42 @@
 # local-shell-mcp
 
-`local-shell-mcp` gives ChatGPT and other MCP clients controlled access to a machine you own. It exposes shell, filesystem, search, patch, audit, remote-worker, and agent-bridge capabilities through an MCP server with OAuth support.
+`local-shell-mcp` lets ChatGPT and other MCP clients work in a controlled
+project workspace. It can inspect and edit files, run commands and tests, use
+Git, manage persistent terminals, and delegate work to registered remote
+machines.
+
+This project is an independently maintained, session-oriented fork of
+[`fwerkor/local-shell-mcp`](https://github.com/fwerkor/local-shell-mcp). The
+projects now have different tool contracts, lifecycle models, capabilities, and
+release lines. See [Comparison with upstream](comparison.md) for the major
+functional differences.
 
 ## Start here
 
-Most users should start with the local service path:
+- Follow the [Quickstart](getting-started/quickstart.md) for a local service exposed through HTTPS.
+- Use [Docker Compose](getting-started/docker-compose.md) when you prefer an isolated container deployment.
+- Add the service to [ChatGPT](getting-started/chatgpt-connector.md) or [VS Code](getting-started/vscode.md).
+- Review [Security](security.md) before exposing the service outside localhost.
 
-1. Install or clone `local-shell-mcp` on the machine that should run commands.
-2. Copy `.env.example` to `.env` and set the public URL, OAuth mode, and approval PIN.
-3. Expose the server through Cloudflare Tunnel.
-4. Add the `/mcp` endpoint as a ChatGPT custom connector.
+## What users can do
 
-See [Quickstart](getting-started/quickstart.md) for the complete flow.
+After connecting an MCP client, start an explicit workspace session and ask it to:
 
-Docker Compose is still supported. Published Docker images support `linux/amd64` and `linux/arm64`; use Compose when you specifically want the model-controlled tools inside a container.
+- inspect a repository and its instruction files;
+- search, read, edit, and patch project files;
+- run tests, build commands, and Git workflows;
+- keep long-running jobs or persistent terminals;
+- copy data between local and remote sessions;
+- review Todos and Audit history;
+- use configured Skills or upstream MCP servers.
 
-## What you get
+See [Common workflows](guides/common-workflows.md) for practical examples and the generated [Tool reference](reference/tools.md) for exact tool contracts.
 
-- A ChatGPT-compatible MCP endpoint at `/mcp`.
-- Built-in OAuth approval for public deployments.
-- Local shell, Python, file, search, patch, todo, audit, and download-link tools.
-- Optional remote workers for running the same tool categories on another machine.
-- Optional agent bridge for exposing external MCP servers and Markdown skills through this server.
-- A VS Code extension for starting the server against the current workspace.
+## Human and remote access
 
-## Important pages
+The HTTP server includes a browser interface at `/ui`. An optional terminal client provides the same main management areas. See [Human interface](guides/human-interface.md).
 
-| Need | Page |
-|---|---|
-| Set up the service | [Quickstart](getting-started/quickstart.md) |
-| Expose the endpoint | [Cloudflare Tunnel](getting-started/cloudflare-tunnel.md) |
-| Add ChatGPT | [ChatGPT connector](getting-started/chatgpt-connector.md) |
-| Use Docker instead | [Docker Compose](getting-started/docker-compose.md) |
-| Run work on another machine | [Remote workers](guides/remote-workers.md) |
-| Add external MCP servers or skills | [Agent capability bridge](guides/agent-bridge.md) |
-| Check every setting | [Configuration reference](reference/configuration.md) |
-| Check every tool | [Tools reference](reference/tools.md) |
-| Debug a local checkout | [Development](development.md) |
+To work on another machine while keeping one public MCP endpoint, enroll a [remote worker](guides/remote-workers.md).
 
-## Safety model
-
-This project intentionally gives an AI client access to real shell and filesystem tools. Keep public deployments behind OAuth, set a long random approval PIN, review the configured workspace root, and leave full-control mode disabled unless the server runs in a disposable container or VM.
-
-Audit state may retain complete sanitized tool inputs and outputs inline or in private content-addressed payload objects. Treat the entire state directory as sensitive session data.
+!!! warning
+    Give the service access only to workspaces you are prepared for an AI coding agent to modify. Keep OAuth enabled for public deployments, use narrow scopes, and leave full-control mode disabled unless the environment is disposable.

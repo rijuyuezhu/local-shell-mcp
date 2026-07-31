@@ -1,39 +1,47 @@
 # Example prompts
 
-Use these prompts as starting points when ChatGPT or another MCP client is connected to `local-shell-mcp`.
+These prompts emphasize explicit workspaces, inspection before editing, and verification after changes. Adapt paths and commands to your project.
 
-## Clone and inspect a repo
+## Inspect a repository
 
 ```text
-Use local-shell-mcp. Clone https://github.com/fwerkor/FrameDiff.git into /workspace/FrameDiff, inspect the tree, search for fullnet, and report the main entry points.
+Use local-shell-mcp in /workspace/project. Inspect the repository tree, instruction files, and Git status. Summarize the main entry points and do not change files yet.
 ```
 
-## Make a change safely
+## Make a focused change
 
 ```text
-Use local-shell-mcp. Start a session in /workspace/FrameDiff, create a new branch ai/example-change with `bash(session_id=...)`, inspect the target files with `read` or `search`, make the requested code edit with `hashline_edit` from copied `[path#snapshot_id]` / `line:text` rows, run relevant tests with `bash(session_id=...)`, run `secret_scan(session_id=...)`, show git diff --stat, commit, and push the branch.
+Use local-shell-mcp in /workspace/project. Create a new branch, inspect the relevant code and tests, make the smallest requested change, run focused validation, show the final diff, and report anything not verified.
 ```
 
-## One-command remote worker onboarding
+## Enroll a remote worker
 
 ```text
-Use local-shell-mcp. Create a remote worker invite with `remote_admin(action="invite", args={"name": "npu-4card", "workdir": "/home/cyh/FrameDiff"})`. Show me only the pasteable join command and then, after I say it has run, call `remote_admin(action="list", args={})` to confirm it is online.
+Use local-shell-mcp to create a one-time remote worker invite named gpu1 with workdir /home/me/project. Show me the command to run on that machine, then wait for me to confirm enrollment before checking its status.
 ```
 
-## Remote machine diagnostics
+## Inspect a remote machine
 
 ```text
-Use local-shell-mcp. Start a local session for the project, inspect the workspace, and run the relevant verification commands with `bash` using the returned session_id.
+Use local-shell-mcp on remote machine gpu1 in /home/me/project. Inspect the repository and environment, run git status, and report what is available before editing.
 ```
 
-## Remote code edit and test
+## Run a remote test
 
 ```text
-Use local-shell-mcp. Start a session for the target project, search for the requested symbol with `search`, edit with `hashline_edit` from the displayed hashline result, run the relevant test with `bash`, then show git diff --stat with `bash`, always passing the returned session_id. Use `edit_lines` only if exact structured range arguments are already available.
+Use local-shell-mcp on gpu1. Find the relevant test for the requested change, run it as a bounded or background job as appropriate, and summarize the result and log location.
+```
+
+## Copy an artifact
+
+```text
+Use local-shell-mcp to copy results/report.json from the gpu1 session into reports/latest.json in my local project, then verify the destination.
 ```
 
 ## Inspect a generated image
 
 ```text
-Use local-shell-mcp. Start a session in the project, run the command that generates the plot, then call `view_image` with the returned session_id and the plot path. Describe visual anomalies and relate them back to the generating code.
+Use local-shell-mcp in the project. Run the command that generates the plot, open the resulting image, describe any visual anomaly, and relate it to the generating code.
 ```
+
+See [Common workflows](common-workflows.md) for the underlying workflow and [Tool reference](../reference/tools.md) for exact contracts.
