@@ -77,17 +77,29 @@ When dynamic Skill tools are enabled, selected Skills also appear directly in th
 
 ## Store a static secret
 
-Reference the secret from an MCP server's `env` or `headers` entry:
+Secret references are valid only when the same server uses `auth.mode="secret"`. For example, this complete entry configures a server named `github` with a managed API-key header:
 
 ```json
-{"secret": "github_token"}
+{
+  "version": 1,
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://github.example.com/mcp",
+      "headers": {
+        "X-API-Key": {"secret": "github_token"}
+      },
+      "auth": {"mode": "secret"},
+      "enabled": true
+    }
+  }
+}
 ```
 
-Set its value through standard input so it does not appear in the command arguments:
+Set the referenced value through standard input so it does not appear in the command arguments. The server name in the secret command must match the `mcpServers` key:
 
 ```bash
-printf '%s
-' "$GITHUB_TOKEN" |   local-shell-mcp mcp secret set github github_token --stdin
+printf '%s\n' "$GITHUB_TOKEN" | local-shell-mcp mcp secret set github github_token --stdin
 local-shell-mcp mcp secret list github
 local-shell-mcp mcp secret delete github github_token
 ```

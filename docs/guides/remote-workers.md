@@ -41,6 +41,14 @@ local-shell-mcp worker install-service p_0123456789abcdef
 local-shell-mcp worker status
 ```
 
+On Linux, installing the `systemd --user` service does not by itself guarantee startup before that user logs in after a reboot. If the worker must be reachable before login, an administrator must enable lingering once for that user:
+
+```bash
+sudo loginctl enable-linger USER
+```
+
+Without lingering, the enabled worker service starts with the user's systemd manager after login.
+
 Common lifecycle commands are:
 
 ```bash
@@ -108,7 +116,7 @@ A revoked worker cannot receive more jobs. Re-enrollment requires a new invite.
 ## Troubleshooting
 
 - **Worker never appears online:** confirm the public base URL is reachable from the remote host and that the invite has not expired.
-- **Worker was online before a reboot:** run the saved reconnect command or install the user service.
+- **Worker was online before a reboot:** run the saved reconnect command or install the user service. On Linux, also enable systemd lingering if the worker must start before that user logs in.
 - **Service fails to start:** inspect `local-shell-mcp worker status` and `local-shell-mcp worker logs --lines 100`.
 - **A command or file action is missing:** verify the remote host has the required executable and that the selected worker supports the operation.
 - **The worker is rejected after an old upgrade:** run `worker update`, migrate a legacy installation, or enroll again.
