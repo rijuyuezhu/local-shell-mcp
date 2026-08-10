@@ -84,7 +84,7 @@ The native OpenTUI client connects only through the trusted loopback Human UI AP
 
 ## Common problems
 
-- **`/ui` returns 404:** confirm the server is in `http` or `both` mode and the UI is enabled.
+- **`/ui` returns 404:** confirm the server is in supported `mcp` or `http` mode and the UI is enabled. The reserved `both` mode does not start a server.
 - **OpenTUI cannot start:** use the browser UI, then confirm that your installation contains a platform-native runtime.
 - **A remote panel is unavailable:** verify that the worker is online and supports the requested operation.
 - **A terminal looks disconnected:** reattach to the persistent shell or use its snapshot view.

@@ -16,7 +16,7 @@ Public configuration lives under the service state directory:
 
 Credentials are managed separately by the CLI. Do not put new tokens or passwords directly in `config.json`.
 
-The bridge also discovers project Skills from `<workdir>/.agents/skills` and user Skills from `~/.config/agents/skills`. A project Skill with the same directory name takes priority for that session.
+The bridge also discovers project Skills from `<workdir>/.agents/skills` and user Skills from `$XDG_CONFIG_HOME/agents/skills` when `XDG_CONFIG_HOME` is an absolute path. If `XDG_CONFIG_HOME` is unset or invalid, the user Skill directory falls back to `~/.config/agents/skills`. A project Skill with the same directory name takes priority for that session.
 
 ## Minimal configuration
 
