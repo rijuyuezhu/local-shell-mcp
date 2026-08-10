@@ -100,10 +100,16 @@ local-shell-mcp worker update p_0123456789abcdef
 
 Use `--force` only when you intentionally want to reinstall the current runtime.
 
-Older single-worker installations can be migrated after stopping the old worker:
+Older single-worker installations can be migrated only after the old worker is no longer running. If it is managed by an installed native user service, stop that service first:
 
 ```bash
 local-shell-mcp worker stop
+local-shell-mcp worker migrate
+```
+
+If the old worker is running in the foreground instead, terminate that foreground process directly and then run:
+
+```bash
 local-shell-mcp worker migrate
 ```
 
