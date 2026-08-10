@@ -1,12 +1,14 @@
 # Fork and upstream differences
 
-This document compares the current fork with the current upstream product, not
-just individual commits. The corresponding commit-by-commit decisions remain in
+This document preserves detailed architecture and migration evidence from the
+upstream-porting audit. For the current user-facing product distinction, start
+with [Comparison with upstream](../comparison.md). The corresponding
+commit-by-commit decisions remain in
 [Upstream commit review](upstream-commit-review.md).
 
-## Comparison snapshot
+## Historical comparison snapshot
 
-The audit was performed against these immutable points:
+The Phase 9 audit was performed against these immutable points:
 
 | Role | Ref | Commit |
 |---|---|---|

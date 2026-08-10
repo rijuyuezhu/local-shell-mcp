@@ -1,77 +1,61 @@
 # Cloudflare Tunnel
 
-ChatGPT custom MCP connectors need a public HTTPS endpoint. The recommended path is Cloudflare Tunnel: Cloudflare terminates HTTPS on your public hostname and forwards traffic to the local `local-shell-mcp` process.
+A remote MCP client needs a public HTTPS endpoint. Cloudflare Tunnel can forward a public hostname to the local `local-shell-mcp` service while the server's own OAuth flow protects `/mcp`.
 
-Cloudflare Access is not required. `local-shell-mcp` uses its own OAuth approval flow for the MCP endpoint.
+## Create the tunnel and obtain its token
 
-## Create the tunnel
+Follow Cloudflare's [Create a tunnel in the dashboard](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/) guide:
 
-In Cloudflare Zero Trust:
+1. sign in to Cloudflare and open **Networking → Tunnels**;
+2. create a remotely managed tunnel and give it a recognizable name;
+3. copy the installation command shown for the connector; the long `eyJ...` value after `--token` is the tunnel token; and
+4. add a **Published application** route for a hostname such as `mcp.example.com`.
 
-1. Create a Cloudflare Tunnel.
-2. Add a public hostname such as `mcp.example.com`.
-3. Route the hostname to the local service URL.
+The token authorizes a connector to run this tunnel, so keep it private. Cloudflare also documents how to [retrieve a tunnel token later](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/remote-tunnel-permissions/#get-the-tunnel-token).
 
-For the local service path, route to:
+## Choose the service target
+
+For the [local source setup](quickstart.md#3-smoke-test-locally), set the published application's service URL to:
 
 ```text
 http://127.0.0.1:8765
 ```
 
-For Docker Compose with the bundled sidecar, route to:
+For the repository's [Docker Compose setup](docker-compose.md#start), set it to:
 
 ```text
 http://local-shell-mcp:8765
 ```
 
-Copy the tunnel token and put it in `.env`:
+Add the public origin and copied token to `.env`:
 
 ```env
-CLOUDFLARE_TUNNEL_TOKEN=...
+CLOUDFLARE_TUNNEL_TOKEN=eyJ...
 LOCAL_SHELL_MCP_BASE_URL=https://mcp.example.com
 ```
 
-`LOCAL_SHELL_MCP_BASE_URL` must be the public origin exactly. Do not include `/mcp`.
+`LOCAL_SHELL_MCP_BASE_URL` is the origin only. Do not append `/mcp`. Return to [Quickstart](quickstart.md#4-create-and-start-the-tunnel) or [Docker Compose](docker-compose.md#start) to start the selected deployment.
 
-## Run with the local helper
+## Verify
 
-For a source checkout, run:
-
-```bash
-scripts/run-with-cloudflare-tunnel.sh
-```
-
-The helper loads `.env`, starts `uv run local-shell-mcp server --mode mcp`, then starts `cloudflared tunnel --no-autoupdate run --token "$CLOUDFLARE_TUNNEL_TOKEN"`.
-
-When `cloudflared` exits, the helper stops the background server process. For long-running use, run the helper under systemd as shown in [Quickstart](quickstart.md).
-
-## Run with Docker Compose
-
-The Compose file includes an optional Cloudflare Tunnel sidecar:
-
-```bash
-docker compose --profile tunnel up -d
-```
-
-The sidecar reads `CLOUDFLARE_TUNNEL_TOKEN` from `.env` and sends tunnel traffic to the `local-shell-mcp` container.
-
-## Verify routing
-
-From a network outside the host, verify the public URL:
+From another network, check:
 
 ```bash
 curl -i https://mcp.example.com/healthz
 ```
 
-The MCP connector URL is:
+Use this URL in the MCP client:
 
 ```text
 https://mcp.example.com/mcp
 ```
 
-Common mistakes:
+## Common mistakes
 
-- `LOCAL_SHELL_MCP_BASE_URL` includes `/mcp`.
-- Cloudflare routes to the wrong internal host: use `127.0.0.1` for local helper, `local-shell-mcp` for Compose sidecar.
-- The tunnel hostname changes but `.env` still has the old origin.
-- `LOCAL_SHELL_MCP_AUTH_MODE=none` is used on a public hostname.
+- The connector URL does not end in `/mcp`.
+- `LOCAL_SHELL_MCP_BASE_URL` incorrectly includes `/mcp`.
+- The tunnel target uses the wrong hostname for local versus Compose deployment.
+- The public hostname changed but `.env` still contains the old origin.
+- OAuth is disabled on a public hostname.
+
+Continue with [ChatGPT connector](chatgpt-connector.md) or see [Troubleshooting](../troubleshooting.md).
