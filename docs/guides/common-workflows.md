@@ -49,7 +49,7 @@ Use `bash` for bounded, non-interactive commands such as formatting, tests, buil
 Run the narrowest relevant test first. If it passes, run the project's normal validation command and summarize any failures.
 ```
 
-For a long-running non-interactive command, set `async_=true` and manage the returned job with `job`. Use a persistent PTY only when the task genuinely needs an interactive terminal, server process, or REPL.
+For a long-running non-interactive command in either a local or remote session, set `async_=true` and manage the returned job with `job`. Persistent PTY shells are local-session only; use one only when a local task genuinely needs an interactive terminal, server process, or REPL. For remote sessions, use bounded `bash` commands or asynchronous jobs instead.
 
 ## Copy between sessions
 

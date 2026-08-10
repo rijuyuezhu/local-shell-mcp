@@ -26,6 +26,12 @@ Use local-shell-mcp to create a remote worker invite named gpu1 with workdir /ho
 
 The generated command is sensitive and expires after a short time. Paste it only on the intended machine. Enrollment prints a profile id and a reconnect command; keep the worker state directory private.
 
+If enrollment used a custom `LOCAL_SHELL_MCP_WORKER_STATE_DIR`, export the same value whenever you run the `local-shell-mcp worker ...` lifecycle and update commands below. The saved reconnect launcher and an installed native service preserve their state directory internally, but a fresh administrative CLI process otherwise looks in the default worker state directory.
+
+```bash
+export LOCAL_SHELL_MCP_WORKER_STATE_DIR=/path/to/worker-state
+```
+
 ## Reconnect after a restart
 
 Run the reconnect command printed during enrollment. It is also available from the worker's action menu in the browser UI or through `remote_admin(action="reconnect_command", ...)`.
