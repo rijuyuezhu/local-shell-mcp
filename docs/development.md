@@ -133,8 +133,8 @@ Useful implementation entry points are:
 - Remote controller and worker domains: `src/local_shell_mcp/remote/` and
   `src/local_shell_mcp/remote_worker/`
 - Agent Bridge: `src/local_shell_mcp/agent_bridge/`
-- Audit storage and queries: `src/local_shell_mcp/audit.py` and the corresponding
-  tool/UI adapters
+- Audit storage and queries: `src/local_shell_mcp/audit/` (principally `core.py`
+  and `payloads.py`) and the corresponding tool/UI adapters
 
 Use nearby tests as the canonical executable description. For native UI packaging
 and release artifacts, also see
