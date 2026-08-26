@@ -250,8 +250,11 @@ async def test_stdio_transport_receives_resolved_secret_env(
     )
 
     manager = AgentMcpClientManager(1, store)
-    assert await manager.list_tools("stdio", server) == []
-    assert captured["env"] == {"TOKEN": "private-value"}
+    try:
+        assert await manager.list_tools("stdio", server) == []
+        assert captured["env"] == {"TOKEN": "private-value"}
+    finally:
+        manager.close()
 
 
 @pytest.mark.asyncio

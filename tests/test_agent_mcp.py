@@ -1,15 +1,20 @@
 import asyncio
 import json
+import os
 import queue
+import signal
+import sys
 import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from mcp.types import Tool
 
+import local_shell_mcp.agent_bridge.mcp as agent_mcp_module
+import local_shell_mcp.agent_bridge.service as agent_service
 from local_shell_mcp.agent_bridge.mcp import (
     AgentMcpClientManager,
     AgentMcpTool,
@@ -19,6 +24,7 @@ from local_shell_mcp.agent_bridge.mcp import (
 from local_shell_mcp.agent_bridge.models import AgentMcpServerConfig
 from local_shell_mcp.agent_bridge.registry import build_agent_registry
 from local_shell_mcp.agent_bridge.status import registry_config_status
+from local_shell_mcp.config.settings import Settings
 
 
 def test_normalize_mcp_tool_preserves_schema():
@@ -82,6 +88,347 @@ async def test_client_manager_rejects_missing_stdio_command():
 
     with pytest.raises(ValueError, match="stdio MCP server requires command"):
         await manager.list_tools("broken", server)
+
+
+def test_client_manager_reuses_stdio_process_across_caller_event_loops(
+    monkeypatch,
+):
+    events: list[Any] = []
+
+    @asynccontextmanager
+    async def fake_stdio_client(params):
+        events.append(("transport_enter", params.command, tuple(params.args)))
+        try:
+            yield object(), object()
+        finally:
+            events.append("transport_exit")
+
+    class FakeClientSession:
+        def __init__(self, read_stream, write_stream):
+            events.append("session_constructed")
+
+        async def __aenter__(self):
+            events.append("session_enter")
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            events.append("session_exit")
+
+        async def initialize(self):
+            events.append("initialize")
+
+        async def list_tools(self, *, params=None):
+            cursor = params.cursor if params else None
+            events.append(("list_tools", cursor))
+            return SimpleNamespace(
+                tools=[
+                    SimpleNamespace(
+                        name="search",
+                        description="Search docs",
+                        inputSchema={"type": "object"},
+                    )
+                ]
+            )
+
+        async def call_tool(self, tool, args):
+            events.append(("call_tool", tool, args))
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="done")],
+                structuredContent=None,
+                isError=False,
+            )
+
+    monkeypatch.setattr(agent_mcp_module, "stdio_client", fake_stdio_client)
+    monkeypatch.setattr(agent_mcp_module, "ClientSession", FakeClientSession)
+
+    manager = AgentMcpClientManager(call_timeout_s=1)
+    server = AgentMcpServerConfig(
+        type="stdio", command="fake-mcp", args=["--serve"]
+    )
+
+    assert asyncio.run(manager.list_tools("browser", server)) == [
+        AgentMcpTool("search", "Search docs", {"type": "object"})
+    ]
+    assert asyncio.run(
+        manager.call_tool("browser", server, "search", {"query": "mcp"})
+    ) == {
+        "is_error": False,
+        "content": [{"type": "text", "text": "done"}],
+        "structured_content": None,
+    }
+
+    assert events.count("session_constructed") == 1
+    assert events.count("session_enter") == 1
+    assert events.count("initialize") == 1
+    assert [event for event in events if isinstance(event, tuple)][0] == (
+        "transport_enter",
+        "fake-mcp",
+        ("--serve",),
+    )
+    assert ("list_tools", None) in events
+    assert ("call_tool", "search", {"query": "mcp"}) in events
+    assert "transport_exit" not in events
+
+    manager.close()
+
+    assert events.count("session_exit") == 1
+    assert events.count("transport_exit") == 1
+
+
+def test_discard_stdio_worker_blocks_same_name_replacement(monkeypatch):
+    events: list[str] = []
+    close_started = threading.Event()
+    allow_close = threading.Event()
+    replacement: queue.Queue[Any] = queue.Queue()
+
+    class OldWorker:
+        usable = False
+
+        def close(self) -> None:
+            events.append("old-close-start")
+            close_started.set()
+            assert allow_close.wait(2)
+            events.append("old-close-end")
+
+    class NewWorker:
+        usable = True
+
+        def __init__(self, name, config):
+            self.name = name
+            events.append(f"{name}-constructed")
+
+        def start(self) -> None:
+            events.append(f"{self.name}-started")
+
+    manager = AgentMcpClientManager(call_timeout_s=1)
+    worker: Any = OldWorker()
+    config = agent_mcp_module._StdioWorkerConfig("fake-mcp", (), ())
+    manager._stdio_workers["browser"] = (config, worker)
+    server = AgentMcpServerConfig(type="stdio", command="fake-mcp")
+    monkeypatch.setattr(agent_mcp_module, "_PersistentStdioWorker", NewWorker)
+
+    discard = threading.Thread(
+        target=manager._discard_stdio_worker, args=("browser", worker)
+    )
+    discard.start()
+    assert close_started.wait(1)
+
+    replace = threading.Thread(
+        target=lambda: replacement.put(manager._stdio_worker("browser", server))
+    )
+    replace.start()
+    time.sleep(0.05)
+    assert "browser-constructed" not in events
+
+    other = manager._stdio_worker(
+        "other", AgentMcpServerConfig(type="stdio", command="other-mcp")
+    )
+    assert other.__class__ is NewWorker
+    assert "other-started" in events
+
+    allow_close.set()
+    discard.join(1)
+    replace.join(1)
+
+    assert not discard.is_alive()
+    assert not replace.is_alive()
+    assert replacement.get_nowait().__class__ is NewWorker
+    assert events.index("old-close-end") < events.index("browser-started")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX SIGTERM/SIGKILL regression")
+def test_close_waits_until_stubborn_stdio_child_is_reaped(tmp_path):
+    script = tmp_path / "stubborn_mcp.py"
+    pid_file = tmp_path / "pid"
+    script.write_text(
+        """import json
+import os
+from pathlib import Path
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+Path(sys.argv[1]).write_text(str(os.getpid()))
+
+for line in sys.stdin:
+    message = json.loads(line)
+    request_id = message.get("id")
+    if request_id is None:
+        continue
+    method = message.get("method")
+    if method == "initialize":
+        result = {
+            "protocolVersion": message["params"]["protocolVersion"],
+            "capabilities": {},
+            "serverInfo": {"name": "stubborn", "version": "1"},
+        }
+    elif method == "tools/list":
+        result = {"tools": []}
+    else:
+        result = {}
+    print(json.dumps({"jsonrpc": "2.0", "id": request_id, "result": result}), flush=True)
+
+while True:
+    time.sleep(1)
+"""
+    )
+    manager = AgentMcpClientManager(call_timeout_s=2)
+    server = AgentMcpServerConfig(
+        type="stdio",
+        command=sys.executable,
+        args=[str(script), str(pid_file)],
+    )
+
+    assert asyncio.run(manager.list_tools("stubborn", server)) == []
+    pid = int(pid_file.read_text())
+    os.kill(pid, 0)
+
+    try:
+        manager.close()
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    finally:
+        with suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-reaping regression")
+def test_initialize_timeout_cancels_startup_and_reaps_stdio_child(tmp_path):
+    script = tmp_path / "hung_initialize_mcp.py"
+    pid_file = tmp_path / "pid"
+    received_file = tmp_path / "received_initialize"
+    script.write_text(
+        """import json
+import os
+from pathlib import Path
+import sys
+import time
+
+Path(sys.argv[1]).write_text(str(os.getpid()))
+for line in sys.stdin:
+    message = json.loads(line)
+    if message.get("method") == "initialize":
+        Path(sys.argv[2]).write_text("received")
+        while True:
+            time.sleep(1)
+"""
+    )
+    manager = AgentMcpClientManager(call_timeout_s=0.5)
+    server = AgentMcpServerConfig(
+        type="stdio",
+        command=sys.executable,
+        args=[str(script), str(pid_file), str(received_file)],
+    )
+    pid: int | None = None
+
+    started = time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):
+            asyncio.run(manager.list_tools("hung", server))
+        elapsed = time.monotonic() - started
+
+        assert received_file.read_text() == "received"
+        pid = int(pid_file.read_text())
+        assert elapsed < 5
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+        assert "hung" not in manager._stdio_workers
+        assert not any(
+            thread.name == "agent-mcp-stdio-hung" and thread.is_alive()
+            for thread in threading.enumerate()
+        )
+    finally:
+        with suppress(Exception):
+            manager.close()
+        if pid is None and pid_file.exists():
+            pid = int(pid_file.read_text())
+        if pid is not None:
+            with suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
+
+
+def test_registry_from_settings_reuses_service_mcp_manager(tmp_path):
+    settings = Settings(
+        workspace_root=tmp_path / "workspace",
+        state_dir=tmp_path / "state",
+    )
+
+    first = agent_service.build_agent_registry_from_settings(settings)
+    second = agent_service.build_agent_registry_from_settings(settings)
+
+    assert first.client_manager is second.client_manager
+    agent_service._close_shared_agent_mcp_client_manager()
+
+
+def test_shared_manager_generation_retires_before_new_manager_is_visible(
+    monkeypatch, tmp_path
+):
+    agent_service._close_shared_agent_mcp_client_manager()
+    events: list[str] = []
+    close_started = threading.Event()
+    allow_close = threading.Event()
+    results: queue.Queue[Any] = queue.Queue()
+    instance_count = 0
+
+    class FakeManager:
+        def __init__(self, *_args, **_kwargs):
+            nonlocal instance_count
+            instance_count += 1
+            self.number = instance_count
+            events.append(f"manager-{self.number}-constructed")
+
+        def close(self):
+            if self.number == 1:
+                events.append("old-close-start")
+                close_started.set()
+                assert allow_close.wait(2)
+                events.append("old-close-end")
+
+    monkeypatch.setattr(agent_service, "AgentMcpClientManager", FakeManager)
+    first_settings = Settings(
+        workspace_root=tmp_path / "workspace",
+        state_dir=tmp_path / "state",
+        agent_mcp_call_timeout_s=1,
+    )
+    second_settings = Settings(
+        workspace_root=tmp_path / "workspace",
+        state_dir=tmp_path / "state",
+        agent_mcp_call_timeout_s=2,
+    )
+
+    first: Any = agent_service._shared_agent_mcp_client_manager(first_settings)
+    assert first.number == 1
+
+    replace = threading.Thread(
+        target=lambda: results.put(
+            agent_service._shared_agent_mcp_client_manager(second_settings)
+        )
+    )
+    replace.start()
+    assert close_started.wait(1)
+
+    concurrent = threading.Thread(
+        target=lambda: results.put(
+            agent_service._shared_agent_mcp_client_manager(second_settings)
+        )
+    )
+    concurrent.start()
+    time.sleep(0.05)
+    assert results.empty()
+    assert "manager-2-constructed" not in events
+
+    allow_close.set()
+    replace.join(1)
+    concurrent.join(1)
+
+    assert not replace.is_alive()
+    assert not concurrent.is_alive()
+    returned = [results.get_nowait(), results.get_nowait()]
+    assert returned[0] is returned[1]
+    assert returned[0].number == 2
+    assert events.index("old-close-end") < events.index("manager-2-constructed")
+    agent_service._close_shared_agent_mcp_client_manager()
 
 
 @pytest.mark.asyncio

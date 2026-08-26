@@ -119,6 +119,12 @@ def build_agent_registry(
 
         client_manager = AgentMcpClientManager(call_timeout_s=probe_timeout)
 
+    retain_stdio_servers = getattr(client_manager, "retain_stdio_servers", None)
+    if callable(retain_stdio_servers):
+        retain_stdio_servers(
+            manifest.data.mcp_servers if manifest.status == "loaded" else {}
+        )
+
     skill_scan = SkillScanResult()
     if manifest.status != "invalid_config" and manifest.data.skills.enabled:
         skill_scan = scan_skill_sources(

@@ -1,5 +1,7 @@
 """Shared service helpers for agent bridge tool adapters."""
 
+import atexit
+import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict
 from pathlib import Path
@@ -33,6 +35,53 @@ from .status import registry_config_status
 type AgentMcpClientManagerFactory = Callable[[float], Any]
 
 
+_shared_mcp_manager_lock = threading.RLock()
+_shared_mcp_manager: AgentMcpClientManager | None = None
+_shared_mcp_manager_key: tuple[str, str, float] | None = None
+
+
+def _shared_agent_mcp_client_manager(
+    settings: Settings,
+) -> AgentMcpClientManager:
+    """Reuse one manager per active service configuration so stdio upstreams can persist."""
+    global _shared_mcp_manager, _shared_mcp_manager_key
+
+    key = (
+        str(Path(settings.agent_config_dir).expanduser().resolve()),
+        str(Path(settings.agent_auth_dir).expanduser().resolve()),
+        float(settings.agent_mcp_call_timeout_s),
+    )
+    with _shared_mcp_manager_lock:
+        if _shared_mcp_manager is not None and _shared_mcp_manager_key == key:
+            return _shared_mcp_manager
+        if _shared_mcp_manager is not None:
+            _shared_mcp_manager.close()
+        _shared_mcp_manager = None
+        _shared_mcp_manager_key = None
+        manager = AgentMcpClientManager(
+            settings.agent_mcp_call_timeout_s,
+            AgentAuthStore(settings.agent_auth_dir),
+        )
+        _shared_mcp_manager = manager
+        _shared_mcp_manager_key = key
+        return manager
+
+
+def _close_shared_agent_mcp_client_manager() -> None:
+    """Best-effort teardown for persistent stdio children at interpreter shutdown."""
+    global _shared_mcp_manager, _shared_mcp_manager_key
+
+    with _shared_mcp_manager_lock:
+        manager = _shared_mcp_manager
+        _shared_mcp_manager = None
+        _shared_mcp_manager_key = None
+    if manager is not None:
+        manager.close()
+
+
+atexit.register(_close_shared_agent_mcp_client_manager)
+
+
 def build_agent_registry_from_settings(
     settings: Settings | None = None,
     client_manager_factory: AgentMcpClientManagerFactory = AgentMcpClientManager,
@@ -51,10 +100,7 @@ def build_agent_registry_from_settings(
             )
         active_project_root = Path(session.workdir)
     if client_manager_factory is AgentMcpClientManager:
-        client_manager = AgentMcpClientManager(
-            active_settings.agent_mcp_call_timeout_s,
-            AgentAuthStore(active_settings.agent_auth_dir),
-        )
+        client_manager = _shared_agent_mcp_client_manager(active_settings)
     else:
         client_manager = client_manager_factory(
             active_settings.agent_mcp_call_timeout_s
