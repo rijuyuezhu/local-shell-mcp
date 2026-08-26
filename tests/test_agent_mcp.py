@@ -293,6 +293,61 @@ while True:
             os.kill(pid, signal.SIGKILL)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-reaping regression")
+def test_initialize_timeout_cancels_startup_and_reaps_stdio_child(tmp_path):
+    script = tmp_path / "hung_initialize_mcp.py"
+    pid_file = tmp_path / "pid"
+    received_file = tmp_path / "received_initialize"
+    script.write_text(
+        """import json
+import os
+from pathlib import Path
+import sys
+import time
+
+Path(sys.argv[1]).write_text(str(os.getpid()))
+for line in sys.stdin:
+    message = json.loads(line)
+    if message.get("method") == "initialize":
+        Path(sys.argv[2]).write_text("received")
+        while True:
+            time.sleep(1)
+"""
+    )
+    manager = AgentMcpClientManager(call_timeout_s=0.5)
+    server = AgentMcpServerConfig(
+        type="stdio",
+        command=sys.executable,
+        args=[str(script), str(pid_file), str(received_file)],
+    )
+    pid: int | None = None
+
+    started = time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):
+            asyncio.run(manager.list_tools("hung", server))
+        elapsed = time.monotonic() - started
+
+        assert received_file.read_text() == "received"
+        pid = int(pid_file.read_text())
+        assert elapsed < 5
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+        assert "hung" not in manager._stdio_workers
+        assert not any(
+            thread.name == "agent-mcp-stdio-hung" and thread.is_alive()
+            for thread in threading.enumerate()
+        )
+    finally:
+        with suppress(Exception):
+            manager.close()
+        if pid is None and pid_file.exists():
+            pid = int(pid_file.read_text())
+        if pid is not None:
+            with suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
+
+
 def test_registry_from_settings_reuses_service_mcp_manager(tmp_path):
     settings = Settings(
         workspace_root=tmp_path / "workspace",
@@ -303,6 +358,76 @@ def test_registry_from_settings_reuses_service_mcp_manager(tmp_path):
     second = agent_service.build_agent_registry_from_settings(settings)
 
     assert first.client_manager is second.client_manager
+    agent_service._close_shared_agent_mcp_client_manager()
+
+
+def test_shared_manager_generation_retires_before_new_manager_is_visible(
+    monkeypatch, tmp_path
+):
+    agent_service._close_shared_agent_mcp_client_manager()
+    events: list[str] = []
+    close_started = threading.Event()
+    allow_close = threading.Event()
+    results: queue.Queue[Any] = queue.Queue()
+    instance_count = 0
+
+    class FakeManager:
+        def __init__(self, *_args, **_kwargs):
+            nonlocal instance_count
+            instance_count += 1
+            self.number = instance_count
+            events.append(f"manager-{self.number}-constructed")
+
+        def close(self):
+            if self.number == 1:
+                events.append("old-close-start")
+                close_started.set()
+                assert allow_close.wait(2)
+                events.append("old-close-end")
+
+    monkeypatch.setattr(agent_service, "AgentMcpClientManager", FakeManager)
+    first_settings = Settings(
+        workspace_root=tmp_path / "workspace",
+        state_dir=tmp_path / "state",
+        agent_mcp_call_timeout_s=1,
+    )
+    second_settings = Settings(
+        workspace_root=tmp_path / "workspace",
+        state_dir=tmp_path / "state",
+        agent_mcp_call_timeout_s=2,
+    )
+
+    first: Any = agent_service._shared_agent_mcp_client_manager(first_settings)
+    assert first.number == 1
+
+    replace = threading.Thread(
+        target=lambda: results.put(
+            agent_service._shared_agent_mcp_client_manager(second_settings)
+        )
+    )
+    replace.start()
+    assert close_started.wait(1)
+
+    concurrent = threading.Thread(
+        target=lambda: results.put(
+            agent_service._shared_agent_mcp_client_manager(second_settings)
+        )
+    )
+    concurrent.start()
+    time.sleep(0.05)
+    assert results.empty()
+    assert "manager-2-constructed" not in events
+
+    allow_close.set()
+    replace.join(1)
+    concurrent.join(1)
+
+    assert not replace.is_alive()
+    assert not concurrent.is_alive()
+    returned = [results.get_nowait(), results.get_nowait()]
+    assert returned[0] is returned[1]
+    assert returned[0].number == 2
+    assert events.index("old-close-end") < events.index("manager-2-constructed")
     agent_service._close_shared_agent_mcp_client_manager()
 
 

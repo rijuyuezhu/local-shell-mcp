@@ -51,20 +51,20 @@ def _shared_agent_mcp_client_manager(
         str(Path(settings.agent_auth_dir).expanduser().resolve()),
         float(settings.agent_mcp_call_timeout_s),
     )
-    stale_manager: AgentMcpClientManager | None = None
     with _shared_mcp_manager_lock:
         if _shared_mcp_manager is not None and _shared_mcp_manager_key == key:
             return _shared_mcp_manager
-        stale_manager = _shared_mcp_manager
-        _shared_mcp_manager = AgentMcpClientManager(
+        if _shared_mcp_manager is not None:
+            _shared_mcp_manager.close()
+        _shared_mcp_manager = None
+        _shared_mcp_manager_key = None
+        manager = AgentMcpClientManager(
             settings.agent_mcp_call_timeout_s,
             AgentAuthStore(settings.agent_auth_dir),
         )
+        _shared_mcp_manager = manager
         _shared_mcp_manager_key = key
-        manager = _shared_mcp_manager
-    if stale_manager is not None:
-        stale_manager.close()
-    return manager
+        return manager
 
 
 def _close_shared_agent_mcp_client_manager() -> None:

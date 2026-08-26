@@ -137,10 +137,13 @@ class _PersistentStdioWorker:
         self._closed = threading.Event()
         self._close_requested = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._main_task: asyncio.Task[Any] | None = None
         self._stop_event: asyncio.Event | None = None
         self._operation_lock: asyncio.Lock | None = None
         self._session: ClientSession | None = None
         self._startup_error: BaseException | None = None
+        self._phase_lock = threading.Lock()
+        self._phase = "new"
 
     def start(self) -> None:
         """Start the worker thread exactly once."""
@@ -165,14 +168,27 @@ class _PersistentStdioWorker:
             if not self._ready.is_set():
                 self._startup_error = exc
         finally:
+            self._set_phase("closed")
             self._ready.set()
             self._closed.set()
 
+    def _set_phase(self, phase: str) -> None:
+        """Publish one coarse worker lifecycle phase across threads."""
+        with self._phase_lock:
+            self._phase = phase
+
+    def _phase_value(self) -> str:
+        with self._phase_lock:
+            return self._phase
+
     async def _run(self) -> None:
         self._loop = asyncio.get_running_loop()
+        self._main_task = asyncio.current_task()
         self._stop_event = asyncio.Event()
         if self._close_requested.is_set():
-            self._stop_event.set()
+            self._set_phase("retiring")
+            return
+        self._set_phase("starting")
 
         try:
             async with (
@@ -182,13 +198,25 @@ class _PersistentStdioWorker:
                 ),
                 ClientSession(read_stream, write_stream) as session,
             ):
-                await session.initialize()
+                try:
+                    await session.initialize()
+                except BaseException:
+                    self._set_phase("retiring")
+                    raise
+                if self._close_requested.is_set():
+                    self._set_phase("retiring")
+                    return
                 self._session = session
                 self._operation_lock = asyncio.Lock()
+                self._set_phase("running")
                 self._ready.set()
-                await self._stop_event.wait()
+                try:
+                    await self._stop_event.wait()
+                finally:
+                    self._set_phase("retiring")
         except BaseException as exc:
             if not self._ready.is_set():
+                self._set_phase("retiring")
                 self._startup_error = exc
                 self._ready.set()
             raise
@@ -198,7 +226,8 @@ class _PersistentStdioWorker:
 
     async def _wait_ready(self) -> None:
         self.start()
-        await asyncio.to_thread(self._ready.wait)
+        while not self._ready.is_set():
+            await asyncio.sleep(0.01)
         if self._startup_error is not None:
             if isinstance(self._startup_error, Exception):
                 raise self._startup_error
@@ -259,13 +288,25 @@ class _PersistentStdioWorker:
         async with operation_lock:
             stop_event.set()
 
+    def _request_close_on_loop(self) -> None:
+        """Cancel only startup; use the graceful stop path after initialize."""
+        phase = self._phase_value()
+        if phase == "starting":
+            self._set_phase("retiring")
+            task = self._main_task
+            if task is not None:
+                task.cancel()
+            return
+        if phase == "running":
+            asyncio.create_task(self._request_stop())
+
     def request_close(self) -> None:
         """Ask the worker to stop without waiting for process teardown."""
         self._close_requested.set()
         loop = self._loop
         if loop is None or not loop.is_running():
             return
-        asyncio.run_coroutine_threadsafe(self._request_stop(), loop)
+        loop.call_soon_threadsafe(self._request_close_on_loop)
 
     def close(self, timeout_s: float = 6) -> None:
         """Stop the worker and return only after its transport thread retired."""
