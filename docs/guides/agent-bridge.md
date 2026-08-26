@@ -57,6 +57,8 @@ Example with one upstream MCP server and managed Skills:
 
 Supported upstream types are `stdio`, `http`, and `sse`. Review every command, URL, tool description, and requested scope before enabling a server.
 
+Enabled `stdio` servers are kept alive and reused by the Agent Bridge instead of being restarted for every probe or tool call. This is required for upstreams that hold process-local state or accept a secondary long-lived connection, such as browser-extension MCP servers. Changing, disabling, or removing the configured server tears down the retained process.
+
 ## Add a Skill
 
 Create a directory containing `SKILL.md`:

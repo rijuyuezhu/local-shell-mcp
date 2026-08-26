@@ -1,7 +1,8 @@
 """Normalize upstream MCP protocol objects and manage client sessions for configured agent bridge servers."""
 
 import asyncio
-from collections.abc import AsyncGenerator
+import threading
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -34,6 +35,23 @@ class AgentMcpTool:
     """Human-readable tool description advertised by the upstream server."""
     input_schema: dict[str, Any]
     """JSON schema describing the upstream tool input payload."""
+
+
+@dataclass(frozen=True)
+class _StdioWorkerConfig:
+    """Resolved process configuration that determines stdio worker identity."""
+
+    command: str
+    args: tuple[str, ...]
+    env: tuple[tuple[str, str], ...]
+
+    def server_parameters(self) -> StdioServerParameters:
+        """Build MCP SDK process parameters without exposing resolved values publicly."""
+        return StdioServerParameters(
+            command=self.command,
+            args=list(self.args),
+            env=dict(self.env) or None,
+        )
 
 
 def _value(source: Any, name: str, default: Any = None) -> Any:
@@ -86,8 +104,188 @@ def normalize_tool_result(result: Any) -> dict[str, Any]:
     }
 
 
+async def _list_session_tools(session: ClientSession) -> list[AgentMcpTool]:
+    """Page through one initialized MCP session's tool list."""
+    tools: list[AgentMcpTool] = []
+    cursor: str | None = None
+    while True:
+        result = await session.list_tools(
+            params=PaginatedRequestParams(cursor=cursor)
+        )
+        tools.extend(
+            normalize_mcp_tool(tool) for tool in _value(result, "tools", result)
+        )
+        cursor = getattr(result, "nextCursor", None)
+        if not cursor:
+            return tools
+
+
+class _PersistentStdioWorker:
+    """Own one stdio MCP process and ClientSession on a dedicated event-loop thread."""
+
+    def __init__(self, name: str, config: _StdioWorkerConfig) -> None:
+        self.name = name
+        self.config = config
+        self._thread = threading.Thread(
+            target=self._thread_main,
+            name=f"agent-mcp-stdio-{name}",
+            daemon=True,
+        )
+        self._start_lock = threading.Lock()
+        self._started = False
+        self._ready = threading.Event()
+        self._closed = threading.Event()
+        self._close_requested = threading.Event()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._main_task: asyncio.Task[Any] | None = None
+        self._stop_event: asyncio.Event | None = None
+        self._operation_lock: asyncio.Lock | None = None
+        self._session: ClientSession | None = None
+        self._startup_error: BaseException | None = None
+
+    def start(self) -> None:
+        """Start the worker thread exactly once."""
+        with self._start_lock:
+            if self._started:
+                return
+            self._started = True
+            self._thread.start()
+
+    @property
+    def usable(self) -> bool:
+        """Return whether this worker can still accept operations."""
+        if self._close_requested.is_set() or self._closed.is_set():
+            return False
+        return not self._started or self._thread.is_alive()
+
+    def _thread_main(self) -> None:
+        """Run the full transport lifecycle inside one stable asyncio loop."""
+        try:
+            asyncio.run(self._run())
+        except BaseException as exc:
+            if not self._ready.is_set():
+                self._startup_error = exc
+        finally:
+            self._ready.set()
+            self._closed.set()
+
+    async def _run(self) -> None:
+        self._loop = asyncio.get_running_loop()
+        self._main_task = asyncio.current_task()
+        self._stop_event = asyncio.Event()
+        if self._close_requested.is_set():
+            self._stop_event.set()
+
+        try:
+            async with (
+                stdio_client(self.config.server_parameters()) as (
+                    read_stream,
+                    write_stream,
+                ),
+                ClientSession(read_stream, write_stream) as session,
+            ):
+                await session.initialize()
+                self._session = session
+                self._operation_lock = asyncio.Lock()
+                self._ready.set()
+                await self._stop_event.wait()
+        except BaseException as exc:
+            if not self._ready.is_set():
+                self._startup_error = exc
+                self._ready.set()
+            raise
+        finally:
+            self._session = None
+            self._operation_lock = None
+
+    async def _wait_ready(self) -> None:
+        self.start()
+        await asyncio.to_thread(self._ready.wait)
+        if self._startup_error is not None:
+            if isinstance(self._startup_error, Exception):
+                raise self._startup_error
+            raise RuntimeError(
+                f"stdio MCP worker {self.name} stopped during startup"
+            ) from self._startup_error
+        if self._session is None or self._loop is None:
+            raise RuntimeError(f"stdio MCP worker {self.name} is not running")
+
+    async def _run_operation(self, coroutine: Any) -> Any:
+        await self._wait_ready()
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            raise RuntimeError(
+                f"stdio MCP worker {self.name} event loop stopped"
+            )
+        future = asyncio.run_coroutine_threadsafe(coroutine(), loop)
+        return await asyncio.wrap_future(future)
+
+    async def _list_tools(self) -> list[AgentMcpTool]:
+        if self._session is None or self._operation_lock is None:
+            raise RuntimeError(f"stdio MCP worker {self.name} is not ready")
+        async with self._operation_lock:
+            return await _list_session_tools(self._session)
+
+    async def list_tools(self) -> list[AgentMcpTool]:
+        """List tools through the persistent session from any caller event loop."""
+        return await self._run_operation(self._list_tools)
+
+    async def _call_tool(
+        self, tool: str, args: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        if self._session is None or self._operation_lock is None:
+            raise RuntimeError(f"stdio MCP worker {self.name} is not ready")
+        async with self._operation_lock:
+            return normalize_tool_result(
+                await self._session.call_tool(tool, args)
+            )
+
+    async def call_tool(
+        self, tool: str, args: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """Invoke one tool through the persistent session from any caller event loop."""
+
+        async def operation() -> dict[str, Any]:
+            return await self._call_tool(tool, args)
+
+        return await self._run_operation(operation)
+
+    async def _request_stop(self) -> None:
+        stop_event = self._stop_event
+        if stop_event is None:
+            return
+        operation_lock = self._operation_lock
+        if operation_lock is None:
+            stop_event.set()
+            return
+        async with operation_lock:
+            stop_event.set()
+
+    def request_close(self) -> None:
+        """Ask the worker to stop without waiting for process teardown."""
+        self._close_requested.set()
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            return
+        asyncio.run_coroutine_threadsafe(self._request_stop(), loop)
+
+    def close(self, timeout_s: float = 2) -> None:
+        """Stop the worker and bound how long synchronous teardown may wait."""
+        self.request_close()
+        if not self._started:
+            return
+        self._thread.join(timeout=max(0, timeout_s))
+        if not self._thread.is_alive():
+            return
+        loop = self._loop
+        task = self._main_task
+        if loop is not None and loop.is_running() and task is not None:
+            loop.call_soon_threadsafe(task.cancel)
+            self._thread.join(timeout=max(0, timeout_s))
+
+
 class AgentMcpClientManager:
-    """Create short-lived MCP client sessions for stdio, HTTP, and SSE upstream servers."""
+    """Manage persistent stdio MCP sessions and short-lived HTTP/SSE sessions."""
 
     def __init__(
         self,
@@ -98,6 +296,10 @@ class AgentMcpClientManager:
         self.call_timeout_s = call_timeout_s
         self.auth_store = auth_store
         self.oauth_provider_factory = oauth_provider_factory
+        self._stdio_workers: dict[
+            str, tuple[_StdioWorkerConfig, _PersistentStdioWorker]
+        ] = {}
+        self._stdio_workers_lock = threading.RLock()
 
     def resolved_maps(
         self, name: str, server: AgentMcpServerConfig
@@ -138,6 +340,77 @@ class AgentMcpClientManager:
             )
         return build_stored_oauth_provider(self.auth_store, name, server)
 
+    def _stdio_worker_config(
+        self, name: str, server: AgentMcpServerConfig
+    ) -> _StdioWorkerConfig:
+        if not server.command:
+            raise ValueError("stdio MCP server requires command")
+        env, _headers = self.resolved_maps(name, server)
+        return _StdioWorkerConfig(
+            command=server.command,
+            args=tuple(server.args),
+            env=tuple(sorted(env.items())),
+        )
+
+    def _stdio_worker(
+        self, name: str, server: AgentMcpServerConfig
+    ) -> _PersistentStdioWorker:
+        config = self._stdio_worker_config(name, server)
+        with self._stdio_workers_lock:
+            current = self._stdio_workers.get(name)
+            if (
+                current is not None
+                and current[0] == config
+                and current[1].usable
+            ):
+                return current[1]
+            if current is not None:
+                current[1].close()
+            worker = _PersistentStdioWorker(name, config)
+            worker.start()
+            self._stdio_workers[name] = (config, worker)
+            return worker
+
+    def _discard_stdio_worker(
+        self, name: str, worker: _PersistentStdioWorker
+    ) -> None:
+        with self._stdio_workers_lock:
+            current = self._stdio_workers.get(name)
+            if current is None or current[1] is not worker:
+                return
+            self._stdio_workers.pop(name, None)
+        worker.close()
+
+    def retain_stdio_servers(
+        self, servers: Mapping[str, AgentMcpServerConfig]
+    ) -> None:
+        """Stop persistent workers for stdio servers removed or disabled by reload."""
+        retained_names = {
+            name
+            for name, server in servers.items()
+            if server.enabled and server.type == "stdio"
+        }
+        with self._stdio_workers_lock:
+            stale = [
+                (name, worker)
+                for name, (_config, worker) in self._stdio_workers.items()
+                if name not in retained_names
+            ]
+            for name, _worker in stale:
+                self._stdio_workers.pop(name, None)
+        for _name, worker in stale:
+            worker.close()
+
+    def close(self) -> None:
+        """Close all persistent stdio workers owned by this manager."""
+        with self._stdio_workers_lock:
+            workers = [
+                worker for _config, worker in self._stdio_workers.values()
+            ]
+            self._stdio_workers.clear()
+        for worker in workers:
+            worker.close()
+
     @asynccontextmanager
     async def _session(
         self, name: str, server: AgentMcpServerConfig
@@ -147,19 +420,9 @@ class AgentMcpClientManager:
         auth = self._oauth_auth(name, server)
         match server.type:
             case "stdio":
-                if not server.command:
-                    raise ValueError("stdio MCP server requires command")
-                params = StdioServerParameters(
-                    command=server.command,
-                    args=server.args,
-                    env=env or None,
+                raise RuntimeError(
+                    "stdio MCP sessions are managed by the persistent worker"
                 )
-                async with (
-                    stdio_client(params) as (read_stream, write_stream),
-                    ClientSession(read_stream, write_stream) as session,
-                ):
-                    await session.initialize()
-                    yield session
             case "http":
                 if not server.url:
                     raise ValueError("http MCP server requires url")
@@ -200,21 +463,19 @@ class AgentMcpClientManager:
     ) -> list[AgentMcpTool]:
         """Page through an upstream server's tool list within the configured call timeout."""
 
+        if server.type == "stdio":
+            worker = self._stdio_worker(name, server)
+            try:
+                return await asyncio.wait_for(
+                    worker.list_tools(), timeout=self.call_timeout_s
+                )
+            except BaseException:
+                self._discard_stdio_worker(name, worker)
+                raise
+
         async def _list_tools() -> list[AgentMcpTool]:
             async with self._session(name, server) as session:
-                tools: list[AgentMcpTool] = []
-                cursor: str | None = None
-                while True:
-                    result = await session.list_tools(
-                        params=PaginatedRequestParams(cursor=cursor)
-                    )
-                    tools.extend(
-                        normalize_mcp_tool(tool)
-                        for tool in _value(result, "tools", result)
-                    )
-                    cursor = getattr(result, "nextCursor", None)
-                    if not cursor:
-                        return tools
+                return await _list_session_tools(session)
 
         return await asyncio.wait_for(
             _list_tools(), timeout=self.call_timeout_s
@@ -228,6 +489,16 @@ class AgentMcpClientManager:
         args: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Invoke an upstream MCP tool and normalize its protocol result for local-shell-mcp responses."""
+
+        if server.type == "stdio":
+            worker = self._stdio_worker(name, server)
+            try:
+                return await asyncio.wait_for(
+                    worker.call_tool(tool, args), timeout=self.call_timeout_s
+                )
+            except BaseException:
+                self._discard_stdio_worker(name, worker)
+                raise
 
         async def _call_tool() -> dict[str, Any]:
             async with self._session(name, server) as session:
