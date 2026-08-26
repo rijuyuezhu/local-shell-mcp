@@ -137,7 +137,6 @@ class _PersistentStdioWorker:
         self._closed = threading.Event()
         self._close_requested = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._main_task: asyncio.Task[Any] | None = None
         self._stop_event: asyncio.Event | None = None
         self._operation_lock: asyncio.Lock | None = None
         self._session: ClientSession | None = None
@@ -171,7 +170,6 @@ class _PersistentStdioWorker:
 
     async def _run(self) -> None:
         self._loop = asyncio.get_running_loop()
-        self._main_task = asyncio.current_task()
         self._stop_event = asyncio.Event()
         if self._close_requested.is_set():
             self._stop_event.set()
@@ -269,19 +267,16 @@ class _PersistentStdioWorker:
             return
         asyncio.run_coroutine_threadsafe(self._request_stop(), loop)
 
-    def close(self, timeout_s: float = 2) -> None:
-        """Stop the worker and bound how long synchronous teardown may wait."""
+    def close(self, timeout_s: float = 6) -> None:
+        """Stop the worker and return only after its transport thread retired."""
         self.request_close()
         if not self._started:
             return
         self._thread.join(timeout=max(0, timeout_s))
-        if not self._thread.is_alive():
-            return
-        loop = self._loop
-        task = self._main_task
-        if loop is not None and loop.is_running() and task is not None:
-            loop.call_soon_threadsafe(task.cancel)
-            self._thread.join(timeout=max(0, timeout_s))
+        if self._thread.is_alive():
+            raise RuntimeError(
+                f"stdio MCP worker {self.name} did not retire within {timeout_s:g}s"
+            )
 
 
 class AgentMcpClientManager:
@@ -300,6 +295,8 @@ class AgentMcpClientManager:
             str, tuple[_StdioWorkerConfig, _PersistentStdioWorker]
         ] = {}
         self._stdio_workers_lock = threading.RLock()
+        self._stdio_lifecycle_locks: dict[str, threading.RLock] = {}
+        self._stdio_lifecycle_locks_lock = threading.Lock()
 
     def resolved_maps(
         self, name: str, server: AgentMcpServerConfig
@@ -352,34 +349,57 @@ class AgentMcpClientManager:
             env=tuple(sorted(env.items())),
         )
 
+    def _stdio_lifecycle_lock(self, name: str) -> threading.RLock:
+        """Return the per-server barrier that serializes retirement and replacement."""
+        with self._stdio_lifecycle_locks_lock:
+            return self._stdio_lifecycle_locks.setdefault(
+                name, threading.RLock()
+            )
+
+    def _retire_stdio_worker(
+        self, name: str, worker: _PersistentStdioWorker
+    ) -> bool:
+        """Retire one current worker before making its name available again."""
+        with self._stdio_lifecycle_lock(name):
+            with self._stdio_workers_lock:
+                current = self._stdio_workers.get(name)
+                if current is None or current[1] is not worker:
+                    return False
+            worker.close()
+            with self._stdio_workers_lock:
+                current = self._stdio_workers.get(name)
+                if current is not None and current[1] is worker:
+                    self._stdio_workers.pop(name, None)
+            return True
+
     def _stdio_worker(
         self, name: str, server: AgentMcpServerConfig
     ) -> _PersistentStdioWorker:
         config = self._stdio_worker_config(name, server)
-        with self._stdio_workers_lock:
-            current = self._stdio_workers.get(name)
-            if (
-                current is not None
-                and current[0] == config
-                and current[1].usable
-            ):
-                return current[1]
+        with self._stdio_lifecycle_lock(name):
+            with self._stdio_workers_lock:
+                current = self._stdio_workers.get(name)
+                if (
+                    current is not None
+                    and current[0] == config
+                    and current[1].usable
+                ):
+                    return current[1]
             if current is not None:
                 current[1].close()
+                with self._stdio_workers_lock:
+                    if self._stdio_workers.get(name) == current:
+                        self._stdio_workers.pop(name, None)
             worker = _PersistentStdioWorker(name, config)
             worker.start()
-            self._stdio_workers[name] = (config, worker)
+            with self._stdio_workers_lock:
+                self._stdio_workers[name] = (config, worker)
             return worker
 
     def _discard_stdio_worker(
         self, name: str, worker: _PersistentStdioWorker
     ) -> None:
-        with self._stdio_workers_lock:
-            current = self._stdio_workers.get(name)
-            if current is None or current[1] is not worker:
-                return
-            self._stdio_workers.pop(name, None)
-        worker.close()
+        self._retire_stdio_worker(name, worker)
 
     def retain_stdio_servers(
         self, servers: Mapping[str, AgentMcpServerConfig]
@@ -396,20 +416,24 @@ class AgentMcpClientManager:
                 for name, (_config, worker) in self._stdio_workers.items()
                 if name not in retained_names
             ]
-            for name, _worker in stale:
-                self._stdio_workers.pop(name, None)
-        for _name, worker in stale:
-            worker.close()
+        for name, worker in stale:
+            self._retire_stdio_worker(name, worker)
 
     def close(self) -> None:
         """Close all persistent stdio workers owned by this manager."""
         with self._stdio_workers_lock:
             workers = [
-                worker for _config, worker in self._stdio_workers.values()
+                (name, worker)
+                for name, (_config, worker) in self._stdio_workers.items()
             ]
-            self._stdio_workers.clear()
-        for worker in workers:
-            worker.close()
+        errors: list[Exception] = []
+        for name, worker in workers:
+            try:
+                self._retire_stdio_worker(name, worker)
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise ExceptionGroup("failed to retire stdio MCP workers", errors)
 
     @asynccontextmanager
     async def _session(

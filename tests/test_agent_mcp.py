@@ -1,9 +1,12 @@
 import asyncio
 import json
+import os
 import queue
+import signal
+import sys
 import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from types import SimpleNamespace
 from typing import Any
 
@@ -172,22 +175,122 @@ def test_client_manager_reuses_stdio_process_across_caller_event_loops(
     assert events.count("transport_exit") == 1
 
 
-def test_discard_stdio_worker_closes_before_replacement():
+def test_discard_stdio_worker_blocks_same_name_replacement(monkeypatch):
     events: list[str] = []
+    close_started = threading.Event()
+    allow_close = threading.Event()
+    replacement: queue.Queue[Any] = queue.Queue()
 
-    class FakeWorker:
+    class OldWorker:
+        usable = False
+
         def close(self) -> None:
-            events.append("close")
+            events.append("old-close-start")
+            close_started.set()
+            assert allow_close.wait(2)
+            events.append("old-close-end")
+
+    class NewWorker:
+        usable = True
+
+        def __init__(self, name, config):
+            self.name = name
+            events.append(f"{name}-constructed")
+
+        def start(self) -> None:
+            events.append(f"{self.name}-started")
 
     manager = AgentMcpClientManager(call_timeout_s=1)
-    worker: Any = FakeWorker()
+    worker: Any = OldWorker()
     config = agent_mcp_module._StdioWorkerConfig("fake-mcp", (), ())
     manager._stdio_workers["browser"] = (config, worker)
+    server = AgentMcpServerConfig(type="stdio", command="fake-mcp")
+    monkeypatch.setattr(agent_mcp_module, "_PersistentStdioWorker", NewWorker)
 
-    manager._discard_stdio_worker("browser", worker)
+    discard = threading.Thread(
+        target=manager._discard_stdio_worker, args=("browser", worker)
+    )
+    discard.start()
+    assert close_started.wait(1)
 
-    assert events == ["close"]
-    assert "browser" not in manager._stdio_workers
+    replace = threading.Thread(
+        target=lambda: replacement.put(manager._stdio_worker("browser", server))
+    )
+    replace.start()
+    time.sleep(0.05)
+    assert "browser-constructed" not in events
+
+    other = manager._stdio_worker(
+        "other", AgentMcpServerConfig(type="stdio", command="other-mcp")
+    )
+    assert other.__class__ is NewWorker
+    assert "other-started" in events
+
+    allow_close.set()
+    discard.join(1)
+    replace.join(1)
+
+    assert not discard.is_alive()
+    assert not replace.is_alive()
+    assert replacement.get_nowait().__class__ is NewWorker
+    assert events.index("old-close-end") < events.index("browser-started")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX SIGTERM/SIGKILL regression")
+def test_close_waits_until_stubborn_stdio_child_is_reaped(tmp_path):
+    script = tmp_path / "stubborn_mcp.py"
+    pid_file = tmp_path / "pid"
+    script.write_text(
+        """import json
+import os
+from pathlib import Path
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+Path(sys.argv[1]).write_text(str(os.getpid()))
+
+for line in sys.stdin:
+    message = json.loads(line)
+    request_id = message.get("id")
+    if request_id is None:
+        continue
+    method = message.get("method")
+    if method == "initialize":
+        result = {
+            "protocolVersion": message["params"]["protocolVersion"],
+            "capabilities": {},
+            "serverInfo": {"name": "stubborn", "version": "1"},
+        }
+    elif method == "tools/list":
+        result = {"tools": []}
+    else:
+        result = {}
+    print(json.dumps({"jsonrpc": "2.0", "id": request_id, "result": result}), flush=True)
+
+while True:
+    time.sleep(1)
+"""
+    )
+    manager = AgentMcpClientManager(call_timeout_s=2)
+    server = AgentMcpServerConfig(
+        type="stdio",
+        command=sys.executable,
+        args=[str(script), str(pid_file)],
+    )
+
+    assert asyncio.run(manager.list_tools("stubborn", server)) == []
+    pid = int(pid_file.read_text())
+    os.kill(pid, 0)
+
+    try:
+        manager.close()
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    finally:
+        with suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
 
 
 def test_registry_from_settings_reuses_service_mcp_manager(tmp_path):
