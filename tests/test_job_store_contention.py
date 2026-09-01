@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.jobs import managed as jobs_managed
 from local_shell_mcp.jobs import recovery as jobs_recovery
 from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.tool_session.store import get_tool_session_store
@@ -220,7 +221,7 @@ def test_managed_updates_retry_then_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session_id, log_path = _seed_managed_job(tmp_path, monkeypatch)
-    original_transaction = jobs_ops._store_transaction
+    original_transaction = jobs_managed._store_transaction
     failures = 0
 
     @contextlib.contextmanager
@@ -232,19 +233,19 @@ def test_managed_updates_retry_then_commit(
         with original_transaction() as store:
             yield store
 
-    monkeypatch.setattr(jobs_ops, "_store_transaction", flaky_transaction)
-    monkeypatch.setattr(jobs_ops.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(jobs_managed, "_store_transaction", flaky_transaction)
+    monkeypatch.setattr(jobs_managed.time, "sleep", lambda _seconds: None)
 
     failures = 1
-    jobs_ops._append_managed_log(
+    jobs_managed._append_managed_log(
         session_id, "job_contended", str(log_path), "hello"
     )
     failures = 1
-    jobs_ops._update_managed_progress(
+    jobs_managed._update_managed_progress(
         session_id, "job_contended", {"phase": "copying"}
     )
     failures = 1
-    jobs_ops._finish_managed_job(
+    jobs_managed._finish_managed_job(
         session_id,
         "job_contended",
         status="succeeded",
@@ -265,25 +266,25 @@ def test_managed_updates_defer_in_order_and_replay_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session_id, log_path = _seed_managed_job(tmp_path, monkeypatch)
-    original_transaction = jobs_ops._store_transaction
+    original_transaction = jobs_managed._store_transaction
 
     @contextlib.contextmanager
     def busy_transaction():
         raise TimeoutError("busy")
         yield  # pragma: no cover
 
-    monkeypatch.setattr(jobs_ops, "_store_transaction", busy_transaction)
-    monkeypatch.setattr(jobs_ops.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(jobs_managed, "_store_transaction", busy_transaction)
+    monkeypatch.setattr(jobs_managed.time, "sleep", lambda _seconds: None)
     wall_clock = iter([3, 2, 1])
     monkeypatch.setattr(jobs_recovery.time, "time_ns", lambda: next(wall_clock))
 
-    jobs_ops._append_managed_log(
+    jobs_managed._append_managed_log(
         session_id, "job_contended", str(log_path), "hello"
     )
-    jobs_ops._update_managed_progress(
+    jobs_managed._update_managed_progress(
         session_id, "job_contended", {"phase": "copying"}
     )
-    jobs_ops._finish_managed_job(
+    jobs_managed._finish_managed_job(
         session_id,
         "job_contended",
         status="succeeded",
@@ -425,14 +426,14 @@ def test_missing_managed_log_row_does_not_create_journal(
     session_id = _configure(tmp_path, monkeypatch)
     log_path = jobs_ops._attempt_paths("job_missing", 1)["log"]
 
-    jobs_ops._append_managed_log(
+    jobs_managed._append_managed_log(
         session_id, "job_missing", str(log_path), "orphaned"
     )
 
     assert log_path.read_text(encoding="utf-8") == "orphaned\n"
     assert not jobs_recovery.managed_deferred_update_dir(create=False).exists()
     with pytest.raises(KeyError, match="job not found"):
-        jobs_ops._update_managed_progress(
+        jobs_managed._update_managed_progress(
             session_id, "job_missing", {"phase": "missing"}
         )
 
@@ -443,7 +444,7 @@ async def test_managed_stop_reconciles_deferred_cancellation_updates(
 ) -> None:
     session_id = _configure(tmp_path, monkeypatch)
     jobs_ops.reset_managed_jobs_for_tests()
-    jobs_ops._MANAGED_JOB_HANDLERS.pop("test-deferred-stop", None)
+    jobs_managed._MANAGED_JOB_HANDLERS.pop("test-deferred-stop", None)
     started_handler = threading.Event()
 
     async def handler(context, payload):  # noqa: ANN001, ARG001
@@ -473,7 +474,7 @@ async def test_managed_stop_reconciles_deferred_cancellation_updates(
             update_session_id, job_id, operation, payload
         )
 
-    monkeypatch.setattr(jobs_ops, "_managed_store_update", defer_update)
+    monkeypatch.setattr(jobs_managed, "_managed_store_update", defer_update)
     stopped = await jobs_ops.job_stop_execute(session_id, started.job_id)
 
     assert stopped.job.status == "stopped"
@@ -485,4 +486,4 @@ async def test_managed_stop_reconciles_deferred_cancellation_updates(
         jobs_recovery.managed_deferred_update_dir(create=False).glob("*.json")
     )
     jobs_ops.reset_managed_jobs_for_tests()
-    jobs_ops._MANAGED_JOB_HANDLERS.pop("test-deferred-stop", None)
+    jobs_managed._MANAGED_JOB_HANDLERS.pop("test-deferred-stop", None)

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.jobs import managed as job_managed
 from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.jobs import state as job_state
 from local_shell_mcp.schemas.result_models.jobs import (
@@ -1059,10 +1060,10 @@ async def test_managed_reference_stop_filters_unrelated_rows(monkeypatch):
             row["status"] = "lost"
         return row
 
-    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
-    monkeypatch.setattr(jobs_ops, "_refresh_job_status", fake_refresh)
+    monkeypatch.setattr(job_managed, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(job_managed, "_refresh_job_status", fake_refresh)
     monkeypatch.setattr(
-        jobs_ops, "_stop_managed_job_without_session_admission", fake_stop
+        job_managed, "_stop_managed_job_without_session_admission", fake_stop
     )
 
     assert await jobs_ops.job_stop_managed_references_execute(
@@ -1257,12 +1258,12 @@ async def test_managed_reference_stop_rejects_unconfirmed_result(
     async def fake_stop(_session_id: str, _job_id: str):
         return SimpleNamespace(killed=False, job=SimpleNamespace(status=status))
 
-    monkeypatch.setattr(jobs_ops, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(job_managed, "_store_transaction", fake_transaction)
     monkeypatch.setattr(
-        jobs_ops, "_refresh_job_status", lambda value, _active: value
+        job_managed, "_refresh_job_status", lambda value, _active: value
     )
     monkeypatch.setattr(
-        jobs_ops, "_stop_managed_job_without_session_admission", fake_stop
+        job_managed, "_stop_managed_job_without_session_admission", fake_stop
     )
 
     with pytest.raises(RuntimeError, match=f"status='{status}'"):
@@ -2210,16 +2211,16 @@ def test_managed_job_lease_registry_rejects_duplicates_and_releases(
         def release(self) -> None:
             events.append(("release", self.job_id))
 
-    monkeypatch.setattr(jobs_ops, "ManagedJobLease", FakeLease)
-    jobs_ops._MANAGED_JOB_LEASES.clear()
+    monkeypatch.setattr(job_managed, "ManagedJobLease", FakeLease)
+    job_managed._MANAGED_JOB_LEASES.clear()
 
-    lease = jobs_ops._acquire_managed_job_lease("job_registry")
+    lease = job_managed._acquire_managed_job_lease("job_registry")
     assert lease.job_id == "job_registry"
     with pytest.raises(RuntimeError, match="already held"):
-        jobs_ops._acquire_managed_job_lease("job_registry")
+        job_managed._acquire_managed_job_lease("job_registry")
 
-    jobs_ops._release_managed_job_lease("job_registry")
-    jobs_ops._release_managed_job_lease("job_registry")
+    job_managed._release_managed_job_lease("job_registry")
+    job_managed._release_managed_job_lease("job_registry")
 
     assert events == [
         ("acquire", "job_registry"),
@@ -2234,25 +2235,25 @@ def test_launch_managed_job_releases_new_lease_when_task_creation_fails(
 
     def fake_acquire(job_id: str):
         events.append(("acquire", job_id))
-        lease = jobs_ops.ManagedJobLease.__new__(jobs_ops.ManagedJobLease)
-        jobs_ops._MANAGED_JOB_LEASES[job_id] = lease
+        lease = job_managed.ManagedJobLease.__new__(job_managed.ManagedJobLease)
+        job_managed._MANAGED_JOB_LEASES[job_id] = lease
         return lease
 
     def fake_release(job_id: str) -> None:
         events.append(("release", job_id))
-        jobs_ops._MANAGED_JOB_LEASES.pop(job_id, None)
+        job_managed._MANAGED_JOB_LEASES.pop(job_id, None)
 
     def fail_create_task(coroutine, *_args, **_kwargs):
         coroutine.close()
         raise RuntimeError("task creation failed")
 
-    jobs_ops._MANAGED_JOB_LEASES.clear()
-    monkeypatch.setattr(jobs_ops, "_acquire_managed_job_lease", fake_acquire)
-    monkeypatch.setattr(jobs_ops, "_release_managed_job_lease", fake_release)
-    monkeypatch.setattr(jobs_ops.asyncio, "create_task", fail_create_task)
+    job_managed._MANAGED_JOB_LEASES.clear()
+    monkeypatch.setattr(job_managed, "_acquire_managed_job_lease", fake_acquire)
+    monkeypatch.setattr(job_managed, "_release_managed_job_lease", fake_release)
+    monkeypatch.setattr(job_managed.asyncio, "create_task", fail_create_task)
 
     with pytest.raises(RuntimeError, match="task creation failed"):
-        jobs_ops._launch_managed_job(
+        job_managed._launch_managed_job(
             "SESSION1",
             "job_create_failure",
             "test-kind",
@@ -2455,7 +2456,7 @@ async def test_managed_job_failure_result_bounds_and_launch_rollback(
     def fail_launch(*args, **kwargs):  # noqa: ARG001
         raise RuntimeError("launch failed")
 
-    monkeypatch.setattr(jobs_ops, "_launch_managed_job", fail_launch)
+    monkeypatch.setattr(job_managed, "_launch_managed_job", fail_launch)
     before = {
         row.job_id for row in (await jobs_ops.job_list_execute(session_id)).jobs
     }
