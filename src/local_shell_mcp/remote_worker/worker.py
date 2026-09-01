@@ -1,4 +1,4 @@
-"""Remote worker-side tool dispatch, process loop, and CLI helpers."""
+"""Remote worker-side tool dispatch and process loop."""
 
 import asyncio
 import json
@@ -22,7 +22,6 @@ from ..remote.constants import REMOTE_API_PREFIX
 from ..remote.tool_specs import REMOTE_WORKER_TOOL_NAMES
 from ..version import version_info
 from . import runtime as worker_runtime
-from .compat import _jsonable as to_jsonable
 from .identity import (
     delete_worker_identity as _delete_persisted_worker_identity,
 )
@@ -36,6 +35,7 @@ from .identity import (
     write_worker_identity as _write_persisted_worker_identity,
 )
 from .profiles import update_worker_profile
+from .serialization import to_jsonable
 from .state import (
     activate_worker_profile,
     activate_worker_runtime,
@@ -888,10 +888,3 @@ async def _run_worker_locked(
             headers,
             heartbeat_interval_s,
         )
-
-
-def run_worker_cli(argv: list[str] | None = None) -> None:
-    """Run the standalone worker-only CLI used by source bundles."""
-    from .cli import run_worker_cli as run_cli
-
-    run_cli(argv)

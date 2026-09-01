@@ -1,14 +1,14 @@
 """Remote-worker-only compatibility layer."""
 
-import dataclasses
-import enum
 import json
 import os
 import sys
 import types
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+from .serialization import to_jsonable as _jsonable
 
 _MISSING = object()
 
@@ -26,38 +26,6 @@ class _FieldInfo:
         if self.default is not _MISSING:
             return self.default
         return None
-
-
-def _jsonable(value: Any, *, exclude_none: bool = False) -> Any:
-    if value is None or isinstance(value, bool | int | float | str):
-        return value
-    if isinstance(value, bytes | bytearray | memoryview):
-        return bytes(value).decode(errors="replace")
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, enum.Enum):
-        return _jsonable(value.value, exclude_none=exclude_none)
-    if (
-        not isinstance(value, type)
-        and hasattr(value, "model_dump")
-        and callable(value.model_dump)
-    ):
-        return value.model_dump(mode="json", exclude_none=exclude_none)
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return _jsonable(dataclasses.asdict(value), exclude_none=exclude_none)
-    if isinstance(value, Mapping):
-        return {
-            str(key): _jsonable(item, exclude_none=exclude_none)
-            for key, item in value.items()
-            if not (exclude_none and item is None)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, str | bytes | bytearray
-    ):
-        return [_jsonable(item, exclude_none=exclude_none) for item in value]
-    if isinstance(value, set | frozenset):
-        return [_jsonable(item, exclude_none=exclude_none) for item in value]
-    return value
 
 
 def _all_annotations(cls: type[Any]) -> dict[str, Any]:
@@ -410,6 +378,6 @@ def install() -> None:
 def main(argv: list[str] | None = None) -> None:
     """Run the shared remote worker loop with worker-only shims installed."""
     install()
-    from local_shell_mcp.remote_worker.worker import run_worker_cli
+    from local_shell_mcp.remote_worker.cli import run_worker_cli
 
     run_worker_cli(sys.argv[1:] if argv is None else argv)

@@ -41,17 +41,7 @@ _ALLOWED_RELEASE_IMPORTS = frozenset(
 
 # Keep existing cycles visible and prevent new ones. Each set must shrink when the
 # corresponding hardening phase extracts a dependency-leaf contract.
-_ALLOWED_DEPENDENCY_CYCLES = frozenset(
-    {
-        frozenset(
-            {
-                "local_shell_mcp.remote_worker.cli",
-                "local_shell_mcp.remote_worker.compat",
-                "local_shell_mcp.remote_worker.worker",
-            }
-        ),
-    }
-)
+_ALLOWED_DEPENDENCY_CYCLES: frozenset[frozenset[str]] = frozenset()
 
 
 def test_python_314_sources_do_not_enable_future_annotations() -> None:
