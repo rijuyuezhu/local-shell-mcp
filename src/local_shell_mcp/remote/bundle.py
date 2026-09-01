@@ -37,6 +37,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "jobs/persistence.py",
     "jobs/runner.py",
     "jobs/runtime.py",
+    "jobs/state.py",
     "ops/patch/*.py",
     "ops/read.py",
     "ops/todo.py",

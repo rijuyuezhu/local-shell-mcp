@@ -28,7 +28,6 @@ from ..ops.shell import (
 )
 from ..persistence import get_state_store
 from ..schemas.result_models.jobs import (
-    JobInfo,
     JobListOutput,
     JobOutput,
     JobRetryOutput,
@@ -55,7 +54,6 @@ from ..utils.runtime_identity import (
     ManagedJobLease,
     managed_job_lease_state,
 )
-from ..utils.serialization import to_jsonable
 from .persistence import (
     JOB_STORE_VERSION as _JOB_STORE_VERSION,
 )
@@ -94,16 +92,58 @@ from .persistence import (
 )
 from .runner import compact_log as _compact_log
 from .runner import run_job_runner_from_args as _run_job_runner_from_args
+from .state import (
+    ACTIVE_STATUSES,
+    CONFIRMED_TERMINAL_STATUSES,
+)
+from .state import (
+    MANAGED_STATE_MAX_BYTES as _STATE_MANAGED_STATE_MAX_BYTES,
+)
+from .state import (
+    begin_job_operation as _begin_job_operation,
+)
+from .state import (
+    clear_job_operation as _clear_job_operation,
+)
+from .state import (
+    find_session_job as _find_session_job,
+)
+from .state import (
+    job_agent_session_id as _job_agent_session_id,
+)
+from .state import (
+    job_operation_is_active as _job_operation_is_active,
+)
+from .state import (
+    job_operation_matches as _job_operation_matches,
+)
+from .state import (
+    job_shell_id as _job_shell_id,
+)
+from .state import (
+    managed_json_dict as _managed_json_dict,
+)
+from .state import (
+    new_job_id as _new_job_id,
+)
+from .state import (
+    public_job as _public_job,
+)
+from .state import (
+    session_jobs as _session_jobs,
+)
+from .state import (
+    utc as _utc,
+)
 
 JOB_STORE_VERSION = _JOB_STORE_VERSION
+_MANAGED_STATE_MAX_BYTES = _STATE_MANAGED_STATE_MAX_BYTES
 JOB_STORE_LOCK_TIMEOUT_S = 2.0
 JOB_STORE_LOCK_RETRY_INTERVAL_S = 0.05
 MANAGED_JOB_STORE_RETRY_ATTEMPTS = 2
 MANAGED_DEFERRED_UPDATE_VERSION = 1
 MANAGED_DEFERRED_APPLIED_KEY = "managed_deferred_update_ids"
 MANAGED_DEFERRED_MAX_RECORD_BYTES = 524_288
-CONFIRMED_TERMINAL_STATUSES = {"succeeded", "failed", "exited", "stopped"}
-ACTIVE_STATUSES = {"starting", "running", "stopping", "retrying"}
 _JOB_STORE_THREAD_LOCK = threading.RLock()
 _MANAGED_DEFERRED_SEQUENCE_LOCK = threading.Lock()
 _MANAGED_DEFERRED_NEXT_SEQUENCE: int | None = None
@@ -114,11 +154,6 @@ type ManagedJobHandler = Callable[
 _MANAGED_JOB_HANDLERS: dict[str, ManagedJobHandler] = {}
 _MANAGED_JOB_TASKS: dict[str, asyncio.Task[None]] = {}
 _MANAGED_JOB_LEASES: dict[str, ManagedJobLease] = {}
-
-
-def _utc() -> float:
-    """Return the current Unix timestamp."""
-    return time.time()
 
 
 def run_job_runner_from_args(args: Any) -> None:
@@ -476,10 +511,6 @@ def _store_transaction() -> Generator[dict[str, Any]]:
         _JOB_STORE_THREAD_LOCK.release()
 
 
-def _new_job_id() -> str:
-    return "job_" + uuid.uuid4().hex[:12]
-
-
 def _shell_safe_name(value: str) -> str:
     """Return a stable persistent-shell name derived from a job name."""
     cleaned = re.sub(r"[^A-Za-z0-9_.-]", "-", value.strip())[:48].strip(".-")
@@ -494,16 +525,6 @@ def _active_shell_ids(shells: Any) -> set[str]:
         for item in data.get("shells", data.get("sessions", []))
         if item.get("shell_id") or item.get("session_id")
     }
-
-
-def _job_shell_id(job: dict[str, Any]) -> str:
-    value = job.get("shell_id")
-    return str(value) if value else ""
-
-
-def _job_agent_session_id(job: dict[str, Any]) -> str | None:
-    value = job.get("session_id")
-    return value if isinstance(value, str) else None
 
 
 def _runner_argv(paths: dict[str, Path], cwd: Path) -> list[str]:
@@ -615,33 +636,6 @@ def _adopt_pending_retry(job: dict[str, Any]) -> None:
         value = job.get(pending_key)
         if value:
             job[active_key] = value
-
-
-def _begin_job_operation(job: dict[str, Any], kind: str) -> str:
-    operation_id = f"{kind}_{uuid.uuid4().hex}"
-    _ACTIVE_JOB_OPERATIONS.add(operation_id)
-    job["operation_id"] = operation_id
-    job["operation_kind"] = kind
-    job["operation_started_at"] = _utc()
-    return operation_id
-
-
-def _job_operation_matches(job: dict[str, Any], operation_id: str) -> bool:
-    return str(job.get("operation_id") or "") == operation_id
-
-
-def _job_operation_is_active(job: dict[str, Any], kind: str) -> bool:
-    operation_id = str(job.get("operation_id") or "")
-    return (
-        bool(operation_id)
-        and str(job.get("operation_kind") or "") == kind
-        and operation_id in _ACTIVE_JOB_OPERATIONS
-    )
-
-
-def _clear_job_operation(job: dict[str, Any]) -> None:
-    for key in ("operation_id", "operation_kind", "operation_started_at"):
-        job.pop(key, None)
 
 
 def _refresh_job_status(
@@ -825,64 +819,6 @@ def _refresh_job_status(
     return job
 
 
-def _public_job(job: dict[str, Any]) -> JobInfo:
-    """Return typed public metadata without exposing shell or runtime paths."""
-    return JobInfo.model_validate(
-        {
-            "job_id": str(job.get("job_id") or ""),
-            "kind": str(job.get("kind") or "shell"),
-            "name": str(job.get("name") or job.get("job_id") or ""),
-            "status": str(job.get("status") or "unknown"),
-            "command": str(job.get("command") or ""),
-            "cwd": str(job.get("cwd") or "."),
-            "session_id": str(job.get("session_id") or ""),
-            "progress": job.get("progress"),
-            "result": job.get("result"),
-            "created_at": float(job.get("created_at") or 0),
-            "updated_at": float(job.get("updated_at") or 0),
-            "last_started_at": (
-                float(job["last_started_at"])
-                if job.get("last_started_at") is not None
-                else None
-            ),
-            "completed_at": (
-                float(job["completed_at"])
-                if job.get("completed_at") is not None
-                else None
-            ),
-            "exit_code": (
-                int(job["exit_code"])
-                if job.get("exit_code") is not None
-                else None
-            ),
-            "error": (
-                str(job["error"]) if job.get("error") is not None else None
-            ),
-            "log_truncated": bool(job.get("log_truncated", False)),
-            "output_bytes": int(job.get("output_bytes") or 0),
-            "attempts": int(job.get("attempts") or 1),
-        }
-    )
-
-
-def _session_jobs(
-    jobs: list[dict[str, Any]], session_id: str
-) -> list[dict[str, Any]]:
-    return [row for row in jobs if _job_agent_session_id(row) == session_id]
-
-
-def _find_session_job(
-    store: dict[str, Any], session_id: str, job_id: str
-) -> dict[str, Any]:
-    for row in store.get("jobs", []):
-        if (
-            row.get("job_id") == job_id
-            and _job_agent_session_id(row) == session_id
-        ):
-            return row
-    raise KeyError(f"job not found in session: {job_id}")
-
-
 def _read_log_tail(path: str | None, lines: int) -> str:
     """Read a bounded UTF-8 tail from a durable job log."""
     if not path:
@@ -906,22 +842,6 @@ def _read_log_tail(path: str | None, lines: int) -> str:
         if data.endswith((b"\n", b"\r")) and text:
             text += "\n"
     return text
-
-
-_MANAGED_STATE_MAX_BYTES = 262_144
-
-
-def _managed_json_dict(value: Any, *, label: str) -> dict[str, Any]:
-    """Normalize and bound one managed-job payload, progress, or result object."""
-    normalized = to_jsonable(value)
-    if not isinstance(normalized, dict):
-        raise TypeError(f"managed job {label} must be a JSON object")
-    encoded = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
-    if len(encoded.encode("utf-8")) > _MANAGED_STATE_MAX_BYTES:
-        raise ValueError(
-            f"managed job {label} exceeds {_MANAGED_STATE_MAX_BYTES} bytes"
-        )
-    return normalized
 
 
 def register_managed_job_handler(kind: str, handler: ManagedJobHandler) -> None:
