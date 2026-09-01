@@ -40,6 +40,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "jobs/recovery.py",
     "jobs/runner.py",
     "jobs/runtime.py",
+    "jobs/shell.py",
     "jobs/state.py",
     "ops/patch/*.py",
     "ops/read.py",
