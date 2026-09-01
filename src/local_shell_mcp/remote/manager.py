@@ -12,12 +12,13 @@ import subprocess
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ..audit import audit
-from ..config.settings import get_settings
+from ..config.settings import Settings, get_settings
 from ..persistence import get_state_store
 from ..schemas.result_models.remote import (
     RemoteInviteOutput,
@@ -50,9 +51,9 @@ def _utc() -> float:
     return time.time()
 
 
-def _heartbeat_interval_s() -> int:
+def _heartbeat_interval_s(settings: Settings) -> int:
     """Return a bounded heartbeat cadence for workers executing long jobs."""
-    return max(5, min(get_settings().remote_poll_timeout_s // 2, 30))
+    return max(5, min(settings.remote_poll_timeout_s // 2, 30))
 
 
 def _validate_machine_name(value: str) -> str:
@@ -270,7 +271,10 @@ class RemoteWorker:
 class RemoteManager:
     """Coordinate remote worker enrollment, polling, jobs, and persisted identity."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self, settings_provider: Callable[[], Settings] = get_settings
+    ) -> None:
+        self._settings_provider = settings_provider
         self.invites: dict[str, RemoteInvite] = {}
         self.workers: dict[str, RemoteWorker] = {}
         self.tokens: dict[str, str] = {}
@@ -280,6 +284,10 @@ class RemoteManager:
         self._enrollment_lock = asyncio.Lock()
         self._state_lock = threading.RLock()
         self._registry_loaded_path: Path | None = None
+
+    def _settings(self) -> Settings:
+        """Return the settings dependency supplied at composition time."""
+        return self._settings_provider()
 
     def _registry_path(self) -> Path:
         return get_state_store().layout.remote_workers_path
@@ -425,7 +433,7 @@ class RemoteManager:
                 temporary.unlink(missing_ok=True)
 
     def _join_url(self) -> str:
-        return get_settings().resolved_base_url + REMOTE_JOIN_PATH
+        return self._settings().resolved_base_url + REMOTE_JOIN_PATH
 
     def _prune_invites_unlocked(self) -> None:
         now = _utc()
@@ -437,13 +445,13 @@ class RemoteManager:
 
     def _prune_cancelled_jobs_unlocked(self) -> None:
         now = _utc()
-        ttl = max(60, int(get_settings().remote_job_timeout_s))
+        ttl = max(60, int(self._settings().remote_job_timeout_s))
         self.cancelled_jobs = {
             job_id: cancelled_at
             for job_id, cancelled_at in self.cancelled_jobs.items()
             if now - cancelled_at <= ttl
         }
-        cap = max(64, int(get_settings().remote_max_pending_jobs) * 4)
+        cap = max(64, int(self._settings().remote_max_pending_jobs) * 4)
         if len(self.cancelled_jobs) > cap:
             newest = sorted(
                 self.cancelled_jobs.items(),
@@ -467,7 +475,7 @@ class RemoteManager:
         ttl_s: int | None = None,
     ) -> RemoteInviteOutput:
         """Create one bounded, one-time remote-worker enrollment invite."""
-        settings = get_settings()
+        settings = self._settings()
         ttl = max(60, min(ttl_s or settings.remote_invite_ttl_s, 24 * 3600))
         normalized_name = _validate_machine_name(name) if name else None
         code = "lsmcp_inv_" + secrets.token_urlsafe(24)
@@ -550,8 +558,8 @@ class RemoteManager:
             "token": token,
             "name": name,
             "poll_interval_s": 0,
-            "poll_timeout_s": get_settings().remote_poll_timeout_s,
-            "heartbeat_interval_s": _heartbeat_interval_s(),
+            "poll_timeout_s": self._settings().remote_poll_timeout_s,
+            "heartbeat_interval_s": _heartbeat_interval_s(self._settings()),
             "upgrade": _runtime_upgrade(runtime_report),
         }
 
@@ -583,8 +591,8 @@ class RemoteManager:
             "token": token,
             "name": name,
             "poll_interval_s": 0,
-            "poll_timeout_s": get_settings().remote_poll_timeout_s,
-            "heartbeat_interval_s": _heartbeat_interval_s(),
+            "poll_timeout_s": self._settings().remote_poll_timeout_s,
+            "heartbeat_interval_s": _heartbeat_interval_s(self._settings()),
             "upgrade": _runtime_upgrade(runtime_report),
         }
 
@@ -608,7 +616,9 @@ class RemoteManager:
     ) -> dict[str, Any]:
         """Negotiate runtime state, then long-poll for the next live job."""
         report = _validate_poll_report(payload)
-        configured_poll_timeout_s = float(get_settings().remote_poll_timeout_s)
+        configured_poll_timeout_s = float(
+            self._settings().remote_poll_timeout_s
+        )
         effective_poll_timeout_s = configured_poll_timeout_s
         try:
             worker_poll_timeout_s = float(
@@ -725,7 +735,7 @@ class RemoteManager:
         timeout_s: int | None = None,
     ) -> dict[str, Any]:
         """Queue one bounded remote tool call and await its assigned result."""
-        settings = get_settings()
+        settings = self._settings()
         effective_timeout = timeout_s or settings.remote_job_timeout_s
         job_id = "job_" + uuid.uuid4().hex
         loop = asyncio.get_running_loop()
@@ -795,7 +805,9 @@ class RemoteManager:
             worker = self.workers.get(machine)
             if worker is None:
                 return False
-            offline_after_s = max(2 * get_settings().remote_poll_timeout_s, 60)
+            offline_after_s = max(
+                2 * self._settings().remote_poll_timeout_s, 60
+            )
             if _utc() - worker.last_seen > offline_after_s:
                 return False
             return capability in worker.capabilities
@@ -805,7 +817,9 @@ class RemoteManager:
         with self._state_lock:
             self._load_registry_unlocked()
             now = _utc()
-            offline_after_s = max(2 * get_settings().remote_poll_timeout_s, 60)
+            offline_after_s = max(
+                2 * self._settings().remote_poll_timeout_s, 60
+            )
             rows = []
             counts = {"online": 0, "offline": 0}
             for worker in self.workers.values():
