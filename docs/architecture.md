@@ -318,6 +318,19 @@ Rejected ownership alternatives:
   not import controller-side public-tool orchestration, so migrated `tools/` files
   must not be included incidentally by operation or schema wildcards.
 
+## `tool_session`: explicit workspace-session state
+
+The `tool_session` package owns durable local/remote agent-session metadata,
+grounding snapshots, session admission, resource ownership, and retention policy.
+Filesystem layout and atomic storage mechanics remain below it in `persistence`.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `tool_session/store.py` | Retains the stable `ToolSessionStore` API and coordinates session lifecycle, pruning, persistent-shell ownership, and grounding-snapshot operations. | Callers need one session authority while the implementation is split by reason-to-change without duplicating lifecycle invariants. |
+| `tool_session/records.py` | Defines durable `AgentSession`/`SnapshotRecord` records, opaque-id helpers, payload validation, compatibility decoding, and exact snapshot JSON sizing. | Durable formats are dependency-leaf contracts shared by repositories and policy code; they must not depend on store orchestration. |
+| `tool_session/lifecycle.py` | Provides keyed in-process and cross-process session lifecycle leases. | Admission ordering and lifecycle serialization are shared concurrency primitives below the session store and job/shell callers. |
+| `tool_session/environment.py` / `selectors.py` | Normalize session environment bindings and semantic session selectors. | These are narrow session-domain helpers independent of persistence orchestration. |
+
 ## `persistence`: shared private-state layout and file-store primitives
 
 The `persistence` package owns the canonical directory layout below the configured

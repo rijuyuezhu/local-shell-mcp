@@ -1,24 +1,40 @@
 """Durable state for explicit agent/workspace sessions and grounding snapshots."""
 
 import hashlib
-import json
-import secrets
-import string
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any
 
 from ..config.settings import Settings, get_settings
 from ..ops.utils.path import resolve_path
 from ..persistence import StateStore, get_state_store
 from ..utils.runtime_identity import managed_job_lease_state
 from .lifecycle import try_session_lifecycle_lease
+from .records import (
+    SESSION_ID_ALPHABET as _SESSION_ID_ALPHABET,
+)
+from .records import (
+    SESSION_ID_LENGTH as _SESSION_ID_LENGTH,
+)
+from .records import (
+    AgentSession,
+    SessionTarget,
+    SnapshotRecord,
+    encoded_snapshot_payload_bytes,
+    new_snapshot_id,
+    session_from_payload,
+    snapshot_from_payload,
+    valid_session_id,
+)
+from .records import (
+    generate_session_id as _generate_session_id,
+)
 
-SESSION_ID_ALPHABET = string.ascii_letters + string.digits
-SESSION_ID_LENGTH = 8
+SESSION_ID_ALPHABET = _SESSION_ID_ALPHABET
+SESSION_ID_LENGTH = _SESSION_ID_LENGTH
 SESSION_METADATA_MAX_BYTES = 256_000
 SESSION_SNAPSHOTS_MAX_BYTES = 16_000_000
 SESSION_ACTIVE_WINDOW_S = 5 * 60 * 60
@@ -30,97 +46,21 @@ SESSION_TERMINATION_PROMPT = (
     "tools for this session. Tell the user that execution was terminated by "
     "the human operator."
 )
-type SessionTarget = Literal["local", "remote"]
-
-
-@dataclass(frozen=True)
-class AgentSession:
-    """One explicit agent workspace session."""
-
-    session_id: str
-    """Opaque 8-character alphanumeric session id returned to the agent."""
-
-    target: SessionTarget
-    """Execution target bound to this session."""
-
-    workdir: str
-    """Canonical workdir bound to this session."""
-
-    machine: str | None
-    """Remote worker machine name for remote sessions."""
-
-    worker_session_id: str | None
-    """Worker-side paired session id for remote sessions."""
-
-    created_at: float
-    """Unix timestamp when this session was created."""
-
-    updated_at: float
-    """Unix timestamp when this session was last touched."""
-
-    expires_at: float | None = None
-    """Optional Unix timestamp when this session expires."""
-
-    label: str | None = None
-    """Optional human-readable session label."""
-
-    termination_requested_at: float | None = None
-    """Unix timestamp when the human control plane requested immediate stop."""
-
-    persistent_shell_ids: tuple[str, ...] = ()
-    """Durable local PTY ids that must keep this session from being pruned."""
-
-
-@dataclass(frozen=True)
-class SnapshotRecord:
-    """One displayed file snapshot recorded for stale-edit checks."""
-
-    session_id: str
-    """Agent grounding session that owns this snapshot."""
-
-    snapshot_id: str
-    """Opaque snapshot handle returned to the agent."""
-
-    path: str
-    """Workspace-relative file path displayed to the agent."""
-
-    file_sha256: str
-    """SHA-256 digest of the complete file when displayed."""
-
-    total_lines: int
-    """Decoded line count at the time this snapshot was displayed."""
-
-    seen_ranges: tuple[tuple[int, int], ...]
-    """Inclusive 1-based line ranges that were actually displayed."""
-
-    created_at: float
-    """Unix timestamp when this snapshot was recorded."""
-
-    sequence: int = 0
-    """Durable insertion sequence used to break equal timestamp ties."""
 
 
 def generate_session_id() -> str:
-    """Return one opaque 8-character alphanumeric agent session id."""
-    return "".join(
-        secrets.choice(SESSION_ID_ALPHABET) for _ in range(SESSION_ID_LENGTH)
-    )
+    """Compatibility facade for opaque session-id allocation."""
+    return _generate_session_id()
 
 
 def _valid_session_id(value: Any) -> str | None:
-    """Return one normalized agent session id, or None for invalid input."""
-    if not isinstance(value, str):
-        return None
-    if len(value) != SESSION_ID_LENGTH or any(
-        character not in SESSION_ID_ALPHABET for character in value
-    ):
-        return None
-    return value
+    """Compatibility facade for durable session-id validation."""
+    return valid_session_id(value)
 
 
 def _new_snapshot_id() -> str:
-    """Return an opaque snapshot id for one displayed file view."""
-    return secrets.token_hex(6)
+    """Compatibility facade for opaque snapshot-id allocation."""
+    return new_snapshot_id()
 
 
 class UnknownAgentSessionError(ValueError):
@@ -158,116 +98,11 @@ class ToolSessionStore:
         """Return the settings dependency supplied at composition time."""
         return self._settings_provider()
 
-    @staticmethod
-    def _required_float(payload: dict[str, Any], field: str) -> float:
-        candidate = payload.get(field)
-        if isinstance(candidate, bool) or not isinstance(
-            candidate, int | float
-        ):
-            raise ValueError(f"metadata contains an invalid {field}")
-        return float(candidate)
-
-    @staticmethod
-    def _required_int(payload: dict[str, Any], field: str) -> int:
-        candidate = payload.get(field)
-        if isinstance(candidate, bool) or not isinstance(candidate, int):
-            raise ValueError(f"metadata contains an invalid {field}")
-        return candidate
-
-    @staticmethod
-    def _session_from_payload(value: Any) -> AgentSession:
-        if not isinstance(value, dict):
-            raise ValueError("session metadata must be a JSON object")
-        payload = cast(dict[str, Any], value)
-        session_id = _valid_session_id(payload.get("session_id"))
-        if session_id is None:
-            raise ValueError("session metadata contains an invalid session_id")
-        target_value = str(payload.get("target") or "")
-        if target_value not in {"local", "remote"}:
-            raise ValueError("session metadata contains an invalid target")
-        target = cast(SessionTarget, target_value)
-        workdir = str(payload.get("workdir") or "")
-        if not workdir:
-            raise ValueError("session metadata contains an empty workdir")
-        machine = payload.get("machine")
-        worker_session_id = payload.get("worker_session_id")
-        if target == "local":
-            machine = None
-            worker_session_id = None
-        elif not machine or not worker_session_id:
-            raise ValueError(
-                "remote session metadata is missing its worker binding"
-            )
-        shell_ids = payload.get("persistent_shell_ids", [])
-        if not isinstance(shell_ids, list):
-            raise ValueError(
-                "session metadata contains invalid persistent_shell_ids"
-            )
-        normalized_shell_ids = tuple(
-            dict.fromkeys(str(shell_id) for shell_id in shell_ids if shell_id)
-        )
-        if target == "remote":
-            normalized_shell_ids = ()
-        return AgentSession(
-            session_id=session_id,
-            target=target,
-            workdir=workdir,
-            machine=None if machine is None else str(machine),
-            worker_session_id=(
-                None if worker_session_id is None else str(worker_session_id)
-            ),
-            created_at=ToolSessionStore._required_float(payload, "created_at"),
-            updated_at=ToolSessionStore._required_float(payload, "updated_at"),
-            expires_at=(
-                None
-                if payload.get("expires_at") is None
-                else ToolSessionStore._required_float(payload, "expires_at")
-            ),
-            label=(
-                None if payload.get("label") is None else str(payload["label"])
-            ),
-            termination_requested_at=(
-                None
-                if payload.get("termination_requested_at") is None
-                else ToolSessionStore._required_float(
-                    payload, "termination_requested_at"
-                )
-            ),
-            persistent_shell_ids=normalized_shell_ids,
-        )
-
-    @staticmethod
-    def _snapshot_from_payload(
-        value: Any, *, fallback_sequence: int = 0
-    ) -> SnapshotRecord:
-        if not isinstance(value, dict):
-            raise ValueError("snapshot metadata must be a JSON object")
-        payload = cast(dict[str, Any], value)
-        ranges = payload.get("seen_ranges")
-        if not isinstance(ranges, list):
-            raise ValueError("snapshot metadata contains invalid seen_ranges")
-        normalized_ranges: list[tuple[int, int]] = []
-        for item in ranges:
-            if not isinstance(item, list | tuple) or len(item) != 2:
-                raise ValueError("snapshot metadata contains an invalid range")
-            normalized_ranges.append((int(item[0]), int(item[1])))
-        sequence = (
-            fallback_sequence
-            if payload.get("sequence") is None
-            else ToolSessionStore._required_int(payload, "sequence")
-        )
-        if sequence < 0:
-            raise ValueError("snapshot metadata contains invalid sequence")
-        return SnapshotRecord(
-            session_id=str(payload.get("session_id") or ""),
-            snapshot_id=str(payload.get("snapshot_id") or ""),
-            path=str(payload.get("path") or ""),
-            file_sha256=str(payload.get("file_sha256") or ""),
-            total_lines=ToolSessionStore._required_int(payload, "total_lines"),
-            seen_ranges=tuple(normalized_ranges),
-            created_at=ToolSessionStore._required_float(payload, "created_at"),
-            sequence=sequence,
-        )
+    _session_from_payload = staticmethod(session_from_payload)
+    _snapshot_from_payload = staticmethod(snapshot_from_payload)
+    _encoded_snapshot_payload_bytes = staticmethod(
+        encoded_snapshot_payload_bytes
+    )
 
     def _reset_for_current_root_locked(self) -> None:
         root = self._state_store.layout.root
@@ -665,20 +500,6 @@ class ToolSessionStore:
             self._state_store.remove(path)
             return
         self._state_store.write_json(path, {"snapshots": snapshots})
-
-    @staticmethod
-    def _encoded_snapshot_payload_bytes(
-        snapshots: list[SnapshotRecord],
-    ) -> int:
-        """Return exact bytes produced by StateStore.write_json for snapshots."""
-        encoded = json.dumps(
-            {"snapshots": [asdict(snapshot) for snapshot in snapshots]},
-            ensure_ascii=False,
-            allow_nan=False,
-            indent=2,
-            sort_keys=True,
-        )
-        return len((encoded + "\n").encode("utf-8"))
 
     def _prune_snapshots_locked(self, session_id: str) -> None:
         """Keep the newest per-session snapshots within count and byte limits."""
