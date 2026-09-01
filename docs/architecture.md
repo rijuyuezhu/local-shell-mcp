@@ -326,8 +326,9 @@ Filesystem layout and atomic storage mechanics remain below it in `persistence`.
 
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
-| `tool_session/store.py` | Retains the stable `ToolSessionStore` API and coordinates session lifecycle, pruning, persistent-shell ownership, and grounding-snapshot operations. | Callers need one session authority while the implementation is split by reason-to-change without duplicating lifecycle invariants. |
+| `tool_session/store.py` | Retains the stable `ToolSessionStore` API and coordinates session lifecycle, pruning, persistent-shell ownership, and snapshot admission/transactions. | Callers need one session authority while the implementation is split by reason-to-change without duplicating lifecycle invariants. |
 | `tool_session/records.py` | Defines durable `AgentSession`/`SnapshotRecord` records, opaque-id helpers, payload validation, compatibility decoding, and exact snapshot JSON sizing. | Durable formats are dependency-leaf contracts shared by repositories and policy code; they must not depend on store orchestration. |
+| `tool_session/snapshots.py` | Owns per-session grounding-snapshot cache, loading, retention, and persistence below an already-admitted session transaction. | Snapshot storage policy can change independently while session existence, lifecycle locking, and transaction admission remain authoritative in `ToolSessionStore`. |
 | `tool_session/lifecycle.py` | Provides keyed in-process and cross-process session lifecycle leases. | Admission ordering and lifecycle serialization are shared concurrency primitives below the session store and job/shell callers. |
 | `tool_session/environment.py` / `selectors.py` | Normalize session environment bindings and semantic session selectors. | These are narrow session-domain helpers independent of persistence orchestration. |
 

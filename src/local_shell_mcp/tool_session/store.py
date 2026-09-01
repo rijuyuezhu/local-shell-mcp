@@ -32,11 +32,17 @@ from .records import (
 from .records import (
     generate_session_id as _generate_session_id,
 )
+from .snapshots import (
+    SESSION_SNAPSHOTS_MAX_BYTES as _SESSION_SNAPSHOTS_MAX_BYTES,
+)
+from .snapshots import (
+    SnapshotRepository,
+)
 
 SESSION_ID_ALPHABET = _SESSION_ID_ALPHABET
 SESSION_ID_LENGTH = _SESSION_ID_LENGTH
 SESSION_METADATA_MAX_BYTES = 256_000
-SESSION_SNAPSHOTS_MAX_BYTES = 16_000_000
+SESSION_SNAPSHOTS_MAX_BYTES = _SESSION_SNAPSHOTS_MAX_BYTES
 SESSION_ACTIVE_WINDOW_S = 5 * 60 * 60
 JOB_STORE_READ_MAX_BYTES = 64 * 1024 * 1024
 ACTIVE_JOB_STATUSES = {"starting", "running", "stopping", "retrying"}
@@ -90,9 +96,11 @@ class ToolSessionStore:
         self._lock = threading.RLock()
         self._state_store = state_store or get_state_store()
         self._settings_provider = settings_provider
+        self._snapshot_repository = SnapshotRepository(
+            self._state_store, self._settings_provider
+        )
         self._loaded_root: Path | None = None
         self._sessions: dict[str, AgentSession] = {}
-        self._snapshots: dict[tuple[str, str], SnapshotRecord] = {}
 
     def _settings(self) -> Settings:
         """Return the settings dependency supplied at composition time."""
@@ -109,14 +117,11 @@ class ToolSessionStore:
         if self._loaded_root == root:
             return
         self._sessions.clear()
-        self._snapshots.clear()
+        self._snapshot_repository.clear_cache()
         self._loaded_root = root
 
     def _metadata_path(self, session_id: str) -> Path:
         return self._state_store.layout.session_metadata_path(session_id)
-
-    def _snapshots_path(self, session_id: str) -> Path:
-        return self._state_store.layout.session_snapshots_path(session_id)
 
     def _transaction_path(self, session_id: str) -> Path:
         return self._state_store.layout.session_transaction_path(session_id)
@@ -128,11 +133,7 @@ class ToolSessionStore:
             recursive=True,
         )
         self._sessions.pop(session_id, None)
-        self._snapshots = {
-            key: value
-            for key, value in self._snapshots.items()
-            if key[0] != session_id
-        }
+        self._snapshot_repository.forget_session(session_id)
 
     def _managed_payload_session_ids_locked(self, payload: Any) -> set[str]:
         """Return existing agent sessions referenced by managed-job payloads."""
@@ -458,81 +459,9 @@ class ToolSessionStore:
             )
         return session
 
-    def _load_snapshots_locked(self, session_id: str) -> None:
-        self._snapshots = {
-            key: value
-            for key, value in self._snapshots.items()
-            if key[0] != session_id
-        }
-        payload = self._state_store.read_json(
-            self._snapshots_path(session_id),
-            max_bytes=SESSION_SNAPSHOTS_MAX_BYTES,
-        )
-        if payload is None:
-            return
-        if not isinstance(payload, dict) or not isinstance(
-            payload.get("snapshots"), list
-        ):
-            raise ValueError("session snapshots must contain a snapshots array")
-        for sequence, value in enumerate(payload["snapshots"], start=1):
-            snapshot = self._snapshot_from_payload(
-                value, fallback_sequence=sequence
-            )
-            if snapshot.session_id != session_id:
-                raise ValueError(
-                    "snapshot owner does not match its session directory"
-                )
-            self._snapshots[(session_id, snapshot.snapshot_id)] = snapshot
-
     def _write_session_locked(self, session: AgentSession) -> None:
         self._state_store.write_json(
             self._metadata_path(session.session_id), asdict(session)
-        )
-
-    def _write_snapshots_locked(self, session_id: str) -> None:
-        snapshots = [
-            asdict(snapshot)
-            for (owner, _), snapshot in self._snapshots.items()
-            if owner == session_id
-        ]
-        path = self._snapshots_path(session_id)
-        if not snapshots:
-            self._state_store.remove(path)
-            return
-        self._state_store.write_json(path, {"snapshots": snapshots})
-
-    def _prune_snapshots_locked(self, session_id: str) -> None:
-        """Keep the newest per-session snapshots within count and byte limits."""
-        settings = self._settings()
-        snapshots = sorted(
-            (
-                snapshot
-                for (owner, _), snapshot in self._snapshots.items()
-                if owner == session_id
-            ),
-            key=lambda snapshot: (snapshot.created_at, snapshot.sequence),
-            reverse=True,
-        )[: int(settings.max_session_snapshots)]
-        maximum_bytes = int(settings.max_session_snapshot_bytes)
-        low = 0
-        high = len(snapshots)
-        while low < high:
-            middle = (low + high + 1) // 2
-            if (
-                self._encoded_snapshot_payload_bytes(snapshots[:middle])
-                <= maximum_bytes
-            ):
-                low = middle
-            else:
-                high = middle - 1
-        kept = snapshots[:low]
-        self._snapshots = {
-            key: value
-            for key, value in self._snapshots.items()
-            if key[0] != session_id
-        }
-        self._snapshots.update(
-            {(session_id, snapshot.snapshot_id): snapshot for snapshot in kept}
         )
 
     def create_session(
@@ -927,12 +856,7 @@ class ToolSessionStore:
                 )
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
-                self._snapshots = {
-                    key: value
-                    for key, value in self._snapshots.items()
-                    if key[0] != session_id
-                }
-                self._state_store.remove(self._snapshots_path(session_id))
+                self._snapshot_repository.remove_session(session_id)
                 return updated
 
     def update_remote_session_workdir(
@@ -956,12 +880,7 @@ class ToolSessionStore:
                 )
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
-                self._snapshots = {
-                    key: value
-                    for key, value in self._snapshots.items()
-                    if key[0] != session_id
-                }
-                self._state_store.remove(self._snapshots_path(session_id))
+                self._snapshot_repository.remove_session(session_id)
                 return updated
 
     def end_session(self, session_id: str) -> AgentSession:
@@ -1005,16 +924,7 @@ class ToolSessionStore:
                 self._transaction_path(session_id)
             ):
                 self._require_session_locked(session_id)
-                self._load_snapshots_locked(session_id)
-                next_sequence = 1 + max(
-                    (
-                        snapshot.sequence
-                        for (owner, _), snapshot in self._snapshots.items()
-                        if owner == session_id
-                    ),
-                    default=0,
-                )
-                record = SnapshotRecord(
+                return self._snapshot_repository.record(
                     session_id=session_id,
                     snapshot_id=_new_snapshot_id(),
                     path=path,
@@ -1022,20 +932,7 @@ class ToolSessionStore:
                     total_lines=total_lines,
                     seen_ranges=seen_ranges,
                     created_at=time.time(),
-                    sequence=next_sequence,
                 )
-                maximum_bytes = int(self._settings().max_session_snapshot_bytes)
-                if (
-                    self._encoded_snapshot_payload_bytes([record])
-                    > maximum_bytes
-                ):
-                    raise ValueError(
-                        "snapshot metadata exceeds max_session_snapshot_bytes"
-                    )
-                self._snapshots[(session_id, record.snapshot_id)] = record
-                self._prune_snapshots_locked(session_id)
-                self._write_snapshots_locked(session_id)
-                return record
 
     def get_snapshot(
         self, session_id: str, snapshot_id: str
@@ -1047,8 +944,7 @@ class ToolSessionStore:
                 self._transaction_path(session_id)
             ):
                 self._require_session_locked(session_id)
-                self._load_snapshots_locked(session_id)
-                return self._snapshots.get((session_id, snapshot_id))
+                return self._snapshot_repository.get(session_id, snapshot_id)
 
     def clear(self) -> None:
         """Clear all durable and in-process session state. Intended for tests."""
@@ -1058,7 +954,7 @@ class ToolSessionStore:
                 self._state_store.layout.sessions_dir, recursive=True
             )
             self._sessions.clear()
-            self._snapshots.clear()
+            self._snapshot_repository.clear_cache()
 
 
 def resolve_session_path(
