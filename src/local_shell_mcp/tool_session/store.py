@@ -4,7 +4,7 @@ import hashlib
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +31,7 @@ from .records import (
 from .records import (
     generate_session_id as _generate_session_id,
 )
+from .repository import SessionRepository
 from .resources import (
     bind_shell,
     ensure_shell_unowned,
@@ -119,6 +120,10 @@ class ToolSessionStore:
         self._lock = threading.RLock()
         self._state_store = state_store or get_state_store()
         self._settings_provider = settings_provider
+        self._session_repository = SessionRepository(
+            self._state_store,
+            metadata_max_bytes=SESSION_METADATA_MAX_BYTES,
+        )
         self._job_protection_reader = JobProtectionReader(
             self._state_store,
             status_max_bytes=SESSION_METADATA_MAX_BYTES,
@@ -126,8 +131,6 @@ class ToolSessionStore:
         self._snapshot_repository = SnapshotRepository(
             self._state_store, self._settings_provider
         )
-        self._loaded_root: Path | None = None
-        self._sessions: dict[str, AgentSession] = {}
 
     def _settings(self) -> Settings:
         """Return the settings dependency supplied at composition time."""
@@ -140,26 +143,18 @@ class ToolSessionStore:
     )
 
     def _reset_for_current_root_locked(self) -> None:
-        root = self._state_store.layout.root
-        if self._loaded_root == root:
-            return
-        self._sessions.clear()
-        self._snapshot_repository.clear_cache()
-        self._loaded_root = root
+        if self._session_repository.reset_for_current_root():
+            self._snapshot_repository.clear_cache()
 
     def _metadata_path(self, session_id: str) -> Path:
-        return self._state_store.layout.session_metadata_path(session_id)
+        return self._session_repository.metadata_path(session_id)
 
     def _transaction_path(self, session_id: str) -> Path:
-        return self._state_store.layout.session_transaction_path(session_id)
+        return self._session_repository.transaction_path(session_id)
 
     def _remove_session_state_locked(self, session_id: str) -> None:
         """Remove one session directory and all process-local cached state."""
-        self._state_store.remove(
-            self._state_store.layout.session_dir(session_id),
-            recursive=True,
-        )
-        self._sessions.pop(session_id, None)
+        self._session_repository.remove(session_id)
         self._snapshot_repository.forget_session(session_id)
 
     def _active_job_session_ids_locked(self) -> set[str] | None:
@@ -186,22 +181,7 @@ class ToolSessionStore:
 
     def _read_all_sessions_locked(self) -> dict[str, AgentSession]:
         """Load valid durable session metadata without applying retention."""
-        sessions: dict[str, AgentSession] = {}
-        for directory in self._state_store.iter_directories(
-            self._state_store.layout.sessions_dir
-        ):
-            try:
-                session = self._session_from_payload(
-                    self._state_store.read_json(
-                        directory / "session.json",
-                        max_bytes=SESSION_METADATA_MAX_BYTES,
-                    )
-                )
-            except OSError, TypeError, ValueError:
-                continue
-            if session.session_id == directory.name:
-                sessions[session.session_id] = session
-        return sessions
+        return self._session_repository.read_all()
 
     def _expired_prune_eligible_locked(
         self,
@@ -320,7 +300,7 @@ class ToolSessionStore:
                         current_sessions.pop(session.session_id, None)
                         sessions = current_sessions
 
-        self._sessions = sessions
+        self._session_repository.replace_cache(sessions)
         return sorted(
             sessions.values(),
             key=lambda session: (session.updated_at, session.created_at),
@@ -328,18 +308,7 @@ class ToolSessionStore:
         )
 
     def _load_session_locked(self, session_id: str) -> AgentSession | None:
-        value = self._state_store.read_json(
-            self._metadata_path(session_id),
-            max_bytes=SESSION_METADATA_MAX_BYTES,
-        )
-        if value is None:
-            self._sessions.pop(session_id, None)
-            return None
-        session = self._session_from_payload(value)
-        if session.session_id != session_id:
-            raise ValueError("session directory and metadata id do not match")
-        self._sessions[session_id] = session
-        return session
+        return self._session_repository.load(session_id)
 
     def _require_session_locked(
         self, session_id: str, *, allow_expired: bool = False
@@ -367,9 +336,7 @@ class ToolSessionStore:
         return session
 
     def _write_session_locked(self, session: AgentSession) -> None:
-        self._state_store.write_json(
-            self._metadata_path(session.session_id), asdict(session)
-        )
+        self._session_repository.write(session)
 
     def create_session(
         self,
@@ -433,7 +400,6 @@ class ToolSessionStore:
                     self._transaction_path(session_id)
                 ):
                     self._write_session_locked(session)
-                    self._sessions[session_id] = session
                     return session
 
     def require_session(self, session_id: str) -> AgentSession:
@@ -465,7 +431,6 @@ class ToolSessionStore:
                     ),
                 )
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 return updated
 
     def touch_session(self, session_id: str) -> AgentSession:
@@ -478,7 +443,6 @@ class ToolSessionStore:
                 session = self._require_session_locked(session_id)
                 updated = replace(session, updated_at=time.time())
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 return updated
 
     def register_persistent_shell(
@@ -498,7 +462,6 @@ class ToolSessionStore:
                     updated_at=time.time(),
                 )
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 return updated
 
     def reserve_persistent_shell(
@@ -537,7 +500,6 @@ class ToolSessionStore:
                 if not added:
                     return False
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 return True
 
     def release_session_persistent_shell(
@@ -557,7 +519,6 @@ class ToolSessionStore:
                 if updated is current:
                     return current
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 return updated
 
     def release_persistent_shell(self, shell_id: str) -> None:
@@ -581,7 +542,6 @@ class ToolSessionStore:
                     if updated is current:
                         continue
                     self._write_session_locked(updated)
-                    self._sessions[session.session_id] = updated
 
     def persistent_shell_ids(self) -> set[str]:
         """Return all durable persistent shell ids without pruning sessions."""
@@ -609,7 +569,6 @@ class ToolSessionStore:
                 if updated is current:
                     return current
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 return updated
 
     def reconcile_persistent_shells(self, live_shell_ids: set[str]) -> None:
@@ -634,7 +593,6 @@ class ToolSessionStore:
                     if updated is current:
                         continue
                     self._write_session_locked(updated)
-                    self._sessions[session.session_id] = updated
 
     def request_termination(self, session_id: str) -> AgentSession:
         """Persist an irreversible immediate-stop request for one session."""
@@ -653,7 +611,6 @@ class ToolSessionStore:
                     ),
                 )
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 return updated
 
     def assert_tool_call_allowed(
@@ -707,7 +664,6 @@ class ToolSessionStore:
                     updated_at=time.time(),
                 )
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 self._snapshot_repository.remove_session(session_id)
                 return updated
 
@@ -731,7 +687,6 @@ class ToolSessionStore:
                     updated_at=time.time(),
                 )
                 self._write_session_locked(updated)
-                self._sessions[session_id] = updated
                 self._snapshot_repository.remove_session(session_id)
                 return updated
 
@@ -805,7 +760,7 @@ class ToolSessionStore:
             self._state_store.remove(
                 self._state_store.layout.sessions_dir, recursive=True
             )
-            self._sessions.clear()
+            self._session_repository.clear_cache()
             self._snapshot_repository.clear_cache()
 
 
