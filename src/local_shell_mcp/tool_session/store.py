@@ -11,7 +11,6 @@ from typing import Any
 from ..config.settings import Settings, get_settings
 from ..ops.utils.path import resolve_path
 from ..persistence import StateStore, get_state_store
-from ..utils.runtime_identity import managed_job_lease_state
 from .lifecycle import try_session_lifecycle_lease
 from .records import (
     SESSION_ID_ALPHABET as _SESSION_ID_ALPHABET,
@@ -45,20 +44,31 @@ from .resources import (
 from .resources import (
     persistent_shell_ids as collect_persistent_shell_ids,
 )
+from .retention import (
+    ACTIVE_JOB_STATUSES as _ACTIVE_JOB_STATUSES,
+)
+from .retention import (
+    JOB_STORE_READ_MAX_BYTES as _JOB_STORE_READ_MAX_BYTES,
+)
+from .retention import (
+    JobProtectionReader,
+    expired_prune_eligible,
+    overflow_prune_eligible,
+    session_expired_by_policy,
+    session_has_active_jobs,
+)
 from .snapshots import (
     SESSION_SNAPSHOTS_MAX_BYTES as _SESSION_SNAPSHOTS_MAX_BYTES,
 )
-from .snapshots import (
-    SnapshotRepository,
-)
+from .snapshots import SnapshotRepository
 
 SESSION_ID_ALPHABET = _SESSION_ID_ALPHABET
 SESSION_ID_LENGTH = _SESSION_ID_LENGTH
 SESSION_METADATA_MAX_BYTES = 256_000
 SESSION_SNAPSHOTS_MAX_BYTES = _SESSION_SNAPSHOTS_MAX_BYTES
 SESSION_ACTIVE_WINDOW_S = 5 * 60 * 60
-JOB_STORE_READ_MAX_BYTES = 64 * 1024 * 1024
-ACTIVE_JOB_STATUSES = {"starting", "running", "stopping", "retrying"}
+JOB_STORE_READ_MAX_BYTES = _JOB_STORE_READ_MAX_BYTES
+ACTIVE_JOB_STATUSES = _ACTIVE_JOB_STATUSES
 SESSION_TERMINATION_PROMPT = (
     "This session was marked for immediate termination by the human control "
     "plane. Stop immediately. Do not perform any further work or call any more "
@@ -109,6 +119,10 @@ class ToolSessionStore:
         self._lock = threading.RLock()
         self._state_store = state_store or get_state_store()
         self._settings_provider = settings_provider
+        self._job_protection_reader = JobProtectionReader(
+            self._state_store,
+            status_max_bytes=SESSION_METADATA_MAX_BYTES,
+        )
         self._snapshot_repository = SnapshotRepository(
             self._state_store, self._settings_provider
         )
@@ -148,137 +162,24 @@ class ToolSessionStore:
         self._sessions.pop(session_id, None)
         self._snapshot_repository.forget_session(session_id)
 
-    def _managed_payload_session_ids_locked(self, payload: Any) -> set[str]:
-        """Return existing agent sessions referenced by managed-job payloads."""
-        protected: set[str] = set()
-        pending = [payload]
-        while pending:
-            current = pending.pop()
-            if isinstance(current, dict):
-                for key, value in current.items():
-                    if isinstance(key, str) and (
-                        key == "session_id" or key.endswith("_session_id")
-                    ):
-                        session_id = _valid_session_id(value)
-                        if (
-                            session_id is not None
-                            and self._metadata_path(session_id).exists()
-                        ):
-                            protected.add(session_id)
-                    if isinstance(value, dict | list):
-                        pending.append(value)
-            elif isinstance(current, list):
-                pending.extend(current)
-        return protected
-
     def _active_job_session_ids_locked(self) -> set[str] | None:
         """Load sessions protected by active durable jobs, or None if uncertain."""
-        primary = self._state_store.layout.jobs_store_path
-        backup = self._state_store.layout.jobs_store_backup_path
-        if not primary.exists() and not backup.exists():
-            return set()
+        return self._job_protection_reader.active_session_ids()
 
-        payload: dict[str, Any] | None = None
-        for path in (primary, backup):
-            if not path.exists():
-                continue
-            try:
-                candidate = self._state_store.read_json(
-                    path,
-                    max_bytes=JOB_STORE_READ_MAX_BYTES,
-                )
-            except OSError, TypeError, ValueError:
-                continue
-            if isinstance(candidate, dict) and isinstance(
-                candidate.get("jobs"), list
-            ):
-                payload = candidate
-                break
-        if payload is None:
-            return None
-        protected: set[str] = set()
-        for job in payload["jobs"]:
-            if not isinstance(job, dict):
-                continue
-            session_id = _valid_session_id(job.get("session_id"))
-            status = str(job.get("status") or "")
-            kind = str(job.get("kind") or "shell")
-            protective_status = status in ACTIVE_JOB_STATUSES or (
-                kind == "shell"
-                and status == "lost"
-                and not bool(job.get("shell_absence_confirmed"))
-            )
-            managed_owner_state = (
-                managed_job_lease_state(
-                    str(job.get("job_id") or ""),
-                    job.get("managed_lease_version"),
-                )
-                if kind == "managed"
-                else "live"
-            )
-            if (
-                session_id is not None
-                and protective_status
-                and managed_owner_state != "dead"
-                and not self._job_has_durable_completion_locked(job, status)
-            ):
-                protected.add(session_id)
-                if kind == "managed":
-                    protected.update(
-                        self._managed_payload_session_ids_locked(
-                            job.get("managed_payload")
-                        )
-                    )
-        return protected
-
-    def _job_has_durable_completion_locked(
-        self, job: dict[str, Any], status: str
-    ) -> bool:
-        """Return whether the runner already persisted terminal job metadata."""
-        status_key = (
-            "pending_status_path" if status == "retrying" else "status_path"
-        )
-        raw_path = job.get(status_key)
-        if not raw_path:
-            return False
-        try:
-            payload = self._state_store.read_json(
-                Path(str(raw_path)), max_bytes=SESSION_METADATA_MAX_BYTES
-            )
-        except OSError, TypeError, ValueError:
-            return False
-        return isinstance(payload, dict)
-
-    @staticmethod
-    def _session_has_active_jobs(
-        session_id: str, active_job_session_ids: set[str] | None
-    ) -> bool:
-        """Conservatively treat an unreadable jobs store as active participation."""
-        return (
-            active_job_session_ids is None
-            or session_id in active_job_session_ids
-        )
+    _session_has_active_jobs = staticmethod(session_has_active_jobs)
+    _session_expired_by_policy = staticmethod(session_expired_by_policy)
 
     def _session_has_active_jobs_locked(self, session_id: str) -> bool:
         """Conservatively protect one session participating in durable jobs."""
-        return self._session_has_active_jobs(
+        return session_has_active_jobs(
             session_id, self._active_job_session_ids_locked()
         )
-
-    @staticmethod
-    def _session_expired_by_policy(
-        session: AgentSession, now: float, retention_s: int
-    ) -> bool:
-        """Return expiry before active-job ownership is considered."""
-        return (
-            session.expires_at is not None and session.expires_at <= now
-        ) or (retention_s > 0 and session.updated_at < now - retention_s)
 
     def _session_expired(self, session: AgentSession, now: float) -> bool:
         """Return whether explicit expiry or idle retention invalidates a session."""
         retention_s = int(self._settings().agent_session_retention_s)
         return (
-            self._session_expired_by_policy(session, now, retention_s)
+            session_expired_by_policy(session, now, retention_s)
             and not session.persistent_shell_ids
             and not self._session_has_active_jobs_locked(session.session_id)
         )
@@ -310,13 +211,8 @@ class ToolSessionStore:
         active_job_session_ids: set[str] | None,
     ) -> bool:
         """Return whether a freshly loaded session remains expiry-eligible."""
-        return (
-            session.target == "local"
-            and self._session_expired_by_policy(session, now, retention_s)
-            and not session.persistent_shell_ids
-            and not self._session_has_active_jobs(
-                session.session_id, active_job_session_ids
-            )
+        return expired_prune_eligible(
+            session, now, retention_s, active_job_session_ids
         )
 
     def _overflow_prune_eligible_locked(
@@ -326,13 +222,11 @@ class ToolSessionStore:
         active_job_session_ids: set[str] | None,
     ) -> bool:
         """Return whether a freshly loaded session remains overflow-eligible."""
-        return (
-            session.target == "local"
-            and session.updated_at < now - SESSION_ACTIVE_WINDOW_S
-            and not session.persistent_shell_ids
-            and not self._session_has_active_jobs(
-                session.session_id, active_job_session_ids
-            )
+        return overflow_prune_eligible(
+            session,
+            now,
+            active_job_session_ids,
+            active_window_s=SESSION_ACTIVE_WINDOW_S,
         )
 
     def _prune_sessions_locked(
