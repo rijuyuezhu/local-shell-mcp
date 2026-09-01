@@ -34,6 +34,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "ops/agent.py",
     "ops/files.py",
     "jobs/__init__.py",
+    "jobs/runner.py",
     "jobs/runtime.py",
     "ops/patch/*.py",
     "ops/read.py",

@@ -259,8 +259,9 @@ orchestration.
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
 | `jobs/__init__.py` | Declares the shared tracked-job domain boundary. | Job persistence and execution are used by the controller process, standalone runner, shell/session-copy workflows, and source-only workers, so they are broader than one public tool adapter. |
-| `jobs/runtime.py` | Owns the durable store and backup, lock-bounded transactions, deferred managed-update journal, attempt files, shell-backed and managed-job lifecycle, local companion actions, and standalone runner entrypoint. | These responsibilities must remain available without importing `tools`; keeping them in `ops/jobs.py` conflated the shared runtime with controller-only public-tool orchestration. |
-| `jobs/cli.py` | Registers the private durable runner arguments as a labeled internal argparse subcommand. | Parser ownership follows the jobs runtime, while the source-only worker manifest explicitly includes only `jobs/__init__.py` and `jobs/runtime.py`. |
+| `jobs/runtime.py` | Retains the compatibility surface and currently owns durable persistence plus shell-backed and managed-job lifecycle while those responsibilities are split into lower modules. | Callers and source-only workers keep a stable jobs API during the staged refactor; this file must not depend on controller-only `tools`. |
+| `jobs/runner.py` | Executes one standalone durable shell attempt, bounds its log, and atomically writes the terminal status payload. | The child-process runner has a narrow process/IO contract and does not need the store, session lifecycle, or public job orchestration. |
+| `jobs/cli.py` | Registers the private durable runner arguments as a labeled internal argparse subcommand and dispatches directly to `jobs/runner.py`. | Parser ownership follows the jobs domain; the source-only worker manifest includes the jobs modules imported by `jobs/runtime.py` so worker execution remains self-contained. |
 
 Rejected ownership alternatives:
 

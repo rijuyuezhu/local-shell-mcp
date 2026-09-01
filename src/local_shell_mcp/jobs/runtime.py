@@ -14,13 +14,12 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
 
 from ..audit import audit
 from ..config.settings import get_settings
 from ..errors import public_error_type
 from ..ops.shell import (
-    _subprocess_env,
     authoritative_persistent_shell_ids_execute,
     check_command_policy,
     kill_persistent_shell_execute,
@@ -57,6 +56,8 @@ from ..utils.runtime_identity import (
     managed_job_lease_state,
 )
 from ..utils.serialization import to_jsonable
+from .runner import compact_log as _compact_log
+from .runner import run_job_runner_from_args as _run_job_runner_from_args
 
 JOB_STORE_FILE_NAME = "jobs.json"
 JOB_STORE_BACKUP_FILE_NAME = "jobs.json.bak"
@@ -87,6 +88,11 @@ _MANAGED_JOB_LEASES: dict[str, ManagedJobLease] = {}
 def _utc() -> float:
     """Return the current Unix timestamp."""
     return time.time()
+
+
+def run_job_runner_from_args(args: Any) -> None:
+    """Compatibility facade for the standalone durable attempt runner."""
+    _run_job_runner_from_args(args)
 
 
 def _managed_job_liveness(job: dict[str, Any]) -> str:
@@ -2349,105 +2355,3 @@ async def job_local_execute(
         await job_retry_execute(session_id, item) for item in retry or []
     ]
     return JobOutput(operation="retry", retried=retried)
-
-
-def _runner_shell_args(shell: str, command: str) -> list[str]:
-    """Build direct subprocess arguments for the configured user shell."""
-    name = Path(shell).name.lower()
-    if name in {"powershell.exe", "powershell", "pwsh.exe", "pwsh"}:
-        return [shell, "-NoProfile", "-NonInteractive", "-Command", command]
-    if name in {"cmd.exe", "cmd"}:
-        return [shell, "/D", "/S", "/C", command]
-    return [shell, "-lc", command]
-
-
-def _compact_log(handle: BinaryIO, max_bytes: int) -> bool:
-    """Keep only the newest max_bytes of one open binary job log."""
-    handle.flush()
-    size = handle.tell()
-    if size <= max_bytes:
-        return False
-    handle.seek(max(0, size - max_bytes))
-    tail = handle.read(max_bytes)
-    handle.seek(0)
-    handle.truncate()
-    handle.write(tail)
-    handle.flush()
-    return True
-
-
-def run_job_runner_from_args(args: Any) -> None:
-    """Run one internal durable job attempt and write its terminal status."""
-    command_path = Path(args.command_file)
-    log_path = Path(args.log_file)
-    status_path = Path(args.status_file)
-    cwd = Path(args.cwd)
-    shell = str(args.shell)
-    max_log_bytes = max(1, int(args.max_log_bytes))
-    completed_at = _utc()
-    exit_code: int | None = None
-    error: str | None = None
-    output_bytes = 0
-    log_truncated = False
-    process: subprocess.Popen[bytes] | None = None
-
-    try:
-        command = command_path.read_text(encoding="utf-8")
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("w+b") as log:
-            with contextlib.suppress(OSError):
-                log_path.chmod(0o600)
-            process = subprocess.Popen(
-                _runner_shell_args(shell, command),
-                cwd=cwd,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                env=_subprocess_env(),
-            )
-            if process.stdout is None:
-                raise RuntimeError(
-                    "job runner failed to capture process output"
-                )
-            read_available = getattr(
-                process.stdout, "read1", process.stdout.read
-            )
-            while True:
-                chunk = read_available(65536)
-                if not chunk:
-                    break
-                output_bytes += len(chunk)
-                log.write(chunk)
-                log.flush()
-                if log.tell() > max_log_bytes * 2:
-                    log_truncated = (
-                        _compact_log(log, max_log_bytes) or log_truncated
-                    )
-            exit_code = process.wait()
-            log_truncated = _compact_log(log, max_log_bytes) or log_truncated
-    except BaseException as exc:
-        if process is not None and process.poll() is None:
-            with contextlib.suppress(Exception):
-                process.kill()
-                process.wait(timeout=2)
-        error = f"{public_error_type(exc)}: {exc}"
-    finally:
-        completed_at = _utc()
-        atomic_write_private_text(
-            status_path,
-            json.dumps(
-                {
-                    "exit_code": exit_code,
-                    "completed_at": completed_at,
-                    "error": error,
-                    "log_truncated": log_truncated,
-                    "output_bytes": output_bytes,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
-        )
-
-    if error is not None:
-        raise SystemExit(1)
-    raise SystemExit(exit_code or 0)
