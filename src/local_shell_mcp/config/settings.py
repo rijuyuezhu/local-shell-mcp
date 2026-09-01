@@ -485,28 +485,24 @@ def env_overrides() -> dict[str, Any]:
     }
 
 
-def _prepare_settings(settings: Settings, *, create_dirs: bool) -> Settings:
-    """Create runtime directories when requested."""
-    if create_dirs:
-        settings.workspace_root.mkdir(parents=True, exist_ok=True)
-        settings.state_dir.mkdir(parents=True, exist_ok=True)
-        settings.audit_log_path.parent.mkdir(parents=True, exist_ok=True)
-    return settings
+def initialize_runtime_directories(settings: Settings) -> None:
+    """Create the filesystem roots required by a configured runtime."""
+    settings.workspace_root.mkdir(parents=True, exist_ok=True)
+    settings.state_dir.mkdir(parents=True, exist_ok=True)
+    settings.audit_log_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 def load_settings(
     config_path: str | Path | None = None,
     overrides: dict[str, Any] | None = None,
-    *,
-    create_dirs: bool = True,
 ) -> Settings:
-    """Load settings with precedence: defaults < config file < environment < explicit overrides. Here the explicit overrides usually come from the CLI."""
+    """Load settings without mutating the runtime filesystem."""
     config_path = config_path or os.getenv("LOCAL_SHELL_MCP_CONFIG")
     values = read_config_file(config_path)
     values.update(env_overrides())
     if overrides:
         values.update(overrides)
-    return _prepare_settings(Settings(**values), create_dirs=create_dirs)
+    return Settings(**values)
 
 
 _configured_settings: Settings | None = None

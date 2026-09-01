@@ -28,7 +28,7 @@ def test_workspace_root_does_not_rewrite_default_state_paths(
     monkeypatch.delenv("LOCAL_SHELL_MCP_STATE_DIR", raising=False)
     clear_settings_cache()
 
-    settings = load_settings(create_dirs=False)
+    settings = load_settings()
 
     assert settings.workspace_root == tmp_path.resolve()
     assert settings.state_dir == DEFAULT_STATE_DIR.resolve()

@@ -2,7 +2,12 @@
 
 import argparse
 
-from .settings import Settings, configure_settings, load_settings
+from .settings import (
+    Settings,
+    configure_settings,
+    initialize_runtime_directories,
+    load_settings,
+)
 from .surface import cli_overrides_from_args, register_setting_cli_args
 
 
@@ -28,5 +33,6 @@ def settings_from_args(
     """Load CLI-selected settings and optionally install them process-wide."""
     settings = load_settings(args.config, cli_overrides_from_args(args))
     if configure:
+        initialize_runtime_directories(settings)
         configure_settings(settings)
     return settings
