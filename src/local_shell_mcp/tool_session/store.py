@@ -32,6 +32,19 @@ from .records import (
 from .records import (
     generate_session_id as _generate_session_id,
 )
+from .resources import (
+    bind_shell,
+    ensure_shell_unowned,
+    normalize_shell_id,
+    release_shell,
+    replace_shells,
+    require_local_session,
+    reserve_shell,
+    retain_live_shells,
+)
+from .resources import (
+    persistent_shell_ids as collect_persistent_shell_ids,
+)
 from .snapshots import (
     SESSION_SNAPSHOTS_MAX_BYTES as _SESSION_SNAPSHOTS_MAX_BYTES,
 )
@@ -578,27 +591,17 @@ class ToolSessionStore:
         self, session_id: str, shell_id: str
     ) -> AgentSession:
         """Durably bind one local persistent shell to its owning session."""
-        normalized_shell_id = str(shell_id).strip()
-        if not normalized_shell_id:
-            raise ValueError("shell_id must not be empty")
+        normalized_shell_id = normalize_shell_id(shell_id)
         with self._lock:
             self._reset_for_current_root_locked()
             with self._state_store.transaction(
                 self._transaction_path(session_id)
             ):
                 session = self._require_session_locked(session_id)
-                if session.target != "local":
-                    raise ValueError(
-                        "persistent shells require a local session"
-                    )
-                updated = replace(
+                updated = bind_shell(
                     session,
+                    normalized_shell_id,
                     updated_at=time.time(),
-                    persistent_shell_ids=tuple(
-                        dict.fromkeys(
-                            (*session.persistent_shell_ids, normalized_shell_id)
-                        )
-                    ),
                 )
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
@@ -618,40 +621,27 @@ class ToolSessionStore:
         using this mode, so the check and subsequent backend spawn are globally
         serialized.
         """
-        normalized_shell_id = str(shell_id).strip()
-        if not normalized_shell_id:
-            raise ValueError("shell_id must not be empty")
+        normalized_shell_id = normalize_shell_id(shell_id)
         with self._lock:
             self._reset_for_current_root_locked()
             with self._state_store.transaction(
                 self._transaction_path(session_id)
             ):
                 session = self._require_session_locked(session_id)
-                if session.target != "local":
-                    raise ValueError(
-                        "persistent shells require a local session"
-                    )
+                require_local_session(session)
                 if exclusive:
-                    for other in self._read_all_sessions_locked().values():
-                        if (
-                            other.session_id != session_id
-                            and normalized_shell_id
-                            in other.persistent_shell_ids
-                        ):
-                            raise RuntimeError(
-                                "persistent shell id is already reserved by "
-                                f"another session: {normalized_shell_id}"
-                            )
-                if normalized_shell_id in session.persistent_shell_ids:
-                    return False
-                updated = replace(
-                    session,
-                    updated_at=time.time(),
-                    persistent_shell_ids=(
-                        *session.persistent_shell_ids,
+                    ensure_shell_unowned(
+                        session_id,
                         normalized_shell_id,
-                    ),
+                        self._read_all_sessions_locked().values(),
+                    )
+                updated, added = reserve_shell(
+                    session,
+                    normalized_shell_id,
+                    updated_at=time.time(),
                 )
+                if not added:
+                    return False
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
                 return True
@@ -660,9 +650,7 @@ class ToolSessionStore:
         self, session_id: str, shell_id: str
     ) -> AgentSession:
         """Remove one shell id from exactly one durable session."""
-        normalized_shell_id = str(shell_id).strip()
-        if not normalized_shell_id:
-            raise ValueError("shell_id must not be empty")
+        normalized_shell_id = normalize_shell_id(shell_id)
         with self._lock:
             self._reset_for_current_root_locked()
             with self._state_store.transaction(
@@ -671,14 +659,9 @@ class ToolSessionStore:
                 current = self._require_session_locked(
                     session_id, allow_expired=True
                 )
-                retained = tuple(
-                    existing
-                    for existing in current.persistent_shell_ids
-                    if existing != normalized_shell_id
-                )
-                if retained == current.persistent_shell_ids:
+                updated = release_shell(current, normalized_shell_id)
+                if updated is current:
                     return current
-                updated = replace(current, persistent_shell_ids=retained)
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
                 return updated
@@ -700,14 +683,9 @@ class ToolSessionStore:
                     current = self._load_session_locked(session.session_id)
                     if current is None:
                         continue
-                    updated = replace(
-                        current,
-                        persistent_shell_ids=tuple(
-                            existing
-                            for existing in current.persistent_shell_ids
-                            if existing != normalized_shell_id
-                        ),
-                    )
+                    updated = release_shell(current, normalized_shell_id)
+                    if updated is current:
+                        continue
                     self._write_session_locked(updated)
                     self._sessions[session.session_id] = updated
 
@@ -717,25 +695,14 @@ class ToolSessionStore:
             self._reset_for_current_root_locked()
             registry = self._state_store.layout.sessions_dir / ".registry"
             with self._state_store.transaction(registry):
-                return {
-                    shell_id
-                    for session in self._read_all_sessions_locked().values()
-                    for shell_id in session.persistent_shell_ids
-                }
+                return collect_persistent_shell_ids(
+                    self._read_all_sessions_locked().values()
+                )
 
     def reconcile_session_persistent_shells(
         self, session_id: str, owned_shell_ids: set[str]
     ) -> AgentSession:
         """Replace one session's durable PTY ids with authoritative ownership."""
-        normalized = tuple(
-            sorted(
-                {
-                    str(shell_id).strip()
-                    for shell_id in owned_shell_ids
-                    if str(shell_id).strip()
-                }
-            )
-        )
         with self._lock:
             self._reset_for_current_root_locked()
             with self._state_store.transaction(
@@ -744,13 +711,9 @@ class ToolSessionStore:
                 current = self._require_session_locked(
                     session_id, allow_expired=True
                 )
-                if current.target != "local":
-                    raise ValueError(
-                        "persistent shells require a local session"
-                    )
-                if current.persistent_shell_ids == normalized:
+                updated = replace_shells(current, owned_shell_ids)
+                if updated is current:
                     return current
-                updated = replace(current, persistent_shell_ids=normalized)
                 self._write_session_locked(updated)
                 self._sessions[session_id] = updated
                 return updated
@@ -773,14 +736,9 @@ class ToolSessionStore:
                     current = self._load_session_locked(session.session_id)
                     if current is None:
                         continue
-                    retained = tuple(
-                        shell_id
-                        for shell_id in current.persistent_shell_ids
-                        if shell_id in live
-                    )
-                    if retained == current.persistent_shell_ids:
+                    updated = retain_live_shells(current, live)
+                    if updated is current:
                         continue
-                    updated = replace(current, persistent_shell_ids=retained)
                     self._write_session_locked(updated)
                     self._sessions[session.session_id] = updated
 
