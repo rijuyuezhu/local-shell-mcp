@@ -42,6 +42,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "ops/secret_scan.py",
     "ops/session.py",
     "tool_session/environment.py",
+    "ops/bash.py",
     "ops/shell.py",
     "ops/transfer.py",
     "ops/utils/*.py",

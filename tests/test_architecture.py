@@ -45,12 +45,6 @@ _ALLOWED_DEPENDENCY_CYCLES = frozenset(
     {
         frozenset(
             {
-                "local_shell_mcp.jobs.runtime",
-                "local_shell_mcp.ops.shell",
-            }
-        ),
-        frozenset(
-            {
                 "local_shell_mcp.remote_worker.cli",
                 "local_shell_mcp.remote_worker.compat",
                 "local_shell_mcp.remote_worker.worker",
@@ -464,6 +458,10 @@ def test_remaining_top_level_ops_families_have_shared_consumers() -> None:
     required_shared_consumers = {
         f"{_PACKAGE_NAME}.ops.agent": {
             f"{_PACKAGE_NAME}.remote_worker.dispatch"
+        },
+        f"{_PACKAGE_NAME}.ops.bash": {
+            f"{_PACKAGE_NAME}.remote_worker.dispatch",
+            f"{_PACKAGE_NAME}.tools.registry.shell",
         },
         f"{_PACKAGE_NAME}.ops.downloads": {f"{_PACKAGE_NAME}.http.downloads"},
         f"{_PACKAGE_NAME}.ops.files": {

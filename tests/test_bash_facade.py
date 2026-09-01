@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
+import local_shell_mcp.ops.bash as shell_ops
 import local_shell_mcp.ops.session as session_ops
-import local_shell_mcp.ops.shell as shell_ops
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.mcp.app import build_mcp
 from local_shell_mcp.schemas.result_models.jobs import JobStartOutput

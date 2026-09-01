@@ -211,6 +211,7 @@ area for unaudited moves.
 | --- | --- | --- |
 | `ops/__init__.py` | Declares the shared operation namespace. | The package is consumed across tools, workers, UI, HTTP, remote services, and domain runtimes. |
 | `ops/agent.py` | Lists, activates, reads, and invokes Agent Bridge capabilities. | Both the public agent registry and source-only worker dispatch execute these operations. |
+| `ops/bash.py` | Composes session-aware bounded commands, durable jobs, persistent shells, remote dispatch, and temporary Python scripts into the public `bash`/`run_python_code` execution facade. | Keeping orchestration above the shell primitives lets the jobs runtime depend on the shell backend without creating a reverse `ops.shell` → `jobs.runtime` dependency. |
 | `ops/downloads.py` | Creates, lists, revokes, claims, and releases tokenized immutable file downloads. | The public download tools and executor-neutral HTTP download route share the same state and claim policy. |
 | `ops/files.py` | Implements contained, bounded workspace file listing, writing, editing, hashing, deletion, and link-safe path behavior. | Worker dispatch, Human UI files, remote transfer, read/search/secret-scan operations, and tool registries all reuse it. |
 | `ops/image.py` | Loads bounded local or remote image bytes and projects native MCP image results. | The image tool and Human UI audit image preview share staging and validation behavior. |
@@ -221,7 +222,7 @@ area for unaudited moves.
 | `ops/search.py` | Implements bounded grep, glob, and directory-tree operations with local/remote session routing. | Worker dispatch, workspace connector orchestration, and public search tools share it. |
 | `ops/secret_scan.py` | Scans bounded workspace text for credential-like patterns with Git-ignore and remote-session behavior. | Both the public scanner and source-only worker dispatch execute it. |
 | `ops/session.py` | Creates, changes, and ends explicit sessions, collects environment/Git state, and starts session-copy jobs. | Both public session tools and source-only worker dispatch require the same lifecycle behavior. |
-| `ops/shell.py` | Runs bounded shell/Python commands and owns persistent shell lifecycle operations. | Worker dispatch, Human UI terminals, HTTP/MCP watchdog integration, remote tools, and the shared job runtime all depend on it. |
+| `ops/shell.py` | Runs bounded shell-command primitives and owns persistent shell lifecycle operations. | The session-aware bash facade, worker terminal dispatch, Human UI terminals, HTTP/MCP watchdog integration, remote tools, and the shared job runtime depend on it without making the shell backend depend on durable jobs. |
 | `ops/todo.py` | Persists revisioned, bounded agent todo lists. | Public todo tools, Human UI todos, and source-only worker dispatch share the state contract. |
 | `ops/transfer.py` | Provides binary-safe transactional file and directory transfer primitives. | Controller/worker transfer services, transfer gateway, image staging, session copy, download snapshots, and public transfer tools all reuse it. |
 | `ops/utils/__init__.py` | Declares operation-private shared helpers. | The helpers support multiple operation families without becoming general project utilities. |
