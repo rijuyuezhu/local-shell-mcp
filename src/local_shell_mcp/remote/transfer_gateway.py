@@ -1,6 +1,7 @@
 """Private durable HTTP transfer gateway used only by ``session_copy``."""
 
 import asyncio
+import base64
 import contextlib
 import hashlib
 import hmac
@@ -43,6 +44,12 @@ _PROCESS_NONCE = secrets.token_urlsafe(24)
 _RESUME_RETENTION_S = 24 * 60 * 60
 
 
+def _worker_header_binding(worker: str) -> str:
+    """Return an injective ASCII-safe binding for one public worker name."""
+    encoded = base64.urlsafe_b64encode(worker.encode("utf-8")).decode("ascii")
+    return "v1-" + encoded.rstrip("=")
+
+
 class TransferGatewayError(RuntimeError):
     """Stable internal error raised for rejected gateway operations."""
 
@@ -58,7 +65,7 @@ class TransferGrant:
     authorization: str
     """Short-lived separate capability header value."""
     worker: str
-    """Registered worker identity bound to this capability."""
+    """ASCII-safe opaque worker binding carried by the transfer protocol."""
     direction: Literal["upload", "download"]
     """Only operation direction permitted by this capability."""
     expected_bytes: int
@@ -424,7 +431,7 @@ class TransferGatewayStore:
         token: str,
         direction: Literal["upload", "download"],
     ) -> TransferGrant:
-        worker = str(data[f"{direction}_worker"])
+        worker = _worker_header_binding(str(data[f"{direction}_worker"]))
         offset = int(data.get("offset") or 0)
         return TransferGrant(
             transfer_id=str(data["transfer_id"]),
@@ -510,7 +517,9 @@ class TransferGatewayStore:
             now = time.time()
             if float(data.get("expires_at") or 0) <= now:
                 raise TransferGatewayError("transfer grant expired")
-            expected_worker = str(data.get(f"{direction}_worker") or "")
+            expected_worker = _worker_header_binding(
+                str(data.get(f"{direction}_worker") or "")
+            )
             expected_hash = str(data.get(f"{direction}_token_hash") or "")
             if worker != expected_worker or not hmac.compare_digest(
                 _token_hash(token), expected_hash

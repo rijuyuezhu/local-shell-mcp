@@ -62,6 +62,29 @@ def _prepare_upload(
     return store, upload, download
 
 
+def test_unicode_worker_name_uses_ascii_safe_transfer_binding() -> None:
+    payload = b"unicode-worker"
+    store = TransferGatewayStore()
+    _obj, upload, download = store.prepare(
+        expected_bytes=len(payload),
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
+        upload_worker="培养说明会-ASR",
+        download_worker="目标机器-远端",
+        source_session_id="source-session",
+        destination_session_id="destination-session",
+    )
+    assert upload is not None
+    assert download is not None
+    assert upload.worker.isascii()
+    assert download.worker.isascii()
+    assert upload.worker != "培养说明会-ASR"
+    assert download.worker != "目标机器-远端"
+
+    with _client() as client:
+        status = client.head(upload.url, headers=_headers(upload))
+        assert status.status_code == 200
+
+
 def _put_chunk(
     client: TestClient,
     grant: TransferGrant,
