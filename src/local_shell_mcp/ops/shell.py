@@ -333,6 +333,29 @@ def _validated_env_overrides(env: dict[str, str] | None) -> dict[str, str]:
     return normalized
 
 
+def _command_with_env(command: str, env: dict[str, str] | None) -> str:
+    """Prefix PTY/job commands with shell-native environment assignments."""
+    overrides = _validated_env_overrides(env)
+    if not overrides:
+        return command
+    shell_name = os.path.basename(_effective_shell_executable()).lower()
+    if shell_name in {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}:
+        assignments = [
+            f"$env:{name}='{value.replace(chr(39), chr(39) * 2)}'"
+            for name, value in overrides.items()
+        ]
+        return f"{'; '.join(assignments)}; {command}"
+    if shell_name in {"cmd", "cmd.exe"}:
+        assignments = [
+            f'set "{name}={value}"' for name, value in overrides.items()
+        ]
+        return f"{' && '.join(assignments)} && {command}"
+    assignments = [
+        f"{name}={shlex.quote(value)}" for name, value in overrides.items()
+    ]
+    return f"{' '.join(assignments)} {command}"
+
+
 def _bounded_runner_argv(shell: str, command: str) -> list[str]:
     """Build the internal descendant-reaping runner invocation."""
     return bounded_runner_argv(

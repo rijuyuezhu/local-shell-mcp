@@ -1,8 +1,6 @@
 """Session-aware shell and Python execution facade."""
 
 import contextlib
-import os
-import shlex
 from typing import Any
 
 from ..jobs import runtime as jobs_runtime
@@ -14,39 +12,15 @@ from ..tool_session.lifecycle import session_lifecycle_lock
 from ..tool_session.store import get_tool_session_store, resolve_session_path
 from ..utils.serialization import to_jsonable
 from .shell import (
+    _command_with_env,
     _effective_python_executable,
-    _effective_shell_executable,
     _shell_join_argv,
-    _validated_env_overrides,
     kill_persistent_shell_execute,
     run_shell_command_execute,
     start_persistent_shell_execute,
 )
 from .utils.remote_session import call_remote_session_tool
 from .utils.temp_file import write_temp_text_file
-
-
-def _command_with_env(command: str, env: dict[str, str] | None) -> str:
-    """Prefix PTY/job commands with shell-native environment assignments."""
-    overrides = _validated_env_overrides(env)
-    if not overrides:
-        return command
-    shell_name = os.path.basename(_effective_shell_executable()).lower()
-    if shell_name in {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}:
-        assignments = [
-            f"$env:{name}='{value.replace(chr(39), chr(39) * 2)}'"
-            for name, value in overrides.items()
-        ]
-        return f"{'; '.join(assignments)}; {command}"
-    if shell_name in {"cmd", "cmd.exe"}:
-        assignments = [
-            f'set "{name}={value}"' for name, value in overrides.items()
-        ]
-        return f"{' && '.join(assignments)} && {command}"
-    assignments = [
-        f"{name}={shlex.quote(value)}" for name, value in overrides.items()
-    ]
-    return f"{' '.join(assignments)} {command}"
 
 
 def _as_result_dict(value: Any) -> dict[str, Any]:
