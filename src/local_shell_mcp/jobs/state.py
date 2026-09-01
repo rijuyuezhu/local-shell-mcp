@@ -61,8 +61,16 @@ def job_operation_is_active(job: dict[str, Any], kind: str) -> bool:
     )
 
 
+def discard_job_operation(operation_id: str) -> None:
+    """Forget one process-local operation token after its lifecycle ends."""
+    _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+
+
 def clear_job_operation(job: dict[str, Any]) -> None:
     """Remove transient operation metadata from one durable row."""
+    operation_id = str(job.get("operation_id") or "")
+    if operation_id:
+        discard_job_operation(operation_id)
     for key in ("operation_id", "operation_kind", "operation_started_at"):
         job.pop(key, None)
 

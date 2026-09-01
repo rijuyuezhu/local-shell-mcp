@@ -9,6 +9,7 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import runtime as jobs_ops
+from local_shell_mcp.jobs import state as job_state
 from local_shell_mcp.schemas.result_models.jobs import (
     JobInfo,
     JobListOutput,
@@ -25,6 +26,15 @@ from local_shell_mcp.schemas.result_models.shell import (
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.ops import jobs as job_tool_ops
 from tests.helpers import python_shell_command
+
+
+def test_job_operation_cleanup_uses_one_authoritative_state_set():
+    row: dict[str, object] = {}
+    operation_id = job_state.begin_job_operation(row, "test")
+    assert job_state.job_operation_is_active(row, "test")
+
+    job_state.discard_job_operation(operation_id)
+    assert not job_state.job_operation_is_active(row, "test")
 
 
 def _create_session(workdir: str = ".") -> str:

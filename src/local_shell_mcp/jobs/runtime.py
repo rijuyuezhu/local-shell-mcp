@@ -3,16 +3,12 @@
 import asyncio
 import contextlib
 import json
-import os
 import re
 import shlex
-import stat
 import subprocess
 import sys
-import threading
 import time
-import uuid
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +22,6 @@ from ..ops.shell import (
     read_persistent_shell_output_execute,
     start_persistent_shell_execute,
 )
-from ..persistence import get_state_store
 from ..schemas.result_models.jobs import (
     JobListOutput,
     JobOutput,
@@ -43,17 +38,15 @@ from ..tool_session.store import (
     get_tool_session_store,
     resolve_session_path,
 )
-from ..utils.private_files import (
-    atomic_write_private_text,
-    private_file_lock,
-    write_private_text,
-)
+from ..utils.private_files import write_private_text
 from ..utils.runtime_identity import (
     MANAGED_JOB_LEASE_VERSION,
     PROCESS_INSTANCE_ID,
     ManagedJobLease,
     managed_job_lease_state,
 )
+from . import persistence as job_persistence
+from . import recovery as job_recovery
 from .persistence import (
     JOB_STORE_VERSION as _JOB_STORE_VERSION,
 )
@@ -70,13 +63,7 @@ from .persistence import (
     job_store_backup_path as _persistence_job_store_backup_path,
 )
 from .persistence import (
-    job_store_lock_path as _job_store_lock_path,
-)
-from .persistence import (
     job_store_path as _persistence_job_store_path,
-)
-from .persistence import (
-    load_store as _load_store,
 )
 from .persistence import (
     prune_store as _prune_store,
@@ -86,9 +73,6 @@ from .persistence import (
 )
 from .persistence import (
     remove_attempt_paths as _remove_attempt_paths,
-)
-from .persistence import (
-    save_store as _save_store,
 )
 from .runner import compact_log as _compact_log
 from .runner import run_job_runner_from_args as _run_job_runner_from_args
@@ -105,6 +89,7 @@ from .state import (
 from .state import (
     clear_job_operation as _clear_job_operation,
 )
+from .state import discard_job_operation as _discard_job_operation
 from .state import (
     find_session_job as _find_session_job,
 )
@@ -138,16 +123,27 @@ from .state import (
 
 JOB_STORE_VERSION = _JOB_STORE_VERSION
 _MANAGED_STATE_MAX_BYTES = _STATE_MANAGED_STATE_MAX_BYTES
-JOB_STORE_LOCK_TIMEOUT_S = 2.0
-JOB_STORE_LOCK_RETRY_INTERVAL_S = 0.05
+JOB_STORE_LOCK_TIMEOUT_S = job_recovery.JOB_STORE_LOCK_TIMEOUT_S
+JOB_STORE_LOCK_RETRY_INTERVAL_S = job_recovery.JOB_STORE_LOCK_RETRY_INTERVAL_S
 MANAGED_JOB_STORE_RETRY_ATTEMPTS = 2
-MANAGED_DEFERRED_UPDATE_VERSION = 1
-MANAGED_DEFERRED_APPLIED_KEY = "managed_deferred_update_ids"
-MANAGED_DEFERRED_MAX_RECORD_BYTES = 524_288
-_JOB_STORE_THREAD_LOCK = threading.RLock()
-_MANAGED_DEFERRED_SEQUENCE_LOCK = threading.Lock()
-_MANAGED_DEFERRED_NEXT_SEQUENCE: int | None = None
-_ACTIVE_JOB_OPERATIONS: set[str] = set()
+MANAGED_DEFERRED_UPDATE_VERSION = job_recovery.MANAGED_DEFERRED_UPDATE_VERSION
+MANAGED_DEFERRED_APPLIED_KEY = job_recovery.MANAGED_DEFERRED_APPLIED_KEY
+MANAGED_DEFERRED_MAX_RECORD_BYTES = (
+    job_recovery.MANAGED_DEFERRED_MAX_RECORD_BYTES
+)
+_JOB_STORE_THREAD_LOCK = job_recovery._JOB_STORE_THREAD_LOCK
+_managed_deferred_update_dir = job_recovery.managed_deferred_update_dir
+_next_managed_deferred_sequence = job_recovery.next_managed_deferred_sequence
+_write_managed_deferred_update = job_recovery.write_managed_deferred_update
+_read_managed_deferred_record = job_recovery.read_managed_deferred_record
+_read_managed_deferred_updates = job_recovery.read_managed_deferred_updates
+_apply_managed_update = job_recovery.apply_managed_update
+_reconcile_managed_deferred_updates = (
+    job_recovery.reconcile_managed_deferred_updates
+)
+_remove_managed_deferred_updates = job_recovery.remove_managed_deferred_updates
+_job_store_busy_error = job_recovery.job_store_busy_error
+_store_transaction = job_recovery.store_transaction
 type ManagedJobHandler = Callable[
     [ManagedJobContext, dict[str, Any]], Awaitable[dict[str, Any] | None]
 ]
@@ -174,6 +170,16 @@ def _job_store_backup_path() -> Path:
 def _job_runtime_dir() -> Path:
     """Compatibility facade for the private job-attempt directory."""
     return _persistence_job_runtime_dir()
+
+
+def _load_store() -> dict[str, Any]:
+    """Compatibility facade for durable job-store loading."""
+    return job_persistence.load_store()
+
+
+def _save_store(store: dict[str, Any]) -> None:
+    """Compatibility facade for durable job-store persistence."""
+    job_persistence.save_store(store)
 
 
 def _managed_job_liveness(job: dict[str, Any]) -> str:
@@ -207,308 +213,6 @@ def _release_managed_job_lease(job_id: str) -> None:
     lease = _MANAGED_JOB_LEASES.pop(job_id, None)
     if lease is not None:
         lease.release()
-
-
-def _managed_deferred_update_dir(*, create: bool = True) -> Path:
-    """Return the private journal directory, creating it only for a writer."""
-    path = get_state_store().layout.jobs_deferred_dir
-    if create:
-        path.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            path.chmod(0o700)
-    return path
-
-
-def _next_managed_deferred_sequence() -> int:
-    """Allocate a process-safe sequence continuing any journal left by restart."""
-    global _MANAGED_DEFERRED_NEXT_SEQUENCE
-    with _MANAGED_DEFERRED_SEQUENCE_LOCK:
-        if _MANAGED_DEFERRED_NEXT_SEQUENCE is None:
-            maximum = -1
-            directory = _managed_deferred_update_dir(create=False)
-            if directory.is_dir():
-                for path in directory.glob("*.json"):
-                    prefix = path.stem.split("-", 1)[0]
-                    if prefix.isdigit():
-                        maximum = max(maximum, int(prefix))
-            _MANAGED_DEFERRED_NEXT_SEQUENCE = maximum + 1
-        sequence = _MANAGED_DEFERRED_NEXT_SEQUENCE
-        _MANAGED_DEFERRED_NEXT_SEQUENCE += 1
-        return sequence
-
-
-def _write_managed_deferred_update(
-    session_id: str,
-    job_id: str,
-    operation: str,
-    payload: dict[str, Any],
-) -> Path:
-    """Atomically journal one managed update after bounded lock contention."""
-    update_id = (
-        f"{_next_managed_deferred_sequence():020d}-"
-        f"{time.time_ns():020d}-{uuid.uuid4().hex}"
-    )
-    path = _managed_deferred_update_dir() / f"{update_id}.json"
-    record = {
-        "version": MANAGED_DEFERRED_UPDATE_VERSION,
-        "update_id": update_id,
-        "session_id": session_id,
-        "job_id": job_id,
-        "operation": operation,
-        "payload": payload,
-    }
-    encoded = json.dumps(
-        record,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    if len(encoded.encode("utf-8")) > MANAGED_DEFERRED_MAX_RECORD_BYTES:
-        raise ValueError(
-            "managed deferred update exceeds the private journal limit"
-        )
-    atomic_write_private_text(path, encoded)
-    audit(
-        "managed_job_store_update_deferred",
-        session=session_id,
-        job_id=job_id,
-        operation=operation,
-        update_id=update_id,
-        path=str(path),
-    )
-    return path
-
-
-def _read_managed_deferred_record(path: Path) -> dict[str, Any]:
-    """Read one bounded regular journal file without following POSIX symlinks."""
-    if path.is_symlink() or (
-        hasattr(path, "is_junction") and path.is_junction()
-    ):
-        raise ValueError("deferred update must not be a link")
-    flags = os.O_RDONLY | int(getattr(os, "O_BINARY", 0))
-    flags |= int(getattr(os, "O_NOFOLLOW", 0))
-    descriptor = os.open(path, flags)
-    try:
-        file_stat = os.fstat(descriptor)
-        if not stat.S_ISREG(file_stat.st_mode):
-            raise ValueError("deferred update is not a regular file")
-        if int(file_stat.st_size) > MANAGED_DEFERRED_MAX_RECORD_BYTES:
-            raise ValueError(
-                "deferred update exceeds the private journal limit"
-            )
-        with os.fdopen(descriptor, "rb", closefd=False) as handle:
-            raw = handle.read(MANAGED_DEFERRED_MAX_RECORD_BYTES + 1)
-    finally:
-        os.close(descriptor)
-    if len(raw) > MANAGED_DEFERRED_MAX_RECORD_BYTES:
-        raise ValueError("deferred update exceeds the private journal limit")
-    record = json.loads(raw.decode("utf-8"))
-    if not isinstance(record, dict):
-        raise ValueError("deferred update is not an object")
-    if record.get("version") != MANAGED_DEFERRED_UPDATE_VERSION:
-        raise ValueError("unsupported deferred update version")
-    update_id = str(record.get("update_id") or "")
-    if not update_id:
-        raise ValueError("deferred update id is missing")
-    if update_id != path.stem:
-        raise ValueError("deferred update id does not match its filename")
-    if not str(record.get("session_id") or ""):
-        raise ValueError("deferred update session id is missing")
-    if not str(record.get("job_id") or ""):
-        raise ValueError("deferred update job id is missing")
-    if record.get("operation") not in {
-        "append_log",
-        "update_progress",
-        "finish",
-    }:
-        raise ValueError("unsupported deferred update operation")
-    if not isinstance(record.get("payload"), dict):
-        raise ValueError("deferred update payload is not an object")
-    return record
-
-
-def _read_managed_deferred_updates() -> list[
-    tuple[Path, dict[str, Any] | None, bool]
-]:
-    """Return ordered journal rows and whether each invalid row may be removed."""
-    rows: list[tuple[Path, dict[str, Any] | None, bool]] = []
-    directory = _managed_deferred_update_dir(create=False)
-    if not directory.is_dir():
-        return rows
-    for path in sorted(directory.glob("*.json")):
-        try:
-            record = _read_managed_deferred_record(path)
-        except OSError as exc:
-            audit(
-                "managed_job_deferred_update_unreadable",
-                path=str(path),
-                error=repr(exc),
-            )
-            rows.append((path, None, False))
-        except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
-            audit(
-                "managed_job_deferred_update_invalid",
-                path=str(path),
-                error=repr(exc),
-            )
-            rows.append((path, None, True))
-        else:
-            rows.append((path, record, True))
-    return rows
-
-
-def _apply_managed_update(
-    job: dict[str, Any], operation: str, payload: dict[str, Any]
-) -> None:
-    """Apply one already validated managed-state update to a mutable job row."""
-    match operation:
-        case "append_log":
-            job["output_bytes"] = int(job.get("output_bytes") or 0) + max(
-                0, int(payload.get("bytes") or 0)
-            )
-            job["log_truncated"] = bool(job.get("log_truncated")) or bool(
-                payload.get("truncated")
-            )
-            job["updated_at"] = float(payload.get("updated_at") or _utc())
-            return
-        case "update_progress":
-            if str(job.get("status") or "") in ACTIVE_STATUSES:
-                job["progress"] = _managed_json_dict(
-                    payload.get("progress"), label="progress"
-                )
-                job["updated_at"] = float(payload.get("updated_at") or _utc())
-            return
-        case "finish":
-            if str(job.get("status") or "") not in ACTIVE_STATUSES:
-                return
-            completed = float(payload.get("completed_at") or _utc())
-            job.update(
-                {
-                    "status": str(payload.get("status") or "failed"),
-                    "updated_at": completed,
-                    "completed_at": completed,
-                    "exit_code": payload.get("exit_code"),
-                    "error": payload.get("error"),
-                }
-            )
-            if bool(payload.get("has_result")):
-                job["result"] = _managed_json_dict(
-                    payload.get("result"), label="result"
-                )
-            _clear_job_operation(job)
-            return
-        case _:
-            raise ValueError(
-                f"unsupported managed update operation: {operation}"
-            )
-
-
-def _reconcile_managed_deferred_updates(store: dict[str, Any]) -> list[Path]:
-    """Replay each journal row once and return rows removable after store commit."""
-    rows = _read_managed_deferred_updates()
-    active_ids = {path.stem for path, _record, _removable in rows}
-    for job in store.get("jobs", []):
-        if not isinstance(job, dict):
-            continue
-        applied = [
-            str(update_id)
-            for update_id in job.get(MANAGED_DEFERRED_APPLIED_KEY, [])
-            if str(update_id) in active_ids
-        ]
-        if applied:
-            job[MANAGED_DEFERRED_APPLIED_KEY] = applied
-        else:
-            job.pop(MANAGED_DEFERRED_APPLIED_KEY, None)
-
-    removable: list[Path] = []
-    for path, record, should_remove in rows:
-        if should_remove:
-            removable.append(path)
-        if record is None:
-            continue
-        session_id = str(record["session_id"])
-        job_id = str(record["job_id"])
-        try:
-            job = _find_session_job(store, session_id, job_id)
-        except KeyError:
-            continue
-        update_id = str(record["update_id"])
-        applied = [
-            str(item) for item in job.get(MANAGED_DEFERRED_APPLIED_KEY, [])
-        ]
-        if update_id in applied:
-            continue
-        try:
-            _apply_managed_update(
-                job,
-                str(record["operation"]),
-                dict(record["payload"]),
-            )
-        except (TypeError, ValueError) as exc:
-            audit(
-                "managed_job_deferred_update_invalid",
-                path=str(path),
-                session=session_id,
-                job_id=job_id,
-                error=repr(exc),
-            )
-            continue
-        applied.append(update_id)
-        job[MANAGED_DEFERRED_APPLIED_KEY] = applied
-    return removable
-
-
-def _remove_managed_deferred_updates(paths: list[Path]) -> None:
-    """Remove journal rows only after their applied ids are durably saved."""
-    for path in paths:
-        with contextlib.suppress(OSError):
-            path.unlink()
-
-
-def _job_store_busy_error(*, lock_kind: str) -> TimeoutError:
-    """Return one actionable public error while auditing the private lock path."""
-    audit(
-        "job_store_lock_timeout",
-        path=str(_job_store_lock_path()),
-        timeout_s=JOB_STORE_LOCK_TIMEOUT_S,
-        lock_kind=lock_kind,
-    )
-    return TimeoutError(
-        "job store is busy; another local-shell-mcp operation or process may be "
-        "using the same state directory"
-    )
-
-
-@contextlib.contextmanager
-def _store_transaction() -> Generator[dict[str, Any]]:
-    """Serialize one bounded job-store transaction and reconcile deferred updates."""
-    started = time.monotonic()
-    if not _JOB_STORE_THREAD_LOCK.acquire(timeout=JOB_STORE_LOCK_TIMEOUT_S):
-        raise _job_store_busy_error(lock_kind="thread")
-    try:
-        remaining = max(
-            0.0,
-            JOB_STORE_LOCK_TIMEOUT_S - (time.monotonic() - started),
-        )
-        lock_stack = contextlib.ExitStack()
-        try:
-            lock_stack.enter_context(
-                private_file_lock(
-                    _job_store_lock_path(),
-                    timeout_s=remaining,
-                    retry_interval_s=JOB_STORE_LOCK_RETRY_INTERVAL_S,
-                )
-            )
-        except TimeoutError as exc:
-            raise _job_store_busy_error(lock_kind="file") from exc
-        with lock_stack:
-            store = _load_store()
-            deferred_paths = _reconcile_managed_deferred_updates(store)
-            yield store
-            _save_store(store)
-            _remove_managed_deferred_updates(deferred_paths)
-    finally:
-        _JOB_STORE_THREAD_LOCK.release()
 
 
 def _shell_safe_name(value: str) -> str:
@@ -1181,14 +885,13 @@ async def _start_managed_job_unlocked(
 
 def reset_managed_jobs_for_tests(*, clear_handlers: bool = False) -> None:
     """Cancel process-local managed tasks and optionally clear test handlers."""
-    global _MANAGED_DEFERRED_NEXT_SEQUENCE
     for task in tuple(_MANAGED_JOB_TASKS.values()):
         task.cancel()
     _MANAGED_JOB_TASKS.clear()
     for job_id in tuple(_MANAGED_JOB_LEASES):
         with contextlib.suppress(Exception):
             _release_managed_job_lease(job_id)
-    _MANAGED_DEFERRED_NEXT_SEQUENCE = None
+    job_recovery.reset_deferred_sequence_for_tests()
     if clear_handlers:
         _MANAGED_JOB_HANDLERS.clear()
 
@@ -1258,7 +961,7 @@ async def _job_start_execute_unlocked(
             _prune_store(store)
             store["jobs"].append(job)
     except BaseException:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
         _remove_attempt_paths(paths)
         raise
 
@@ -1337,7 +1040,7 @@ async def _job_start_execute_unlocked(
         )
         return JobStartOutput(**public.model_dump())
     finally:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
 
 
 async def job_reconcile_shell_jobs_execute() -> bool:
@@ -1577,12 +1280,12 @@ async def _stop_managed_job_without_session_admission(
             job["updated_at"] = _utc()
             operation_id = _begin_job_operation(job, "stop")
     except BaseException:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
         raise
     try:
         return await _stop_managed_job(session_id, job_id, operation_id)
     finally:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
 
 
 async def job_stop_managed_references_execute(
@@ -1694,7 +1397,7 @@ async def _job_stop_execute_unlocked(
             job["updated_at"] = _utc()
             operation_id = _begin_job_operation(job, "stop")
     except BaseException:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
         raise
 
     try:
@@ -1775,7 +1478,7 @@ async def _job_stop_execute_unlocked(
         )
         return JobStopOutput(job=public, killed=killed, stderr=stderr)
     finally:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
 
 
 async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
@@ -1887,7 +1590,7 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
                     _clear_job_operation(current)
         raise
     finally:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
 
 
 def _job_lifecycle_session_ids(session_id: str, job_id: str) -> tuple[str, ...]:
@@ -1947,7 +1650,7 @@ async def _job_retry_execute_unlocked(
             )
             operation_id = _begin_job_operation(job, "retry")
     except BaseException:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
         raise
 
     paths: dict[str, Path] | None = None
@@ -2056,7 +1759,7 @@ async def _job_retry_execute_unlocked(
         )
         return JobRetryOutput(**public.model_dump())
     finally:
-        _ACTIVE_JOB_OPERATIONS.discard(operation_id)
+        _discard_job_operation(operation_id)
 
 
 async def managed_job_list_execute(
