@@ -56,21 +56,52 @@ from ..utils.runtime_identity import (
     managed_job_lease_state,
 )
 from ..utils.serialization import to_jsonable
+from .persistence import (
+    JOB_STORE_VERSION as _JOB_STORE_VERSION,
+)
+from .persistence import (
+    TERMINAL_STATUSES,
+)
+from .persistence import (
+    attempt_paths as _attempt_paths,
+)
+from .persistence import (
+    job_runtime_dir as _persistence_job_runtime_dir,
+)
+from .persistence import (
+    job_store_backup_path as _persistence_job_store_backup_path,
+)
+from .persistence import (
+    job_store_lock_path as _job_store_lock_path,
+)
+from .persistence import (
+    job_store_path as _persistence_job_store_path,
+)
+from .persistence import (
+    load_store as _load_store,
+)
+from .persistence import (
+    prune_store as _prune_store,
+)
+from .persistence import (
+    remove_attempt_files as _remove_attempt_files,
+)
+from .persistence import (
+    remove_attempt_paths as _remove_attempt_paths,
+)
+from .persistence import (
+    save_store as _save_store,
+)
 from .runner import compact_log as _compact_log
 from .runner import run_job_runner_from_args as _run_job_runner_from_args
 
-JOB_STORE_FILE_NAME = "jobs.json"
-JOB_STORE_BACKUP_FILE_NAME = "jobs.json.bak"
-JOB_STORE_LOCK_FILE_NAME = "jobs.lock"
-JOB_STORE_VERSION = 2
-JOB_STORE_LEGACY_VERSIONS = {1}
+JOB_STORE_VERSION = _JOB_STORE_VERSION
 JOB_STORE_LOCK_TIMEOUT_S = 2.0
 JOB_STORE_LOCK_RETRY_INTERVAL_S = 0.05
 MANAGED_JOB_STORE_RETRY_ATTEMPTS = 2
 MANAGED_DEFERRED_UPDATE_VERSION = 1
 MANAGED_DEFERRED_APPLIED_KEY = "managed_deferred_update_ids"
 MANAGED_DEFERRED_MAX_RECORD_BYTES = 524_288
-TERMINAL_STATUSES = {"succeeded", "failed", "exited", "stopped", "lost"}
 CONFIRMED_TERMINAL_STATUSES = {"succeeded", "failed", "exited", "stopped"}
 ACTIVE_STATUSES = {"starting", "running", "stopping", "retrying"}
 _JOB_STORE_THREAD_LOCK = threading.RLock()
@@ -93,6 +124,21 @@ def _utc() -> float:
 def run_job_runner_from_args(args: Any) -> None:
     """Compatibility facade for the standalone durable attempt runner."""
     _run_job_runner_from_args(args)
+
+
+def _job_store_path() -> Path:
+    """Compatibility facade for the primary durable job-store path."""
+    return _persistence_job_store_path()
+
+
+def _job_store_backup_path() -> Path:
+    """Compatibility facade for the backup durable job-store path."""
+    return _persistence_job_store_backup_path()
+
+
+def _job_runtime_dir() -> Path:
+    """Compatibility facade for the private job-attempt directory."""
+    return _persistence_job_runtime_dir()
 
 
 def _managed_job_liveness(job: dict[str, Any]) -> str:
@@ -128,30 +174,6 @@ def _release_managed_job_lease(job_id: str) -> None:
         lease.release()
 
 
-def _job_store_path() -> Path:
-    """Return the primary tracked-job metadata path."""
-    return get_state_store().layout.jobs_store_path
-
-
-def _job_store_backup_path() -> Path:
-    """Return the fallback tracked-job metadata path."""
-    return get_state_store().layout.jobs_store_backup_path
-
-
-def _job_store_lock_path() -> Path:
-    """Return the cross-process tracked-job lock path."""
-    return get_state_store().layout.jobs_lock_path
-
-
-def _job_runtime_dir() -> Path:
-    """Return the private directory containing job attempt logs and status files."""
-    path = get_state_store().layout.jobs_dir
-    path.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        path.chmod(0o700)
-    return path
-
-
 def _managed_deferred_update_dir(*, create: bool = True) -> Path:
     """Return the private journal directory, creating it only for a writer."""
     path = get_state_store().layout.jobs_deferred_dir
@@ -160,149 +182,6 @@ def _managed_deferred_update_dir(*, create: bool = True) -> Path:
         with contextlib.suppress(OSError):
             path.chmod(0o700)
     return path
-
-
-def _empty_store() -> dict[str, Any]:
-    return {"version": JOB_STORE_VERSION, "jobs": []}
-
-
-def _load_store_file(path: Path) -> dict[str, Any]:
-    """Load and migrate one supported tracked-job store file."""
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"unsupported or invalid job store: {path}")
-    version = data.get("version")
-    if (
-        version != JOB_STORE_VERSION
-        and version not in JOB_STORE_LEGACY_VERSIONS
-    ):
-        raise ValueError(f"unsupported or invalid job store: {path}")
-    rows = data.get("jobs")
-    if not isinstance(rows, list):
-        raise ValueError(f"job store jobs field is invalid: {path}")
-    jobs = [row for row in rows if isinstance(row, dict)]
-    if version != JOB_STORE_VERSION:
-        audit(
-            "job_store_migrated",
-            path=str(path),
-            from_version=version,
-            to_version=JOB_STORE_VERSION,
-            jobs=len(jobs),
-        )
-    return {"version": JOB_STORE_VERSION, "jobs": jobs}
-
-
-def _load_store() -> dict[str, Any]:
-    """Load the primary store or recover from its backup without silent reset."""
-    path = _job_store_path()
-    backup_path = _job_store_backup_path()
-    if not path.exists() and not backup_path.exists():
-        return _empty_store()
-
-    main_error: Exception | None = None
-    if path.exists():
-        try:
-            return _load_store_file(path)
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            main_error = exc
-            audit("job_store_unreadable", path=str(path), error=repr(exc))
-
-    if backup_path.exists():
-        try:
-            store = _load_store_file(backup_path)
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            audit(
-                "job_store_backup_unreadable",
-                path=str(backup_path),
-                error=repr(exc),
-            )
-        else:
-            audit(
-                "job_store_recovered",
-                path=str(path),
-                backup_path=str(backup_path),
-            )
-            return store
-
-    raise RuntimeError(
-        "Job store is unreadable and no valid backup is available; refusing to reset it"
-    ) from main_error
-
-
-def _attempt_paths(job_id: str, attempt: int) -> dict[str, Path]:
-    """Return private command, log, and status paths for one job attempt."""
-    stem = f"{job_id}-attempt-{attempt}"
-    root = _job_runtime_dir()
-    return {
-        "command": root / f"{stem}.command",
-        "log": root / f"{stem}.log",
-        "status": root / f"{stem}.status.json",
-    }
-
-
-def _remove_attempt_paths(paths: dict[str, Path] | None) -> None:
-    if not paths:
-        return
-    for path in paths.values():
-        with contextlib.suppress(OSError):
-            path.unlink(missing_ok=True)
-
-
-def _remove_attempt_files(job_id: str, keep_attempt: int | None = None) -> None:
-    """Remove runtime artifacts for pruned or superseded attempts."""
-    if not job_id:
-        return
-    keep_stem = (
-        f"{job_id}-attempt-{keep_attempt}."
-        if keep_attempt is not None
-        else None
-    )
-    for path in _job_runtime_dir().glob(f"{job_id}-attempt-*"):
-        if keep_stem is not None and path.name.startswith(keep_stem):
-            continue
-        with contextlib.suppress(OSError):
-            path.unlink()
-
-
-def _job_is_retention_terminal(job: dict[str, Any]) -> bool:
-    """Return whether one row is safe to evict as completed history."""
-    status = str(job.get("status") or "")
-    return status in TERMINAL_STATUSES and not (
-        str(job.get("kind") or "shell") == "shell"
-        and status == "lost"
-        and not bool(job.get("shell_absence_confirmed"))
-    )
-
-
-def _prune_store(store: dict[str, Any]) -> None:
-    """Bound retained terminal jobs while never deleting active operations."""
-    jobs = [row for row in store.get("jobs", []) if isinstance(row, dict)]
-    max_jobs = max(0, int(get_settings().max_jobs))
-    active = [row for row in jobs if not _job_is_retention_terminal(row)]
-    finished = sorted(
-        (row for row in jobs if _job_is_retention_terminal(row)),
-        key=lambda row: float(
-            row.get("updated_at") or row.get("created_at") or 0
-        ),
-        reverse=True,
-    )
-    keep_finished = finished[: max(0, max_jobs - len(active))]
-    keep_objects = {id(row) for row in [*active, *keep_finished]}
-    removed = [row for row in jobs if id(row) not in keep_objects]
-    store["jobs"] = [row for row in jobs if id(row) in keep_objects]
-    for row in removed:
-        _remove_attempt_files(str(row.get("job_id") or ""))
-
-
-def _save_store(store: dict[str, Any]) -> None:
-    """Atomically persist primary and backup stores after retention pruning."""
-    _prune_store(store)
-    store["version"] = JOB_STORE_VERSION
-    path = _job_store_path()
-    backup_path = _job_store_backup_path()
-    payload = json.dumps(store, indent=2, sort_keys=True)
-    atomic_write_private_text(path, payload)
-    atomic_write_private_text(backup_path, payload)
 
 
 def _next_managed_deferred_sequence() -> int:
