@@ -360,8 +360,12 @@ class FileStateStore:
             self._release_thread_lock(key)
 
 
-_STATE_STORE = FileStateStore(
-    lambda: (
+_STATE_STORE: StateStore | None = None
+
+
+def _default_state_root() -> Path:
+    """Resolve the compatibility fallback state root without an import cycle."""
+    return (
         __import__(
             "local_shell_mcp.config.settings",
             fromlist=["get_settings"],
@@ -369,9 +373,17 @@ _STATE_STORE = FileStateStore(
         .get_settings()
         .state_dir
     )
-)
 
 
-def get_state_store() -> FileStateStore:
-    """Return the process-wide filesystem state store."""
+def configure_state_store(store: StateStore | None) -> None:
+    """Install an explicitly composed process-wide state store."""
+    global _STATE_STORE
+    _STATE_STORE = store
+
+
+def get_state_store() -> StateStore:
+    """Return the configured state store, with a compatibility lazy fallback."""
+    global _STATE_STORE
+    if _STATE_STORE is None:
+        _STATE_STORE = FileStateStore(_default_state_root)
     return _STATE_STORE

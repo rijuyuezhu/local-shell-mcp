@@ -6,12 +6,12 @@ import secrets
 import string
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from ..config.settings import get_settings
+from ..config.settings import Settings, get_settings
 from ..ops.utils.path import resolve_path
 from ..persistence import StateStore, get_state_store
 from ..utils.runtime_identity import managed_job_lease_state
@@ -142,12 +142,21 @@ class SessionTerminationRequestedError(ValueError):
 class ToolSessionStore:
     """Persist explicit agent sessions and their grounding snapshots."""
 
-    def __init__(self, state_store: StateStore | None = None) -> None:
+    def __init__(
+        self,
+        state_store: StateStore | None = None,
+        settings_provider: Callable[[], Settings] = get_settings,
+    ) -> None:
         self._lock = threading.RLock()
         self._state_store = state_store or get_state_store()
+        self._settings_provider = settings_provider
         self._loaded_root: Path | None = None
         self._sessions: dict[str, AgentSession] = {}
         self._snapshots: dict[tuple[str, str], SnapshotRecord] = {}
+
+    def _settings(self) -> Settings:
+        """Return the settings dependency supplied at composition time."""
+        return self._settings_provider()
 
     @staticmethod
     def _required_float(payload: dict[str, Any], field: str) -> float:
@@ -418,7 +427,7 @@ class ToolSessionStore:
 
     def _session_expired(self, session: AgentSession, now: float) -> bool:
         """Return whether explicit expiry or idle retention invalidates a session."""
-        retention_s = int(get_settings().agent_session_retention_s)
+        retention_s = int(self._settings().agent_session_retention_s)
         return (
             self._session_expired_by_policy(session, now, retention_s)
             and not session.persistent_shell_ids
@@ -483,7 +492,7 @@ class ToolSessionStore:
         """Remove expired sessions and inactive overflow beyond the configured cap."""
         sessions = self._read_all_sessions_locked()
         active_job_session_ids = self._active_job_session_ids_locked()
-        retention_s = int(get_settings().agent_session_retention_s)
+        retention_s = int(self._settings().agent_session_retention_s)
         expired = [
             session
             for session in sessions.values()
@@ -519,7 +528,7 @@ class ToolSessionStore:
                     sessions.pop(session.session_id, None)
 
         sessions = self._read_all_sessions_locked()
-        maximum = int(get_settings().max_agent_sessions)
+        maximum = int(self._settings().max_agent_sessions)
         target = max(0, maximum - max(0, reserve_slots))
         overflow = max(0, len(sessions) - target)
         if overflow:
@@ -673,7 +682,7 @@ class ToolSessionStore:
 
     def _prune_snapshots_locked(self, session_id: str) -> None:
         """Keep the newest per-session snapshots within count and byte limits."""
-        settings = get_settings()
+        settings = self._settings()
         snapshots = sorted(
             (
                 snapshot
@@ -738,7 +747,7 @@ class ToolSessionStore:
             with self._state_store.transaction(registry):
                 now = time.time()
                 sessions = self._prune_sessions_locked(now, reserve_slots=1)
-                maximum = int(get_settings().max_agent_sessions)
+                maximum = int(self._settings().max_agent_sessions)
                 if len(sessions) >= maximum:
                     raise RuntimeError(
                         "agent session limit reached: "
@@ -1194,7 +1203,7 @@ class ToolSessionStore:
                     created_at=time.time(),
                     sequence=next_sequence,
                 )
-                maximum_bytes = int(get_settings().max_session_snapshot_bytes)
+                maximum_bytes = int(self._settings().max_session_snapshot_bytes)
                 if (
                     self._encoded_snapshot_payload_bytes([record])
                     > maximum_bytes
@@ -1310,9 +1319,18 @@ def enforce_tool_session_control(
         )
 
 
-_STORE = ToolSessionStore()
+_STORE: ToolSessionStore | None = None
+
+
+def configure_tool_session_store(store: ToolSessionStore | None) -> None:
+    """Install an explicitly composed process-wide tool-session store."""
+    global _STORE
+    _STORE = store
 
 
 def get_tool_session_store() -> ToolSessionStore:
-    """Return the process-wide durable session and grounding store."""
+    """Return the configured session store, with a compatibility lazy fallback."""
+    global _STORE
+    if _STORE is None:
+        _STORE = ToolSessionStore()
     return _STORE

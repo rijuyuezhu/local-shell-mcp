@@ -304,6 +304,9 @@ def test_server_handler_dispatches_executor_modes(monkeypatch):
         return argparse.Namespace(mode=mode)
 
     monkeypatch.setattr(server_cli, "settings_from_args", settings_from_args)
+    monkeypatch.setattr(
+        server_cli, "configure_runtime_services", lambda _settings: None
+    )
     monkeypatch.setattr(server_cli, "run_http", lambda: calls.append("http"))
     monkeypatch.setattr(server_cli, "run_mcp", lambda: calls.append("mcp"))
     args = argparse.Namespace()
