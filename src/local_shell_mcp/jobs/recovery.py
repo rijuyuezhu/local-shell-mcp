@@ -25,6 +25,9 @@ from .persistence import (
 )
 from .state import (
     ACTIVE_STATUSES,
+    JobStore,
+    MutableJobRow,
+    MutableJobStore,
 )
 from .state import (
     clear_job_operation as _clear_job_operation,
@@ -204,7 +207,7 @@ def read_managed_deferred_updates() -> list[
 
 
 def apply_managed_update(
-    job: dict[str, Any], operation: str, payload: dict[str, Any]
+    job: MutableJobRow, operation: str, payload: dict[str, Any]
 ) -> None:
     """Apply one already validated managed-state update to a mutable job row."""
     match operation:
@@ -249,7 +252,7 @@ def apply_managed_update(
             )
 
 
-def reconcile_managed_deferred_updates(store: dict[str, Any]) -> list[Path]:
+def reconcile_managed_deferred_updates(store: MutableJobStore) -> list[Path]:
     """Replay each journal row once and return rows removable after store commit."""
     rows = read_managed_deferred_updates()
     active_ids = {path.stem for path, _record, _removable in rows}
@@ -326,7 +329,7 @@ def job_store_busy_error(*, lock_kind: str) -> TimeoutError:
 
 
 @contextlib.contextmanager
-def store_transaction() -> Generator[dict[str, Any]]:
+def store_transaction() -> Generator[JobStore]:
     """Serialize one bounded job-store transaction and reconcile deferred updates."""
     started = time.monotonic()
     if not _JOB_STORE_THREAD_LOCK.acquire(timeout=JOB_STORE_LOCK_TIMEOUT_S):

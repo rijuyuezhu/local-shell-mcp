@@ -1,7 +1,8 @@
 """Shared durable tracked-job runtime, persistence, and runner helpers."""
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..ops.shell import (
     authoritative_persistent_shell_ids_execute,
@@ -49,12 +50,14 @@ from .persistence import (
 from .runner import run_job_runner_from_args as _run_job_runner_from_args
 from .state import (
     ACTIVE_STATUSES,
+    JobStatusPayload,
+    MutableJobRow,
 )
 from .state import (
     MANAGED_STATE_MAX_BYTES as _STATE_MANAGED_STATE_MAX_BYTES,
 )
 from .state import (
-    find_session_job as _find_session_job,
+    find_session_job as _state_find_session_job,
 )
 from .state import (
     job_shell_id as _job_shell_id,
@@ -72,7 +75,6 @@ from .state import (
 JOB_STORE_VERSION = _JOB_STORE_VERSION
 CONFIRMED_TERMINAL_STATUSES = job_state.CONFIRMED_TERMINAL_STATUSES
 _MANAGED_STATE_MAX_BYTES = _STATE_MANAGED_STATE_MAX_BYTES
-_attempt_paths = job_persistence.attempt_paths
 JOB_STORE_LOCK_TIMEOUT_S = job_recovery.JOB_STORE_LOCK_TIMEOUT_S
 JOB_STORE_LOCK_RETRY_INTERVAL_S = job_recovery.JOB_STORE_LOCK_RETRY_INTERVAL_S
 MANAGED_JOB_STORE_RETRY_ATTEMPTS = 2
@@ -93,7 +95,7 @@ _reconcile_managed_deferred_updates = (
 )
 _remove_managed_deferred_updates = job_recovery.remove_managed_deferred_updates
 _job_store_busy_error = job_recovery.job_store_busy_error
-_store_transaction = job_recovery.store_transaction
+_store_transaction: Any = job_recovery.store_transaction
 _shell_safe_name = job_lifecycle._shell_safe_name
 _prepare_attempt = job_lifecycle._prepare_attempt
 _clear_pending_retry = job_lifecycle._clear_pending_retry
@@ -126,30 +128,47 @@ def _runner_command(argv: list[str], shell: str) -> str:
     return job_lifecycle._runner_command(argv, shell)
 
 
-def _read_status(job: dict[str, Any]) -> dict[str, Any] | None:
+def _attempt_paths(job_id: str, attempt: int) -> dict[str, Path]:
+    """Compatibility facade retaining the historical mutable-dict test surface."""
+    return cast(dict[str, Path], job_persistence.attempt_paths(job_id, attempt))
+
+
+def _find_session_job(
+    store: Mapping[str, Any], session_id: str, job_id: str
+) -> dict[str, Any]:
+    """Compatibility facade retaining the historical generic row mapping."""
+    return cast(
+        dict[str, Any], _state_find_session_job(store, session_id, job_id)
+    )
+
+
+def _read_status(job: Mapping[str, Any]) -> JobStatusPayload | None:
     """Compatibility facade for reading one durable attempt status."""
     return job_lifecycle._read_status(job)
 
 
-def _read_status_path(raw_path: Any) -> dict[str, Any] | None:
+def _read_status_path(raw_path: Any) -> JobStatusPayload | None:
     """Compatibility facade for reading one explicit durable status path."""
     return job_lifecycle._read_status_path(raw_path)
 
 
 def _refresh_job_status(
-    job: dict[str, Any],
+    job: MutableJobRow,
     active_shells: set[str] | None,
     now: float | None = None,
 ) -> dict[str, Any]:
     """Compatibility facade for durable shell/managed status reconciliation."""
-    return job_lifecycle._refresh_job_status(
-        job,
-        active_shells,
-        now,
-        managed_job_has_local_task=_managed_job_has_local_task,
-        managed_job_liveness=_managed_job_liveness,
-        read_status=_read_status,
-        read_status_path=_read_status_path,
+    return cast(
+        dict[str, Any],
+        job_lifecycle._refresh_job_status(
+            job,
+            active_shells,
+            now,
+            managed_job_has_local_task=_managed_job_has_local_task,
+            managed_job_liveness=_managed_job_liveness,
+            read_status=_read_status,
+            read_status_path=_read_status_path,
+        ),
     )
 
 
@@ -180,7 +199,7 @@ def _job_runtime_dir() -> Path:
 
 def _load_store() -> dict[str, Any]:
     """Compatibility facade for durable job-store loading."""
-    return job_persistence.load_store()
+    return cast(dict[str, Any], job_persistence.load_store())
 
 
 def _save_store(store: dict[str, Any]) -> None:

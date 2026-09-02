@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +46,9 @@ from .runner import compact_log as _compact_log
 from .state import (
     ACTIVE_STATUSES,
     CONFIRMED_TERMINAL_STATUSES,
+    JobAttemptPaths,
+    JobRow,
+    MutableJobRow,
 )
 from .state import (
     begin_job_operation as _begin_job_operation,
@@ -92,7 +95,7 @@ _MANAGED_JOB_TASKS: dict[str, asyncio.Task[None]] = {}
 _MANAGED_JOB_LEASES: dict[str, ManagedJobLease] = {}
 
 
-def _managed_job_liveness(job: dict[str, Any]) -> str:
+def _managed_job_liveness(job: Mapping[str, Any]) -> str:
     """Return the authoritative cross-process liveness state for a managed row."""
     return managed_job_lease_state(
         str(job.get("job_id") or ""),
@@ -100,7 +103,7 @@ def _managed_job_liveness(job: dict[str, Any]) -> str:
     )
 
 
-def _managed_job_has_local_task(job: dict[str, Any]) -> bool:
+def _managed_job_has_local_task(job: Mapping[str, Any]) -> bool:
     """Return whether this process owns one still-running managed task."""
     if str(job.get("runtime_instance_id") or "") != PROCESS_INSTANCE_ID:
         return False
@@ -109,10 +112,10 @@ def _managed_job_has_local_task(job: dict[str, Any]) -> bool:
 
 
 def _refresh_job_status(
-    job: dict[str, Any],
+    job: MutableJobRow,
     active_shells: set[str] | None,
     now: float | None = None,
-) -> dict[str, Any]:
+) -> MutableJobRow:
     """Reconcile one row using this module's authoritative managed liveness."""
     return job_lifecycle._refresh_job_status(
         job,
@@ -415,7 +418,7 @@ async def _start_managed_job_unlocked(
     write_private_text(paths["log"], "")
     now = _utc()
     display_name = name or f"{normalized_kind}-{job_id}"
-    job: dict[str, Any] = {
+    job: JobRow = {
         "job_id": job_id,
         "kind": "managed",
         "managed_kind": normalized_kind,
@@ -611,7 +614,7 @@ async def job_stop_managed_references_execute(
 async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
     """Relaunch one terminal managed operation from its durable handler payload."""
     operation_id = ""
-    paths: dict[str, Path] | None = None
+    paths: JobAttemptPaths | None = None
     attempts = 0
     try:
         with _store_transaction() as store:

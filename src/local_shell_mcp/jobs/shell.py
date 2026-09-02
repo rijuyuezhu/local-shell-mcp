@@ -1,7 +1,7 @@
 """Shell-backed tracked-job lifecycle operations."""
 
 import contextlib
-from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 from ..audit import audit
@@ -31,6 +31,10 @@ from .persistence import (
 from .recovery import store_transaction as _store_transaction
 from .state import (
     ACTIVE_STATUSES,
+    JobAttemptPaths,
+    JobRow,
+    JobStatusPayload,
+    MutableJobRow,
 )
 from .state import (
     begin_job_operation as _begin_job_operation,
@@ -66,31 +70,31 @@ _clear_pending_retry = job_lifecycle._clear_pending_retry
 _adopt_pending_retry = job_lifecycle._adopt_pending_retry
 
 
-def _managed_job_has_local_task(_job: dict[str, Any]) -> bool:
+def _managed_job_has_local_task(_job: Mapping[str, Any]) -> bool:
     """Reject accidental managed-row reconciliation in the shell backend."""
     return False
 
 
-def _managed_job_liveness(_job: dict[str, Any]) -> str:
+def _managed_job_liveness(_job: Mapping[str, Any]) -> str:
     """Return a terminal fallback that is unreachable for shell-only callers."""
     return "dead"
 
 
-def _read_status(job: dict[str, Any]) -> dict[str, Any] | None:
+def _read_status(job: Mapping[str, Any]) -> JobStatusPayload | None:
     """Read one shell attempt status through a patchable backend seam."""
     return job_lifecycle._read_status(job)
 
 
-def _read_status_path(raw_path: Any) -> dict[str, Any] | None:
+def _read_status_path(raw_path: Any) -> JobStatusPayload | None:
     """Read one explicit shell status path through a patchable backend seam."""
     return job_lifecycle._read_status_path(raw_path)
 
 
 def _refresh_job_status(
-    job: dict[str, Any],
+    job: MutableJobRow,
     active_shells: set[str] | None,
     now: float | None = None,
-) -> dict[str, Any]:
+) -> MutableJobRow:
     """Reconcile one shell row without importing the managed backend."""
     if str(job.get("kind") or "shell") == "managed":
         raise RuntimeError("managed job passed to shell job lifecycle")
@@ -120,7 +124,7 @@ async def start_shell_job_unlocked(
     paths, runner_command = _prepare_attempt(job_id, 1, command, resolved_cwd)
     now = _utc()
     active_shells = await authoritative_persistent_shell_ids_execute()
-    job: dict[str, Any] = {
+    job: JobRow = {
         "job_id": job_id,
         "kind": "shell",
         "name": display_name,
@@ -461,7 +465,7 @@ async def retry_shell_job_unlocked(
         _discard_job_operation(operation_id)
         raise
 
-    paths: dict[str, Path] | None = None
+    paths: JobAttemptPaths | None = None
     try:
         try:
             paths, runner_command = _prepare_attempt(
@@ -499,8 +503,9 @@ async def retry_shell_job_unlocked(
                 ) == "retrying" and _job_operation_matches(
                     current, operation_id
                 ):
-                    if current.get("pending_attempt") is not None:
-                        current["attempts"] = int(current["pending_attempt"])
+                    pending_attempt = current.get("pending_attempt")
+                    if pending_attempt is not None:
+                        current["attempts"] = int(pending_attempt)
                     _clear_pending_retry(current)
                     _clear_job_operation(current)
                     completed = _utc()

@@ -2,13 +2,15 @@
 
 import contextlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..audit import audit
 from ..config.settings import get_settings
 from ..persistence import get_state_store
 from ..utils.private_files import atomic_write_private_text
+from .state import JobAttemptPaths, JobRow, JobStore, MutableJobStore
 
 JOB_STORE_FILE_NAME = "jobs.json"
 JOB_STORE_BACKUP_FILE_NAME = "jobs.json.bak"
@@ -42,12 +44,12 @@ def job_runtime_dir() -> Path:
     return path
 
 
-def empty_store() -> dict[str, Any]:
+def empty_store() -> JobStore:
     """Return one empty store using the current durable schema version."""
     return {"version": JOB_STORE_VERSION, "jobs": []}
 
 
-def load_store_file(path: Path) -> dict[str, Any]:
+def load_store_file(path: Path) -> JobStore:
     """Load and migrate one supported tracked-job store file."""
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -61,7 +63,7 @@ def load_store_file(path: Path) -> dict[str, Any]:
     rows = data.get("jobs")
     if not isinstance(rows, list):
         raise ValueError(f"job store jobs field is invalid: {path}")
-    jobs = [row for row in rows if isinstance(row, dict)]
+    jobs = [cast(JobRow, row) for row in rows if isinstance(row, dict)]
     if version != JOB_STORE_VERSION:
         audit(
             "job_store_migrated",
@@ -73,7 +75,7 @@ def load_store_file(path: Path) -> dict[str, Any]:
     return {"version": JOB_STORE_VERSION, "jobs": jobs}
 
 
-def load_store() -> dict[str, Any]:
+def load_store() -> JobStore:
     """Load the primary store or recover from its backup without silent reset."""
     path = job_store_path()
     backup_path = job_store_backup_path()
@@ -110,7 +112,7 @@ def load_store() -> dict[str, Any]:
     ) from main_error
 
 
-def attempt_paths(job_id: str, attempt: int) -> dict[str, Path]:
+def attempt_paths(job_id: str, attempt: int) -> JobAttemptPaths:
     """Return private command, log, and status paths for one job attempt."""
     stem = f"{job_id}-attempt-{attempt}"
     root = job_runtime_dir()
@@ -121,13 +123,13 @@ def attempt_paths(job_id: str, attempt: int) -> dict[str, Path]:
     }
 
 
-def remove_attempt_paths(paths: dict[str, Path] | None) -> None:
+def remove_attempt_paths(paths: JobAttemptPaths | None) -> None:
     """Remove one explicitly described set of attempt artifacts."""
     if not paths:
         return
-    for path in paths.values():
+    for key in ("command", "log", "status"):
         with contextlib.suppress(OSError):
-            path.unlink(missing_ok=True)
+            paths[key].unlink(missing_ok=True)
 
 
 def remove_attempt_files(job_id: str, keep_attempt: int | None = None) -> None:
@@ -146,7 +148,7 @@ def remove_attempt_files(job_id: str, keep_attempt: int | None = None) -> None:
             path.unlink()
 
 
-def job_is_retention_terminal(job: dict[str, Any]) -> bool:
+def job_is_retention_terminal(job: Mapping[str, Any]) -> bool:
     """Return whether one row is safe to evict as completed history."""
     status = str(job.get("status") or "")
     return status in TERMINAL_STATUSES and not (
@@ -156,9 +158,13 @@ def job_is_retention_terminal(job: dict[str, Any]) -> bool:
     )
 
 
-def prune_store(store: dict[str, Any]) -> None:
+def prune_store(store: MutableJobStore) -> None:
     """Bound retained terminal jobs while never deleting active operations."""
-    jobs = [row for row in store.get("jobs", []) if isinstance(row, dict)]
+    jobs = [
+        cast(JobRow, row)
+        for row in store.get("jobs", [])
+        if isinstance(row, dict)
+    ]
     max_jobs = max(0, int(get_settings().max_jobs))
     active = [row for row in jobs if not job_is_retention_terminal(row)]
     finished = sorted(
@@ -176,7 +182,7 @@ def prune_store(store: dict[str, Any]) -> None:
         remove_attempt_files(str(row.get("job_id") or ""))
 
 
-def save_store(store: dict[str, Any]) -> None:
+def save_store(store: MutableJobStore) -> None:
     """Atomically persist primary and backup stores after retention pruning."""
     prune_store(store)
     store["version"] = JOB_STORE_VERSION

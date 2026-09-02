@@ -5,9 +5,9 @@ import re
 import shlex
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..config.settings import get_settings
 from ..ops.shell import check_command_policy
@@ -15,6 +15,9 @@ from ..utils.private_files import write_private_text
 from .persistence import attempt_paths as _attempt_paths
 from .state import (
     ACTIVE_STATUSES,
+    JobAttemptPaths,
+    JobStatusPayload,
+    MutableJobRow,
 )
 from .state import (
     clear_job_operation as _clear_job_operation,
@@ -29,10 +32,10 @@ from .state import (
     utc as _utc,
 )
 
-type ManagedJobStateProbe = Callable[[dict[str, Any]], bool]
-type ManagedJobLivenessProbe = Callable[[dict[str, Any]], str]
-type JobStatusReader = Callable[[dict[str, Any]], dict[str, Any] | None]
-type JobStatusPathReader = Callable[[Any], dict[str, Any] | None]
+type ManagedJobStateProbe = Callable[[Mapping[str, Any]], bool]
+type ManagedJobLivenessProbe = Callable[[Mapping[str, Any]], str]
+type JobStatusReader = Callable[[Mapping[str, Any]], JobStatusPayload | None]
+type JobStatusPathReader = Callable[[Any], JobStatusPayload | None]
 
 
 def _shell_safe_name(value: str) -> str:
@@ -51,7 +54,7 @@ def _active_shell_ids(shells: Any) -> set[str]:
     }
 
 
-def _runner_argv(paths: dict[str, Path], cwd: Path) -> list[str]:
+def _runner_argv(paths: JobAttemptPaths, cwd: Path) -> list[str]:
     """Build the internal durable runner invocation for one attempt."""
     arguments = [
         "job-runner",
@@ -89,7 +92,7 @@ def _runner_command(argv: list[str], shell: str) -> str:
 
 def _prepare_attempt(
     job_id: str, attempt: int, command: str, cwd: Path
-) -> tuple[dict[str, Path], str]:
+) -> tuple[JobAttemptPaths, str]:
     """Validate and materialize one durable attempt before starting its shell."""
     check_command_policy(command)
     paths = _attempt_paths(job_id, attempt)
@@ -100,23 +103,25 @@ def _prepare_attempt(
     return paths, _runner_command(argv, get_settings().shell_executable)
 
 
-def _read_status_path(raw_path: Any) -> dict[str, Any] | None:
+def _read_status_path(raw_path: Any) -> JobStatusPayload | None:
     if not raw_path:
         return None
     try:
         payload = json.loads(Path(str(raw_path)).read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
         return None
-    return payload if isinstance(payload, dict) else None
+    return (
+        cast(JobStatusPayload, payload) if isinstance(payload, dict) else None
+    )
 
 
-def _read_status(job: dict[str, Any]) -> dict[str, Any] | None:
+def _read_status(job: Mapping[str, Any]) -> JobStatusPayload | None:
     return _read_status_path(job.get("status_path"))
 
 
 def _apply_status_payload(
-    job: dict[str, Any], status_payload: dict[str, Any], updated: float
-) -> dict[str, Any]:
+    job: MutableJobRow, status_payload: JobStatusPayload, updated: float
+) -> MutableJobRow:
     """Apply runner completion metadata to one mutable job row."""
     exit_code = status_payload.get("exit_code")
     completed_at = float(status_payload.get("completed_at") or updated)
@@ -136,7 +141,7 @@ def _apply_status_payload(
     return job
 
 
-def _clear_pending_retry(job: dict[str, Any]) -> None:
+def _clear_pending_retry(job: MutableJobRow) -> None:
     for key in (
         "pending_attempt",
         "pending_shell_id",
@@ -147,7 +152,7 @@ def _clear_pending_retry(job: dict[str, Any]) -> None:
         job.pop(key, None)
 
 
-def _adopt_pending_retry(job: dict[str, Any]) -> None:
+def _adopt_pending_retry(job: MutableJobRow) -> None:
     attempt = job.get("pending_attempt")
     if attempt is not None:
         job["attempts"] = int(attempt)
@@ -163,7 +168,7 @@ def _adopt_pending_retry(job: dict[str, Any]) -> None:
 
 
 def _refresh_job_status(
-    job: dict[str, Any],
+    job: MutableJobRow,
     active_shells: set[str] | None,
     now: float | None = None,
     *,
@@ -171,7 +176,7 @@ def _refresh_job_status(
     managed_job_liveness: ManagedJobLivenessProbe,
     read_status: JobStatusReader = _read_status,
     read_status_path: JobStatusPathReader = _read_status_path,
-) -> dict[str, Any]:
+) -> MutableJobRow:
     """Apply durable completion and authoritative live-shell reconciliation."""
     status = str(job.get("status") or "unknown")
     kind = str(job.get("kind") or "shell")
