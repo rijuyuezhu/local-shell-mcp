@@ -619,33 +619,55 @@ class ToolSessionStore:
                 self._write_session_locked(updated)
                 return updated
 
+    def admit_tool_sessions(
+        self, session_ids: tuple[str, ...]
+    ) -> tuple[AgentSession, ...]:
+        """Admit active tool work and refresh activity only after all checks pass."""
+        unique_session_ids = tuple(dict.fromkeys(session_ids))
+        sessions = tuple(
+            self.require_session(session_id)
+            for session_id in unique_session_ids
+        )
+        for session in sessions:
+            if session.termination_requested_at is not None:
+                raise SessionTerminationRequestedError(session.session_id)
+        return tuple(
+            self.touch_session(session.session_id) for session in sessions
+        )
+
+    def admit_active_session(self, session_id: str) -> AgentSession:
+        """Admit one active session using the authoritative tool-work policy."""
+        return self.admit_tool_sessions((session_id,))[0]
+
+    def require_cleanup_sessions(
+        self, session_ids: tuple[str, ...]
+    ) -> tuple[AgentSession, ...]:
+        """Resolve known sessions for cleanup even after their expiry boundary."""
+        sessions: list[AgentSession] = []
+        for session_id in dict.fromkeys(session_ids):
+            with self._lock:
+                self._reset_for_current_root_locked()
+                with self._state_store.transaction(
+                    self._transaction_path(session_id)
+                ):
+                    sessions.append(
+                        self._require_session_locked(
+                            session_id, allow_expired=True
+                        )
+                    )
+        return tuple(sessions)
+
     def assert_tool_call_allowed(
         self,
         session_ids: tuple[str, ...],
         *,
         termination_cleanup: bool = False,
     ) -> None:
-        """Reject tool work when any referenced session requested termination."""
+        """Compatibility facade over active admission or cleanup lookup."""
         if termination_cleanup:
-            for session_id in dict.fromkeys(session_ids):
-                with self._lock:
-                    self._reset_for_current_root_locked()
-                    with self._state_store.transaction(
-                        self._transaction_path(session_id)
-                    ):
-                        self._require_session_locked(
-                            session_id, allow_expired=True
-                        )
+            self.require_cleanup_sessions(session_ids)
             return
-        sessions = [
-            self.require_session(session_id)
-            for session_id in dict.fromkeys(session_ids)
-        ]
-        for session in sessions:
-            if session.termination_requested_at is not None:
-                raise SessionTerminationRequestedError(session.session_id)
-        for session in sessions:
-            self.touch_session(session.session_id)
+        self.admit_tool_sessions(session_ids)
 
     def change_session_workdir(
         self, session_id: str, workdir: str | Path
@@ -843,10 +865,13 @@ def enforce_tool_session_control(
 ) -> None:
     """Apply persisted immediate-stop policy to one model tool invocation."""
     session_ids = tool_input_session_ids(value)
-    if session_ids:
-        get_tool_session_store().assert_tool_call_allowed(
-            session_ids, termination_cleanup=termination_cleanup
-        )
+    if not session_ids:
+        return
+    store = get_tool_session_store()
+    if termination_cleanup:
+        store.require_cleanup_sessions(session_ids)
+        return
+    store.admit_tool_sessions(session_ids)
 
 
 _STORE: ToolSessionStore | None = None

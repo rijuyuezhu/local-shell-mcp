@@ -6,6 +6,7 @@ from .bindings import (
     SessionBinding,
     binding_from_record,
 )
+from .resolver import SessionResolver
 from .store import (
     SESSION_ACTIVE_WINDOW_S,
     SESSION_ID_LENGTH,
@@ -26,6 +27,7 @@ __all__ = [
     "AgentSession",
     "binding_from_record",
     "SessionBinding",
+    "SessionResolver",
     "RemoteSessionBinding",
     "LocalSessionBinding",
     "ExpiredAgentSessionError",

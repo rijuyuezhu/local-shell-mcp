@@ -7,6 +7,7 @@ from ...remote.tool_specs import (
     REMOTE_WORKER_ORIGIN_ARG,
     REMOTE_WORKER_ORIGIN_MODEL,
 )
+from ...tool_session.bindings import RemoteSessionBinding
 from ...tool_session.store import AgentSession
 
 
@@ -22,8 +23,12 @@ async def call_remote_worker_tool(
     return await call_impl(machine, tool, args, timeout_s)
 
 
-def _remote_binding(session: AgentSession) -> tuple[str, str]:
-    """Return the machine and worker session id for a remote session."""
+def _remote_binding(
+    session: AgentSession | RemoteSessionBinding,
+) -> tuple[str, str]:
+    """Return remote coordinates, validating only legacy durable records."""
+    if isinstance(session, RemoteSessionBinding):
+        return session.machine, session.worker_session_id
     if session.target != "remote":
         raise ValueError("session is not remote")
     if not session.machine:
@@ -83,7 +88,7 @@ def _rewrite_worker_session_ids(
 
 
 async def call_remote_session_tool(
-    session: AgentSession,
+    session: AgentSession | RemoteSessionBinding,
     tool: str,
     args: dict[str, Any],
     timeout_s: int | None = None,

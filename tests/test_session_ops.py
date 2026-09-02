@@ -1165,7 +1165,10 @@ async def test_expired_remote_session_end_can_still_release_worker_binding(
         return []
 
     async def fake_remote_call(remote_session, tool, args):
-        calls.append(remote_session.worker_session_id or "")
+        from local_shell_mcp.tool_session.bindings import RemoteSessionBinding
+
+        assert isinstance(remote_session, RemoteSessionBinding)
+        calls.append(remote_session.worker_session_id)
         assert tool == "session_end"
         assert args == {}
         return {"ended": True}
