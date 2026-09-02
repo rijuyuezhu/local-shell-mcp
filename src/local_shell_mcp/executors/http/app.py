@@ -63,6 +63,17 @@ def _install_public_routes(app: FastAPI, settings: Settings) -> list[BaseRoute]:
     return [*documentation_routes, *installed_routes]
 
 
+def _controller_runtime_lifespan(runtime: ControllerRuntime):
+    """Build the REST host lifespan for one controller runtime owner."""
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+        async with runtime.lifespan():
+            yield
+
+    return lifespan
+
+
 def build_http_app(
     *,
     tool_catalog: ToolCatalog | None = None,
@@ -76,18 +87,14 @@ def build_http_app(
         else build_tool_catalog(settings)
     )
 
-    @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-        if runtime is None:
-            yield
-            return
-        async with runtime.lifespan():
-            yield
-
     app = FastAPI(
         title="local-shell-mcp REST API",
         version=__version__,
-        lifespan=lifespan if runtime is not None else None,
+        lifespan=(
+            _controller_runtime_lifespan(runtime)
+            if runtime is not None
+            else None
+        ),
     )
 
     install_error_handlers(app)

@@ -5,6 +5,7 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
+import local_shell_mcp.executors.http.app as http_app
 import local_shell_mcp.executors.mcp.app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
 from local_shell_mcp.executors.http.app import build_http_app
@@ -68,6 +69,54 @@ def test_rest_http_host_owns_controller_runtime_lifespan(tmp_path):
     finally:
         configure_tool_session_store(None)
         configure_state_store(None)
+
+
+@pytest.mark.parametrize("mode", ["default", "catalog", "runtime"])
+def test_run_http_preserves_legacy_and_runtime_build_paths(
+    tmp_path, monkeypatch, mode
+):
+    settings = Settings(
+        workspace_root=tmp_path,
+        state_dir=tmp_path / "runtime-state",
+        mode="http",
+        auth_mode="none",
+        remote_enabled=False,
+        host="127.0.0.1",
+        port=8765,
+    )
+    configure_settings(settings)
+    runtime = build_controller_runtime(settings)
+    catalog = runtime.tool_catalog
+    app = object()
+    calls = []
+
+    def build(**kwargs):
+        calls.append(("build", kwargs))
+        return app
+
+    monkeypatch.setattr(http_app, "build_http_app", build)
+    monkeypatch.setattr(
+        http_app.uvicorn,
+        "run",
+        lambda built_app, *, host, port: calls.append(
+            ("uvicorn", built_app, host, port)
+        ),
+    )
+
+    if mode == "default":
+        http_app.run_http()
+        expected_build_kwargs = {}
+    elif mode == "catalog":
+        http_app.run_http(tool_catalog=catalog)
+        expected_build_kwargs = {"tool_catalog": catalog}
+    else:
+        http_app.run_http(runtime=runtime)
+        expected_build_kwargs = {"tool_catalog": None, "runtime": runtime}
+
+    assert calls == [
+        ("build", expected_build_kwargs),
+        ("uvicorn", app, "127.0.0.1", 8765),
+    ]
 
 
 @pytest.mark.asyncio
