@@ -2,12 +2,9 @@
 
 import asyncio
 import fnmatch
-import json
-import re
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
 
 from ..config.settings import get_settings
 from ..schemas.result_models.search import (
@@ -19,6 +16,38 @@ from ..schemas.result_models.search import (
 )
 from ..tool_session.store import get_tool_session_store, resolve_session_path
 from .files import read_file_execute
+from .search_core import (
+    LineRanges as _LineRanges,
+)
+from .search_core import (
+    SearchConfig,
+    SearchWindowMatch,
+    build_rg_argv,
+    clamp_search_result_limit,
+    display_windows,
+    parse_rg_match_record,
+)
+from .search_core import (
+    SearchPaths as _SearchPaths,
+)
+from .search_core import (
+    line_in_ranges as _line_in_ranges,
+)
+from .search_core import (
+    looks_like_glob as _looks_like_glob,
+)
+from .search_core import (
+    merge_line_ranges as _merge_line_ranges,
+)
+from .search_core import (
+    search_match_path as _search_match_path,
+)
+from .search_core import (
+    search_path_items as _search_path_items,
+)
+from .search_core import (
+    split_line_scoped_search_path as _split_line_scoped_search_path,
+)
 from .utils.path import missing_path_context, relative_display, resolve_path
 from .utils.remote_session import call_remote_session_tool
 
@@ -62,16 +91,6 @@ async def glob_search_execute(
     )
 
 
-def _search_match_path(cwd: str, path_text: str | None) -> str | None:
-    """Return a workspace-readable path for a ripgrep match path."""
-    if path_text is None:
-        return None
-    path = Path(path_text)
-    if path.is_absolute():
-        return str(path)
-    return str(Path(cwd) / path)
-
-
 def _ground_match_line(
     match: GrepMatch, cwd: str, session_id: str | None
 ) -> GrepMatch:
@@ -98,9 +117,6 @@ def _ground_match_line(
     )
 
 
-type _SearchPaths = str | list[str] | None
-type _LineRanges = tuple[tuple[int, int | None], ...]
-
 _SEARCH_CONTEXT_RADIUS = 1
 
 
@@ -112,74 +128,6 @@ class _RawSearchMatch:
     scoped_ranges: _LineRanges | None
 
 
-@dataclass(frozen=True)
-class _SearchDisplayWindow:
-    """Merged displayed line window around one or more actual matches."""
-
-    read_path: str
-    start: int
-    end: int
-    match_lines: frozenset[int]
-
-
-def _context_window_for_line(
-    line: int, ranges: _LineRanges | None, radius: int
-) -> tuple[int, int]:
-    """Return a bounded context window around one match line."""
-    start = max(1, line - radius)
-    end = line + radius
-    if ranges is None:
-        return start, end
-    for range_start, range_end in ranges:
-        if line >= range_start and (range_end is None or line <= range_end):
-            start = max(start, range_start)
-            if range_end is not None:
-                end = min(end, range_end)
-            break
-    return start, max(start, end)
-
-
-def _display_windows(
-    raw_matches: list[_RawSearchMatch], cwd: str, radius: int
-) -> list[_SearchDisplayWindow]:
-    """Build merged per-file display windows from returned actual matches."""
-    windows: list[_SearchDisplayWindow] = []
-    by_path: dict[str, list[tuple[int, int, int]]] = {}
-    for raw in raw_matches:
-        if raw.match.line is None:
-            continue
-        read_path = _search_match_path(cwd, raw.match.path)
-        if read_path is None:
-            continue
-        start, end = _context_window_for_line(
-            raw.match.line, raw.scoped_ranges, radius
-        )
-        by_path.setdefault(read_path, []).append((start, end, raw.match.line))
-
-    for read_path, ranges in by_path.items():
-        merged: list[_SearchDisplayWindow] = []
-        for start, end, match_line in sorted(ranges):
-            if merged and start <= merged[-1].end + 1:
-                previous = merged[-1]
-                merged[-1] = _SearchDisplayWindow(
-                    read_path=previous.read_path,
-                    start=previous.start,
-                    end=max(previous.end, end),
-                    match_lines=previous.match_lines | frozenset({match_line}),
-                )
-                continue
-            merged.append(
-                _SearchDisplayWindow(
-                    read_path=read_path,
-                    start=start,
-                    end=end,
-                    match_lines=frozenset({match_line}),
-                )
-            )
-        windows.extend(merged)
-    return windows
-
-
 def _grep_display_output(
     raw_matches: list[_RawSearchMatch],
     cwd: str,
@@ -189,7 +137,15 @@ def _grep_display_output(
     """Return displayed search lines and copyable grouped hashline text."""
     displayed: list[GrepDisplayLine] = []
     sections: list[str] = []
-    for window in _display_windows(raw_matches, cwd, radius):
+    window_matches = [
+        SearchWindowMatch(
+            path=raw.match.path,
+            line=raw.match.line,
+            scoped_ranges=raw.scoped_ranges,
+        )
+        for raw in raw_matches
+    ]
+    for window in display_windows(window_matches, cwd, radius):
         try:
             read_result = read_file_execute(
                 window.read_path, window.start, window.end, session_id
@@ -221,108 +177,6 @@ def _grep_display_output(
                 )
             )
     return displayed, "\n".join(sections)
-
-
-_SEARCH_LINE_RANGE_RE = re.compile(r"^(\d+)(?:([-+])(\d*)?)?$")
-
-
-def _parse_search_line_range(part: str) -> tuple[int, int | None] | None:
-    match = _SEARCH_LINE_RANGE_RE.match(part)
-    if match is None:
-        return None
-    start = int(match.group(1))
-    mode = match.group(2)
-    end_text = match.group(3)
-    if start < 1:
-        return None
-    if mode is None or mode == "-" and not end_text:
-        return start, None
-    if mode == "-":
-        end = int(end_text)
-        if end < start:
-            return None
-        return start, end
-    if mode == "+":
-        if not end_text:
-            return None
-        count = int(end_text)
-        if count < 1:
-            return None
-        return start, start + count - 1
-    return None
-
-
-def _looks_like_search_line_selector(selector: str) -> bool:
-    """Return whether a malformed suffix appears to be a line selector."""
-    return bool(selector) and ("," in selector or selector[0].isdigit())
-
-
-def _split_line_scoped_search_path(
-    path: str,
-) -> tuple[str, _LineRanges | None]:
-    parts = path.rsplit(":", 1)
-    if len(parts) != 2:
-        return path, None
-    raw_path, raw_ranges = parts
-    if not raw_path or not raw_ranges:
-        return path, None
-    ranges: list[tuple[int, int | None]] = []
-    for raw_part in raw_ranges.split(","):
-        parsed = _parse_search_line_range(raw_part)
-        if parsed is None:
-            if _looks_like_search_line_selector(raw_ranges):
-                raise ValueError(f"invalid search line selector: {raw_ranges}")
-            return path, None
-        ranges.append(parsed)
-    return raw_path, tuple(ranges)
-
-
-def _line_in_ranges(line: int | None, ranges: _LineRanges) -> bool:
-    if line is None:
-        return False
-    return any(
-        line >= start and (end is None or line <= end) for start, end in ranges
-    )
-
-
-def _search_path_items(paths: _SearchPaths) -> list[str]:
-    """Normalize optional high-level search path scopes."""
-    if paths is None:
-        return []
-    if isinstance(paths, str):
-        return [paths] if paths else []
-    return [path for path in paths if path]
-
-
-def _looks_like_glob(path: str) -> bool:
-    """Return whether a search path should be treated as a glob scope."""
-    return any(char in path for char in "*?[")
-
-
-def _merge_line_ranges(ranges: _LineRanges) -> _LineRanges:
-    """Return ordered, coalesced inclusive line ranges."""
-    merged: list[tuple[int, int | None]] = []
-    for start, end in sorted(
-        ranges,
-        key=lambda item: (
-            item[0],
-            float("inf") if item[1] is None else item[1],
-        ),
-    ):
-        if not merged:
-            merged.append((start, end))
-            continue
-        previous_start, previous_end = merged[-1]
-        if previous_end is None:
-            continue
-        if start <= previous_end + 1:
-            merged[-1] = (
-                previous_start,
-                None if end is None else max(previous_end, end),
-            )
-            continue
-        merged.append((start, end))
-    return tuple(merged)
 
 
 def _split_search_scopes(
@@ -382,28 +236,25 @@ async def grep_search_execute(
 ) -> GrepSearchOutput:
     """Run ripgrep with workspace path resolution and return structured match records."""
     settings = get_settings()
-    max_results = max(
-        1,
-        min(
-            max_results or settings.max_grep_results, settings.max_grep_results
-        ),
+    config = SearchConfig(
+        rg_bin=settings.rg_bin,
+        max_results=settings.max_grep_results,
+        max_output_bytes=settings.max_output_bytes,
     )
+    max_results = clamp_search_result_limit(max_results, config.max_results)
     skip = max(0, skip)
     base = resolve_path(cwd, must_exist=True)
-    args = [settings.rg_bin, "--json", "--line-number", "--column"]
-    if not gitignore:
-        args.append("--no-ignore")
-    if not regex:
-        args.append("--fixed-strings")
-    if not case_sensitive:
-        args.append("--ignore-case")
     path_args, glob_args, line_scopes = _split_search_scopes(cwd, paths)
-    for glob_arg in glob_args:
-        args.extend(["--glob", glob_arg])
-    if glob:
-        args.extend(["--glob", glob])
-    search_paths = path_args or ["."]
-    args.extend(["--", query, *search_paths])
+    args = build_rg_argv(
+        config,
+        query,
+        path_args=path_args,
+        glob_args=glob_args,
+        glob=glob,
+        regex=regex,
+        case_sensitive=case_sensitive,
+        gitignore=gitignore,
+    )
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -422,7 +273,7 @@ async def grep_search_execute(
             context_radius=0,
             skipped=skip,
             truncated=False,
-            stderr=f"{settings.rg_bin}: {exc}",
+            stderr=f"{config.rg_bin}: {exc}",
             numbered_content="",
         )
     matches: list[GrepMatch] = []
@@ -435,7 +286,7 @@ async def grep_search_execute(
     async def read_stderr() -> bytes:
         if proc.stderr is None:
             return b""
-        return await proc.stderr.read(settings.max_output_bytes + 1)
+        return await proc.stderr.read(config.max_output_bytes + 1)
 
     stderr_task = asyncio.create_task(read_stderr())
     try:
@@ -451,43 +302,11 @@ async def grep_search_execute(
                     break
                 if not line:
                     break
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
+                parsed = parse_rg_match_record(line)
+                if parsed is None:
                     continue
-                if not isinstance(obj, dict):
-                    continue
-                record = cast(dict[str, Any], obj)
-                if record.get("type") != "match":
-                    continue
-                data = record.get("data", {})
-                if not isinstance(data, dict):
-                    continue
-                match_data = cast(dict[str, Any], data)
-                raw_submatches = match_data.get("submatches")
-                submatches: list[Any] = (
-                    cast(list[Any], raw_submatches)
-                    if isinstance(raw_submatches, list)
-                    else []
-                )
-                first: dict[str, Any] = {}
-                if submatches and isinstance(submatches[0], dict):
-                    first = cast(dict[str, Any], submatches[0])
-                first_start = first.get("start")
-                raw_path_data = match_data.get("path")
-                raw_line_data = match_data.get("lines")
-                path_data = (
-                    cast(dict[str, Any], raw_path_data)
-                    if isinstance(raw_path_data, dict)
-                    else {}
-                )
-                line_data = (
-                    cast(dict[str, Any], raw_line_data)
-                    if isinstance(raw_line_data, dict)
-                    else {}
-                )
-                path_text = path_data.get("text")
-                line_number = match_data.get("line_number")
+                path_text = parsed.path
+                line_number = parsed.line
                 read_path = _search_match_path(cwd, path_text)
                 if read_path is not None:
                     try:
@@ -504,21 +323,17 @@ async def grep_search_execute(
                     else None
                 )
                 if scoped_ranges is not None and not _line_in_ranges(
-                    line_number if isinstance(line_number, int) else None,
-                    scoped_ranges,
+                    line_number, scoped_ranges
                 ):
                     continue
-                line_text = line_data.get("text", "")
                 if matched_seen < skip:
                     matched_seen += 1
                     continue
                 match = GrepMatch(
                     path=path_text,
                     line=line_number,
-                    column=first_start + 1
-                    if isinstance(first_start, int)
-                    else None,
-                    text=str(line_text).rstrip("\n"),
+                    column=parsed.column,
+                    text=parsed.text,
                 )
                 grounded_match = _ground_match_line(match, cwd, session_id)
                 matches.append(grounded_match)
@@ -548,9 +363,9 @@ async def grep_search_execute(
             with suppress(Exception, asyncio.CancelledError):
                 await proc.wait()
 
-    stderr_truncated = len(stderr_bytes) > settings.max_output_bytes
+    stderr_truncated = len(stderr_bytes) > config.max_output_bytes
     if stderr_truncated:
-        stderr_bytes = stderr_bytes[: settings.max_output_bytes]
+        stderr_bytes = stderr_bytes[: config.max_output_bytes]
     displayed_lines, numbered_content = _grep_display_output(
         raw_matches, cwd, session_id, _SEARCH_CONTEXT_RADIUS
     )
