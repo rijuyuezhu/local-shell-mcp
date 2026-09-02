@@ -178,6 +178,11 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     script = client.get("/ui/assets/web.js")
     assert script.status_code == 200
     assert script.headers["x-content-type-options"] == "nosniff"
+    assert "import(`${uiPath}/assets/dashboard.js`)" in script.text
+    dashboard_script = client.get("/ui/assets/dashboard.js")
+    assert dashboard_script.status_code == 200
+    assert dashboard_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createDashboardController" in dashboard_script.text
     assert 'code_challenge_method", "S256"' in script.text
     assert "crypto.subtle.digest" in script.text
     assert 'resource: String(oauth.resource || "")' in script.text
@@ -190,12 +195,14 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
         "response.status === 401 || response.status === 403" not in script.text
     )
     assert "payload.message || payload.detail" in script.text
-    assert "dashboardGeneration" in script.text
-    assert "requestedMachine !== dashboardMachine" in script.text
-    assert "refreshDashboardInBackground" in script.text
-    assert "request(dashboardQueryPath())" in script.text
-    assert "createElementNS" in script.text
-    assert "dashboardNumber" in script.text
+    assert "controllerState.generation" in dashboard_script.text
+    assert (
+        "requestedMachine !== controllerState.machine" in dashboard_script.text
+    )
+    assert "refreshDashboardInBackground" in dashboard_script.text
+    assert "request(dashboardQueryPath())" in dashboard_script.text
+    assert "createElementNS" in dashboard_script.text
+    assert "dashboardNumber" in dashboard_script.text
     assert "remoteGeneration" in script.text
     assert "generation !== remoteGeneration" in script.text
     assert "startRemotePolling" in script.text

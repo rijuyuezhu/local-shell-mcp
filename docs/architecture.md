@@ -437,10 +437,11 @@ Python modules and are deliberately excluded from the source-only remote-worker
 runtime.
 
 The directory contains exactly the browser shell (`index.html`), Human UI styles
-and controller (`web.css`, `web.js`), OpenTUI console bridge, syntax highlighter,
-terminal renderer, vendored xterm bundle and stylesheet, and the corresponding
-license notice. Build and architecture gates reject symlinks, Python files,
-unexpected assets, and restoration of the former top-level `ui_static` path.
+(`web.css`), the classic bootstrap controller (`web.js`), feature ES modules such
+as `dashboard.js`, the OpenTUI console bridge, syntax highlighter, terminal
+renderer, vendored xterm bundle and stylesheet, and the corresponding license
+notice. Build and architecture gates reject symlinks, Python files, unexpected
+assets, and restoration of the former top-level `ui_static` path.
 
 The browser controller presents agent state through one Sessions control surface:
 machine and recent/all session selection precede session details, Todo, and the

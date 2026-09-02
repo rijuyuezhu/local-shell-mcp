@@ -80,6 +80,7 @@ def _ui_asset_revision() -> str:
         "terminal_renderer.js",
         "syntax_highlight.js",
         "web.js",
+        "dashboard.js",
         "opentui_console.js",
     ):
         digest.update(name.encode("utf-8"))
