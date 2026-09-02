@@ -5,7 +5,9 @@ from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parents[1]
 _PACKAGE_ROOT = _PROJECT_ROOT / "src" / "local_shell_mcp"
-_MIGRATION_DOC = _PROJECT_ROOT / "docs" / "maintenance" / "runtime-architecture-migration.md"
+_MIGRATION_DOC = (
+    _PROJECT_ROOT / "docs" / "maintenance" / "runtime-architecture-migration.md"
+)
 
 # These are Phase 0 ceilings measured at commit 21e9bbeb (PR #111). They are
 # intentionally one-way: migration PRs may shrink the values without updating
@@ -79,12 +81,16 @@ def _assert_directional_ceiling(
     )
 
 
-def test_ambient_dependency_access_only_shrinks_during_runtime_migration() -> None:
+def test_ambient_dependency_access_only_shrinks_during_runtime_migration() -> (
+    None
+):
     for literal, ceiling in _AMBIENT_GETTER_CEILINGS.items():
         _assert_directional_ceiling(_count_literal(literal), ceiling, literal)
 
 
-def test_direct_session_remote_branching_only_shrinks_during_runtime_migration() -> None:
+def test_direct_session_remote_branching_only_shrinks_during_runtime_migration() -> (
+    None
+):
     _assert_directional_ceiling(
         _count_remote_branches(),
         _REMOTE_BRANCH_CEILING,
@@ -92,7 +98,9 @@ def test_direct_session_remote_branching_only_shrinks_during_runtime_migration()
     )
 
 
-def test_lifecycle_bearing_process_state_is_kept_in_the_migration_inventory() -> None:
+def test_lifecycle_bearing_process_state_is_kept_in_the_migration_inventory() -> (
+    None
+):
     documentation = _MIGRATION_DOC.read_text(encoding="utf-8")
 
     for relative_path, symbols in _LIFECYCLE_INVENTORY.items():

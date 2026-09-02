@@ -71,13 +71,13 @@ lifecycle semantics does not satisfy the migration.
 
 | Current state | Classification / intended owner | Migration note |
 | --- | --- | --- |
-| `remote/manager.py::REMOTE_MANAGER` | controller lifecycle-owned remote service | Move with pending remote calls/worker control-plane state in the non-Jobs lifecycle phase. |
-| `terminal/bridge.py::_BRIDGES`, `_SHELL_BRIDGES`, `_PENDING_SHELLS` | terminal lifecycle-owned live bridge state | Bridges own timers/process attachments; the eventual owner must close them deterministically and make shutdown idempotent. |
-| `jobs/managed.py::_MANAGED_JOB_TASKS`, `_MANAGED_JOB_LEASES` | Jobs-owned live state | Deliberately defer to the Jobs functional-core phase so ownership and reconciliation are redesigned once, not moved through a temporary generic runtime holder. |
-| `jobs/managed.py::_MANAGED_JOB_HANDLERS` | process registration metadata pending Jobs review | Do not move merely to reduce a global-count metric; Phase 7 may make registration composition-scoped if that materially improves ownership/testing. |
-| `ui/http/remote_files.py::_SESSION_CACHE` | controller/UI lifecycle-owned remote-file session state | Worker session bindings have external identity; the eventual owner must define invalidation/release behavior. The fixed lock shards can remain implementation detail unless ownership gives a concrete benefit. |
-| `oauth/core/models.py::_CODES` plus `oauth/core/service.py::_AUTH_CODE_LOCK` | controller OAuth transient state | Authorization codes are short-lived process state and belong to an explicit OAuth owner when this area is migrated. |
-| `oauth/core/models.py::_CLIENTS` plus `oauth/core/service.py::_OAUTH_CLIENT_LOCK` | controller OAuth client state | Preserve persistence semantics for approved clients while making process-local ownership explicit; do not conflate durable client data with transient authorization codes. |
+| `remote/manager.py` / `REMOTE_MANAGER` | controller lifecycle-owned remote service | Move with pending remote calls/worker control-plane state in the non-Jobs lifecycle phase. |
+| `terminal/bridge.py` / `_BRIDGES`, `_SHELL_BRIDGES`, `_PENDING_SHELLS` | terminal lifecycle-owned live bridge state | Bridges own timers/process attachments; the eventual owner must close them deterministically and make shutdown idempotent. |
+| `jobs/managed.py` / `_MANAGED_JOB_TASKS`, `_MANAGED_JOB_LEASES` | Jobs-owned live state | Deliberately defer to the Jobs functional-core phase so ownership and reconciliation are redesigned once, not moved through a temporary generic runtime holder. |
+| `jobs/managed.py` / `_MANAGED_JOB_HANDLERS` | process registration metadata pending Jobs review | Do not move merely to reduce a global-count metric; Phase 7 may make registration composition-scoped if that materially improves ownership/testing. |
+| `ui/http/remote_files.py` / `_SESSION_CACHE` | controller/UI lifecycle-owned remote-file session state | Worker session bindings have external identity; the eventual owner must define invalidation/release behavior. The fixed lock shards can remain implementation detail unless ownership gives a concrete benefit. |
+| `oauth/core/models.py` / `_CODES` plus `oauth/core/service.py` / `_AUTH_CODE_LOCK` | controller OAuth transient state | Authorization codes are short-lived process state and belong to an explicit OAuth owner when this area is migrated. |
+| `oauth/core/models.py` / `_CLIENTS` plus `oauth/core/service.py` / `_OAUTH_CLIENT_LOCK` | controller OAuth client state | Preserve persistence semantics for approved clients while making process-local ownership explicit; do not conflate durable client data with transient authorization codes. |
 
 The inventory is about ownership, not immediate movement. Jobs live maps are
 explicitly excluded from the earlier global-migration phase; immutable
