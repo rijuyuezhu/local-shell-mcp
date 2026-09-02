@@ -10,6 +10,7 @@ import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import runtime as jobs_runtime
+from local_shell_mcp.jobs import shell as jobs_shell
 from local_shell_mcp.ops import session as session_ops
 from local_shell_mcp.ops import shell as shell_ops
 from local_shell_mcp.ops.utils import remote_session as remote_session_ops
@@ -136,7 +137,7 @@ async def test_session_start_reconciles_stale_shell_job_before_capacity_check(
         return set()
 
     monkeypatch.setattr(
-        jobs_runtime,
+        jobs_shell,
         "authoritative_persistent_shell_ids_execute",
         empty_inventory,
     )
