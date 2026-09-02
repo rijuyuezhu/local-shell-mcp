@@ -16,6 +16,7 @@ from local_shell_mcp.remote_worker.search_composition import (
 )
 from local_shell_mcp.schemas.result_models.search import (
     GlobSearchOutput,
+    GrepSearchOutput,
     TreeViewOutput,
 )
 from local_shell_mcp.tool_session import configure_tool_session_store
@@ -139,6 +140,18 @@ async def test_search_registry_unbound_service_and_legacy_wrappers(monkeypatch):
         truncated=False,
     )
     glob_output = GlobSearchOutput(paths=["src/app.py"])
+    search_output = GrepSearchOutput(
+        ok=True,
+        matches=[],
+        displayed_lines=[],
+        count=0,
+        displayed_count=0,
+        context_radius=0,
+        skipped=0,
+        truncated=False,
+        stderr="",
+        numbered_content="",
+    )
     calls = []
 
     async def fake_tree(session_id, cwd, depth, max_entries):
@@ -149,10 +162,38 @@ async def test_search_registry_unbound_service_and_legacy_wrappers(monkeypatch):
         calls.append(("glob", session_id, pattern, cwd, max_results))
         return glob_output
 
+    async def fake_search(
+        pattern,
+        paths,
+        cwd,
+        regex,
+        case_sensitive,
+        max_results,
+        session_id,
+        skip,
+        gitignore,
+    ):
+        calls.append(
+            (
+                "search",
+                pattern,
+                paths,
+                cwd,
+                regex,
+                case_sensitive,
+                max_results,
+                session_id,
+                skip,
+                gitignore,
+            )
+        )
+        return search_output
+
     monkeypatch.setattr(search_registry_module, "tree_view_execute", fake_tree)
     monkeypatch.setattr(
         search_registry_module, "glob_search_execute", fake_glob
     )
+    monkeypatch.setattr(search_registry_module, "search_execute", fake_search)
 
     assert (
         await search_registry_module.tree_view.func("SESSION01", "src", 2, 10)
@@ -164,7 +205,32 @@ async def test_search_registry_unbound_service_and_legacy_wrappers(monkeypatch):
         )
         == glob_output
     )
+    assert (
+        await search_registry_module.search.func(
+            "SESSION01",
+            "needle",
+            "src",
+            False,
+            False,
+            3,
+            2,
+            False,
+        )
+        == search_output
+    )
     assert calls == [
         ("tree", "SESSION01", "src", 2, 10),
         ("glob", "SESSION01", "*.py", "src", 20),
+        (
+            "search",
+            "needle",
+            "src",
+            ".",
+            False,
+            False,
+            3,
+            "SESSION01",
+            2,
+            False,
+        ),
     ]
