@@ -20,7 +20,11 @@ def _configure_remote_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from local_shell_mcp.config.settings import clear_settings_cache
+    from local_shell_mcp.persistence import configure_state_store
+    from local_shell_mcp.tool_session import configure_tool_session_store
 
+    configure_tool_session_store(None)
+    configure_state_store(None)
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S", "1")

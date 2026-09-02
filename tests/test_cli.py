@@ -298,17 +298,36 @@ def test_main_dispatches_to_argparse_handler(monkeypatch):
 def test_server_handler_dispatches_executor_modes(monkeypatch):
     calls = []
     mode = "http"
+    session_store = object()
+    tool_catalog = object()
 
     def settings_from_args(_args, *, configure):
         assert configure is True
         return argparse.Namespace(mode=mode)
 
+    def build_catalog(_settings, store):
+        assert store is session_store
+        return tool_catalog
+
     monkeypatch.setattr(server_cli, "settings_from_args", settings_from_args)
     monkeypatch.setattr(
-        server_cli, "configure_runtime_services", lambda _settings: None
+        server_cli,
+        "configure_runtime_services",
+        lambda _settings: argparse.Namespace(tool_session_store=session_store),
     )
-    monkeypatch.setattr(server_cli, "run_http", lambda: calls.append("http"))
-    monkeypatch.setattr(server_cli, "run_mcp", lambda: calls.append("mcp"))
+    monkeypatch.setattr(
+        server_cli, "build_controller_tool_catalog", build_catalog
+    )
+    monkeypatch.setattr(
+        server_cli,
+        "run_http",
+        lambda *, tool_catalog: calls.append(("http", tool_catalog)),
+    )
+    monkeypatch.setattr(
+        server_cli,
+        "run_mcp",
+        lambda *, tool_catalog: calls.append(("mcp", tool_catalog)),
+    )
     args = argparse.Namespace()
 
     server_cli.run_server_from_args(args)
@@ -317,7 +336,11 @@ def test_server_handler_dispatches_executor_modes(monkeypatch):
     mode = "stdio"
     server_cli.run_server_from_args(args)
 
-    assert calls == ["http", "mcp", "mcp"]
+    assert calls == [
+        ("http", tool_catalog),
+        ("mcp", tool_catalog),
+        ("mcp", tool_catalog),
+    ]
 
     mode = "both"
     with pytest.raises(SystemExit, match="mode=both is reserved"):

@@ -789,8 +789,8 @@ async def _run_worker_locked(
     identity, data = await _enroll_or_resume_worker(
         server, invite, name, workdir, profile_id
     )
+    from ..composition.services import configure_runtime_services
     from ..config.settings import Settings
-    from ..executors.runtime_services import configure_runtime_services
     from .search_composition import build_worker_dispatcher_with_search
 
     runtime_settings = Settings()
