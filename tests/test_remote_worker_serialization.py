@@ -36,10 +36,13 @@ def test_worker_serialization_handles_dependency_light_value_shapes():
     result = to_jsonable(payload, exclude_none=True)
 
     assert result["bytes"].startswith("hello")
-    assert result["path"] == "workspace/file.txt"
+    assert result["path"] == str(Path("workspace/file.txt"))
     assert result["enum"] == "ready"
     assert result["model"] == {"value": 1}
-    assert result["record"] == {"path": "record.txt", "value": "value"}
+    assert result["record"] == {
+        "path": str(Path("record.txt")),
+        "value": "value",
+    }
     assert result["sequence"] == [1, None]
     assert sorted(result["set"]) == ["one", "two"]
     assert "none" not in result
