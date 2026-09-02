@@ -34,6 +34,14 @@ Controller and worker may share dependency-leaf contracts, immutable config
 values, typed session bindings, and pure domain logic. Controller-only runtime
 objects must not leak into the source-only worker.
 
+Phase 4 materializes those two owners from the Search experiment. Shared store
+construction is side-effect free; `ControllerRuntime` and `WorkerRuntime`
+install the remaining compatibility accessors only while their async lifespan
+is active and restore the prior bindings on close. The runtime object stays in
+the composition/host layer: Search remains bound to its explicit store,
+resolver, runner/client, and grounding capabilities rather than receiving a
+runtime context.
+
 ## Directional dependency baseline
 
 The Phase 0 architecture test treats these numbers as ceilings, not goals.

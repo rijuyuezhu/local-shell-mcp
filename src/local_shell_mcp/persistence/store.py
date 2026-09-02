@@ -375,10 +375,12 @@ def _default_state_root() -> Path:
     )
 
 
-def configure_state_store(store: StateStore | None) -> None:
-    """Install an explicitly composed process-wide state store."""
+def configure_state_store(store: StateStore | None) -> StateStore | None:
+    """Install a process-wide state store and return the previous binding."""
     global _STATE_STORE
+    previous = _STATE_STORE
     _STATE_STORE = store
+    return previous
 
 
 def get_state_store() -> StateStore:

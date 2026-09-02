@@ -877,10 +877,14 @@ def enforce_tool_session_control(
 _STORE: ToolSessionStore | None = None
 
 
-def configure_tool_session_store(store: ToolSessionStore | None) -> None:
-    """Install an explicitly composed process-wide tool-session store."""
+def configure_tool_session_store(
+    store: ToolSessionStore | None,
+) -> ToolSessionStore | None:
+    """Install a process-wide tool-session store and return the previous binding."""
     global _STORE
+    previous = _STORE
     _STORE = store
+    return previous
 
 
 def get_tool_session_store() -> ToolSessionStore:
