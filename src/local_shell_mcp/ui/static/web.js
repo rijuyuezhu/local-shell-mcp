@@ -7,6 +7,7 @@ void (async () => {
   const { createRemotesController } = await import(`${uiPath}/assets/remotes.js`);
   const { createAuditView } = await import(`${uiPath}/assets/audit_view.js`);
   const { createAuditController } = await import(`${uiPath}/assets/audit.js`);
+  const { createTerminalController } = await import(`${uiPath}/assets/terminal.js`);
   const { createSessionsController } = await import(`${uiPath}/assets/sessions.js`);
   const apiPrefix = String(config.apiPrefix || "/api/ui").replace(/\/$/, "");
   const oauth = config.oauth && typeof config.oauth === "object" ? config.oauth : null;
@@ -68,28 +69,6 @@ void (async () => {
   });
   const encoder = new TextEncoder();
   let authenticated = config.authMode !== "oauth";
-  let terminalSocket = null;
-  let terminalSocketMachine = "";
-  let terminalMachine = "local";
-  let terminalMode = "snapshot";
-  let terminalReady = false;
-  let terminalXterm = null;
-  let terminalFitAddon = null;
-  let terminalXtermData = null;
-  let terminalXtermBinary = null;
-  let selectedShellId = "";
-  let terminalSessions = [];
-  let terminalGeneration = 0;
-  let terminalListGeneration = 0;
-  let terminalLoading = false;
-  let terminalMachineStates = new Map([["local", "online"]]);
-  let terminalFollowOutput = true;
-  let terminalPendingOutput = null;
-  let terminalPendingUpdates = 0;
-  let terminalLastOutput = "";
-  let terminalCommandHistory = [];
-  let terminalHistoryIndex = 0;
-  let terminalHistoryDraft = "";
   let fileMachine = "local";
   let filePath = ".";
   let fileParentPath = ".";
@@ -310,6 +289,19 @@ void (async () => {
     renderAuditDetailMessage,
   });
   audit.bind();
+
+  const terminal = createTerminalController({
+    elements,
+    request,
+    text,
+    encoder,
+    uiPath,
+    sessionBindingToken,
+    sessionBindingProtocolPrefix,
+    showAuthentication,
+    onAuthenticationRequired: () => void load(),
+  });
+  terminal.bind();
 
 
   const sessions = createSessionsController({
@@ -805,589 +797,6 @@ void (async () => {
   }
 
 
-  const terminalSpecialKeys = Object.freeze({
-    escape: "\u001b",
-    tab: "\t",
-    up: "\u001b[A",
-    down: "\u001b[B",
-    "ctrl-c": "\u0003",
-    "ctrl-d": "\u0004",
-  });
-  const terminalHistoryLimit = 100;
-
-  function terminalAtBottom() {
-    return (
-      elements.terminalOutput.scrollTop + elements.terminalOutput.clientHeight >=
-      elements.terminalOutput.scrollHeight - 24
-    );
-  }
-
-  function updateTerminalLatestControl() {
-    const pending = terminalMode !== "pty" && terminalPendingOutput !== null;
-    elements.terminalLatest.hidden = !pending;
-    elements.terminalPendingCount.textContent = pending
-      ? `(${Math.max(1, terminalPendingUpdates)})`
-      : "";
-  }
-
-  function renderTerminalOutput(value, { scrollToBottom = false } = {}) {
-    const output = String(value ?? "");
-    terminalLastOutput = output;
-    const renderer = globalThis.LsmTerminalRenderer;
-    if (renderer && typeof renderer.renderInto === "function") {
-      renderer.renderInto(elements.terminalOutput, output);
-    } else {
-      elements.terminalOutput.textContent = output;
-    }
-    if (scrollToBottom) {
-      elements.terminalOutput.scrollTop = elements.terminalOutput.scrollHeight;
-    }
-  }
-
-  function showTerminalMessage(message) {
-    activateTerminalMode("snapshot");
-    terminalFollowOutput = true;
-    terminalPendingOutput = null;
-    terminalPendingUpdates = 0;
-    terminalLastOutput = "";
-    elements.terminalOutput.textContent = String(message ?? "");
-    elements.terminalOutput.scrollTop = 0;
-    updateTerminalLatestControl();
-  }
-
-  function acceptTerminalSnapshot(value) {
-    activateTerminalMode("snapshot");
-    const output = String(value ?? "");
-    terminalLastOutput = output;
-    if (!terminalAtBottom()) {
-      terminalFollowOutput = false;
-      terminalPendingOutput = output;
-      terminalPendingUpdates = Math.min(9999, terminalPendingUpdates + 1);
-      updateTerminalLatestControl();
-      return;
-    }
-    terminalFollowOutput = true;
-    terminalPendingOutput = null;
-    terminalPendingUpdates = 0;
-    renderTerminalOutput(output, { scrollToBottom: true });
-    updateTerminalLatestControl();
-  }
-
-  function jumpToLatestTerminalOutput() {
-    const output = terminalPendingOutput ?? terminalLastOutput;
-    terminalFollowOutput = true;
-    terminalPendingOutput = null;
-    terminalPendingUpdates = 0;
-    renderTerminalOutput(output, { scrollToBottom: true });
-    updateTerminalLatestControl();
-  }
-
-  function rememberTerminalCommand(command) {
-    if (!command) return;
-    if (terminalCommandHistory[terminalCommandHistory.length - 1] !== command) {
-      terminalCommandHistory.push(command);
-      if (terminalCommandHistory.length > terminalHistoryLimit) {
-        terminalCommandHistory = terminalCommandHistory.slice(-terminalHistoryLimit);
-      }
-    }
-    terminalHistoryIndex = terminalCommandHistory.length;
-    terminalHistoryDraft = "";
-  }
-
-  function navigateTerminalHistory(direction) {
-    if (!terminalCommandHistory.length) return;
-    if (terminalHistoryIndex === terminalCommandHistory.length) {
-      terminalHistoryDraft = elements.terminalInput.value;
-    }
-    terminalHistoryIndex = Math.max(
-      0,
-      Math.min(terminalCommandHistory.length, terminalHistoryIndex + direction),
-    );
-    elements.terminalInput.value =
-      terminalHistoryIndex === terminalCommandHistory.length
-        ? terminalHistoryDraft
-        : terminalCommandHistory[terminalHistoryIndex];
-    elements.terminalInput.setSelectionRange(
-      elements.terminalInput.value.length,
-      elements.terminalInput.value.length,
-    );
-  }
-
-  function terminalSocketCurrent() {
-    return Boolean(
-      terminalSocket &&
-      terminalSocket.readyState === WebSocket.OPEN &&
-      terminalSocketMachine === terminalMachine
-    );
-  }
-
-  function sendTerminalBytes(data) {
-    if (!terminalReady || !terminalSocketCurrent() || terminalMode !== "pty") return false;
-    const bytes = data instanceof Uint8Array ? data : encoder.encode(String(data ?? ""));
-    if (!bytes.byteLength) return false;
-    for (let offset = 0; offset < bytes.byteLength; offset += 65536) {
-      terminalSocket.send(bytes.slice(offset, Math.min(bytes.byteLength, offset + 65536)));
-    }
-    return true;
-  }
-
-  function ensureTerminalXterm() {
-    if (terminalXterm) return true;
-    const api = globalThis.LsmXterm;
-    if (!api || typeof api.Terminal !== "function" || typeof api.FitAddon !== "function") {
-      return false;
-    }
-    terminalXterm = new api.Terminal({
-      allowProposedApi: false,
-      convertEol: false,
-      cursorBlink: true,
-      cursorStyle: "block",
-      disableStdin: false,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-      fontSize: 13,
-      lineHeight: 1.15,
-      linkHandler: {
-        activate: () => {},
-        allowNonHttpProtocols: false,
-      },
-      scrollback: 5000,
-      theme: {
-        background: "#07111f",
-        foreground: "#d8e9f5",
-        cursor: "#57d7ff",
-        cursorAccent: "#07111f",
-        selectionBackground: "#24546e",
-        black: "#07111f",
-        red: "#ff6b7a",
-        green: "#62d196",
-        yellow: "#f1c75b",
-        blue: "#5aa9ff",
-        magenta: "#c792ea",
-        cyan: "#57d7ff",
-        white: "#d8e9f5",
-        brightBlack: "#66788a",
-        brightRed: "#ff8794",
-        brightGreen: "#7ee2aa",
-        brightYellow: "#ffe08a",
-        brightBlue: "#82c0ff",
-        brightMagenta: "#d9a7f2",
-        brightCyan: "#8be8ff",
-        brightWhite: "#f3fbff",
-      },
-    });
-    terminalXterm.parser.registerOscHandler(8, () => true);
-    if (typeof api.createImageAddon === "function") {
-      terminalXterm.loadAddon(api.createImageAddon());
-    }
-    terminalFitAddon = new api.FitAddon();
-    terminalXterm.loadAddon(terminalFitAddon);
-    terminalXterm.open(elements.terminalXterm);
-    terminalXtermData = terminalXterm.onData((data) => {
-      sendTerminalBytes(encoder.encode(data));
-    });
-    terminalXtermBinary = terminalXterm.onBinary((data) => {
-      const bytes = new Uint8Array(data.length);
-      for (let index = 0; index < data.length; index += 1) {
-        bytes[index] = data.charCodeAt(index) & 0xff;
-      }
-      sendTerminalBytes(bytes);
-    });
-    return true;
-  }
-
-  function activateTerminalMode(mode, { reset = false } = {}) {
-    terminalMode = mode === "pty" ? "pty" : "snapshot";
-    const raw = terminalMode === "pty";
-    if (raw && !ensureTerminalXterm()) return false;
-    elements.terminalXterm.hidden = !raw;
-    elements.terminalOutput.hidden = raw;
-    if (raw) {
-      terminalPendingOutput = null;
-      terminalPendingUpdates = 0;
-      updateTerminalLatestControl();
-      if (reset) terminalXterm.reset();
-      window.requestAnimationFrame(() => {
-        if (terminalMode !== "pty" || !terminalFitAddon) return;
-        sendTerminalResize();
-        terminalXterm.focus();
-      });
-    }
-    return true;
-  }
-
-  function sendTerminalData(data, enter = false) {
-    if (!data || !terminalReady || !terminalSocketCurrent()) return false;
-    if (terminalMode === "pty") {
-      const bytes = encoder.encode(`${data}${enter ? "\r" : ""}`);
-      return sendTerminalBytes(bytes);
-    }
-    terminalSocket.send(JSON.stringify({ type: "input", data, enter }));
-    return true;
-  }
-
-  function terminalSocketProtocols() {
-    const protocols = ["lsm-ui-terminal"];
-    const bindingToken = sessionBindingToken();
-    if (bindingToken) protocols.push(`${sessionBindingProtocolPrefix}${bindingToken}`);
-    return protocols;
-  }
-
-  function terminalMachineOnline(machine = terminalMachine) {
-    return machine === "local" || terminalMachineStates.get(machine) === "online";
-  }
-
-  function terminalSize() {
-    if (terminalMode === "pty" && terminalXterm) {
-      return {
-        cols: Math.max(20, Math.min(300, terminalXterm.cols)),
-        rows: Math.max(3, Math.min(120, terminalXterm.rows)),
-      };
-    }
-    const bounds = elements.terminalOutput.getBoundingClientRect();
-    const cols = Math.max(20, Math.min(300, Math.floor(bounds.width / 8.2)));
-    const rows = Math.max(3, Math.min(120, Math.floor(bounds.height / 19)));
-    return { cols, rows };
-  }
-
-  function setTerminalControls(enabled = false) {
-    const online = terminalMachineOnline();
-    const connected =
-      enabled &&
-      online &&
-      terminalSocketMachine === terminalMachine &&
-      terminalReady &&
-      terminalSocket?.readyState === WebSocket.OPEN;
-    elements.terminalMachine.disabled = terminalLoading;
-    elements.terminalStartForm.querySelector("button").disabled = terminalLoading || !online;
-    elements.terminalName.disabled = terminalLoading || !online;
-    elements.terminalInput.disabled = !connected;
-    elements.terminalInputForm.querySelector("button").disabled = !connected;
-    for (const button of elements.terminalKeyButtons) button.disabled = !connected;
-    elements.terminalKill.disabled = terminalLoading || !online || !selectedShellId;
-  }
-
-  function closeTerminalSocket() {
-    terminalGeneration += 1;
-    const socket = terminalSocket;
-    terminalSocket = null;
-    terminalSocketMachine = "";
-    if (socket && socket.readyState < WebSocket.CLOSING) {
-      socket.close(1000, "Client changed terminal");
-    }
-    terminalMode = "snapshot";
-    terminalReady = false;
-    elements.terminalXterm.hidden = true;
-    elements.terminalOutput.hidden = false;
-    terminalXterm?.reset();
-    terminalPendingOutput = null;
-    terminalPendingUpdates = 0;
-    updateTerminalLatestControl();
-    elements.terminalState.textContent = selectedShellId ? "Disconnected" : "No session";
-    setTerminalControls(false);
-  }
-
-  function resetTerminalWorkspace(machine) {
-    closeTerminalSocket();
-    terminalMachine = machine || "local";
-    terminalListGeneration += 1;
-    terminalSessions = [];
-    selectedShellId = "";
-    terminalCommandHistory = [];
-    terminalHistoryIndex = 0;
-    terminalHistoryDraft = "";
-    elements.terminalMachine.value = terminalMachine;
-    elements.terminalTitle.textContent = "No terminal selected";
-    elements.terminalState.textContent = `Not loaded · ${terminalMachine}`;
-    showTerminalMessage(`Select or create a terminal session on ${terminalMachine}.`);
-    renderTerminalList({ shells: [] }, { emptyMessage: `Terminals for ${terminalMachine} are not loaded.` });
-    setTerminalControls(false);
-  }
-
-  function renderTerminalMachines(machines) {
-    const available = Array.isArray(machines) ? machines : [];
-    terminalMachineStates = new Map([["local", "online"]]);
-    elements.terminalMachine.replaceChildren();
-    let localPresent = false;
-    let currentPresent = false;
-    let currentOnline = terminalMachine === "local";
-    for (const machine of available) {
-      const name = text(machine.name, "");
-      if (!name) continue;
-      if (name === "local") localPresent = true;
-      const state = name === "local" ? "online" : text(machine.status, "offline");
-      const online = name === "local" || state === "online";
-      terminalMachineStates.set(name, state);
-      const option = document.createElement("option");
-      option.value = name;
-      option.textContent = online ? name : `${name} (${state})`;
-      option.disabled = !online;
-      option.selected = name === terminalMachine;
-      if (option.selected) {
-        currentPresent = true;
-        currentOnline = online;
-      }
-      elements.terminalMachine.append(option);
-    }
-    if (!localPresent) {
-      const local = document.createElement("option");
-      local.value = "local";
-      local.textContent = "local";
-      local.selected = terminalMachine === "local";
-      elements.terminalMachine.prepend(local);
-      if (local.selected) {
-        currentPresent = true;
-        currentOnline = true;
-      }
-    }
-    if (!currentPresent && terminalMachine !== "local") {
-      const stale = document.createElement("option");
-      stale.value = terminalMachine;
-      stale.textContent = `${terminalMachine} (unavailable)`;
-      stale.disabled = true;
-      stale.selected = true;
-      elements.terminalMachine.append(stale);
-    }
-    if (!currentPresent || !currentOnline) {
-      const changed = terminalMachine !== "local";
-      resetTerminalWorkspace("local");
-      if (changed) refreshTerminalsInBackground({ force: true });
-    } else {
-      elements.terminalMachine.value = terminalMachine;
-      setTerminalControls(terminalSocket?.readyState === WebSocket.OPEN);
-    }
-  }
-
-  function renderTerminalList(payload, { emptyMessage = "No persistent terminals are running." } = {}) {
-    terminalSessions = Array.isArray(payload && payload.shells) ? payload.shells : [];
-    if (selectedShellId && !terminalSessions.some((item) => item.shell_id === selectedShellId)) {
-      closeTerminalSocket();
-      selectedShellId = "";
-      elements.terminalTitle.textContent = "No terminal selected";
-      elements.terminalState.textContent = "No session";
-      showTerminalMessage(`Select or create a terminal session on ${terminalMachine}.`);
-    }
-
-    elements.terminalList.replaceChildren();
-    if (!terminalSessions.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = emptyMessage;
-      elements.terminalList.append(empty);
-      setTerminalControls(false);
-      return;
-    }
-
-    for (const session of terminalSessions) {
-      const shellId = text(session.shell_id, "");
-      if (!shellId) continue;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "terminal-session";
-      button.textContent = text(session.name, shellId);
-      const details = [terminalMachine, shellId, session.cwd, session.command].filter(Boolean);
-      button.title = details.join(" · ");
-      button.setAttribute("aria-current", shellId === selectedShellId ? "true" : "false");
-      button.addEventListener("click", () => connectTerminal(shellId));
-      elements.terminalList.append(button);
-    }
-    setTerminalControls(terminalSocket?.readyState === WebSocket.OPEN);
-  }
-
-  function terminalWebSocketUrl(shellId, machine) {
-    const url = new URL(`${uiPath}/ws/terminals/${encodeURIComponent(shellId)}`, location.href);
-    url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const size = terminalSize();
-    url.searchParams.set("machine", machine);
-    url.searchParams.set("lines", "1000");
-    url.searchParams.set("mode", "auto");
-    url.searchParams.set("cols", String(size.cols));
-    url.searchParams.set("rows", String(size.rows));
-    return url;
-  }
-
-  function sendTerminalResize() {
-    if (document.body.dataset.activeView !== "terminals") return;
-    if (!terminalReady || !terminalSocketCurrent()) return;
-    if (terminalMode === "pty" && terminalFitAddon && !elements.terminalXterm.hidden) {
-      terminalFitAddon.fit();
-    }
-    terminalSocket.send(JSON.stringify({ type: "resize", ...terminalSize() }));
-  }
-
-  function terminalNotice(value, fallback = "Terminal session exited.") {
-    return text(value, fallback)
-      .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-      .slice(0, 4096);
-  }
-
-  function connectTerminal(shellId) {
-    const requestedMachine = terminalMachine;
-    if (
-      !shellId ||
-      !terminalMachineOnline(requestedMachine) ||
-      (shellId === selectedShellId &&
-        terminalSocketMachine === requestedMachine &&
-        terminalSocket?.readyState === WebSocket.OPEN)
-    ) return;
-    closeTerminalSocket();
-    selectedShellId = shellId;
-    const generation = terminalGeneration;
-    elements.terminalTitle.textContent = `${requestedMachine} / ${shellId}`;
-    elements.terminalState.textContent = "Connecting";
-    terminalCommandHistory = [];
-    terminalHistoryIndex = 0;
-    terminalHistoryDraft = "";
-    showTerminalMessage(`Connecting to ${requestedMachine}…`);
-    renderTerminalList({ shells: terminalSessions });
-
-    const socket = new WebSocket(
-      terminalWebSocketUrl(shellId, requestedMachine),
-      terminalSocketProtocols(),
-    );
-    socket.binaryType = "arraybuffer";
-    terminalSocket = socket;
-    terminalSocketMachine = requestedMachine;
-    const current = () =>
-      generation === terminalGeneration &&
-      socket === terminalSocket &&
-      requestedMachine === terminalMachine &&
-      requestedMachine === terminalSocketMachine;
-    socket.addEventListener("open", () => {
-      if (!current()) return;
-      elements.terminalState.textContent = `Negotiating · ${requestedMachine}`;
-      terminalReady = false;
-      setTerminalControls(false);
-    });
-    socket.addEventListener("message", (event) => {
-      if (!current()) return;
-      if (event.data instanceof ArrayBuffer) {
-        if (terminalMode === "pty" && terminalXterm) {
-          terminalXterm.write(new Uint8Array(event.data));
-        }
-        return;
-      }
-      let message;
-      try {
-        message = JSON.parse(String(event.data));
-      } catch {
-        return;
-      }
-      if (
-        message.machine !== requestedMachine ||
-        message.shell_id !== shellId
-      ) return;
-      if (message.type === "ready") {
-        const mode = message.mode === "pty" ? "pty" : "snapshot";
-        if (!activateTerminalMode(mode, { reset: mode === "pty" })) {
-          elements.terminalState.textContent = "xterm assets unavailable";
-          socket.close(1011, "xterm assets unavailable");
-          return;
-        }
-        terminalReady = true;
-        elements.terminalState.textContent = `Connected · ${requestedMachine} · ${mode.toUpperCase()}`;
-        setTerminalControls(true);
-        sendTerminalResize();
-        if (document.body.dataset.activeView === "terminals") {
-          if (mode === "pty") terminalXterm?.focus();
-          else elements.terminalInput.focus();
-        }
-      } else if (message.type === "snapshot") {
-        acceptTerminalSnapshot(text(message.output, ""));
-        terminalReady = true;
-        elements.terminalState.textContent = `Connected · ${requestedMachine} · SNAPSHOT`;
-        setTerminalControls(true);
-        if (document.body.dataset.activeView === "terminals") {
-          elements.terminalInput.focus();
-        }
-      } else if (message.type === "exit") {
-        const detail = terminalNotice(message.message);
-        terminalReady = false;
-        elements.terminalState.textContent = `Exited · ${requestedMachine}`;
-        if (terminalMode === "pty" && terminalXterm) {
-          terminalXterm.write(`\r\n\u001b[31m[${detail}]\u001b[0m\r\n`);
-        } else {
-          showTerminalMessage(detail);
-        }
-        setTerminalControls(false);
-        refreshTerminalsInBackground({ force: true });
-      }
-    });
-    socket.addEventListener("close", (event) => {
-      if (!current()) return;
-      terminalSocket = null;
-      terminalSocketMachine = "";
-      terminalReady = false;
-      setTerminalControls(false);
-      if (event.code === 4401 || event.code === 4403) {
-        showAuthentication("Authentication required", event.reason || "Terminal authorization failed.");
-      } else {
-        elements.terminalState.textContent = event.reason || `Disconnected · ${requestedMachine}`;
-        if (event.code === 4404) refreshTerminalsInBackground({ force: true });
-      }
-    });
-    socket.addEventListener("error", () => {
-      if (current()) elements.terminalState.textContent = `Connection error · ${requestedMachine}`;
-    });
-  }
-
-  function terminalQueryPath(machine = terminalMachine) {
-    const params = new URLSearchParams({ machine });
-    return `/terminals?${params.toString()}`;
-  }
-
-  async function refreshTerminals({ force = false } = {}) {
-    if ((terminalLoading && !force) || !terminalMachineOnline()) return null;
-    const generation = ++terminalListGeneration;
-    const requestedMachine = terminalMachine;
-    terminalLoading = true;
-    setTerminalControls(terminalSocket?.readyState === WebSocket.OPEN);
-    elements.terminalState.textContent = `Loading ${requestedMachine}`;
-    try {
-      const payload = await request(terminalQueryPath(requestedMachine));
-      if (generation !== terminalListGeneration || requestedMachine !== terminalMachine) return null;
-      if (payload.machine !== requestedMachine) throw new Error("Terminal machine response mismatch");
-      renderTerminalList(payload);
-      const connected =
-        terminalReady &&
-        terminalSocketMachine === requestedMachine &&
-        terminalSocket?.readyState === WebSocket.OPEN;
-      elements.terminalState.textContent = selectedShellId
-        ? `${connected ? "Connected" : "Selected"} · ${requestedMachine}`
-        : `${terminalSessions.length} session(s) · ${requestedMachine}`;
-      return payload;
-    } catch (error) {
-      if (error.authenticationRequired) throw error;
-      if (generation !== terminalListGeneration || requestedMachine !== terminalMachine) return null;
-      terminalSessions = [];
-      renderTerminalList(
-        { shells: [] },
-        { emptyMessage: `Terminals unavailable on ${requestedMachine}.` },
-      );
-      elements.terminalState.textContent = error instanceof Error ? error.message : String(error);
-      return null;
-    } finally {
-      if (generation === terminalListGeneration) {
-        terminalLoading = false;
-        setTerminalControls(terminalSocket?.readyState === WebSocket.OPEN);
-      }
-    }
-  }
-
-  function refreshTerminalsInBackground(options = {}) {
-    void refreshTerminals(options).catch((error) => {
-      if (error.authenticationRequired) void load();
-    });
-  }
-
-  async function terminalAction(action, body) {
-    return request(`/terminals/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ machine: terminalMachine, ...body }),
-    });
-  }
-
-
   function formatFileBytes(value) {
     const bytes = Number(value);
     if (!Number.isFinite(bytes) || bytes < 0) return "size unavailable";
@@ -1841,7 +1250,7 @@ void (async () => {
     elements.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
     dashboard.renderMachines(machines);
-    renderTerminalMachines(machines);
+    terminal.renderMachines(machines);
     renderFileMachines(machines);
     sessions.renderMachines(machines);
     audit.renderMachines(machines);
@@ -1868,11 +1277,11 @@ void (async () => {
       await remotes.refresh({ force: true });
       remotes.startPolling();
       try {
-        await refreshTerminals();
+        await terminal.refresh();
       } catch (error) {
         if (error.authenticationRequired) throw error;
         elements.terminalState.textContent = "Terminal list unavailable";
-        showTerminalMessage(error instanceof Error ? error.message : String(error));
+        terminal.showMessage(error instanceof Error ? error.message : String(error));
       }
       try {
         await refreshFiles();
@@ -1892,8 +1301,7 @@ void (async () => {
       await audit.refresh();
     } catch (error) {
       if (error.authenticationRequired) {
-        terminalLoading = false;
-        resetTerminalWorkspace("local");
+        terminal.reset("local");
         elements.terminalState.textContent = "Authentication required";
         dashboard.stopPolling();
         remotes.stopPolling();
@@ -1933,7 +1341,7 @@ void (async () => {
 
   elements.authForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    closeTerminalSocket();
+    terminal.close();
     const token = elements.tokenInput.value.trim();
     if (!token) {
       showAuthentication("Access token required", "Paste a valid OAuth access token.");
@@ -1966,98 +1374,6 @@ void (async () => {
     } finally {
       elements.tokenInput.disabled = false;
     }
-  });
-
-  elements.terminalStartForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = elements.terminalStartForm.querySelector("button");
-    button.disabled = true;
-    try {
-      const requestedMachine = terminalMachine;
-      const name = elements.terminalName.value.trim();
-      const result = await terminalAction("start", { cwd: ".", name: name || null });
-      if (requestedMachine !== terminalMachine || result.machine !== requestedMachine) return;
-      elements.terminalName.value = "";
-      await refreshTerminals({ force: true });
-      if (requestedMachine === terminalMachine) connectTerminal(result.shell_id);
-    } catch (error) {
-      elements.terminalState.textContent = "Unable to start terminal";
-      showTerminalMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setTerminalControls(terminalSocket?.readyState === WebSocket.OPEN);
-    }
-  });
-
-  elements.terminalInputForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const value = elements.terminalInput.value;
-    if (!sendTerminalData(value, true)) return;
-    rememberTerminalCommand(value);
-    elements.terminalInput.value = "";
-  });
-
-  elements.terminalInput.addEventListener("keydown", (event) => {
-    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      navigateTerminalHistory(-1);
-    } else if (event.key === "ArrowDown") {
-      event.preventDefault();
-      navigateTerminalHistory(1);
-    }
-  });
-
-  elements.terminalInput.addEventListener("input", () => {
-    if (terminalHistoryIndex !== terminalCommandHistory.length) {
-      terminalHistoryIndex = terminalCommandHistory.length;
-      terminalHistoryDraft = elements.terminalInput.value;
-    }
-  });
-
-  elements.terminalLatest.addEventListener("click", jumpToLatestTerminalOutput);
-  elements.terminalOutput.addEventListener("scroll", () => {
-    if (terminalAtBottom()) {
-      if (terminalPendingOutput !== null) jumpToLatestTerminalOutput();
-      else terminalFollowOutput = true;
-    } else {
-      terminalFollowOutput = false;
-    }
-  });
-
-  for (const button of elements.terminalKeyButtons) {
-    button.addEventListener("click", () => {
-      const data = terminalSpecialKeys[button.dataset.terminalKey || ""];
-      if (data && sendTerminalData(data, false)) {
-        if (terminalMode === "pty") terminalXterm?.focus();
-        else elements.terminalInput.focus();
-      }
-    });
-  }
-
-  elements.terminalKill.addEventListener("click", async () => {
-    if (!selectedShellId) return;
-    const shellId = selectedShellId;
-    elements.terminalKill.disabled = true;
-    try {
-      await terminalAction("kill", { shell_id: shellId });
-      closeTerminalSocket();
-      selectedShellId = "";
-      elements.terminalTitle.textContent = "No terminal selected";
-      elements.terminalState.textContent = "No session";
-      showTerminalMessage(`Terminal ${terminalMachine} / ${shellId} was terminated.`);
-      await refreshTerminals({ force: true });
-    } catch (error) {
-      elements.terminalState.textContent = "Unable to kill terminal";
-      showTerminalMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setTerminalControls(terminalSocket?.readyState === WebSocket.OPEN);
-    }
-  });
-
-  elements.terminalMachine.addEventListener("change", () => {
-    if (terminalLoading) return;
-    resetTerminalWorkspace(elements.terminalMachine.value || "local");
-    refreshTerminalsInBackground({ force: true });
   });
 
   elements.fileMachine.addEventListener("change", () => {
@@ -2129,8 +1445,7 @@ void (async () => {
     } catch {
       // Local UI state is still cleared when the server session already expired.
     }
-    terminalLoading = false;
-    resetTerminalWorkspace("local");
+    terminal.reset("local");
     dashboard.stopPolling();
     remotes.stopPolling();
     dashboard.reset("local");
@@ -2167,28 +1482,23 @@ void (async () => {
     } else if (event.key !== sessionEstablishedStorageKey) {
       return;
     }
-    closeTerminalSocket();
+    terminal.close();
     void load();
   });
 
-  window.addEventListener("resize", () => window.requestAnimationFrame(sendTerminalResize));
+  window.addEventListener("resize", () => window.requestAnimationFrame(terminal.resize));
   window.addEventListener("beforeunload", () => {
     dashboard.stopPolling();
     remotes.stopPolling();
     remotes.clearInviteResult();
-    closeTerminalSocket();
+    terminal.close();
   });
   elements.oauthLogin.hidden = !oauthAvailable();
   elements.authMode.textContent = text(config.authMode);
   setActiveView(viewFromLocation(), { replaceHash: true });
   void boot();
   window.setInterval(() => {
-    if (
-      terminalSocket?.readyState === WebSocket.OPEN &&
-      terminalSocketMachine === terminalMachine
-    ) {
-      terminalSocket.send(JSON.stringify({ type: "ping" }));
-    }
+    terminal.ping();
     if (config.authMode !== "oauth" || authenticated) void load();
   }, 30000);
 })();

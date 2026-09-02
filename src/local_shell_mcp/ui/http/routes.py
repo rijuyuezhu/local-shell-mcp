@@ -85,6 +85,7 @@ def _ui_asset_revision() -> str:
         "audit_view.js",
         "audit.js",
         "sessions.js",
+        "terminal.js",
         "opentui_console.js",
     ):
         digest.update(name.encode("utf-8"))

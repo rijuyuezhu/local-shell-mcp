@@ -183,6 +183,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "import(`${uiPath}/assets/audit_view.js`)" in script.text
     assert "import(`${uiPath}/assets/audit.js`)" in script.text
     assert "import(`${uiPath}/assets/sessions.js`)" in script.text
+    assert "import(`${uiPath}/assets/terminal.js`)" in script.text
     dashboard_script = client.get("/ui/assets/dashboard.js")
     assert dashboard_script.status_code == 200
     assert dashboard_script.headers["x-content-type-options"] == "nosniff"
@@ -203,6 +204,10 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert sessions_script.status_code == 200
     assert sessions_script.headers["x-content-type-options"] == "nosniff"
     assert "export function createSessionsController" in sessions_script.text
+    terminal_script = client.get("/ui/assets/terminal.js")
+    assert terminal_script.status_code == 200
+    assert terminal_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createTerminalController" in terminal_script.text
     assert 'code_challenge_method", "S256"' in script.text
     assert "crypto.subtle.digest" in script.text
     assert 'resource: String(oauth.resource || "")' in script.text
@@ -233,29 +238,37 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     )
     assert 'inviteCommand: ""' in remotes_script.text
     assert "innerHTML" not in script.text
-    assert "terminalMachineStates" in script.text
-    assert "requestedMachine !== terminalMachine" in script.text
-    assert 'url.searchParams.set("machine", machine)' in script.text
-    assert 'url.searchParams.set("mode", "auto")' in script.text
-    assert 'socket.binaryType = "arraybuffer"' in script.text
-    assert "terminalReady" in script.text
-    assert "activateTerminalMode" in script.text
-    assert "sendTerminalBytes" in script.text
-    assert "offset += 65536" in script.text
-    assert "registerOscHandler(8" in script.text
-    assert "createImageAddon" in script.text
-    assert script.text.index("loadAddon(api.createImageAddon())") < (
-        script.text.index("terminalFitAddon = new api.FitAddon()")
+    assert "controllerState.terminalMachineStates" in terminal_script.text
+    assert (
+        "requestedMachine !== controllerState.terminalMachine"
+        in terminal_script.text
     )
-    assert "allowNonHttpProtocols: false" in script.text
-    assert "terminalSocketMachine === terminalMachine" in script.text
-    assert "bridge_id" not in script.text
-    assert "acceptTerminalSnapshot" in script.text
-    assert "terminalPendingOutput" in script.text
-    assert "const terminalSpecialKeys = Object.freeze" in script.text
-    assert "const terminalHistoryLimit = 100;" in script.text
-    assert "navigateTerminalHistory" in script.text
-    assert "LsmTerminalRenderer" in script.text
+    assert 'url.searchParams.set("machine", machine)' in terminal_script.text
+    assert 'url.searchParams.set("mode", "auto")' in terminal_script.text
+    assert 'socket.binaryType = "arraybuffer"' in terminal_script.text
+    assert "controllerState.terminalReady" in terminal_script.text
+    assert "activateTerminalMode" in terminal_script.text
+    assert "sendTerminalBytes" in terminal_script.text
+    assert "offset += 65536" in terminal_script.text
+    assert "registerOscHandler(8" in terminal_script.text
+    assert "createImageAddon" in terminal_script.text
+    assert terminal_script.text.index("loadAddon(api.createImageAddon())") < (
+        terminal_script.text.index(
+            "controllerState.terminalFitAddon = new api.FitAddon()"
+        )
+    )
+    assert "allowNonHttpProtocols: false" in terminal_script.text
+    assert (
+        "controllerState.terminalSocketMachine === controllerState.terminalMachine"
+        in terminal_script.text
+    )
+    assert "bridge_id" not in terminal_script.text
+    assert "acceptTerminalSnapshot" in terminal_script.text
+    assert "controllerState.terminalPendingOutput" in terminal_script.text
+    assert "const terminalSpecialKeys = Object.freeze" in terminal_script.text
+    assert "const terminalHistoryLimit = 100;" in terminal_script.text
+    assert "navigateTerminalHistory" in terminal_script.text
+    assert "LsmTerminalRenderer" in terminal_script.text
     assert "filePreviewGeneration" in script.text
     assert "generation !== filePreviewGeneration" in script.text
     assert "fileListGeneration" in script.text
