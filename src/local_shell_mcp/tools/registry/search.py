@@ -1,10 +1,14 @@
 """Search and tree-view tool registry."""
 
+from dataclasses import replace
+
+from ...config.settings import Settings
 from ...ops.search import (
     glob_search_execute,
     search_execute,
     tree_view_execute,
 )
+from ...ops.search.service import SearchService
 from ...schemas.input_models.search import (
     CaseSensitiveArg,
     GlobMaxResultsArg,
@@ -35,6 +39,51 @@ class SearchToolRegistry(DeclarativeToolRegistry):
 
     name = "search"
     """Registry group name used for tool-surface organization."""
+
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        search_service: SearchService | None = None,
+    ) -> None:
+        super().__init__(settings)
+        self._search_service = search_service
+
+    async def _bound_search(
+        self,
+        session_id: SessionIdArg,
+        pattern: GrepQueryArg,
+        paths: SearchPathsArg = None,
+        regex: RegexArg = True,
+        case_sensitive: CaseSensitiveArg = True,
+        max_results: GrepMaxResultsArg = None,
+        skip: GrepSkipArg = 0,
+        gitignore: GrepGitignoreArg = True,
+    ) -> GrepSearchOutput:
+        """Invoke the composition-bound Search service."""
+        if self._search_service is None:
+            raise RuntimeError("Search service is not bound")
+        return await self._search_service.search(
+            session_id,
+            pattern,
+            paths,
+            regex,
+            case_sensitive,
+            max_results,
+            skip,
+            gitignore,
+        )
+
+    def _enabled_tools(self):
+        tools = super()._enabled_tools()
+        if self._search_service is None:
+            return tools
+        return tuple(
+            replace(tool, func=self._bound_search)
+            if tool.name == "search"
+            else tool
+            for tool in tools
+        )
 
 
 search_tool = SearchToolRegistry.get_tool_decorator()

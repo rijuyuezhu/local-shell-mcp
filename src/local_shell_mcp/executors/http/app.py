@@ -79,9 +79,13 @@ def build_http_app(*, tool_catalog: ToolCatalog | None = None) -> FastAPI:
     return app
 
 
-def run_http() -> None:
+def run_http(*, tool_catalog: ToolCatalog | None = None) -> None:
     """Run the REST HTTP server."""
     settings = get_settings()
     validate_public_oauth_configuration(settings)
-    app = build_http_app()
+    app = (
+        build_http_app()
+        if tool_catalog is None
+        else build_http_app(tool_catalog=tool_catalog)
+    )
     uvicorn.run(app, host=settings.host, port=settings.port)

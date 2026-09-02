@@ -4,24 +4,24 @@ import asyncio
 import fnmatch
 from pathlib import Path
 
-from ..config.settings import Settings, get_settings
-from ..schemas.result_models.search import (
+from ...config.settings import Settings, get_settings
+from ...schemas.result_models.search import (
     GlobSearchOutput,
     GrepSearchOutput,
     TreeViewOutput,
 )
-from ..tool_session.bindings import LocalSessionBinding
-from ..tool_session.resolver import SessionResolver
-from ..tool_session.store import (
+from ...tool_session.bindings import LocalSessionBinding
+from ...tool_session.resolver import SessionResolver
+from ...tool_session.store import (
     ToolSessionStore,
     get_tool_session_store,
     resolve_session_path,
 )
-from .search_composition import build_local_search_runner, build_search_service
-from .search_core import SearchPaths as _SearchPaths
-from .search_service import RemoteSearchClient, SearchRequest
-from .utils.path import missing_path_context, relative_display, resolve_path
-from .utils.remote_session import call_remote_session_tool
+from ..utils.path import missing_path_context, relative_display, resolve_path
+from ..utils.remote_session import call_remote_session_tool
+from .composition import build_local_search_runner, build_search_service
+from .core import SearchPaths as _SearchPaths
+from .service import RemoteSearchClient, SearchRequest
 
 
 def _glob_search_local(

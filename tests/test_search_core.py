@@ -1,6 +1,6 @@
 from dataclasses import fields
 
-from local_shell_mcp.ops.search_core import (
+from local_shell_mcp.ops.search.core import (
     ParsedSearchMatch,
     SearchConfig,
     SearchDisplayWindow,

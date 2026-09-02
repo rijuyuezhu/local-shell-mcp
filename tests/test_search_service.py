@@ -5,8 +5,8 @@ import pytest
 from local_shell_mcp import persistence
 from local_shell_mcp.config import settings as settings_module
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.ops.search_composition import build_search_service
-from local_shell_mcp.ops.search_service import RemoteSearchClient, SearchRequest
+from local_shell_mcp.ops.search.composition import build_search_service
+from local_shell_mcp.ops.search.service import RemoteSearchClient, SearchRequest
 from local_shell_mcp.schemas.result_models.search import GrepSearchOutput
 from local_shell_mcp.tool_session import store as store_module
 from local_shell_mcp.tool_session.bindings import RemoteSessionBinding

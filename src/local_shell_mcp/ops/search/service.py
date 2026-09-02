@@ -7,16 +7,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..schemas.result_models.search import (
+from ...schemas.result_models.search import (
     GrepDisplayLine,
     GrepMatch,
     GrepSearchOutput,
 )
-from ..tool_session.bindings import LocalSessionBinding, RemoteSessionBinding
-from ..tool_session.resolver import SessionResolver
-from ..tool_session.store import ToolSessionStore
-from .files import read_file_explicit
-from .search_core import (
+from ...tool_session.bindings import LocalSessionBinding, RemoteSessionBinding
+from ...tool_session.resolver import SessionResolver
+from ...tool_session.store import ToolSessionStore
+from ..files import read_file_explicit
+from ..utils.path import relative_display_from_root, resolve_path_with_policy
+from ..utils.remote_session import call_remote_session_tool
+from .core import (
     LineRanges,
     SearchConfig,
     SearchPaths,
@@ -32,8 +34,6 @@ from .search_core import (
     search_path_items,
     split_line_scoped_search_path,
 )
-from .utils.path import relative_display_from_root, resolve_path_with_policy
-from .utils.remote_session import call_remote_session_tool
 
 _SEARCH_CONTEXT_RADIUS = 1
 

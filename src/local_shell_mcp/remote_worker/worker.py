@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -418,11 +419,15 @@ async def _execute_worker_job_with_heartbeat(
     server: str,
     headers: dict[str, str],
     heartbeat_interval_s: float,
+    execute_tool: Callable[[str, dict[str, Any]], Awaitable[Any]] | None = None,
 ) -> Any:
     """Execute one job while independently refreshing control-side liveness."""
-    task = asyncio.create_task(
-        execute_worker_tool(job["tool"], dict(job.get("args") or {}))
-    )
+    execute = execute_tool or execute_worker_tool
+
+    async def run_tool() -> Any:
+        return await execute(job["tool"], dict(job.get("args") or {}))
+
+    task = asyncio.create_task(run_tool())
     heartbeat = asyncio.create_task(
         _worker_job_heartbeat_loop(
             task,
@@ -784,6 +789,15 @@ async def _run_worker_locked(
     identity, data = await _enroll_or_resume_worker(
         server, invite, name, workdir, profile_id
     )
+    from ..config.settings import Settings
+    from ..executors.runtime_services import configure_runtime_services
+    from .search_composition import build_worker_dispatcher_with_search
+
+    runtime_settings = Settings()
+    runtime_services = configure_runtime_services(runtime_settings)
+    dispatcher = build_worker_dispatcher_with_search(
+        runtime_settings, runtime_services.tool_session_store
+    )
     server = str(identity["server"])
     machine_name = str(identity["name"])
     access = str(identity["access"])
@@ -877,7 +891,11 @@ async def _run_worker_locked(
             continue
         try:
             result = await _execute_worker_job_with_heartbeat(
-                job, server, headers, heartbeat_interval_s
+                job,
+                server,
+                headers,
+                heartbeat_interval_s,
+                dispatcher.execute,
             )
             out = {"job_id": job["id"], "ok": True, "data": to_jsonable(result)}
         except Exception as exc:

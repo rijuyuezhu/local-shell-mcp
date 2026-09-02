@@ -144,12 +144,16 @@ def build_mcp_http_app(mcp: FastMCP) -> Starlette:
     )
 
 
-def run_mcp() -> None:
+def run_mcp(*, tool_catalog: ToolCatalog | None = None) -> None:
     """Start the configured MCP server, over stdio or HTTP."""
     settings = get_settings()
     if settings.mode != "stdio":
         validate_public_oauth_configuration(settings)
-    mcp = build_mcp()
+    mcp = (
+        build_mcp()
+        if tool_catalog is None
+        else build_mcp(tool_catalog=tool_catalog)
+    )
 
     if settings.mode == "stdio":
         # stdio mode talks directly to the parent process; no HTTP app is needed.
