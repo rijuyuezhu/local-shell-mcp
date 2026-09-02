@@ -184,6 +184,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "import(`${uiPath}/assets/audit.js`)" in script.text
     assert "import(`${uiPath}/assets/sessions.js`)" in script.text
     assert "import(`${uiPath}/assets/terminal.js`)" in script.text
+    assert "import(`${uiPath}/assets/files.js`)" in script.text
     dashboard_script = client.get("/ui/assets/dashboard.js")
     assert dashboard_script.status_code == 200
     assert dashboard_script.headers["x-content-type-options"] == "nosniff"
@@ -208,6 +209,10 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert terminal_script.status_code == 200
     assert terminal_script.headers["x-content-type-options"] == "nosniff"
     assert "export function createTerminalController" in terminal_script.text
+    files_script = client.get("/ui/assets/files.js")
+    assert files_script.status_code == 200
+    assert files_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createFilesController" in files_script.text
     assert 'code_challenge_method", "S256"' in script.text
     assert "crypto.subtle.digest" in script.text
     assert 'resource: String(oauth.resource || "")' in script.text
@@ -269,17 +274,22 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "const terminalHistoryLimit = 100;" in terminal_script.text
     assert "navigateTerminalHistory" in terminal_script.text
     assert "LsmTerminalRenderer" in terminal_script.text
-    assert "filePreviewGeneration" in script.text
-    assert "generation !== filePreviewGeneration" in script.text
-    assert "fileListGeneration" in script.text
-    assert "requestedMachine !== fileMachine" in script.text
-    assert 'fileQuery("/files/preview"' in script.text
-    assert "machine: fileMachine" in script.text
-    assert "renderFileMachines" in script.text
-    assert "fileMutations" in script.text
-    assert 'fileAction("copy"' in script.text
-    assert 'fileAction("move"' in script.text
-    assert 'fileAction("rename"' in script.text
+    assert "controllerState.filePreviewGeneration" in files_script.text
+    assert (
+        "generation !== controllerState.filePreviewGeneration"
+        in files_script.text
+    )
+    assert "controllerState.fileListGeneration" in files_script.text
+    assert (
+        "requestedMachine !== controllerState.fileMachine" in files_script.text
+    )
+    assert 'fileQuery("/files/preview"' in files_script.text
+    assert "machine: controllerState.fileMachine" in files_script.text
+    assert "renderFileMachines" in files_script.text
+    assert "controllerState.fileMutations" in files_script.text
+    assert 'fileAction("copy"' in files_script.text
+    assert 'fileAction("move"' in files_script.text
+    assert 'fileAction("rename"' in files_script.text
     protected = client.get("/api/ui/bootstrap")
     assert protected.status_code == 401
 
