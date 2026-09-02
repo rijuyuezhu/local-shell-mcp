@@ -70,33 +70,31 @@ def assert_text_input_size(
         )
 
 
-def resolve_path(
+def resolve_path_with_policy(
     path: str | Path,
     *,
+    workspace_root: Path,
+    allow_full_control: bool,
+    path_denylist: tuple[str, ...],
     must_exist: bool = False,
     allow_missing_parent: bool = True,
     follow_final_symlink: bool = True,
 ) -> Path:
-    """Resolve a path, optionally preserving the final directory entry.
-
-    In normal mode, absolute paths outside workspace are rejected. In full-control mode,
-    any absolute path inside the container is allowed.
-    """
-    settings = get_settings()
-    root = settings.workspace_root.resolve()
+    """Resolve a path from explicit workspace-boundary policy values."""
+    root = workspace_root.resolve()
     raw = Path(os.path.expandvars(os.path.expanduser(str(path))))
     if not raw.is_absolute():
         raw = root / raw
     if follow_final_symlink:
         resolved = (
             Path(os.path.abspath(raw))
-            if settings.allow_full_control
+            if allow_full_control
             else raw.resolve(strict=False)
         )
     else:
         resolved_parent = raw.parent.resolve(strict=False)
         resolved = resolved_parent / raw.name if raw.name else resolved_parent
-    if not settings.allow_full_control:
+    if not allow_full_control:
         boundary = resolved if follow_final_symlink else resolved.parent
         try:
             boundary.relative_to(root)
@@ -104,7 +102,7 @@ def resolve_path(
             raise ValueError(f"Path escapes workspace: {path}") from exc
 
     lower = str(resolved).lower()
-    for denied in settings.path_denylist:
+    for denied in path_denylist:
         if denied and denied.lower() in lower:
             raise PermissionError(f"Path is denylisted: {path}")
 
@@ -118,15 +116,40 @@ def resolve_path(
     return resolved
 
 
-def relative_display(path: Path) -> str:
-    """Render a lexical API path with portable POSIX separators."""
-    root = workspace_root()
-    candidate = path if path.is_absolute() else root / path
+def resolve_path(
+    path: str | Path,
+    *,
+    must_exist: bool = False,
+    allow_missing_parent: bool = True,
+    follow_final_symlink: bool = True,
+) -> Path:
+    """Resolve a path using the ambient compatibility workspace policy."""
+    settings = get_settings()
+    return resolve_path_with_policy(
+        path,
+        workspace_root=settings.workspace_root,
+        allow_full_control=settings.allow_full_control,
+        path_denylist=tuple(settings.path_denylist),
+        must_exist=must_exist,
+        allow_missing_parent=allow_missing_parent,
+        follow_final_symlink=follow_final_symlink,
+    )
+
+
+def relative_display_from_root(path: Path, root: Path) -> str:
+    """Render a lexical API path relative to an explicit workspace root."""
+    resolved_root = root.resolve()
+    candidate = path if path.is_absolute() else resolved_root / path
     lexical = Path(os.path.abspath(candidate))
     try:
-        return lexical.relative_to(root).as_posix()
+        return lexical.relative_to(resolved_root).as_posix()
     except ValueError:
         return lexical.as_posix()
+
+
+def relative_display(path: Path) -> str:
+    """Render a lexical API path with portable POSIX separators."""
+    return relative_display_from_root(path, workspace_root())
 
 
 def missing_path_context(

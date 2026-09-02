@@ -7,7 +7,7 @@ import os
 import re
 import shutil
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +29,7 @@ from ..schemas.result_models.files import (
     WriteFileOutput,
 )
 from ..tool_session.store import (
+    ToolSessionStore,
     file_sha256,
     get_tool_session_store,
     resolve_session_path,
@@ -202,31 +203,27 @@ def _numbered_content(
     return body
 
 
-def read_file_execute(
+def read_file_explicit(
     path: str,
     start_line: int | None = None,
     end_line: int | None = None,
-    session_id: str | None = None,
+    *,
     line_ranges: Sequence[_ReadLineRange] | None = None,
+    max_file_read_bytes: int,
+    resolve_file: Callable[[str], Path],
+    display_file: Callable[[Path], str],
+    snapshot_store: ToolSessionStore | None = None,
+    snapshot_session_id: str | None = None,
 ) -> ReadFileOutput:
-    """Read a UTF-8 text file by optional line range and record grounding when session-bound."""
-    settings = get_settings()
-    store = get_tool_session_store()
-    session = (
-        store.touch_session(session_id) if session_id is not None else None
-    )
-    p = (
-        resolve_session_path(session, path, must_exist=True)
-        if session is not None
-        else resolve_path(path, must_exist=True)
-    )
+    """Read and optionally ground a file from explicit path and snapshot dependencies."""
+    p = resolve_file(path)
     size = p.stat().st_size
     with p.open("rb") as fh:
-        data = fh.read(settings.max_file_read_bytes + 1)
+        data = fh.read(max_file_read_bytes + 1)
 
     truncated = False
-    if len(data) > settings.max_file_read_bytes:
-        data = data[: settings.max_file_read_bytes]
+    if len(data) > max_file_read_bytes:
+        data = data[:max_file_read_bytes]
         truncated = True
     truncated_bytes = max(0, size - len(data))
     decoder = codecs.getincrementaldecoder("utf-8")()
@@ -254,16 +251,16 @@ def read_file_execute(
         LineRange(start=range_start, end=range_end)
         for range_start, range_end in seen_ranges
     ]
-    relative_path = relative_display(p)
+    relative_path = display_file(p)
     record = (
-        store.record_file_snapshot(
-            session_id=session.session_id,
+        snapshot_store.record_file_snapshot(
+            session_id=snapshot_session_id,
             path=relative_path,
             file_sha256=file_sha256(p),
             total_lines=total_lines,
             seen_ranges=seen_ranges,
         )
-        if session is not None
+        if snapshot_store is not None and snapshot_session_id is not None
         else None
     )
     return ReadFileOutput(
@@ -287,6 +284,38 @@ def read_file_execute(
         seen_ranges=seen_range_models if record is not None else [],
         truncated=truncated,
         content=text,
+    )
+
+
+def read_file_execute(
+    path: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    session_id: str | None = None,
+    line_ranges: Sequence[_ReadLineRange] | None = None,
+) -> ReadFileOutput:
+    """Read a UTF-8 text file by optional line range and record grounding when session-bound."""
+    settings = get_settings()
+    store = get_tool_session_store()
+    session = (
+        store.touch_session(session_id) if session_id is not None else None
+    )
+
+    def resolve_file(path_value: str) -> Path:
+        if session is not None:
+            return resolve_session_path(session, path_value, must_exist=True)
+        return resolve_path(path_value, must_exist=True)
+
+    return read_file_explicit(
+        path,
+        start_line,
+        end_line,
+        line_ranges=line_ranges,
+        max_file_read_bytes=settings.max_file_read_bytes,
+        resolve_file=resolve_file,
+        display_file=relative_display,
+        snapshot_store=store if session is not None else None,
+        snapshot_session_id=session.session_id if session is not None else None,
     )
 
 
