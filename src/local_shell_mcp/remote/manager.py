@@ -12,12 +12,13 @@ import subprocess
 import threading
 import time
 import uuid
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from ..audit import audit
-from ..config.settings import get_settings
+from ..config.settings import Settings, get_settings
 from ..persistence import get_state_store
 from ..schemas.result_models.remote import (
     RemoteInviteOutput,
@@ -45,14 +46,96 @@ _WORKER_LAUNCHER_PATH_MAX_BYTES = 4_096
 _WORKER_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 
 
+class WorkerRuntimeReport(TypedDict):
+    """Validated managed-worker runtime identity shared by register/poll flows."""
+
+    protocol_version: int
+    """Worker/runtime compatibility protocol version."""
+    runtime_kind: str
+    """Reported runtime class such as managed bundle or unmanaged source."""
+    worker_version: str
+    """local-shell-mcp version reported by the worker process."""
+    bundle_version: str
+    """Installed managed bundle version, when one is active."""
+    bundle_sha256: str
+    """SHA-256 digest of the active managed bundle, when one is active."""
+
+
+class WorkerRuntimeInfo(TypedDict):
+    """Stable runtime metadata projected into one worker's extensible info map."""
+
+    runtime_protocol_version: int
+    """Validated runtime compatibility protocol version."""
+    runtime_kind: str
+    """Validated worker runtime class."""
+    lsm_version: str
+    """local-shell-mcp version reported by the worker."""
+    worker_bundle_version: str
+    """Validated managed bundle version."""
+    worker_bundle_sha256: str
+    """Validated managed bundle SHA-256 digest."""
+
+
+class WorkerUpgradeInstruction(TypedDict):
+    """Controller-issued instruction describing the currently required bundle."""
+
+    required: bool
+    """Whether the worker must install the advertised bundle before taking jobs."""
+    version: str
+    """Advertised managed bundle version."""
+    sha256: str
+    """Expected SHA-256 digest of the advertised bundle."""
+    manifest_path: str
+    """Controller-relative path used to fetch the signed bundle manifest/archive."""
+
+
+class WorkerRegistrationResponse(TypedDict):
+    """Stable enrollment/resume response consumed by managed workers."""
+
+    token: str
+    """Opaque bearer token assigned to the registered worker."""
+    name: str
+    """Controller-resolved stable machine name."""
+    poll_interval_s: int
+    """Recommended idle polling cadence in seconds."""
+    poll_timeout_s: int
+    """Maximum long-poll duration in seconds."""
+    heartbeat_interval_s: int
+    """Heartbeat cadence used while a remote job is running."""
+    upgrade: WorkerUpgradeInstruction
+    """Bundle compatibility instruction evaluated immediately after registration."""
+
+
+class RemoteQueuedJob(TypedDict):
+    """One controller-created remote tool call waiting in a worker queue."""
+
+    id: str
+    """Opaque controller-issued remote job identifier."""
+    tool: str
+    """Remote dispatch operation name."""
+    args: dict[str, Any]
+    """Validated or transport-safe operation arguments."""
+    expires_at: float
+    """Unix timestamp after which the worker must not begin execution."""
+
+
+class WorkerHeartbeatResponse(TypedDict):
+    """Acknowledgement for a managed worker heartbeat."""
+
+    accepted: bool
+    """Whether the controller accepted and recorded the heartbeat."""
+    name: str
+    """Current controller-side machine name for the worker."""
+
+
 def _utc() -> float:
     """Return a Unix timestamp used for invite and worker bookkeeping."""
     return time.time()
 
 
-def _heartbeat_interval_s() -> int:
+def _heartbeat_interval_s(settings: Settings) -> int:
     """Return a bounded heartbeat cadence for workers executing long jobs."""
-    return max(5, min(get_settings().remote_poll_timeout_s // 2, 30))
+    return max(5, min(settings.remote_poll_timeout_s // 2, 30))
 
 
 def _validate_machine_name(value: str) -> str:
@@ -87,7 +170,7 @@ class WorkerRuntimeCompatibilityError(ValueError):
     """Raised when a worker is not running a supported managed bundle."""
 
 
-def _validate_runtime_report(payload: dict[str, Any]) -> dict[str, Any]:
+def _validate_runtime_report(payload: dict[str, Any]) -> WorkerRuntimeReport:
     """Require one complete managed-bundle report before enrollment or resume."""
     raw = payload.get("runtime")
     if not isinstance(raw, dict):
@@ -124,7 +207,7 @@ def _validate_runtime_report(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _runtime_info(report: dict[str, Any]) -> dict[str, Any]:
+def _runtime_info(report: WorkerRuntimeReport) -> WorkerRuntimeInfo:
     return {
         "runtime_protocol_version": report["protocol_version"],
         "runtime_kind": report["runtime_kind"],
@@ -176,7 +259,7 @@ def _worker_reconnect_metadata(
 
 def _validate_poll_report(
     payload: dict[str, Any] | None,
-) -> dict[str, Any]:
+) -> WorkerRuntimeReport:
     """Require a complete managed-runtime report before delivering jobs."""
     if not payload:
         raise WorkerRuntimeCompatibilityError(
@@ -209,7 +292,7 @@ def _validate_poll_report(
     }
 
 
-def _upgrade_instruction(*, required: bool) -> dict[str, Any]:
+def _upgrade_instruction(*, required: bool) -> WorkerUpgradeInstruction:
     """Return a non-sensitive instruction bound to the current bundle digest."""
     manifest = worker_bundle_manifest()
     return {
@@ -220,7 +303,7 @@ def _upgrade_instruction(*, required: bool) -> dict[str, Any]:
     }
 
 
-def _runtime_upgrade(report: dict[str, Any]) -> dict[str, Any]:
+def _runtime_upgrade(report: WorkerRuntimeReport) -> WorkerUpgradeInstruction:
     """Return the current bundle instruction for one managed runtime report."""
     return _upgrade_instruction(
         required=(report["bundle_sha256"] != worker_bundle_manifest()["sha256"])
@@ -263,14 +346,19 @@ class RemoteWorker:
     """Worker tool categories advertised at registration or resume."""
     info: dict[str, Any] = field(default_factory=dict)
     """Worker platform and environment metadata."""
-    queue: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
+    queue: asyncio.Queue[Mapping[str, Any]] = field(
+        default_factory=asyncio.Queue
+    )
     """Control-side delivery queue for jobs assigned to this worker."""
 
 
 class RemoteManager:
     """Coordinate remote worker enrollment, polling, jobs, and persisted identity."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self, settings_provider: Callable[[], Settings] = get_settings
+    ) -> None:
+        self._settings_provider = settings_provider
         self.invites: dict[str, RemoteInvite] = {}
         self.workers: dict[str, RemoteWorker] = {}
         self.tokens: dict[str, str] = {}
@@ -280,6 +368,10 @@ class RemoteManager:
         self._enrollment_lock = asyncio.Lock()
         self._state_lock = threading.RLock()
         self._registry_loaded_path: Path | None = None
+
+    def _settings(self) -> Settings:
+        """Return the settings dependency supplied at composition time."""
+        return self._settings_provider()
 
     def _registry_path(self) -> Path:
         return get_state_store().layout.remote_workers_path
@@ -425,7 +517,7 @@ class RemoteManager:
                 temporary.unlink(missing_ok=True)
 
     def _join_url(self) -> str:
-        return get_settings().resolved_base_url + REMOTE_JOIN_PATH
+        return self._settings().resolved_base_url + REMOTE_JOIN_PATH
 
     def _prune_invites_unlocked(self) -> None:
         now = _utc()
@@ -437,13 +529,13 @@ class RemoteManager:
 
     def _prune_cancelled_jobs_unlocked(self) -> None:
         now = _utc()
-        ttl = max(60, int(get_settings().remote_job_timeout_s))
+        ttl = max(60, int(self._settings().remote_job_timeout_s))
         self.cancelled_jobs = {
             job_id: cancelled_at
             for job_id, cancelled_at in self.cancelled_jobs.items()
             if now - cancelled_at <= ttl
         }
-        cap = max(64, int(get_settings().remote_max_pending_jobs) * 4)
+        cap = max(64, int(self._settings().remote_max_pending_jobs) * 4)
         if len(self.cancelled_jobs) > cap:
             newest = sorted(
                 self.cancelled_jobs.items(),
@@ -467,7 +559,7 @@ class RemoteManager:
         ttl_s: int | None = None,
     ) -> RemoteInviteOutput:
         """Create one bounded, one-time remote-worker enrollment invite."""
-        settings = get_settings()
+        settings = self._settings()
         ttl = max(60, min(ttl_s or settings.remote_invite_ttl_s, 24 * 3600))
         normalized_name = _validate_machine_name(name) if name else None
         code = "lsmcp_inv_" + secrets.token_urlsafe(24)
@@ -499,7 +591,9 @@ class RemoteManager:
             command=command,
         )
 
-    async def register_worker(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def register_worker(
+        self, payload: dict[str, Any]
+    ) -> WorkerRegistrationResponse:
         """Consume an invite and persist a new worker registration."""
         runtime_report = _validate_runtime_report(payload)
         code = str(payload.get("invite") or "")
@@ -550,14 +644,14 @@ class RemoteManager:
             "token": token,
             "name": name,
             "poll_interval_s": 0,
-            "poll_timeout_s": get_settings().remote_poll_timeout_s,
-            "heartbeat_interval_s": _heartbeat_interval_s(),
+            "poll_timeout_s": self._settings().remote_poll_timeout_s,
+            "heartbeat_interval_s": _heartbeat_interval_s(self._settings()),
             "upgrade": _runtime_upgrade(runtime_report),
         }
 
     async def resume_worker(
         self, token: str, payload: dict[str, Any]
-    ) -> dict[str, Any]:
+    ) -> WorkerRegistrationResponse:
         """Refresh a persisted worker registration using its bearer identity."""
         runtime_report = _validate_runtime_report(payload)
         async with self._enrollment_lock:
@@ -583,8 +677,8 @@ class RemoteManager:
             "token": token,
             "name": name,
             "poll_interval_s": 0,
-            "poll_timeout_s": get_settings().remote_poll_timeout_s,
-            "heartbeat_interval_s": _heartbeat_interval_s(),
+            "poll_timeout_s": self._settings().remote_poll_timeout_s,
+            "heartbeat_interval_s": _heartbeat_interval_s(self._settings()),
             "upgrade": _runtime_upgrade(runtime_report),
         }
 
@@ -608,7 +702,9 @@ class RemoteManager:
     ) -> dict[str, Any]:
         """Negotiate runtime state, then long-poll for the next live job."""
         report = _validate_poll_report(payload)
-        configured_poll_timeout_s = float(get_settings().remote_poll_timeout_s)
+        configured_poll_timeout_s = float(
+            self._settings().remote_poll_timeout_s
+        )
         effective_poll_timeout_s = configured_poll_timeout_s
         try:
             worker_poll_timeout_s = float(
@@ -684,7 +780,7 @@ class RemoteManager:
             }
             return response
 
-    async def heartbeat(self, token: str) -> dict[str, Any]:
+    async def heartbeat(self, token: str) -> WorkerHeartbeatResponse:
         """Refresh worker liveness while a long-running job executes."""
         with self._state_lock:
             self._load_registry_unlocked()
@@ -725,7 +821,7 @@ class RemoteManager:
         timeout_s: int | None = None,
     ) -> dict[str, Any]:
         """Queue one bounded remote tool call and await its assigned result."""
-        settings = get_settings()
+        settings = self._settings()
         effective_timeout = timeout_s or settings.remote_job_timeout_s
         job_id = "job_" + uuid.uuid4().hex
         loop = asyncio.get_running_loop()
@@ -750,14 +846,13 @@ class RemoteManager:
                 raise RuntimeError(f"remote machine queue is full: {machine}")
             self.pending[job_id] = future
             self.pending_machines[job_id] = machine
-            worker.queue.put_nowait(
-                {
-                    "id": job_id,
-                    "tool": tool,
-                    "args": args,
-                    "expires_at": _utc() + effective_timeout,
-                }
-            )
+            queued_job: RemoteQueuedJob = {
+                "id": job_id,
+                "tool": tool,
+                "args": args,
+                "expires_at": _utc() + effective_timeout,
+            }
+            worker.queue.put_nowait(queued_job)
         try:
             result = await asyncio.wait_for(
                 asyncio.shield(future), timeout=effective_timeout
@@ -795,7 +890,9 @@ class RemoteManager:
             worker = self.workers.get(machine)
             if worker is None:
                 return False
-            offline_after_s = max(2 * get_settings().remote_poll_timeout_s, 60)
+            offline_after_s = max(
+                2 * self._settings().remote_poll_timeout_s, 60
+            )
             if _utc() - worker.last_seen > offline_after_s:
                 return False
             return capability in worker.capabilities
@@ -805,7 +902,9 @@ class RemoteManager:
         with self._state_lock:
             self._load_registry_unlocked()
             now = _utc()
-            offline_after_s = max(2 * get_settings().remote_poll_timeout_s, 60)
+            offline_after_s = max(
+                2 * self._settings().remote_poll_timeout_s, 60
+            )
             rows = []
             counts = {"online": 0, "offline": 0}
             for worker in self.workers.values():

@@ -103,13 +103,13 @@ def test_file_listing_is_sorted_bounded_and_workspace_relative(
         "mkdir": True,
     }
     assert [entry["name"] for entry in payload["entries"]] == [
-        ".state",
         "a-dir",
         "z-dir",
         ".hidden",
         "a.txt",
         "z.txt",
     ]
+    assert not (workspace / ".state").exists()
     hidden = next(
         entry for entry in payload["entries"] if entry["name"] == ".hidden"
     )

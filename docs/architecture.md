@@ -2,7 +2,12 @@
 
 This page records the intended ownership of source packages and files. It is a
 maintenance contract, not only a directory overview: when code moves, update the
-ownership rationale and the architecture tests in the same change.
+ownership rationale and the architecture tests in the same change. Architecture
+tests exact-freeze security, packaging, published-asset, and process-composition
+contracts where membership itself is meaningful. Ordinary internal topology is
+guarded instead by ownership coverage, required edges, forbidden dependency
+directions, and acyclicity so implementation-only imports can evolve without
+rewriting an exact edge snapshot.
 
 ## Dependency direction
 
@@ -75,7 +80,8 @@ internal in help rather than parsed by a separate code path.
 | --- | --- | --- |
 | `main.py` | Creates the root parser, installs `--version`, calls each command registrar, parses once, and invokes the selected argparse handler. | The package entry point composes CLI contracts but does not own any command's arguments or runtime behavior. |
 | `config/cli.py` | Registers config-file selection and generated Settings overrides, then loads and optionally installs settings from one parsed namespace. | Server, TUI, and Agent Bridge administration share this argparse/settings bridge without making `main.py` own configuration. |
-| `executors/cli.py` | Registers the explicit `server` command and selects MCP, stdio, or REST execution after loading settings. | Server mode selection belongs beside the selectable protocol executors; the root parser only imports its registrar. |
+| `executors/cli.py` | Registers the explicit `server` command, composes runtime services from resolved settings, and selects MCP, stdio, or REST execution. | Server process composition belongs beside the selectable protocol executors; lower layers retain compatibility accessors but no longer construct the server's process-wide stores implicitly. |
+| `executors/runtime_services.py` | Constructs the process-wide filesystem state store and tool-session store from one resolved `Settings` object, then installs their compatibility accessors. | This is the server composition boundary where concrete stateful services and configuration dependencies are intentionally assembled rather than discovered deep in domain code. |
 | `ui/cli.py` | Registers `tui`, its settings, and loopback API override, then launches the native UI runtime. | Native-client arguments and defaults belong to the UI domain rather than the process entry point. |
 | `agent_bridge/cli.py` | Registers `mcp auth` and `mcp secret` administration and executes credential/OAuth workflows. | Agent Bridge owns both the nested command contract and its security-sensitive handlers. |
 | `remote_worker/cli.py` | Registers the worker command tree and executes enrollment, foreground runtime, service, log, and update actions. | Worker lifecycle commands are an independent product surface and remain reusable by the source-only worker launcher. |
@@ -211,6 +217,7 @@ area for unaudited moves.
 | --- | --- | --- |
 | `ops/__init__.py` | Declares the shared operation namespace. | The package is consumed across tools, workers, UI, HTTP, remote services, and domain runtimes. |
 | `ops/agent.py` | Lists, activates, reads, and invokes Agent Bridge capabilities. | Both the public agent registry and source-only worker dispatch execute these operations. |
+| `ops/bash.py` | Composes session-aware bounded commands, durable jobs, persistent shells, remote dispatch, and temporary Python scripts into the public `bash`/`run_python_code` execution facade. | Keeping orchestration above the shell primitives lets the jobs runtime depend on the shell backend without creating a reverse `ops.shell` → `jobs.runtime` dependency. |
 | `ops/downloads.py` | Creates, lists, revokes, claims, and releases tokenized immutable file downloads. | The public download tools and executor-neutral HTTP download route share the same state and claim policy. |
 | `ops/files.py` | Implements contained, bounded workspace file listing, writing, editing, hashing, deletion, and link-safe path behavior. | Worker dispatch, Human UI files, remote transfer, read/search/secret-scan operations, and tool registries all reuse it. |
 | `ops/image.py` | Loads bounded local or remote image bytes and projects native MCP image results. | The image tool and Human UI audit image preview share staging and validation behavior. |
@@ -221,7 +228,7 @@ area for unaudited moves.
 | `ops/search.py` | Implements bounded grep, glob, and directory-tree operations with local/remote session routing. | Worker dispatch, workspace connector orchestration, and public search tools share it. |
 | `ops/secret_scan.py` | Scans bounded workspace text for credential-like patterns with Git-ignore and remote-session behavior. | Both the public scanner and source-only worker dispatch execute it. |
 | `ops/session.py` | Creates, changes, and ends explicit sessions, collects environment/Git state, and starts session-copy jobs. | Both public session tools and source-only worker dispatch require the same lifecycle behavior. |
-| `ops/shell.py` | Runs bounded shell/Python commands and owns persistent shell lifecycle operations. | Worker dispatch, Human UI terminals, HTTP/MCP watchdog integration, remote tools, and the shared job runtime all depend on it. |
+| `ops/shell.py` | Runs bounded shell-command primitives and owns persistent shell lifecycle operations. | The session-aware bash facade, worker terminal dispatch, Human UI terminals, HTTP/MCP watchdog integration, remote tools, and the shared job runtime depend on it without making the shell backend depend on durable jobs. |
 | `ops/todo.py` | Persists revisioned, bounded agent todo lists. | Public todo tools, Human UI todos, and source-only worker dispatch share the state contract. |
 | `ops/transfer.py` | Provides binary-safe transactional file and directory transfer primitives. | Controller/worker transfer services, transfer gateway, image staging, session copy, download snapshots, and public transfer tools all reuse it. |
 | `ops/utils/__init__.py` | Declares operation-private shared helpers. | The helpers support multiple operation families without becoming general project utilities. |
@@ -238,9 +245,10 @@ Rejected ownership alternatives:
 - moving the complete `ops/` tree under `tools/ops`: this would make workers,
   UI/HTTP adapters, remote services, and the job runtime depend on public tool
   ownership and would require bundling controller-only `tools` code on workers.
-- treating top-level `ops` as unfinished migration: the current family graph is
-  explicitly locked by architecture tests; a future move requires first removing
-  every non-tool consumer or extracting a truthful shared domain.
+- treating top-level `ops` as unfinished migration: architecture tests require
+  each shared top-level operation family to retain both its public registry consumer
+  and a genuine non-registry consumer. A family may move only after that shared use
+  disappears or a more truthful shared domain is extracted.
 - moving only `ops/remote.py`: its shared result contracts keep the remote family
   cross-domain, and partial family migration would weaken the registry/operation/
   schema alignment contract.
@@ -257,8 +265,15 @@ orchestration.
 | File | Responsibility | Why it belongs here |
 | --- | --- | --- |
 | `jobs/__init__.py` | Declares the shared tracked-job domain boundary. | Job persistence and execution are used by the controller process, standalone runner, shell/session-copy workflows, and source-only workers, so they are broader than one public tool adapter. |
-| `jobs/runtime.py` | Owns the durable store and backup, lock-bounded transactions, deferred managed-update journal, attempt files, shell-backed and managed-job lifecycle, local companion actions, and standalone runner entrypoint. | These responsibilities must remain available without importing `tools`; keeping them in `ops/jobs.py` conflated the shared runtime with controller-only public-tool orchestration. |
-| `jobs/cli.py` | Registers the private durable runner arguments as a labeled internal argparse subcommand. | Parser ownership follows the jobs runtime, while the source-only worker manifest explicitly includes only `jobs/__init__.py` and `jobs/runtime.py`. |
+| `jobs/runtime.py` | Retains the stable jobs compatibility surface, lifecycle admission, mixed managed/shell listing and tailing, and public companion dispatch. | Existing callers and source-only workers keep one jobs API while backend-specific start/stop/retry execution is delegated below this facade. |
+| `jobs/lifecycle.py` | Owns shell attempt materialization, durable status-file interpretation, bounded log reads, and shell/managed row reconciliation with managed liveness injected as callbacks. | The status state machine is shared by shell and managed operations; callback injection keeps it below both execution kinds instead of creating a managed↔shell dependency cycle. |
+| `jobs/shell.py` | Owns shell-backed job start, live-shell reconciliation, stop, and retry transitions. | Persistent-shell inventory and lifecycle side effects now have one backend owner that depends on `ops.shell` without importing the managed backend. |
+| `jobs/managed.py` | Owns managed-job handler registration, process-local task and lease state, durable progress/finish updates, and managed start/stop/retry/list lifecycle. | Managed execution now has one authoritative owner while `jobs/runtime.py` only preserves compatibility aliases and coordinates mixed shell/managed public operations. |
+| `jobs/persistence.py` | Owns the durable job-store schema, primary/backup load-save recovery, attempt artifact paths, and retention pruning. | These filesystem and schema responsibilities form a dependency leaf below recovery and both job execution kinds; they preserve the existing JSON format and fail-closed backup behavior. |
+| `jobs/recovery.py` | Owns bounded cross-process job-store transactions plus the managed deferred-update journal and replay rules. | Locking and crash recovery must share one authoritative state machine while depending only on persistence and row semantics, not on managed or shell lifecycle orchestration. |
+| `jobs/state.py` | Owns common row identity, operation tokens, public `JobInfo` projection, and bounded managed JSON normalization. | Recovery, managed jobs, and shell-backed jobs all depend on these row semantics, so they form a small dependency leaf instead of importing each other or `runtime.py`. |
+| `jobs/runner.py` | Executes one standalone durable shell attempt, bounds its log, and atomically writes the terminal status payload. | The child-process runner has a narrow process/IO contract and does not need the store, session lifecycle, or public job orchestration. |
+| `jobs/cli.py` | Registers the private durable runner arguments as a labeled internal argparse subcommand and dispatches directly to `jobs/runner.py`. | Parser ownership follows the jobs domain; the source-only worker manifest includes the jobs modules imported by `jobs/runtime.py` so worker execution remains self-contained. |
 
 Rejected ownership alternatives:
 
@@ -308,6 +323,23 @@ Rejected ownership alternatives:
 - source-only worker bundle: workers execute shared job runtime actions but do
   not import controller-side public-tool orchestration, so migrated `tools/` files
   must not be included incidentally by operation or schema wildcards.
+
+## `tool_session`: explicit workspace-session state
+
+The `tool_session` package owns durable local/remote agent-session metadata,
+grounding snapshots, session admission, resource ownership, and retention policy.
+Filesystem layout and atomic storage mechanics remain below it in `persistence`.
+
+| File | Responsibility | Why it belongs here |
+| --- | --- | --- |
+| `tool_session/store.py` | Retains the stable `ToolSessionStore` API and coordinates session admission, lifecycle leases, pruning revalidation, resource transactions, and snapshot transactions. | Callers keep one authoritative session surface while metadata, retention, resource, and snapshot mechanics are delegated without duplicating lifecycle invariants. |
+| `tool_session/repository.py` | Owns session-metadata paths, process-local metadata cache, durable load/list/write/remove mechanics, and root-change cache reset. | Repository mechanics change independently from expiry policy and lifecycle orchestration while `ToolSessionStore` preserves compatibility wrappers for existing callers and race tests. |
+| `tool_session/records.py` | Defines durable `AgentSession`/`SnapshotRecord` records, opaque-id helpers, payload validation, compatibility decoding, and exact snapshot JSON sizing. | Durable formats are dependency-leaf contracts shared by repositories and policy code; they must not depend on store orchestration. |
+| `tool_session/resources.py` | Owns pure persistent-shell ownership validation and immutable session-record transitions for bind, reserve, release, and reconciliation. | Resource policy becomes independently testable while locks, durable transactions, authoritative reloads, and session admission remain in `ToolSessionStore`. |
+| `tool_session/retention.py` | Interprets durable job state into conservative session-protection sets and owns pure expiry/capacity eligibility policy. | Job liveness and retention rules can evolve independently while `ToolSessionStore` retains lifecycle leases, jobs-lock revalidation, and deletion orchestration. |
+| `tool_session/snapshots.py` | Owns per-session grounding-snapshot cache, loading, retention, and persistence below an already-admitted session transaction. | Snapshot storage policy can change independently while session existence, lifecycle locking, and transaction admission remain authoritative in `ToolSessionStore`. |
+| `tool_session/lifecycle.py` | Provides keyed in-process and cross-process session lifecycle leases. | Admission ordering and lifecycle serialization are shared concurrency primitives below the session store and job/shell callers. |
+| `tool_session/environment.py` / `selectors.py` | Normalize session environment bindings and semantic session selectors. | These are narrow session-domain helpers independent of persistence orchestration. |
 
 ## `persistence`: shared private-state layout and file-store primitives
 
@@ -411,10 +443,13 @@ Python modules and are deliberately excluded from the source-only remote-worker
 runtime.
 
 The directory contains exactly the browser shell (`index.html`), Human UI styles
-and controller (`web.css`, `web.js`), OpenTUI console bridge, syntax highlighter,
-terminal renderer, vendored xterm bundle and stylesheet, and the corresponding
-license notice. Build and architecture gates reject symlinks, Python files,
-unexpected assets, and restoration of the former top-level `ui_static` path.
+(`web.css`), the classic bootstrap controller (`web.js`), feature ES modules such
+as `dashboard.js`, `remotes.js`, `audit.js`, `sessions.js`, `terminal.js`, and
+`files.js`, the shared stateless Audit renderer/parser (`audit_view.js`), the
+OpenTUI console bridge, syntax highlighter, terminal renderer, vendored xterm
+bundle and stylesheet, and the corresponding license notice. Build and
+architecture gates reject symlinks, Python files, unexpected assets, and
+restoration of the former top-level `ui_static` path.
 
 The browser controller presents agent state through one Sessions control surface:
 machine and recent/all session selection precede session details, Todo, and the
@@ -455,7 +490,9 @@ not depend on either protocol executor. The REST executor consumes only
 | `ui/http/remote_files.py` | Normalizes remote UI paths, caches bounded worker sessions, dispatches workspace RPCs, reads/decodes chunks, and implements remote preview/content/mutation payloads. | It is the Human UI adapter over remote-worker workspace tools, not the worker control plane or generic remote manager. |
 | `ui/http/remotes.py` | Presents worker inventory and validates invite, rename, and revoke HTTP actions with scope and mutation-policy checks. | Remote lifecycle remains in `remote`; this file owns the Human UI administration representation. |
 | `ui/http/sessions.py` | Lists durable public agent/workspace sessions for one local or remote machine, defaults inventory to sessions active in the prior five hours, exposes an explicit all-sessions toggle, and persists the irreversible immediate-termination control action while hiding worker-internal bindings. | Session lifecycle, activity timestamps, and termination policy remain in `tool_session`; this adapter owns authenticated Human UI inventory, machine-scoped projection, and control-plane authorization. |
-| `ui/http/terminals.py` | Adapts local/remote persistent-shell list/start/send/read/resize/kill operations and raw terminal bridges to REST and WebSocket protocols with bounded validation and cleanup. | Terminal backends and bridge capabilities remain in `terminal`; this large module owns their Human UI delivery contract and is a later split candidate. |
+| `ui/http/terminal_protocol.py` | Defines bounded terminal request/control parsing plus normalized local/remote shell and raw-bridge response contracts. | Wire validation is shared by REST and WebSocket delivery and deliberately contains no local/remote dispatch or connection lifecycle. |
+| `ui/http/terminal_websocket.py` | Owns one authenticated terminal WebSocket connection lifecycle: shell presence preflight, mode negotiation, PTY/snapshot senders, typed control dispatch, idle timeout, cleanup, and audit events. | Backend calls are injected callbacks, so transport state does not own local/remote shell execution and adapter parity remains testable. |
+| `ui/http/terminals.py` | Keeps the stable Human UI terminal facade: HTTP routes, OAuth scope checks, local/remote persistent-shell adapters, raw-bridge adapters, connection admission, and compatibility exports used by OpenTUI/tests. | It composes the protocol and WebSocket lifecycle layers while terminal backend capabilities remain in `terminal`; no WebSocket state machine is embedded here. |
 | `ui/http/todos.py` | Maps the centrally selected authenticated local or remote UI session to revisioned Todo reads/writes and stable JSON responses. | Todo state belongs inside tool-session storage; this module owns its Human UI HTTP semantics and remote dispatch, not an independent global Todo surface. |
 
 Rejected ownership alternatives:
@@ -608,26 +645,23 @@ Rejected ownership alternatives:
 
 ## Large-module reassessment
 
-The post-migration ownership review compared the remaining large stateful
-modules by responsibility clusters, dependency direction, monkeypatch surface,
-source-only worker constraints, and existing test ownership. Only the jobs split
-was accepted in this review:
+The architecture-hardening review compares large stateful modules by responsibility
+clusters, dependency direction, compatibility surface, and focused test ownership.
+Accepted decompositions preserve stable facades rather than moving code by size alone:
 
-- `jobs/runtime.py` and `tools/ops/jobs.py` now separate shared durable execution
-  from the controller-only public-tool projection. The split removes the
-  misleading `ops/jobs.py` owner while preserving the explicit
-  `jobs.runtime <-> ops.shell` cycle as visible architecture debt.
-- `ui/http/terminals.py` remains intact. Its HTTP validation, remote terminal
-  normalization, raw bridge lifecycle, connection limits, authentication, and
-  WebSocket orchestration share one protocol state machine and one concentrated
-  test/monkeypatch surface. A future split requires a dedicated protocol
-  contract and adapter-parity tests rather than a line-count-driven move.
+- `jobs/runtime.py` is now a compatibility/orchestration facade over dedicated
+  lifecycle, shell, managed, persistence, recovery, state, and runner modules while
+  preserving the durable job format and source-only worker contract.
+- Human UI terminal delivery is split into `terminal_protocol.py`,
+  `terminal_websocket.py`, and the stable `terminals.py` facade. The split was only
+  accepted together with typed protocol-contract tests and local/remote adapter-parity
+  coverage, so REST and WebSocket consumers keep the same normalized machine-scoped
+  behavior and existing monkeypatch/import surfaces remain valid.
 - `remote/transfer_gateway.py` remains intact. Its ticket store, spool identity,
-  authorization, range handling, cleanup, and router composition jointly enforce
-  the transfer security and TOCTOU model. Separating them without a narrower
-  security contract would increase risk and is not justified by the current
-  consumer graph.
+  authorization, range handling, cleanup, and router composition jointly enforce the
+  transfer security and TOCTOU model; no narrower security contract currently
+  justifies separating them.
 
-No further large-module decomposition is authorized by this review. Future
-changes must begin from a concrete behavior, dependency, or testability problem
-and complete their own focused commit, push, and exact-head CI closure.
+Further large-module decomposition must start from a concrete behavior, dependency,
+or testability problem and complete its own focused validation and compatibility
+closure.

@@ -238,9 +238,14 @@ async def test_cancelled_cross_process_waiter_releases_local_entry():
 
 
 @pytest.mark.asyncio
-async def test_job_admission_revalidates_after_cross_process_teardown(tmp_path):
+async def test_job_admission_revalidates_after_cross_process_teardown(
+    tmp_path, monkeypatch
+):
     from local_shell_mcp.jobs import runtime as jobs_ops
 
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
     session = store.create_session(workdir=".")

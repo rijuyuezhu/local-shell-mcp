@@ -78,7 +78,7 @@ def test_generated_yaml_example_loads_without_losing_defaults(monkeypatch):
         monkeypatch.delenv(spec.env_var, raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_CONFIG", raising=False)
 
-    settings = load_settings("config.example.yaml", create_dirs=False)
+    settings = load_settings("config.example.yaml")
     defaults = Settings()
 
     assert settings.command_denylist == defaults.command_denylist

@@ -140,7 +140,7 @@ async def _dashboard_snapshot(args: dict[str, Any]) -> Any:  # noqa: ARG001
 
 
 async def _bash(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.ops.shell import bash_execute
+    from local_shell_mcp.ops.bash import bash_execute
 
     return await bash_execute(
         str(args["session_id"]),
@@ -156,7 +156,7 @@ async def _bash(args: dict[str, Any]) -> Any:
 
 
 async def _run_python_code(args: dict[str, Any]) -> Any:
-    from local_shell_mcp.ops.shell import run_python_code_execute
+    from local_shell_mcp.ops.bash import run_python_code_execute
 
     return await run_python_code_execute(
         str(args["session_id"]),

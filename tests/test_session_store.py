@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.tool_session import retention as retention_module
 from local_shell_mcp.tool_session import store as store_module
 from local_shell_mcp.tool_session.store import (
     SESSION_TERMINATION_PROMPT,
@@ -926,7 +927,7 @@ def test_live_peer_managed_job_still_protects_expired_session(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr(
-        store_module, "managed_job_lease_state", lambda *_args: "live"
+        retention_module, "managed_job_lease_state", lambda *_args: "live"
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
@@ -1012,7 +1013,7 @@ def test_current_managed_job_protects_destination_session_from_expiry(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr(
-        store_module, "managed_job_lease_state", lambda *_args: "live"
+        retention_module, "managed_job_lease_state", lambda *_args: "live"
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
@@ -1053,7 +1054,7 @@ def test_current_managed_job_destination_blocks_capacity_eviction(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr(
-        store_module, "managed_job_lease_state", lambda *_args: "live"
+        retention_module, "managed_job_lease_state", lambda *_args: "live"
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))

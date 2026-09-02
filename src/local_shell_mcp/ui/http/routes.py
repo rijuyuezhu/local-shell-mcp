@@ -80,6 +80,13 @@ def _ui_asset_revision() -> str:
         "terminal_renderer.js",
         "syntax_highlight.js",
         "web.js",
+        "dashboard.js",
+        "remotes.js",
+        "audit_view.js",
+        "audit.js",
+        "sessions.js",
+        "terminal.js",
+        "files.js",
         "opentui_console.js",
     ):
         digest.update(name.encode("utf-8"))
@@ -111,10 +118,12 @@ def _ui_index_html(settings: Settings, origin: str) -> str:
             "sessionTokenEndpoint": UI_API_PREFIX + "/session/token",
             "sessionLogoutEndpoint": UI_API_PREFIX + "/session/logout",
         }
+    asset_revision = _ui_asset_revision()
     config = html.escape(
         json.dumps(
             {
                 "uiPath": settings.ui_path,
+                "assetRevision": asset_revision,
                 "apiPrefix": UI_API_PREFIX,
                 "authMode": settings.auth_mode,
                 "wallpaper": settings.ui_wallpaper,
@@ -134,7 +143,7 @@ def _ui_index_html(settings: Settings, origin: str) -> str:
     return (
         path.read_text(encoding="utf-8")
         .replace("__LSM_UI_PATH__", settings.ui_path)
-        .replace("__LSM_UI_ASSET_REV__", _ui_asset_revision())
+        .replace("__LSM_UI_ASSET_REV__", asset_revision)
         .replace("__LSM_UI_CONFIG_JSON__", config)
     )
 

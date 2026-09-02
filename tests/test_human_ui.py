@@ -133,7 +133,9 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "Human UI foundation active" not in index.text
     assert "__LSM_UI_PATH__" not in index.text
     assert "__LSM_UI_ASSET_REV__" not in index.text
-    assert re.search(r"assets/web\.js\?v=[0-9a-f]{16}", index.text)
+    asset_revision = re.search(r"assets/web\.js\?v=([0-9a-f]{16})", index.text)
+    assert asset_revision is not None
+    assert f"assetRevision&quot;:&quot;{asset_revision.group(1)}" in index.text
     assert index.headers["cache-control"] == "no-store"
     csp = index.headers["content-security-policy"]
     assert "script-src 'self' 'wasm-unsafe-eval'" in csp
@@ -178,6 +180,43 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     script = client.get("/ui/assets/web.js")
     assert script.status_code == 200
     assert script.headers["x-content-type-options"] == "nosniff"
+    assert "await Promise.all([" in script.text
+    assert 'import(assetUrl("dashboard.js"))' in script.text
+    assert 'import(assetUrl("remotes.js"))' in script.text
+    assert 'import(assetUrl("audit_view.js"))' in script.text
+    assert 'import(assetUrl("audit.js"))' in script.text
+    assert 'import(assetUrl("sessions.js"))' in script.text
+    assert 'import(assetUrl("terminal.js"))' in script.text
+    assert 'import(assetUrl("files.js"))' in script.text
+    assert "?v=${assetRevision}" in script.text
+    dashboard_script = client.get("/ui/assets/dashboard.js")
+    assert dashboard_script.status_code == 200
+    assert dashboard_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createDashboardController" in dashboard_script.text
+    remotes_script = client.get("/ui/assets/remotes.js")
+    assert remotes_script.status_code == 200
+    assert remotes_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createRemotesController" in remotes_script.text
+    audit_view_script = client.get("/ui/assets/audit_view.js")
+    assert audit_view_script.status_code == 200
+    assert audit_view_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createAuditView" in audit_view_script.text
+    audit_script = client.get("/ui/assets/audit.js")
+    assert audit_script.status_code == 200
+    assert audit_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createAuditController" in audit_script.text
+    sessions_script = client.get("/ui/assets/sessions.js")
+    assert sessions_script.status_code == 200
+    assert sessions_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createSessionsController" in sessions_script.text
+    terminal_script = client.get("/ui/assets/terminal.js")
+    assert terminal_script.status_code == 200
+    assert terminal_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createTerminalController" in terminal_script.text
+    files_script = client.get("/ui/assets/files.js")
+    assert files_script.status_code == 200
+    assert files_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createFilesController" in files_script.text
     assert 'code_challenge_method", "S256"' in script.text
     assert "crypto.subtle.digest" in script.text
     assert 'resource: String(oauth.resource || "")' in script.text
@@ -190,52 +229,71 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
         "response.status === 401 || response.status === 403" not in script.text
     )
     assert "payload.message || payload.detail" in script.text
-    assert "dashboardGeneration" in script.text
-    assert "requestedMachine !== dashboardMachine" in script.text
-    assert "refreshDashboardInBackground" in script.text
-    assert "request(dashboardQueryPath())" in script.text
-    assert "createElementNS" in script.text
-    assert "dashboardNumber" in script.text
-    assert "remoteGeneration" in script.text
-    assert "generation !== remoteGeneration" in script.text
-    assert "startRemotePolling" in script.text
-    assert "clearRemoteInviteResult" in script.text
-    assert "navigator.clipboard.writeText(remoteInviteCommand)" in script.text
-    assert 'remoteInviteCommand = ""' in script.text
-    assert "innerHTML" not in script.text
-    assert "terminalMachineStates" in script.text
-    assert "requestedMachine !== terminalMachine" in script.text
-    assert 'url.searchParams.set("machine", machine)' in script.text
-    assert 'url.searchParams.set("mode", "auto")' in script.text
-    assert 'socket.binaryType = "arraybuffer"' in script.text
-    assert "terminalReady" in script.text
-    assert "activateTerminalMode" in script.text
-    assert "sendTerminalBytes" in script.text
-    assert "offset += 65536" in script.text
-    assert "registerOscHandler(8" in script.text
-    assert "createImageAddon" in script.text
-    assert script.text.index("loadAddon(api.createImageAddon())") < (
-        script.text.index("terminalFitAddon = new api.FitAddon()")
+    assert "controllerState.generation" in dashboard_script.text
+    assert (
+        "requestedMachine !== controllerState.machine" in dashboard_script.text
     )
-    assert "allowNonHttpProtocols: false" in script.text
-    assert "terminalSocketMachine === terminalMachine" in script.text
-    assert "bridge_id" not in script.text
-    assert "acceptTerminalSnapshot" in script.text
-    assert "terminalPendingOutput" in script.text
-    assert "terminalSpecialKeys" in script.text
-    assert "navigateTerminalHistory" in script.text
-    assert "LsmTerminalRenderer" in script.text
-    assert "filePreviewGeneration" in script.text
-    assert "generation !== filePreviewGeneration" in script.text
-    assert "fileListGeneration" in script.text
-    assert "requestedMachine !== fileMachine" in script.text
-    assert 'fileQuery("/files/preview"' in script.text
-    assert "machine: fileMachine" in script.text
-    assert "renderFileMachines" in script.text
-    assert "fileMutations" in script.text
-    assert 'fileAction("copy"' in script.text
-    assert 'fileAction("move"' in script.text
-    assert 'fileAction("rename"' in script.text
+    assert "refreshDashboardInBackground" in dashboard_script.text
+    assert "request(dashboardQueryPath())" in dashboard_script.text
+    assert "createElementNS" in dashboard_script.text
+    assert "dashboardNumber" in dashboard_script.text
+    assert "controllerState.generation" in remotes_script.text
+    assert "generation !== controllerState.generation" in remotes_script.text
+    assert "startRemotePolling" in remotes_script.text
+    assert "clearRemoteInviteResult" in remotes_script.text
+    assert (
+        "navigator.clipboard.writeText(controllerState.inviteCommand)"
+        in remotes_script.text
+    )
+    assert 'inviteCommand: ""' in remotes_script.text
+    assert "innerHTML" not in script.text
+    assert "controllerState.terminalMachineStates" in terminal_script.text
+    assert (
+        "requestedMachine !== controllerState.terminalMachine"
+        in terminal_script.text
+    )
+    assert 'url.searchParams.set("machine", machine)' in terminal_script.text
+    assert 'url.searchParams.set("mode", "auto")' in terminal_script.text
+    assert 'socket.binaryType = "arraybuffer"' in terminal_script.text
+    assert "controllerState.terminalReady" in terminal_script.text
+    assert "activateTerminalMode" in terminal_script.text
+    assert "sendTerminalBytes" in terminal_script.text
+    assert "offset += 65536" in terminal_script.text
+    assert "registerOscHandler(8" in terminal_script.text
+    assert "createImageAddon" in terminal_script.text
+    assert terminal_script.text.index("loadAddon(api.createImageAddon())") < (
+        terminal_script.text.index(
+            "controllerState.terminalFitAddon = new api.FitAddon()"
+        )
+    )
+    assert "allowNonHttpProtocols: false" in terminal_script.text
+    assert (
+        "controllerState.terminalSocketMachine === controllerState.terminalMachine"
+        in terminal_script.text
+    )
+    assert "bridge_id" not in terminal_script.text
+    assert "acceptTerminalSnapshot" in terminal_script.text
+    assert "controllerState.terminalPendingOutput" in terminal_script.text
+    assert "const terminalSpecialKeys = Object.freeze" in terminal_script.text
+    assert "const terminalHistoryLimit = 100;" in terminal_script.text
+    assert "navigateTerminalHistory" in terminal_script.text
+    assert "LsmTerminalRenderer" in terminal_script.text
+    assert "controllerState.filePreviewGeneration" in files_script.text
+    assert (
+        "generation !== controllerState.filePreviewGeneration"
+        in files_script.text
+    )
+    assert "controllerState.fileListGeneration" in files_script.text
+    assert (
+        "requestedMachine !== controllerState.fileMachine" in files_script.text
+    )
+    assert 'fileQuery("/files/preview"' in files_script.text
+    assert "machine: controllerState.fileMachine" in files_script.text
+    assert "renderFileMachines" in files_script.text
+    assert "controllerState.fileMutations" in files_script.text
+    assert 'fileAction("copy"' in files_script.text
+    assert 'fileAction("move"' in files_script.text
+    assert 'fileAction("rename"' in files_script.text
     protected = client.get("/api/ui/bootstrap")
     assert protected.status_code == 401
 

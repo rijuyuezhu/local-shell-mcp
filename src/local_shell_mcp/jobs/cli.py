@@ -4,7 +4,7 @@ import argparse
 from typing import Any
 
 from ..ops.utils.bounded_runner import register_bounded_runner_cli
-from .runtime import run_job_runner_from_args
+from .runner import run_job_runner_from_args
 
 
 def register_job_runner_cli(subparsers: Any) -> argparse.ArgumentParser:

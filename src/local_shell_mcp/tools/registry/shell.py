@@ -1,12 +1,11 @@
 """Shell MCP tool registry."""
 
+from ...ops.bash import bash_execute, run_python_code_execute
 from ...ops.shell import (
-    bash_execute,
     kill_persistent_shell_execute,
     list_persistent_shells_execute,
     read_persistent_shell_output_execute,
     resize_persistent_shell_execute,
-    run_python_code_execute,
     send_persistent_shell_input_execute,
 )
 from ...schemas.input_models.session import SessionIdArg
