@@ -48,8 +48,8 @@ class WorkerRuntime:
     @asynccontextmanager
     async def lifespan(self) -> AsyncGenerator[WorkerRuntime]:
         """Run the worker ownership scope with deterministic cleanup."""
-        await self.start()
         try:
+            await self.start()
             yield self
         finally:
             await self.aclose()

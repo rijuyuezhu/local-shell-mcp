@@ -50,8 +50,8 @@ class ControllerRuntime:
     @asynccontextmanager
     async def lifespan(self) -> AsyncGenerator[ControllerRuntime]:
         """Run the controller ownership scope with deterministic cleanup."""
-        await self.start()
         try:
+            await self.start()
             yield self
         finally:
             await self.aclose()

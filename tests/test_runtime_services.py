@@ -1,6 +1,12 @@
+import asyncio
+
 import pytest
 
-from local_shell_mcp.composition.services import build_runtime_services
+import local_shell_mcp.composition.services as composition_services
+from local_shell_mcp.composition.services import (
+    build_runtime_services,
+    install_runtime_services,
+)
 from local_shell_mcp.config.settings import Settings
 from local_shell_mcp.executors.runtime import build_controller_runtime
 from local_shell_mcp.executors.runtime_services import (
@@ -146,6 +152,125 @@ async def test_worker_runtime_lifespan_restores_bindings_after_exception(
         assert get_state_store() is outer_state_store
         assert get_tool_session_store() is outer_session_store
         await runtime.aclose()
+    finally:
+        configure_tool_session_store(None)
+        configure_state_store(None)
+
+
+def test_runtime_service_installation_rolls_back_partial_startup(
+    tmp_path, monkeypatch
+):
+    settings = Settings(
+        workspace_root=tmp_path,
+        state_dir=tmp_path / "runtime-state",
+    )
+    outer_state_store = FileStateStore(lambda: tmp_path / "outer-state")
+    outer_session_store = ToolSessionStore(
+        state_store=outer_state_store,
+        settings_provider=lambda: settings,
+    )
+    configure_state_store(outer_state_store)
+    configure_tool_session_store(outer_session_store)
+    services = build_runtime_services(settings)
+
+    def fail_session_install(_store):
+        raise RuntimeError("session install failed")
+
+    monkeypatch.setattr(
+        composition_services,
+        "configure_tool_session_store",
+        fail_session_install,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="session install failed"):
+            install_runtime_services(services)
+
+        assert get_state_store() is outer_state_store
+        assert get_tool_session_store() is outer_session_store
+    finally:
+        monkeypatch.undo()
+        configure_tool_session_store(None)
+        configure_state_store(None)
+
+
+@pytest.mark.asyncio
+async def test_controller_runtime_startup_failure_closes_started_bindings(
+    tmp_path, monkeypatch
+):
+    outer_settings = Settings(
+        workspace_root=tmp_path,
+        state_dir=tmp_path / "outer-state",
+    )
+    outer_state_store = FileStateStore(lambda: outer_settings.state_dir)
+    outer_session_store = ToolSessionStore(
+        state_store=outer_state_store,
+        settings_provider=lambda: outer_settings,
+    )
+    configure_state_store(outer_state_store)
+    configure_tool_session_store(outer_session_store)
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-state",
+        )
+    )
+    original_start = runtime.start
+
+    async def fail_after_start() -> None:
+        await original_start()
+        raise RuntimeError("startup failed")
+
+    monkeypatch.setattr(runtime, "start", fail_after_start)
+    try:
+        with pytest.raises(RuntimeError, match="startup failed"):
+            async with runtime.lifespan():
+                pytest.fail("startup failure must prevent entering the body")
+
+        assert get_state_store() is outer_state_store
+        assert get_tool_session_store() is outer_session_store
+    finally:
+        configure_tool_session_store(None)
+        configure_state_store(None)
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_cancellation_closes_bindings(tmp_path):
+    outer_settings = Settings(
+        workspace_root=tmp_path,
+        state_dir=tmp_path / "outer-state",
+    )
+    outer_state_store = FileStateStore(lambda: outer_settings.state_dir)
+    outer_session_store = ToolSessionStore(
+        state_store=outer_state_store,
+        settings_provider=lambda: outer_settings,
+    )
+    configure_state_store(outer_state_store)
+    configure_tool_session_store(outer_session_store)
+    runtime = build_worker_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "worker-state",
+        )
+    )
+    entered = asyncio.Event()
+
+    async def run_until_cancelled() -> None:
+        async with runtime.lifespan():
+            entered.set()
+            await asyncio.Event().wait()
+
+    try:
+        task = asyncio.create_task(run_until_cancelled())
+        await entered.wait()
+        assert get_state_store() is runtime.services.state_store
+        assert get_tool_session_store() is runtime.services.tool_session_store
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert get_state_store() is outer_state_store
+        assert get_tool_session_store() is outer_session_store
     finally:
         configure_tool_session_store(None)
         configure_state_store(None)
