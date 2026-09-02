@@ -179,10 +179,15 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert script.status_code == 200
     assert script.headers["x-content-type-options"] == "nosniff"
     assert "import(`${uiPath}/assets/dashboard.js`)" in script.text
+    assert "import(`${uiPath}/assets/remotes.js`)" in script.text
     dashboard_script = client.get("/ui/assets/dashboard.js")
     assert dashboard_script.status_code == 200
     assert dashboard_script.headers["x-content-type-options"] == "nosniff"
     assert "export function createDashboardController" in dashboard_script.text
+    remotes_script = client.get("/ui/assets/remotes.js")
+    assert remotes_script.status_code == 200
+    assert remotes_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createRemotesController" in remotes_script.text
     assert 'code_challenge_method", "S256"' in script.text
     assert "crypto.subtle.digest" in script.text
     assert 'resource: String(oauth.resource || "")' in script.text
@@ -203,12 +208,15 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "request(dashboardQueryPath())" in dashboard_script.text
     assert "createElementNS" in dashboard_script.text
     assert "dashboardNumber" in dashboard_script.text
-    assert "remoteGeneration" in script.text
-    assert "generation !== remoteGeneration" in script.text
-    assert "startRemotePolling" in script.text
-    assert "clearRemoteInviteResult" in script.text
-    assert "navigator.clipboard.writeText(remoteInviteCommand)" in script.text
-    assert 'remoteInviteCommand = ""' in script.text
+    assert "controllerState.generation" in remotes_script.text
+    assert "generation !== controllerState.generation" in remotes_script.text
+    assert "startRemotePolling" in remotes_script.text
+    assert "clearRemoteInviteResult" in remotes_script.text
+    assert (
+        "navigator.clipboard.writeText(controllerState.inviteCommand)"
+        in remotes_script.text
+    )
+    assert 'inviteCommand: ""' in remotes_script.text
     assert "innerHTML" not in script.text
     assert "terminalMachineStates" in script.text
     assert "requestedMachine !== terminalMachine" in script.text

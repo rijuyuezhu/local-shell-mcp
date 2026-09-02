@@ -4,6 +4,7 @@ void (async () => {
   const config = JSON.parse(document.body.dataset.lsmConfig || "{}");
   const uiPath = String(config.uiPath || "/ui").replace(/\/$/, "");
   const { createDashboardController } = await import(`${uiPath}/assets/dashboard.js`);
+  const { createRemotesController } = await import(`${uiPath}/assets/remotes.js`);
   const apiPrefix = String(config.apiPrefix || "/api/ui").replace(/\/$/, "");
   const oauth = config.oauth && typeof config.oauth === "object" ? config.oauth : null;
   const wallpaper = ["aurora", "grid", "none"].includes(String(config.wallpaper || ""))
@@ -134,13 +135,6 @@ void (async () => {
   let auditDetailGeneration = 0;
   let auditLoading = false;
   let auditMachineStates = new Map([["local", "online"]]);
-  let remoteMachines = [];
-  let remoteSelectedName = "";
-  let remoteEnabled = false;
-  let remoteGeneration = 0;
-  let remoteLoading = false;
-  let remoteTimer = null;
-  let remoteInviteCommand = "";
   const elements = {
     appNavItems: Array.from(document.querySelectorAll(".nav-item[data-view]")),
     appViews: Array.from(document.querySelectorAll("[data-app-view]")),
@@ -335,6 +329,16 @@ void (async () => {
     onAuthenticationRequired: () => void load(),
   });
   dashboard.bind();
+
+  const remotes = createRemotesController({
+    elements,
+    request,
+    text,
+    authMode: config.authMode,
+    isAuthenticated: () => authenticated,
+    reloadApp: () => load(),
+  });
+  remotes.bind();
 
   function normalizeView(value) {
     const candidate = String(value || "").replace(/^#/, "");
@@ -700,259 +704,6 @@ void (async () => {
     sessionStorage.removeItem(pendingStorageKey);
     cleanCallbackUrl();
     return true;
-  }
-
-  function selectedRemote() {
-    return remoteMachines.find((machine) => machine.name === remoteSelectedName) || null;
-  }
-
-  function remoteTimestamp(value, fallback = "Never") {
-    const seconds = Number(value);
-    if (!Number.isFinite(seconds) || seconds <= 0) return fallback;
-    const date = new Date(seconds * 1000);
-    return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString();
-  }
-
-  function remoteAge(value) {
-    if (value === null || value === undefined || value === "") return "unknown age";
-    const seconds = Number(value);
-    if (!Number.isFinite(seconds) || seconds < 0) return "unknown age";
-    if (seconds < 5) return "just now";
-    if (seconds < 60) return `${Math.floor(seconds)}s ago`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    return `${Math.floor(seconds / 86400)}d ago`;
-  }
-
-  function closeRemoteDialog(dialog) {
-    if (dialog?.open) dialog.close();
-  }
-
-  function clearRemoteInviteResult({ close = true } = {}) {
-    remoteInviteCommand = "";
-    elements.remoteInviteCommand.textContent = "";
-    elements.remoteInviteExpiry.textContent = "—";
-    elements.remoteInviteCopy.textContent = "Copy command";
-    if (close) closeRemoteDialog(elements.remoteInviteResultDialog);
-  }
-
-  function setRemoteControls() {
-    elements.remoteRefresh.disabled = remoteLoading;
-    elements.remoteInviteOpen.disabled = remoteLoading || !remoteEnabled;
-    const selected = selectedRemote();
-    elements.remoteRenameOpen.disabled = remoteLoading || !remoteEnabled || !selected;
-    elements.remoteRevokeOpen.disabled = remoteLoading || !remoteEnabled || !selected;
-    elements.remoteReconnectCopy.disabled = remoteLoading || !text(selected?.reconnect_command, "");
-  }
-
-  function resetRemotes(message = "Not loaded") {
-    remoteGeneration += 1;
-    remoteLoading = false;
-    remoteMachines = [];
-    remoteSelectedName = "";
-    remoteEnabled = false;
-    clearRemoteInviteResult();
-    closeRemoteDialog(elements.remoteInviteDialog);
-    closeRemoteDialog(elements.remoteRenameDialog);
-    closeRemoteDialog(elements.remoteRevokeDialog);
-    elements.remoteInviteForm.reset();
-    elements.remoteRenameForm.reset();
-    elements.remoteState.textContent = message;
-    elements.remoteOnline.textContent = "—";
-    elements.remoteOffline.textContent = "—";
-    elements.remoteTotal.textContent = "—";
-    elements.remoteController.textContent = "—";
-    renderRemoteList();
-    renderRemoteDetails();
-    setRemoteControls();
-  }
-
-  function renderRemoteDetails() {
-    const machine = selectedRemote();
-    const info = machine && machine.info && typeof machine.info === "object" ? machine.info : {};
-    const values = [
-      elements.remoteDetailVersion,
-      elements.remoteDetailLastSeen,
-      elements.remoteDetailWorkdir,
-      elements.remoteDetailQueue,
-      elements.remoteDetailHostname,
-      elements.remoteDetailUser,
-      elements.remoteDetailPlatform,
-      elements.remoteDetailPython,
-      elements.remoteDetailProfile,
-    ];
-    if (!machine) {
-      elements.remoteDetailName.textContent = "No remote selected";
-      elements.remoteDetailStatus.textContent = remoteEnabled
-        ? "Select a worker to inspect it"
-        : "Remote workers are disabled";
-      for (const element of values) element.textContent = "—";
-      elements.remoteDetailReconnect.textContent = "Unavailable for this worker";
-      elements.remoteReconnectCopy.textContent = "Copy reconnect";
-      elements.remoteDetailCapabilities.replaceChildren();
-      const empty = document.createElement("span");
-      empty.className = "muted";
-      empty.textContent = "—";
-      elements.remoteDetailCapabilities.append(empty);
-      setRemoteControls();
-      return;
-    }
-
-    const online = machine.status === "online";
-    elements.remoteDetailName.textContent = text(machine.name, "unnamed");
-    elements.remoteDetailStatus.textContent = `${online ? "online" : "offline"} · ${remoteAge(machine.last_seen_age_s)}`;
-    elements.remoteDetailVersion.textContent = text(info.lsm_version, "Not reported");
-    elements.remoteDetailLastSeen.textContent = remoteTimestamp(machine.last_seen);
-    elements.remoteDetailWorkdir.textContent = text(machine.workdir, text(info.workdir, "Not reported"));
-    elements.remoteDetailQueue.textContent = text(machine.queue_depth, "0");
-    elements.remoteDetailHostname.textContent = text(info.hostname, "Not reported");
-    elements.remoteDetailUser.textContent = text(info.user, "Not reported");
-    elements.remoteDetailPlatform.textContent = text(info.platform, "Not reported");
-    elements.remoteDetailPython.textContent = text(info.python, "Not reported");
-    elements.remoteDetailProfile.textContent = text(machine.profile_id, "Legacy worker");
-    elements.remoteDetailReconnect.textContent = text(
-      machine.reconnect_command,
-      "Unavailable for this worker",
-    );
-    elements.remoteReconnectCopy.textContent = "Copy reconnect";
-    elements.remoteDetailCapabilities.replaceChildren();
-    const capabilities = Array.isArray(machine.capabilities) ? machine.capabilities : [];
-    if (!capabilities.length) {
-      const empty = document.createElement("span");
-      empty.className = "muted";
-      empty.textContent = "Not reported";
-      elements.remoteDetailCapabilities.append(empty);
-    } else {
-      for (const capability of capabilities) {
-        const chip = document.createElement("span");
-        chip.className = "remote-capability";
-        chip.textContent = text(capability, "unknown");
-        elements.remoteDetailCapabilities.append(chip);
-      }
-    }
-    setRemoteControls();
-  }
-
-  function renderRemoteList() {
-    elements.remoteList.replaceChildren();
-    if (!remoteEnabled) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "Remote workers are disabled.";
-      elements.remoteList.append(empty);
-      return;
-    }
-    if (!remoteMachines.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "No remote workers are registered.";
-      elements.remoteList.append(empty);
-      return;
-    }
-    for (const machine of remoteMachines) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "remote-row";
-      if (machine.name === remoteSelectedName) button.classList.add("remote-row-selected");
-      button.setAttribute("aria-pressed", machine.name === remoteSelectedName ? "true" : "false");
-
-      const indicator = document.createElement("span");
-      indicator.className = machine.status === "online"
-        ? "remote-row-status remote-row-status-online"
-        : "remote-row-status";
-      indicator.setAttribute("aria-label", machine.status === "online" ? "online" : "offline");
-
-      const main = document.createElement("span");
-      main.className = "remote-row-main";
-      const name = document.createElement("strong");
-      name.className = "remote-row-name";
-      name.textContent = text(machine.name, "unnamed");
-      const meta = document.createElement("span");
-      meta.className = "remote-row-meta";
-      meta.textContent = `${machine.status === "online" ? "online" : "offline"} · ${remoteAge(machine.last_seen_age_s)} · queue ${text(machine.queue_depth, "0")}`;
-      main.append(name, meta);
-
-      const version = document.createElement("span");
-      version.className = "remote-row-version";
-      version.textContent = text(machine.info?.lsm_version, "version —");
-      button.append(indicator, main, version);
-      button.addEventListener("click", () => {
-        remoteSelectedName = machine.name;
-        renderRemoteList();
-        renderRemoteDetails();
-      });
-      elements.remoteList.append(button);
-    }
-  }
-
-  function renderRemotes(payload) {
-    remoteEnabled = payload?.enabled === true;
-    remoteMachines = Array.isArray(payload?.machines) ? payload.machines : [];
-    if (!remoteMachines.some((machine) => machine.name === remoteSelectedName)) {
-      remoteSelectedName = remoteMachines[0]?.name || "";
-    }
-    const counts = payload && payload.counts && typeof payload.counts === "object" ? payload.counts : {};
-    elements.remoteOnline.textContent = text(counts.online, "0");
-    elements.remoteOffline.textContent = text(counts.offline, "0");
-    elements.remoteTotal.textContent = text(counts.total, remoteMachines.length);
-    elements.remoteController.textContent = remoteEnabled ? "enabled" : "disabled";
-    elements.remoteState.textContent = remoteEnabled
-      ? `Updated ${new Date().toLocaleTimeString()}`
-      : "Remote workers disabled";
-    renderRemoteList();
-    renderRemoteDetails();
-  }
-
-  async function refreshRemotes({ force = false } = {}) {
-    if (remoteLoading && !force) return null;
-    const generation = ++remoteGeneration;
-    remoteLoading = true;
-    setRemoteControls();
-    elements.remoteState.textContent = "Loading remote workers";
-    try {
-      const payload = await request("/remotes");
-      if (generation !== remoteGeneration) return null;
-      renderRemotes(payload);
-      return payload;
-    } catch (error) {
-      if (error.authenticationRequired) throw error;
-      if (generation !== remoteGeneration) return null;
-      elements.remoteState.textContent = error instanceof Error ? error.message : String(error);
-      return null;
-    } finally {
-      if (generation === remoteGeneration) {
-        remoteLoading = false;
-        setRemoteControls();
-      }
-    }
-  }
-
-  function refreshRemotesInBackground(options = {}) {
-    void refreshRemotes(options).catch((error) => {
-      if (error.authenticationRequired) void load();
-    });
-  }
-
-  function stopRemotePolling() {
-    if (remoteTimer !== null) {
-      globalThis.clearInterval(remoteTimer);
-      remoteTimer = null;
-    }
-  }
-
-  function startRemotePolling() {
-    stopRemotePolling();
-    remoteTimer = globalThis.setInterval(() => {
-      if (config.authMode !== "oauth" || authenticated) refreshRemotesInBackground();
-    }, 4000);
-  }
-
-  async function remoteAction(path, body) {
-    return request(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
   }
 
   function machineCard(machine) {
@@ -3351,8 +3102,8 @@ void (async () => {
       render(await request("/bootstrap"));
       await dashboard.refresh({ force: true });
       dashboard.startPolling();
-      await refreshRemotes({ force: true });
-      startRemotePolling();
+      await remotes.refresh({ force: true });
+      remotes.startPolling();
       try {
         await refreshTerminals();
       } catch (error) {
@@ -3382,7 +3133,7 @@ void (async () => {
         resetTerminalWorkspace("local");
         elements.terminalState.textContent = "Authentication required";
         dashboard.stopPolling();
-        stopRemotePolling();
+        remotes.stopPolling();
         dashboard.invalidate();
         filePreviewGeneration += 1;
         todoGeneration += 1;
@@ -3391,7 +3142,7 @@ void (async () => {
         todoDirty = false;
         clearFileEditor();
         dashboard.reset("local");
-        resetRemotes("Authentication required");
+        remotes.reset("Authentication required");
         elements.dashboardState.textContent = "Authentication required";
         showAuthentication("Authentication required");
       } else {
@@ -3668,146 +3419,6 @@ void (async () => {
     }
   });
 
-  elements.remoteRefresh.addEventListener("click", () => refreshRemotesInBackground({ force: true }));
-  elements.remoteReconnectCopy.addEventListener("click", async () => {
-    const command = text(selectedRemote()?.reconnect_command, "");
-    if (!command) return;
-    try {
-      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
-        throw new Error("Clipboard API is unavailable");
-      }
-      await navigator.clipboard.writeText(command);
-      elements.remoteReconnectCopy.textContent = "Copied";
-    } catch (error) {
-      elements.remoteReconnectCopy.textContent = "Copy unavailable";
-      elements.remoteState.textContent = error instanceof Error ? error.message : String(error);
-    }
-  });
-  elements.remoteInviteOpen.addEventListener("click", () => {
-    if (!remoteEnabled || remoteLoading || elements.remoteInviteDialog.open) return;
-    elements.remoteInviteForm.reset();
-    elements.remoteInviteDialog.showModal();
-    elements.remoteInviteName.focus();
-  });
-  elements.remoteRenameOpen.addEventListener("click", () => {
-    const machine = selectedRemote();
-    if (!machine || elements.remoteRenameDialog.open) return;
-    elements.remoteRenameName.value = machine.name;
-    elements.remoteRenameDialog.showModal();
-    elements.remoteRenameName.select();
-  });
-  elements.remoteRevokeOpen.addEventListener("click", () => {
-    const machine = selectedRemote();
-    if (!machine || elements.remoteRevokeDialog.open) return;
-    elements.remoteRevokeName.textContent = machine.name;
-    elements.remoteRevokeDialog.showModal();
-  });
-  for (const button of document.querySelectorAll("[data-close-dialog]")) {
-    button.addEventListener("click", () => {
-      const dialog = document.getElementById(button.dataset.closeDialog || "");
-      closeRemoteDialog(dialog);
-    });
-  }
-  elements.remoteInviteDialog.addEventListener("close", () => {
-    elements.remoteInviteForm.reset();
-  });
-  elements.remoteInviteResultDialog.addEventListener("close", () => {
-    clearRemoteInviteResult({ close: false });
-  });
-  elements.remoteInviteResultClose.addEventListener("click", () => clearRemoteInviteResult());
-  elements.remoteInviteDone.addEventListener("click", () => clearRemoteInviteResult());
-  elements.remoteInviteCopy.addEventListener("click", async () => {
-    if (!remoteInviteCommand) return;
-    try {
-      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
-        throw new Error("Clipboard API is unavailable");
-      }
-      await navigator.clipboard.writeText(remoteInviteCommand);
-      elements.remoteInviteCopy.textContent = "Copied";
-    } catch (error) {
-      elements.remoteInviteCopy.textContent = "Copy unavailable";
-      elements.remoteState.textContent = error instanceof Error ? error.message : String(error);
-    }
-  });
-  elements.remoteInviteForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = elements.remoteInviteForm.querySelector('button[type="submit"]');
-    button.disabled = true;
-    elements.remoteState.textContent = "Creating remote invite";
-    try {
-      const payload = await remoteAction("/remotes", {
-        name: elements.remoteInviteName.value.trim() || null,
-        workdir: elements.remoteInviteWorkdir.value.trim() || null,
-        ttl_s: Number(elements.remoteInviteTtl.value),
-      });
-      remoteInviteCommand = text(payload?.command, "");
-      if (!remoteInviteCommand) throw new Error("Invite response did not contain a command");
-      elements.remoteInviteCommand.textContent = remoteInviteCommand;
-      elements.remoteInviteExpiry.textContent = `Expires ${remoteTimestamp(payload?.expires_at, "at an unknown time")}`;
-      closeRemoteDialog(elements.remoteInviteDialog);
-      elements.remoteInviteResultDialog.showModal();
-      elements.remoteInviteCommand.focus();
-      elements.remoteState.textContent = "Remote invite created";
-    } catch (error) {
-      clearRemoteInviteResult();
-      if (error.authenticationRequired) {
-        void load();
-        return;
-      }
-      elements.remoteState.textContent = error instanceof Error ? error.message : String(error);
-    } finally {
-      button.disabled = false;
-    }
-  });
-  elements.remoteRenameForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const machine = selectedRemote();
-    if (!machine) return;
-    const newName = elements.remoteRenameName.value.trim();
-    const button = elements.remoteRenameForm.querySelector('button[type="submit"]');
-    button.disabled = true;
-    elements.remoteState.textContent = `Renaming ${machine.name}`;
-    try {
-      const result = await remoteAction("/remotes/rename", {
-        machine: machine.name,
-        new_name: newName,
-      });
-      remoteSelectedName = text(result?.new_name, newName);
-      closeRemoteDialog(elements.remoteRenameDialog);
-      await load();
-    } catch (error) {
-      if (error.authenticationRequired) {
-        void load();
-        return;
-      }
-      elements.remoteState.textContent = error instanceof Error ? error.message : String(error);
-    } finally {
-      button.disabled = false;
-    }
-  });
-  elements.remoteRevokeForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const machine = selectedRemote();
-    if (!machine) return;
-    const button = elements.remoteRevokeForm.querySelector('button[type="submit"]');
-    button.disabled = true;
-    elements.remoteState.textContent = `Revoking ${machine.name}`;
-    try {
-      await remoteAction("/remotes/revoke", { machine: machine.name });
-      remoteSelectedName = "";
-      closeRemoteDialog(elements.remoteRevokeDialog);
-      await load();
-    } catch (error) {
-      if (error.authenticationRequired) {
-        void load();
-        return;
-      }
-      elements.remoteState.textContent = error instanceof Error ? error.message : String(error);
-    } finally {
-      button.disabled = false;
-    }
-  });
-
   elements.oauthLogin.addEventListener("click", () => void startOAuth());
   elements.refresh.addEventListener("click", () => void load());
   elements.signOut.addEventListener("click", async () => {
@@ -3819,9 +3430,9 @@ void (async () => {
     terminalLoading = false;
     resetTerminalWorkspace("local");
     dashboard.stopPolling();
-    stopRemotePolling();
+    remotes.stopPolling();
     dashboard.reset("local");
-    resetRemotes("Authentication required");
+    remotes.reset("Authentication required");
     resetFileWorkspace("local");
     resetTodoWorkspace("local");
     resetAuditWorkspace("local");
@@ -3861,8 +3472,8 @@ void (async () => {
   window.addEventListener("resize", () => window.requestAnimationFrame(sendTerminalResize));
   window.addEventListener("beforeunload", () => {
     dashboard.stopPolling();
-    stopRemotePolling();
-    clearRemoteInviteResult();
+    remotes.stopPolling();
+    remotes.clearInviteResult();
     closeTerminalSocket();
   });
   elements.oauthLogin.hidden = !oauthAvailable();
