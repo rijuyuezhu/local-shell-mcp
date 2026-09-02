@@ -1,5 +1,4 @@
 import shutil
-from pathlib import Path
 
 import pytest
 
@@ -180,7 +179,7 @@ def test_search_path_access_and_scope_parsing_are_explicit(
         )
         == target
     )
-    assert runner.paths.display(target) == str(Path("work") / "demo.txt")
+    assert runner.paths.display(target) == "work/demo.txt"
     with pytest.raises(ValueError, match="Path escapes session workdir"):
         runner.paths.resolve_in_workdir(
             str(workdir), "../outside.txt", must_exist=True
@@ -264,18 +263,18 @@ def test_search_grounding_projects_snapshots_and_display_windows(
     runner = build_local_search_runner(settings, store)
 
     plain = runner.grounding.read(str(target), 2, 2, binding=None)
-    assert plain.path == str(Path("work") / "demo.txt")
+    assert plain.path == "work/demo.txt"
     assert plain.snapshot_id is None
     assert plain.session_id is None
 
     grounded = runner.grounding.read(str(target), 2, 2, binding=binding)
-    assert grounded.path == str(Path("work") / "demo.txt")
+    assert grounded.path == "work/demo.txt"
     assert grounded.session_id == session.session_id
     assert grounded.snapshot_id is not None
 
     match = GrepMatch(path="demo.txt", line=2, column=1, text="needle here")
     projected = runner._ground_match(match, workdir, binding)
-    assert projected.path == str(Path("work") / "demo.txt")
+    assert projected.path == "work/demo.txt"
     assert projected.numbered_line is not None
     assert projected.numbered_line.endswith("]\n2:needle here")
     assert projected.session_id == session.session_id
