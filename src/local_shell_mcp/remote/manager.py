@@ -12,10 +12,10 @@ import subprocess
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from ..audit import audit
 from ..config.settings import Settings, get_settings
@@ -44,6 +44,62 @@ _WORKER_PROFILE_ID_RE = re.compile(r"p_[A-Za-z0-9_-]{8,64}")
 _WORKER_LAUNCHER_PATH_MAX_BYTES = 4_096
 
 _WORKER_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
+
+
+class WorkerRuntimeReport(TypedDict):
+    """Validated managed-worker runtime identity shared by register/poll flows."""
+
+    protocol_version: int
+    runtime_kind: str
+    worker_version: str
+    bundle_version: str
+    bundle_sha256: str
+
+
+class WorkerRuntimeInfo(TypedDict):
+    """Stable runtime metadata projected into one worker's extensible info map."""
+
+    runtime_protocol_version: int
+    runtime_kind: str
+    lsm_version: str
+    worker_bundle_version: str
+    worker_bundle_sha256: str
+
+
+class WorkerUpgradeInstruction(TypedDict):
+    """Controller-issued instruction describing the currently required bundle."""
+
+    required: bool
+    version: str
+    sha256: str
+    manifest_path: str
+
+
+class WorkerRegistrationResponse(TypedDict):
+    """Stable enrollment/resume response consumed by managed workers."""
+
+    token: str
+    name: str
+    poll_interval_s: int
+    poll_timeout_s: int
+    heartbeat_interval_s: int
+    upgrade: WorkerUpgradeInstruction
+
+
+class RemoteQueuedJob(TypedDict):
+    """One controller-created remote tool call waiting in a worker queue."""
+
+    id: str
+    tool: str
+    args: dict[str, Any]
+    expires_at: float
+
+
+class WorkerHeartbeatResponse(TypedDict):
+    """Acknowledgement for a managed worker heartbeat."""
+
+    accepted: bool
+    name: str
 
 
 def _utc() -> float:
@@ -88,7 +144,7 @@ class WorkerRuntimeCompatibilityError(ValueError):
     """Raised when a worker is not running a supported managed bundle."""
 
 
-def _validate_runtime_report(payload: dict[str, Any]) -> dict[str, Any]:
+def _validate_runtime_report(payload: dict[str, Any]) -> WorkerRuntimeReport:
     """Require one complete managed-bundle report before enrollment or resume."""
     raw = payload.get("runtime")
     if not isinstance(raw, dict):
@@ -125,7 +181,7 @@ def _validate_runtime_report(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _runtime_info(report: dict[str, Any]) -> dict[str, Any]:
+def _runtime_info(report: WorkerRuntimeReport) -> WorkerRuntimeInfo:
     return {
         "runtime_protocol_version": report["protocol_version"],
         "runtime_kind": report["runtime_kind"],
@@ -177,7 +233,7 @@ def _worker_reconnect_metadata(
 
 def _validate_poll_report(
     payload: dict[str, Any] | None,
-) -> dict[str, Any]:
+) -> WorkerRuntimeReport:
     """Require a complete managed-runtime report before delivering jobs."""
     if not payload:
         raise WorkerRuntimeCompatibilityError(
@@ -210,7 +266,7 @@ def _validate_poll_report(
     }
 
 
-def _upgrade_instruction(*, required: bool) -> dict[str, Any]:
+def _upgrade_instruction(*, required: bool) -> WorkerUpgradeInstruction:
     """Return a non-sensitive instruction bound to the current bundle digest."""
     manifest = worker_bundle_manifest()
     return {
@@ -221,7 +277,7 @@ def _upgrade_instruction(*, required: bool) -> dict[str, Any]:
     }
 
 
-def _runtime_upgrade(report: dict[str, Any]) -> dict[str, Any]:
+def _runtime_upgrade(report: WorkerRuntimeReport) -> WorkerUpgradeInstruction:
     """Return the current bundle instruction for one managed runtime report."""
     return _upgrade_instruction(
         required=(report["bundle_sha256"] != worker_bundle_manifest()["sha256"])
@@ -264,7 +320,9 @@ class RemoteWorker:
     """Worker tool categories advertised at registration or resume."""
     info: dict[str, Any] = field(default_factory=dict)
     """Worker platform and environment metadata."""
-    queue: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
+    queue: asyncio.Queue[Mapping[str, Any]] = field(
+        default_factory=asyncio.Queue
+    )
     """Control-side delivery queue for jobs assigned to this worker."""
 
 
@@ -507,7 +565,9 @@ class RemoteManager:
             command=command,
         )
 
-    async def register_worker(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def register_worker(
+        self, payload: dict[str, Any]
+    ) -> WorkerRegistrationResponse:
         """Consume an invite and persist a new worker registration."""
         runtime_report = _validate_runtime_report(payload)
         code = str(payload.get("invite") or "")
@@ -565,7 +625,7 @@ class RemoteManager:
 
     async def resume_worker(
         self, token: str, payload: dict[str, Any]
-    ) -> dict[str, Any]:
+    ) -> WorkerRegistrationResponse:
         """Refresh a persisted worker registration using its bearer identity."""
         runtime_report = _validate_runtime_report(payload)
         async with self._enrollment_lock:
@@ -694,7 +754,7 @@ class RemoteManager:
             }
             return response
 
-    async def heartbeat(self, token: str) -> dict[str, Any]:
+    async def heartbeat(self, token: str) -> WorkerHeartbeatResponse:
         """Refresh worker liveness while a long-running job executes."""
         with self._state_lock:
             self._load_registry_unlocked()
@@ -760,14 +820,13 @@ class RemoteManager:
                 raise RuntimeError(f"remote machine queue is full: {machine}")
             self.pending[job_id] = future
             self.pending_machines[job_id] = machine
-            worker.queue.put_nowait(
-                {
-                    "id": job_id,
-                    "tool": tool,
-                    "args": args,
-                    "expires_at": _utc() + effective_timeout,
-                }
-            )
+            queued_job: RemoteQueuedJob = {
+                "id": job_id,
+                "tool": tool,
+                "args": args,
+                "expires_at": _utc() + effective_timeout,
+            }
+            worker.queue.put_nowait(queued_job)
         try:
             result = await asyncio.wait_for(
                 asyncio.shield(future), timeout=effective_timeout
