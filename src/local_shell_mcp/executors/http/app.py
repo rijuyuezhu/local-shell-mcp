@@ -13,6 +13,7 @@ from ...oauth.http.middleware import AuthMiddleware
 from ...oauth.http.routes import oauth_public_routes
 from ...remote.http import remote_routes
 from ...remote.transfer_gateway import build_transfer_gateway_router
+from ...tools.catalog import ToolCatalog, build_tool_catalog
 from ...ui.http.routes import human_ui_routes
 from .errors import install_error_handlers
 from .tool_routes import (
@@ -58,15 +59,16 @@ def _install_public_routes(app: FastAPI, settings: Settings) -> list[BaseRoute]:
     return [*documentation_routes, *installed_routes]
 
 
-def build_http_app() -> FastAPI:
-    """Construct the authenticated REST API and register local tool routes."""
+def build_http_app(*, tool_catalog: ToolCatalog | None = None) -> FastAPI:
+    """Construct the authenticated REST API from one explicit tool catalog."""
     settings = get_settings()
+    catalog = tool_catalog or build_tool_catalog(settings)
     app = FastAPI(title="local-shell-mcp REST API", version=__version__)
 
     install_error_handlers(app)
-    install_tools_timeout_middleware(app)
+    install_tools_timeout_middleware(app, catalog)
     public_routes = _install_public_routes(app, settings)
-    register_http_tool_routes(app)
+    register_http_tool_routes(app, catalog)
     ui_routes, ui_public_routes = human_ui_routes(settings)
     app.router.routes.extend(ui_routes)
     public_routes.extend(ui_public_routes)

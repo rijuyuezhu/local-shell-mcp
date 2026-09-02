@@ -1462,7 +1462,7 @@ def test_rest_tool_watchdog_preserves_file_and_todo_mutations(
     monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
-    async def delayed_call_http_tool(tool_name, args):
+    async def delayed_call_http_tool(tool_name, args, **_kwargs):
         await asyncio.sleep(0.05)
         return {"tool": tool_name}
 

@@ -15,6 +15,7 @@ from local_shell_mcp.remote.tool_specs import (
     REMOTE_WORKER_TOOL_SPECS,
 )
 from local_shell_mcp.remote_worker.worker import WORKER_TOOL_NAMES
+from local_shell_mcp.tools.catalog import ToolCatalog, build_tool_catalog
 from local_shell_mcp.tools.contracts import (
     HttpMethod,
     HttpToolRoute,
@@ -98,7 +99,6 @@ async def test_mcp_local_and_remote_tool_surface_is_stable(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
 
     names = {tool.name for tool in await build_mcp().list_tools()}
 
@@ -111,7 +111,6 @@ async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
 
     names = {tool.name for tool in await build_mcp().list_tools()}
 
@@ -170,7 +169,6 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
 
     mcp = build_mcp()
     assert mcp.instructions is not None
@@ -245,7 +243,6 @@ def test_remote_registry_declares_only_remote_admin(monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
 
     registry = cast(
         DeclarativeToolRegistry,
@@ -285,7 +282,6 @@ def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
 
     exposed_specs = [
         spec for spec in REMOTE_WORKER_TOOL_SPECS if spec.expose_http
@@ -589,7 +585,6 @@ def test_http_mode_hides_remote_worker_routes(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
 
     response = TestClient(build_http_app()).post(
         "/tools/run_remote_shell_command", json={"command": "echo ok"}
@@ -641,8 +636,8 @@ async def test_mcp_unknown_tool_uses_fastmcp_tool_error(tmp_path, monkeypatch):
         await build_mcp().call_tool("no_such_tool", {})
 
 
-def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
-    class RegistryWithUnsupportedRoute:
+def test_http_tool_routes_reject_unsupported_methods():
+    class RegistryWithUnsupportedRoute(ToolRegistry):
         def http_routes(self):
             return [
                 HttpToolRoute(
@@ -650,39 +645,27 @@ def test_http_tool_routes_reject_unsupported_methods(monkeypatch):
                 )
             ]
 
-    monkeypatch.setattr(
-        "local_shell_mcp.executors.http.tool_routes.discover_tool_registries",
-        lambda: [RegistryWithUnsupportedRoute()],
-    )
+    catalog = ToolCatalog((RegistryWithUnsupportedRoute(),))
 
     with pytest.raises(ValueError, match="Unsupported HTTP tool method 'PUT'"):
-        build_http_app()
+        build_http_app(tool_catalog=catalog)
 
 
 @pytest.mark.asyncio
-async def test_local_handlers_report_unknown_tool(monkeypatch):
+async def test_local_handlers_report_unknown_tool():
     class EmptyRegistry(ToolRegistry):
         pass
 
-    monkeypatch.setattr(
-        "local_shell_mcp.tools.local_handlers.discover_tool_registries",
-        lambda: [EmptyRegistry()],
-    )
-    local_tool_handlers.cache_clear()
+    catalog = ToolCatalog((EmptyRegistry(),))
 
-    try:
-        with pytest.raises(
-            UnknownLocalToolError, match="Unknown local tool: example_tool"
-        ):
-            await call_local_tool("example_tool", {})
-    finally:
-        local_tool_handlers.cache_clear()
+    with pytest.raises(
+        UnknownLocalToolError, match="Unknown local tool: example_tool"
+    ):
+        await call_local_tool("example_tool", {}, catalog=catalog)
 
 
 @pytest.mark.asyncio
-async def test_local_handlers_are_collected_from_discovered_registries(
-    monkeypatch,
-):
+async def test_local_handlers_are_collected_from_explicit_catalog():
     async def example_handler(args):
         return {"from_registry": args["value"]}
 
@@ -690,18 +673,11 @@ async def test_local_handlers_are_collected_from_discovered_registries(
         def http_handlers(self):
             return {"example_tool": example_handler}
 
-    monkeypatch.setattr(
-        "local_shell_mcp.tools.local_handlers.discover_tool_registries",
-        lambda: [ExampleRegistry()],
-    )
-    local_tool_handlers.cache_clear()
+    catalog = ToolCatalog((ExampleRegistry(),))
 
-    try:
-        assert await call_local_tool("example_tool", {"value": 42}) == {
-            "from_registry": 42
-        }
-    finally:
-        local_tool_handlers.cache_clear()
+    assert await call_local_tool(
+        "example_tool", {"value": 42}, catalog=catalog
+    ) == {"from_registry": 42}
 
 
 @pytest.mark.asyncio
@@ -715,33 +691,28 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
         "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", agent_bridge_enabled
     )
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
+    catalog = build_tool_catalog()
 
-    try:
-        mcp_tool_names = {tool.name for tool in await build_mcp().list_tools()}
-        route_tool_names = {
-            route.tool_name
-            for registry in discover_tool_registries()
-            for route in registry.http_routes()
+    mcp_tool_names = {
+        tool.name for tool in await build_mcp(tool_catalog=catalog).list_tools()
+    }
+    route_tool_names = {route.tool_name for route in catalog.http_routes()}
+    handler_tool_names = set(catalog.local_handlers())
+
+    internal_worker_handlers = REMOTE_WORKER_TOOL_NAMES - {
+        spec.worker_tool
+        for spec in REMOTE_WORKER_TOOL_SPECS
+        if spec.expose_http
+    }
+    if agent_bridge_enabled == "false":
+        internal_worker_handlers -= {
+            "list_agent_skills",
+            "activate_agent_skill",
+            "read_agent_skill_file",
         }
-        handler_tool_names = set(local_tool_handlers())
 
-        internal_worker_handlers = REMOTE_WORKER_TOOL_NAMES - {
-            spec.worker_tool
-            for spec in REMOTE_WORKER_TOOL_SPECS
-            if spec.expose_http
-        }
-        if agent_bridge_enabled == "false":
-            internal_worker_handlers -= {
-                "list_agent_skills",
-                "activate_agent_skill",
-                "read_agent_skill_file",
-            }
-
-        assert route_tool_names == mcp_tool_names - {"view_image"}
-        assert handler_tool_names == mcp_tool_names | internal_worker_handlers
-    finally:
-        local_tool_handlers.cache_clear()
+    assert route_tool_names == mcp_tool_names - {"view_image"}
+    assert handler_tool_names == mcp_tool_names | internal_worker_handlers
 
 
 @pytest.mark.asyncio

@@ -266,9 +266,12 @@ class ToolDefinition:
 class DeclarativeToolRegistry(ToolRegistry):
     """Registry base for tool registries that are in a declarative fashion."""
 
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._configured_settings = settings
+        self._context: McpToolContext | None = None
+
     tools: ClassVar[tuple[ToolDefinition, ...]] = ()
     """Tool definitions registered on this concrete registry class."""
-    _context: McpToolContext | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Give every concrete registry its own tool collection."""
@@ -328,6 +331,8 @@ class DeclarativeToolRegistry(ToolRegistry):
     def _settings(self) -> Settings:
         if self._context is not None:
             return self._context.settings
+        if self._configured_settings is not None:
+            return self._configured_settings
         from ..config.settings import get_settings
 
         return get_settings()

@@ -19,8 +19,8 @@ from ...oauth.http.routes import oauth_public_routes
 from ...ops.shell import tool_timeout_s
 from ...remote.http import remote_routes
 from ...remote.transfer_gateway import build_transfer_gateway_router
+from ...tools.catalog import ToolCatalog, build_tool_catalog
 from ...tools.contracts import McpToolContext
-from ...tools.discovery import discover_tool_registries
 from ...tools.metadata import install_tool_safety_annotations
 from ...ui.http.routes import human_ui_routes
 from .instructions import SERVER_INSTRUCTIONS
@@ -39,9 +39,10 @@ def _make_read_only_tool_annotations() -> ToolAnnotations:
     )
 
 
-def build_mcp() -> FastMCP:
-    """Create the MCP server and register the local tools."""
+def build_mcp(*, tool_catalog: ToolCatalog | None = None) -> FastMCP:
+    """Create the MCP server and register one explicit local tool catalog."""
     settings = get_settings()
+    catalog = tool_catalog or build_tool_catalog(settings)
     mcp = FastMCP(
         "local-shell-mcp",
         instructions=SERVER_INSTRUCTIONS,
@@ -51,8 +52,7 @@ def build_mcp() -> FastMCP:
         settings=settings,
         read_only_tool_annotations=_make_read_only_tool_annotations(),
     )
-    for registry in discover_tool_registries():
-        registry.register_mcp(mcp, context)
+    catalog.register_mcp(mcp, context)
     install_tool_safety_annotations(mcp)
     install_mcp_tool_watchdogs(mcp)
     return mcp

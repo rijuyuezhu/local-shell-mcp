@@ -9,6 +9,7 @@ from ...audit import (
     audit_tool_call_start,
     new_audit_call_id,
 )
+from ...tools.contracts import ToolHandler
 from ...tools.local_handlers import call_local_tool
 from ...utils.serialization import to_jsonable
 
@@ -16,6 +17,8 @@ from ...utils.serialization import to_jsonable
 async def call_http_tool(
     tool_name: str,
     args: dict[str, Any] | None = None,
+    *,
+    handler: ToolHandler | None = None,
 ) -> Any:
     """Invoke a local tool from the REST API and audit the HTTP-routed call."""
     payload = args or {}
@@ -29,7 +32,11 @@ async def call_http_tool(
     )
     try:
         with audit_call_context(call_id, session_ids):
-            result = await call_local_tool(tool_name, payload)
+            result = (
+                await handler(payload)
+                if handler is not None
+                else await call_local_tool(tool_name, payload)
+            )
     except BaseException as exc:
         duration_ms = int((time.time() - start) * 1000)
         audit_tool_call_end(

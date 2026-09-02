@@ -17,7 +17,6 @@ from local_shell_mcp.tool_session.lifecycle import session_lifecycle_lock
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.local_handlers import (
     call_local_tool,
-    local_tool_handlers,
 )
 from local_shell_mcp.utils.serialization import to_jsonable
 
@@ -29,7 +28,6 @@ def _workspace(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
     store = get_tool_session_store()
     store.clear()
     return tmp_path, store
