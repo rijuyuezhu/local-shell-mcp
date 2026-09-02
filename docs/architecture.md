@@ -2,7 +2,12 @@
 
 This page records the intended ownership of source packages and files. It is a
 maintenance contract, not only a directory overview: when code moves, update the
-ownership rationale and the architecture tests in the same change.
+ownership rationale and the architecture tests in the same change. Architecture
+tests exact-freeze security, packaging, published-asset, and process-composition
+contracts where membership itself is meaningful. Ordinary internal topology is
+guarded instead by ownership coverage, required edges, forbidden dependency
+directions, and acyclicity so implementation-only imports can evolve without
+rewriting an exact edge snapshot.
 
 ## Dependency direction
 
@@ -240,9 +245,10 @@ Rejected ownership alternatives:
 - moving the complete `ops/` tree under `tools/ops`: this would make workers,
   UI/HTTP adapters, remote services, and the job runtime depend on public tool
   ownership and would require bundling controller-only `tools` code on workers.
-- treating top-level `ops` as unfinished migration: the current family graph is
-  explicitly locked by architecture tests; a future move requires first removing
-  every non-tool consumer or extracting a truthful shared domain.
+- treating top-level `ops` as unfinished migration: architecture tests require
+  each shared top-level operation family to retain both its public registry consumer
+  and a genuine non-registry consumer. A family may move only after that shared use
+  disappears or a more truthful shared domain is extracted.
 - moving only `ops/remote.py`: its shared result contracts keep the remote family
   cross-domain, and partial family migration would weaken the registry/operation/
   schema alignment contract.

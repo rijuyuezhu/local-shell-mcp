@@ -392,7 +392,7 @@ def test_ui_artifact_contract_is_a_dependency_leaf() -> None:
     assert actual == frozenset()
 
 
-def test_terminal_uses_only_explicit_low_level_ops_helpers() -> None:
+def test_terminal_uses_only_low_level_ops_helpers() -> None:
     actual = frozenset(
         (importer, target)
         for importer, target in _local_imports()
@@ -400,13 +400,9 @@ def test_terminal_uses_only_explicit_low_level_ops_helpers() -> None:
         and target.startswith(f"{_PACKAGE_NAME}.ops.")
     )
 
-    assert actual == frozenset(
-        {
-            (
-                f"{_PACKAGE_NAME}.terminal.conpty",
-                f"{_PACKAGE_NAME}.ops.utils.path",
-            )
-        }
+    assert all(
+        target.startswith(f"{_PACKAGE_NAME}.ops.utils.")
+        for _importer, target in actual
     )
 
 
@@ -445,61 +441,21 @@ def test_shared_ops_ownership_map_covers_every_file() -> None:
 
 
 def test_remaining_top_level_ops_families_have_shared_consumers() -> None:
-    required_shared_consumers = {
-        f"{_PACKAGE_NAME}.ops.agent": {
-            f"{_PACKAGE_NAME}.remote_worker.dispatch"
-        },
-        f"{_PACKAGE_NAME}.ops.bash": {
-            f"{_PACKAGE_NAME}.remote_worker.dispatch",
-            f"{_PACKAGE_NAME}.tools.registry.shell",
-        },
-        f"{_PACKAGE_NAME}.ops.downloads": {f"{_PACKAGE_NAME}.http.downloads"},
-        f"{_PACKAGE_NAME}.ops.files": {
-            f"{_PACKAGE_NAME}.remote.transfer",
-            f"{_PACKAGE_NAME}.remote_worker.dispatch",
-            f"{_PACKAGE_NAME}.ui.http.files",
-        },
-        f"{_PACKAGE_NAME}.ops.image": {f"{_PACKAGE_NAME}.ui.http.audit"},
-        f"{_PACKAGE_NAME}.ops.patch": {
-            f"{_PACKAGE_NAME}.ops.shell",
-            f"{_PACKAGE_NAME}.remote_worker.dispatch",
-        },
-        f"{_PACKAGE_NAME}.ops.read": {
-            f"{_PACKAGE_NAME}.remote_worker.dispatch"
-        },
-        f"{_PACKAGE_NAME}.ops.search": {
-            f"{_PACKAGE_NAME}.remote_worker.dispatch"
-        },
-        f"{_PACKAGE_NAME}.ops.secret_scan": {
-            f"{_PACKAGE_NAME}.remote_worker.dispatch"
-        },
-        f"{_PACKAGE_NAME}.ops.session": {
-            f"{_PACKAGE_NAME}.remote_worker.dispatch"
-        },
-        f"{_PACKAGE_NAME}.ops.shell": {
-            f"{_PACKAGE_NAME}.jobs.runtime",
-            f"{_PACKAGE_NAME}.remote_worker.dispatch",
-            f"{_PACKAGE_NAME}.ui.http.terminals",
-        },
-        f"{_PACKAGE_NAME}.ops.todo": {
-            f"{_PACKAGE_NAME}.remote_worker.dispatch",
-            f"{_PACKAGE_NAME}.ui.http.todos",
-        },
-        f"{_PACKAGE_NAME}.ops.transfer": {
-            f"{_PACKAGE_NAME}.remote.transfer_gateway",
-            f"{_PACKAGE_NAME}.remote_worker.dispatch",
-            f"{_PACKAGE_NAME}.remote_worker.http_transfer",
-        },
-    }
     remote_operation = f"{_PACKAGE_NAME}.ops.remote"
-
-    assert _top_level_operation_modules() == (
-        set(required_shared_consumers) | {remote_operation}
-    )
-
     imports = _local_imports()
-    for operation, consumers in required_shared_consumers.items():
-        assert {(consumer, operation) for consumer in consumers} <= imports
+    registry_prefix = f"{_PACKAGE_NAME}.tools.registry."
+    for operation in _top_level_operation_modules():
+        consumers = {
+            importer for importer, target in imports if target == operation
+        }
+        assert any(
+            consumer.startswith(registry_prefix) for consumer in consumers
+        ), operation
+        if operation != remote_operation:
+            assert any(
+                not consumer.startswith(registry_prefix)
+                for consumer in consumers
+            ), operation
 
     remote_result = f"{_PACKAGE_NAME}.schemas.result_models.remote"
     assert (
@@ -556,8 +512,6 @@ def _assert_tool_owned_slice(
     input_model = f"{_PACKAGE_NAME}.tools.schemas.input_models.{family}"
     result_model = f"{_PACKAGE_NAME}.tools.schemas.result_models.{family}"
     registry = f"{_PACKAGE_NAME}.tools.registry.{family}"
-    owned_modules = {operation, input_model, result_model}
-
     old_paths = {
         f"ops/{family}.py",
         f"schemas/input_models/{family}.py",
@@ -567,19 +521,26 @@ def _assert_tool_owned_slice(
         path for path in old_paths if (_PACKAGE_ROOT / path).exists()
     } == set()
 
-    actual = frozenset(
-        (importer, target)
-        for importer, target in _local_imports()
-        if importer in owned_modules or target in owned_modules
-    )
-    expected = {
+    imports = _local_imports()
+    required = {
         (operation, dependency)
         for dependency in expected_operation_dependencies
     }
-    expected.update({(registry, operation), (registry, result_model)})
+    required.update({(registry, operation), (registry, result_model)})
     if registry_uses_input_model:
-        expected.add((registry, input_model))
-    assert actual == frozenset(expected)
+        required.add((registry, input_model))
+    assert required <= imports
+
+    allowed_consumers = {
+        operation: {registry},
+        input_model: {registry} if registry_uses_input_model else set(),
+        result_model: {registry, operation},
+    }
+    for target, allowed in allowed_consumers.items():
+        consumers = {
+            importer for importer, dependency in imports if dependency == target
+        }
+        assert consumers <= allowed
 
 
 def test_tool_owned_module_map_covers_every_file() -> None:
@@ -636,27 +597,21 @@ def test_jobs_domain_and_tool_operation_have_explicit_boundaries() -> None:
     assert not (_PACKAGE_ROOT / "schemas" / "input_models" / "jobs.py").exists()
     assert (_PACKAGE_ROOT / "jobs" / "runtime.py").is_file()
 
-    operation_edges = frozenset(
-        (importer, target)
-        for importer, target in _local_imports()
-        if importer == operation or target == operation
-    )
-    assert operation_edges == frozenset(
-        {
-            (registry, operation),
-            (operation, runtime),
-            (operation, f"{_PACKAGE_NAME}.ops.utils.remote_session"),
-            (operation, shared_result),
-            (operation, f"{_PACKAGE_NAME}.tool_session.store"),
-        }
-    )
-
-    input_edges = frozenset(
-        (importer, target)
-        for importer, target in _local_imports()
-        if importer == input_model or target == input_model
-    )
-    assert input_edges == frozenset({(registry, input_model)})
+    imports = _local_imports()
+    assert {
+        (registry, operation),
+        (operation, runtime),
+        (operation, f"{_PACKAGE_NAME}.ops.utils.remote_session"),
+        (operation, shared_result),
+        (operation, f"{_PACKAGE_NAME}.tool_session.store"),
+        (registry, input_model),
+    } <= imports
+    assert {
+        importer for importer, target in imports if target == operation
+    } <= {registry}
+    assert {
+        importer for importer, target in imports if target == input_model
+    } <= {registry}
 
     runtime_targets = {
         target for importer, target in _local_imports() if importer == runtime
@@ -667,7 +622,10 @@ def test_jobs_domain_and_tool_operation_have_explicit_boundaries() -> None:
         for target in runtime_targets
     )
     _assert_ownership_map_covers(
-        {"jobs/__init__.py", "jobs/cli.py", "jobs/runtime.py"}
+        {
+            str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
+            for path in (_PACKAGE_ROOT / "jobs").rglob("*.py")
+        }
     )
 
 
@@ -702,53 +660,24 @@ def test_ui_static_assets_have_one_explicit_owner() -> None:
     assert "`ui/static`" in _ARCHITECTURE_DOC.read_text(encoding="utf-8")
 
 
-def test_agent_bridge_data_dependencies_are_acyclic() -> None:
-    modules = {
-        f"{_PACKAGE_NAME}.agent_bridge.auth",
-        f"{_PACKAGE_NAME}.agent_bridge.models",
-        f"{_PACKAGE_NAME}.agent_bridge.redaction",
-        f"{_PACKAGE_NAME}.agent_bridge.skills",
-        f"{_PACKAGE_NAME}.agent_bridge.sources",
-        f"{_PACKAGE_NAME}.agent_bridge.status",
+def test_agent_bridge_data_dependencies_follow_layering() -> None:
+    layers = {
+        f"{_PACKAGE_NAME}.agent_bridge.models": 0,
+        f"{_PACKAGE_NAME}.agent_bridge.redaction": 0,
+        f"{_PACKAGE_NAME}.agent_bridge.auth": 1,
+        f"{_PACKAGE_NAME}.agent_bridge.skills": 1,
+        f"{_PACKAGE_NAME}.agent_bridge.sources": 2,
+        f"{_PACKAGE_NAME}.agent_bridge.status": 2,
     }
-    actual = frozenset(
+    violations = frozenset(
         (importer, target)
         for importer, target in _local_imports()
-        if importer in modules and target in modules
+        if importer in layers
+        and target in layers
+        and layers[target] > layers[importer]
     )
 
-    assert actual == frozenset(
-        {
-            (
-                f"{_PACKAGE_NAME}.agent_bridge.auth",
-                f"{_PACKAGE_NAME}.agent_bridge.models",
-            ),
-            (
-                f"{_PACKAGE_NAME}.agent_bridge.skills",
-                f"{_PACKAGE_NAME}.agent_bridge.models",
-            ),
-            (
-                f"{_PACKAGE_NAME}.agent_bridge.sources",
-                f"{_PACKAGE_NAME}.agent_bridge.models",
-            ),
-            (
-                f"{_PACKAGE_NAME}.agent_bridge.sources",
-                f"{_PACKAGE_NAME}.agent_bridge.skills",
-            ),
-            (
-                f"{_PACKAGE_NAME}.agent_bridge.status",
-                f"{_PACKAGE_NAME}.agent_bridge.auth",
-            ),
-            (
-                f"{_PACKAGE_NAME}.agent_bridge.status",
-                f"{_PACKAGE_NAME}.agent_bridge.models",
-            ),
-            (
-                f"{_PACKAGE_NAME}.agent_bridge.status",
-                f"{_PACKAGE_NAME}.agent_bridge.redaction",
-            ),
-        }
-    )
+    assert violations == frozenset()
 
 
 def test_agent_bridge_models_are_a_dependency_leaf() -> None:
@@ -772,33 +701,20 @@ def test_agent_bridge_cycle_break_ownership_is_documented() -> None:
 
 
 def test_remote_worker_process_dependencies_are_one_way() -> None:
-    modules = {
-        f"{_PACKAGE_NAME}.remote_worker.lifecycle",
-        f"{_PACKAGE_NAME}.remote_worker.runtime",
-        f"{_PACKAGE_NAME}.remote_worker.state",
+    layers = {
+        f"{_PACKAGE_NAME}.remote_worker.state": 0,
+        f"{_PACKAGE_NAME}.remote_worker.lifecycle": 1,
+        f"{_PACKAGE_NAME}.remote_worker.runtime": 2,
     }
-    actual = frozenset(
+    violations = frozenset(
         (importer, target)
         for importer, target in _local_imports()
-        if importer in modules and target in modules
+        if importer in layers
+        and target in layers
+        and layers[target] > layers[importer]
     )
 
-    assert actual == frozenset(
-        {
-            (
-                f"{_PACKAGE_NAME}.remote_worker.lifecycle",
-                f"{_PACKAGE_NAME}.remote_worker.state",
-            ),
-            (
-                f"{_PACKAGE_NAME}.remote_worker.runtime",
-                f"{_PACKAGE_NAME}.remote_worker.lifecycle",
-            ),
-            (
-                f"{_PACKAGE_NAME}.remote_worker.runtime",
-                f"{_PACKAGE_NAME}.remote_worker.state",
-            ),
-        }
-    )
+    assert violations == frozenset()
 
 
 def test_remote_worker_state_contract_is_a_dependency_leaf() -> None:
