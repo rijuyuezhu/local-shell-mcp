@@ -1,5 +1,11 @@
 """Agent session and grounding state helpers."""
 
+from .bindings import (
+    LocalSessionBinding,
+    RemoteSessionBinding,
+    SessionBinding,
+    binding_from_record,
+)
 from .store import (
     SESSION_ACTIVE_WINDOW_S,
     SESSION_ID_LENGTH,
@@ -18,6 +24,10 @@ from .store import (
 
 __all__ = [
     "AgentSession",
+    "binding_from_record",
+    "SessionBinding",
+    "RemoteSessionBinding",
+    "LocalSessionBinding",
     "ExpiredAgentSessionError",
     "SESSION_ACTIVE_WINDOW_S",
     "SESSION_ID_LENGTH",

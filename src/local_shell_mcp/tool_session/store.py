@@ -359,7 +359,13 @@ class ToolSessionStore:
         elif target == "remote":
             if not machine:
                 raise ValueError("machine is required for remote sessions")
+            if not worker_session_id:
+                raise ValueError(
+                    "worker_session_id is required for remote sessions"
+                )
             display_workdir = str(workdir)
+            if not display_workdir:
+                raise ValueError("workdir is required for remote sessions")
             normalized_machine = machine
             normalized_worker_session_id = worker_session_id
         else:
