@@ -1245,7 +1245,8 @@ async def test_worker_dispatch_registers_session_end(monkeypatch):
 
     monkeypatch.setattr(session_ops, "session_end_execute", fake_session_end)
 
-    result = await worker_dispatch._HANDLERS["session_end"](
+    dispatcher = worker_dispatch.build_worker_dispatcher()
+    result = await dispatcher.handlers["session_end"](
         {"session_id": "WORKER12", "force": True}
     )
 
