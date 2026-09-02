@@ -16,16 +16,27 @@ class AgentSession:
     """One explicit agent workspace session."""
 
     session_id: str
+    """Opaque controller-issued session identifier."""
     target: SessionTarget
+    """Execution target class for the session."""
     workdir: str
+    """Current workspace root resolved on the selected target."""
     machine: str | None
+    """Remote machine name, or None for local sessions."""
     worker_session_id: str | None
+    """Worker-side session identifier for remote sessions."""
     created_at: float
+    """Unix timestamp when the session was created."""
     updated_at: float
+    """Unix timestamp of the latest durable session update."""
     expires_at: float | None = None
+    """Optional Unix expiry timestamp for the session."""
     label: str | None = None
+    """Optional human-readable session label."""
     termination_requested_at: float | None = None
+    """Unix timestamp of an irreversible termination request, when present."""
     persistent_shell_ids: tuple[str, ...] = ()
+    """Persistent shells currently owned by this local session."""
 
 
 @dataclass(frozen=True)
@@ -33,13 +44,21 @@ class SnapshotRecord:
     """One displayed file snapshot recorded for stale-edit checks."""
 
     session_id: str
+    """Owning agent session identifier."""
     snapshot_id: str
+    """Opaque identifier returned with the displayed snapshot."""
     path: str
+    """Workspace-relative or absolute path represented by the snapshot."""
     file_sha256: str
+    """SHA-256 digest of the complete file at display time."""
     total_lines: int
+    """Total line count of the complete file at display time."""
     seen_ranges: tuple[tuple[int, int], ...]
+    """Inclusive line ranges that were actually shown to the caller."""
     created_at: float
+    """Unix timestamp when the snapshot was recorded."""
     sequence: int = 0
+    """Monotonic per-session sequence used for retention ordering."""
 
 
 def generate_session_id() -> str:

@@ -39,14 +39,23 @@ class TerminalWebSocketBackend:
     """Machine adapter callbacks used by the transport lifecycle."""
 
     list_shells: AsyncCall
+    """List available persistent shells for the selected machine."""
     read_shell: AsyncCall
+    """Read a bounded snapshot from a persistent shell."""
     send_shell: AsyncCall
+    """Send textual input to a persistent shell."""
     resize_shell: AsyncCall
+    """Resize a persistent shell backend."""
     open_bridge: AsyncCall
+    """Open an exclusive raw terminal bridge when supported."""
     read_bridge: AsyncCall
+    """Read one bounded chunk from an open raw bridge."""
     write_bridge: AsyncCall
+    """Write raw bytes to an open bridge."""
     resize_bridge: AsyncCall
+    """Resize an open raw bridge."""
     close_bridge: AsyncCall
+    """Close and release an open raw bridge."""
 
 
 class _TerminalWebSocketConnection:

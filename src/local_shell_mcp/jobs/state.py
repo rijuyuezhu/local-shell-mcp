@@ -20,67 +20,114 @@ class JobRow(TypedDict, total=False):
     """Known durable tracked-job fields, including tolerated legacy partial rows."""
 
     job_id: str
+    """Opaque durable job identifier."""
     kind: str
+    """Execution kind such as shell or managed."""
     name: str
+    """Human-readable job name."""
     status: str
+    """Current durable lifecycle status."""
     command: str
+    """Command or managed-operation label shown to callers."""
     cwd: str
+    """Workspace directory associated with the job."""
     session_id: str
+    """Owning public agent-session identifier."""
     shell_id: str | None
+    """Persistent-shell identifier for shell-backed jobs."""
     backend: str | None
+    """Execution backend label persisted with the job."""
     command_path: str | None
+    """Private command artifact path for the active attempt."""
     log_path: str | None
+    """Private bounded log path for the active attempt."""
     status_path: str | None
+    """Private runner status path for the active attempt."""
     created_at: float
+    """Unix timestamp when the job was created."""
     updated_at: float
+    """Unix timestamp of the latest durable update."""
     last_started_at: float | None
+    """Unix timestamp of the latest attempt start."""
     completed_at: float | None
+    """Unix timestamp when the job reached a terminal state."""
     exit_code: int | None
+    """Terminal process-style exit code when one exists."""
     error: str | None
+    """Bounded public-safe terminal error text."""
     log_truncated: bool
+    """Whether retained log output was truncated by the size bound."""
     output_bytes: int
+    """Total output bytes observed for the current attempt."""
     attempts: int
+    """Number of attempts started for this durable job."""
     managed_kind: str
+    """Registered managed-job handler kind."""
     managed_payload: dict[str, Any]
+    """Bounded extensible JSON payload supplied to a managed handler."""
     runtime_instance_id: str
+    """Controller runtime instance that most recently owned the managed task."""
     managed_lease_version: int
+    """Managed-job lease protocol version persisted with liveness metadata."""
     progress: dict[str, Any] | None
+    """Latest bounded extensible managed-job progress object."""
     result: dict[str, Any] | None
+    """Terminal bounded extensible managed-job result object."""
     shell_absence_confirmed: bool
+    """Whether authoritative shell inventory confirmed a lost shell is absent."""
     operation_id: str
+    """Process-local operation token temporarily published into the row."""
     operation_kind: str
+    """Lifecycle operation associated with the current operation token."""
     operation_started_at: float
+    """Unix timestamp when the current lifecycle operation began."""
     pending_attempt: int
+    """Retry attempt number staged before an atomic shell transition."""
     pending_shell_id: str
+    """Retry shell identifier staged before adoption."""
     pending_command_path: str
+    """Retry command artifact path staged before adoption."""
     pending_log_path: str
+    """Retry log artifact path staged before adoption."""
     pending_status_path: str
+    """Retry status artifact path staged before adoption."""
     managed_deferred_update_ids: list[str]
+    """Applied managed journal update ids retained for idempotent replay."""
 
 
 class JobStore(TypedDict):
     """Current durable jobs.json envelope."""
 
     version: int
+    """Durable job-store schema version."""
     jobs: list[JobRow]
+    """Tracked job rows retained by current policy."""
 
 
 class JobAttemptPaths(TypedDict):
     """Private filesystem paths for one shell or managed attempt."""
 
     command: Path
+    """Command payload file for the attempt."""
     log: Path
+    """Bounded output log file for the attempt."""
     status: Path
+    """Terminal runner status JSON file for the attempt."""
 
 
 class JobStatusPayload(TypedDict, total=False):
     """Bounded terminal metadata written by the standalone shell runner."""
 
     exit_code: int | None
+    """Process exit code, or None when execution failed before one existed."""
     completed_at: float
+    """Unix timestamp when the runner stopped."""
     error: str | None
+    """Public-safe runner failure text, when present."""
     log_truncated: bool
+    """Whether the runner truncated retained log bytes."""
     output_bytes: int
+    """Total output bytes observed by the runner."""
 
 
 type MutableJobRow = JobRow | dict[str, Any]

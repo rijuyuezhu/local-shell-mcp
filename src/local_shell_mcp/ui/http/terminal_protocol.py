@@ -61,38 +61,64 @@ class _TerminalBridgeHandle:
 
 @dataclass(frozen=True)
 class TerminalWebSocketRequest:
+    """Validated connection parameters for one Human UI terminal WebSocket."""
+
     machine: str
+    """Selected local or remote machine name."""
     shell_id: str
+    """Persistent-shell identifier selected for attachment."""
     requested_mode: str
+    """Requested snapshot/auto/pty transport mode."""
     announce_mode: bool
+    """Whether the caller explicitly supplied a mode and expects it announced."""
     lines: int
+    """Initial bounded snapshot line count."""
     cols: int
+    """Validated terminal column count."""
     rows: int
+    """Validated terminal row count."""
 
 
 @dataclass(frozen=True)
 class TerminalInputControl:
+    """Validated textual or raw terminal input control."""
+
     kind: Literal["input"]
+    """Discriminator for an input control."""
     input_text: str
+    """Validated textual input payload."""
     raw_input: bytes
+    """Validated decoded raw byte payload."""
     enter: bool
+    """Whether a newline should follow textual input."""
 
 
 @dataclass(frozen=True)
 class TerminalResizeControl:
+    """Validated terminal resize control."""
+
     kind: Literal["resize"]
+    """Discriminator for a resize control."""
     cols: int
+    """Requested validated column count."""
     rows: int
+    """Requested validated row count."""
 
 
 @dataclass(frozen=True)
 class TerminalPingControl:
+    """Validated keepalive control for one terminal WebSocket."""
+
     kind: Literal["ping"] = "ping"
+    """Discriminator for a ping control."""
 
 
 @dataclass(frozen=True)
 class TerminalCloseControl:
+    """Validated request to close one terminal WebSocket attachment."""
+
     kind: Literal["close"] = "close"
+    """Discriminator for a close control."""
 
 
 type TerminalControl = (
@@ -169,6 +195,7 @@ def parse_terminal_websocket_request(
     cols: Any,
     rows: Any,
 ) -> TerminalWebSocketRequest:
+    """Validate URL/query inputs for one terminal WebSocket attachment."""
     raw_mode = mode
     return TerminalWebSocketRequest(
         machine=_machine_arg(machine),
@@ -200,6 +227,7 @@ def parse_terminal_websocket_request(
 
 
 def parse_terminal_binary_input(value: Any) -> bytes:
+    """Validate and bound one binary terminal input frame."""
     raw = bytes(value)
     if len(raw) > UI_TERMINAL_INPUT_MAX_BYTES:
         raise ValueError("Terminal input is too large")
@@ -213,6 +241,7 @@ def parse_terminal_control(
     current_cols: int,
     current_rows: int,
 ) -> TerminalControl:
+    """Decode and validate one JSON terminal control frame."""
     if len(text.encode("utf-8")) > UI_TERMINAL_INPUT_MAX_BYTES:
         raise ValueError("Terminal message is too large")
     try:

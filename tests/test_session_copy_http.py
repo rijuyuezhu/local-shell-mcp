@@ -41,6 +41,7 @@ async def test_managed_failure_suspends_for_same_job_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = get_settings()
+    settings.workspace_root.mkdir(parents=True, exist_ok=True)
     payload = b"managed-retry-payload"
     source_path = settings.workspace_root / "source.bin"
     source_path.write_bytes(payload)
@@ -111,6 +112,7 @@ async def test_foreground_failure_and_cancellation_remove_private_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = get_settings()
+    settings.workspace_root.mkdir(parents=True, exist_ok=True)
     payload = b"cleanup-payload"
     (settings.workspace_root / "source.bin").write_bytes(payload)
     source = _endpoint(

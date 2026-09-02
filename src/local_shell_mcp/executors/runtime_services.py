@@ -13,7 +13,9 @@ class RuntimeServices:
     """Explicit process-wide services shared by server execution surfaces."""
 
     state_store: FileStateStore
+    """Configured durable process state store."""
     tool_session_store: ToolSessionStore
+    """Configured authoritative tool-session store."""
 
 
 def configure_runtime_services(settings: Settings) -> RuntimeServices:

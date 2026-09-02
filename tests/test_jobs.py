@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.jobs import lifecycle as job_lifecycle
 from local_shell_mcp.jobs import managed as job_managed
 from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.jobs import shell as job_shell
@@ -61,6 +62,65 @@ def test_runner_command_quotes_powershell_arguments():
         "'local_shell_mcp.main' '--status-file' "
         "'C:\\state dir\\job''s-status.json'"
     )
+
+
+def test_lifecycle_helpers_cover_platform_and_bounded_log_paths(
+    tmp_path, monkeypatch
+):
+    class ShellList:
+        def model_dump(self):
+            return {
+                "sessions": [
+                    {"session_id": "session-one"},
+                    {"shell_id": "shell-two"},
+                    {},
+                ]
+            }
+
+    assert job_lifecycle._active_shell_ids(ShellList()) == {
+        "session-one",
+        "shell-two",
+    }
+
+    monkeypatch.setattr(
+        job_lifecycle,
+        "get_settings",
+        lambda: SimpleNamespace(
+            shell_executable="/bin/sh", max_job_log_bytes=4
+        ),
+    )
+    monkeypatch.setattr(job_lifecycle.sys, "frozen", True, raising=False)
+    paths: job_state.JobAttemptPaths = {
+        "command": tmp_path / "command.txt",
+        "log": tmp_path / "job.log",
+        "status": tmp_path / "status.json",
+    }
+    argv = job_lifecycle._runner_argv(paths, tmp_path)
+    assert argv[:2] == [job_lifecycle.sys.executable, "job-runner"]
+    assert job_lifecycle._runner_command(
+        ["echo", "hello world"], "cmd.exe"
+    ) == ('echo "hello world"')
+
+    paths["log"].write_bytes(b"abcdef\n")
+    assert job_lifecycle._read_log_tail(str(paths["log"]), 1) == "def\n"
+
+
+def test_shell_backend_helper_contracts(tmp_path):
+    status_path = tmp_path / "status.json"
+    status_path.write_text(
+        json.dumps({"exit_code": 0, "completed_at": 3.0}), encoding="utf-8"
+    )
+
+    assert job_shell._managed_job_has_local_task({}) is False
+    assert job_shell._managed_job_liveness({}) == "dead"
+    assert job_shell._read_status_path(status_path) == {
+        "exit_code": 0,
+        "completed_at": 3.0,
+    }
+    with pytest.raises(RuntimeError, match="managed job passed"):
+        job_shell._refresh_job_status(
+            {"kind": "managed", "status": "running"}, set()
+        )
 
 
 def _job_info(job_id: str = "job_1", session_id: str = "ABC12345") -> JobInfo:
@@ -1248,6 +1308,117 @@ async def test_reconcile_shell_jobs_applies_durable_completion_without_inventory
     assert row["status"] == "succeeded"
     assert row["exit_code"] == 0
     assert row["completed_at"] == 5.0
+
+
+@pytest.mark.asyncio
+async def test_stop_shell_job_keeps_lost_job_when_inventory_is_uncertain(
+    monkeypatch,
+):
+    row = {
+        "kind": "shell",
+        "status": "lost",
+        "job_id": "lost-job",
+        "session_id": "SESSION1",
+        "shell_id": "lost-shell",
+    }
+    store = {"jobs": [row]}
+
+    @contextmanager
+    def fake_transaction():
+        yield store
+
+    async def uncertain_inventory():
+        return None
+
+    monkeypatch.setattr(job_shell, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(
+        job_shell,
+        "authoritative_persistent_shell_ids_execute",
+        uncertain_inventory,
+    )
+    monkeypatch.setattr(
+        job_shell,
+        "kill_persistent_shell_execute",
+        lambda *_args, **_kwargs: pytest.fail(
+            "uncertain lost jobs must not be killed"
+        ),
+    )
+
+    result = await job_shell.stop_shell_job_unlocked("SESSION1", "lost-job")
+
+    assert result.killed is False
+    assert result.job.status == "lost"
+
+
+@pytest.mark.asyncio
+async def test_stop_shell_job_returns_terminal_job_without_killing(
+    monkeypatch,
+):
+    row = {
+        "kind": "shell",
+        "status": "failed",
+        "job_id": "failed-job",
+        "session_id": "SESSION1",
+        "shell_id": "failed-shell",
+    }
+    store = {"jobs": [row]}
+
+    @contextmanager
+    def fake_transaction():
+        yield store
+
+    async def empty_inventory():
+        return set()
+
+    monkeypatch.setattr(job_shell, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(
+        job_shell,
+        "authoritative_persistent_shell_ids_execute",
+        empty_inventory,
+    )
+    monkeypatch.setattr(
+        job_shell,
+        "kill_persistent_shell_execute",
+        lambda *_args, **_kwargs: pytest.fail(
+            "terminal jobs must not be killed"
+        ),
+    )
+
+    result = await job_shell.stop_shell_job_unlocked("SESSION1", "failed-job")
+
+    assert result.killed is False
+    assert result.job.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_stop_shell_job_rejects_managed_row(monkeypatch):
+    store = {
+        "jobs": [
+            {
+                "kind": "managed",
+                "status": "running",
+                "job_id": "managed-job",
+                "session_id": "SESSION1",
+            }
+        ]
+    }
+
+    @contextmanager
+    def fake_transaction():
+        yield store
+
+    async def empty_inventory():
+        return set()
+
+    monkeypatch.setattr(job_shell, "_store_transaction", fake_transaction)
+    monkeypatch.setattr(
+        job_shell,
+        "authoritative_persistent_shell_ids_execute",
+        empty_inventory,
+    )
+
+    with pytest.raises(RuntimeError, match="not shell-backed"):
+        await job_shell.stop_shell_job_unlocked("SESSION1", "managed-job")
 
 
 @pytest.mark.asyncio

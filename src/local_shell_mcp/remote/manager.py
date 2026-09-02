@@ -50,56 +50,82 @@ class WorkerRuntimeReport(TypedDict):
     """Validated managed-worker runtime identity shared by register/poll flows."""
 
     protocol_version: int
+    """Worker/runtime compatibility protocol version."""
     runtime_kind: str
+    """Reported runtime class such as managed bundle or unmanaged source."""
     worker_version: str
+    """local-shell-mcp version reported by the worker process."""
     bundle_version: str
+    """Installed managed bundle version, when one is active."""
     bundle_sha256: str
+    """SHA-256 digest of the active managed bundle, when one is active."""
 
 
 class WorkerRuntimeInfo(TypedDict):
     """Stable runtime metadata projected into one worker's extensible info map."""
 
     runtime_protocol_version: int
+    """Validated runtime compatibility protocol version."""
     runtime_kind: str
+    """Validated worker runtime class."""
     lsm_version: str
+    """local-shell-mcp version reported by the worker."""
     worker_bundle_version: str
+    """Validated managed bundle version."""
     worker_bundle_sha256: str
+    """Validated managed bundle SHA-256 digest."""
 
 
 class WorkerUpgradeInstruction(TypedDict):
     """Controller-issued instruction describing the currently required bundle."""
 
     required: bool
+    """Whether the worker must install the advertised bundle before taking jobs."""
     version: str
+    """Advertised managed bundle version."""
     sha256: str
+    """Expected SHA-256 digest of the advertised bundle."""
     manifest_path: str
+    """Controller-relative path used to fetch the signed bundle manifest/archive."""
 
 
 class WorkerRegistrationResponse(TypedDict):
     """Stable enrollment/resume response consumed by managed workers."""
 
     token: str
+    """Opaque bearer token assigned to the registered worker."""
     name: str
+    """Controller-resolved stable machine name."""
     poll_interval_s: int
+    """Recommended idle polling cadence in seconds."""
     poll_timeout_s: int
+    """Maximum long-poll duration in seconds."""
     heartbeat_interval_s: int
+    """Heartbeat cadence used while a remote job is running."""
     upgrade: WorkerUpgradeInstruction
+    """Bundle compatibility instruction evaluated immediately after registration."""
 
 
 class RemoteQueuedJob(TypedDict):
     """One controller-created remote tool call waiting in a worker queue."""
 
     id: str
+    """Opaque controller-issued remote job identifier."""
     tool: str
+    """Remote dispatch operation name."""
     args: dict[str, Any]
+    """Validated or transport-safe operation arguments."""
     expires_at: float
+    """Unix timestamp after which the worker must not begin execution."""
 
 
 class WorkerHeartbeatResponse(TypedDict):
     """Acknowledgement for a managed worker heartbeat."""
 
     accepted: bool
+    """Whether the controller accepted and recorded the heartbeat."""
     name: str
+    """Current controller-side machine name for the worker."""
 
 
 def _utc() -> float:

@@ -90,6 +90,7 @@ def test_worker_upload_and_download_resume_over_real_socket(
 ) -> None:
     with _gateway_server(monkeypatch) as base_url:
         settings = get_settings()
+        settings.workspace_root.mkdir(parents=True, exist_ok=True)
         payload = b"worker-http-resume-payload"
         digest = hashlib.sha256(payload).hexdigest()
         source = settings.workspace_root / "worker-source.bin"
@@ -163,6 +164,7 @@ def test_worker_rejects_source_and_download_metadata_mismatches(
 ) -> None:
     with _gateway_server(monkeypatch) as base_url:
         settings = get_settings()
+        settings.workspace_root.mkdir(parents=True, exist_ok=True)
         payload = b"metadata-payload"
         digest = hashlib.sha256(payload).hexdigest()
         (settings.workspace_root / "source.bin").write_bytes(payload)
@@ -324,6 +326,7 @@ def test_worker_upload_retry_offsets_and_final_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = get_settings()
+    settings.workspace_root.mkdir(parents=True, exist_ok=True)
     payload = b"retry-payload"
     digest = hashlib.sha256(payload).hexdigest()
     (settings.workspace_root / "retry-source.bin").write_bytes(payload)
