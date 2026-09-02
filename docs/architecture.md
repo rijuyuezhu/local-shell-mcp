@@ -484,7 +484,9 @@ not depend on either protocol executor. The REST executor consumes only
 | `ui/http/remote_files.py` | Normalizes remote UI paths, caches bounded worker sessions, dispatches workspace RPCs, reads/decodes chunks, and implements remote preview/content/mutation payloads. | It is the Human UI adapter over remote-worker workspace tools, not the worker control plane or generic remote manager. |
 | `ui/http/remotes.py` | Presents worker inventory and validates invite, rename, and revoke HTTP actions with scope and mutation-policy checks. | Remote lifecycle remains in `remote`; this file owns the Human UI administration representation. |
 | `ui/http/sessions.py` | Lists durable public agent/workspace sessions for one local or remote machine, defaults inventory to sessions active in the prior five hours, exposes an explicit all-sessions toggle, and persists the irreversible immediate-termination control action while hiding worker-internal bindings. | Session lifecycle, activity timestamps, and termination policy remain in `tool_session`; this adapter owns authenticated Human UI inventory, machine-scoped projection, and control-plane authorization. |
-| `ui/http/terminals.py` | Adapts local/remote persistent-shell list/start/send/read/resize/kill operations and raw terminal bridges to REST and WebSocket protocols with bounded validation and cleanup. | Terminal backends and bridge capabilities remain in `terminal`; this large module owns their Human UI delivery contract and is a later split candidate. |
+| `ui/http/terminal_protocol.py` | Defines bounded terminal request/control parsing plus normalized local/remote shell and raw-bridge response contracts. | Wire validation is shared by REST and WebSocket delivery and deliberately contains no local/remote dispatch or connection lifecycle. |
+| `ui/http/terminal_websocket.py` | Owns one authenticated terminal WebSocket connection lifecycle: shell presence preflight, mode negotiation, PTY/snapshot senders, typed control dispatch, idle timeout, cleanup, and audit events. | Backend calls are injected callbacks, so transport state does not own local/remote shell execution and adapter parity remains testable. |
+| `ui/http/terminals.py` | Keeps the stable Human UI terminal facade: HTTP routes, OAuth scope checks, local/remote persistent-shell adapters, raw-bridge adapters, connection admission, and compatibility exports used by OpenTUI/tests. | It composes the protocol and WebSocket lifecycle layers while terminal backend capabilities remain in `terminal`; no WebSocket state machine is embedded here. |
 | `ui/http/todos.py` | Maps the centrally selected authenticated local or remote UI session to revisioned Todo reads/writes and stable JSON responses. | Todo state belongs inside tool-session storage; this module owns its Human UI HTTP semantics and remote dispatch, not an independent global Todo surface. |
 
 Rejected ownership alternatives:
@@ -637,26 +639,23 @@ Rejected ownership alternatives:
 
 ## Large-module reassessment
 
-The post-migration ownership review compared the remaining large stateful
-modules by responsibility clusters, dependency direction, monkeypatch surface,
-source-only worker constraints, and existing test ownership. Only the jobs split
-was accepted in this review:
+The architecture-hardening review compares large stateful modules by responsibility
+clusters, dependency direction, compatibility surface, and focused test ownership.
+Accepted decompositions preserve stable facades rather than moving code by size alone:
 
-- `jobs/runtime.py` and `tools/ops/jobs.py` now separate shared durable execution
-  from the controller-only public-tool projection. The split removes the
-  misleading `ops/jobs.py` owner while preserving the explicit
-  `jobs.runtime <-> ops.shell` cycle as visible architecture debt.
-- `ui/http/terminals.py` remains intact. Its HTTP validation, remote terminal
-  normalization, raw bridge lifecycle, connection limits, authentication, and
-  WebSocket orchestration share one protocol state machine and one concentrated
-  test/monkeypatch surface. A future split requires a dedicated protocol
-  contract and adapter-parity tests rather than a line-count-driven move.
+- `jobs/runtime.py` is now a compatibility/orchestration facade over dedicated
+  lifecycle, shell, managed, persistence, recovery, state, and runner modules while
+  preserving the durable job format and source-only worker contract.
+- Human UI terminal delivery is split into `terminal_protocol.py`,
+  `terminal_websocket.py`, and the stable `terminals.py` facade. The split was only
+  accepted together with typed protocol-contract tests and local/remote adapter-parity
+  coverage, so REST and WebSocket consumers keep the same normalized machine-scoped
+  behavior and existing monkeypatch/import surfaces remain valid.
 - `remote/transfer_gateway.py` remains intact. Its ticket store, spool identity,
-  authorization, range handling, cleanup, and router composition jointly enforce
-  the transfer security and TOCTOU model. Separating them without a narrower
-  security contract would increase risk and is not justified by the current
-  consumer graph.
+  authorization, range handling, cleanup, and router composition jointly enforce the
+  transfer security and TOCTOU model; no narrower security contract currently
+  justifies separating them.
 
-No further large-module decomposition is authorized by this review. Future
-changes must begin from a concrete behavior, dependency, or testability problem
-and complete their own focused commit, push, and exact-head CI closure.
+Further large-module decomposition must start from a concrete behavior, dependency,
+or testability problem and complete its own focused validation and compatibility
+closure.

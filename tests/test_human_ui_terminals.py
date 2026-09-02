@@ -785,6 +785,129 @@ class _RemoteTerminalCalls:
         return {"ok": True, "data": outputs[tool]}
 
 
+@pytest.mark.asyncio
+async def test_local_and_remote_terminal_adapters_share_normalized_contract(
+    monkeypatch, tmp_path
+):
+    async def fake_list():
+        return ListPersistentShellsOutput(
+            shells=[
+                PersistentShellInfo(
+                    shell_id="shared",
+                    name="edge-shell",
+                    cwd="/edge",
+                )
+            ]
+        )
+
+    async def fake_start(cwd=".", name=None, command=None):
+        return StartPersistentShellOutput(
+            shell_id="created",
+            name=name,
+            cwd=cwd,
+            command=command or "/bin/sh",
+        )
+
+    async def fake_send(shell_id, input_text, enter=True):
+        return SendPersistentShellInputOutput(
+            shell_id=shell_id,
+            sent_bytes=len(input_text.encode()),
+            enter=enter,
+        )
+
+    async def fake_resize(shell_id, cols, rows):
+        return ResizePersistentShellOutput(
+            shell_id=shell_id,
+            cols=cols,
+            rows=rows,
+            resized=True,
+            backend="tmux",
+        )
+
+    async def fake_read(shell_id, lines=200, *, preserve_ansi=False):
+        assert preserve_ansi is True
+        return ReadPersistentShellOutput(
+            shell_id=shell_id,
+            output="\x1b[36medge$ \x1b[0m",
+        )
+
+    async def fake_kill(shell_id):
+        return KillPersistentShellOutput(
+            shell_id=shell_id, killed=True, stderr=None
+        )
+
+    _configure(monkeypatch, tmp_path, remote_enabled=True)
+    monkeypatch.setattr(
+        ui_common_module,
+        "remote_manager",
+        lambda: _RemoteTerminalManager("online"),
+    )
+    remote_calls = _RemoteTerminalCalls()
+    monkeypatch.setattr(
+        terminal_module, "call_remote_worker_tool", remote_calls
+    )
+    monkeypatch.setattr(
+        terminal_module, "list_persistent_shells_execute", fake_list
+    )
+    monkeypatch.setattr(
+        terminal_module, "start_persistent_shell_execute", fake_start
+    )
+    monkeypatch.setattr(
+        terminal_module,
+        "send_persistent_shell_input_execute",
+        fake_send,
+    )
+    monkeypatch.setattr(
+        terminal_module, "resize_persistent_shell_execute", fake_resize
+    )
+    monkeypatch.setattr(
+        terminal_module,
+        "read_persistent_shell_output_execute",
+        fake_read,
+    )
+    monkeypatch.setattr(
+        terminal_module, "kill_persistent_shell_execute", fake_kill
+    )
+
+    local = [
+        await terminal_module._list_shells("local"),
+        await terminal_module._start_shell(
+            "local", cwd=".", name="created", command=None
+        ),
+        await terminal_module._send_shell(
+            "local", "shared", "printf ok", False
+        ),
+        await terminal_module._resize_shell("local", "shared", 120, 36),
+        await terminal_module._read_shell("local", "shared", 50),
+        await terminal_module._kill_shell("local", "shared"),
+    ]
+    remote = [
+        await terminal_module._list_shells("edge"),
+        await terminal_module._start_shell(
+            "edge", cwd=".", name="created", command=None
+        ),
+        await terminal_module._send_shell("edge", "shared", "printf ok", False),
+        await terminal_module._resize_shell("edge", "shared", 120, 36),
+        await terminal_module._read_shell("edge", "shared", 50),
+        await terminal_module._kill_shell("edge", "shared"),
+    ]
+
+    for local_result, remote_result in zip(local, remote, strict=True):
+        assert local_result["machine"] == "local"
+        assert local_result["remote"] is False
+        assert remote_result["machine"] == "edge"
+        assert remote_result["remote"] is True
+        assert {
+            key: value
+            for key, value in local_result.items()
+            if key not in {"machine", "remote"}
+        } == {
+            key: value
+            for key, value in remote_result.items()
+            if key not in {"machine", "remote"}
+        }
+
+
 def _remote_terminal_client(
     monkeypatch,
     tmp_path,
