@@ -83,6 +83,7 @@ def _ui_asset_revision() -> str:
         "dashboard.js",
         "remotes.js",
         "audit_view.js",
+        "audit.js",
         "sessions.js",
         "opentui_console.js",
     ):

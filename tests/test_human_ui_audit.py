@@ -1258,13 +1258,13 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     )
     index = (static_root / "index.html").read_text(encoding="utf-8")
 
-    script = (static_root / "web.js").read_text(encoding="utf-8")
+    audit_script = (static_root / "audit.js").read_text(encoding="utf-8")
     sessions_script = (static_root / "sessions.js").read_text(encoding="utf-8")
     audit_view = (static_root / "audit_view.js").read_text(encoding="utf-8")
-    global_refresh = script[
-        script.index("async function refreshAudit()") : script.index(
-            "function terminalAtBottom"
-        )
+    global_refresh = audit_script[
+        audit_script.index(
+            "async function refreshAudit()"
+        ) : audit_script.index("function invalidate")
     ]
     session_snapshot = sessions_script[
         sessions_script.index(
@@ -1273,18 +1273,18 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     ]
 
     assert global_refresh.index(
-        "auditDetailGeneration += 1;"
-    ) < global_refresh.index("auditEntries =")
+        "controllerState.auditDetailGeneration += 1;"
+    ) < global_refresh.index("controllerState.auditEntries =")
     assert session_snapshot.index(
         "controllerState.sessionAuditDetailGeneration += 1;"
     ) < session_snapshot.index("controllerState.sessionAuditEntries =")
     assert 'id="audit-machine"' in index
     assert 'id="audit-list"' in index
     assert 'id="audit-detail-body"' in index
-    assert "auditGeneration" in script
-    assert "auditDetailGeneration" in script
-    assert "URLSearchParams" in script
-    assert "renderAuditDetailInto(entry" in script
+    assert "controllerState.auditGeneration" in audit_script
+    assert "controllerState.auditDetailGeneration" in audit_script
+    assert "URLSearchParams" in audit_script
+    assert "renderAuditDetailInto(entry" in audit_script
     assert 'auditCallPanel("Call request")' in audit_view
     assert 'auditCallPanel("Call result")' in audit_view
     assert "body.tabIndex = 0" in audit_view
@@ -1300,20 +1300,20 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     assert "if (value === undefined) return undefined" in audit_view
     assert "renderAuditDetailMessage" in audit_view
     assert "innerHTML" not in audit_view
-    assert "elements.auditDetailBody.innerHTML" not in script
+    assert "elements.auditDetailBody.innerHTML" not in audit_script
     assert "audit-image-preview" in audit_view
     assert ".audit-detail pre" not in (static_root / "web.css").read_text(
         encoding="utf-8"
     )
-    assert 'scope: "global"' in script
+    assert 'scope: "global"' in audit_script
     assert 'scope: "session"' in sessions_script
     assert 'id="audit-session"' not in index
     assert 'id="session-audit-list"' in index
     assert (
         "session_id"
-        not in script[
-            script.index("function auditQueryPath") : script.index(
-                "function terminalSocketProtocols"
+        not in audit_script[
+            audit_script.index("function auditQueryPath") : audit_script.index(
+                "async function loadAuditDetail"
             )
         ]
     )

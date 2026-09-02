@@ -181,6 +181,7 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "import(`${uiPath}/assets/dashboard.js`)" in script.text
     assert "import(`${uiPath}/assets/remotes.js`)" in script.text
     assert "import(`${uiPath}/assets/audit_view.js`)" in script.text
+    assert "import(`${uiPath}/assets/audit.js`)" in script.text
     assert "import(`${uiPath}/assets/sessions.js`)" in script.text
     dashboard_script = client.get("/ui/assets/dashboard.js")
     assert dashboard_script.status_code == 200
@@ -194,6 +195,10 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert audit_view_script.status_code == 200
     assert audit_view_script.headers["x-content-type-options"] == "nosniff"
     assert "export function createAuditView" in audit_view_script.text
+    audit_script = client.get("/ui/assets/audit.js")
+    assert audit_script.status_code == 200
+    assert audit_script.headers["x-content-type-options"] == "nosniff"
+    assert "export function createAuditController" in audit_script.text
     sessions_script = client.get("/ui/assets/sessions.js")
     assert sessions_script.status_code == 200
     assert sessions_script.headers["x-content-type-options"] == "nosniff"
