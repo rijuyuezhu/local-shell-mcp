@@ -100,6 +100,14 @@ Global `--version` remains an argparse version action. Settings flags follow the
 command that consumes them, for example `local-shell-mcp server --mode mcp` and
 `local-shell-mcp tui --port 8765`.
 
+The controller runtime is entered by the transport host, not by domain code.
+REST HTTP owns it through the FastAPI application lifespan. MCP-over-HTTP owns
+it through the outer Starlette lifespan that also owns the SDK session manager.
+MCP stdio instead uses FastMCP's low-level server lifespan because stdio has one
+`Server.run()` for the process lifetime. The process runtime must not be attached
+to that low-level lifespan for MCP-over-HTTP: the SDK enters it once per MCP
+session, which is a narrower lifecycle than the controller process.
+
 Rejected alternatives:
 
 - implicit server startup with no subcommand: it makes root options double as one

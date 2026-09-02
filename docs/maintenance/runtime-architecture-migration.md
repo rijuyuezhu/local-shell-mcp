@@ -110,3 +110,12 @@ answer all of the following before the old global is removed:
 For the controller, that lifecycle contract must work under MCP stdio,
 MCP-over-HTTP, and REST HTTP. It must not rely on an ASGI-only fallback or a
 stdio-only process global.
+
+Phase 4 host ownership now follows that rule explicitly: REST enters the
+controller runtime from FastAPI lifespan; MCP-over-HTTP enters it once from the
+outer Starlette lifespan before the SDK session-manager lifespan; stdio enters
+it from FastMCP's low-level lifespan. FastMCP's low-level lifespan is
+intentionally not the MCP-over-HTTP process owner because the SDK invokes it per
+MCP session. The worker poll loop similarly enters one `WorkerRuntime` lifespan
+around long-lived polling and execution rather than installing stores during
+module import or enrollment.

@@ -733,17 +733,34 @@ async def run_worker(
     profile_id: str | None = None,
 ) -> None:
     """Run one worker process while holding its lifecycle lock."""
+    from ..config.settings import Settings
     from .lifecycle import worker_run_lock
+    from .runtime_composition import build_worker_runtime
 
     profile_id = activate_worker_profile(profile_id)
+    runtime = build_worker_runtime(Settings())
     lock = (
         worker_run_lock() if profile_id is None else worker_run_lock(profile_id)
     )
     with lock:
-        if profile_id is None:
-            await _run_worker_locked(server, invite, name, workdir)
-        else:
-            await _run_worker_locked(server, invite, name, workdir, profile_id)
+        async with runtime.lifespan():
+            if profile_id is None:
+                await _run_worker_locked(
+                    server,
+                    invite,
+                    name,
+                    workdir,
+                    execute_tool=runtime.dispatcher.execute,
+                )
+            else:
+                await _run_worker_locked(
+                    server,
+                    invite,
+                    name,
+                    workdir,
+                    profile_id,
+                    execute_tool=runtime.dispatcher.execute,
+                )
 
 
 async def run_stored_worker(profile_id: str | None = None) -> None:
@@ -784,19 +801,11 @@ async def _run_worker_locked(
     name: str | None = None,
     workdir: str | None = None,
     profile_id: str | None = None,
+    execute_tool: Callable[[str, dict[str, Any]], Awaitable[Any]] | None = None,
 ) -> None:
     """Enroll or resume, then poll and execute jobs under the worker lock."""
     identity, data = await _enroll_or_resume_worker(
         server, invite, name, workdir, profile_id
-    )
-    from ..composition.services import configure_runtime_services
-    from ..config.settings import Settings
-    from .search_composition import build_worker_dispatcher_with_search
-
-    runtime_settings = Settings()
-    runtime_services = configure_runtime_services(runtime_settings)
-    dispatcher = build_worker_dispatcher_with_search(
-        runtime_settings, runtime_services.tool_session_store
     )
     server = str(identity["server"])
     machine_name = str(identity["name"])
@@ -895,7 +904,7 @@ async def _run_worker_locked(
                 server,
                 headers,
                 heartbeat_interval_s,
-                dispatcher.execute,
+                execute_tool,
             )
             out = {"job_id": job["id"], "ok": True, "data": to_jsonable(result)}
         except Exception as exc:

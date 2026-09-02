@@ -23,6 +23,7 @@ from ...tools.catalog import ToolCatalog, build_tool_catalog
 from ...tools.contracts import McpToolContext
 from ...tools.metadata import install_tool_safety_annotations
 from ...ui.http.routes import human_ui_routes
+from ..runtime import ControllerRuntime
 from .instructions import SERVER_INSTRUCTIONS
 from .session_limits import McpSessionLimitMiddleware
 from .transport_security import transport_security_settings
@@ -39,14 +40,37 @@ def _make_read_only_tool_annotations() -> ToolAnnotations:
     )
 
 
-def build_mcp(*, tool_catalog: ToolCatalog | None = None) -> FastMCP:
+def build_mcp(
+    *,
+    tool_catalog: ToolCatalog | None = None,
+    runtime: ControllerRuntime | None = None,
+    own_runtime_lifespan: bool = False,
+) -> FastMCP:
     """Create the MCP server and register one explicit local tool catalog."""
-    settings = get_settings()
-    catalog = tool_catalog or build_tool_catalog(settings)
+    settings = runtime.settings if runtime is not None else get_settings()
+    catalog = tool_catalog or (
+        runtime.tool_catalog
+        if runtime is not None
+        else build_tool_catalog(settings)
+    )
+
+    @asynccontextmanager
+    async def runtime_lifespan(_mcp: FastMCP) -> AsyncGenerator[None]:
+        if runtime is None:
+            yield
+            return
+        async with runtime.lifespan():
+            yield
+
     mcp = FastMCP(
         "local-shell-mcp",
         instructions=SERVER_INSTRUCTIONS,
         transport_security=transport_security_settings(),
+        lifespan=(
+            runtime_lifespan
+            if runtime is not None and own_runtime_lifespan
+            else None
+        ),
     )
     context = McpToolContext(
         settings=settings,
@@ -60,13 +84,22 @@ def build_mcp(*, tool_catalog: ToolCatalog | None = None) -> FastMCP:
 
 def _add_public_routes_to_mcp_http_app(
     mcp_app: Starlette,
+    *,
+    runtime: ControllerRuntime | None = None,
 ) -> tuple[Starlette, list[BaseRoute]]:
     """Serve health/OAuth routes directly and send everything else to MCP."""
     settings = get_settings()
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:
-        async with mcp_app.router.lifespan_context(mcp_app):
+        if runtime is None:
+            async with mcp_app.router.lifespan_context(mcp_app):
+                yield
+            return
+        async with (
+            runtime.lifespan(),
+            mcp_app.router.lifespan_context(mcp_app),
+        ):
             yield
 
     public_routes: list[BaseRoute] = [
@@ -93,10 +126,14 @@ def _build_authenticated_mcp_http_app(
     *,
     session_manager: object | None = None,
     mcp_path: str = "/mcp",
+    runtime: ControllerRuntime | None = None,
 ) -> Starlette:
     """Add resource limits and OAuth protection around the MCP HTTP app."""
     settings = get_settings()
-    app, public_routes = _add_public_routes_to_mcp_http_app(mcp_app)
+    app, public_routes = _add_public_routes_to_mcp_http_app(
+        mcp_app,
+        runtime=runtime,
+    )
     if session_manager is not None and not bool(
         getattr(session_manager, "stateless", False)
     ):
@@ -112,7 +149,11 @@ def _build_authenticated_mcp_http_app(
     return app
 
 
-def build_mcp_http_app(mcp: FastMCP) -> Starlette:
+def build_mcp_http_app(
+    mcp: FastMCP,
+    *,
+    runtime: ControllerRuntime | None = None,
+) -> Starlette:
     """Use the MCP SDK's HTTP app and add local public routes/auth."""
     if hasattr(mcp, "streamable_http_app"):
         inner: Starlette = mcp.streamable_http_app()
@@ -135,29 +176,39 @@ def build_mcp_http_app(mcp: FastMCP) -> Starlette:
             inner,
             session_manager=session_manager,
             mcp_path=str(getattr(mcp_settings, "streamable_http_path", "/mcp")),
+            runtime=runtime,
         )
     if hasattr(mcp, "sse_app"):
         inner = mcp.sse_app()
-        return _build_authenticated_mcp_http_app(inner)
+        return _build_authenticated_mcp_http_app(inner, runtime=runtime)
     raise RuntimeError(
         "MCP HTTP ASGI app not available since both streamable_http_app and sse_app are not available"
     )
 
 
-def run_mcp(*, tool_catalog: ToolCatalog | None = None) -> None:
+def run_mcp(
+    *,
+    tool_catalog: ToolCatalog | None = None,
+    runtime: ControllerRuntime | None = None,
+) -> None:
     """Start the configured MCP server, over stdio or HTTP."""
-    settings = get_settings()
+    settings = runtime.settings if runtime is not None else get_settings()
     if settings.mode != "stdio":
         validate_public_oauth_configuration(settings)
-    mcp = (
-        build_mcp()
-        if tool_catalog is None
-        else build_mcp(tool_catalog=tool_catalog)
-    )
+    if runtime is not None:
+        mcp = build_mcp(
+            tool_catalog=tool_catalog,
+            runtime=runtime,
+            own_runtime_lifespan=settings.mode == "stdio",
+        )
+    elif tool_catalog is None:
+        mcp = build_mcp()
+    else:
+        mcp = build_mcp(tool_catalog=tool_catalog)
 
     if settings.mode == "stdio":
         # stdio mode talks directly to the parent process; no HTTP app is needed.
         mcp.run(transport="stdio")
     else:
-        app = build_mcp_http_app(mcp)
+        app = build_mcp_http_app(mcp, runtime=runtime)
         uvicorn.run(app, host=settings.host, port=settings.port)

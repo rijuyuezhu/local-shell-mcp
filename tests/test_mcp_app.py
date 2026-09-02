@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any, cast
 
 from starlette.applications import Starlette
@@ -124,6 +125,73 @@ def test_run_mcp_uses_stdio_transport(monkeypatch):
     mcp_app.run_mcp()
 
     assert dummy.transports == ["stdio"]
+
+
+def test_run_mcp_stdio_runtime_owns_fastmcp_lifespan(monkeypatch):
+    runtime = cast(
+        Any,
+        SimpleNamespace(
+            settings=Settings(mode="stdio", auth_mode="none"),
+            tool_catalog=object(),
+        ),
+    )
+    dummy = _DummyMcp()
+    calls = []
+
+    def build(*, tool_catalog=None, runtime=None, own_runtime_lifespan=False):
+        calls.append(("build", tool_catalog, runtime, own_runtime_lifespan))
+        return dummy
+
+    monkeypatch.setattr(mcp_app, "build_mcp", build)
+
+    mcp_app.run_mcp(runtime=runtime)
+
+    assert calls == [("build", None, runtime, True)]
+    assert dummy.transports == ["stdio"]
+
+
+def test_run_mcp_http_runtime_is_owned_by_outer_asgi_lifespan(monkeypatch):
+    runtime = cast(
+        Any,
+        SimpleNamespace(
+            settings=Settings(
+                mode="mcp",
+                auth_mode="none",
+                host="127.0.0.1",
+                port=8765,
+            ),
+            tool_catalog=object(),
+        ),
+    )
+    dummy = _DummyMcp()
+    app = object()
+    calls = []
+
+    def build(*, tool_catalog=None, runtime=None, own_runtime_lifespan=False):
+        calls.append(("build", tool_catalog, runtime, own_runtime_lifespan))
+        return dummy
+
+    def build_http(mcp, *, runtime=None):
+        calls.append(("http", mcp, runtime))
+        return app
+
+    monkeypatch.setattr(mcp_app, "build_mcp", build)
+    monkeypatch.setattr(mcp_app, "build_mcp_http_app", build_http)
+    monkeypatch.setattr(
+        mcp_app.uvicorn,
+        "run",
+        lambda built_app, *, host, port: calls.append(
+            ("uvicorn", built_app, host, port)
+        ),
+    )
+
+    mcp_app.run_mcp(runtime=runtime)
+
+    assert calls == [
+        ("build", None, runtime, False),
+        ("http", dummy, runtime),
+        ("uvicorn", app, "127.0.0.1", 8765),
+    ]
 
 
 def test_oauth_challenge_metadata_url_matches_rfc9728_path_resource():

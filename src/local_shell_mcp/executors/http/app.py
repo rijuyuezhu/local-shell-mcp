@@ -1,5 +1,8 @@
 """Build the FastAPI REST HTTP application."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
 from starlette.routing import BaseRoute
@@ -15,6 +18,7 @@ from ...remote.http import remote_routes
 from ...remote.transfer_gateway import build_transfer_gateway_router
 from ...tools.catalog import ToolCatalog, build_tool_catalog
 from ...ui.http.routes import human_ui_routes
+from ..runtime import ControllerRuntime
 from .errors import install_error_handlers
 from .tool_routes import (
     install_tool_cache_control_middleware,
@@ -59,11 +63,32 @@ def _install_public_routes(app: FastAPI, settings: Settings) -> list[BaseRoute]:
     return [*documentation_routes, *installed_routes]
 
 
-def build_http_app(*, tool_catalog: ToolCatalog | None = None) -> FastAPI:
+def build_http_app(
+    *,
+    tool_catalog: ToolCatalog | None = None,
+    runtime: ControllerRuntime | None = None,
+) -> FastAPI:
     """Construct the authenticated REST API from one explicit tool catalog."""
-    settings = get_settings()
-    catalog = tool_catalog or build_tool_catalog(settings)
-    app = FastAPI(title="local-shell-mcp REST API", version=__version__)
+    settings = runtime.settings if runtime is not None else get_settings()
+    catalog = tool_catalog or (
+        runtime.tool_catalog
+        if runtime is not None
+        else build_tool_catalog(settings)
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+        if runtime is None:
+            yield
+            return
+        async with runtime.lifespan():
+            yield
+
+    app = FastAPI(
+        title="local-shell-mcp REST API",
+        version=__version__,
+        lifespan=lifespan if runtime is not None else None,
+    )
 
     install_error_handlers(app)
     install_tools_timeout_middleware(app, catalog)
@@ -79,13 +104,18 @@ def build_http_app(*, tool_catalog: ToolCatalog | None = None) -> FastAPI:
     return app
 
 
-def run_http(*, tool_catalog: ToolCatalog | None = None) -> None:
+def run_http(
+    *,
+    tool_catalog: ToolCatalog | None = None,
+    runtime: ControllerRuntime | None = None,
+) -> None:
     """Run the REST HTTP server."""
-    settings = get_settings()
+    settings = runtime.settings if runtime is not None else get_settings()
     validate_public_oauth_configuration(settings)
-    app = (
-        build_http_app()
-        if tool_catalog is None
-        else build_http_app(tool_catalog=tool_catalog)
-    )
+    if runtime is not None:
+        app = build_http_app(tool_catalog=tool_catalog, runtime=runtime)
+    elif tool_catalog is None:
+        app = build_http_app()
+    else:
+        app = build_http_app(tool_catalog=tool_catalog)
     uvicorn.run(app, host=settings.host, port=settings.port)
