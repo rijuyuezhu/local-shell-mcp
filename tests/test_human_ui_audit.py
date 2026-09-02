@@ -1257,25 +1257,27 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
         Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
     )
     index = (static_root / "index.html").read_text(encoding="utf-8")
+
     script = (static_root / "web.js").read_text(encoding="utf-8")
+    sessions_script = (static_root / "sessions.js").read_text(encoding="utf-8")
     audit_view = (static_root / "audit_view.js").read_text(encoding="utf-8")
     global_refresh = script[
         script.index("async function refreshAudit()") : script.index(
-            "function clearSessionAuditDetail"
+            "function terminalAtBottom"
         )
     ]
-    session_snapshot = script[
-        script.index("function applySessionAuditPayload") : script.index(
-            "function sessionAuditQueryPath"
-        )
+    session_snapshot = sessions_script[
+        sessions_script.index(
+            "function applySessionAuditPayload"
+        ) : sessions_script.index("function sessionAuditQueryPath")
     ]
 
     assert global_refresh.index(
         "auditDetailGeneration += 1;"
     ) < global_refresh.index("auditEntries =")
     assert session_snapshot.index(
-        "sessionAuditDetailGeneration += 1;"
-    ) < session_snapshot.index("sessionAuditEntries =")
+        "controllerState.sessionAuditDetailGeneration += 1;"
+    ) < session_snapshot.index("controllerState.sessionAuditEntries =")
     assert 'id="audit-machine"' in index
     assert 'id="audit-list"' in index
     assert 'id="audit-detail-body"' in index
@@ -1304,7 +1306,7 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
         encoding="utf-8"
     )
     assert 'scope: "global"' in script
-    assert 'scope: "session"' in script
+    assert 'scope: "session"' in sessions_script
     assert 'id="audit-session"' not in index
     assert 'id="session-audit-list"' in index
     assert (

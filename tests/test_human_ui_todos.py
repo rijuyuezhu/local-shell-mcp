@@ -801,7 +801,7 @@ def test_sessions_static_ui_owns_todos_and_immediate_termination():
         Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
     )
     index = (static_root / "index.html").read_text(encoding="utf-8")
-    script = (static_root / "web.js").read_text(encoding="utf-8")
+    script = (static_root / "sessions.js").read_text(encoding="utf-8")
 
     assert 'id="session-panel"' in index
     assert 'id="session-machine"' in index
