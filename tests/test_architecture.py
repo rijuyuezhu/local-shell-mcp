@@ -682,6 +682,7 @@ def test_ui_static_assets_have_one_explicit_owner() -> None:
         "web.js",
         "dashboard.js",
         "remotes.js",
+        "audit_view.js",
         "xterm_bundle.js",
         "xterm.css",
         "xterm.LICENSE.txt",

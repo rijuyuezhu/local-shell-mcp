@@ -1258,6 +1258,7 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     )
     index = (static_root / "index.html").read_text(encoding="utf-8")
     script = (static_root / "web.js").read_text(encoding="utf-8")
+    audit_view = (static_root / "audit_view.js").read_text(encoding="utf-8")
     global_refresh = script[
         script.index("async function refreshAudit()") : script.index(
             "function clearSessionAuditDetail"
@@ -1282,9 +1283,9 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
     assert "auditDetailGeneration" in script
     assert "URLSearchParams" in script
     assert "renderAuditDetailInto(entry" in script
-    assert 'auditCallPanel("Call request")' in script
-    assert 'auditCallPanel("Call result")' in script
-    assert "body.tabIndex = 0" in script
+    assert 'auditCallPanel("Call request")' in audit_view
+    assert 'auditCallPanel("Call result")' in audit_view
+    assert "body.tabIndex = 0" in audit_view
     assert (
         'id="audit-detail-body" class="audit-detail-body" tabindex="0"'
         not in index
@@ -1293,11 +1294,12 @@ def test_audit_static_ui_has_machine_guards_and_safe_detail_rendering():
         'id="session-audit-detail-body" class="audit-detail-body" tabindex="0"'
         not in index
     )
-    assert "auditSupplementalDetails" in script
-    assert "if (value === undefined) return undefined" in script
-    assert "renderAuditDetailMessage" in script
+    assert "auditSupplementalDetails" in audit_view
+    assert "if (value === undefined) return undefined" in audit_view
+    assert "renderAuditDetailMessage" in audit_view
+    assert "innerHTML" not in audit_view
     assert "elements.auditDetailBody.innerHTML" not in script
-    assert "audit-image-preview" in script
+    assert "audit-image-preview" in audit_view
     assert ".audit-detail pre" not in (static_root / "web.css").read_text(
         encoding="utf-8"
     )
