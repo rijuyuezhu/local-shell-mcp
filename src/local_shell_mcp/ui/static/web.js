@@ -3,13 +3,26 @@ void (async () => {
 
   const config = JSON.parse(document.body.dataset.lsmConfig || "{}");
   const uiPath = String(config.uiPath || "/ui").replace(/\/$/, "");
-  const { createDashboardController } = await import(`${uiPath}/assets/dashboard.js`);
-  const { createRemotesController } = await import(`${uiPath}/assets/remotes.js`);
-  const { createAuditView } = await import(`${uiPath}/assets/audit_view.js`);
-  const { createAuditController } = await import(`${uiPath}/assets/audit.js`);
-  const { createTerminalController } = await import(`${uiPath}/assets/terminal.js`);
-  const { createFilesController } = await import(`${uiPath}/assets/files.js`);
-  const { createSessionsController } = await import(`${uiPath}/assets/sessions.js`);
+  const assetRevision = encodeURIComponent(String(config.assetRevision || ""));
+  const assetUrl = (name) =>
+    `${uiPath}/assets/${name}${assetRevision ? `?v=${assetRevision}` : ""}`;
+  const [
+    { createDashboardController },
+    { createRemotesController },
+    { createAuditView },
+    { createAuditController },
+    { createTerminalController },
+    { createFilesController },
+    { createSessionsController },
+  ] = await Promise.all([
+    import(assetUrl("dashboard.js")),
+    import(assetUrl("remotes.js")),
+    import(assetUrl("audit_view.js")),
+    import(assetUrl("audit.js")),
+    import(assetUrl("terminal.js")),
+    import(assetUrl("files.js")),
+    import(assetUrl("sessions.js")),
+  ]);
   const apiPrefix = String(config.apiPrefix || "/api/ui").replace(/\/$/, "");
   const oauth = config.oauth && typeof config.oauth === "object" ? config.oauth : null;
   const wallpaper = ["aurora", "grid", "none"].includes(String(config.wallpaper || ""))

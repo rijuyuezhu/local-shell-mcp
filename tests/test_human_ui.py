@@ -133,7 +133,9 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     assert "Human UI foundation active" not in index.text
     assert "__LSM_UI_PATH__" not in index.text
     assert "__LSM_UI_ASSET_REV__" not in index.text
-    assert re.search(r"assets/web\.js\?v=[0-9a-f]{16}", index.text)
+    asset_revision = re.search(r"assets/web\.js\?v=([0-9a-f]{16})", index.text)
+    assert asset_revision is not None
+    assert f"assetRevision&quot;:&quot;{asset_revision.group(1)}" in index.text
     assert index.headers["cache-control"] == "no-store"
     csp = index.headers["content-security-policy"]
     assert "script-src 'self' 'wasm-unsafe-eval'" in csp
@@ -178,13 +180,15 @@ def test_human_ui_shell_is_public_but_api_requires_oauth(monkeypatch, tmp_path):
     script = client.get("/ui/assets/web.js")
     assert script.status_code == 200
     assert script.headers["x-content-type-options"] == "nosniff"
-    assert "import(`${uiPath}/assets/dashboard.js`)" in script.text
-    assert "import(`${uiPath}/assets/remotes.js`)" in script.text
-    assert "import(`${uiPath}/assets/audit_view.js`)" in script.text
-    assert "import(`${uiPath}/assets/audit.js`)" in script.text
-    assert "import(`${uiPath}/assets/sessions.js`)" in script.text
-    assert "import(`${uiPath}/assets/terminal.js`)" in script.text
-    assert "import(`${uiPath}/assets/files.js`)" in script.text
+    assert "await Promise.all([" in script.text
+    assert 'import(assetUrl("dashboard.js"))' in script.text
+    assert 'import(assetUrl("remotes.js"))' in script.text
+    assert 'import(assetUrl("audit_view.js"))' in script.text
+    assert 'import(assetUrl("audit.js"))' in script.text
+    assert 'import(assetUrl("sessions.js"))' in script.text
+    assert 'import(assetUrl("terminal.js"))' in script.text
+    assert 'import(assetUrl("files.js"))' in script.text
+    assert "?v=${assetRevision}" in script.text
     dashboard_script = client.get("/ui/assets/dashboard.js")
     assert dashboard_script.status_code == 200
     assert dashboard_script.headers["x-content-type-options"] == "nosniff"
