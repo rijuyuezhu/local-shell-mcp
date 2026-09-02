@@ -4,6 +4,7 @@ import shutil
 import pytest
 
 from local_shell_mcp.config.settings import clear_settings_cache, get_settings
+from local_shell_mcp.ops import search as search_ops_module
 from local_shell_mcp.ops.files import hashline_edit_execute
 from local_shell_mcp.ops.search import (
     glob_search_execute,
@@ -188,6 +189,156 @@ async def test_glob_finds_matching_paths(tmp_path, monkeypatch):
     result = await glob_search_execute(session_id, "*.py", cwd=".")
 
     assert result.paths == ["src/app.py"]
+
+
+@pytest.mark.asyncio
+async def test_remote_glob_tree_and_legacy_grep_facades_do_not_need_local_rg(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = get_tool_session_store()
+    store.clear()
+    session = store.create_session(
+        target="remote",
+        workdir="/remote/work",
+        machine="worker-a",
+        worker_session_id="WORKER01",
+    )
+    calls = []
+
+    async def fake_remote_call(_session, tool, args):
+        calls.append((tool, args))
+        if tool == "glob_search":
+            return {"paths": ["src/app.py"]}
+        if tool == "tree_view":
+            return {
+                "root": "/remote/work",
+                "exists": True,
+                "is_directory": True,
+                "entries": ["src/"],
+                "count": 1,
+                "truncated": False,
+            }
+        raise AssertionError(tool)
+
+    monkeypatch.setattr(
+        search_ops_module, "call_remote_session_tool", fake_remote_call
+    )
+    glob = await glob_search_execute(session.session_id, "*.py", cwd="src")
+    tree = await tree_view_execute(session.session_id, cwd=".", depth=2)
+
+    assert glob.paths == ["src/app.py"]
+    assert tree.entries == ["src/"]
+    assert calls == [
+        (
+            "glob_search",
+            {"pattern": "*.py", "cwd": "src", "max_results": 500},
+        ),
+        ("tree_view", {"cwd": ".", "depth": 2, "max_entries": 500}),
+    ]
+    with pytest.raises(
+        ValueError, match="grep_search_execute only supports local sessions"
+    ):
+        await grep_search_execute(
+            "needle", session_id=session.session_id, regex=False
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_legacy_facade_routes_sessionless_and_explicit_cwd_without_rg(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    settings = get_settings()
+    store = get_tool_session_store()
+    store.clear()
+    local_session = store.create_session(workdir=tmp_path)
+    remote_session = store.create_session(
+        target="remote",
+        workdir="/remote/work",
+        machine="worker-a",
+        worker_session_id="WORKER01",
+    )
+    calls = []
+
+    class FakeRunner:
+        async def search(self, request, *, workdir, binding=None):
+            calls.append(("local", request.pattern, workdir, binding))
+            from local_shell_mcp.schemas.result_models.search import (
+                GrepSearchOutput,
+            )
+
+            return GrepSearchOutput(
+                ok=True,
+                matches=[],
+                displayed_lines=[],
+                count=0,
+                displayed_count=0,
+                context_radius=0,
+                skipped=0,
+                truncated=False,
+                stderr="",
+                numbered_content="",
+            )
+
+    class FakeRemoteClient:
+        async def search(self, binding, request):
+            calls.append(("remote", request.pattern, binding.workdir, binding))
+            from local_shell_mcp.schemas.result_models.search import (
+                GrepSearchOutput,
+            )
+
+            return GrepSearchOutput(
+                ok=True,
+                matches=[],
+                displayed_lines=[],
+                count=0,
+                displayed_count=0,
+                context_radius=0,
+                skipped=0,
+                truncated=False,
+                stderr="",
+                numbered_content="",
+            )
+
+    monkeypatch.setattr(
+        search_ops_module,
+        "_legacy_search_dependencies",
+        lambda: (settings, store),
+    )
+    monkeypatch.setattr(
+        search_ops_module,
+        "build_local_search_runner",
+        lambda _settings, _store: FakeRunner(),
+    )
+    monkeypatch.setattr(
+        search_ops_module, "RemoteSearchClient", lambda: FakeRemoteClient()
+    )
+
+    await search_execute("sessionless", cwd="custom", regex=False)
+    await search_execute(
+        "local",
+        cwd=str(tmp_path),
+        session_id=local_session.session_id,
+        regex=False,
+    )
+    await search_execute(
+        "remote",
+        cwd="custom",
+        session_id=remote_session.session_id,
+        regex=False,
+    )
+
+    assert calls[0][:3] == ("local", "sessionless", "custom")
+    assert calls[0][3] is None
+    assert calls[1][:3] == ("local", "local", str(tmp_path))
+    assert calls[1][3].session_id == local_session.session_id
+    assert calls[2][:3] == ("remote", "remote", "/remote/work")
+    assert calls[2][3].session_id == remote_session.session_id
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,10 @@ from local_shell_mcp.persistence import configure_state_store
 from local_shell_mcp.remote_worker.search_composition import (
     build_worker_dispatcher_with_search,
 )
+from local_shell_mcp.schemas.result_models.search import (
+    GlobSearchOutput,
+    TreeViewOutput,
+)
 from local_shell_mcp.tool_session import configure_tool_session_store
 from local_shell_mcp.tools.registry import search as search_registry_module
 from local_shell_mcp.tools.registry.search import SearchToolRegistry
@@ -118,3 +122,49 @@ async def test_worker_dispatcher_uses_composed_search_override(
     assert result.ok is True
     assert result.count == 1
     assert result.matches[0].session_id == session.session_id
+
+
+@pytest.mark.asyncio
+async def test_search_registry_unbound_service_and_legacy_wrappers(monkeypatch):
+    registry = SearchToolRegistry()
+    with pytest.raises(RuntimeError, match="Search service is not bound"):
+        await registry._bound_search("SESSION01", "needle")
+
+    tree_output = TreeViewOutput(
+        root=".",
+        exists=True,
+        is_directory=True,
+        entries=[],
+        count=0,
+        truncated=False,
+    )
+    glob_output = GlobSearchOutput(paths=["src/app.py"])
+    calls = []
+
+    async def fake_tree(session_id, cwd, depth, max_entries):
+        calls.append(("tree", session_id, cwd, depth, max_entries))
+        return tree_output
+
+    async def fake_glob(session_id, pattern, cwd, max_results):
+        calls.append(("glob", session_id, pattern, cwd, max_results))
+        return glob_output
+
+    monkeypatch.setattr(search_registry_module, "tree_view_execute", fake_tree)
+    monkeypatch.setattr(
+        search_registry_module, "glob_search_execute", fake_glob
+    )
+
+    assert (
+        await search_registry_module.tree_view.func("SESSION01", "src", 2, 10)
+        == tree_output
+    )
+    assert (
+        await search_registry_module.glob_search.func(
+            "SESSION01", "*.py", "src", 20
+        )
+        == glob_output
+    )
+    assert calls == [
+        ("tree", "SESSION01", "src", 2, 10),
+        ("glob", "SESSION01", "*.py", "src", 20),
+    ]

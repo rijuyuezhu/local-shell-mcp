@@ -1,4 +1,5 @@
 from dataclasses import fields
+from pathlib import Path
 
 from local_shell_mcp.ops.search.core import (
     ParsedSearchMatch,
@@ -141,16 +142,17 @@ def test_display_windows_merge_context_and_respect_line_scopes() -> None:
         "/workspace",
         radius=1,
     )
+    workspace = Path("/workspace")
 
     assert windows == [
         SearchDisplayWindow(
-            read_path="/workspace/src/app.py",
+            read_path=str(workspace / "src" / "app.py"),
             start=1,
             end=5,
             match_lines=frozenset({2, 4}),
         ),
         SearchDisplayWindow(
-            read_path="/workspace/src/other.py",
+            read_path=str(workspace / "src" / "other.py"),
             start=10,
             end=10,
             match_lines=frozenset({10}),
