@@ -11,8 +11,11 @@ class LocalSessionBinding:
     """Validated controller-local execution coordinates for one operation."""
 
     session_id: str
+    """Control-server session identifier for this operation."""
     workdir: str
+    """Authoritative local workdir snapshot for this operation."""
     target: Literal["local"] = "local"
+    """Local routing discriminant."""
 
 
 @dataclass(frozen=True)
@@ -20,10 +23,15 @@ class RemoteSessionBinding:
     """Validated remote-worker execution coordinates for one operation."""
 
     session_id: str
+    """Control-server session identifier for this operation."""
     workdir: str
+    """Authoritative worker-side workdir snapshot for this operation."""
     machine: str
+    """Remote worker name selected by the controller."""
     worker_session_id: str
+    """Session identifier used by the selected remote worker."""
     target: Literal["remote"] = "remote"
+    """Remote routing discriminant."""
 
 
 type SessionBinding = LocalSessionBinding | RemoteSessionBinding
