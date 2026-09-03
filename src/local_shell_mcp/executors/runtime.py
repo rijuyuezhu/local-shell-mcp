@@ -11,6 +11,11 @@ from ..composition.services import (
     install_runtime_services,
 )
 from ..config.settings import Settings
+from ..oauth.core.state import (
+    OAuthState,
+    build_oauth_state,
+    configure_oauth_state,
+)
 from ..remote.manager import (
     RemoteManager,
     configure_remote_manager,
@@ -35,6 +40,8 @@ class ControllerRuntime:
     """Controller-owned terminal bridge and ConPTY live state."""
     human_ui_runtime: HumanUiRuntime
     """Controller-owned Human UI terminal and remote-file live state."""
+    oauth_state: OAuthState
+    """Controller-owned dynamic-client and authorization-code live state."""
     tool_catalog: ToolCatalog
     """Controller tool catalog with the migrated Search service already bound."""
     _installation: RuntimeServiceInstallation | None = field(
@@ -44,6 +51,12 @@ class ControllerRuntime:
         default=None, init=False, repr=False
     )
     _remote_binding_installed: bool = field(
+        default=False, init=False, repr=False
+    )
+    _previous_oauth_state: OAuthState | None = field(
+        default=None, init=False, repr=False
+    )
+    _oauth_binding_installed: bool = field(
         default=False, init=False, repr=False
     )
     _closed: bool = field(default=False, init=False, repr=False)
@@ -60,8 +73,11 @@ class ControllerRuntime:
         terminal_started = False
         remote_started = False
         remote_bound = False
+        oauth_started = False
+        oauth_bound = False
         human_ui_started = False
         previous_remote_manager: RemoteManager | None = None
+        previous_oauth_state: OAuthState | None = None
         try:
             await self.terminal_runtime.start()
             terminal_started = True
@@ -71,6 +87,10 @@ class ControllerRuntime:
                 self.remote_manager
             )
             remote_bound = True
+            self.oauth_state.start()
+            oauth_started = True
+            previous_oauth_state = configure_oauth_state(self.oauth_state)
+            oauth_bound = True
             await self.human_ui_runtime.start()
             human_ui_started = True
         except BaseException:
@@ -79,23 +99,35 @@ class ControllerRuntime:
                     await self.human_ui_runtime.aclose()
             finally:
                 try:
-                    if remote_bound:
-                        configure_remote_manager(previous_remote_manager)
+                    if oauth_bound:
+                        configure_oauth_state(previous_oauth_state)
                 finally:
                     try:
-                        if remote_started:
-                            await self.remote_manager.aclose()
+                        if oauth_started:
+                            await self.oauth_state.aclose()
                     finally:
                         try:
-                            if terminal_started:
-                                await self.terminal_runtime.aclose()
+                            if remote_bound:
+                                configure_remote_manager(
+                                    previous_remote_manager
+                                )
                         finally:
-                            installation.close()
-                            self._closed = True
+                            try:
+                                if remote_started:
+                                    await self.remote_manager.aclose()
+                            finally:
+                                try:
+                                    if terminal_started:
+                                        await self.terminal_runtime.aclose()
+                                finally:
+                                    installation.close()
+                                    self._closed = True
             raise
         self._installation = installation
         self._previous_remote_manager = previous_remote_manager
         self._remote_binding_installed = True
+        self._previous_oauth_state = previous_oauth_state
+        self._oauth_binding_installed = True
 
     async def aclose(self) -> None:
         """Restore prior compatibility bindings; repeated close is harmless."""
@@ -103,6 +135,7 @@ class ControllerRuntime:
         self._installation = None
         self._closed = True
         human_ui_error: BaseException | None = None
+        oauth_error: BaseException | None = None
         remote_error: BaseException | None = None
         terminal_error: BaseException | None = None
         try:
@@ -110,6 +143,10 @@ class ControllerRuntime:
                 await self.human_ui_runtime.aclose()
             except BaseException as exc:
                 human_ui_error = exc
+            try:
+                await self.oauth_state.aclose()
+            except BaseException as exc:
+                oauth_error = exc
             try:
                 await self.remote_manager.aclose()
             except BaseException as exc:
@@ -119,6 +156,10 @@ class ControllerRuntime:
             except BaseException as exc:
                 terminal_error = exc
         finally:
+            if self._oauth_binding_installed:
+                configure_oauth_state(self._previous_oauth_state)
+                self._oauth_binding_installed = False
+                self._previous_oauth_state = None
             if self._remote_binding_installed:
                 configure_remote_manager(self._previous_remote_manager)
                 self._remote_binding_installed = False
@@ -127,6 +168,8 @@ class ControllerRuntime:
                 installation.close()
         if human_ui_error is not None:
             raise human_ui_error
+        if oauth_error is not None:
+            raise oauth_error
         if remote_error is not None:
             raise remote_error
         if terminal_error is not None:
@@ -151,12 +194,14 @@ def build_controller_runtime(settings: Settings) -> ControllerRuntime:
     )
     terminal_runtime = build_terminal_runtime()
     human_ui_runtime = build_human_ui_runtime(remote_manager.call)
+    oauth_state = build_oauth_state(settings.state_dir)
     return ControllerRuntime(
         settings=settings,
         services=services,
         remote_manager=remote_manager,
         terminal_runtime=terminal_runtime,
         human_ui_runtime=human_ui_runtime,
+        oauth_state=oauth_state,
         tool_catalog=build_controller_tool_catalog(
             settings,
             services.tool_session_store,

@@ -14,6 +14,11 @@ from local_shell_mcp.executors.runtime import build_controller_runtime
 from local_shell_mcp.executors.runtime_services import (
     configure_runtime_services,
 )
+from local_shell_mcp.oauth.core.state import (
+    OAuthState,
+    configure_oauth_state,
+    oauth_state,
+)
 from local_shell_mcp.persistence import (
     FileStateStore,
     configure_state_store,
@@ -406,10 +411,12 @@ async def test_controller_runtime_owns_and_restores_remote_manager_binding(
 
 
 @pytest.mark.asyncio
-async def test_controller_runtime_owns_and_restores_human_ui_binding(
+async def test_controller_runtime_owns_and_restores_ui_and_oauth_bindings(
     tmp_path,
 ) -> None:
     outer = build_human_ui_runtime()
+    outer_oauth = OAuthState(tmp_path / "outer-oauth-state")
+    previous_oauth = configure_oauth_state(outer_oauth)
     await outer.start()
     runtime = build_controller_runtime(
         Settings(
@@ -420,8 +427,10 @@ async def test_controller_runtime_owns_and_restores_human_ui_binding(
     )
     try:
         assert human_ui_runtime() is outer
+        assert oauth_state() is outer_oauth
         async with runtime.lifespan():
             assert human_ui_runtime() is runtime.human_ui_runtime
+            assert oauth_state() is runtime.oauth_state
             assert (
                 runtime.human_ui_runtime.terminal_connections._loop
                 is asyncio.get_running_loop()
@@ -432,12 +441,14 @@ async def test_controller_runtime_owns_and_restores_human_ui_binding(
             )
 
         assert human_ui_runtime() is outer
+        assert oauth_state() is outer_oauth
     finally:
         await outer.aclose()
+        configure_oauth_state(previous_oauth)
 
 
 @pytest.mark.asyncio
-async def test_controller_runtime_closes_ui_before_remote_and_terminal(
+async def test_controller_runtime_closes_ui_oauth_remote_and_terminal_in_order(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -451,12 +462,17 @@ async def test_controller_runtime_closes_ui_before_remote_and_terminal(
     await runtime.start()
     events: list[str] = []
     ui_close = runtime.human_ui_runtime.aclose
+    oauth_close = runtime.oauth_state.aclose
     remote_close = runtime.remote_manager.aclose
     terminal_close = runtime.terminal_runtime.aclose
 
     async def close_ui() -> None:
         events.append("ui")
         await ui_close()
+
+    async def close_oauth() -> None:
+        events.append("oauth")
+        await oauth_close()
 
     async def close_remote() -> None:
         events.append("remote")
@@ -467,12 +483,13 @@ async def test_controller_runtime_closes_ui_before_remote_and_terminal(
         await terminal_close()
 
     monkeypatch.setattr(runtime.human_ui_runtime, "aclose", close_ui)
+    monkeypatch.setattr(runtime.oauth_state, "aclose", close_oauth)
     monkeypatch.setattr(runtime.remote_manager, "aclose", close_remote)
     monkeypatch.setattr(runtime.terminal_runtime, "aclose", close_terminal)
 
     await runtime.aclose()
 
-    assert events == ["ui", "remote", "terminal"]
+    assert events == ["ui", "oauth", "remote", "terminal"]
 
 
 @pytest.mark.asyncio
@@ -495,6 +512,8 @@ async def test_human_ui_start_failure_rolls_back_controller_dependencies(
     )
     outer_terminal = build_terminal_runtime()
     outer_ui = build_human_ui_runtime()
+    outer_oauth = OAuthState(tmp_path / "outer-oauth-state")
+    previous_oauth = configure_oauth_state(outer_oauth)
     configure_state_store(outer_state_store)
     configure_tool_session_store(outer_session_store)
     configure_remote_manager(outer_manager)
@@ -519,9 +538,11 @@ async def test_human_ui_start_failure_rolls_back_controller_dependencies(
         assert get_state_store() is outer_state_store
         assert get_tool_session_store() is outer_session_store
         assert remote_manager() is outer_manager
+        assert oauth_state() is outer_oauth
         assert terminal_bridge._bridge_registry() is outer_terminal.bridges
         assert terminal_conpty._conpty_registry() is outer_terminal.conpty
         assert human_ui_runtime() is outer_ui
+        assert runtime.oauth_state._closed is True
         assert runtime.remote_manager._closed is True
         assert runtime.terminal_runtime._closed is True
         assert runtime._closed is True
@@ -529,6 +550,66 @@ async def test_human_ui_start_failure_rolls_back_controller_dependencies(
         await runtime.aclose()
         await outer_ui.aclose()
         await outer_terminal.aclose()
+        configure_oauth_state(previous_oauth)
+        configure_remote_manager(None)
+        configure_tool_session_store(None)
+        configure_state_store(None)
+
+
+@pytest.mark.asyncio
+async def test_oauth_start_failure_rolls_back_controller_dependencies(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    outer_settings = Settings(
+        workspace_root=tmp_path,
+        state_dir=tmp_path / "outer-state",
+    )
+    outer_state_store = FileStateStore(lambda: outer_settings.state_dir)
+    outer_session_store = ToolSessionStore(
+        state_store=outer_state_store,
+        settings_provider=lambda: outer_settings,
+    )
+    outer_manager = RemoteManager(
+        lambda: outer_settings,
+        state_store=outer_state_store,
+    )
+    outer_terminal = build_terminal_runtime()
+    outer_oauth = OAuthState(tmp_path / "outer-oauth-state")
+    previous_oauth = configure_oauth_state(outer_oauth)
+    configure_state_store(outer_state_store)
+    configure_tool_session_store(outer_session_store)
+    configure_remote_manager(outer_manager)
+    await outer_terminal.start()
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-state",
+            remote_enabled=False,
+        )
+    )
+
+    def fail_oauth_start() -> int:
+        raise RuntimeError("OAuth start failed")
+
+    monkeypatch.setattr(runtime.oauth_state, "start", fail_oauth_start)
+    try:
+        with pytest.raises(RuntimeError, match="OAuth start failed"):
+            await runtime.start()
+
+        assert get_state_store() is outer_state_store
+        assert get_tool_session_store() is outer_session_store
+        assert remote_manager() is outer_manager
+        assert oauth_state() is outer_oauth
+        assert terminal_bridge._bridge_registry() is outer_terminal.bridges
+        assert terminal_conpty._conpty_registry() is outer_terminal.conpty
+        assert runtime.remote_manager._closed is True
+        assert runtime.terminal_runtime._closed is True
+        assert runtime._closed is True
+    finally:
+        await runtime.aclose()
+        await outer_terminal.aclose()
+        configure_oauth_state(previous_oauth)
         configure_remote_manager(None)
         configure_tool_session_store(None)
         configure_state_store(None)

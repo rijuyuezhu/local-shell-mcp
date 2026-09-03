@@ -28,8 +28,6 @@ _LIFECYCLE_INVENTORY = {
         "_MANAGED_JOB_TASKS",
         "_MANAGED_JOB_LEASES",
     ),
-    "oauth/core/models.py": ("_CLIENTS", "_CODES"),
-    "oauth/core/service.py": ("_AUTH_CODE_LOCK", "_OAUTH_CLIENT_LOCK"),
 }
 
 
@@ -185,8 +183,40 @@ def test_human_ui_live_state_is_controller_owned_not_module_registry_maps() -> (
     assert "class UiTerminalConnectionRegistry" in live_state_source
     assert "class UiRemoteFileSessionRegistry" in live_state_source
     assert controller_source.index("await self.human_ui_runtime.aclose()") < (
+        controller_source.index("await self.oauth_state.aclose()")
+    )
+    assert controller_source.index("await self.oauth_state.aclose()") < (
         controller_source.index("await self.remote_manager.aclose()")
     )
     assert controller_source.index("await self.remote_manager.aclose()") < (
         controller_source.index("await self.terminal_runtime.aclose()")
     )
+
+
+def test_oauth_live_state_is_controller_owned_not_module_registry_maps() -> (
+    None
+):
+    models_source = (_PACKAGE_ROOT / "oauth" / "core" / "models.py").read_text(
+        encoding="utf-8"
+    )
+    service_source = (
+        _PACKAGE_ROOT / "oauth" / "core" / "service.py"
+    ).read_text(encoding="utf-8")
+    state_source = (_PACKAGE_ROOT / "oauth" / "core" / "state.py").read_text(
+        encoding="utf-8"
+    )
+    routes_source = (_PACKAGE_ROOT / "oauth" / "http" / "routes.py").read_text(
+        encoding="utf-8"
+    )
+    controller_source = (_PACKAGE_ROOT / "executors" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    for symbol in ("_CLIENTS", "_CODES"):
+        assert symbol not in models_source
+    for symbol in ("_AUTH_CODE_LOCK", "_OAUTH_CLIENT_LOCK"):
+        assert symbol not in service_source
+    assert "class OAuthState" in state_source
+    assert "oauth_state: OAuthState" in controller_source
+    assert "build_oauth_state(settings.state_dir)" in controller_source
+    assert "initialize_dynamic_clients" not in routes_source

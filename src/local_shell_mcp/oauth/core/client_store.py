@@ -2,21 +2,23 @@
 
 import json
 import os
+from collections.abc import Mapping, MutableMapping
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from ...config.settings import get_settings
 from ...persistence import StateLayout
-from .models import _CLIENTS, OAuthClient
+from .models import OAuthClient
 
 CLIENT_STORE_FILENAME = "oauth-clients.json"
 CLIENT_STORE_VERSION = 1
 
 
-def client_store_path() -> Path:
+def client_store_path(*, state_dir: Path | None = None) -> Path:
     """Return the configured persistent OAuth client registry path."""
-    return StateLayout(get_settings().state_dir).oauth_clients_path
+    root = get_settings().state_dir if state_dir is None else state_dir
+    return StateLayout(root).oauth_clients_path
 
 
 def _decode_client(raw: object) -> OAuthClient:
@@ -50,9 +52,11 @@ def _decode_client(raw: object) -> OAuthClient:
     )
 
 
-def load_persisted_clients() -> int:
-    """Merge persisted approved clients into the active in-memory registry."""
-    path = client_store_path()
+def load_persisted_clients(
+    clients: MutableMapping[str, OAuthClient], *, state_dir: Path | None = None
+) -> int:
+    """Merge persisted approved clients into one explicit in-memory registry."""
+    path = client_store_path(state_dir=state_dir)
     if not path.exists():
         return 0
     try:
@@ -78,21 +82,23 @@ def load_persisted_clients() -> int:
             raise RuntimeError(
                 f"Invalid OAuth client registry contents: {path}"
             ) from exc
-        current = _CLIENTS.get(client.client_id)
+        current = clients.get(client.client_id)
         if current is None or current.created_at <= client.created_at:
-            _CLIENTS[client.client_id] = client
+            clients[client.client_id] = client
             loaded += 1
     return loaded
 
 
-def persist_approved_clients() -> None:
+def persist_approved_clients(
+    clients: Mapping[str, OAuthClient], *, state_dir: Path | None = None
+) -> None:
     """Atomically write locally approved clients to disk."""
-    path = client_store_path()
+    path = client_store_path(state_dir=state_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     approved_clients = (
-        _CLIENTS[key]
-        for key in sorted(_CLIENTS)
-        if _CLIENTS[key].approved_at is not None
+        clients[key]
+        for key in sorted(clients)
+        if clients[key].approved_at is not None
     )
     payload = {
         "version": CLIENT_STORE_VERSION,

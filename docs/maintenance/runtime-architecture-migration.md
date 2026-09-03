@@ -81,8 +81,6 @@ lifecycle semantics does not satisfy the migration.
 | --- | --- | --- |
 | `jobs/managed.py` / `_MANAGED_JOB_TASKS`, `_MANAGED_JOB_LEASES` | Jobs-owned live state | Deliberately defer to the Jobs functional-core phase so ownership and reconciliation are redesigned once, not moved through a temporary generic runtime holder. |
 | `jobs/managed.py` / `_MANAGED_JOB_HANDLERS` | process registration metadata pending Jobs review | Do not move merely to reduce a global-count metric; Phase 7 may make registration composition-scoped if that materially improves ownership/testing. |
-| `oauth/core/models.py` / `_CODES` plus `oauth/core/service.py` / `_AUTH_CODE_LOCK` | controller OAuth transient state | Authorization codes are short-lived process state and belong to an explicit OAuth owner when this area is migrated. |
-| `oauth/core/models.py` / `_CLIENTS` plus `oauth/core/service.py` / `_OAUTH_CLIENT_LOCK` | controller OAuth client state | Preserve persistence semantics for approved clients while making process-local ownership explicit; do not conflate durable client data with transient authorization codes. |
 
 Phase 5 migrated `remote/manager.py`: `ControllerRuntime` now constructs and
 owns the `RemoteManager`, starts its loop-bound enrollment state inside the
@@ -108,11 +106,23 @@ now provide isolation and deterministic cleanup.
 Human UI live state is now controller-owned as well. `HumanUiRuntime` owns the
 active terminal-connection registry plus the remote-file worker-session cache
 and machine-lock shards. Controller shutdown stops UI admission first, cancels
-active terminal/request owner tasks, explicitly sends `session_end` for cached
-remote-file worker sessions, then closes `RemoteManager` and `TerminalRuntime`.
-The HTTP facades retain only a reversible, non-owning compatibility binding
-until Phase 6 injects narrower UI dependencies into individual route/service
+active terminal/request owner tasks, and explicitly sends `session_end` for
+cached remote-file worker sessions while `RemoteManager` is still alive. The
+HTTP facades retain only a reversible, non-owning compatibility binding until
+Phase 6 injects narrower UI dependencies into individual route/service
 families; the old connection/cache maps and remote-file reset helper are gone.
+
+OAuth live state is now controller-owned too. `OAuthState` owns the dynamic
+client working set, authorization-code records, and their two consistency
+locks. Controller startup loads durable approved clients transactionally into
+the owned registry; public OAuth route construction is side-effect free.
+Approved clients remain persisted at approval time, while shutdown stops new
+OAuth mutations and clears only the process working set and transient codes.
+The former `_CLIENTS`, `_CODES`, `_OAUTH_CLIENT_LOCK`, and `_AUTH_CODE_LOCK`
+globals are gone; the remaining OAuth compatibility pointer is reversible and
+non-owning until Phase 6 injects the narrower dependency into consumers.
+Controller shutdown therefore orders these migrated owners as `HumanUiRuntime`
+→ `OAuthState` → `RemoteManager` → `TerminalRuntime`.
 
 The inventory is about ownership, not immediate movement. Jobs live maps are
 explicitly excluded from the earlier global-migration phase; immutable
