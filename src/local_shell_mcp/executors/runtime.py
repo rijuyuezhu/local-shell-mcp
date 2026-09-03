@@ -17,6 +17,7 @@ from ..remote.manager import (
 )
 from ..terminal.runtime import TerminalRuntime, build_terminal_runtime
 from ..tools.catalog import ToolCatalog
+from ..ui.http.live_state import HumanUiRuntime, build_human_ui_runtime
 from .search_composition import build_controller_tool_catalog
 
 
@@ -32,6 +33,8 @@ class ControllerRuntime:
     """Controller-owned live remote-worker control-plane state."""
     terminal_runtime: TerminalRuntime
     """Controller-owned terminal bridge and ConPTY live state."""
+    human_ui_runtime: HumanUiRuntime
+    """Controller-owned Human UI terminal and remote-file live state."""
     tool_catalog: ToolCatalog
     """Controller tool catalog with the migrated Search service already bound."""
     _installation: RuntimeServiceInstallation | None = field(
@@ -56,6 +59,9 @@ class ControllerRuntime:
         installation = install_runtime_services(self.services)
         terminal_started = False
         remote_started = False
+        remote_bound = False
+        human_ui_started = False
+        previous_remote_manager: RemoteManager | None = None
         try:
             await self.terminal_runtime.start()
             terminal_started = True
@@ -64,17 +70,28 @@ class ControllerRuntime:
             previous_remote_manager = configure_remote_manager(
                 self.remote_manager
             )
+            remote_bound = True
+            await self.human_ui_runtime.start()
+            human_ui_started = True
         except BaseException:
             try:
-                if remote_started:
-                    await self.remote_manager.aclose()
+                if human_ui_started:
+                    await self.human_ui_runtime.aclose()
             finally:
                 try:
-                    if terminal_started:
-                        await self.terminal_runtime.aclose()
+                    if remote_bound:
+                        configure_remote_manager(previous_remote_manager)
                 finally:
-                    installation.close()
-                    self._closed = True
+                    try:
+                        if remote_started:
+                            await self.remote_manager.aclose()
+                    finally:
+                        try:
+                            if terminal_started:
+                                await self.terminal_runtime.aclose()
+                        finally:
+                            installation.close()
+                            self._closed = True
             raise
         self._installation = installation
         self._previous_remote_manager = previous_remote_manager
@@ -85,9 +102,14 @@ class ControllerRuntime:
         installation = self._installation
         self._installation = None
         self._closed = True
+        human_ui_error: BaseException | None = None
         remote_error: BaseException | None = None
         terminal_error: BaseException | None = None
         try:
+            try:
+                await self.human_ui_runtime.aclose()
+            except BaseException as exc:
+                human_ui_error = exc
             try:
                 await self.remote_manager.aclose()
             except BaseException as exc:
@@ -103,6 +125,8 @@ class ControllerRuntime:
                 self._previous_remote_manager = None
             if installation is not None:
                 installation.close()
+        if human_ui_error is not None:
+            raise human_ui_error
         if remote_error is not None:
             raise remote_error
         if terminal_error is not None:
@@ -126,11 +150,13 @@ def build_controller_runtime(settings: Settings) -> ControllerRuntime:
         state_store=services.state_store,
     )
     terminal_runtime = build_terminal_runtime()
+    human_ui_runtime = build_human_ui_runtime(remote_manager.call)
     return ControllerRuntime(
         settings=settings,
         services=services,
         remote_manager=remote_manager,
         terminal_runtime=terminal_runtime,
+        human_ui_runtime=human_ui_runtime,
         tool_catalog=build_controller_tool_catalog(
             settings,
             services.tool_session_store,

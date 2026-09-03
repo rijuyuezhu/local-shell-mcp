@@ -28,7 +28,6 @@ _LIFECYCLE_INVENTORY = {
         "_MANAGED_JOB_TASKS",
         "_MANAGED_JOB_LEASES",
     ),
-    "ui/http/remote_files.py": ("_SESSION_CACHE",),
     "oauth/core/models.py": ("_CLIENTS", "_CODES"),
     "oauth/core/service.py": ("_AUTH_CODE_LOCK", "_OAUTH_CLIENT_LOCK"),
 }
@@ -157,4 +156,37 @@ def test_terminal_live_state_is_runtime_owned_not_module_registry_maps() -> (
     assert "build_terminal_runtime()" in worker_source
     assert terminal_runtime_source.index("await self.bridges.aclose()") < (
         terminal_runtime_source.index("await self.conpty.aclose()")
+    )
+
+
+def test_human_ui_live_state_is_controller_owned_not_module_registry_maps() -> (
+    None
+):
+    terminals_source = (
+        _PACKAGE_ROOT / "ui" / "http" / "terminals.py"
+    ).read_text(encoding="utf-8")
+    remote_files_source = (
+        _PACKAGE_ROOT / "ui" / "http" / "remote_files.py"
+    ).read_text(encoding="utf-8")
+    live_state_source = (
+        _PACKAGE_ROOT / "ui" / "http" / "live_state.py"
+    ).read_text(encoding="utf-8")
+    controller_source = (_PACKAGE_ROOT / "executors" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    for symbol in ("_CONNECTION_IDS", "_ACTIVE_CONNECTIONS"):
+        assert symbol not in terminals_source
+    for symbol in ("_SESSION_CACHE", "_MACHINE_LOCKS"):
+        assert symbol not in remote_files_source
+    assert "clear_ui_remote_file_sessions" not in remote_files_source
+    assert "human_ui_runtime: HumanUiRuntime" in controller_source
+    assert "build_human_ui_runtime(remote_manager.call)" in controller_source
+    assert "class UiTerminalConnectionRegistry" in live_state_source
+    assert "class UiRemoteFileSessionRegistry" in live_state_source
+    assert controller_source.index("await self.human_ui_runtime.aclose()") < (
+        controller_source.index("await self.remote_manager.aclose()")
+    )
+    assert controller_source.index("await self.remote_manager.aclose()") < (
+        controller_source.index("await self.terminal_runtime.aclose()")
     )

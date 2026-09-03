@@ -33,6 +33,10 @@ from local_shell_mcp.tool_session import (
     get_tool_session_store,
 )
 from local_shell_mcp.tool_session.store import ToolSessionStore
+from local_shell_mcp.ui.http.live_state import (
+    build_human_ui_runtime,
+    human_ui_runtime,
+)
 
 
 def test_runtime_services_install_explicit_store_dependencies(tmp_path):
@@ -399,6 +403,135 @@ async def test_controller_runtime_owns_and_restores_remote_manager_binding(
         assert runtime.remote_manager._closed is True
     finally:
         configure_remote_manager(None)
+
+
+@pytest.mark.asyncio
+async def test_controller_runtime_owns_and_restores_human_ui_binding(
+    tmp_path,
+) -> None:
+    outer = build_human_ui_runtime()
+    await outer.start()
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-state",
+            remote_enabled=False,
+        )
+    )
+    try:
+        assert human_ui_runtime() is outer
+        async with runtime.lifespan():
+            assert human_ui_runtime() is runtime.human_ui_runtime
+            assert (
+                runtime.human_ui_runtime.terminal_connections._loop
+                is asyncio.get_running_loop()
+            )
+            assert (
+                runtime.human_ui_runtime.remote_files._loop
+                is asyncio.get_running_loop()
+            )
+
+        assert human_ui_runtime() is outer
+    finally:
+        await outer.aclose()
+
+
+@pytest.mark.asyncio
+async def test_controller_runtime_closes_ui_before_remote_and_terminal(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-state",
+            remote_enabled=False,
+        )
+    )
+    await runtime.start()
+    events: list[str] = []
+    ui_close = runtime.human_ui_runtime.aclose
+    remote_close = runtime.remote_manager.aclose
+    terminal_close = runtime.terminal_runtime.aclose
+
+    async def close_ui() -> None:
+        events.append("ui")
+        await ui_close()
+
+    async def close_remote() -> None:
+        events.append("remote")
+        await remote_close()
+
+    async def close_terminal() -> None:
+        events.append("terminal")
+        await terminal_close()
+
+    monkeypatch.setattr(runtime.human_ui_runtime, "aclose", close_ui)
+    monkeypatch.setattr(runtime.remote_manager, "aclose", close_remote)
+    monkeypatch.setattr(runtime.terminal_runtime, "aclose", close_terminal)
+
+    await runtime.aclose()
+
+    assert events == ["ui", "remote", "terminal"]
+
+
+@pytest.mark.asyncio
+async def test_human_ui_start_failure_rolls_back_controller_dependencies(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    outer_settings = Settings(
+        workspace_root=tmp_path,
+        state_dir=tmp_path / "outer-state",
+    )
+    outer_state_store = FileStateStore(lambda: outer_settings.state_dir)
+    outer_session_store = ToolSessionStore(
+        state_store=outer_state_store,
+        settings_provider=lambda: outer_settings,
+    )
+    outer_manager = RemoteManager(
+        lambda: outer_settings,
+        state_store=outer_state_store,
+    )
+    outer_terminal = build_terminal_runtime()
+    outer_ui = build_human_ui_runtime()
+    configure_state_store(outer_state_store)
+    configure_tool_session_store(outer_session_store)
+    configure_remote_manager(outer_manager)
+    await outer_terminal.start()
+    await outer_ui.start()
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-state",
+            remote_enabled=False,
+        )
+    )
+
+    async def fail_ui_start() -> None:
+        raise RuntimeError("Human UI start failed")
+
+    monkeypatch.setattr(runtime.human_ui_runtime, "start", fail_ui_start)
+    try:
+        with pytest.raises(RuntimeError, match="Human UI start failed"):
+            await runtime.start()
+
+        assert get_state_store() is outer_state_store
+        assert get_tool_session_store() is outer_session_store
+        assert remote_manager() is outer_manager
+        assert terminal_bridge._bridge_registry() is outer_terminal.bridges
+        assert terminal_conpty._conpty_registry() is outer_terminal.conpty
+        assert human_ui_runtime() is outer_ui
+        assert runtime.remote_manager._closed is True
+        assert runtime.terminal_runtime._closed is True
+        assert runtime._closed is True
+    finally:
+        await runtime.aclose()
+        await outer_ui.aclose()
+        await outer_terminal.aclose()
+        configure_remote_manager(None)
+        configure_tool_session_store(None)
+        configure_state_store(None)
 
 
 @pytest.mark.asyncio

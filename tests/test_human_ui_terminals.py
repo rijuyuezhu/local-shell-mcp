@@ -27,6 +27,11 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
+from local_shell_mcp.ui.http.live_state import (
+    build_human_ui_runtime,
+    configure_human_ui_runtime,
+    human_ui_runtime,
+)
 from local_shell_mcp.ui.session import (
     UI_SESSION_BINDING_HEADER,
     UI_SESSION_BINDING_PROTOCOL_PREFIX,
@@ -50,10 +55,13 @@ def test_terminal_settings_are_bounded():
 @pytest.fixture(autouse=True)
 def _reset_settings_and_connections():
     clear_settings_cache()
-    terminal_module._ACTIVE_CONNECTIONS.clear()
-    yield
-    terminal_module._ACTIVE_CONNECTIONS.clear()
-    clear_settings_cache()
+    runtime = build_human_ui_runtime()
+    previous = configure_human_ui_runtime(runtime)
+    try:
+        yield
+    finally:
+        configure_human_ui_runtime(previous)
+        clear_settings_cache()
 
 
 def _configure(monkeypatch, tmp_path, *, auth_mode="none", **values):
@@ -513,7 +521,7 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
         ("send", "demo", "printf ok", True),
         ("resize", "demo", 120, 36),
     ]
-    assert not terminal_module._ACTIVE_CONNECTIONS
+    assert human_ui_runtime().terminal_connections.active_count() == 0
 
 
 def test_terminal_bridge_read_normalization_accepts_empty_poll():
@@ -687,7 +695,7 @@ def test_terminal_websocket_raw_pty_streams_binary_and_closes_bridge(
     assert ("write", bridge_id, b"echo raw\r") in calls
     assert ("resize", bridge_id, 120, 36) in calls
     assert calls[-1] == ("close", bridge_id)
-    assert not terminal_module._ACTIVE_CONNECTIONS
+    assert human_ui_runtime().terminal_connections.active_count() == 0
 
 
 def test_terminal_websocket_auto_falls_back_to_snapshot(monkeypatch, tmp_path):

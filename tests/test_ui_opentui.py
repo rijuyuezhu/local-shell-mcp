@@ -10,13 +10,22 @@ from starlette.websockets import WebSocketDisconnect
 import local_shell_mcp.ui.http.opentui as opentui
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.http.app import build_http_app
+from local_shell_mcp.ui.http.live_state import (
+    build_human_ui_runtime,
+    configure_human_ui_runtime,
+)
 
 
 @pytest.fixture(autouse=True)
 def _reset_settings() -> Generator[None]:
     clear_settings_cache()
-    yield
-    clear_settings_cache()
+    runtime = build_human_ui_runtime()
+    previous = configure_human_ui_runtime(runtime)
+    try:
+        yield
+    finally:
+        configure_human_ui_runtime(previous)
+        clear_settings_cache()
 
 
 def _configure(
