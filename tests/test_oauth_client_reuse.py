@@ -10,8 +10,13 @@ from starlette.applications import Starlette
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.mcp.app import _add_public_routes_to_mcp_http_app
 from local_shell_mcp.oauth.core import service as oauth_service
-from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES, OAuthClient
+from local_shell_mcp.oauth.core.models import OAuthClient
 from local_shell_mcp.oauth.core.requests import RegistrationRequest
+from local_shell_mcp.oauth.core.state import (
+    build_oauth_state,
+    configure_oauth_state,
+    oauth_state,
+)
 
 BASE_URL = "https://local-shell-mcp.example.com"
 REDIRECT_A = "https://client.example/callback-a"
@@ -20,14 +25,15 @@ CLIENT_NAME = "Reusable public client"
 
 
 @pytest.fixture(autouse=True)
-def _reset_oauth_state():
-    _CLIENTS.clear()
-    _CODES.clear()
+def _reset_oauth_state(tmp_path):
     clear_settings_cache()
-    yield
-    _CLIENTS.clear()
-    _CODES.clear()
-    clear_settings_cache()
+    state = build_oauth_state(tmp_path / "oauth-owner")
+    previous = configure_oauth_state(state)
+    try:
+        yield
+    finally:
+        configure_oauth_state(previous)
+        clear_settings_cache()
 
 
 @pytest.fixture
@@ -70,7 +76,7 @@ def test_registration_reuses_matching_client_ignoring_uri_order_and_duplicates(
     assert repeated.json()["reused"] is True
     assert repeated.json()["client_id"] == first.json()["client_id"]
     assert repeated.json()["redirect_uris"] == [REDIRECT_B, REDIRECT_A]
-    assert len(_CLIENTS) == 1
+    assert len(oauth_state().clients) == 1
 
 
 def test_registration_reuse_does_not_consume_pending_capacity(
@@ -96,7 +102,7 @@ def test_registration_reuse_does_not_consume_pending_capacity(
     assert blocked.json()["error_description"] == (
         "Too many pending OAuth client registrations"
     )
-    assert len(_CLIENTS) == 1
+    assert len(oauth_state().clients) == 1
 
 
 def test_registration_keeps_distinct_names_and_uri_sets_separate(oauth_client):
@@ -129,7 +135,7 @@ def test_registration_keeps_distinct_names_and_uri_sets_separate(oauth_client):
         )
         == 3
     )
-    assert len(_CLIENTS) == 3
+    assert len(oauth_state().clients) == 3
 
 
 def test_registration_prefers_approved_then_oldest_matching_client(
@@ -143,13 +149,13 @@ def test_registration_prefers_approved_then_oldest_matching_client(
         redirect_uris=(REDIRECT_B, REDIRECT_A),
         client_name=CLIENT_NAME,
     )
-    _CLIENTS["pending-old"] = OAuthClient(
+    oauth_state().clients["pending-old"] = OAuthClient(
         client_id="pending-old",
         redirect_uris=[REDIRECT_A, REDIRECT_B],
         client_name=CLIENT_NAME,
         created_at=10,
     )
-    _CLIENTS["approved-new"] = OAuthClient(
+    oauth_state().clients["approved-new"] = OAuthClient(
         client_id="approved-new",
         redirect_uris=[REDIRECT_A, REDIRECT_B],
         client_name=CLIENT_NAME,
@@ -161,8 +167,8 @@ def test_registration_prefers_approved_then_oldest_matching_client(
     assert approved.reused is True
     assert approved.client.client_id == "approved-new"
 
-    _CLIENTS.pop("approved-new")
-    _CLIENTS["pending-new"] = OAuthClient(
+    oauth_state().clients.pop("approved-new")
+    oauth_state().clients["pending-new"] = OAuthClient(
         client_id="pending-new",
         redirect_uris=[REDIRECT_A, REDIRECT_B],
         client_name=CLIENT_NAME,
@@ -180,7 +186,8 @@ def test_registration_reuses_approved_client_after_memory_reload(
     client_id = first.json()["client_id"]
     oauth_service._approve_client(client_id, now=int(time.time()) + 1)
 
-    _CLIENTS.clear()
+    oauth_state().clients.clear()
+    assert oauth_service.initialize_dynamic_clients() == 1
     reloaded_client = TestClient(
         _add_public_routes_to_mcp_http_app(Starlette())[0]
     )
@@ -192,8 +199,8 @@ def test_registration_reuses_approved_client_after_memory_reload(
     assert repeated.status_code == 200
     assert repeated.json()["reused"] is True
     assert repeated.json()["client_id"] == client_id
-    assert _CLIENTS[client_id].approved_at is not None
-    assert len(_CLIENTS) == 1
+    assert oauth_state().clients[client_id].approved_at is not None
+    assert len(oauth_state().clients) == 1
 
 
 def test_concurrent_matching_registrations_create_exactly_one_client(
@@ -210,7 +217,7 @@ def test_concurrent_matching_registrations_create_exactly_one_client(
     barrier = Barrier(workers)
     generated = itertools.count()
 
-    def slow_client_id() -> str:
+    def slow_client_id(_state=None) -> str:
         time.sleep(0.05)
         return f"concurrent-client-{next(generated)}"
 
@@ -227,7 +234,7 @@ def test_concurrent_matching_registrations_create_exactly_one_client(
     assert len({result.client.client_id for result in results}) == 1
     assert sum(not result.reused for result in results) == 1
     assert sum(result.reused for result in results) == workers - 1
-    assert len(_CLIENTS) == 1
+    assert len(oauth_state().clients) == 1
     assert next(generated) == 1
 
 

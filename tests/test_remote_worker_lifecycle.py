@@ -260,12 +260,34 @@ async def test_run_worker_locks_before_enrollment(
     async def fake_locked(*_args, **_kwargs) -> None:
         events.append("network")
 
+    fake_runtime = SimpleNamespace(dispatcher=SimpleNamespace(execute=None))
+
+    class RuntimeScope:
+        async def __aenter__(self):
+            events.append("runtime-enter")
+            return fake_runtime
+
+        async def __aexit__(self, *_args):
+            events.append("runtime-exit")
+
+    fake_runtime.lifespan = lambda: RuntimeScope()
+
     monkeypatch.setattr(lifecycle, "worker_run_lock", fake_lock)
     monkeypatch.setattr(worker, "_run_worker_locked", fake_locked)
+    monkeypatch.setattr(
+        "local_shell_mcp.remote_worker.runtime_composition.build_worker_runtime",
+        lambda _settings: fake_runtime,
+    )
 
     await worker.run_worker("https://controller.test", "invite")
 
-    assert events == ["lock-enter", "network", "lock-exit"]
+    assert events == [
+        "lock-enter",
+        "runtime-enter",
+        "network",
+        "runtime-exit",
+        "lock-exit",
+    ]
 
 
 def test_poll_timeout_helpers_bound_and_advertise_deadline() -> None:

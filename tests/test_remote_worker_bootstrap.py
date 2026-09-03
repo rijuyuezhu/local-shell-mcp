@@ -66,9 +66,11 @@ def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
 
 builtins.__import__ = guarded_import
 import local_shell_mcp.remote_worker
+from local_shell_mcp.remote_worker.dispatch import build_worker_dispatcher
 from local_shell_mcp.remote_worker.worker import worker_capabilities, worker_info
 
 assert "shell" in worker_capabilities()
+assert "search" in build_worker_dispatcher().handlers
 assert worker_info(".")["workdir"] == "."
 assert worker_info(".")["lsm_version"]
 """

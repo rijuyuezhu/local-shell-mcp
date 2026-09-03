@@ -20,7 +20,11 @@ def _configure_remote_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from local_shell_mcp.config.settings import clear_settings_cache
+    from local_shell_mcp.persistence import configure_state_store
+    from local_shell_mcp.tool_session import configure_tool_session_store
 
+    configure_tool_session_store(None)
+    configure_state_store(None)
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S", "1")
@@ -484,6 +488,7 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/agent_bridge/skills.py" in names
     assert "local_shell_mcp/agent_bridge/sources.py" in names
     assert "local_shell_mcp/agent_bridge/models.py" in names
+    assert "local_shell_mcp/jobs/reconciliation.py" in names
     assert "local_shell_mcp/jobs/runtime.py" in names
     assert "local_shell_mcp/persistence/__init__.py" in names
     assert "local_shell_mcp/persistence/store.py" in names
@@ -531,6 +536,7 @@ def test_worker_bundle_imports_without_checkout_fallback(tmp_path):
         "local_shell_mcp.agent_bridge.sources",
         "local_shell_mcp.schemas.result_models.agent",
         "local_shell_mcp.ops.shell",
+        "local_shell_mcp.jobs.reconciliation",
         "local_shell_mcp.jobs.runtime",
         "local_shell_mcp.ops.todo",
         "local_shell_mcp.ops.files",

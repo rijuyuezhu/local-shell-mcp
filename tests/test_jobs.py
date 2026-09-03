@@ -30,6 +30,8 @@ from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.ops import jobs as job_tool_ops
 from tests.helpers import python_shell_command
 
+pytestmark = pytest.mark.usefixtures("managed_jobs_runtime_owner")
+
 
 def test_job_operation_cleanup_uses_one_authoritative_state_set():
     row: dict[str, object] = {}
@@ -964,7 +966,6 @@ async def test_managed_job_tracks_progress_stop_retry_and_result(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     session_id = _create_session()
     release = asyncio.Event()
 
@@ -1022,7 +1023,6 @@ async def test_managed_job_tracks_progress_stop_retry_and_result(
     assert current.status == "succeeded"
     assert current.result == {"value": 7}
     assert current.progress == {"phase": "waiting", "value": 7}
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
@@ -1030,7 +1030,6 @@ async def test_managed_reference_stop_cancels_job_owned_by_source_session(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     source_session_id = _create_session()
     destination_session_id = "DEST0001"
     entered = asyncio.Event()
@@ -1059,7 +1058,6 @@ async def test_managed_reference_stop_cancels_job_owned_by_source_session(
     assert jobs_ops._job_lifecycle_session_ids(
         source_session_id, started.job_id
     ) == tuple(sorted((source_session_id, destination_session_id)))
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
@@ -2331,7 +2329,6 @@ async def test_legacy_managed_job_migrates_to_lost_and_can_retry(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     session_id = _create_session()
 
     async def handler(_context, payload):
@@ -2377,7 +2374,6 @@ async def test_legacy_managed_job_migrates_to_lost_and_can_retry(
     assert current is not None
     assert current.status == "succeeded"
     assert current.result == {"value": 7}
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 def test_managed_job_lease_registry_rejects_duplicates_and_releases(
@@ -2396,7 +2392,7 @@ def test_managed_job_lease_registry_rejects_duplicates_and_releases(
             events.append(("release", self.job_id))
 
     monkeypatch.setattr(job_managed, "ManagedJobLease", FakeLease)
-    job_managed._MANAGED_JOB_LEASES.clear()
+    job_managed.managed_jobs_runtime().leases.clear()
 
     lease = job_managed._acquire_managed_job_lease("job_registry")
     assert lease.job_id == "job_registry"
@@ -2416,28 +2412,30 @@ def test_launch_managed_job_releases_new_lease_when_task_creation_fails(
     monkeypatch,
 ):
     events: list[tuple[str, str]] = []
+    runtime = job_managed.managed_jobs_runtime()
 
     def fake_acquire(job_id: str):
         events.append(("acquire", job_id))
         lease = job_managed.ManagedJobLease.__new__(job_managed.ManagedJobLease)
-        job_managed._MANAGED_JOB_LEASES[job_id] = lease
+        runtime.leases[job_id] = lease
         return lease
 
     def fake_release(job_id: str) -> None:
         events.append(("release", job_id))
-        job_managed._MANAGED_JOB_LEASES.pop(job_id, None)
+        runtime.leases.pop(job_id, None)
 
     def fail_create_task(coroutine, *_args, **_kwargs):
         coroutine.close()
         raise RuntimeError("task creation failed")
 
-    job_managed._MANAGED_JOB_LEASES.clear()
-    monkeypatch.setattr(job_managed, "_acquire_managed_job_lease", fake_acquire)
-    monkeypatch.setattr(job_managed, "_release_managed_job_lease", fake_release)
+    runtime.leases.clear()
+    monkeypatch.setattr(runtime, "acquire_lease", fake_acquire)
+    monkeypatch.setattr(runtime, "release_lease", fake_release)
     monkeypatch.setattr(job_managed.asyncio, "create_task", fail_create_task)
 
     with pytest.raises(RuntimeError, match="task creation failed"):
         job_managed._launch_managed_job(
+            runtime,
             "SESSION1",
             "job_create_failure",
             "test-kind",
@@ -2456,7 +2454,6 @@ async def test_remote_job_companion_merges_controller_managed_and_worker_jobs(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     store = get_tool_session_store()
     remote_session = store.create_session(
         target="remote",
@@ -2536,7 +2533,6 @@ async def test_remote_job_companion_merges_controller_managed_and_worker_jobs(
     )
     assert cancelled.cancelled[0].job.status == "stopped"
     assert len(calls) == before
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
@@ -2544,7 +2540,6 @@ async def test_managed_job_failure_result_bounds_and_launch_rollback(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     session_id = _create_session()
 
     async def no_shells():
@@ -2661,7 +2656,6 @@ async def test_managed_job_failure_result_bounds_and_launch_rollback(
         f"{oversized.job_id}-attempt-1.log",
         f"{progress_job.job_id}-attempt-1.log",
     }
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
@@ -2669,7 +2663,6 @@ async def test_remote_job_list_keeps_controller_jobs_when_worker_is_offline(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     store = get_tool_session_store()
     remote_session = store.create_session(
         target="remote",
@@ -2706,7 +2699,6 @@ async def test_remote_job_list_keeps_controller_jobs_when_worker_is_offline(
         remote_session.session_id, cancel=[managed.job_id]
     )
     assert cancelled.cancelled[0].job.status == "stopped"
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
@@ -2714,7 +2706,6 @@ async def test_managed_actions_do_not_query_shell_inventory(
     tmp_path, monkeypatch
 ):
     _configure_job_state(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     session_id = _create_session()
     release = asyncio.Event()
 
@@ -2760,4 +2751,3 @@ async def test_managed_actions_do_not_query_shell_inventory(
         completed = await jobs_ops.job_tail_execute(session_id, started.job_id)
     assert completed.job.status == "succeeded"
     assert completed.job.result == {"value": 9}
-    jobs_ops.reset_managed_jobs_for_tests()

@@ -4,18 +4,16 @@ import asyncio
 import base64
 import binascii
 import codecs
+import contextlib
 import hashlib
 import mimetypes
 import re
-import threading
-from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, cast
 
 from ...config.settings import get_settings
-from ...ops.utils.remote_session import start_worker_session
+from ...ops.utils.remote_session import end_worker_session, start_worker_session
 from ...remote.manager import remote_manager
-from ...remote.service import call_remote_worker_tool
 from ...remote.tool_specs import (
     REMOTE_WORKER_ORIGIN_ARG,
     REMOTE_WORKER_ORIGIN_HUMAN_UI,
@@ -27,6 +25,7 @@ from ...schemas.result_models.transfer import (
 )
 from .common import sorted_entry_payloads
 from .image_preview import UiImagePreviewRequest, terminal_image_fields
+from .live_state import _RemoteFileSession, human_ui_runtime
 
 UI_REMOTE_FILE_TIMEOUT_S = 60
 UI_REMOTE_FILE_SAMPLE_BYTES = 4_096
@@ -34,7 +33,6 @@ UI_REMOTE_FILE_BINARY_PREVIEW_BYTES = 256
 UI_REMOTE_FILE_PREVIEW_MAX_LINES = 400
 UI_REMOTE_FILE_DIRECTORY_MAX_ENTRIES = 1_000
 UI_REMOTE_FILE_CHUNK_BYTES = 256 * 1024
-UI_REMOTE_FILE_LOCK_SHARDS = 64
 UI_REMOTE_INLINE_IMAGE_TYPES = frozenset(
     {
         "image/avif",
@@ -48,33 +46,11 @@ UI_REMOTE_INLINE_IMAGE_TYPES = frozenset(
 _DRIVE_PATH = re.compile(r"^[A-Za-z]:")
 
 
-@dataclass(frozen=True)
-class _RemoteFileSession:
-    machine: str
-    workdir: str
-    worker_session_id: str
+def _machine_lock(machine: str) -> Any:
+    return human_ui_runtime().remote_files.machine_lock(machine)
 
 
-_SESSION_CACHE: dict[str, _RemoteFileSession] = {}
-_SESSION_CACHE_LOCK = threading.Lock()
-_MACHINE_LOCKS = tuple(
-    threading.Lock() for _ in range(UI_REMOTE_FILE_LOCK_SHARDS)
-)
-
-
-def clear_ui_remote_file_sessions() -> None:
-    """Clear cached worker sessions. Intended for tests and process reset hooks."""
-    with _SESSION_CACHE_LOCK:
-        _SESSION_CACHE.clear()
-
-
-def _machine_lock(machine: str) -> threading.Lock:
-    digest = hashlib.sha256(machine.encode("utf-8")).digest()
-    shard = int.from_bytes(digest[:2], "big") % len(_MACHINE_LOCKS)
-    return _MACHINE_LOCKS[shard]
-
-
-async def _acquire_machine_lock(machine: str) -> threading.Lock:
+async def _acquire_machine_lock(machine: str) -> Any:
     lock = _machine_lock(machine)
     while not lock.acquire(blocking=False):
         await asyncio.sleep(0.01)
@@ -123,12 +99,10 @@ def _remote_machine(machine: str) -> tuple[str, str]:
         (item for item in inventory.machines if item.name == machine), None
     )
     if row is None:
-        with _SESSION_CACHE_LOCK:
-            _SESSION_CACHE.pop(machine, None)
+        human_ui_runtime().remote_files.discard_machine(machine)
         raise ValueError(f"Unknown remote machine: {machine}")
     if row.status != "online":
-        with _SESSION_CACHE_LOCK:
-            _SESSION_CACHE.pop(machine, None)
+        human_ui_runtime().remote_files.discard_machine(machine)
         raise ConnectionError(f"Remote machine {machine} is {row.status}")
     return row.name, str(row.workdir or ".")
 
@@ -160,22 +134,20 @@ def _remote_result_data(
 
 
 def _cached_session(machine: str, workdir: str) -> _RemoteFileSession | None:
-    with _SESSION_CACHE_LOCK:
-        cached = _SESSION_CACHE.get(machine)
-        if cached is None or cached.workdir != workdir:
-            return None
-        return cached
+    return human_ui_runtime().remote_files.cached(machine, workdir)
 
 
 async def _remote_file_session(machine: str) -> _RemoteFileSession:
+    registry = human_ui_runtime().remote_files
     machine, workdir = _remote_machine(machine)
-    cached = _cached_session(machine, workdir)
+    cached = registry.cached(machine, workdir)
     if cached is not None:
         return cached
 
     lock = await _acquire_machine_lock(machine)
     try:
-        cached = _cached_session(machine, workdir)
+        registry.require_open()
+        cached = registry.cached(machine, workdir)
         if cached is not None:
             return cached
         created = await start_worker_session(
@@ -183,6 +155,7 @@ async def _remote_file_session(machine: str) -> _RemoteFileSession:
             workdir=workdir,
             label="Human UI Workspace",
             timeout_s=_remote_timeout_s(),
+            call_worker=registry.call_worker,
         )
         worker_session_id = str(created.get("session_id") or "")
         if not worker_session_id:
@@ -194,18 +167,24 @@ async def _remote_file_session(machine: str) -> _RemoteFileSession:
             workdir=workdir,
             worker_session_id=worker_session_id,
         )
-        with _SESSION_CACHE_LOCK:
-            _SESSION_CACHE[machine] = session
+        try:
+            registry.store(session)
+        except BaseException:
+            with contextlib.suppress(BaseException):
+                await end_worker_session(
+                    machine=machine,
+                    worker_session_id=worker_session_id,
+                    timeout_s=_remote_timeout_s(),
+                    call_worker=registry.call_worker,
+                )
+            raise
         return session
     finally:
         lock.release()
 
 
 def _invalidate_session(machine: str, worker_session_id: str) -> None:
-    with _SESSION_CACHE_LOCK:
-        cached = _SESSION_CACHE.get(machine)
-        if cached is not None and cached.worker_session_id == worker_session_id:
-            _SESSION_CACHE.pop(machine, None)
+    human_ui_runtime().remote_files.invalidate(machine, worker_session_id)
 
 
 def _missing_worker_session(exc: Exception) -> bool:
@@ -223,28 +202,33 @@ async def call_remote_ui_workspace_tool(
     retry_session: bool = True,
 ) -> dict[str, Any]:
     """Call one session-bound remote UI tool, recreating stale sessions once."""
-    session = await _remote_file_session(machine)
-    payload = {
-        **args,
-        "session_id": session.worker_session_id,
-        REMOTE_WORKER_ORIGIN_ARG: REMOTE_WORKER_ORIGIN_HUMAN_UI,
-    }
-    timeout_s = _remote_timeout_s()
+    registry = human_ui_runtime().remote_files
+    operation = registry.begin_operation()
     try:
-        result = await call_remote_worker_tool(
-            machine, tool, payload, timeout_s
-        )
-        return _remote_result_data(result, machine=machine, tool=tool)
-    except Exception as exc:
-        if not retry_session or not _missing_worker_session(exc):
-            raise
-        _invalidate_session(machine, session.worker_session_id)
-        return await call_remote_ui_workspace_tool(
-            machine,
-            tool,
-            args,
-            retry_session=False,
-        )
+        session = await _remote_file_session(machine)
+        payload = {
+            **args,
+            "session_id": session.worker_session_id,
+            REMOTE_WORKER_ORIGIN_ARG: REMOTE_WORKER_ORIGIN_HUMAN_UI,
+        }
+        timeout_s = _remote_timeout_s()
+        try:
+            result = await registry.call_worker(
+                machine, tool, payload, timeout_s
+            )
+            return _remote_result_data(result, machine=machine, tool=tool)
+        except Exception as exc:
+            if not retry_session or not _missing_worker_session(exc):
+                raise
+            registry.invalidate(machine, session.worker_session_id)
+            return await call_remote_ui_workspace_tool(
+                machine,
+                tool,
+                args,
+                retry_session=False,
+            )
+    finally:
+        registry.end_operation(operation)
 
 
 call_remote_ui_file_tool = call_remote_ui_workspace_tool

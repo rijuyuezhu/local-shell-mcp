@@ -39,7 +39,7 @@ class McpToolContext:
 
 
 class ToolRegistry:
-    """Base class that registers MCP and HTTP tool routes for a group of related tools. Derived classes are automatically registered if they are placed in the `local_shell_mcp.tools.registry.*` module"""
+    """Base class for one explicitly cataloged group of MCP and HTTP tools."""
 
     name: str = ""
     """Stable registry name used for grouping and surface checks."""

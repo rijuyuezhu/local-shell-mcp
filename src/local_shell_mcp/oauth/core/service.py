@@ -4,7 +4,6 @@ import contextlib
 import secrets
 import time
 from dataclasses import dataclass
-from threading import RLock
 from typing import NoReturn
 from urllib.parse import urlparse
 
@@ -25,13 +24,14 @@ from ...config.settings import get_settings
 from ..protocol.adapters import LocalOAuthClient
 from ..protocol.token_codec import issue_access_token
 from .client_store import load_persisted_clients, persist_approved_clients
-from .models import _CLIENTS, _CODES, AuthCode, OAuthClient
+from .models import AuthCode, OAuthClient
 from .requests import (
     AuthorizationRequestInput,
     RegistrationRequest,
     TokenRequestInput,
 )
 from .scopes import default_scope
+from .state import OAuthState, oauth_state
 from .urls import issuer_url, normalize_resource, resource_url
 
 LOOPBACK_REDIRECT_HOSTS = {"127.0.0.1", "::1", "localhost"}
@@ -41,8 +41,6 @@ AUTHORIZATION_CODE_GENERATION_ATTEMPTS = 8
 PENDING_CODE_CAPACITY_ERROR = (
     "Too many pending authorization requests; try again later"
 )
-_AUTH_CODE_LOCK = RLock()
-_OAUTH_CLIENT_LOCK = RLock()
 
 
 class OAuthStateCapacityError(OAuth2Error):
@@ -183,8 +181,11 @@ def authorization_form_context(
     )
     client_name = auth_request.client_name if auth_request else "Unknown client"
     if auth_request is None and request_input.client_id:
-        with _OAUTH_CLIENT_LOCK:
-            client_record = _CLIENTS.get(request_input.client_id)
+        state = oauth_state()
+        state.require_open()
+        with state.client_lock:
+            state.require_open()
+            client_record = state.clients.get(request_input.client_id)
             if client_record and client_record.client_name:
                 client_name = client_record.client_name
     return AuthorizationFormContext(
@@ -236,11 +237,11 @@ def _is_allowed_redirect_uri(uri: str) -> bool:
     return _is_private_use_redirect_scheme(scheme, parsed.netloc)
 
 
-def _new_client_id() -> str:
+def _new_client_id(state: OAuthState) -> str:
     """Generate a unique client id while the client registry lock is held."""
     for _ in range(CLIENT_ID_GENERATION_ATTEMPTS):
         client_id = "local-shell-mcp-" + secrets.token_urlsafe(24)
-        if client_id not in _CLIENTS:
+        if client_id not in state.clients:
             return client_id
     raise InvalidRequestError(description="Unable to allocate unique client_id")
 
@@ -254,6 +255,7 @@ def _registration_key(
 
 
 def _matching_registered_client_locked(
+    state: OAuthState,
     client_name: str | None,
     redirect_uris: list[str],
 ) -> OAuthClient | None:
@@ -261,7 +263,7 @@ def _matching_registered_client_locked(
     requested = _registration_key(client_name, redirect_uris)
     matches = [
         client
-        for client in _CLIENTS.values()
+        for client in state.clients.values()
         if _registration_key(client.client_name, client.redirect_uris)
         == requested
     ]
@@ -286,25 +288,36 @@ def _client_expired(client: OAuthClient, *, now: int, ttl_s: int) -> bool:
     )
 
 
-def _prune_clients(*, now: int | None = None) -> None:
+def _prune_clients(
+    *, now: int | None = None, state: OAuthState | None = None
+) -> None:
     """Remove expired, unapproved client registrations from memory."""
-    with _OAUTH_CLIENT_LOCK:
+    current = state or oauth_state()
+    current.require_open()
+    with current.client_lock:
+        current.require_open()
         settings = get_settings()
         if settings.oauth_client_ttl_s <= 0:
             return
         current_time = int(time.time()) if now is None else now
-        for client_id, client in list(_CLIENTS.items()):
+        for client_id, client in list(current.clients.items()):
             if _client_expired(
                 client, now=current_time, ttl_s=settings.oauth_client_ttl_s
             ):
-                _CLIENTS.pop(client_id, None)
+                current.clients.pop(client_id, None)
 
 
 def initialize_dynamic_clients() -> int:
-    """Load approved clients and prune stale pending registrations."""
-    with _OAUTH_CLIENT_LOCK:
-        loaded = load_persisted_clients()
-        _prune_clients()
+    """Load approved clients into the currently bound compatibility owner."""
+    state = oauth_state()
+    state.require_open()
+    with state.client_lock:
+        state.require_open()
+        staged_clients = dict(state.clients)
+        loaded = load_persisted_clients(staged_clients)
+        state.clients.clear()
+        state.clients.update(staged_clients)
+        _prune_clients(state=state)
         return loaded
 
 
@@ -312,6 +325,8 @@ def register_dynamic_client(
     request: RegistrationRequest,
 ) -> DynamicClientRegistration:
     """Create or reuse one matching dynamic public-client registration."""
+    state = oauth_state()
+    state.require_open()
     if not request.redirect_uris:
         raise InvalidRequestError(
             description="redirect_uris must be a non-empty list"
@@ -319,11 +334,11 @@ def register_dynamic_client(
     redirect_uris = list(request.redirect_uris)
     if any(not _is_allowed_redirect_uri(uri) for uri in redirect_uris):
         raise InvalidRequestError(description=REGISTRATION_REDIRECT_ERROR)
-
-    with _OAUTH_CLIENT_LOCK:
-        _prune_clients()
+    with state.client_lock:
+        state.require_open()
+        _prune_clients(state=state)
         existing = _matching_registered_client_locked(
-            request.client_name, redirect_uris
+            state, request.client_name, redirect_uris
         )
         if existing is not None:
             registration = DynamicClientRegistration(
@@ -334,20 +349,20 @@ def register_dynamic_client(
             settings = get_settings()
             max_clients = settings.oauth_max_dynamic_clients
             pending_clients = sum(
-                client.approved_at is None for client in _CLIENTS.values()
+                client.approved_at is None for client in state.clients.values()
             )
             if max_clients > 0 and pending_clients >= max_clients:
                 raise InvalidRequestError(
                     description="Too many pending OAuth client registrations"
                 )
 
-            client_id = _new_client_id()
+            client_id = _new_client_id(state)
             client = OAuthClient(
                 client_id=client_id,
                 redirect_uris=redirect_uris,
                 client_name=request.client_name,
             )
-            _CLIENTS[client_id] = client
+            state.clients[client_id] = client
             registration = DynamicClientRegistration(
                 client=client,
                 reused=False,
@@ -374,6 +389,8 @@ def validate_authorization_request(
     request_input: AuthorizationRequestInput,
 ) -> AuthorizationRequest:
     """Validate authorization request parameters."""
+    state = oauth_state()
+    state.require_open()
     request_params = request_input.to_oauth_params()
     if request_params.get("response_type") != "code":
         _raise_invalid("Only response_type=code is supported")
@@ -385,10 +402,10 @@ def validate_authorization_request(
     normalized_resource = normalize_resource(resource)
     if normalized_resource != resource_url():
         _raise_invalid("resource does not match this MCP server")
-
-    with _OAUTH_CLIENT_LOCK:
-        _prune_clients()
-        client_record = _CLIENTS.get(client_id)
+    with state.client_lock:
+        state.require_open()
+        _prune_clients(state=state)
+        client_record = state.clients.get(client_id)
     if client_record is None:
         _raise_invalid("Unknown client_id")
     client = LocalOAuthClient(client_record)
@@ -423,10 +440,15 @@ def validate_authorization_request(
     )
 
 
-def _approve_client(client_id: str, *, now: int | None = None) -> OAuthClient:
+def _approve_client(
+    client_id: str, *, now: int | None = None, state: OAuthState | None = None
+) -> OAuthClient:
     """Persist a client after the local user approves its first authorization."""
-    with _OAUTH_CLIENT_LOCK:
-        client = _CLIENTS.get(client_id)
+    current = state or oauth_state()
+    current.require_open()
+    with current.client_lock:
+        current.require_open()
+        client = current.clients.get(client_id)
         if client is None:
             raise RuntimeError("Approved OAuth client is no longer registered")
         if client.approved_at is not None:
@@ -437,7 +459,7 @@ def _approve_client(client_id: str, *, now: int | None = None) -> OAuthClient:
             int(time.time()) if now is None else now,
         )
         try:
-            persist_approved_clients()
+            persist_approved_clients(current.clients)
         except OSError:
             client.approved_at = None
             raise
@@ -445,10 +467,10 @@ def _approve_client(client_id: str, *, now: int | None = None) -> OAuthClient:
         return client
 
 
-def _ensure_pending_code_capacity() -> None:
+def _ensure_pending_code_capacity(state: OAuthState) -> None:
     """Reject new codes without evicting valid pending authorization state."""
     max_codes = get_settings().oauth_max_pending_codes
-    pending_codes = len(_CODES)
+    pending_codes = len(state.codes)
     if max_codes <= 0 or pending_codes < max_codes:
         return
     with contextlib.suppress(Exception):
@@ -460,11 +482,11 @@ def _ensure_pending_code_capacity() -> None:
     raise OAuthStateCapacityError(description=PENDING_CODE_CAPACITY_ERROR)
 
 
-def _new_authorization_code() -> str:
+def _new_authorization_code(state: OAuthState) -> str:
     """Generate an authorization code without overwriting live state."""
     for _ in range(AUTHORIZATION_CODE_GENERATION_ATTEMPTS):
         code = secrets.token_urlsafe(32)
-        if code not in _CODES:
+        if code not in state.codes:
             return code
     raise InvalidRequestError(
         description="Unable to allocate authorization code"
@@ -475,10 +497,13 @@ def issue_authorization_response(
     request: AuthorizationRequest,
 ) -> AuthorizationResponse:
     """Atomically reserve capacity, approve the client, and store a one-time code."""
-    with _AUTH_CODE_LOCK:
-        _prune_codes()
-        _ensure_pending_code_capacity()
-        code = _new_authorization_code()
+    state = oauth_state()
+    state.require_open()
+    with state.code_lock:
+        state.require_open()
+        _prune_codes(state=state)
+        _ensure_pending_code_capacity(state)
+        code = _new_authorization_code(state)
         auth_code = AuthCode(
             code=code,
             client_id=request.client_id,
@@ -488,8 +513,8 @@ def issue_authorization_response(
             code_challenge=request.input.code_challenge,
             code_challenge_method=request.input.code_challenge_method,
         )
-        _approve_client(request.client_id)
-        _CODES[code] = auth_code
+        _approve_client(request.client_id, state=state)
+        state.codes[code] = auth_code
 
     audit(
         "oauth_code_issued",
@@ -523,24 +548,34 @@ def _auth_code_expired(code_obj: AuthCode, *, now: int, ttl_s: int) -> bool:
     return now - code_obj.created_at > ttl_s
 
 
-def _prune_codes(*, now: int | None = None, keep: str | None = None) -> None:
+def _prune_codes(
+    *,
+    now: int | None = None,
+    keep: str | None = None,
+    state: OAuthState | None = None,
+) -> None:
     """Remove used or expired authorization codes from the in-memory store."""
-    with _AUTH_CODE_LOCK:
+    current = state or oauth_state()
+    current.require_open()
+    with current.code_lock:
+        current.require_open()
         settings = get_settings()
         current_time = int(time.time()) if now is None else now
-        for code, code_obj in list(_CODES.items()):
+        for code, code_obj in list(current.codes.items()):
             if code == keep:
                 continue
             if code_obj.used or _auth_code_expired(
                 code_obj, now=current_time, ttl_s=settings.oauth_code_ttl_s
             ):
-                _CODES.pop(code, None)
+                current.codes.pop(code, None)
 
 
 def exchange_authorization_code(
     request_input: TokenRequestInput,
 ) -> TokenResponse:
     """Exchange an authorization code for a bearer token."""
+    state = oauth_state()
+    state.require_open()
     grant_type = request_input.grant_type or ""
     if grant_type != "authorization_code":
         raise UnsupportedGrantTypeError(grant_type=grant_type)
@@ -555,9 +590,10 @@ def exchange_authorization_code(
     verifier = request_input.code_verifier
 
     settings = get_settings()
-    with _AUTH_CODE_LOCK:
-        _prune_codes()
-        code_obj = _CODES.get(code)
+    with state.code_lock:
+        state.require_open()
+        _prune_codes(state=state)
+        code_obj = state.codes.get(code)
         if not code_obj or code_obj.used:
             raise InvalidGrantError(description="Unknown or used code")
 
@@ -578,7 +614,7 @@ def exchange_authorization_code(
             raise InvalidGrantError(description="PKCE verification failed")
 
         code_obj.used = True
-        _CODES.pop(code, None)
+        state.codes.pop(code, None)
     credential = issue_access_token(
         client_id=client_id, scope=code_obj.scope, resource=code_obj.resource
     )

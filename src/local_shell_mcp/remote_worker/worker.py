@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -418,11 +419,15 @@ async def _execute_worker_job_with_heartbeat(
     server: str,
     headers: dict[str, str],
     heartbeat_interval_s: float,
+    execute_tool: Callable[[str, dict[str, Any]], Awaitable[Any]] | None = None,
 ) -> Any:
     """Execute one job while independently refreshing control-side liveness."""
-    task = asyncio.create_task(
-        execute_worker_tool(job["tool"], dict(job.get("args") or {}))
-    )
+    execute = execute_tool or execute_worker_tool
+
+    async def run_tool() -> Any:
+        return await execute(job["tool"], dict(job.get("args") or {}))
+
+    task = asyncio.create_task(run_tool())
     heartbeat = asyncio.create_task(
         _worker_job_heartbeat_loop(
             task,
@@ -728,17 +733,34 @@ async def run_worker(
     profile_id: str | None = None,
 ) -> None:
     """Run one worker process while holding its lifecycle lock."""
+    from ..config.settings import Settings
     from .lifecycle import worker_run_lock
+    from .runtime_composition import build_worker_runtime
 
     profile_id = activate_worker_profile(profile_id)
+    runtime = build_worker_runtime(Settings())
     lock = (
         worker_run_lock() if profile_id is None else worker_run_lock(profile_id)
     )
     with lock:
-        if profile_id is None:
-            await _run_worker_locked(server, invite, name, workdir)
-        else:
-            await _run_worker_locked(server, invite, name, workdir, profile_id)
+        async with runtime.lifespan():
+            if profile_id is None:
+                await _run_worker_locked(
+                    server,
+                    invite,
+                    name,
+                    workdir,
+                    execute_tool=runtime.dispatcher.execute,
+                )
+            else:
+                await _run_worker_locked(
+                    server,
+                    invite,
+                    name,
+                    workdir,
+                    profile_id,
+                    execute_tool=runtime.dispatcher.execute,
+                )
 
 
 async def run_stored_worker(profile_id: str | None = None) -> None:
@@ -779,6 +801,7 @@ async def _run_worker_locked(
     name: str | None = None,
     workdir: str | None = None,
     profile_id: str | None = None,
+    execute_tool: Callable[[str, dict[str, Any]], Awaitable[Any]] | None = None,
 ) -> None:
     """Enroll or resume, then poll and execute jobs under the worker lock."""
     identity, data = await _enroll_or_resume_worker(
@@ -877,7 +900,11 @@ async def _run_worker_locked(
             continue
         try:
             result = await _execute_worker_job_with_heartbeat(
-                job, server, headers, heartbeat_interval_s
+                job,
+                server,
+                headers,
+                heartbeat_interval_s,
+                execute_tool,
             )
             out = {"job_id": job["id"], "ok": True, "data": to_jsonable(result)}
         except Exception as exc:

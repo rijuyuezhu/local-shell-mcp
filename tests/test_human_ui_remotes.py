@@ -5,8 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 import local_shell_mcp.ui.http.remotes as remotes_module
-from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.config.settings import clear_settings_cache, get_settings
 from local_shell_mcp.executors.http.app import build_http_app
+from local_shell_mcp.executors.runtime import build_controller_runtime
 from local_shell_mcp.oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ
 from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
 from local_shell_mcp.schemas.result_models.remote import (
@@ -79,21 +80,28 @@ def _headers(scope: str) -> dict[str, str]:
 def test_http_app_installs_public_worker_routes_when_remote_enabled(
     monkeypatch, tmp_path
 ):
-    client = _client(
-        monkeypatch, tmp_path, auth_mode="oauth", remote_enabled=True
+    _configure(
+        monkeypatch,
+        tmp_path / "workspace",
+        auth_mode="oauth",
+        remote_enabled=True,
     )
-
-    assert client.get("/join").status_code == 200
-    assert client.post("/remote/register", json={}).status_code == 409
+    runtime = build_controller_runtime(get_settings())
+    with TestClient(
+        build_http_app(runtime=runtime),
+        base_url=BASE_URL,
+        client=("203.0.113.15", 50006),
+    ) as client:
+        assert client.get("/join").status_code == 200
+        assert client.post("/remote/register", json={}).status_code == 409
 
 
 def test_http_app_omits_worker_routes_when_remote_disabled(
     monkeypatch, tmp_path
 ):
-    client = _client(monkeypatch, tmp_path, remote_enabled=False)
-
-    assert client.get("/join").status_code == 404
-    assert client.post("/remote/register", json={}).status_code == 404
+    with _client(monkeypatch, tmp_path, remote_enabled=False) as client:
+        assert client.get("/join").status_code == 404
+        assert client.post("/remote/register", json={}).status_code == 404
 
 
 def _inventory() -> RemoteListMachinesOutput:

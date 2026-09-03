@@ -1,5 +1,6 @@
 """Session-bound remote worker dispatch helpers."""
 
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from ...errors import exception_from_tool_error
@@ -7,7 +8,12 @@ from ...remote.tool_specs import (
     REMOTE_WORKER_ORIGIN_ARG,
     REMOTE_WORKER_ORIGIN_MODEL,
 )
+from ...tool_session.bindings import RemoteSessionBinding
 from ...tool_session.store import AgentSession
+
+type RemoteWorkerCall = Callable[
+    [str, str, dict[str, Any], int | None], Awaitable[dict[str, Any]]
+]
 
 
 async def call_remote_worker_tool(
@@ -22,8 +28,12 @@ async def call_remote_worker_tool(
     return await call_impl(machine, tool, args, timeout_s)
 
 
-def _remote_binding(session: AgentSession) -> tuple[str, str]:
-    """Return the machine and worker session id for a remote session."""
+def _remote_binding(
+    session: AgentSession | RemoteSessionBinding,
+) -> tuple[str, str]:
+    """Return remote coordinates, validating only legacy durable records."""
+    if isinstance(session, RemoteSessionBinding):
+        return session.machine, session.worker_session_id
     if session.target != "remote":
         raise ValueError("session is not remote")
     if not session.machine:
@@ -83,19 +93,21 @@ def _rewrite_worker_session_ids(
 
 
 async def call_remote_session_tool(
-    session: AgentSession,
+    session: AgentSession | RemoteSessionBinding,
     tool: str,
     args: dict[str, Any],
     timeout_s: int | None = None,
     *,
     audit_origin: str = REMOTE_WORKER_ORIGIN_MODEL,
+    call_worker: RemoteWorkerCall | None = None,
 ) -> dict[str, Any]:
     """Call a worker-side tool for a control-server remote session."""
     machine, worker_session_id = _remote_binding(session)
     payload = {**args, "session_id": worker_session_id}
     if audit_origin != REMOTE_WORKER_ORIGIN_MODEL:
         payload[REMOTE_WORKER_ORIGIN_ARG] = audit_origin
-    result = await call_remote_worker_tool(machine, tool, payload, timeout_s)
+    worker_call = call_worker or call_remote_worker_tool
+    result = await worker_call(machine, tool, payload, timeout_s)
     data = _remote_result_data(result, tool=tool, machine=machine)
     return cast(
         dict[str, Any],
@@ -113,17 +125,14 @@ async def start_worker_session(
     workdir: str,
     label: str | None = None,
     timeout_s: int | None = None,
+    call_worker: RemoteWorkerCall | None = None,
 ) -> dict[str, Any]:
     """Create a local agent session on a remote worker."""
     payload: dict[str, Any] = {"target": "local", "workdir": workdir}
     if label is not None:
         payload["label"] = label
-    result = await call_remote_worker_tool(
-        machine,
-        "session_start",
-        payload,
-        timeout_s,
-    )
+    worker_call = call_worker or call_remote_worker_tool
+    result = await worker_call(machine, "session_start", payload, timeout_s)
     return _remote_result_data(result, tool="session_start", machine=machine)
 
 
@@ -132,9 +141,11 @@ async def end_worker_session(
     machine: str,
     worker_session_id: str,
     timeout_s: int | None = None,
+    call_worker: RemoteWorkerCall | None = None,
 ) -> dict[str, Any]:
     """Release a worker-side session before or without controller registration."""
-    result = await call_remote_worker_tool(
+    worker_call = call_worker or call_remote_worker_tool
+    result = await worker_call(
         machine,
         "session_end",
         {"session_id": worker_session_id},

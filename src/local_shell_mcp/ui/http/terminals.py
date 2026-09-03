@@ -2,8 +2,6 @@
 
 import base64
 import contextlib
-import itertools
-import threading
 from typing import Any
 
 import jwt
@@ -51,6 +49,7 @@ from ...terminal.contracts import (
 from .common import bounded_text as _bounded_text
 from .common import json_error as _json_error
 from .common import require_remote_machine as _require_remote_machine
+from .live_state import human_ui_runtime
 from .session import has_valid_ui_origin, ui_session_claims
 from .terminal_protocol import (
     _BRIDGE_ID_PATTERN,
@@ -102,10 +101,6 @@ __all__ = [
     "_remote_result_data",
     "_websocket_protocols",
 ]
-
-_CONNECTION_IDS = itertools.count(1)
-_ACTIVE_CONNECTIONS: set[int] = set()
-_ACTIVE_CONNECTIONS_LOCK = threading.Lock()
 
 
 def _json_ok(data: Any = None, message: str = "") -> JSONResponse:
@@ -402,17 +397,11 @@ def _authorize_websocket(
 
 def _reserve_connection() -> int | None:
     maximum = get_settings().ui_terminal_max_connections
-    with _ACTIVE_CONNECTIONS_LOCK:
-        if len(_ACTIVE_CONNECTIONS) >= maximum:
-            return None
-        marker = next(_CONNECTION_IDS)
-        _ACTIVE_CONNECTIONS.add(marker)
-    return marker
+    return human_ui_runtime().terminal_connections.reserve(maximum)
 
 
 def _release_connection(marker: int) -> None:
-    with _ACTIVE_CONNECTIONS_LOCK:
-        _ACTIVE_CONNECTIONS.discard(marker)
+    human_ui_runtime().terminal_connections.release(marker)
 
 
 async def api_terminals(request: Request) -> Response:

@@ -14,8 +14,10 @@ from ..schemas.result_models.session import (
     SessionEndOutput,
     SessionStartOutput,
 )
+from ..tool_session.bindings import LocalSessionBinding, RemoteSessionBinding
 from ..tool_session.environment import collect_session_environment
 from ..tool_session.lifecycle import session_lifecycle_lock
+from ..tool_session.resolver import SessionResolver
 from ..tool_session.store import AgentSession, get_tool_session_store
 
 _INSTRUCTION_FILE_NAMES = (
@@ -377,18 +379,18 @@ async def _session_end_execute_unlocked(
 ) -> SessionEndOutput:
     """Stop owned work and remove one local or remote session."""
     store = get_tool_session_store()
-    session = store.prepare_session_termination(session_id)
+    binding = SessionResolver(store).prepare_cleanup_binding(session_id)
     stopped_jobs = await _stop_owned_jobs(session_id)
     stopped_shells: list[str] = []
-    if session.target == "local":
+    if isinstance(binding, LocalSessionBinding):
         stopped_shells = await _stop_owned_shells(session_id)
     remote_cleanup_succeeded: bool | None = None
     force_released = False
-    if session.target == "remote":
+    if isinstance(binding, RemoteSessionBinding):
         from .utils.remote_session import call_remote_session_tool
 
         try:
-            await call_remote_session_tool(session, "session_end", {})
+            await call_remote_session_tool(binding, "session_end", {})
         except Exception:
             remote_cleanup_succeeded = False
             if not force:

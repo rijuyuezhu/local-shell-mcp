@@ -247,6 +247,52 @@ def test_update_remote_session_workdir_clears_snapshots(tmp_path, monkeypatch):
         store.update_remote_session_workdir(local.session_id, "/remote")
 
 
+def test_remote_session_creation_requires_complete_durable_binding(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    store = store_module.ToolSessionStore()
+    store.clear()
+
+    with pytest.raises(ValueError, match="worker_session_id is required"):
+        store.create_session(
+            target="remote", workdir="/remote/work", machine="worker-a"
+        )
+    with pytest.raises(ValueError, match="workdir is required"):
+        store.create_session(
+            target="remote",
+            workdir="",
+            machine="worker-a",
+            worker_session_id="WORKER12",
+        )
+
+    assert store.list_sessions() == []
+
+
+def test_remote_session_round_trips_through_cold_store(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    clear_settings_cache()
+    first_store = store_module.ToolSessionStore()
+    first_store.clear()
+    session = first_store.create_session(
+        target="remote",
+        workdir="/remote/work",
+        machine="worker-a",
+        worker_session_id="WORKER12",
+    )
+
+    restored = store_module.ToolSessionStore().require_session(
+        session.session_id
+    )
+
+    assert restored == session
+    assert restored.machine == "worker-a"
+    assert restored.worker_session_id == "WORKER12"
+
+
 def test_sessions_and_snapshots_survive_new_store_instance(
     tmp_path, monkeypatch
 ):

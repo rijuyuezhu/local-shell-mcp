@@ -1,4 +1,4 @@
-"""OAuth data models and in-memory state stores."""
+"""OAuth data models."""
 
 import time
 from dataclasses import dataclass, field
@@ -42,7 +42,3 @@ class AuthCode:
     """Unix timestamp when the authorization code was issued."""
     used: bool = False
     """Whether this single-use code has already been exchanged."""
-
-
-_CLIENTS: dict[str, OAuthClient] = {}
-_CODES: dict[str, AuthCode] = {}

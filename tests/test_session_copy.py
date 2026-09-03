@@ -17,9 +17,10 @@ from local_shell_mcp.tool_session.lifecycle import session_lifecycle_lock
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.local_handlers import (
     call_local_tool,
-    local_tool_handlers,
 )
 from local_shell_mcp.utils.serialization import to_jsonable
+
+pytestmark = pytest.mark.usefixtures("managed_jobs_runtime_owner")
 
 
 def _workspace(tmp_path, monkeypatch):
@@ -29,7 +30,6 @@ def _workspace(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
-    local_tool_handlers.cache_clear()
     store = get_tool_session_store()
     store.clear()
     return tmp_path, store
@@ -679,7 +679,6 @@ async def test_session_copy_background_job_reports_progress_and_result(
     tmp_path, monkeypatch
 ):
     root, store = _workspace(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     (root / "src").mkdir()
     (root / "dst").mkdir()
     payload = b"background-copy" * 2048
@@ -722,7 +721,6 @@ async def test_session_copy_background_job_reports_progress_and_result(
     assert relation["route"] == "local_to_local"
     assert "copy completed" in tail.output
     assert (root / "dst" / "copied.bin").read_bytes() == payload
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
@@ -730,7 +728,6 @@ async def test_session_copy_background_pins_endpoint_workdirs_across_cwd_changes
     tmp_path, monkeypatch
 ):
     root, store = _workspace(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     for directory in ("src-original", "dst-original", "src-new", "dst-new"):
         (root / directory).mkdir()
     original_payload = b"original-background-payload" * 1024
@@ -794,7 +791,6 @@ async def test_session_copy_background_pins_endpoint_workdirs_across_cwd_changes
     ).read_bytes() == original_payload
     assert not (root / "dst-new" / "copied.bin").exists()
     assert not list((root / "dst-new").glob(".*local-shell-mcp-transfer*"))
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
@@ -802,7 +798,6 @@ async def test_session_copy_background_cancel_aborts_transaction(
     tmp_path, monkeypatch
 ):
     _root, store = _workspace(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     src = store.create_session(workdir=".")
     dst = store.create_session(workdir=".")
     read_started = asyncio.Event()
@@ -855,7 +850,6 @@ async def test_session_copy_background_cancel_aborts_transaction(
     assert aborted == [
         {"path": "dest.bin", "transfer_id": "transfer-background"}
     ]
-    jobs_ops.reset_managed_jobs_for_tests()
 
 
 @pytest.mark.asyncio
@@ -863,7 +857,6 @@ async def test_session_copy_background_retry_reuses_durable_payload(
     tmp_path, monkeypatch
 ):
     root, store = _workspace(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
     (root / "src").mkdir()
     (root / "dst").mkdir()
     src = store.create_session(workdir="src")
@@ -908,4 +901,3 @@ async def test_session_copy_background_retry_reuses_durable_payload(
     assert completed.result is not None
     assert completed.result["bytes"] == len(payload)
     assert (root / "dst" / "copied.bin").read_bytes() == payload
-    jobs_ops.reset_managed_jobs_for_tests()

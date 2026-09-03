@@ -16,8 +16,12 @@ from pydantic import ValidationError
 import local_shell_mcp.ui.http.routes as human_ui_module
 from local_shell_mcp.config.settings import Settings, clear_settings_cache
 from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.oauth.core.models import _CLIENTS, _CODES
 from local_shell_mcp.oauth.core.scopes import default_scope
+from local_shell_mcp.oauth.core.state import (
+    OAuthState,
+    configure_oauth_state,
+    oauth_state,
+)
 from local_shell_mcp.oauth.protocol.token_codec import (
     issue_access_token,
     validate_bearer_token,
@@ -45,14 +49,15 @@ UI_SESSION_BINDING = "b" * 43
 
 
 @pytest.fixture(autouse=True)
-def _reset_human_ui_state():
-    _CLIENTS.clear()
-    _CODES.clear()
+def _reset_human_ui_state(tmp_path):
+    state = OAuthState(tmp_path / ".oauth-state")
+    previous = configure_oauth_state(state)
     clear_settings_cache()
-    yield
-    _CLIENTS.clear()
-    _CODES.clear()
-    clear_settings_cache()
+    try:
+        yield state
+    finally:
+        configure_oauth_state(previous)
+        clear_settings_cache()
 
 
 def _configure_ui(monkeypatch, tmp_path, *, auth_mode="none", **values):
@@ -399,8 +404,8 @@ def test_browser_oauth_pkce_flow_reaches_authenticated_ui(
 ):
     base_url = "https://local-shell-mcp.example"
     admin_pin = "12345678"
-    _CLIENTS.clear()
-    _CODES.clear()
+    oauth_state().clients.clear()
+    oauth_state().codes.clear()
     _configure_ui(
         monkeypatch,
         tmp_path,

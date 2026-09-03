@@ -1,10 +1,9 @@
 """Durable metadata repository for explicit tool sessions."""
 
-from dataclasses import asdict
 from pathlib import Path
 
 from ..persistence import StateStore
-from .records import AgentSession, session_from_payload
+from .records import AgentSession, session_from_payload, session_to_payload
 
 
 class SessionRepository:
@@ -92,6 +91,6 @@ class SessionRepository:
     def write(self, session: AgentSession) -> None:
         """Persist one session record and refresh the process-local cache."""
         self._state_store.write_json(
-            self.metadata_path(session.session_id), asdict(session)
+            self.metadata_path(session.session_id), session_to_payload(session)
         )
         self._sessions[session.session_id] = session

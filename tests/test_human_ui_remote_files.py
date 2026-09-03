@@ -22,6 +22,10 @@ from local_shell_mcp.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
 )
+from local_shell_mcp.ui.http.live_state import (
+    build_human_ui_runtime,
+    configure_human_ui_runtime,
+)
 
 BASE_URL = "https://local-shell-mcp.example"
 PNG_1X1 = base64.b64decode(
@@ -125,9 +129,10 @@ class _FakeRemoteFiles:
         machine: str,
         tool: str,
         args: dict[str, object],
-        timeout_s: int,
+        timeout_s: int | None,
     ) -> dict[str, object]:
         assert machine == "edge"
+        assert timeout_s is not None
         assert 1 <= timeout_s <= 60
         self.calls.append((tool, dict(args)))
         if self.stale_once and tool == "list_files":
@@ -284,10 +289,12 @@ class _FakeRemoteFiles:
 @pytest.fixture(autouse=True)
 def _reset_state():
     clear_settings_cache()
-    remote_files_module.clear_ui_remote_file_sessions()
-    yield
-    remote_files_module.clear_ui_remote_file_sessions()
-    clear_settings_cache()
+    previous = configure_human_ui_runtime(build_human_ui_runtime())
+    try:
+        yield
+    finally:
+        configure_human_ui_runtime(previous)
+        clear_settings_cache()
 
 
 def _configure(
@@ -333,9 +340,7 @@ def _client(
     monkeypatch.setattr(
         remote_files_module, "start_worker_session", fake.start_session
     )
-    monkeypatch.setattr(
-        remote_files_module, "call_remote_worker_tool", fake.call
-    )
+    configure_human_ui_runtime(build_human_ui_runtime(fake.call))
     return TestClient(
         build_http_app(),
         base_url=BASE_URL,
@@ -714,9 +719,6 @@ def test_remote_files_reject_unavailable_machine(monkeypatch, tmp_path, status):
     )
     monkeypatch.setattr(
         remote_files_module, "start_worker_session", fake.start_session
-    )
-    monkeypatch.setattr(
-        remote_files_module, "call_remote_worker_tool", fake.call
     )
     client = TestClient(build_http_app(), base_url=BASE_URL)
 

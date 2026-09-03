@@ -23,14 +23,14 @@ from local_shell_mcp.executors.mcp.transport_security import (
 )
 from local_shell_mcp.oauth.core import service as oauth_service
 from local_shell_mcp.oauth.core.client_store import client_store_path
-from local_shell_mcp.oauth.core.models import (
-    _CLIENTS,
-    _CODES,
-    AuthCode,
-    OAuthClient,
-)
+from local_shell_mcp.oauth.core.models import AuthCode, OAuthClient
 from local_shell_mcp.oauth.core.scopes import supported_scopes
 from local_shell_mcp.oauth.core.service import _prune_clients, _prune_codes
+from local_shell_mcp.oauth.core.state import (
+    OAuthState,
+    configure_oauth_state,
+    oauth_state,
+)
 from local_shell_mcp.oauth.core.urls import resource_url
 from local_shell_mcp.oauth.http.authorization import _authorize_form
 from local_shell_mcp.oauth.http.responses import oauth_redirect
@@ -51,6 +51,16 @@ def _output_schema(tool: Any) -> dict[str, Any]:
 def _s256_challenge(verifier: str) -> str:
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _oauth_state_owner(tmp_path):
+    state = OAuthState(tmp_path / ".oauth-state")
+    previous = configure_oauth_state(state)
+    try:
+        yield state
+    finally:
+        configure_oauth_state(previous)
 
 
 def test_oauth_supported_scopes_include_feature_scopes():
@@ -87,8 +97,8 @@ def test_oauth_urls_ignore_untrusted_request_host_headers(
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ISSUER", raising=False)
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_RESOURCE", raising=False)
     clear_settings_cache()
-    _CLIENTS.clear()
-    _CODES.clear()
+    oauth_state().clients.clear()
+    oauth_state().codes.clear()
 
     headers = {
         "host": "attacker.example",
@@ -845,7 +855,7 @@ def test_oauth_registration_enforces_size_limits(tmp_path, monkeypatch):
         "LOCAL_SHELL_MCP_OAUTH_REGISTRATION_MAX_CLIENT_NAME_CHARS", "8"
     )
     clear_settings_cache()
-    _CLIENTS.clear()
+    oauth_state().clients.clear()
 
     client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
 
@@ -906,7 +916,7 @@ def test_oauth_approved_clients_persist_across_app_rebuild(
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "1234")
     clear_settings_cache()
-    _CLIENTS.clear()
+    oauth_state().clients.clear()
 
     first_app = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     registration = first_app.post(
@@ -943,16 +953,16 @@ def test_oauth_approved_clients_persist_across_app_rebuild(
     stored = json.loads(store_path.read_text())
     assert [client["client_id"] for client in stored["clients"]] == [client_id]
     assert stored["clients"][0]["approved_at"] is not None
-    approved_at = _CLIENTS[client_id].approved_at
+    approved_at = oauth_state().clients[client_id].approved_at
 
-    _CLIENTS.clear()
-    TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
+    oauth_state().clients.clear()
+    assert oauth_service.initialize_dynamic_clients() == 1
 
-    assert _CLIENTS[client_id].redirect_uris == [
+    assert oauth_state().clients[client_id].redirect_uris == [
         "https://client.example/callback"
     ]
-    assert _CLIENTS[client_id].client_name == "Persistent client"
-    assert _CLIENTS[client_id].approved_at == approved_at
+    assert oauth_state().clients[client_id].client_name == "Persistent client"
+    assert oauth_state().clients[client_id].approved_at == approved_at
 
 
 def test_oauth_client_approval_rolls_back_when_persistence_fails(
@@ -961,14 +971,14 @@ def test_oauth_client_approval_rolls_back_when_persistence_fails(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
-    _CLIENTS.clear()
-    _CLIENTS["pending"] = OAuthClient(
+    oauth_state().clients.clear()
+    oauth_state().clients["pending"] = OAuthClient(
         client_id="pending",
         redirect_uris=["https://client.example/callback"],
         created_at=10,
     )
 
-    def fail_persistence() -> None:
+    def fail_persistence(_clients) -> None:
         raise OSError("disk unavailable")
 
     monkeypatch.setattr(
@@ -978,7 +988,7 @@ def test_oauth_client_approval_rolls_back_when_persistence_fails(
     with pytest.raises(OSError, match="disk unavailable"):
         oauth_service._approve_client("pending", now=20)
 
-    assert _CLIENTS["pending"].approved_at is None
+    assert oauth_state().clients["pending"].approved_at is None
     assert not client_store_path().exists()
 
 
@@ -986,7 +996,7 @@ def test_oauth_invalid_client_store_fails_closed(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
-    _CLIENTS.clear()
+    oauth_state().clients.clear()
     store_path = client_store_path()
     store_path.parent.mkdir(parents=True, exist_ok=True)
     store_path.write_text("{not-json", encoding="utf-8")
@@ -994,7 +1004,7 @@ def test_oauth_invalid_client_store_fails_closed(tmp_path, monkeypatch):
     with pytest.raises(
         RuntimeError, match="Unable to read OAuth client registry"
     ):
-        _add_public_routes_to_mcp_http_app(Starlette())
+        oauth_service.initialize_dynamic_clients()
 
 
 def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
@@ -1004,7 +1014,7 @@ def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
     clear_settings_cache()
-    _CLIENTS.clear()
+    oauth_state().clients.clear()
 
     client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     first = client.post(
@@ -1024,7 +1034,7 @@ def test_oauth_registration_caps_dynamic_clients(tmp_path, monkeypatch):
     }
 
     first_client_id = first.json()["client_id"]
-    _CLIENTS[first_client_id].approved_at = int(time.time())
+    oauth_state().clients[first_client_id].approved_at = int(time.time())
     second = client.post(
         "/oauth/register",
         json={"redirect_uris": ["https://client.example/callback-2"]},
@@ -1036,18 +1046,18 @@ def test_prunes_stale_oauth_clients(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "10")
     clear_settings_cache()
-    _CLIENTS.clear()
-    _CLIENTS["active"] = OAuthClient(
+    oauth_state().clients.clear()
+    oauth_state().clients["active"] = OAuthClient(
         client_id="active",
         redirect_uris=["https://client.example/active"],
         created_at=100,
     )
-    _CLIENTS["old"] = OAuthClient(
+    oauth_state().clients["old"] = OAuthClient(
         client_id="old",
         redirect_uris=["https://client.example/old"],
         created_at=80,
     )
-    _CLIENTS["approved-old"] = OAuthClient(
+    oauth_state().clients["approved-old"] = OAuthClient(
         client_id="approved-old",
         redirect_uris=["https://client.example/approved"],
         created_at=0,
@@ -1056,7 +1066,7 @@ def test_prunes_stale_oauth_clients(tmp_path, monkeypatch):
 
     _prune_clients(now=100)
 
-    assert set(_CLIENTS) == {"active", "approved-old"}
+    assert set(oauth_state().clients) == {"active", "approved-old"}
 
 
 def test_oauth_registration_allows_new_client_after_ttl_prune(
@@ -1069,8 +1079,8 @@ def test_oauth_registration_allows_new_client_after_ttl_prune(
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "1")
     clear_settings_cache()
-    _CLIENTS.clear()
-    _CLIENTS["old"] = OAuthClient(
+    oauth_state().clients.clear()
+    oauth_state().clients["old"] = OAuthClient(
         client_id="old",
         redirect_uris=["https://client.example/old"],
         created_at=0,
@@ -1083,7 +1093,7 @@ def test_oauth_registration_allows_new_client_after_ttl_prune(
     )
 
     assert response.status_code == 201
-    assert "old" not in _CLIENTS
+    assert "old" not in oauth_state().clients
 
 
 def test_oauth_authorize_requires_registered_client_and_redirect(
@@ -1189,8 +1199,8 @@ def test_pin_needed_for_oauth_approval(tmp_path, monkeypatch):
     )
     monkeypatch.delenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", raising=False)
     clear_settings_cache()
-    _CLIENTS.clear()
-    _CODES.clear()
+    oauth_state().clients.clear()
+    oauth_state().codes.clear()
 
     client = TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
     register = client.post(
@@ -1216,7 +1226,7 @@ def test_pin_needed_for_oauth_approval(tmp_path, monkeypatch):
         in response.text
     )
     assert "code=" not in response.text
-    assert _CODES == {}
+    assert oauth_state().codes == {}
 
 
 def test_oauth_scope_enforced_for_rest_tools(tmp_path, monkeypatch):
@@ -1372,9 +1382,9 @@ def test_prunes_stale_codes(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CODE_TTL_S", "10")
     clear_settings_cache()
-    _CODES.clear()
+    oauth_state().codes.clear()
 
-    _CODES["active"] = AuthCode(
+    oauth_state().codes["active"] = AuthCode(
         code="active",
         client_id="client",
         redirect_uri="https://client.example/callback",
@@ -1386,7 +1396,7 @@ def test_prunes_stale_codes(tmp_path, monkeypatch):
     )
 
     k = "old_done"
-    _CODES[k] = AuthCode(
+    oauth_state().codes[k] = AuthCode(
         code=k,
         client_id="client",
         redirect_uri="https://client.example/callback",
@@ -1396,9 +1406,9 @@ def test_prunes_stale_codes(tmp_path, monkeypatch):
         code_challenge_method=None,
         created_at=100,
     )
-    setattr(_CODES[k], "u" + "sed", True)
+    setattr(oauth_state().codes[k], "u" + "sed", True)
 
-    _CODES["old"] = AuthCode(
+    oauth_state().codes["old"] = AuthCode(
         code="old",
         client_id="client",
         redirect_uri="https://client.example/callback",
@@ -1410,7 +1420,7 @@ def test_prunes_stale_codes(tmp_path, monkeypatch):
     )
 
     _prune_codes(now=100)
-    assert set(_CODES) == {"active"}
+    assert set(oauth_state().codes) == {"active"}
 
 
 def test_oauth_access_tokens_expire_by_default(tmp_path, monkeypatch):

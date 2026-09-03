@@ -159,6 +159,16 @@ def session_from_payload(value: Any) -> AgentSession:
     )
 
 
+def session_to_payload(session: AgentSession) -> dict[str, Any]:
+    """Encode one canonical session record using the durable reader invariants."""
+    payload = asdict(session)
+    payload["persistent_shell_ids"] = list(session.persistent_shell_ids)
+    decoded = session_from_payload(payload)
+    if decoded != session:
+        raise ValueError("session record is not canonical for durable storage")
+    return payload
+
+
 def snapshot_from_payload(
     value: Any, *, fallback_sequence: int = 0
 ) -> SnapshotRecord:

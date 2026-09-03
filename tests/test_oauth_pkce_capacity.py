@@ -14,13 +14,13 @@ from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.executors.mcp.app import _add_public_routes_to_mcp_http_app
 from local_shell_mcp.oauth.core import service as oauth_service
 from local_shell_mcp.oauth.core.client_store import client_store_path
-from local_shell_mcp.oauth.core.models import (
-    _CLIENTS,
-    _CODES,
-    AuthCode,
-    OAuthClient,
-)
+from local_shell_mcp.oauth.core.models import AuthCode, OAuthClient
 from local_shell_mcp.oauth.core.requests import AuthorizationRequestInput
+from local_shell_mcp.oauth.core.state import (
+    build_oauth_state,
+    configure_oauth_state,
+    oauth_state,
+)
 
 BASE_URL = "https://local-shell-mcp.example.com"
 RESOURCE_URL = f"{BASE_URL}/mcp"
@@ -29,14 +29,15 @@ ADMIN_PIN = "1234"
 
 
 @pytest.fixture(autouse=True)
-def _reset_oauth_state():
-    _CLIENTS.clear()
-    _CODES.clear()
+def _reset_oauth_state(tmp_path):
     clear_settings_cache()
-    yield
-    _CLIENTS.clear()
-    _CODES.clear()
-    clear_settings_cache()
+    state = build_oauth_state(tmp_path / "oauth-owner")
+    previous = configure_oauth_state(state)
+    try:
+        yield
+    finally:
+        configure_oauth_state(previous)
+        clear_settings_cache()
 
 
 @pytest.fixture
@@ -161,8 +162,8 @@ def test_authorization_requires_explicit_s256(
 
     assert response.status_code == 200
     assert expected_error in response.text
-    assert _CODES == {}
-    assert _CLIENTS[client_id].approved_at is None
+    assert oauth_state().codes == {}
+    assert oauth_state().clients[client_id].approved_at is None
 
 
 @pytest.mark.parametrize("challenge", ["x" * 42, "x" * 129, "x" * 42 + "!"])
@@ -179,7 +180,7 @@ def test_authorization_rejects_malformed_pkce_challenge(
 
     assert response.status_code == 200
     assert "Invalid code_challenge" in response.text
-    assert _CODES == {}
+    assert oauth_state().codes == {}
 
 
 @pytest.mark.parametrize("verifier", ["v" * 42, "v" * 129, "v" * 42 + "!"])
@@ -203,7 +204,7 @@ def test_token_exchange_rejects_malformed_pkce_verifier_without_consuming_code(
         "error": "invalid_grant",
         "error_description": "PKCE verification failed",
     }
-    assert code in _CODES
+    assert code in oauth_state().codes
 
     accepted = _exchange(
         oauth_client,
@@ -212,7 +213,7 @@ def test_token_exchange_rejects_malformed_pkce_verifier_without_consuming_code(
         verifier=valid_verifier,
     )
     assert accepted.status_code == 200
-    assert code not in _CODES
+    assert code not in oauth_state().codes
 
 
 def test_valid_s256_flow_rejects_wrong_verifier_and_code_reuse(oauth_client):
@@ -228,7 +229,7 @@ def test_valid_s256_flow_rejects_wrong_verifier_and_code_reuse(oauth_client):
     )
     assert wrong.status_code == 400
     assert wrong.json()["error"] == "invalid_grant"
-    assert code in _CODES
+    assert code in oauth_state().codes
 
     accepted = _exchange(
         oauth_client,
@@ -237,7 +238,7 @@ def test_valid_s256_flow_rejects_wrong_verifier_and_code_reuse(oauth_client):
         verifier=verifier,
     )
     assert accepted.status_code == 200
-    assert code not in _CODES
+    assert code not in oauth_state().codes
 
     reused = _exchange(
         oauth_client,
@@ -282,8 +283,8 @@ def test_pending_code_capacity_preserves_live_code_and_pending_client(
         "Too many pending authorization requests; try again later"
         in blocked.text
     )
-    assert set(_CODES) == {first_code}
-    assert _CLIENTS[second_client_id].approved_at is None
+    assert set(oauth_state().codes) == {first_code}
+    assert oauth_state().clients[second_client_id].approved_at is None
 
     persisted = json.loads(client_store_path().read_text(encoding="utf-8"))
     assert [item["client_id"] for item in persisted["clients"]] == [
@@ -306,7 +307,7 @@ def test_pending_code_capacity_preserves_live_code_and_pending_client(
         suffix="-second",
     )
     assert second.status_code == 302
-    assert _CLIENTS[second_client_id].approved_at is not None
+    assert oauth_state().clients[second_client_id].approved_at is not None
 
 
 @pytest.mark.parametrize("used", [False, True])
@@ -318,7 +319,7 @@ def test_expired_or_used_code_pruning_restores_capacity(
     clear_settings_cache()
 
     stale_code = "stale"
-    _CODES[stale_code] = AuthCode(
+    oauth_state().codes[stale_code] = AuthCode(
         code=stale_code,
         client_id="old-client",
         redirect_uri=REDIRECT_URL,
@@ -334,8 +335,8 @@ def test_expired_or_used_code_pruning_restores_capacity(
     response = _authorize(oauth_client, client_id, "n" * 64)
 
     assert response.status_code == 302
-    assert stale_code not in _CODES
-    assert len(_CODES) == 1
+    assert stale_code not in oauth_state().codes
+    assert len(oauth_state().codes) == 1
 
 
 def test_zero_pending_code_capacity_limit_allows_multiple_live_codes(
@@ -350,13 +351,13 @@ def test_zero_pending_code_capacity_limit_allows_multiple_live_codes(
 
     assert first.status_code == 302
     assert second.status_code == 302
-    assert len(_CODES) == 2
+    assert len(oauth_state().codes) == 2
 
 
 def test_capacity_rejection_survives_audit_failure(oauth_client, monkeypatch):
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES", "1")
     clear_settings_cache()
-    _CODES["live"] = AuthCode(
+    oauth_state().codes["live"] = AuthCode(
         code="live",
         client_id="existing-client",
         redirect_uri=REDIRECT_URL,
@@ -378,8 +379,8 @@ def test_capacity_rejection_survives_audit_failure(oauth_client, monkeypatch):
         "Too many pending authorization requests; try again later"
         in response.text
     )
-    assert set(_CODES) == {"live"}
-    assert _CLIENTS[client_id].approved_at is None
+    assert set(oauth_state().codes) == {"live"}
+    assert oauth_state().clients[client_id].approved_at is None
 
 
 def test_concurrent_authorization_respects_pending_code_capacity(
@@ -388,7 +389,7 @@ def test_concurrent_authorization_respects_pending_code_capacity(
     monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_PENDING_CODES", "1")
     clear_settings_cache()
     client_id = "approved-client"
-    _CLIENTS[client_id] = OAuthClient(
+    oauth_state().clients[client_id] = OAuthClient(
         client_id=client_id,
         redirect_uris=[REDIRECT_URL],
         approved_at=int(time.time()),
@@ -406,7 +407,7 @@ def test_concurrent_authorization_respects_pending_code_capacity(
     )
     code_counter = itertools.count()
 
-    def slow_code_generation() -> str:
+    def slow_code_generation(_state=None) -> str:
         time.sleep(0.05)
         return f"concurrent-code-{next(code_counter)}"
 
@@ -426,4 +427,4 @@ def test_concurrent_authorization_respects_pending_code_capacity(
         results = list(executor.map(lambda _: issue(), range(2)))
 
     assert sorted(results) == ["capacity", "issued"]
-    assert len(_CODES) == 1
+    assert len(oauth_state().codes) == 1

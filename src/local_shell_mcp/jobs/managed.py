@@ -90,9 +90,142 @@ _clear_pending_retry = job_lifecycle._clear_pending_retry
 type ManagedJobHandler = Callable[
     [ManagedJobContext, dict[str, Any]], Awaitable[dict[str, Any] | None]
 ]
-_MANAGED_JOB_HANDLERS: dict[str, ManagedJobHandler] = {}
-_MANAGED_JOB_TASKS: dict[str, asyncio.Task[None]] = {}
-_MANAGED_JOB_LEASES: dict[str, ManagedJobLease] = {}
+
+
+class ManagedJobsRuntime:
+    """Own process-local managed-job handlers, tasks, and liveness leases."""
+
+    def __init__(self) -> None:
+        self.handlers: dict[str, ManagedJobHandler] = {}
+        self.tasks: dict[str, asyncio.Task[None]] = {}
+        self.leases: dict[str, ManagedJobLease] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._started = False
+        self._admitting = False
+        self._closed = False
+
+    def register_handler(self, kind: str, handler: ManagedJobHandler) -> None:
+        """Register one handler on this owner without creating live state."""
+        if self._closed:
+            raise RuntimeError("managed jobs runtime is closed")
+        normalized = kind.strip()
+        if not normalized:
+            raise ValueError("managed job kind must not be empty")
+        existing = self.handlers.get(normalized)
+        if existing is not None and existing is not handler:
+            raise ValueError(
+                f"managed job handler already registered: {normalized}"
+            )
+        self.handlers[normalized] = handler
+
+    async def start(self) -> None:
+        """Bind this owner to one event loop and begin admitting new work."""
+        if self._closed:
+            raise RuntimeError(
+                "ManagedJobsRuntime cannot be restarted after close"
+            )
+        loop = asyncio.get_running_loop()
+        if self._loop is None:
+            self._loop = loop
+        elif self._loop is not loop:
+            raise RuntimeError("ManagedJobsRuntime cannot span event loops")
+        self._started = True
+        self._admitting = True
+
+    def require_admission(self) -> None:
+        """Reject new managed starts/retries outside the owning lifespan."""
+        if not self._started or not self._admitting or self._closed:
+            raise RuntimeError("managed jobs runtime is not accepting new work")
+
+    def has_local_task(self, job: Mapping[str, Any]) -> bool:
+        """Return whether this owner still runs the managed task for one row."""
+        if str(job.get("runtime_instance_id") or "") != PROCESS_INSTANCE_ID:
+            return False
+        task = self.tasks.get(str(job.get("job_id") or ""))
+        return task is not None and not task.done()
+
+    def acquire_lease(self, job_id: str) -> ManagedJobLease:
+        """Acquire and retain one cross-process liveness lease."""
+        if job_id in self.leases:
+            raise RuntimeError(f"managed job lease is already held: {job_id}")
+        lease = ManagedJobLease(job_id)
+        lease.acquire()
+        self.leases[job_id] = lease
+        return lease
+
+    def release_lease(self, job_id: str) -> None:
+        """Release one retained lease after terminal state is durable."""
+        lease = self.leases.pop(job_id, None)
+        if lease is not None:
+            lease.release()
+
+    async def aclose(self) -> None:
+        """Stop admission, cancel owned tasks, and release every retained lease."""
+        if self._closed:
+            return
+        if (
+            self._loop is not None
+            and asyncio.get_running_loop() is not self._loop
+        ):
+            raise RuntimeError(
+                "ManagedJobsRuntime must close on its owning event loop"
+            )
+        self._admitting = False
+        self._closed = True
+        tasks = tuple(self.tasks.values())
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        results = (
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if tasks
+            else ()
+        )
+        self.tasks.clear()
+
+        lease_error: BaseException | None = None
+        for job_id in tuple(self.leases):
+            try:
+                self.release_lease(job_id)
+            except BaseException as exc:
+                if lease_error is None:
+                    lease_error = exc
+
+        task_error = next(
+            (
+                result
+                for result in results
+                if isinstance(result, BaseException)
+                and not isinstance(result, asyncio.CancelledError)
+            ),
+            None,
+        )
+        if task_error is not None:
+            raise task_error
+        if lease_error is not None:
+            raise lease_error
+
+
+_MANAGED_JOBS_RUNTIME: ManagedJobsRuntime | None = None
+
+
+def configure_managed_jobs_runtime(
+    runtime: ManagedJobsRuntime | None,
+) -> ManagedJobsRuntime | None:
+    """Install a non-owning compatibility binding and return the prior owner."""
+    global _MANAGED_JOBS_RUNTIME
+    previous = _MANAGED_JOBS_RUNTIME
+    _MANAGED_JOBS_RUNTIME = runtime
+    return previous
+
+
+def managed_jobs_runtime() -> ManagedJobsRuntime:
+    """Return the controller-owned managed Jobs runtime compatibility binding."""
+    if _MANAGED_JOBS_RUNTIME is None:
+        raise RuntimeError(
+            "managed jobs runtime is not configured; start ControllerRuntime"
+        )
+    return _MANAGED_JOBS_RUNTIME
 
 
 def _managed_job_liveness(job: Mapping[str, Any]) -> str:
@@ -104,11 +237,8 @@ def _managed_job_liveness(job: Mapping[str, Any]) -> str:
 
 
 def _managed_job_has_local_task(job: Mapping[str, Any]) -> bool:
-    """Return whether this process owns one still-running managed task."""
-    if str(job.get("runtime_instance_id") or "") != PROCESS_INSTANCE_ID:
-        return False
-    task = _MANAGED_JOB_TASKS.get(str(job.get("job_id") or ""))
-    return task is not None and not task.done()
+    """Return whether the configured owner runs one still-live managed task."""
+    return managed_jobs_runtime().has_local_task(job)
 
 
 def _refresh_job_status(
@@ -116,7 +246,7 @@ def _refresh_job_status(
     active_shells: set[str] | None,
     now: float | None = None,
 ) -> MutableJobRow:
-    """Reconcile one row using this module's authoritative managed liveness."""
+    """Reconcile one row using this runtime's authoritative managed liveness."""
     return job_lifecycle._refresh_job_status(
         job,
         active_shells,
@@ -127,33 +257,18 @@ def _refresh_job_status(
 
 
 def _acquire_managed_job_lease(job_id: str) -> ManagedJobLease:
-    """Acquire and retain one job lease before publishing active metadata."""
-    if job_id in _MANAGED_JOB_LEASES:
-        raise RuntimeError(f"managed job lease is already held: {job_id}")
-    lease = ManagedJobLease(job_id)
-    lease.acquire()
-    _MANAGED_JOB_LEASES[job_id] = lease
-    return lease
+    """Acquire one lease through the configured managed Jobs owner."""
+    return managed_jobs_runtime().acquire_lease(job_id)
 
 
 def _release_managed_job_lease(job_id: str) -> None:
-    """Release one process-local managed-job lease after terminal persistence."""
-    lease = _MANAGED_JOB_LEASES.pop(job_id, None)
-    if lease is not None:
-        lease.release()
+    """Release one lease through the configured managed Jobs owner."""
+    managed_jobs_runtime().release_lease(job_id)
 
 
 def register_managed_job_handler(kind: str, handler: ManagedJobHandler) -> None:
-    """Register one process-local managed-job handler idempotently."""
-    normalized = kind.strip()
-    if not normalized:
-        raise ValueError("managed job kind must not be empty")
-    existing = _MANAGED_JOB_HANDLERS.get(normalized)
-    if existing is not None and existing is not handler:
-        raise ValueError(
-            f"managed job handler already registered: {normalized}"
-        )
-    _MANAGED_JOB_HANDLERS[normalized] = handler
+    """Register a handler on the configured controller-owned Jobs runtime."""
+    managed_jobs_runtime().register_handler(kind, handler)
 
 
 def _managed_store_update(
@@ -287,6 +402,7 @@ def _finish_managed_job(
 
 
 async def _run_managed_job(
+    runtime: ManagedJobsRuntime,
     session_id: str,
     job_id: str,
     kind: str,
@@ -295,7 +411,7 @@ async def _run_managed_job(
 ) -> None:
     """Run one registered managed handler and durably record its terminal state."""
     context = ManagedJobContext(session_id, job_id, log_path)
-    handler = _MANAGED_JOB_HANDLERS[kind]
+    handler = runtime.handlers[kind]
     try:
         result = await handler(context, dict(payload))
     except asyncio.CancelledError:
@@ -347,12 +463,13 @@ async def _run_managed_job(
             )
     finally:
         current = asyncio.current_task()
-        if _MANAGED_JOB_TASKS.get(job_id) is current:
-            _MANAGED_JOB_TASKS.pop(job_id, None)
-        _release_managed_job_lease(job_id)
+        if runtime.tasks.get(job_id) is current:
+            runtime.tasks.pop(job_id, None)
+        runtime.release_lease(job_id)
 
 
 def _launch_managed_job(
+    runtime: ManagedJobsRuntime,
     session_id: str,
     job_id: str,
     kind: str,
@@ -360,19 +477,22 @@ def _launch_managed_job(
     log_path: str,
 ) -> None:
     """Create and retain one process-local managed-job task."""
+    runtime.require_admission()
     acquired_here = False
-    if job_id not in _MANAGED_JOB_LEASES:
-        _acquire_managed_job_lease(job_id)
+    if job_id not in runtime.leases:
+        runtime.acquire_lease(job_id)
         acquired_here = True
     try:
         task = asyncio.create_task(
-            _run_managed_job(session_id, job_id, kind, payload, log_path),
+            _run_managed_job(
+                runtime, session_id, job_id, kind, payload, log_path
+            ),
             name=f"managed-job-{job_id}",
         )
-        _MANAGED_JOB_TASKS[job_id] = task
+        runtime.tasks[job_id] = task
     except BaseException:
         if acquired_here:
-            _release_managed_job_lease(job_id)
+            runtime.release_lease(job_id)
         raise
 
 
@@ -407,9 +527,11 @@ async def _start_managed_job_unlocked(
     cwd: str = ".",
 ) -> JobStartOutput:
     """Start one controller-managed task owned by an explicit agent session."""
+    runtime = managed_jobs_runtime()
+    runtime.require_admission()
     get_tool_session_store().touch_session(session_id)
     normalized_kind = kind.strip()
-    if normalized_kind not in _MANAGED_JOB_HANDLERS:
+    if normalized_kind not in runtime.handlers:
         raise ValueError(f"unknown managed job kind: {normalized_kind}")
     normalized_payload = _managed_json_dict(payload, label="payload")
     job_id = _new_job_id()
@@ -448,10 +570,11 @@ async def _start_managed_job_unlocked(
         "result": None,
     }
     try:
-        _acquire_managed_job_lease(job_id)
+        runtime.acquire_lease(job_id)
         with _store_transaction() as store:
             store["jobs"].append(job)
         _launch_managed_job(
+            runtime,
             session_id,
             job_id,
             normalized_kind,
@@ -459,7 +582,7 @@ async def _start_managed_job_unlocked(
             str(paths["log"]),
         )
     except BaseException:
-        _release_managed_job_lease(job_id)
+        runtime.release_lease(job_id)
         _remove_attempt_paths(paths)
         with contextlib.suppress(Exception), _store_transaction() as store:
             store["jobs"] = [
@@ -478,26 +601,14 @@ async def _start_managed_job_unlocked(
     return JobStartOutput(**_public_job(job).model_dump())
 
 
-def reset_managed_jobs_for_tests(*, clear_handlers: bool = False) -> None:
-    """Cancel process-local managed tasks and optionally clear test handlers."""
-    for task in tuple(_MANAGED_JOB_TASKS.values()):
-        task.cancel()
-    _MANAGED_JOB_TASKS.clear()
-    for job_id in tuple(_MANAGED_JOB_LEASES):
-        with contextlib.suppress(Exception):
-            _release_managed_job_lease(job_id)
-    job_recovery.reset_deferred_sequence_for_tests()
-    if clear_handlers:
-        _MANAGED_JOB_HANDLERS.clear()
-
-
 async def _stop_managed_job(
     session_id: str,
     job_id: str,
     operation_id: str,
 ) -> JobStopOutput:
     """Cancel one active process-local managed task and retain its durable log."""
-    task = _MANAGED_JOB_TASKS.get(job_id)
+    runtime = managed_jobs_runtime()
+    task = runtime.tasks.get(job_id)
     if task is not None and not task.done():
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -613,6 +724,8 @@ async def job_stop_managed_references_execute(
 
 async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
     """Relaunch one terminal managed operation from its durable handler payload."""
+    runtime = managed_jobs_runtime()
+    runtime.require_admission()
     operation_id = ""
     paths: JobAttemptPaths | None = None
     attempts = 0
@@ -624,7 +737,7 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
             if job.get("status") in ACTIVE_STATUSES:
                 raise RuntimeError(f"job is still active: {job_id}")
             kind = str(job.get("managed_kind") or "")
-            if kind not in _MANAGED_JOB_HANDLERS:
+            if kind not in runtime.handlers:
                 raise RuntimeError(
                     f"managed job handler is unavailable: {kind}"
                 )
@@ -632,7 +745,7 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
                 job.get("managed_payload"), label="payload"
             )
             attempts = int(job.get("attempts") or 1) + 1
-        _acquire_managed_job_lease(job_id)
+        runtime.acquire_lease(job_id)
         paths = _attempt_paths(job_id, attempts)
         write_private_text(paths["log"], "")
         with _store_transaction() as store:
@@ -660,6 +773,7 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
             )
             operation_id = _begin_job_operation(job, "retry")
         _launch_managed_job(
+            runtime,
             session_id,
             job_id,
             kind,
@@ -693,12 +807,12 @@ async def _retry_managed_job(session_id: str, job_id: str) -> JobRetryOutput:
         )
         return JobRetryOutput(**public.model_dump())
     except BaseException as exc:
-        task = _MANAGED_JOB_TASKS.get(job_id)
+        task = runtime.tasks.get(job_id)
         if task is not None and not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
-        _release_managed_job_lease(job_id)
+        runtime.release_lease(job_id)
         _remove_attempt_paths(paths)
         if operation_id:
             with contextlib.suppress(Exception), _store_transaction() as store:

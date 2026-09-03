@@ -6,7 +6,8 @@ the full MCP/FastAPI control-plane registry.
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
+from types import MappingProxyType
 from typing import Any
 
 from local_shell_mcp.remote.tool_specs import (
@@ -656,122 +657,168 @@ async def _transfer_http_abort_download(args: dict[str, Any]) -> Any:
     )
 
 
-_HANDLERS: dict[str, WorkerHandler] = {
-    "session_start": _session_start,
-    "session_change_cwd": _session_change_cwd,
-    "session_end": _session_end,
-    "dashboard_snapshot": _dashboard_snapshot,
-    "query_audit": _query_audit,
-    "get_audit_entry": _get_audit_entry,
-    "ui_session_snapshot": _ui_session_snapshot,
-    "read_todos": _read_todos,
-    "write_todos": _write_todos,
-    "list_agent_skills": _list_agent_skills,
-    "activate_agent_skill": _activate_agent_skill,
-    "read_agent_skill_file": _read_agent_skill_file,
-    "bash": _bash,
-    "run_python_code": _run_python_code,
-    "open_terminal_bridge": _open_terminal_bridge,
-    "read_terminal_bridge": _read_terminal_bridge,
-    "write_terminal_bridge": _write_terminal_bridge,
-    "resize_terminal_bridge": _resize_terminal_bridge,
-    "close_terminal_bridge": _close_terminal_bridge,
-    "start_persistent_shell": _start_persistent_shell,
-    "send_persistent_shell_input": _send_persistent_shell_input,
-    "resize_persistent_shell": _resize_persistent_shell,
-    "read_persistent_shell_output": _read_persistent_shell_output,
-    "kill_persistent_shell": _kill_persistent_shell,
-    "list_persistent_shells": _list_persistent_shells,
-    "job": _job,
-    "list_files": _list_files,
-    "write_file": _write_file,
-    "edit_lines": _edit_lines,
-    "hashline_edit": _hashline_edit,
-    "apply_patch": _apply_patch,
-    "delete_file_or_dir": _delete_file_or_dir,
-    "read": _read,
-    "tree_view": _tree_view,
-    "glob_search": _glob_search,
-    "search": _search,
-    "secret_scan": _secret_scan,
-    "transfer_stat": _transfer_stat,
-    "transfer_copy_file": _transfer_copy_file,
-    "transfer_read_chunk": _transfer_read_chunk,
-    "transfer_begin_write": _transfer_begin_write,
-    "transfer_write_chunk": _transfer_write_chunk,
-    "transfer_finish_write": _transfer_finish_write,
-    "transfer_abort_write": _transfer_abort_write,
-    "transfer_alloc_temp_path": _transfer_alloc_temp_path,
-    "transfer_pack_dir": _transfer_pack_dir,
-    "transfer_unpack_archive": _transfer_unpack_archive,
-    "transfer_delete_temp_path": _transfer_delete_temp_path,
-    "transfer_http_upload": _transfer_http_upload,
-    "transfer_http_download": _transfer_http_download,
-    "transfer_http_abort_download": _transfer_http_abort_download,
-}
+_DEFAULT_WORKER_HANDLERS: Mapping[str, WorkerHandler] = MappingProxyType(
+    {
+        "session_start": _session_start,
+        "session_change_cwd": _session_change_cwd,
+        "session_end": _session_end,
+        "dashboard_snapshot": _dashboard_snapshot,
+        "query_audit": _query_audit,
+        "get_audit_entry": _get_audit_entry,
+        "ui_session_snapshot": _ui_session_snapshot,
+        "read_todos": _read_todos,
+        "write_todos": _write_todos,
+        "list_agent_skills": _list_agent_skills,
+        "activate_agent_skill": _activate_agent_skill,
+        "read_agent_skill_file": _read_agent_skill_file,
+        "bash": _bash,
+        "run_python_code": _run_python_code,
+        "open_terminal_bridge": _open_terminal_bridge,
+        "read_terminal_bridge": _read_terminal_bridge,
+        "write_terminal_bridge": _write_terminal_bridge,
+        "resize_terminal_bridge": _resize_terminal_bridge,
+        "close_terminal_bridge": _close_terminal_bridge,
+        "start_persistent_shell": _start_persistent_shell,
+        "send_persistent_shell_input": _send_persistent_shell_input,
+        "resize_persistent_shell": _resize_persistent_shell,
+        "read_persistent_shell_output": _read_persistent_shell_output,
+        "kill_persistent_shell": _kill_persistent_shell,
+        "list_persistent_shells": _list_persistent_shells,
+        "job": _job,
+        "list_files": _list_files,
+        "write_file": _write_file,
+        "edit_lines": _edit_lines,
+        "hashline_edit": _hashline_edit,
+        "apply_patch": _apply_patch,
+        "delete_file_or_dir": _delete_file_or_dir,
+        "read": _read,
+        "tree_view": _tree_view,
+        "glob_search": _glob_search,
+        "search": _search,
+        "secret_scan": _secret_scan,
+        "transfer_stat": _transfer_stat,
+        "transfer_copy_file": _transfer_copy_file,
+        "transfer_read_chunk": _transfer_read_chunk,
+        "transfer_begin_write": _transfer_begin_write,
+        "transfer_write_chunk": _transfer_write_chunk,
+        "transfer_finish_write": _transfer_finish_write,
+        "transfer_abort_write": _transfer_abort_write,
+        "transfer_alloc_temp_path": _transfer_alloc_temp_path,
+        "transfer_pack_dir": _transfer_pack_dir,
+        "transfer_unpack_archive": _transfer_unpack_archive,
+        "transfer_delete_temp_path": _transfer_delete_temp_path,
+        "transfer_http_upload": _transfer_http_upload,
+        "transfer_http_download": _transfer_http_download,
+        "transfer_http_abort_download": _transfer_http_abort_download,
+    }
+)
 
-
-async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
-    """Execute one allowlisted remote-worker tool."""
-    if tool not in REMOTE_WORKER_TOOL_NAMES:
-        raise ValueError(f"unsupported remote worker tool: {tool}")
-    try:
-        handler = _HANDLERS[tool]
-    except KeyError as exc:
-        raise ValueError(f"unsupported remote worker tool: {tool}") from exc
-    payload = dict(args or {})
-    origin = str(
-        payload.pop(REMOTE_WORKER_ORIGIN_ARG, REMOTE_WORKER_ORIGIN_MODEL)
+WORKER_TOOL_NAMES = frozenset(_DEFAULT_WORKER_HANDLERS)
+if WORKER_TOOL_NAMES != REMOTE_WORKER_TOOL_NAMES:
+    missing = sorted(REMOTE_WORKER_TOOL_NAMES - WORKER_TOOL_NAMES)
+    extra = sorted(WORKER_TOOL_NAMES - REMOTE_WORKER_TOOL_NAMES)
+    raise RuntimeError(
+        f"remote worker handler/spec mismatch: missing={missing}, extra={extra}"
     )
-    if origin == REMOTE_WORKER_ORIGIN_HUMAN_UI:
-        return await handler(payload)
-    from local_shell_mcp.tool_session import tool_input_session_ids
 
-    session_ids = tool_input_session_ids(payload)
-    if not session_ids:
-        return await handler(payload)
 
-    from local_shell_mcp.audit import (
-        audit_call_context,
-        audit_tool_call_end,
-        audit_tool_call_start,
-        new_audit_call_id,
-    )
-    from local_shell_mcp.utils.serialization import to_jsonable
+class WorkerDispatcher:
+    """Composition-scoped remote-worker handler map with shared audit policy."""
 
-    call_id = new_audit_call_id()
-    start = time.time()
-    audit_tool_call_start(
-        call_id=call_id,
-        transport="worker",
-        tool=tool,
-        input=payload,
-    )
-    try:
-        with audit_call_context(call_id, session_ids):
-            result = await handler(payload)
-    except BaseException as exc:
+    def __init__(self, handlers: Mapping[str, WorkerHandler]) -> None:
+        resolved = dict(handlers)
+        names = frozenset(resolved)
+        if names != REMOTE_WORKER_TOOL_NAMES:
+            missing = sorted(REMOTE_WORKER_TOOL_NAMES - names)
+            extra = sorted(names - REMOTE_WORKER_TOOL_NAMES)
+            raise ValueError(
+                f"remote worker handler/spec mismatch: missing={missing}, extra={extra}"
+            )
+        self._handlers = MappingProxyType(resolved)
+
+    @property
+    def handlers(self) -> Mapping[str, WorkerHandler]:
+        """Return this dispatcher's immutable allowlisted handler map."""
+        return self._handlers
+
+    async def execute(self, tool: str, args: dict[str, Any]) -> Any:
+        """Execute one allowlisted remote-worker tool."""
+        if tool not in REMOTE_WORKER_TOOL_NAMES:
+            raise ValueError(f"unsupported remote worker tool: {tool}")
+        try:
+            handler = self._handlers[tool]
+        except KeyError as exc:
+            raise ValueError(f"unsupported remote worker tool: {tool}") from exc
+        payload = dict(args or {})
+        origin = str(
+            payload.pop(REMOTE_WORKER_ORIGIN_ARG, REMOTE_WORKER_ORIGIN_MODEL)
+        )
+        if origin == REMOTE_WORKER_ORIGIN_HUMAN_UI:
+            return await handler(payload)
+        from local_shell_mcp.tool_session import tool_input_session_ids
+
+        session_ids = tool_input_session_ids(payload)
+        if not session_ids:
+            return await handler(payload)
+
+        from local_shell_mcp.audit import (
+            audit_call_context,
+            audit_tool_call_end,
+            audit_tool_call_start,
+            new_audit_call_id,
+        )
+        from local_shell_mcp.utils.serialization import to_jsonable
+
+        call_id = new_audit_call_id()
+        start = time.time()
+        audit_tool_call_start(
+            call_id=call_id,
+            transport="worker",
+            tool=tool,
+            input=payload,
+        )
+        try:
+            with audit_call_context(call_id, session_ids):
+                result = await handler(payload)
+        except BaseException as exc:
+            audit_tool_call_end(
+                call_id=call_id,
+                transport="worker",
+                tool=tool,
+                ok=False,
+                duration_ms=int((time.time() - start) * 1000),
+                error={
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                    "repr": repr(exc),
+                },
+                session_ids=session_ids,
+            )
+            raise
         audit_tool_call_end(
             call_id=call_id,
             transport="worker",
             tool=tool,
-            ok=False,
+            ok=True,
             duration_ms=int((time.time() - start) * 1000),
-            error={
-                "type": type(exc).__name__,
-                "message": str(exc),
-                "repr": repr(exc),
-            },
+            output=to_jsonable(result),
             session_ids=session_ids,
         )
-        raise
-    audit_tool_call_end(
-        call_id=call_id,
-        transport="worker",
-        tool=tool,
-        ok=True,
-        duration_ms=int((time.time() - start) * 1000),
-        output=to_jsonable(result),
-        session_ids=session_ids,
-    )
-    return result
+        return result
+
+
+def build_worker_dispatcher(
+    *, handler_overrides: Mapping[str, WorkerHandler] | None = None
+) -> WorkerDispatcher:
+    """Build one fresh worker dispatcher with optional known-handler overrides."""
+    overrides = dict(handler_overrides or {})
+    unknown = set(overrides) - REMOTE_WORKER_TOOL_NAMES
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise ValueError(f"unknown remote worker handler override: {names}")
+    return WorkerDispatcher({**_DEFAULT_WORKER_HANDLERS, **overrides})
+
+
+async def execute_worker_tool(tool: str, args: dict[str, Any]) -> Any:
+    """Execute one worker tool through a fresh compatibility dispatcher."""
+    return await build_worker_dispatcher().execute(tool, args)

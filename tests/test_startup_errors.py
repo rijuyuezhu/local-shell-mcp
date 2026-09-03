@@ -29,6 +29,7 @@ from local_shell_mcp.remote_worker.worker import _handled_remote_exception
 from local_shell_mcp.schemas.result_models.shell import (
     CommandResult,
 )
+from local_shell_mcp.terminal.runtime import build_terminal_runtime
 from local_shell_mcp.terminal.tmux import TmuxSelection
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
@@ -154,13 +155,17 @@ async def test_conpty_reports_missing_shell_executable(
         raise FileNotFoundError(2, "missing", executable)
 
     monkeypatch.setattr(conpty, "_spawn_pty", fail_spawn)
-
-    with pytest.raises(ShellExecutableNotFoundError) as raised:
-        await conpty.start_shell(
-            shell_id="missing-conpty",
-            cwd=tmp_path,
-            command=None,
-        )
+    terminal_runtime = build_terminal_runtime()
+    await terminal_runtime.start()
+    try:
+        with pytest.raises(ShellExecutableNotFoundError) as raised:
+            await conpty.start_shell(
+                shell_id="missing-conpty",
+                cwd=tmp_path,
+                command=None,
+            )
+    finally:
+        await terminal_runtime.aclose()
 
     assert raised.value.executable == executable
     assert raised.value.command == executable

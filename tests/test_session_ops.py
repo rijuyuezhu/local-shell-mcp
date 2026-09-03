@@ -15,6 +15,7 @@ from local_shell_mcp.ops import session as session_ops
 from local_shell_mcp.ops import shell as shell_ops
 from local_shell_mcp.ops.utils import remote_session as remote_session_ops
 from local_shell_mcp.remote_worker import dispatch as worker_dispatch
+from local_shell_mcp.terminal.runtime import build_terminal_runtime
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import session as session_registry
 
@@ -456,7 +457,7 @@ async def test_session_end_preserves_local_state_when_pty_cleanup_fails(
 
 @pytest.mark.asyncio
 async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, managed_jobs_runtime_owner
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
@@ -526,7 +527,7 @@ async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
 
 @pytest.mark.asyncio
 async def test_destination_teardown_migrates_legacy_managed_copy(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, managed_jobs_runtime_owner
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
@@ -874,7 +875,8 @@ async def test_session_end_retries_unconfirmed_conpty_termination(
     session = store.create_session(workdir=tmp_path)
     process = CloseOncePty()
     conpty = shell_ops.conpty
-    conpty.reset_conpty_sessions_for_tests()
+    terminal_runtime = build_terminal_runtime()
+    await terminal_runtime.start()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
     )
@@ -911,6 +913,7 @@ async def test_session_end_retries_unconfirmed_conpty_termination(
     finally:
         if conpty.has_session("owned-conpty"):
             await conpty.kill_shell("owned-conpty")
+        await terminal_runtime.aclose()
 
 
 @pytest.mark.asyncio
@@ -1165,7 +1168,10 @@ async def test_expired_remote_session_end_can_still_release_worker_binding(
         return []
 
     async def fake_remote_call(remote_session, tool, args):
-        calls.append(remote_session.worker_session_id or "")
+        from local_shell_mcp.tool_session.bindings import RemoteSessionBinding
+
+        assert isinstance(remote_session, RemoteSessionBinding)
+        calls.append(remote_session.worker_session_id)
         assert tool == "session_end"
         assert args == {}
         return {"ended": True}
@@ -1242,7 +1248,8 @@ async def test_worker_dispatch_registers_session_end(monkeypatch):
 
     monkeypatch.setattr(session_ops, "session_end_execute", fake_session_end)
 
-    result = await worker_dispatch._HANDLERS["session_end"](
+    dispatcher = worker_dispatch.build_worker_dispatcher()
+    result = await dispatcher.handlers["session_end"](
         {"session_id": "WORKER12", "force": True}
     )
 

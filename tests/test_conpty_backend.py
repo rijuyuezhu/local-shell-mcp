@@ -16,6 +16,7 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
+from local_shell_mcp.terminal.runtime import build_terminal_runtime
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 
@@ -89,14 +90,17 @@ class FakePtyWithoutResize:
 
 
 @pytest.fixture(autouse=True)
-def _reset_conpty(monkeypatch):
-    conpty.reset_conpty_sessions_for_tests()
+async def _terminal_runtime(monkeypatch):
     monkeypatch.setattr(conpty, "audit", lambda *args, **kwargs: None)
     monkeypatch.setattr(conpty, "relative_display", lambda path: str(path))
     monkeypatch.setattr(conpty, "is_available", lambda: True)
     monkeypatch.setattr(conpty, "_shell_executable", lambda: "cmd.exe")
-    yield
-    conpty.reset_conpty_sessions_for_tests()
+    runtime = build_terminal_runtime()
+    await runtime.start()
+    try:
+        yield
+    finally:
+        await runtime.aclose()
 
 
 async def _wait_for_output(shell_id: str, marker: bytes) -> bytes:
