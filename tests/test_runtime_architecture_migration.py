@@ -23,7 +23,6 @@ _REMOTE_BRANCH_PATTERN = re.compile(
 _REMOTE_BRANCH_CEILING = (43, 18)
 
 _LIFECYCLE_INVENTORY = {
-    "terminal/bridge.py": ("_BRIDGES", "_SHELL_BRIDGES", "_PENDING_SHELLS"),
     "jobs/managed.py": (
         "_MANAGED_JOB_HANDLERS",
         "_MANAGED_JOB_TASKS",
@@ -126,3 +125,36 @@ def test_remote_manager_is_controller_owned_not_a_module_singleton() -> None:
     )
     assert "remote_manager: RemoteManager" in runtime_source
     assert "RemoteManager(" in runtime_source
+
+
+def test_terminal_live_state_is_runtime_owned_not_module_registry_maps() -> (
+    None
+):
+    bridge_source = (_PACKAGE_ROOT / "terminal" / "bridge.py").read_text(
+        encoding="utf-8"
+    )
+    conpty_source = (_PACKAGE_ROOT / "terminal" / "conpty.py").read_text(
+        encoding="utf-8"
+    )
+    terminal_runtime_source = (
+        _PACKAGE_ROOT / "terminal" / "runtime.py"
+    ).read_text(encoding="utf-8")
+    controller_source = (_PACKAGE_ROOT / "executors" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+    worker_source = (
+        _PACKAGE_ROOT / "remote_worker" / "runtime_composition.py"
+    ).read_text(encoding="utf-8")
+
+    for symbol in ("_BRIDGES", "_SHELL_BRIDGES", "_PENDING_SHELLS"):
+        assert symbol not in bridge_source
+    assert re.search(r"^_SESSIONS\s*[:=]", conpty_source, re.MULTILINE) is None
+    assert "reset_terminal_bridges_for_tests" not in bridge_source
+    assert "reset_conpty_sessions_for_tests" not in conpty_source
+    assert "terminal_runtime: TerminalRuntime" in controller_source
+    assert "terminal_runtime: TerminalRuntime" in worker_source
+    assert "build_terminal_runtime()" in controller_source
+    assert "build_terminal_runtime()" in worker_source
+    assert terminal_runtime_source.index("await self.bridges.aclose()") < (
+        terminal_runtime_source.index("await self.conpty.aclose()")
+    )

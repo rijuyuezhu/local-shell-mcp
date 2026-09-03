@@ -15,6 +15,7 @@ from local_shell_mcp.ops import session as session_ops
 from local_shell_mcp.ops import shell as shell_ops
 from local_shell_mcp.ops.utils import remote_session as remote_session_ops
 from local_shell_mcp.remote_worker import dispatch as worker_dispatch
+from local_shell_mcp.terminal.runtime import build_terminal_runtime
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.tools.registry import session as session_registry
 
@@ -874,7 +875,8 @@ async def test_session_end_retries_unconfirmed_conpty_termination(
     session = store.create_session(workdir=tmp_path)
     process = CloseOncePty()
     conpty = shell_ops.conpty
-    conpty.reset_conpty_sessions_for_tests()
+    terminal_runtime = build_terminal_runtime()
+    await terminal_runtime.start()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: True
     )
@@ -911,6 +913,7 @@ async def test_session_end_retries_unconfirmed_conpty_termination(
     finally:
         if conpty.has_session("owned-conpty"):
             await conpty.kill_shell("owned-conpty")
+        await terminal_runtime.aclose()
 
 
 @pytest.mark.asyncio

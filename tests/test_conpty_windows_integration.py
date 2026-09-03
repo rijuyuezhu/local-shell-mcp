@@ -7,6 +7,7 @@ import pytest
 
 import local_shell_mcp.terminal.conpty as conpty
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.terminal.runtime import build_terminal_runtime
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt" or not conpty.is_available(),
@@ -61,7 +62,8 @@ async def test_real_windows_conpty_persistent_shell_and_raw_bridge(
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
-    conpty.reset_conpty_sessions_for_tests()
+    runtime = build_terminal_runtime()
+    await runtime.start()
 
     shell_id = f"conpty-{uuid.uuid4().hex[:12]}"
     snapshot_marker = f"SNAPSHOT_{uuid.uuid4().hex}"
@@ -106,6 +108,7 @@ async def test_real_windows_conpty_persistent_shell_and_raw_bridge(
     finally:
         if attachment is not None:
             attachment.close_sync()
-        await conpty.kill_shell(shell_id)
-        conpty.reset_conpty_sessions_for_tests()
+        if conpty.has_session(shell_id):
+            await conpty.kill_shell(shell_id)
+        await runtime.aclose()
         clear_settings_cache()

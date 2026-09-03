@@ -333,11 +333,136 @@ class _RawSubscriber:
             return data, self._eof and not self._data
 
 
+class ConPtyRegistry:
+    """Own live ConPTY shell sessions for one process runtime."""
+
+    def __init__(self) -> None:
+        self.sessions: dict[str, _ConPtySession] = {}
+        self.lock = threading.RLock()
+        self._operations: dict[asyncio.Task[Any], int] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._closed = False
+
+    async def start(self) -> None:
+        """Bind async operation tracking to the owning event loop."""
+        if self._closed:
+            raise RuntimeError("ConPTY registry is closed")
+        loop = asyncio.get_running_loop()
+        if self._loop is not None and self._loop is not loop:
+            raise RuntimeError("ConPTY registry cannot span event loops")
+        self._loop = loop
+
+    def stop_admission(self) -> None:
+        """Reject new ConPTY operations before shutdown begins."""
+        self._closed = True
+
+    def require_open(self) -> None:
+        """Reject work after the owning runtime starts shutdown."""
+        if self._closed:
+            raise RuntimeError("ConPTY registry is closed")
+
+    def begin_operation(self) -> asyncio.Task[Any] | None:
+        """Track one in-flight async ConPTY operation on the owning loop."""
+        self.require_open()
+        loop = asyncio.get_running_loop()
+        if self._loop is None:
+            self._loop = loop
+        elif self._loop is not loop:
+            raise RuntimeError("ConPTY registry cannot span event loops")
+        task = asyncio.current_task()
+        if task is not None:
+            self._operations[task] = self._operations.get(task, 0) + 1
+        return task
+
+    def end_operation(self, task: asyncio.Task[Any] | None) -> None:
+        """Release one nested operation reference for the current task."""
+        if task is None:
+            return
+        count = self._operations.get(task, 0)
+        if count <= 1:
+            self._operations.pop(task, None)
+        else:
+            self._operations[task] = count - 1
+
+    def remove(self, session: _ConPtySession) -> None:
+        """Drop one session only when it is still this registry's live value."""
+        with self.lock:
+            if self.sessions.get(session.shell_id) is session:
+                self.sessions.pop(session.shell_id, None)
+
+    async def aclose(self) -> None:
+        """Cancel in-flight operations and force-close all remaining shells."""
+        loop = asyncio.get_running_loop()
+        if self._loop is not None and self._loop is not loop:
+            raise RuntimeError(
+                "ConPTY registry must close on its owning event loop"
+            )
+        self.stop_admission()
+
+        current = asyncio.current_task()
+        operations = tuple(
+            task
+            for task in self._operations
+            if task is not current and not task.done()
+        )
+        for task in operations:
+            task.cancel()
+        if operations:
+            await asyncio.gather(*operations, return_exceptions=True)
+
+        with self.lock:
+            sessions = list(self.sessions.values())
+        self._operations.clear()
+        if not sessions:
+            return
+
+        results = await asyncio.gather(
+            *(
+                asyncio.to_thread(session.close, force=True)
+                for session in sessions
+            ),
+            return_exceptions=True,
+        )
+        errors: list[BaseException] = []
+        for result in results:
+            if isinstance(result, BaseException):
+                errors.append(result)
+            elif result:
+                errors.append(RuntimeError(str(result)))
+        if errors:
+            raise RuntimeError(
+                f"failed to close {len(errors)} ConPTY shell session(s)"
+            ) from errors[0]
+
+
+_CONPTY_REGISTRY: ConPtyRegistry | None = None
+
+
+def configure_conpty_registry(
+    registry: ConPtyRegistry | None,
+) -> ConPtyRegistry | None:
+    """Install a non-owning compatibility binding and return the previous one."""
+    global _CONPTY_REGISTRY
+    previous = _CONPTY_REGISTRY
+    _CONPTY_REGISTRY = registry
+    return previous
+
+
+def _conpty_registry() -> ConPtyRegistry:
+    registry = _CONPTY_REGISTRY
+    if registry is None:
+        raise RuntimeError(
+            "ConPTY registry is not configured; start TerminalRuntime"
+        )
+    return registry
+
+
 @dataclass
 class _ConPtySession:
     shell_id: str
     process: Any
     lease: _ConPtyShellLease
+    registry: ConPtyRegistry
     cwd: Path
     command: str
     created: int
@@ -368,9 +493,7 @@ class _ConPtySession:
             self.lease.release()
         except Exception as exc:
             return repr(exc)
-        with _SESSIONS_LOCK:
-            if _SESSIONS.get(self.shell_id) is self:
-                _SESSIONS.pop(self.shell_id, None)
+        self.registry.remove(self)
         return ""
 
     def start_reader(self) -> None:
@@ -504,14 +627,11 @@ class _ConPtySession:
         return error
 
 
-_SESSIONS: dict[str, _ConPtySession] = {}
-_SESSIONS_LOCK = threading.RLock()
-
-
 def has_session(shell_id: str) -> bool:
     """Return whether one live ConPTY shell remains, reaping dead state."""
-    with _SESSIONS_LOCK:
-        session = _SESSIONS.get(shell_id)
+    registry = _conpty_registry()
+    with registry.lock:
+        session = registry.sessions.get(shell_id)
     if session is None:
         return False
     if session.process_alive():
@@ -523,8 +643,10 @@ def has_session(shell_id: str) -> bool:
 def _get_session(shell_id: str) -> _ConPtySession:
     if not _SHELL_ID_PATTERN.fullmatch(shell_id):
         raise RuntimeError(f"Persistent shell session not found: {shell_id}")
-    with _SESSIONS_LOCK:
-        session = _SESSIONS.get(shell_id)
+    registry = _conpty_registry()
+    registry.require_open()
+    with registry.lock:
+        session = registry.sessions.get(shell_id)
     if session is None:
         raise RuntimeError(f"Persistent shell session not found: {shell_id}")
     if not session.process_alive():
@@ -543,158 +665,178 @@ async def start_shell(
     owner_session_id: str | None = None,
 ) -> StartPersistentShellOutput:
     """Start and register one Windows ConPTY persistent shell."""
-    if not is_available():
-        raise RuntimeError("pywinpty is not available")
-    if not _SHELL_ID_PATTERN.fullmatch(shell_id):
-        raise ValueError("Invalid persistent shell id")
-    with _SESSIONS_LOCK:
-        stale_sessions = [
-            value for value in _SESSIONS.values() if not value.process_alive()
-        ]
-    for stale_session in stale_sessions:
-        await asyncio.to_thread(stale_session.close, force=False)
-    with _SESSIONS_LOCK:
-        if shell_id in _SESSIONS:
+    registry = _conpty_registry()
+    operation = registry.begin_operation()
+    try:
+        if not is_available():
+            raise RuntimeError("pywinpty is not available")
+        if not _SHELL_ID_PATTERN.fullmatch(shell_id):
+            raise ValueError("Invalid persistent shell id")
+        with registry.lock:
+            stale_sessions = [
+                value
+                for value in registry.sessions.values()
+                if not value.process_alive()
+            ]
+        for stale_session in stale_sessions:
+            await asyncio.to_thread(stale_session.close, force=False)
+        with registry.lock:
+            registry.require_open()
+            if shell_id in registry.sessions:
+                raise RuntimeError(
+                    f"Persistent shell session already exists: {shell_id}"
+                )
+        initial = initial_command(command)
+        args = _persistent_shell_args(command)
+        lease = _ConPtyShellLease(shell_id)
+        cancelled: asyncio.CancelledError | None = None
+        try:
+            await asyncio.to_thread(lease.acquire)
+            spawn_task = asyncio.create_task(
+                asyncio.to_thread(
+                    _spawn_pty,
+                    args,
+                    cwd,
+                    CONPTY_DEFAULT_COLUMNS,
+                    CONPTY_DEFAULT_ROWS,
+                )
+            )
+            try:
+                process = await asyncio.shield(spawn_task)
+            except asyncio.CancelledError as exc:
+                cancelled = exc
+                while not spawn_task.done():
+                    try:
+                        await asyncio.shield(spawn_task)
+                    except asyncio.CancelledError:
+                        continue
+                process = spawn_task.result()
+            except FileNotFoundError as exc:
+                raise process_start_not_found_error(
+                    exc,
+                    executable=str(args[0]),
+                    command=initial,
+                    cwd=cwd,
+                ) from exc
+        except BaseException:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(lease.release)
+            raise
+        session = _ConPtySession(
+            shell_id=shell_id,
+            process=process,
+            lease=lease,
+            registry=registry,
+            cwd=cwd,
+            command=initial,
+            created=int(time.time()),
+            owner_session_id=owner_session_id,
+        )
+        with registry.lock:
+            registry.require_open()
+            duplicate = shell_id in registry.sessions
+            if not duplicate:
+                registry.sessions[shell_id] = session
+        if duplicate:
+            await asyncio.to_thread(session.close, force=True)
             raise RuntimeError(
                 f"Persistent shell session already exists: {shell_id}"
             )
-    initial = initial_command(command)
-    args = _persistent_shell_args(command)
-    lease = _ConPtyShellLease(shell_id)
-    cancelled: asyncio.CancelledError | None = None
-    try:
-        await asyncio.to_thread(lease.acquire)
-        spawn_task = asyncio.create_task(
-            asyncio.to_thread(
-                _spawn_pty,
-                args,
-                cwd,
-                CONPTY_DEFAULT_COLUMNS,
-                CONPTY_DEFAULT_ROWS,
+        if cancelled is not None:
+            cleanup_task = asyncio.create_task(
+                asyncio.to_thread(session.close, force=True)
             )
-        )
-        try:
-            process = await asyncio.shield(spawn_task)
-        except asyncio.CancelledError as exc:
-            cancelled = exc
-            while not spawn_task.done():
+            while not cleanup_task.done():
                 try:
-                    await asyncio.shield(spawn_task)
+                    await asyncio.shield(cleanup_task)
                 except asyncio.CancelledError:
                     continue
-            process = spawn_task.result()
-        except FileNotFoundError as exc:
-            raise process_start_not_found_error(
-                exc,
-                executable=str(args[0]),
-                command=initial,
-                cwd=cwd,
-            ) from exc
-    except BaseException:
-        with contextlib.suppress(Exception):
-            await asyncio.to_thread(lease.release)
-        raise
-    session = _ConPtySession(
-        shell_id=shell_id,
-        process=process,
-        lease=lease,
-        cwd=cwd,
-        command=initial,
-        created=int(time.time()),
-        owner_session_id=owner_session_id,
-    )
-    with _SESSIONS_LOCK:
-        duplicate = shell_id in _SESSIONS
-        if not duplicate:
-            _SESSIONS[shell_id] = session
-    if duplicate:
-        await asyncio.to_thread(session.close, force=True)
-        raise RuntimeError(
-            f"Persistent shell session already exists: {shell_id}"
+            cleanup_error = cleanup_task.result()
+            if cleanup_error:
+                raise ConPtyCleanupUncertainError(
+                    "ConPTY startup was cancelled and cleanup was not confirmed: "
+                    f"{shell_id}: {cleanup_error}"
+                ) from cancelled
+            raise cancelled
+        try:
+            session.start_reader()
+        except Exception as exc:
+            cleanup_error = await asyncio.to_thread(session.close, force=True)
+            if cleanup_error:
+                raise ConPtyCleanupUncertainError(
+                    "ConPTY startup failed and cleanup was not confirmed: "
+                    f"{shell_id}: {cleanup_error}"
+                ) from exc
+            raise
+        audit(
+            "start_persistent_shell",
+            shell_id=shell_id,
+            cwd=str(cwd),
+            command=initial,
+            backend=CONPTY_BACKEND,
         )
-    if cancelled is not None:
-        cleanup_task = asyncio.create_task(
-            asyncio.to_thread(session.close, force=True)
+        return StartPersistentShellOutput(
+            shell_id=shell_id,
+            cwd=relative_display(cwd),
+            command=initial,
+            backend=CONPTY_BACKEND,
         )
-        while not cleanup_task.done():
-            try:
-                await asyncio.shield(cleanup_task)
-            except asyncio.CancelledError:
-                continue
-        cleanup_error = cleanup_task.result()
-        if cleanup_error:
-            raise ConPtyCleanupUncertainError(
-                "ConPTY startup was cancelled and cleanup was not confirmed: "
-                f"{shell_id}: {cleanup_error}"
-            ) from cancelled
-        raise cancelled
-    try:
-        session.start_reader()
-    except Exception as exc:
-        cleanup_error = await asyncio.to_thread(session.close, force=True)
-        if cleanup_error:
-            raise ConPtyCleanupUncertainError(
-                "ConPTY startup failed and cleanup was not confirmed: "
-                f"{shell_id}: {cleanup_error}"
-            ) from exc
-        raise
-    audit(
-        "start_persistent_shell",
-        shell_id=shell_id,
-        cwd=str(cwd),
-        command=initial,
-        backend=CONPTY_BACKEND,
-    )
-    return StartPersistentShellOutput(
-        shell_id=shell_id,
-        cwd=relative_display(cwd),
-        command=initial,
-        backend=CONPTY_BACKEND,
-    )
+    finally:
+        registry.end_operation(operation)
 
 
 async def send_shell(
     shell_id: str, input_text: str, enter: bool
 ) -> SendPersistentShellInputOutput:
     """Send normalized terminal text to one ConPTY persistent shell."""
-    session = _get_session(shell_id)
-    data = input_text + ("\r" if enter else "")
-    await asyncio.to_thread(session.write_text, data)
-    audit(
-        "send_persistent_shell_input",
-        shell_id=shell_id,
-        bytes=len(input_text.encode()),
-        enter=enter,
-        backend=CONPTY_BACKEND,
-    )
-    return SendPersistentShellInputOutput(
-        shell_id=shell_id,
-        sent_bytes=len(input_text.encode()),
-        enter=enter,
-    )
+    registry = _conpty_registry()
+    operation = registry.begin_operation()
+    try:
+        session = _get_session(shell_id)
+        data = input_text + ("\r" if enter else "")
+        await asyncio.to_thread(session.write_text, data)
+        audit(
+            "send_persistent_shell_input",
+            shell_id=shell_id,
+            bytes=len(input_text.encode()),
+            enter=enter,
+            backend=CONPTY_BACKEND,
+        )
+        return SendPersistentShellInputOutput(
+            shell_id=shell_id,
+            sent_bytes=len(input_text.encode()),
+            enter=enter,
+        )
+    finally:
+        registry.end_operation(operation)
 
 
 async def resize_shell(
     shell_id: str, cols: int, rows: int
 ) -> ResizePersistentShellOutput:
     """Resize one ConPTY shell when pywinpty exposes resize support."""
-    session = _get_session(shell_id)
-    resized = await asyncio.to_thread(session.resize, cols, rows)
-    audit(
-        "resize_persistent_shell",
-        shell_id=shell_id,
-        cols=cols,
-        rows=rows,
-        resized=resized,
-        backend=CONPTY_BACKEND,
-    )
-    return ResizePersistentShellOutput(
-        shell_id=shell_id,
-        cols=cols,
-        rows=rows,
-        resized=resized,
-        backend=CONPTY_BACKEND,
-    )
+    registry = _conpty_registry()
+    operation = registry.begin_operation()
+    try:
+        session = _get_session(shell_id)
+        resized = await asyncio.to_thread(session.resize, cols, rows)
+        audit(
+            "resize_persistent_shell",
+            shell_id=shell_id,
+            cols=cols,
+            rows=rows,
+            resized=resized,
+            backend=CONPTY_BACKEND,
+        )
+        return ResizePersistentShellOutput(
+            shell_id=shell_id,
+            cols=cols,
+            rows=rows,
+            resized=resized,
+            backend=CONPTY_BACKEND,
+        )
+    finally:
+        registry.end_operation(operation)
 
 
 async def read_shell(
@@ -704,95 +846,119 @@ async def read_shell(
     preserve_ansi: bool,
 ) -> ReadPersistentShellOutput:
     """Read a bounded plain-text or ANSI snapshot from one ConPTY shell."""
-    session = _get_session(shell_id)
-    raw = session.output_snapshot()
-    output = raw.decode("utf-8", errors="replace")
-    if not preserve_ansi:
-        output = _strip_terminal_controls(output)
-    if lines > 0:
-        split = output.splitlines()
-        output = "\n".join(split[-max(1, lines) :]) if split else ""
-        if raw.endswith((b"\n", b"\r")) and output:
-            output += "\n"
-    audit(
-        "read_persistent_shell_output",
-        shell_id=shell_id,
-        lines=lines,
-        preserve_ansi=preserve_ansi,
-        backend=CONPTY_BACKEND,
-    )
-    return ReadPersistentShellOutput(
-        shell_id=shell_id,
-        output=output,
-        lines=lines,
-        backend=CONPTY_BACKEND,
-    )
+    registry = _conpty_registry()
+    operation = registry.begin_operation()
+    try:
+        session = _get_session(shell_id)
+        raw = session.output_snapshot()
+        output = raw.decode("utf-8", errors="replace")
+        if not preserve_ansi:
+            output = _strip_terminal_controls(output)
+        if lines > 0:
+            split = output.splitlines()
+            output = "\n".join(split[-max(1, lines) :]) if split else ""
+            if raw.endswith((b"\n", b"\r")) and output:
+                output += "\n"
+        audit(
+            "read_persistent_shell_output",
+            shell_id=shell_id,
+            lines=lines,
+            preserve_ansi=preserve_ansi,
+            backend=CONPTY_BACKEND,
+        )
+        return ReadPersistentShellOutput(
+            shell_id=shell_id,
+            output=output,
+            lines=lines,
+            backend=CONPTY_BACKEND,
+        )
+    finally:
+        registry.end_operation(operation)
 
 
 async def kill_shell(shell_id: str) -> KillPersistentShellOutput:
     """Terminate and deregister one ConPTY persistent shell."""
-    with _SESSIONS_LOCK:
-        session = _SESSIONS.get(shell_id)
-    if session is None:
-        return KillPersistentShellOutput(
+    registry = _conpty_registry()
+    operation = registry.begin_operation()
+    try:
+        with registry.lock:
+            session = registry.sessions.get(shell_id)
+        if session is None:
+            return KillPersistentShellOutput(
+                shell_id=shell_id,
+                killed=False,
+                stderr="Persistent shell session not found",
+                backend=CONPTY_BACKEND,
+            )
+        error = await asyncio.to_thread(session.close, force=True)
+        audit(
+            "kill_persistent_shell",
             shell_id=shell_id,
-            killed=False,
-            stderr="Persistent shell session not found",
+            ok=not error,
             backend=CONPTY_BACKEND,
         )
-    error = await asyncio.to_thread(session.close, force=True)
-    audit(
-        "kill_persistent_shell",
-        shell_id=shell_id,
-        ok=not error,
-        backend=CONPTY_BACKEND,
-    )
-    return KillPersistentShellOutput(
-        shell_id=shell_id,
-        killed=not error,
-        stderr=error,
-        backend=CONPTY_BACKEND,
-    )
+        return KillPersistentShellOutput(
+            shell_id=shell_id,
+            killed=not error,
+            stderr=error,
+            backend=CONPTY_BACKEND,
+        )
+    finally:
+        registry.end_operation(operation)
 
 
 async def list_shells() -> ListPersistentShellsOutput:
     """List live ConPTY persistent shells and reap stale entries."""
-    with _SESSIONS_LOCK:
-        stale_sessions = [
-            value for value in _SESSIONS.values() if not value.process_alive()
-        ]
-    for stale_session in stale_sessions:
-        await asyncio.to_thread(stale_session.close, force=False)
-    with _SESSIONS_LOCK:
-        sessions = [
-            session for session in _SESSIONS.values() if session.process_alive()
-        ]
-    return ListPersistentShellsOutput(
-        shells=[
-            PersistentShellInfo.model_validate(
-                {
-                    "shell_id": session.shell_id,
-                    "created": str(session.created),
-                    "attached": "1" if session.attached() else "0",
-                    "backend": CONPTY_BACKEND,
-                    "cwd": relative_display(session.cwd),
-                    "command": session.command,
-                }
-            )
-            for session in sessions
-        ]
-    )
+    registry = _conpty_registry()
+    operation = registry.begin_operation()
+    try:
+        with registry.lock:
+            stale_sessions = [
+                value
+                for value in registry.sessions.values()
+                if not value.process_alive()
+            ]
+        for stale_session in stale_sessions:
+            await asyncio.to_thread(stale_session.close, force=False)
+        with registry.lock:
+            sessions = [
+                session
+                for session in registry.sessions.values()
+                if session.process_alive()
+            ]
+        return ListPersistentShellsOutput(
+            shells=[
+                PersistentShellInfo.model_validate(
+                    {
+                        "shell_id": session.shell_id,
+                        "created": str(session.created),
+                        "attached": "1" if session.attached() else "0",
+                        "backend": CONPTY_BACKEND,
+                        "cwd": relative_display(session.cwd),
+                        "command": session.command,
+                    }
+                )
+                for session in sessions
+            ]
+        )
+    finally:
+        registry.end_operation(operation)
 
 
 async def list_owned_shell_ids(owner_session_id: str) -> list[str]:
     """Return live ConPTY shell ids owned by one explicit agent session."""
-    await list_shells()
-    with _SESSIONS_LOCK:
-        return sorted(
-            session.shell_id
-            for session in _SESSIONS.values()
-            if session.owner_session_id == owner_session_id
-        )
+    registry = _conpty_registry()
+    operation = registry.begin_operation()
+    try:
+        await list_shells()
+        with registry.lock:
+            return sorted(
+                session.shell_id
+                for session in registry.sessions.values()
+                if session.owner_session_id == owner_session_id
+            )
+    finally:
+        registry.end_operation(operation)
 
 
 class ConPtyRawAttachment:
@@ -853,16 +1019,8 @@ def open_raw_attachment(
     rows: int,
 ) -> ConPtyRawAttachment:
     """Open one exclusive raw subscriber for a ConPTY persistent shell."""
+    _conpty_registry().require_open()
     session = _get_session(shell_id)
     session.resize(cols, rows)
     subscriber = session.subscribe(attachment_id)
     return ConPtyRawAttachment(session, attachment_id, subscriber)
-
-
-def reset_conpty_sessions_for_tests() -> None:
-    """Force-close and clear all process-scoped ConPTY test sessions."""
-    with _SESSIONS_LOCK:
-        sessions = list(_SESSIONS.values())
-        _SESSIONS.clear()
-    for session in sessions:
-        session.close(force=True)

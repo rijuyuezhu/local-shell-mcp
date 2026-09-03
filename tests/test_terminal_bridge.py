@@ -19,22 +19,25 @@ from local_shell_mcp.terminal.bridge import (
     close_terminal_bridge_execute,
     open_terminal_bridge_execute,
     read_terminal_bridge_execute,
-    reset_terminal_bridges_for_tests,
     resize_terminal_bridge_execute,
     write_terminal_bridge_execute,
 )
+from local_shell_mcp.terminal.runtime import build_terminal_runtime
 
 
 @pytest.fixture(autouse=True)
-def _reset_bridges(monkeypatch, tmp_path):
+async def _terminal_runtime(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
     monkeypatch.setenv("LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S", "60")
     clear_settings_cache()
-    reset_terminal_bridges_for_tests()
-    yield
-    reset_terminal_bridges_for_tests()
-    clear_settings_cache()
+    runtime = build_terminal_runtime()
+    await runtime.start()
+    try:
+        yield
+    finally:
+        await runtime.aclose()
+        clear_settings_cache()
 
 
 def test_terminal_bridge_orphan_lease_is_bounded(monkeypatch):

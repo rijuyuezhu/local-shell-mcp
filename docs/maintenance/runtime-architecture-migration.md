@@ -79,7 +79,6 @@ lifecycle semantics does not satisfy the migration.
 
 | Current state | Classification / intended owner | Migration note |
 | --- | --- | --- |
-| `terminal/bridge.py` / `_BRIDGES`, `_SHELL_BRIDGES`, `_PENDING_SHELLS` | terminal lifecycle-owned live bridge state | Bridges own timers/process attachments; the eventual owner must close them deterministically and make shutdown idempotent. |
 | `jobs/managed.py` / `_MANAGED_JOB_TASKS`, `_MANAGED_JOB_LEASES` | Jobs-owned live state | Deliberately defer to the Jobs functional-core phase so ownership and reconciliation are redesigned once, not moved through a temporary generic runtime holder. |
 | `jobs/managed.py` / `_MANAGED_JOB_HANDLERS` | process registration metadata pending Jobs review | Do not move merely to reduce a global-count metric; Phase 7 may make registration composition-scoped if that materially improves ownership/testing. |
 | `ui/http/remote_files.py` / `_SESSION_CACHE` | controller/UI lifecycle-owned remote-file session state | Worker session bindings have external identity; the eventual owner must define invalidation/release behavior. The fixed lock shards can remain implementation detail unless ownership gives a concrete benefit. |
@@ -94,6 +93,18 @@ bindings are restored. The former module-import `REMOTE_MANAGER` singleton is
 gone. `_REMOTE_MANAGER` is only a reversible, non-owning compatibility pointer
 for domains that have not yet reached the explicit-dependency Phase 6; migrated
 Search routing receives the owned manager's narrow `call` dependency directly.
+
+Phase 5 also migrated terminal live state. `TerminalRuntime` owns one
+`TerminalBridgeRegistry` and one `ConPtyRegistry`; both the controller and the
+source-only worker construct their own terminal runtime and bind it on their
+owning event loop. The old bridge maps (`_BRIDGES`, `_SHELL_BRIDGES`, and
+`_PENDING_SHELLS`) and the ConPTY `_SESSIONS` map are gone. Shutdown stops
+admission to both registries before draining/cancelling operations, then closes
+raw bridge attachments and timers before force-closing the ConPTY shells they
+may depend on. Registry compatibility pointers are reversible and non-owning
+until Phase 6 migrates individual consumers to explicit dependencies. The old
+test-only bridge/ConPTY reset helpers were deleted because fresh runtime owners
+now provide isolation and deterministic cleanup.
 
 The inventory is about ownership, not immediate movement. Jobs live maps are
 explicitly excluded from the earlier global-migration phase; immutable

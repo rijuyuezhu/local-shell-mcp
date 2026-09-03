@@ -704,6 +704,7 @@ from pathlib import Path
 import local_shell_mcp.ops.shell as shell_ops
 import local_shell_mcp.terminal.conpty as conpty
 from local_shell_mcp.config.settings import clear_settings_cache
+from local_shell_mcp.terminal.runtime import build_terminal_runtime
 from local_shell_mcp.tool_session.store import get_tool_session_store
 
 workspace = Path(__import__("sys").argv[1])
@@ -723,8 +724,11 @@ conpty.relative_display = lambda path: str(path)
 class FakePty:
     exitstatus = None
 
+    def __init__(self):
+        self.alive = True
+
     def isalive(self):
-        return True
+        return self.alive
 
     def read(self, _size=None):
         time.sleep(0.02)
@@ -732,6 +736,7 @@ class FakePty:
 
     def close(self, force=False):
         _ = force
+        self.alive = False
 
 conpty._spawn_pty = lambda *_args: FakePty()
 owner_session_id = None
@@ -741,20 +746,23 @@ if owner_bound:
     ).session_id
 while not barrier_path.exists():
     time.sleep(0.01)
-try:
-    output = asyncio.run(
-        shell_ops.start_persistent_shell_execute(
-            ".",
-            shell_name,
-            "echo ready",
-            owner_session_id=owner_session_id,
+
+async def main():
+    runtime = build_terminal_runtime()
+    await runtime.start()
+    try:
+        output = await shell_ops.start_persistent_shell_execute(
+            ".", shell_name, "echo ready", owner_session_id=owner_session_id
         )
-    )
-except Exception as exc:
-    result_path.write_text(f"error:{exc}", encoding="utf-8")
-else:
-    result_path.write_text(f"ok:{output.shell_id}", encoding="utf-8")
-    time.sleep(0.75)
+    except Exception as exc:
+        result_path.write_text(f"error:{exc}", encoding="utf-8")
+    else:
+        result_path.write_text(f"ok:{output.shell_id}", encoding="utf-8")
+        await asyncio.sleep(0.75)
+    finally:
+        await runtime.aclose()
+
+asyncio.run(main())
 """
     processes = [
         subprocess.Popen(

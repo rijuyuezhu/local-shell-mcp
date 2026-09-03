@@ -84,8 +84,9 @@ internal in help rather than parsed by a separate code path.
 | `composition/__init__.py` | Marks the dependency-neutral package for construction helpers shared by long-lived controller and worker processes. | Shared composition cannot live under an executor because worker code must not reverse-depend on controller execution surfaces. |
 | `composition/services.py` | Constructs the filesystem state store and authoritative tool-session store from one resolved `Settings` object and provides a reversible compatibility-installation scope. | Controller and worker runtimes need the same concrete dependency leaves while lifecycle owners, not domain code, control temporary global compatibility bindings. |
 | `executors/runtime_services.py` | Re-exports the shared runtime-service composition API for existing executor callers. | Keeping this compatibility facade preserves the Phase 2 server composition seam while the implementation remains dependency-neutral. |
-| `executors/runtime.py` | Owns controller settings, explicitly constructed shared stores, the live `RemoteManager`, the Search-bound tool catalog, and deterministic controller cleanup. | The controller runtime is the long-lived composition owner; it starts remote loop-bound state, closes remote calls/poll waiters before restoring compatibility bindings, and still passes only narrow dependencies into domain services. |
-| `remote_worker/runtime_composition.py` | Owns worker settings, explicitly constructed shared stores, the Search-bound dispatcher, and the worker compatibility lifecycle. | The source-only worker needs an independent long-lived graph without importing controller runtime code. |
+| `executors/runtime.py` | Owns controller settings, explicitly constructed shared stores, the live `RemoteManager`, a controller-local `TerminalRuntime`, the Search-bound tool catalog, and deterministic controller cleanup. | The controller runtime is the long-lived composition owner; it starts live owners on its event loop, closes them before restoring compatibility bindings, and still passes only narrow dependencies into domain services. |
+| `remote_worker/runtime_composition.py` | Owns worker settings, explicitly constructed shared stores, a worker-local `TerminalRuntime`, the Search-bound dispatcher, and the worker compatibility lifecycle. | The source-only worker needs an independent long-lived graph, including its own persistent-shell/terminal state, without importing controller runtime code. |
+| `terminal/runtime.py` | Owns one terminal-bridge registry and one ConPTY registry for a controller or worker process and installs reversible compatibility bindings during that runtime's lifespan. | Raw bridge attachments depend on persistent-shell state and both hosts execute terminal tools, so lifecycle ownership must be shared in shape but independent per process rather than hidden in module globals or forced into the controller runtime alone. |
 | `executors/search_composition.py` | Builds the controller Search service and binds it into the explicit tool catalog through the Phase 2 registry-factory seam, including the owned `RemoteManager.call` wire dependency. | Search remains independent of ambient remote-manager lookup; controller-specific assembly belongs at the executor composition edge, not inside domain operations. |
 | `ui/cli.py` | Registers `tui`, its settings, and loopback API override, then launches the native UI runtime. | Native-client arguments and defaults belong to the UI domain rather than the process entry point. |
 | `agent_bridge/cli.py` | Registers `mcp auth` and `mcp secret` administration and executes credential/OAuth workflows. | Agent Bridge owns both the nested command contract and its security-sensitive handlers. |
@@ -119,6 +120,15 @@ long-poll waiters before the shared store bindings are restored. A reversible
 non-owning compatibility pointer remains temporarily for controller domains that
 will move to explicit dependencies in Phase 6; already-migrated Search does not
 use that pointer.
+
+Terminal live state is similarly process-owned rather than module-owned.
+`ControllerRuntime` and `WorkerRuntime` each construct a fresh `TerminalRuntime`.
+Its bridge and ConPTY registries bind async work to the owning event loop and
+stop admission together during shutdown. Raw bridge operations are cancelled
+and bridge timers/process attachments are closed before ConPTY sessions are
+force-closed, because a bridge may hold a raw attachment to one of those shells.
+The terminal modules retain only reversible, non-owning compatibility pointers
+until their individual consumers are migrated in Phase 6.
 
 Rejected alternatives:
 
