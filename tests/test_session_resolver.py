@@ -57,6 +57,28 @@ def test_touch_session_remains_mechanism_not_admission_authority(
         store.admit_active_session(session.session_id)
 
 
+def test_admit_active_session_does_not_reenter_touch_after_validation(
+    tmp_path, monkeypatch
+) -> None:
+    store = _store(tmp_path, monkeypatch)
+    session = store.create_session(workdir=tmp_path)
+    original_touch = store.touch_session
+
+    def terminate_before_touch(session_id: str):
+        store.request_termination(session_id)
+        return original_touch(session_id)
+
+    monkeypatch.setattr(store, "touch_session", terminate_before_touch)
+
+    admitted = store.admit_active_session(session.session_id)
+
+    assert admitted.termination_requested_at is None
+    assert (
+        store.require_session(session.session_id).termination_requested_at
+        is None
+    )
+
+
 def test_generic_enforcement_delegates_to_store_admission(
     monkeypatch,
 ) -> None:

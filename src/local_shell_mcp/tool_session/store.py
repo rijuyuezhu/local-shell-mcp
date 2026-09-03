@@ -4,6 +4,7 @@ import hashlib
 import threading
 import time
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -624,16 +625,37 @@ class ToolSessionStore:
     ) -> tuple[AgentSession, ...]:
         """Admit active tool work and refresh activity only after all checks pass."""
         unique_session_ids = tuple(dict.fromkeys(session_ids))
-        sessions = tuple(
-            self.require_session(session_id)
-            for session_id in unique_session_ids
-        )
-        for session in sessions:
-            if session.termination_requested_at is not None:
-                raise SessionTerminationRequestedError(session.session_id)
-        return tuple(
-            self.touch_session(session.session_id) for session in sessions
-        )
+        with self._lock:
+            self._reset_for_current_root_locked()
+            with ExitStack() as transactions:
+                # Acquire every durable session lock in one stable order so
+                # concurrent multi-session admissions cannot deadlock each
+                # other. Keep all locks held through validation and refresh so
+                # termination cannot become durable between those two steps.
+                for session_id in sorted(unique_session_ids):
+                    transactions.enter_context(
+                        self._state_store.transaction(
+                            self._transaction_path(session_id)
+                        )
+                    )
+
+                sessions = tuple(
+                    self._require_session_locked(session_id)
+                    for session_id in unique_session_ids
+                )
+                for session in sessions:
+                    if session.termination_requested_at is not None:
+                        raise SessionTerminationRequestedError(
+                            session.session_id
+                        )
+
+                now = time.time()
+                admitted = tuple(
+                    replace(session, updated_at=now) for session in sessions
+                )
+                for session in admitted:
+                    self._write_session_locked(session)
+                return admitted
 
     def admit_active_session(self, session_id: str) -> AgentSession:
         """Admit one active session using the authoritative tool-work policy."""
