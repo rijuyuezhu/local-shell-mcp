@@ -14,6 +14,8 @@ from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.tool_session.store import get_tool_session_store
 from local_shell_mcp.utils import private_files
 
+pytestmark = pytest.mark.usefixtures("managed_jobs_runtime_owner")
+
 
 def _configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
@@ -443,8 +445,7 @@ async def test_managed_stop_reconciles_deferred_cancellation_updates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session_id = _configure(tmp_path, monkeypatch)
-    jobs_ops.reset_managed_jobs_for_tests()
-    jobs_managed._MANAGED_JOB_HANDLERS.pop("test-deferred-stop", None)
+    jobs_managed.managed_jobs_runtime().handlers.pop("test-deferred-stop", None)
     started_handler = threading.Event()
 
     async def handler(context, payload):  # noqa: ANN001, ARG001
@@ -485,5 +486,4 @@ async def test_managed_stop_reconciles_deferred_cancellation_updates(
     assert not list(
         jobs_recovery.managed_deferred_update_dir(create=False).glob("*.json")
     )
-    jobs_ops.reset_managed_jobs_for_tests()
-    jobs_managed._MANAGED_JOB_HANDLERS.pop("test-deferred-stop", None)
+    jobs_managed.managed_jobs_runtime().handlers.pop("test-deferred-stop", None)

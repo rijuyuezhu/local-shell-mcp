@@ -38,6 +38,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "jobs/__init__.py",
     "jobs/lifecycle.py",
     "jobs/managed.py",
+    "jobs/reconciliation.py",
     "jobs/persistence.py",
     "jobs/recovery.py",
     "jobs/runner.py",

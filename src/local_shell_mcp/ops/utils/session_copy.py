@@ -11,8 +11,8 @@ from typing import Any, Literal, cast
 from ...config.settings import get_settings
 from ...jobs.runtime import (
     ManagedJobContext,
+    ManagedJobHandler,
     _start_managed_job_unlocked,
-    register_managed_job_handler,
 )
 from ...remote.transfer_gateway import (
     TransferGatewayStore,
@@ -1122,4 +1122,6 @@ async def session_copy_job_execute(
         )
 
 
-register_managed_job_handler(SESSION_COPY_MANAGED_KIND, _run_session_copy_job)
+def session_copy_managed_job_registration() -> tuple[str, ManagedJobHandler]:
+    """Return the controller composition registration for background copies."""
+    return SESSION_COPY_MANAGED_KIND, _run_session_copy_job

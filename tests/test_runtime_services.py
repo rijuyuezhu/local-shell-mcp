@@ -14,11 +14,17 @@ from local_shell_mcp.executors.runtime import build_controller_runtime
 from local_shell_mcp.executors.runtime_services import (
     configure_runtime_services,
 )
+from local_shell_mcp.jobs.managed import (
+    ManagedJobsRuntime,
+    configure_managed_jobs_runtime,
+    managed_jobs_runtime,
+)
 from local_shell_mcp.oauth.core.state import (
     OAuthState,
     configure_oauth_state,
     oauth_state,
 )
+from local_shell_mcp.ops.utils.session_copy import SESSION_COPY_MANAGED_KIND
 from local_shell_mcp.persistence import (
     FileStateStore,
     configure_state_store,
@@ -461,10 +467,15 @@ async def test_controller_runtime_closes_ui_oauth_remote_and_terminal_in_order(
     )
     await runtime.start()
     events: list[str] = []
+    jobs_close = runtime.managed_jobs_runtime.aclose
     ui_close = runtime.human_ui_runtime.aclose
     oauth_close = runtime.oauth_state.aclose
     remote_close = runtime.remote_manager.aclose
     terminal_close = runtime.terminal_runtime.aclose
+
+    async def close_jobs() -> None:
+        events.append("jobs")
+        await jobs_close()
 
     async def close_ui() -> None:
         events.append("ui")
@@ -482,6 +493,7 @@ async def test_controller_runtime_closes_ui_oauth_remote_and_terminal_in_order(
         events.append("terminal")
         await terminal_close()
 
+    monkeypatch.setattr(runtime.managed_jobs_runtime, "aclose", close_jobs)
     monkeypatch.setattr(runtime.human_ui_runtime, "aclose", close_ui)
     monkeypatch.setattr(runtime.oauth_state, "aclose", close_oauth)
     monkeypatch.setattr(runtime.remote_manager, "aclose", close_remote)
@@ -489,7 +501,7 @@ async def test_controller_runtime_closes_ui_oauth_remote_and_terminal_in_order(
 
     await runtime.aclose()
 
-    assert events == ["ui", "oauth", "remote", "terminal"]
+    assert events == ["jobs", "ui", "oauth", "remote", "terminal"]
 
 
 @pytest.mark.asyncio
@@ -659,3 +671,63 @@ async def test_process_runtimes_own_and_restore_terminal_bindings(
         assert terminal_conpty._conpty_registry() is outer.conpty
     finally:
         await outer.aclose()
+
+
+@pytest.mark.asyncio
+async def test_controller_runtime_owns_and_restores_managed_jobs_binding(
+    tmp_path,
+) -> None:
+    outer = ManagedJobsRuntime()
+    await outer.start()
+    previous = configure_managed_jobs_runtime(outer)
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-jobs-state",
+            remote_enabled=False,
+        )
+    )
+    try:
+        assert managed_jobs_runtime() is outer
+        assert (
+            SESSION_COPY_MANAGED_KIND in runtime.managed_jobs_runtime.handlers
+        )
+        async with runtime.lifespan():
+            assert managed_jobs_runtime() is runtime.managed_jobs_runtime
+            assert (
+                runtime.managed_jobs_runtime._loop is asyncio.get_running_loop()
+            )
+
+        assert managed_jobs_runtime() is outer
+        assert runtime.managed_jobs_runtime._closed is True
+    finally:
+        await outer.aclose()
+        configure_managed_jobs_runtime(previous)
+
+
+@pytest.mark.asyncio
+async def test_controller_runtime_managed_jobs_binding_failure_closes_owner(
+    tmp_path, monkeypatch
+) -> None:
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-jobs-failure-state",
+            remote_enabled=False,
+        )
+    )
+
+    def fail_managed_jobs_binding(_runtime):
+        raise RuntimeError("managed jobs binding failed")
+
+    monkeypatch.setattr(
+        "local_shell_mcp.executors.runtime.configure_managed_jobs_runtime",
+        fail_managed_jobs_binding,
+    )
+
+    with pytest.raises(RuntimeError, match="managed jobs binding failed"):
+        await runtime.start()
+
+    assert runtime.managed_jobs_runtime._closed is True
+    assert runtime.managed_jobs_runtime.tasks == {}
+    assert runtime.managed_jobs_runtime.leases == {}

@@ -22,13 +22,7 @@ _REMOTE_BRANCH_PATTERN = re.compile(
 )
 _REMOTE_BRANCH_CEILING = (43, 18)
 
-_LIFECYCLE_INVENTORY = {
-    "jobs/managed.py": (
-        "_MANAGED_JOB_HANDLERS",
-        "_MANAGED_JOB_TASKS",
-        "_MANAGED_JOB_LEASES",
-    ),
-}
+_LIFECYCLE_INVENTORY: dict[str, tuple[str, ...]] = {}
 
 
 def _python_sources() -> list[Path]:
@@ -107,6 +101,51 @@ def test_lifecycle_bearing_process_state_is_kept_in_the_migration_inventory() ->
             # real and explicitly classified rather than silently drifting.
             assert symbol in source
             assert f"`{symbol}`" in documentation
+
+
+def test_managed_jobs_live_state_is_controller_owned_and_reconciliation_is_pure() -> (
+    None
+):
+    managed_source = (_PACKAGE_ROOT / "jobs" / "managed.py").read_text(
+        encoding="utf-8"
+    )
+    reconciliation_source = (
+        _PACKAGE_ROOT / "jobs" / "reconciliation.py"
+    ).read_text(encoding="utf-8")
+    controller_source = (_PACKAGE_ROOT / "executors" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+    worker_source = (
+        _PACKAGE_ROOT / "remote_worker" / "runtime_composition.py"
+    ).read_text(encoding="utf-8")
+    session_copy_source = (
+        _PACKAGE_ROOT / "ops" / "utils" / "session_copy.py"
+    ).read_text(encoding="utf-8")
+
+    for symbol in (
+        "_MANAGED_JOB_HANDLERS",
+        "_MANAGED_JOB_TASKS",
+        "_MANAGED_JOB_LEASES",
+    ):
+        assert symbol not in managed_source
+    assert "reset_managed_jobs_for_tests" not in managed_source
+    assert "class ManagedJobsRuntime" in managed_source
+    assert "managed_jobs_runtime: ManagedJobsRuntime" in controller_source
+    assert "ManagedJobsRuntime()" in controller_source
+    assert "ManagedJobsRuntime" not in worker_source
+    assert "session_copy_managed_job_registration" in controller_source
+    assert "register_managed_job_handler(SESSION_COPY_MANAGED_KIND" not in (
+        session_copy_source
+    )
+    assert "def reconcile_job(" in reconciliation_source
+    assert "get_settings(" not in reconciliation_source
+    assert "get_tool_session_store(" not in reconciliation_source
+    controller_close_source = controller_source.split(
+        "    async def aclose(self) -> None:", 1
+    )[1].split("    @asynccontextmanager", 1)[0]
+    assert controller_close_source.index(
+        "await self.managed_jobs_runtime.aclose()"
+    ) < controller_close_source.index("await self.human_ui_runtime.aclose()")
 
 
 def test_remote_manager_is_controller_owned_not_a_module_singleton() -> None:

@@ -457,7 +457,7 @@ async def test_session_end_preserves_local_state_when_pty_cleanup_fails(
 
 @pytest.mark.asyncio
 async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, managed_jobs_runtime_owner
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
@@ -527,7 +527,7 @@ async def test_destination_teardown_fails_closed_for_live_peer_managed_copy(
 
 @pytest.mark.asyncio
 async def test_destination_teardown_migrates_legacy_managed_copy(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, managed_jobs_runtime_owner
 ):
     monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))

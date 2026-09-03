@@ -77,10 +77,31 @@ lifecycle semantics does not satisfy the migration.
 
 ### Current lifecycle inventory
 
-| Current state | Classification / intended owner | Migration note |
-| --- | --- | --- |
-| `jobs/managed.py` / `_MANAGED_JOB_TASKS`, `_MANAGED_JOB_LEASES` | Jobs-owned live state | Deliberately defer to the Jobs functional-core phase so ownership and reconciliation are redesigned once, not moved through a temporary generic runtime holder. |
-| `jobs/managed.py` / `_MANAGED_JOB_HANDLERS` | process registration metadata pending Jobs review | Do not move merely to reduce a global-count metric; Phase 7 may make registration composition-scoped if that materially improves ownership/testing. |
+The Phase 0 inventory is empty after Phase 7. Lifecycle-bearing state that was
+previously module-owned now has an explicit runtime owner and deterministic
+shutdown contract; new module-level live owners must be classified here before
+they are introduced.
+
+Phase 7 migrated managed Jobs live state and separated reconciliation policy
+from observation. `jobs/reconciliation.py` is a pure transition core: an
+already-observed `JobObservation` plus a durable row produces a `JobTransition`
+without filesystem, settings, session-store, task, lease, or process-global
+access. `jobs/lifecycle.py` remains the imperative shell that gathers durable
+status, shell inventory, operation ownership, and managed liveness observations
+before applying that transition.
+
+`ControllerRuntime` now constructs and owns one `ManagedJobsRuntime`. Managed
+handler registration, asyncio task retention, and cross-process liveness leases
+live on that owner rather than `_MANAGED_JOB_HANDLERS`, `_MANAGED_JOB_TASKS`, or
+`_MANAGED_JOB_LEASES`. The `session_copy` managed handler is registered during
+controller composition instead of module import; the source-only worker does
+not construct a managed Jobs owner because remote worker jobs are shell-backed.
+The compatibility binding is reversible and non-owning. Controller shutdown
+stops managed-job admission first, cancels and awaits owned tasks while shared
+stores and remote dependencies are still alive, and releases leases only after
+the cancellation path has committed a terminal state or durably journaled the
+deferred update. Repeated close is harmless, and the old managed-job test reset
+helper is gone; tests isolate live state with fresh owners.
 
 Phase 5 migrated `remote/manager.py`: `ControllerRuntime` now constructs and
 owns the `RemoteManager`, starts its loop-bound enrollment state inside the

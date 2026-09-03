@@ -121,6 +121,17 @@ non-owning compatibility pointer remains temporarily for controller domains that
 will move to explicit dependencies in Phase 6; already-migrated Search does not
 use that pointer.
 
+Managed background Jobs are controller-owned rather than module-owned.
+`ControllerRuntime` constructs one `ManagedJobsRuntime`; its handler registry,
+asyncio tasks, and cross-process liveness leases are scoped to that owner. The
+`session_copy` managed handler is registered explicitly during controller
+composition, while source-only workers do not construct a managed Jobs owner
+because their tracked jobs are shell-backed. Shutdown stops managed-job
+admission and cancels/awaits owned tasks before UI, OAuth, remote, terminal, or
+shared-store teardown, so cancellation can commit `stopped` (or durably journal
+the deferred store update) before its lease is released. The remaining
+compatibility binding is reversible and non-owning.
+
 Terminal live state is similarly process-owned rather than module-owned.
 `ControllerRuntime` and `WorkerRuntime` each construct a fresh `TerminalRuntime`.
 Its bridge and ConPTY registries bind async work to the owning event loop and
@@ -276,7 +287,7 @@ area for unaudited moves.
 | `ops/utils/download_store.py` | Persists and locks private tokenized-download metadata and claims. | The download operation and HTTP route share one durable claim store. |
 | `ops/utils/path.py` | Resolves workspace-contained paths, bounded text input, scratch files, and cleanup. | File, patch, shell, transfer, terminal, and other shared operations reuse these safety primitives. |
 | `ops/utils/remote_session.py` | Routes explicit sessions to remote workers and normalizes remote errors/results. | Many shared operations require the same controller-side dispatch seam; workers replace it through their compatibility layer. |
-| `ops/utils/session_copy.py` | Coordinates local/local, local/remote, and remote/remote session-copy workflows as managed jobs. | Session operations, transfer gateway, shared job runtime, and worker transfer primitives meet at this workflow. |
+| `ops/utils/session_copy.py` | Coordinates local/local, local/remote, and remote/remote session-copy workflows as managed jobs and exposes the controller composition registration for the background-copy handler. | Session operations, transfer gateway, shared job runtime, and worker transfer primitives meet at this workflow without registering process-global managed handlers at import time. |
 | `ops/utils/temp_file.py` | Creates validated managed temporary text files for operation workflows. | Patch and shell operations share it, while its policy remains operation-specific. |
 
 Rejected ownership alternatives:
@@ -305,9 +316,10 @@ orchestration.
 | --- | --- | --- |
 | `jobs/__init__.py` | Declares the shared tracked-job domain boundary. | Job persistence and execution are used by the controller process, standalone runner, shell/session-copy workflows, and source-only workers, so they are broader than one public tool adapter. |
 | `jobs/runtime.py` | Retains the stable jobs compatibility surface, lifecycle admission, mixed managed/shell listing and tailing, and public companion dispatch. | Existing callers and source-only workers keep one jobs API while backend-specific start/stop/retry execution is delegated below this facade. |
-| `jobs/lifecycle.py` | Owns shell attempt materialization, durable status-file interpretation, bounded log reads, and shell/managed row reconciliation with managed liveness injected as callbacks. | The status state machine is shared by shell and managed operations; callback injection keeps it below both execution kinds instead of creating a managed↔shell dependency cycle. |
+| `jobs/lifecycle.py` | Owns shell attempt materialization, durable status-file interpretation, bounded log reads, observation gathering, and application of pure reconciliation transitions. | Filesystem, shell inventory, operation-token, task, and lease observations stay in the imperative shell while policy is testable without runtime state. |
+| `jobs/reconciliation.py` | Defines the pure tracked-job state machine from `JobObservation` plus a durable row to `JobTransition`. | Recovery policy has no filesystem, settings, session-store, task, lease, or process-global dependency, so transition tables can cover restart/recovery semantics directly. |
 | `jobs/shell.py` | Owns shell-backed job start, live-shell reconciliation, stop, and retry transitions. | Persistent-shell inventory and lifecycle side effects now have one backend owner that depends on `ops.shell` without importing the managed backend. |
-| `jobs/managed.py` | Owns managed-job handler registration, process-local task and lease state, durable progress/finish updates, and managed start/stop/retry/list lifecycle. | Managed execution now has one authoritative owner while `jobs/runtime.py` only preserves compatibility aliases and coordinates mixed shell/managed public operations. |
+| `jobs/managed.py` | Defines `ManagedJobsRuntime`, durable managed progress/finish updates, and managed start/stop/retry/list orchestration. | Controller composition owns handler/task/lease live state; `jobs/runtime.py` preserves the stable compatibility surface while workers remain shell-job only. |
 | `jobs/persistence.py` | Owns the durable job-store schema, primary/backup load-save recovery, attempt artifact paths, and retention pruning. | These filesystem and schema responsibilities form a dependency leaf below recovery and both job execution kinds; they preserve the existing JSON format and fail-closed backup behavior. |
 | `jobs/recovery.py` | Owns bounded cross-process job-store transactions plus the managed deferred-update journal and replay rules. | Locking and crash recovery must share one authoritative state machine while depending only on persistence and row semantics, not on managed or shell lifecycle orchestration. |
 | `jobs/state.py` | Owns common row identity, operation tokens, public `JobInfo` projection, and bounded managed JSON normalization. | Recovery, managed jobs, and shell-backed jobs all depend on these row semantics, so they form a small dependency leaf instead of importing each other or `runtime.py`. |
