@@ -13,6 +13,14 @@ from ..config.settings import get_settings
 from ..ops.shell import check_command_policy
 from ..utils.private_files import write_private_text
 from .persistence import attempt_paths as _attempt_paths
+from .reconciliation import (
+    JobObservation,
+    JobOperationKind,
+    JobTransition,
+    ManagedJobLiveness,
+    ShellLiveness,
+    reconcile_job,
+)
 from .state import (
     ACTIVE_STATUSES,
     JobAttemptPaths,
@@ -119,28 +127,6 @@ def _read_status(job: Mapping[str, Any]) -> JobStatusPayload | None:
     return _read_status_path(job.get("status_path"))
 
 
-def _apply_status_payload(
-    job: MutableJobRow, status_payload: JobStatusPayload, updated: float
-) -> MutableJobRow:
-    """Apply runner completion metadata to one mutable job row."""
-    exit_code = status_payload.get("exit_code")
-    completed_at = float(status_payload.get("completed_at") or updated)
-    job.update(
-        {
-            "status": "succeeded" if exit_code == 0 else "failed",
-            "updated_at": completed_at,
-            "completed_at": completed_at,
-            "exit_code": exit_code,
-            "error": status_payload.get("error"),
-            "log_truncated": bool(status_payload.get("log_truncated", False)),
-            "output_bytes": int(status_payload.get("output_bytes") or 0),
-        }
-    )
-    job.pop("shell_absence_confirmed", None)
-    _clear_job_operation(job)
-    return job
-
-
 def _clear_pending_retry(job: MutableJobRow) -> None:
     for key in (
         "pending_attempt",
@@ -167,6 +153,37 @@ def _adopt_pending_retry(job: MutableJobRow) -> None:
             job[active_key] = value
 
 
+def _apply_job_transition(
+    job: MutableJobRow, transition: JobTransition
+) -> MutableJobRow:
+    """Apply one pure reconciliation transition to a mutable durable row."""
+    if transition.clear_operation:
+        _clear_job_operation(job)
+    for key in transition.remove_keys:
+        job.pop(key, None)
+    cast(dict[str, Any], job).update(transition.updates)
+    return job
+
+
+def _observed_shell_liveness(
+    shell_id: str, active_shells: set[str] | None
+) -> ShellLiveness:
+    """Classify one shell id from an authoritative inventory observation."""
+    if active_shells is None:
+        return "unknown"
+    return "live" if shell_id and shell_id in active_shells else "absent"
+
+
+def _observed_active_operation(
+    job: Mapping[str, Any],
+) -> JobOperationKind | None:
+    """Return the process-local operation token that still owns this row."""
+    for operation in ("start", "stop", "retry"):
+        if _job_operation_is_active(job, operation):
+            return operation
+    return None
+
+
 def _refresh_job_status(
     job: MutableJobRow,
     active_shells: set[str] | None,
@@ -177,180 +194,68 @@ def _refresh_job_status(
     read_status: JobStatusReader = _read_status,
     read_status_path: JobStatusPathReader = _read_status_path,
 ) -> MutableJobRow:
-    """Apply durable completion and authoritative live-shell reconciliation."""
+    """Gather live observations, decide purely, then apply one transition."""
     status = str(job.get("status") or "unknown")
     kind = str(job.get("kind") or "shell")
-    if status == "lost" and kind == "shell":
-        updated = now or _utc()
-        status_payload = read_status(job)
-        if status_payload is not None:
-            return _apply_status_payload(job, status_payload, updated)
-        if active_shells is None:
-            return job
-        shell_id = _job_shell_id(job)
-        if shell_id and shell_id in active_shells:
-            job.pop("shell_absence_confirmed", None)
-            job.update(
-                {
-                    "status": "running",
-                    "updated_at": updated,
-                    "completed_at": None,
-                    "exit_code": None,
-                    "error": "recovered a lost job whose shell is still active",
-                }
-            )
-        else:
-            job["shell_absence_confirmed"] = True
-        return job
-    if status not in ACTIVE_STATUSES:
+    lost_shell = status == "lost" and kind == "shell"
+    if not lost_shell and status not in ACTIVE_STATUSES:
         return job
 
     updated = now or _utc()
-    if str(job.get("kind") or "shell") == "managed":
-        if any(
-            _job_operation_is_active(job, operation)
-            for operation in ("start", "stop", "retry")
-        ):
-            return job
-        if managed_job_has_local_task(job):
-            return job
-        liveness = managed_job_liveness(job)
-        if liveness != "dead":
-            return job
-        _clear_job_operation(job)
-        job.update(
-            {
-                "status": "stopped" if status == "stopping" else "lost",
-                "updated_at": updated,
-                "completed_at": updated,
-                "exit_code": None,
-                "error": (
-                    None
-                    if status == "stopping"
-                    else "managed job is no longer running; retry it to resume the operation"
-                ),
-            }
-        )
-        return job
-    if status == "starting" and _job_operation_is_active(job, "start"):
-        return job
-    if status == "retrying" and _job_operation_is_active(job, "retry"):
-        return job
-    if status == "stopping" and _job_operation_is_active(job, "stop"):
-        return job
-
-    if status == "starting":
-        status_payload = read_status(job)
-        shell_id = _job_shell_id(job)
-        if status_payload is not None:
-            return _apply_status_payload(job, status_payload, updated)
-        if active_shells is None:
-            return job
-        _clear_job_operation(job)
-        if shell_id and shell_id in active_shells:
-            job.update(
-                {
-                    "status": "running",
-                    "updated_at": updated,
-                    "last_started_at": job.get("last_started_at") or updated,
-                    "completed_at": None,
-                    "exit_code": None,
-                    "error": "recovered job start after an interrupted state commit",
-                }
-            )
-            return job
-        job.update(
-            {
-                "status": "failed",
-                "updated_at": updated,
-                "completed_at": updated,
-                "exit_code": None,
-                "error": "job start was interrupted before a recoverable shell was created",
-            }
-        )
-        return job
-
-    if status == "retrying":
-        pending_shell = str(job.get("pending_shell_id") or "")
-        status_payload = read_status_path(job.get("pending_status_path"))
-        if status_payload is not None:
-            _adopt_pending_retry(job)
-            _clear_pending_retry(job)
-            return _apply_status_payload(job, status_payload, updated)
-        if active_shells is None:
-            return job
-        if pending_shell and pending_shell in active_shells:
-            _adopt_pending_retry(job)
-            _clear_pending_retry(job)
-            _clear_job_operation(job)
-            job.update(
-                {
-                    "status": "running",
-                    "updated_at": updated,
-                    "last_started_at": updated,
-                    "completed_at": None,
-                    "exit_code": None,
-                    "error": "recovered retry after an interrupted state commit",
-                }
-            )
-            return job
-        if job.get("pending_attempt") is not None:
-            _adopt_pending_retry(job)
-        _clear_pending_retry(job)
-        _clear_job_operation(job)
-        job.update(
-            {
-                "status": "failed",
-                "updated_at": updated,
-                "completed_at": updated,
-                "exit_code": None,
-                "error": "retry was interrupted before a recoverable shell was committed",
-            }
-        )
-        return job
-
-    status_payload = read_status(job)
-    shell_id = _job_shell_id(job)
-    if status_payload is not None:
-        return _apply_status_payload(job, status_payload, updated)
-    if active_shells is None:
-        return job
-
-    if status == "stopping":
-        _clear_job_operation(job)
-        if shell_id in active_shells:
-            job.update(
-                {
-                    "status": "running",
-                    "updated_at": updated,
-                    "error": "recovered an interrupted stop request; shell is still active",
-                }
-            )
-        else:
-            job.update(
-                {
-                    "status": "stopped",
-                    "updated_at": updated,
-                    "completed_at": updated,
-                    "exit_code": None,
-                    "error": None,
-                }
-            )
-        return job
-
-    if shell_id in active_shells:
-        return job
-    job.update(
-        {
-            "status": "lost",
-            "updated_at": updated,
-            "completed_at": updated,
-            "exit_code": None,
-            "error": "job shell exited without a durable completion record",
-            "shell_absence_confirmed": True,
-        }
+    active_operation = _observed_active_operation(job)
+    operation_blocks_observation = kind == "managed" or (
+        (status == "starting" and active_operation == "start")
+        or (status == "stopping" and active_operation == "stop")
+        or (status == "retrying" and active_operation == "retry")
     )
-    return job
+    if active_operation is not None and operation_blocks_observation:
+        return _apply_job_transition(
+            job,
+            reconcile_job(
+                job,
+                JobObservation(now=updated, active_operation=active_operation),
+            ),
+        )
+
+    status_payload: JobStatusPayload | None = None
+    pending_status_payload: JobStatusPayload | None = None
+    shell_liveness: ShellLiveness = "unknown"
+    managed_has_local_task = False
+    managed_liveness: ManagedJobLiveness = "unknown"
+
+    if kind == "managed":
+        if active_operation is None:
+            managed_has_local_task = managed_job_has_local_task(job)
+            if not managed_has_local_task:
+                managed_liveness = cast(
+                    ManagedJobLiveness, managed_job_liveness(job)
+                )
+    elif status == "retrying":
+        pending_status_payload = read_status_path(
+            job.get("pending_status_path")
+        )
+        shell_liveness = _observed_shell_liveness(
+            str(job.get("pending_shell_id") or ""), active_shells
+        )
+    else:
+        status_payload = read_status(job)
+        shell_liveness = _observed_shell_liveness(
+            _job_shell_id(job), active_shells
+        )
+
+    transition = reconcile_job(
+        job,
+        JobObservation(
+            now=updated,
+            shell_liveness=shell_liveness,
+            status_payload=status_payload,
+            pending_status_payload=pending_status_payload,
+            active_operation=active_operation,
+            managed_has_local_task=managed_has_local_task,
+            managed_liveness=managed_liveness,
+        ),
+    )
+    return _apply_job_transition(job, transition)
 
 
 def _read_log_tail(path: str | None, lines: int) -> str:
