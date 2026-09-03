@@ -5,24 +5,19 @@ from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parents[1]
 _PACKAGE_ROOT = _PROJECT_ROOT / "src" / "local_shell_mcp"
-_MIGRATION_DOC = (
-    _PROJECT_ROOT / "docs" / "maintenance" / "runtime-architecture-migration.md"
-)
-
-# These are Phase 0 ceilings measured at commit 21e9bbeb (PR #111). They are
-# intentionally one-way: migration PRs may shrink the values without updating
-# this table, while increases require an explicit architecture decision.
+# These ceilings were tightened at the end of issue #112 to the post-migration
+# baseline. They are intentionally one-way: later changes may shrink the values
+# without updating this table, while increases require an explicit architecture
+# decision.
 _AMBIENT_GETTER_CEILINGS = {
-    "get_settings(": (122, 52),
-    "get_tool_session_store(": (82, 25),
+    "get_settings(": (114, 52),
+    "get_tool_session_store(": (68, 24),
     "get_state_store(": (29, 15),
 }
 _REMOTE_BRANCH_PATTERN = re.compile(
     r"\bsession\.target\s*(?:==|!=)\s*[\"']remote[\"']"
 )
-_REMOTE_BRANCH_CEILING = (43, 18)
-
-_LIFECYCLE_INVENTORY: dict[str, tuple[str, ...]] = {}
+_REMOTE_BRANCH_CEILING = (35, 15)
 
 
 def _python_sources() -> list[Path]:
@@ -85,22 +80,6 @@ def test_direct_session_remote_branching_only_shrinks_during_runtime_migration()
         _REMOTE_BRANCH_CEILING,
         'session.target ==/!= "remote"',
     )
-
-
-def test_lifecycle_bearing_process_state_is_kept_in_the_migration_inventory() -> (
-    None
-):
-    documentation = _MIGRATION_DOC.read_text(encoding="utf-8")
-
-    for relative_path, symbols in _LIFECYCLE_INVENTORY.items():
-        assert f"`{relative_path}" in documentation
-        source = (_PACKAGE_ROOT / relative_path).read_text(encoding="utf-8")
-        for symbol in symbols:
-            # As each state owner is migrated, remove it from this inventory and
-            # this test in the same PR. Until then, the symbol must remain both
-            # real and explicitly classified rather than silently drifting.
-            assert symbol in source
-            assert f"`{symbol}`" in documentation
 
 
 def test_managed_jobs_live_state_is_controller_owned_and_reconciliation_is_pure() -> (

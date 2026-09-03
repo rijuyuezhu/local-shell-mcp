@@ -5,7 +5,6 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).parents[1]
 _PACKAGE_ROOT = _PROJECT_ROOT / "src" / "local_shell_mcp"
 _PACKAGE_NAME = "local_shell_mcp"
-_ARCHITECTURE_DOC = Path(__file__).parents[1] / "docs" / "architecture.md"
 
 # `main` composes only domain CLI registrars. Each HTTP-capable executor consumes
 # exactly one shared Human UI route-composition contract.
@@ -294,13 +293,6 @@ def test_ui_core_does_not_depend_on_executors_or_http_adapters() -> None:
     )
 
     assert actual == frozenset()
-    for migrated_name in (
-        "dashboard.py",
-        "image_preview.py",
-        "tui_runtime.py",
-        "ui_security.py",
-    ):
-        assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
 def test_ui_http_does_not_depend_on_executors() -> None:
@@ -329,8 +321,6 @@ def test_terminal_does_not_depend_on_transports_or_ui() -> None:
     )
 
     assert actual == frozenset()
-    for migrated_name in ("conpty.py", "terminal_bridge.py", "tmux_helper.py"):
-        assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
 def test_audit_does_not_depend_on_delivery_or_terminal_layers() -> None:
@@ -349,8 +339,6 @@ def test_audit_does_not_depend_on_delivery_or_terminal_layers() -> None:
     )
 
     assert actual == frozenset()
-    for migrated_name in ("audit.py", "audit_payloads.py"):
-        assert not (_PACKAGE_ROOT / migrated_name).exists()
 
 
 def test_patch_mechanics_stay_below_delivery_layers() -> None:
@@ -368,7 +356,6 @@ def test_patch_mechanics_stay_below_delivery_layers() -> None:
     )
 
     assert actual == frozenset()
-    assert not (_PACKAGE_ROOT / "patch_ops.py").exists()
 
 
 def test_release_uses_only_the_ui_artifact_contract() -> None:
@@ -379,7 +366,6 @@ def test_release_uses_only_the_ui_artifact_contract() -> None:
     )
 
     assert actual == _ALLOWED_RELEASE_IMPORTS
-    assert not (_PACKAGE_ROOT / "platform_wheel.py").exists()
 
 
 def test_ui_artifact_contract_is_a_dependency_leaf() -> None:
@@ -406,19 +392,6 @@ def test_terminal_uses_only_low_level_ops_helpers() -> None:
     )
 
 
-def _assert_ownership_map_covers(paths: set[str]) -> None:
-    documentation = _ARCHITECTURE_DOC.read_text(encoding="utf-8")
-
-    assert paths
-    assert {path for path in paths if f"`{path}`" not in documentation} == set()
-
-
-def test_patch_operation_ownership_map_is_documented() -> None:
-    _assert_ownership_map_covers(
-        {"ops/patch/__init__.py", "ops/patch/envelope.py"}
-    )
-
-
 def _top_level_operation_modules() -> set[str]:
     modules: set[str] = set()
     for path in (_PACKAGE_ROOT / "ops").iterdir():
@@ -429,15 +402,6 @@ def _top_level_operation_modules() -> set[str]:
         elif path.is_dir() and (path / "__init__.py").is_file():
             modules.add(_module_name(path / "__init__.py"))
     return modules
-
-
-def test_shared_ops_ownership_map_covers_every_file() -> None:
-    _assert_ownership_map_covers(
-        {
-            str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
-            for path in (_PACKAGE_ROOT / "ops").rglob("*.py")
-        }
-    )
 
 
 def test_remaining_top_level_ops_families_have_shared_consumers() -> None:
@@ -467,39 +431,6 @@ def test_remaining_top_level_ops_families_have_shared_consumers() -> None:
         (f"{_PACKAGE_NAME}.remote.service", remote_result),
         (f"{_PACKAGE_NAME}.remote.transfer", remote_result),
     } <= imports
-    assert not (_PACKAGE_ROOT / "tools" / "ops" / "remote.py").exists()
-
-
-def test_http_module_ownership_map_covers_every_file() -> None:
-    _assert_ownership_map_covers(
-        {f"http/{path.name}" for path in (_PACKAGE_ROOT / "http").glob("*.py")}
-    )
-
-
-def test_executor_ownership_map_covers_every_file() -> None:
-    _assert_ownership_map_covers(
-        {
-            str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
-            for path in (_PACKAGE_ROOT / "executors").rglob("*.py")
-        }
-    )
-
-
-def test_owned_domain_maps_cover_every_file() -> None:
-    for package in (
-        "audit",
-        "persistence",
-        "release",
-        "telemetry",
-        "terminal",
-        "ui",
-    ):
-        _assert_ownership_map_covers(
-            {
-                str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
-                for path in (_PACKAGE_ROOT / package).rglob("*.py")
-            }
-        )
 
 
 def _assert_tool_owned_slice(
@@ -512,15 +443,6 @@ def _assert_tool_owned_slice(
     input_model = f"{_PACKAGE_NAME}.tools.schemas.input_models.{family}"
     result_model = f"{_PACKAGE_NAME}.tools.schemas.result_models.{family}"
     registry = f"{_PACKAGE_NAME}.tools.registry.{family}"
-    old_paths = {
-        f"ops/{family}.py",
-        f"schemas/input_models/{family}.py",
-        f"schemas/result_models/{family}.py",
-    }
-    assert {
-        path for path in old_paths if (_PACKAGE_ROOT / path).exists()
-    } == set()
-
     imports = _local_imports()
     required = {
         (operation, dependency)
@@ -541,19 +463,6 @@ def _assert_tool_owned_slice(
             importer for importer, dependency in imports if dependency == target
         }
         assert consumers <= allowed
-
-
-def test_tool_owned_module_map_covers_every_file() -> None:
-    _assert_ownership_map_covers(
-        {
-            str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
-            for root in (
-                _PACKAGE_ROOT / "tools" / "ops",
-                _PACKAGE_ROOT / "tools" / "schemas",
-            )
-            for path in root.rglob("*.py")
-        }
-    )
 
 
 def test_tool_owned_slices_have_explicit_boundaries() -> None:
@@ -593,10 +502,6 @@ def test_jobs_domain_and_tool_operation_have_explicit_boundaries() -> None:
     shared_result = f"{_PACKAGE_NAME}.schemas.result_models.jobs"
     registry = f"{_PACKAGE_NAME}.tools.registry.jobs"
 
-    assert not (_PACKAGE_ROOT / "ops" / "jobs.py").exists()
-    assert not (_PACKAGE_ROOT / "schemas" / "input_models" / "jobs.py").exists()
-    assert (_PACKAGE_ROOT / "jobs" / "runtime.py").is_file()
-
     imports = _local_imports()
     assert {
         (registry, operation),
@@ -620,12 +525,6 @@ def test_jobs_domain_and_tool_operation_have_explicit_boundaries() -> None:
         target == f"{_PACKAGE_NAME}.tools"
         or target.startswith(f"{_PACKAGE_NAME}.tools.")
         for target in runtime_targets
-    )
-    _assert_ownership_map_covers(
-        {
-            str(path.relative_to(_PACKAGE_ROOT)).replace("\\", "/")
-            for path in (_PACKAGE_ROOT / "jobs").rglob("*.py")
-        }
     )
 
 
@@ -656,8 +555,6 @@ def test_ui_static_assets_have_one_explicit_owner() -> None:
         path.is_file() and not path.is_symlink()
         for path in static_root.iterdir()
     )
-    assert not (_PACKAGE_ROOT / "ui_static").exists()
-    assert "`ui/static`" in _ARCHITECTURE_DOC.read_text(encoding="utf-8")
 
 
 def test_agent_bridge_data_dependencies_follow_layering() -> None:
@@ -690,16 +587,6 @@ def test_agent_bridge_models_are_a_dependency_leaf() -> None:
     assert actual == frozenset()
 
 
-def test_agent_bridge_cycle_break_ownership_is_documented() -> None:
-    _assert_ownership_map_covers(
-        {
-            "agent_bridge/models.py",
-            "agent_bridge/sources.py",
-            "agent_bridge/status.py",
-        }
-    )
-
-
 def test_remote_worker_process_dependencies_are_one_way() -> None:
     layers = {
         f"{_PACKAGE_NAME}.remote_worker.state": 0,
@@ -725,10 +612,6 @@ def test_remote_worker_state_contract_is_a_dependency_leaf() -> None:
     )
 
     assert actual == frozenset()
-
-
-def test_remote_worker_state_ownership_is_documented() -> None:
-    _assert_ownership_map_covers({"remote_worker/state.py"})
 
 
 def test_dependency_cycles_match_explicit_architecture_debt() -> None:

@@ -44,16 +44,16 @@ runtime context.
 
 ## Directional dependency baseline
 
-The Phase 0 architecture test treats these numbers as ceilings, not goals.
-Usage may shrink without updating the baseline; growth fails the guardrail and
-requires an explicit architectural justification.
+The architecture test now uses the post-#112 values as one-way ceilings, not
+optimization targets. Usage may shrink without updating the baseline; growth
+fails the guardrail and requires an explicit architectural justification.
 
 | Signal | Calls / matches | Files |
 | --- | ---: | ---: |
-| `get_settings(` | 122 | 52 |
-| `get_tool_session_store(` | 82 | 25 |
+| `get_settings(` | 114 | 52 |
+| `get_tool_session_store(` | 68 | 24 |
 | `get_state_store(` | 29 | 15 |
-| direct `session.target ==/!= "remote"` branches | 43 | 18 |
+| direct `session.target ==/!= "remote"` branches | 35 | 15 |
 
 The remote-branch metric is intentionally a narrow directional proxy. Pairwise
 routing such as Transfer/`session_copy` may legitimately retain domain-specific
@@ -142,9 +142,9 @@ Approved clients remain persisted at approval time, while shutdown stops new
 OAuth mutations and clears only the process working set and transient codes.
 The former `_CLIENTS`, `_CODES`, `_OAUTH_CLIENT_LOCK`, and `_AUTH_CODE_LOCK`
 globals are gone; the remaining OAuth compatibility pointer is reversible and
-non-owning until Phase 6 injects the narrower dependency into consumers.
-Controller shutdown therefore orders these migrated owners as `HumanUiRuntime`
-→ `OAuthState` → `RemoteManager` → `TerminalRuntime`.
+non-owning for legacy consumers. Controller shutdown orders the managed owners
+as `ManagedJobsRuntime` → `HumanUiRuntime` → `OAuthState` → `RemoteManager` →
+`TerminalRuntime`.
 
 Phase 6 begins with the Files vertical because it had the highest remaining
 hidden-dependency density outside Jobs/Search. `FilesConfig` projects only the
@@ -159,10 +159,9 @@ compatibility facades, but `get_settings()` and `get_tool_session_store()` are
 now reacquired only in one centralized Files compatibility helper rather than
 inside the migrated execution path.
 
-The inventory is about ownership, not immediate movement. Jobs live maps are
-explicitly excluded from the earlier global-migration phase; immutable
-constants, process identity, and harmless bounded caches are not migration
-success metrics.
+The completed inventory is about lifecycle ownership, not the elimination of all
+module state. Immutable constants, process identity, and harmless bounded caches
+remain valid module-level state and are not migration success metrics.
 
 ## Lifecycle rule
 
