@@ -89,7 +89,8 @@ pending remote calls plus long-poll waiters before dependent compatibility
 bindings are restored. The former module-import `REMOTE_MANAGER` singleton is
 gone. `_REMOTE_MANAGER` is only a reversible, non-owning compatibility pointer
 for domains that have not yet reached the explicit-dependency Phase 6; migrated
-Search routing receives the owned manager's narrow `call` dependency directly.
+Search and Files routing receive the owned manager's narrow `call` dependency
+directly.
 
 Phase 5 also migrated terminal live state. `TerminalRuntime` owns one
 `TerminalBridgeRegistry` and one `ConPtyRegistry`; both the controller and the
@@ -123,6 +124,19 @@ globals are gone; the remaining OAuth compatibility pointer is reversible and
 non-owning until Phase 6 injects the narrower dependency into consumers.
 Controller shutdown therefore orders these migrated owners as `HumanUiRuntime`
 → `OAuthState` → `RemoteManager` → `TerminalRuntime`.
+
+Phase 6 begins with the Files vertical because it had the highest remaining
+hidden-dependency density outside Jobs/Search. `FilesConfig` projects only the
+workspace/path policy and file-size/count limits used by that domain.
+`FilesService` receives that config, the authoritative `ToolSessionStore`, and
+an optional narrow remote callable; it resolves a fresh `SessionBinding` per
+operation and owns File/Read local-vs-remote routing. Controller File and Read
+registries receive the service through the explicit catalog factory seam, while
+the source-only worker closes over its own worker-local `FilesService` through
+the constructible dispatcher. The legacy direct-call functions remain as
+compatibility facades, but `get_settings()` and `get_tool_session_store()` are
+now reacquired only in one centralized Files compatibility helper rather than
+inside the migrated execution path.
 
 The inventory is about ownership, not immediate movement. Jobs live maps are
 explicitly excluded from the earlier global-migration phase; immutable

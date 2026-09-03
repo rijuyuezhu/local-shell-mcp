@@ -1,6 +1,6 @@
 from pathlib import Path
 
-_SHARED_OPERATION_FACADES = {"bash"}
+_NON_REGISTRY_OPERATION_MODULES = {"bash", "files_service"}
 
 
 def _module_names(
@@ -55,8 +55,8 @@ def test_tool_family_modules_are_aligned() -> None:
         "src/local_shell_mcp/tools/schemas/result_models",
     )
 
-    assert ops - _SHARED_OPERATION_FACADES == registry
-    assert ops >= _SHARED_OPERATION_FACADES
+    assert ops - _NON_REGISTRY_OPERATION_MODULES == registry
+    assert ops >= _NON_REGISTRY_OPERATION_MODULES
     assert input_models == registry
     assert result_models == registry
 

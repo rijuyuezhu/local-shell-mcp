@@ -1,5 +1,8 @@
 """File operation tool registry."""
 
+from dataclasses import replace
+
+from ...config.settings import Settings
 from ...ops.files import (
     delete_file_or_dir_dispatch_execute,
     edit_lines_dispatch_execute,
@@ -7,6 +10,7 @@ from ...ops.files import (
     list_files_dispatch_execute,
     write_file_dispatch_execute,
 )
+from ...ops.files_service import FilesService
 from ...schemas.input_models.files import (
     EditEndLineArg,
     EditStartLineArg,
@@ -37,6 +41,90 @@ class FileToolRegistry(DeclarativeToolRegistry):
 
     name = "file"
     """Registry group name used for tool-surface organization."""
+
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        files_service: FilesService | None = None,
+    ) -> None:
+        super().__init__(settings)
+        self._files_service = files_service
+
+    def _require_service(self) -> FilesService:
+        if self._files_service is None:
+            raise RuntimeError("Files service is not bound")
+        return self._files_service
+
+    async def _bound_list_files(
+        self,
+        session_id: SessionIdArg,
+        path: ListPathArg = ".",
+        recursive: RecursiveArg = False,
+        max_entries: MaxEntriesArg = 500,
+    ) -> ListFilesOutput:
+        return await self._require_service().list_files(
+            session_id, path, recursive, max_entries
+        )
+
+    async def _bound_write_file(
+        self,
+        session_id: SessionIdArg,
+        path: FilePathArg,
+        content: FileContentArg,
+        overwrite: OverwriteArg = True,
+    ) -> WriteFileOutput:
+        return await self._require_service().write_file(
+            session_id, path, content, overwrite
+        )
+
+    async def _bound_edit_lines(
+        self,
+        path: FilePathArg,
+        start_line: EditStartLineArg,
+        end_line: EditEndLineArg,
+        replacement: LineReplacementArg,
+        session_id: SessionIdArg,
+        snapshot_id: SnapshotIdArg = None,
+    ) -> EditLinesOutput:
+        return await self._require_service().edit_lines(
+            session_id,
+            path,
+            start_line,
+            end_line,
+            replacement,
+            snapshot_id,
+        )
+
+    async def _bound_hashline_edit(
+        self,
+        session_id: SessionIdArg,
+        input: HashlineEditInputArg,
+    ) -> HashlineEditOutput:
+        return await self._require_service().hashline_edit(session_id, input)
+
+    async def _bound_delete_file_or_dir(
+        self,
+        session_id: SessionIdArg,
+        path: FilePathArg,
+        recursive: RecursiveArg = False,
+    ) -> DeleteFileOrDirOutput:
+        return await self._require_service().delete_file_or_dir(
+            session_id, path, recursive
+        )
+
+    def _enabled_tools(self):
+        tools = super()._enabled_tools()
+        if self._files_service is None:
+            return tools
+        bound = {
+            "list_files": self._bound_list_files,
+            "write_file": self._bound_write_file,
+            "edit_lines": self._bound_edit_lines,
+            "hashline_edit": self._bound_hashline_edit,
+            "delete_file_or_dir": self._bound_delete_file_or_dir,
+        }
+        return tuple(replace(tool, func=bound[tool.name]) for tool in tools)
 
 
 file_tool = FileToolRegistry.get_tool_decorator()

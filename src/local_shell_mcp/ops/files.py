@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config.settings import get_settings
+from ..config.settings import Settings, get_settings
 from ..schemas.input_models.files import ReadFileRequest
 from ..schemas.result_models.files import (
     DeleteFileOrDirOutput,
@@ -28,15 +28,98 @@ from ..schemas.result_models.files import (
     ReadManyFilesOutput,
     WriteFileOutput,
 )
+from ..tool_session.bindings import LocalSessionBinding, RemoteSessionBinding
+from ..tool_session.resolver import SessionResolver
 from ..tool_session.store import (
     ToolSessionStore,
     file_sha256,
     get_tool_session_store,
-    resolve_session_path,
 )
 from ..utils.path_locks import path_lock, path_locks
-from .utils.path import relative_display, resolve_path, workspace_root
+from .utils.path import relative_display_from_root, resolve_path_with_policy
 from .utils.remote_session import call_remote_session_tool
+
+
+@dataclass(frozen=True)
+class FilesConfig:
+    """Configuration values consumed by the Files domain."""
+
+    workspace_root: Path
+    """Workspace root used for sessionless paths and display normalization."""
+    allow_full_control: bool
+    """Whether filesystem access may escape the configured workspace root."""
+    path_denylist: tuple[str, ...]
+    """Denied path fragments enforced by the shared path policy."""
+    max_directory_entries: int
+    """Maximum directory entries returned by one list operation."""
+    max_file_read_bytes: int
+    """Maximum bytes decoded from one file read."""
+    max_read_many_files: int
+    """Maximum number of files accepted by one multi-read operation."""
+    max_read_many_total_bytes: int
+    """Maximum aggregate UTF-8 bytes returned by one multi-read operation."""
+    max_file_write_bytes: int
+    """Maximum UTF-8 bytes accepted by file write and edit operations."""
+
+
+def files_config_from_settings(settings: Settings) -> FilesConfig:
+    """Project application settings to the values Files actually consumes."""
+    return FilesConfig(
+        workspace_root=settings.workspace_root,
+        allow_full_control=settings.allow_full_control,
+        path_denylist=tuple(settings.path_denylist),
+        max_directory_entries=settings.max_directory_entries,
+        max_file_read_bytes=settings.max_file_read_bytes,
+        max_read_many_files=settings.max_read_many_files,
+        max_read_many_total_bytes=settings.max_read_many_total_bytes,
+        max_file_write_bytes=settings.max_file_write_bytes,
+    )
+
+
+def _resolve_file_path(
+    config: FilesConfig,
+    binding: LocalSessionBinding | None,
+    path: str | Path,
+    *,
+    must_exist: bool = False,
+    allow_missing_parent: bool = True,
+    follow_final_symlink: bool = True,
+) -> Path:
+    """Resolve a workspace or local-session path from explicit Files policy."""
+    if binding is None:
+        return resolve_path_with_policy(
+            path,
+            workspace_root=config.workspace_root,
+            allow_full_control=config.allow_full_control,
+            path_denylist=config.path_denylist,
+            must_exist=must_exist,
+            allow_missing_parent=allow_missing_parent,
+            follow_final_symlink=follow_final_symlink,
+        )
+
+    workdir = Path(binding.workdir).resolve()
+    raw = Path(path)
+    candidate = raw if raw.is_absolute() else workdir / raw
+    resolved = resolve_path_with_policy(
+        candidate,
+        workspace_root=config.workspace_root,
+        allow_full_control=config.allow_full_control,
+        path_denylist=config.path_denylist,
+        must_exist=must_exist,
+        allow_missing_parent=allow_missing_parent,
+        follow_final_symlink=follow_final_symlink,
+    )
+    boundary = resolved if follow_final_symlink else resolved.parent
+    try:
+        boundary.relative_to(workdir)
+    except ValueError as exc:
+        raise ValueError(f"Path escapes session workdir: {path}") from exc
+    return resolved
+
+
+def _display_file(config: FilesConfig, path: Path) -> str:
+    """Render a file path relative to the explicit workspace root."""
+    return relative_display_from_root(path, config.workspace_root)
 
 
 def _atomic_write_text(path: Path, content: str) -> None:
@@ -60,28 +143,36 @@ def _atomic_write_text(path: Path, content: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def list_files_execute(
+def _compat_files_dependencies() -> tuple[FilesConfig, ToolSessionStore]:
+    """Return ambient dependencies only for legacy direct-call compatibility."""
+    return files_config_from_settings(get_settings()), get_tool_session_store()
+
+
+def _local_binding(
+    store: ToolSessionStore, session_id: str | None
+) -> LocalSessionBinding | None:
+    """Resolve one fresh admitted local binding for a compatibility call."""
+    if session_id is None:
+        return None
+    binding = SessionResolver(store).resolve_active_binding(session_id)
+    if not isinstance(binding, LocalSessionBinding):
+        raise ValueError("local Files execution received a remote session")
+    return binding
+
+
+def _list_files_local(
+    config: FilesConfig,
+    binding: LocalSessionBinding | None,
     path: str = ".",
     recursive: bool = False,
     max_entries: int = 500,
-    session_id: str | None = None,
 ) -> ListFilesOutput:
-    """List directory entries up to a limit and report whether results were truncated."""
-    settings = get_settings()
-    session = (
-        get_tool_session_store().touch_session(session_id)
-        if session_id is not None
-        else None
-    )
-    base = (
-        resolve_session_path(session, path, must_exist=True)
-        if session is not None
-        else resolve_path(path, must_exist=True)
-    )
+    """List files from explicit Files policy and an optional local binding."""
+    base = _resolve_file_path(config, binding, path, must_exist=True)
     if not base.is_dir():
         raise NotADirectoryError(str(base))
     filelist: list[EntryInfo] = []
-    max_directory_entries = settings.max_directory_entries
+    max_directory_entries = config.max_directory_entries
     if not (0 <= max_entries <= max_directory_entries):
         raise ValueError(
             f"max_entries must be between 0 and {max_directory_entries}"
@@ -114,7 +205,7 @@ def list_files_execute(
                 target = os.readlink(item)
         filelist.append(
             EntryInfo(
-                path=relative_display(item),
+                path=_display_file(config, item),
                 type=entry_type,
                 size=stat.st_size if entry_type in {"file", "link"} else None,
                 modified=stat.st_mtime,
@@ -129,19 +220,37 @@ def list_files_execute(
     )
 
 
+def list_files_execute(
+    path: str = ".",
+    recursive: bool = False,
+    max_entries: int = 500,
+    session_id: str | None = None,
+) -> ListFilesOutput:
+    """Compatibility facade for local list-files execution."""
+    config, store = _compat_files_dependencies()
+    return _list_files_local(
+        config,
+        _local_binding(store, session_id),
+        path,
+        recursive,
+        max_entries,
+    )
+
+
 async def list_files_dispatch_execute(
     path: str = ".",
     recursive: bool = False,
     max_entries: int = 500,
     session_id: str | None = None,
 ) -> ListFilesOutput:
-    """Dispatch list_files to a local or remote session."""
+    """Compatibility facade dispatching list-files through ambient dependencies."""
+    config, store = _compat_files_dependencies()
     if session_id is None:
-        return list_files_execute(path, recursive, max_entries, session_id)
-    session = get_tool_session_store().touch_session(session_id)
-    if session.target == "remote":
+        return _list_files_local(config, None, path, recursive, max_entries)
+    binding = SessionResolver(store).resolve_active_binding(session_id)
+    if isinstance(binding, RemoteSessionBinding):
         data = await call_remote_session_tool(
-            session,
+            binding,
             "list_files",
             {
                 "path": path,
@@ -150,7 +259,7 @@ async def list_files_dispatch_execute(
             },
         )
         return ListFilesOutput.model_validate(data)
-    return list_files_execute(path, recursive, max_entries, session_id)
+    return _list_files_local(config, binding, path, recursive, max_entries)
 
 
 type _ReadLineRange = tuple[int | None, int | None]
@@ -287,6 +396,31 @@ def read_file_explicit(
     )
 
 
+def _read_file_local(
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
+    path: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    line_ranges: Sequence[_ReadLineRange] | None = None,
+) -> ReadFileOutput:
+    """Read and ground a local file from explicit Files dependencies."""
+    return read_file_explicit(
+        path,
+        start_line,
+        end_line,
+        line_ranges=line_ranges,
+        max_file_read_bytes=config.max_file_read_bytes,
+        resolve_file=lambda value: _resolve_file_path(
+            config, binding, value, must_exist=True
+        ),
+        display_file=lambda value: _display_file(config, value),
+        snapshot_store=store if binding is not None else None,
+        snapshot_session_id=binding.session_id if binding is not None else None,
+    )
+
+
 def read_file_execute(
     path: str,
     start_line: int | None = None,
@@ -294,28 +428,16 @@ def read_file_execute(
     session_id: str | None = None,
     line_ranges: Sequence[_ReadLineRange] | None = None,
 ) -> ReadFileOutput:
-    """Read a UTF-8 text file by optional line range and record grounding when session-bound."""
-    settings = get_settings()
-    store = get_tool_session_store()
-    session = (
-        store.touch_session(session_id) if session_id is not None else None
-    )
-
-    def resolve_file(path_value: str) -> Path:
-        if session is not None:
-            return resolve_session_path(session, path_value, must_exist=True)
-        return resolve_path(path_value, must_exist=True)
-
-    return read_file_explicit(
+    """Compatibility facade for local UTF-8 file reads."""
+    config, store = _compat_files_dependencies()
+    return _read_file_local(
+        config,
+        store,
+        _local_binding(store, session_id),
         path,
         start_line,
         end_line,
-        line_ranges=line_ranges,
-        max_file_read_bytes=settings.max_file_read_bytes,
-        resolve_file=resolve_file,
-        display_file=relative_display,
-        snapshot_store=store if session is not None else None,
-        snapshot_session_id=session.session_id if session is not None else None,
+        line_ranges,
     )
 
 
@@ -344,28 +466,31 @@ def _read_many_file_parts(
     )
 
 
-def read_many_files_execute(
+def _read_many_files_local(
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
     files_to_read: Sequence[_ReadManyFileSpec],
-    session_id: str | None = None,
 ) -> ReadManyFilesOutput:
-    """Read many files with per-file optional line ranges."""
-    settings = get_settings()
-    if len(files_to_read) > settings.max_read_many_files:
+    """Read many local files after one shared session admission."""
+    if len(files_to_read) > config.max_read_many_files:
         raise ValueError(
-            f"Refusing to read {len(files_to_read)} files; max is {settings.max_read_many_files}"
+            f"Refusing to read {len(files_to_read)} files; max is {config.max_read_many_files}"
         )
 
     files: list[ReadFileOutput] = []
     total_content_bytes = 0
     for item_to_read in files_to_read:
         path, start_line, end_line = _read_many_file_parts(item_to_read)
-        item = read_file_execute(path, start_line, end_line, session_id)
+        item = _read_file_local(
+            config, store, binding, path, start_line, end_line
+        )
         content = item.content
         total_content_bytes += len(content.encode("utf-8"))
-        if total_content_bytes > settings.max_read_many_total_bytes:
+        if total_content_bytes > config.max_read_many_total_bytes:
             raise ValueError(
                 f"Refusing to return {total_content_bytes} bytes from read_many_files; "
-                f"max is {settings.max_read_many_total_bytes}"
+                f"max is {config.max_read_many_total_bytes}"
             )
         files.append(item)
     return ReadManyFilesOutput(
@@ -373,34 +498,36 @@ def read_many_files_execute(
     )
 
 
-def write_file_execute(
+def read_many_files_execute(
+    files_to_read: Sequence[_ReadManyFileSpec],
+    session_id: str | None = None,
+) -> ReadManyFilesOutput:
+    """Compatibility facade for multi-file local reads."""
+    config, store = _compat_files_dependencies()
+    return _read_many_files_local(
+        config, store, _local_binding(store, session_id), files_to_read
+    )
+
+
+def _write_file_local(
+    config: FilesConfig,
+    binding: LocalSessionBinding | None,
     path: str,
     content: str,
     overwrite: bool = True,
-    session_id: str | None = None,
     expected_sha256: str | None = None,
 ) -> WriteFileOutput:
-    """Write text atomically, optionally rejecting a stale editor revision."""
-    settings = get_settings()
+    """Write local text from explicit Files policy and path binding."""
     data = content.encode("utf-8")
-    if len(data) > settings.max_file_write_bytes:
+    if len(data) > config.max_file_write_bytes:
         raise ValueError(
-            f"Refusing to write {len(data)} bytes; max is {settings.max_file_write_bytes}"
+            f"Refusing to write {len(data)} bytes; max is {config.max_file_write_bytes}"
         )
     if expected_sha256 is not None and not re.fullmatch(
         r"[0-9a-f]{64}", expected_sha256
     ):
         raise ValueError("expected_sha256 must be a lowercase SHA-256 digest")
-    session = (
-        get_tool_session_store().touch_session(session_id)
-        if session_id is not None
-        else None
-    )
-    p = (
-        resolve_session_path(session, path)
-        if session is not None
-        else resolve_path(path)
-    )
+    p = _resolve_file_path(config, binding, path)
     with path_lock(p):
         exists = p.exists()
         if exists and not overwrite:
@@ -412,7 +539,26 @@ def write_file_execute(
         created = not exists
         _atomic_write_text(p, content)
     return WriteFileOutput(
-        path=relative_display(p), bytes=len(data), created=created
+        path=_display_file(config, p), bytes=len(data), created=created
+    )
+
+
+def write_file_execute(
+    path: str,
+    content: str,
+    overwrite: bool = True,
+    session_id: str | None = None,
+    expected_sha256: str | None = None,
+) -> WriteFileOutput:
+    """Compatibility facade for local text writes."""
+    config, store = _compat_files_dependencies()
+    return _write_file_local(
+        config,
+        _local_binding(store, session_id),
+        path,
+        content,
+        overwrite,
+        expected_sha256,
     )
 
 
@@ -423,15 +569,16 @@ async def write_file_dispatch_execute(
     session_id: str | None = None,
     expected_sha256: str | None = None,
 ) -> WriteFileOutput:
-    """Dispatch write_file to a local or remote session."""
+    """Compatibility facade dispatching writes through ambient dependencies."""
+    config, store = _compat_files_dependencies()
     if session_id is None:
-        return write_file_execute(
-            path, content, overwrite, session_id, expected_sha256
+        return _write_file_local(
+            config, None, path, content, overwrite, expected_sha256
         )
-    session = get_tool_session_store().touch_session(session_id)
-    if session.target == "remote":
+    binding = SessionResolver(store).resolve_active_binding(session_id)
+    if isinstance(binding, RemoteSessionBinding):
         data = await call_remote_session_tool(
-            session,
+            binding,
             "write_file",
             {
                 "path": path,
@@ -441,8 +588,8 @@ async def write_file_dispatch_execute(
             },
         )
         return WriteFileOutput.model_validate(data)
-    return write_file_execute(
-        path, content, overwrite, session_id, expected_sha256
+    return _write_file_local(
+        config, binding, path, content, overwrite, expected_sha256
     )
 
 
@@ -690,19 +837,19 @@ def parse_hashline_edit_input(
 
 
 def _path_for_hashline_operation(
-    path: str, snapshot_id: str, session_id: str | None
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
+    path: str,
+    snapshot_id: str,
 ) -> str:
     """Return a path usable by edit_lines, preserving copied read/search headers."""
-    if session_id is None:
+    if binding is None:
         return path
-    store = get_tool_session_store()
-    session = store.touch_session(session_id)
-    if session.target != "local":
-        return path
-    record = store.get_snapshot(session_id, snapshot_id)
+    record = store.get_snapshot(binding.session_id, snapshot_id)
     if record is None or record.path != path:
         return path
-    candidate = workspace_root() / record.path
+    candidate = config.workspace_root / record.path
     if candidate.exists():
         return str(candidate)
     return path
@@ -710,19 +857,20 @@ def _path_for_hashline_operation(
 
 def _validate_snapshot_for_edit(
     *,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
     path: str,
     current_sha256: str,
     start_line: int,
     end_line: int,
     snapshot_id: str | None,
-    session_id: str | None,
 ) -> None:
     """Validate optional snapshot freshness and visible-range grounding."""
     if snapshot_id is None:
         return
-    if session_id is None:
+    if binding is None:
         raise ValueError("session_id is required when snapshot_id is provided")
-    record = get_tool_session_store().get_snapshot(session_id, snapshot_id)
+    record = store.get_snapshot(binding.session_id, snapshot_id)
     if record is None:
         raise ValueError(
             "snapshot_id not found for this session; re-read the file"
@@ -741,17 +889,20 @@ def _validate_snapshot_for_edit(
         )
 
 
-def edit_file_execute(
-    path: str, old: str, new: str, replace_all: bool = False
+def _edit_file_local(
+    config: FilesConfig,
+    path: str,
+    old: str,
+    new: str,
+    replace_all: bool = False,
 ) -> EditFileOutput:
-    """Replace exact text in a validated text file and report how many occurrences changed."""
-    settings = get_settings()
-    p = resolve_path(path, must_exist=True)
+    """Replace exact text in a sessionless local file from explicit policy."""
+    p = _resolve_file_path(config, None, path, must_exist=True)
     with path_lock(p):
         size = p.stat().st_size
-        if size > settings.max_file_write_bytes:
+        if size > config.max_file_write_bytes:
             raise ValueError(
-                f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+                f"Refusing to edit {size} bytes; max is {config.max_file_write_bytes}"
             )
         text = p.read_text(encoding="utf-8")
         count = text.count(old)
@@ -765,39 +916,40 @@ def edit_file_execute(
             text.replace(old, new) if replace_all else text.replace(old, new, 1)
         )
         updated_bytes = len(updated.encode("utf-8"))
-        if updated_bytes > settings.max_file_write_bytes:
+        if updated_bytes > config.max_file_write_bytes:
             raise ValueError(
-                f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+                f"Refusing to write {updated_bytes} bytes; max is {config.max_file_write_bytes}"
             )
         _atomic_write_text(p, updated)
     return EditFileOutput(
-        path=relative_display(p), replacements=count if replace_all else 1
+        path=_display_file(config, p), replacements=count if replace_all else 1
     )
+
+
+def edit_file_execute(
+    path: str, old: str, new: str, replace_all: bool = False
+) -> EditFileOutput:
+    """Compatibility facade for exact-text local edits."""
+    config, _ = _compat_files_dependencies()
+    return _edit_file_local(config, path, old, new, replace_all)
 
 
 def _hashline_file_snapshot(
-    path: str, session_id: str | None
+    config: FilesConfig,
+    binding: LocalSessionBinding | None,
+    path: str,
 ) -> _HashlineFileSnapshot:
     """Resolve a hashline path and capture current file state."""
-    settings = get_settings()
-    store = get_tool_session_store()
-    session = (
-        store.touch_session(session_id) if session_id is not None else None
-    )
-    p = (
-        resolve_session_path(session, path, must_exist=True)
-        if session is not None
-        else resolve_path(path, must_exist=True)
-    )
+    p = _resolve_file_path(config, binding, path, must_exist=True)
     size = p.stat().st_size
-    if size > settings.max_file_write_bytes:
+    if size > config.max_file_write_bytes:
         raise ValueError(
-            f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+            f"Refusing to edit {size} bytes; max is {config.max_file_write_bytes}"
         )
     original = p.read_text(encoding="utf-8")
     return _HashlineFileSnapshot(
         path_obj=p,
-        relative_path=relative_display(p),
+        relative_path=_display_file(config, p),
         original=original,
         original_lines=tuple(original.splitlines(keepends=True)),
         current_sha256=file_sha256(p),
@@ -815,16 +967,18 @@ def _hashline_operation_range(
 
 def _prepare_hashline_hunk(
     *,
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
     input_index: int,
     operation: _ParsedHashlineOperation,
-    session_id: str | None,
     snapshots: dict[Path, _HashlineFileSnapshot],
 ) -> _PreparedHashlineHunk:
     """Validate one parsed hashline hunk and convert it to replacement lines."""
     path_arg = _path_for_hashline_operation(
-        operation.path, operation.snapshot_id, session_id
+        config, store, binding, operation.path, operation.snapshot_id
     )
-    snapshot = _hashline_file_snapshot(path_arg, session_id)
+    snapshot = _hashline_file_snapshot(config, binding, path_arg)
     snapshots.setdefault(snapshot.path_obj, snapshot)
     snapshot = snapshots[snapshot.path_obj]
 
@@ -841,12 +995,13 @@ def _prepare_hashline_hunk(
         )
 
     _validate_snapshot_for_edit(
+        store=store,
+        binding=binding,
         path=snapshot.relative_path,
         current_sha256=snapshot.current_sha256,
         start_line=start_line,
         end_line=end_line,
         snapshot_id=operation.snapshot_id,
-        session_id=session_id,
     )
 
     decoded_lines = snapshot.original.splitlines()
@@ -907,11 +1062,11 @@ def _validate_hashline_hunk_overlap(
 
 
 def _apply_hashline_file_hunks(
+    config: FilesConfig,
     snapshot: _HashlineFileSnapshot,
     hunks: Sequence[_PreparedHashlineHunk],
 ) -> tuple[tuple[str, ...], str]:
     """Apply prepared hunks to one file and return updated lines plus diff."""
-    settings = get_settings()
     updated_lines = list(snapshot.original_lines)
     for hunk in sorted(hunks, key=lambda item: item.start_line, reverse=True):
         updated_lines = (
@@ -921,9 +1076,9 @@ def _apply_hashline_file_hunks(
         )
     updated = "".join(updated_lines)
     updated_bytes = len(updated.encode("utf-8"))
-    if updated_bytes > settings.max_file_write_bytes:
+    if updated_bytes > config.max_file_write_bytes:
         raise ValueError(
-            f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+            f"Refusing to write {updated_bytes} bytes; max is {config.max_file_write_bytes}"
         )
 
     diff = "".join(
@@ -940,10 +1095,12 @@ def _apply_hashline_file_hunks(
 
 def _hashline_hunk_contexts(
     *,
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
     prepared_hunks: Sequence[_PreparedHashlineHunk],
     updated_by_file: dict[Path, tuple[str, ...]],
     snapshots: dict[Path, _HashlineFileSnapshot],
-    session_id: str | None,
 ) -> list[HashlineEditHunkOutput]:
     """Build fresh post-edit context for each hunk in original input order."""
     outputs_by_index: dict[int, HashlineEditHunkOutput] = {}
@@ -968,8 +1125,13 @@ def _hashline_hunk_contexts(
             )
             if not updated_lines:
                 context_start = context_end = 1
-            context = read_file_execute(
-                str(snapshot.path_obj), context_start, context_end, session_id
+            context = _read_file_local(
+                config,
+                store,
+                binding,
+                str(snapshot.path_obj),
+                context_start,
+                context_end,
             )
             outputs_by_index[hunk.input_index] = HashlineEditHunkOutput(
                 path=hunk.relative_path,
@@ -989,39 +1151,39 @@ def _hashline_hunk_contexts(
 
 
 def _hashline_operation_paths(
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
     operations: Sequence[_ParsedHashlineOperation],
-    session_id: str | None,
 ) -> list[Path]:
     """Resolve hashline targets before acquiring their shared mutation locks."""
-    store = get_tool_session_store()
-    session = (
-        store.touch_session(session_id) if session_id is not None else None
-    )
     paths: list[Path] = []
     for operation in operations:
         path_arg = _path_for_hashline_operation(
-            operation.path, operation.snapshot_id, session_id
+            config, store, binding, operation.path, operation.snapshot_id
         )
-        resolved = (
-            resolve_session_path(session, path_arg, must_exist=True)
-            if session is not None
-            else resolve_path(path_arg, must_exist=True)
+        resolved = _resolve_file_path(
+            config, binding, path_arg, must_exist=True
         )
         paths.append(resolved)
     return paths
 
 
 def _hashline_edit_locked(
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
     operations: Sequence[_ParsedHashlineOperation],
-    session_id: str | None,
 ) -> HashlineEditOutput:
     """Validate and apply hashline operations while all target locks are held."""
     snapshots: dict[Path, _HashlineFileSnapshot] = {}
     prepared_hunks = [
         _prepare_hashline_hunk(
+            config=config,
+            store=store,
+            binding=binding,
             input_index=index,
             operation=operation,
-            session_id=session_id,
             snapshots=snapshots,
         )
         for index, operation in enumerate(operations)
@@ -1036,16 +1198,18 @@ def _hashline_edit_locked(
     diff_parts: list[str] = []
     for path_obj, file_hunks in hunks_by_file.items():
         updated_lines, diff = _apply_hashline_file_hunks(
-            snapshots[path_obj], file_hunks
+            config, snapshots[path_obj], file_hunks
         )
         updated_by_file[path_obj] = updated_lines
         diff_parts.append(diff)
 
     hunk_outputs = _hashline_hunk_contexts(
+        config=config,
+        store=store,
+        binding=binding,
         prepared_hunks=prepared_hunks,
         updated_by_file=updated_by_file,
         snapshots=snapshots,
-        session_id=session_id,
     )
     first_hunk = hunk_outputs[0]
     first_path = first_hunk.path
@@ -1069,55 +1233,64 @@ def _hashline_edit_locked(
     )
 
 
+def _hashline_edit_local(
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
+    input_text: str,
+) -> HashlineEditOutput:
+    """Apply hashline edits from explicit Files dependencies."""
+    operations = parse_hashline_edit_input(input_text)
+    with path_locks(
+        _hashline_operation_paths(config, store, binding, operations)
+    ):
+        return _hashline_edit_locked(config, store, binding, operations)
+
+
 def hashline_edit_execute(
     input_text: str, session_id: str | None = None
 ) -> HashlineEditOutput:
-    """Apply one or more compact hashline edits against original line numbers."""
-    operations = parse_hashline_edit_input(input_text)
-    with path_locks(_hashline_operation_paths(operations, session_id)):
-        return _hashline_edit_locked(operations, session_id)
+    """Compatibility facade for local hashline edits."""
+    config, store = _compat_files_dependencies()
+    return _hashline_edit_local(
+        config, store, _local_binding(store, session_id), input_text
+    )
 
 
-def edit_lines_execute(
+def _edit_lines_local(
+    config: FilesConfig,
+    store: ToolSessionStore,
+    binding: LocalSessionBinding | None,
     path: str,
     start_line: int,
     end_line: int,
     replacement: str,
     snapshot_id: str | None = None,
-    session_id: str | None = None,
 ) -> EditLinesOutput:
-    """Replace an inclusive whole-line range with optional snapshot checks."""
+    """Replace a local line range from explicit Files dependencies."""
     if start_line < 1:
         raise ValueError("start_line must be >= 1")
     if end_line < start_line:
         raise ValueError("end_line must be >= start_line")
 
-    settings = get_settings()
-    store = get_tool_session_store()
-    session = (
-        store.touch_session(session_id) if session_id is not None else None
-    )
-    p = (
-        resolve_session_path(session, path, must_exist=True)
-        if session is not None
-        else resolve_path(path, must_exist=True)
-    )
+    p = _resolve_file_path(config, binding, path, must_exist=True)
     with path_lock(p):
         size = p.stat().st_size
-        if size > settings.max_file_write_bytes:
+        if size > config.max_file_write_bytes:
             raise ValueError(
-                f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+                f"Refusing to edit {size} bytes; max is {config.max_file_write_bytes}"
             )
 
-        relative_path = relative_display(p)
+        relative_path = _display_file(config, p)
         current_sha256 = file_sha256(p)
         _validate_snapshot_for_edit(
+            store=store,
+            binding=binding,
             path=relative_path,
             current_sha256=current_sha256,
             start_line=start_line,
             end_line=end_line,
             snapshot_id=snapshot_id,
-            session_id=session_id,
         )
 
         original = p.read_text(encoding="utf-8")
@@ -1144,9 +1317,9 @@ def edit_lines_execute(
         )
         updated = "".join(updated_lines)
         updated_bytes = len(updated.encode("utf-8"))
-        if updated_bytes > settings.max_file_write_bytes:
+        if updated_bytes > config.max_file_write_bytes:
             raise ValueError(
-                f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+                f"Refusing to write {updated_bytes} bytes; max is {config.max_file_write_bytes}"
             )
 
         diff = "".join(
@@ -1168,8 +1341,8 @@ def edit_lines_execute(
                 start_line + max(replacement_line_count, 1) + 3,
             ),
         )
-        context = read_file_execute(
-            str(p), context_start, context_end, session_id
+        context = _read_file_local(
+            config, store, binding, str(p), context_start, context_end
         )
     return EditLinesOutput(
         path=relative_path,
@@ -1181,21 +1354,44 @@ def edit_lines_execute(
     )
 
 
+def edit_lines_execute(
+    path: str,
+    start_line: int,
+    end_line: int,
+    replacement: str,
+    snapshot_id: str | None = None,
+    session_id: str | None = None,
+) -> EditLinesOutput:
+    """Compatibility facade for local structured line edits."""
+    config, store = _compat_files_dependencies()
+    return _edit_lines_local(
+        config,
+        store,
+        _local_binding(store, session_id),
+        path,
+        start_line,
+        end_line,
+        replacement,
+        snapshot_id,
+    )
+
+
 async def hashline_edit_dispatch_execute(
     input_text: str, session_id: str | None = None
 ) -> HashlineEditOutput:
-    """Dispatch hashline_edit to a local or remote session."""
+    """Compatibility facade dispatching hashline edits through ambient dependencies."""
+    config, store = _compat_files_dependencies()
     if session_id is None:
-        return hashline_edit_execute(input_text, session_id)
-    session = get_tool_session_store().touch_session(session_id)
-    if session.target == "remote":
+        return _hashline_edit_local(config, store, None, input_text)
+    binding = SessionResolver(store).resolve_active_binding(session_id)
+    if isinstance(binding, RemoteSessionBinding):
         data = await call_remote_session_tool(
-            session,
+            binding,
             "hashline_edit",
             {"input": input_text},
         )
         return HashlineEditOutput.model_validate(data)
-    return hashline_edit_execute(input_text, session_id)
+    return _hashline_edit_local(config, store, binding, input_text)
 
 
 async def edit_lines_dispatch_execute(
@@ -1206,15 +1402,23 @@ async def edit_lines_dispatch_execute(
     snapshot_id: str | None = None,
     session_id: str | None = None,
 ) -> EditLinesOutput:
-    """Dispatch edit_lines to a local or remote session."""
+    """Compatibility facade dispatching line edits through ambient dependencies."""
+    config, store = _compat_files_dependencies()
     if session_id is None:
-        return edit_lines_execute(
-            path, start_line, end_line, replacement, snapshot_id, session_id
+        return _edit_lines_local(
+            config,
+            store,
+            None,
+            path,
+            start_line,
+            end_line,
+            replacement,
+            snapshot_id,
         )
-    session = get_tool_session_store().touch_session(session_id)
-    if session.target == "remote":
+    binding = SessionResolver(store).resolve_active_binding(session_id)
+    if isinstance(binding, RemoteSessionBinding):
         data = await call_remote_session_tool(
-            session,
+            binding,
             "edit_lines",
             {
                 "path": path,
@@ -1225,22 +1429,28 @@ async def edit_lines_dispatch_execute(
             },
         )
         return EditLinesOutput.model_validate(data)
-    return edit_lines_execute(
-        path, start_line, end_line, replacement, snapshot_id, session_id
+    return _edit_lines_local(
+        config,
+        store,
+        binding,
+        path,
+        start_line,
+        end_line,
+        replacement,
+        snapshot_id,
     )
 
 
-def multi_edit_file_execute(
-    path: str, edits: list[dict]
+def _multi_edit_file_local(
+    config: FilesConfig, path: str, edits: list[dict]
 ) -> MultiEditFileOutput:
-    """Apply a sequence of exact-text replacements and write the file only after all edits validate."""
-    settings = get_settings()
-    p = resolve_path(path, must_exist=True)
+    """Apply sessionless exact-text replacements from explicit Files policy."""
+    p = _resolve_file_path(config, None, path, must_exist=True)
     with path_lock(p):
         size = p.stat().st_size
-        if size > settings.max_file_write_bytes:
+        if size > config.max_file_write_bytes:
             raise ValueError(
-                f"Refusing to edit {size} bytes; max is {settings.max_file_write_bytes}"
+                f"Refusing to edit {size} bytes; max is {config.max_file_write_bytes}"
             )
         text = p.read_text(encoding="utf-8")
         total = 0
@@ -1260,29 +1470,37 @@ def multi_edit_file_execute(
             )
             total += count if replace_all else 1
         updated_bytes = len(text.encode("utf-8"))
-        if updated_bytes > settings.max_file_write_bytes:
+        if updated_bytes > config.max_file_write_bytes:
             raise ValueError(
-                f"Refusing to write {updated_bytes} bytes; max is {settings.max_file_write_bytes}"
+                f"Refusing to write {updated_bytes} bytes; max is {config.max_file_write_bytes}"
             )
         _atomic_write_text(p, text)
-    return MultiEditFileOutput(path=relative_display(p), replacements=total)
-
-
-def delete_file_or_dir_execute(
-    path: str, recursive: bool = False, session_id: str | None = None
-) -> DeleteFileOrDirOutput:
-    """Delete a file, symlink, or directory without following the final symlink."""
-    session = (
-        get_tool_session_store().touch_session(session_id)
-        if session_id is not None
-        else None
+    return MultiEditFileOutput(
+        path=_display_file(config, p), replacements=total
     )
-    p = (
-        resolve_session_path(
-            session, path, must_exist=True, follow_final_symlink=False
-        )
-        if session is not None
-        else resolve_path(path, must_exist=True, follow_final_symlink=False)
+
+
+def multi_edit_file_execute(
+    path: str, edits: list[dict]
+) -> MultiEditFileOutput:
+    """Compatibility facade for sessionless multi-edit."""
+    config, _ = _compat_files_dependencies()
+    return _multi_edit_file_local(config, path, edits)
+
+
+def _delete_file_or_dir_local(
+    config: FilesConfig,
+    binding: LocalSessionBinding | None,
+    path: str,
+    recursive: bool = False,
+) -> DeleteFileOrDirOutput:
+    """Delete a local path from explicit Files policy and binding."""
+    p = _resolve_file_path(
+        config,
+        binding,
+        path,
+        must_exist=True,
+        follow_final_symlink=False,
     )
     with path_lock(p):
         if not os.path.lexists(p):
@@ -1300,19 +1518,30 @@ def delete_file_or_dir_execute(
         else:
             p.unlink()
             deleted = "file"
-    return DeleteFileOrDirOutput(path=relative_display(p), deleted=deleted)
+    return DeleteFileOrDirOutput(path=_display_file(config, p), deleted=deleted)
+
+
+def delete_file_or_dir_execute(
+    path: str, recursive: bool = False, session_id: str | None = None
+) -> DeleteFileOrDirOutput:
+    """Compatibility facade for local deletion."""
+    config, store = _compat_files_dependencies()
+    return _delete_file_or_dir_local(
+        config, _local_binding(store, session_id), path, recursive
+    )
 
 
 async def delete_file_or_dir_dispatch_execute(
     path: str, recursive: bool = False, session_id: str | None = None
 ) -> DeleteFileOrDirOutput:
-    """Dispatch delete_file_or_dir to a local or remote session."""
+    """Compatibility facade dispatching deletion through ambient dependencies."""
+    config, store = _compat_files_dependencies()
     if session_id is None:
-        return delete_file_or_dir_execute(path, recursive, session_id)
-    session = get_tool_session_store().touch_session(session_id)
-    if session.target == "remote":
+        return _delete_file_or_dir_local(config, None, path, recursive)
+    binding = SessionResolver(store).resolve_active_binding(session_id)
+    if isinstance(binding, RemoteSessionBinding):
         data = await call_remote_session_tool(
-            session,
+            binding,
             "delete_file_or_dir",
             {
                 "path": path,
@@ -1320,4 +1549,4 @@ async def delete_file_or_dir_dispatch_execute(
             },
         )
         return DeleteFileOrDirOutput.model_validate(data)
-    return delete_file_or_dir_execute(path, recursive, session_id)
+    return _delete_file_or_dir_local(config, binding, path, recursive)

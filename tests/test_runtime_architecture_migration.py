@@ -220,3 +220,41 @@ def test_oauth_live_state_is_controller_owned_not_module_registry_maps() -> (
     assert "oauth_state: OAuthState" in controller_source
     assert "build_oauth_state(settings.state_dir)" in controller_source
     assert "initialize_dynamic_clients" not in routes_source
+
+
+def test_files_vertical_uses_explicit_service_composition() -> None:
+    files_source = (_PACKAGE_ROOT / "ops" / "files.py").read_text(
+        encoding="utf-8"
+    )
+    service_source = (_PACKAGE_ROOT / "ops" / "files_service.py").read_text(
+        encoding="utf-8"
+    )
+    read_source = (_PACKAGE_ROOT / "ops" / "read.py").read_text(
+        encoding="utf-8"
+    )
+    controller_source = (
+        _PACKAGE_ROOT / "executors" / "search_composition.py"
+    ).read_text(encoding="utf-8")
+    worker_source = (
+        _PACKAGE_ROOT / "remote_worker" / "search_composition.py"
+    ).read_text(encoding="utf-8")
+
+    assert files_source.count("get_settings(") == 1
+    assert files_source.count("get_tool_session_store(") == 1
+    assert "get_settings(" not in service_source
+    assert "get_tool_session_store(" not in service_source
+    assert "get_settings(" not in read_source
+    assert "get_tool_session_store(" not in read_source
+    assert "FilesService(" in controller_source
+    assert '"files": files_registry' in controller_source
+    assert '"read": read_registry' in controller_source
+    assert "FilesService(" in worker_source
+    for tool_name in (
+        "list_files",
+        "write_file",
+        "edit_lines",
+        "hashline_edit",
+        "delete_file_or_dir",
+        "read",
+    ):
+        assert f'"{tool_name}"' in worker_source
