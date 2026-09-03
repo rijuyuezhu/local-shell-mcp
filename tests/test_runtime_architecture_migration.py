@@ -23,7 +23,6 @@ _REMOTE_BRANCH_PATTERN = re.compile(
 _REMOTE_BRANCH_CEILING = (43, 18)
 
 _LIFECYCLE_INVENTORY = {
-    "remote/manager.py": ("REMOTE_MANAGER",),
     "terminal/bridge.py": ("_BRIDGES", "_SHELL_BRIDGES", "_PENDING_SHELLS"),
     "jobs/managed.py": (
         "_MANAGED_JOB_HANDLERS",
@@ -112,3 +111,18 @@ def test_lifecycle_bearing_process_state_is_kept_in_the_migration_inventory() ->
             # real and explicitly classified rather than silently drifting.
             assert symbol in source
             assert f"`{symbol}`" in documentation
+
+
+def test_remote_manager_is_controller_owned_not_a_module_singleton() -> None:
+    manager_source = (_PACKAGE_ROOT / "remote" / "manager.py").read_text(
+        encoding="utf-8"
+    )
+    runtime_source = (_PACKAGE_ROOT / "executors" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        re.search(r"^REMOTE_MANAGER\s*=", manager_source, re.MULTILINE) is None
+    )
+    assert "remote_manager: RemoteManager" in runtime_source
+    assert "RemoteManager(" in runtime_source

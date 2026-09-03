@@ -19,7 +19,7 @@ from typing import Any, TypedDict
 
 from ..audit import audit
 from ..config.settings import Settings, get_settings
-from ..persistence import get_state_store
+from ..persistence import StateStore, get_state_store
 from ..schemas.result_models.remote import (
     RemoteInviteOutput,
     RemoteListMachinesOutput,
@@ -168,6 +168,10 @@ def _reported_text(payload: dict[str, Any], key: str, *, required: bool) -> str:
 
 class WorkerRuntimeCompatibilityError(ValueError):
     """Raised when a worker is not running a supported managed bundle."""
+
+
+class RemoteManagerClosedError(RuntimeError):
+    """Raised when remote work is attempted after manager shutdown begins."""
 
 
 def _validate_runtime_report(payload: dict[str, Any]) -> WorkerRuntimeReport:
@@ -356,25 +360,98 @@ class RemoteManager:
     """Coordinate remote worker enrollment, polling, jobs, and persisted identity."""
 
     def __init__(
-        self, settings_provider: Callable[[], Settings] = get_settings
+        self,
+        settings_provider: Callable[[], Settings] = get_settings,
+        *,
+        state_store: StateStore | None = None,
     ) -> None:
         self._settings_provider = settings_provider
+        self._state_store = state_store
         self.invites: dict[str, RemoteInvite] = {}
         self.workers: dict[str, RemoteWorker] = {}
         self.tokens: dict[str, str] = {}
         self.pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self.pending_machines: dict[str, str] = {}
         self.cancelled_jobs: dict[str, float] = {}
-        self._enrollment_lock = asyncio.Lock()
+        self._enrollment_lock: asyncio.Lock | None = None
+        self._poll_waiters: set[asyncio.Task[Any]] = set()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._closed = False
         self._state_lock = threading.RLock()
         self._registry_loaded_path: Path | None = None
+
+    async def start(self) -> None:
+        """Bind loop-owned primitives and load durable workers on the owning loop."""
+        if self._closed:
+            raise RemoteManagerClosedError("remote manager is closed")
+        loop = asyncio.get_running_loop()
+        if self._loop is not None:
+            if self._loop is not loop:
+                raise RuntimeError("remote manager cannot span event loops")
+            return
+        self._loop = loop
+        self._enrollment_lock = asyncio.Lock()
+        try:
+            with self._state_lock:
+                self._load_registry_unlocked()
+        except BaseException:
+            self._enrollment_lock = None
+            self._loop = None
+            raise
+
+    async def aclose(self) -> None:
+        """Stop admission and cancel manager-owned pending calls and poll waiters."""
+        if self._closed:
+            return
+        loop = asyncio.get_running_loop()
+        if self._loop is not None and self._loop is not loop:
+            raise RuntimeError(
+                "remote manager must close on its owning event loop"
+            )
+        self._closed = True
+        with self._state_lock:
+            pending = tuple(self.pending.values())
+            self.pending.clear()
+            self.pending_machines.clear()
+            self.invites.clear()
+            self.cancelled_jobs.clear()
+            for worker in self.workers.values():
+                while True:
+                    try:
+                        worker.queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+        waiters = tuple(self._poll_waiters)
+        self._poll_waiters.clear()
+        for future in pending:
+            if not future.done():
+                future.cancel()
+        for waiter in waiters:
+            if not waiter.done():
+                waiter.cancel()
+        if waiters:
+            await asyncio.gather(*waiters, return_exceptions=True)
+
+    async def _ensure_started(self) -> asyncio.Lock:
+        """Start on first direct use and return the owning enrollment lock."""
+        await self.start()
+        lock = self._enrollment_lock
+        if lock is None:  # pragma: no cover - guarded by start()
+            raise RuntimeError("remote manager enrollment lock is unavailable")
+        return lock
+
+    def _require_not_closed(self) -> None:
+        """Reject synchronous mutations after shutdown has stopped admission."""
+        if self._closed:
+            raise RemoteManagerClosedError("remote manager is closed")
 
     def _settings(self) -> Settings:
         """Return the settings dependency supplied at composition time."""
         return self._settings_provider()
 
     def _registry_path(self) -> Path:
-        return get_state_store().layout.remote_workers_path
+        state_store = self._state_store or get_state_store()
+        return state_store.layout.remote_workers_path
 
     def _registry_backup_path(self) -> Path:
         path = self._registry_path()
@@ -559,6 +636,7 @@ class RemoteManager:
         ttl_s: int | None = None,
     ) -> RemoteInviteOutput:
         """Create one bounded, one-time remote-worker enrollment invite."""
+        enrollment_lock = await self._ensure_started()
         settings = self._settings()
         ttl = max(60, min(ttl_s or settings.remote_invite_ttl_s, 24 * 3600))
         normalized_name = _validate_machine_name(name) if name else None
@@ -569,7 +647,7 @@ class RemoteManager:
             workdir=workdir,
             expires_at=_utc() + ttl,
         )
-        async with self._enrollment_lock:
+        async with enrollment_lock:
             with self._state_lock:
                 self._load_registry_unlocked()
                 self._prune_invites_unlocked()
@@ -595,10 +673,11 @@ class RemoteManager:
         self, payload: dict[str, Any]
     ) -> WorkerRegistrationResponse:
         """Consume an invite and persist a new worker registration."""
+        enrollment_lock = await self._ensure_started()
         runtime_report = _validate_runtime_report(payload)
         code = str(payload.get("invite") or "")
         requested_name = str(payload.get("name") or "").strip() or None
-        async with self._enrollment_lock:
+        async with enrollment_lock:
             with self._state_lock:
                 self._load_registry_unlocked()
                 self._prune_invites_unlocked()
@@ -653,8 +732,9 @@ class RemoteManager:
         self, token: str, payload: dict[str, Any]
     ) -> WorkerRegistrationResponse:
         """Refresh a persisted worker registration using its bearer identity."""
+        enrollment_lock = await self._ensure_started()
         runtime_report = _validate_runtime_report(payload)
-        async with self._enrollment_lock:
+        async with enrollment_lock:
             with self._state_lock:
                 self._load_registry_unlocked()
                 # The bearer token is canonical; the reported name may be stale
@@ -701,6 +781,7 @@ class RemoteManager:
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Negotiate runtime state, then long-poll for the next live job."""
+        await self.start()
         report = _validate_poll_report(payload)
         configured_poll_timeout_s = float(
             self._settings().remote_poll_timeout_s
@@ -752,9 +833,16 @@ class RemoteManager:
                 }
                 return response
             try:
-                job = await asyncio.wait_for(
-                    worker.queue.get(), timeout=remaining
-                )
+                poll_task = asyncio.current_task()
+                if poll_task is not None:
+                    self._poll_waiters.add(poll_task)
+                try:
+                    job = await asyncio.wait_for(
+                        worker.queue.get(), timeout=remaining
+                    )
+                finally:
+                    if poll_task is not None:
+                        self._poll_waiters.discard(poll_task)
             except TimeoutError:
                 response = {
                     "job": None,
@@ -763,6 +851,12 @@ class RemoteManager:
                     "upgrade": upgrade,
                 }
                 return response
+            except asyncio.CancelledError:
+                if self._closed:
+                    raise RemoteManagerClosedError(
+                        "remote manager is closed"
+                    ) from None
+                raise
             job_id = str(job.get("id") or "")
             with self._state_lock:
                 self._prune_cancelled_jobs_unlocked()
@@ -782,6 +876,7 @@ class RemoteManager:
 
     async def heartbeat(self, token: str) -> WorkerHeartbeatResponse:
         """Refresh worker liveness while a long-running job executes."""
+        await self.start()
         with self._state_lock:
             self._load_registry_unlocked()
             worker = self._worker_by_token_unlocked(token)
@@ -794,6 +889,7 @@ class RemoteManager:
         self, token: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
         """Accept one result only from the worker assigned to its job."""
+        await self.start()
         job_id = str(payload.get("job_id") or "")
         with self._state_lock:
             self._load_registry_unlocked()
@@ -821,6 +917,7 @@ class RemoteManager:
         timeout_s: int | None = None,
     ) -> dict[str, Any]:
         """Queue one bounded remote tool call and await its assigned result."""
+        await self.start()
         settings = self._settings()
         effective_timeout = timeout_s or settings.remote_job_timeout_s
         job_id = "job_" + uuid.uuid4().hex
@@ -865,7 +962,13 @@ class RemoteManager:
             ) from exc
         except asyncio.CancelledError:
             with self._state_lock:
-                self._cancel_job_unlocked(job_id)
+                closed = self._closed
+                if not closed:
+                    self._cancel_job_unlocked(job_id)
+            if closed:
+                raise RemoteManagerClosedError(
+                    "remote manager is closed"
+                ) from None
             raise
         finally:
             with self._state_lock:
@@ -966,6 +1069,7 @@ class RemoteManager:
 
     def revoke(self, machine: str) -> RemoteRevokeMachineOutput:
         """Remove one registration and cancel its outstanding jobs."""
+        self._require_not_closed()
         with self._state_lock:
             self._load_registry_unlocked()
             worker = self.workers.pop(machine, None)
@@ -980,6 +1084,7 @@ class RemoteManager:
 
     def rename(self, machine: str, new_name: str) -> RemoteRenameMachineOutput:
         """Rename one registered worker and update pending ownership."""
+        self._require_not_closed()
         normalized_name = _validate_machine_name(new_name)
         with self._state_lock:
             self._load_registry_unlocked()
@@ -1016,9 +1121,23 @@ class RemoteManager:
             return self._worker_by_token_unlocked(token)
 
 
-REMOTE_MANAGER = RemoteManager()
+_REMOTE_MANAGER: RemoteManager | None = None
+
+
+def configure_remote_manager(
+    manager: RemoteManager | None,
+) -> RemoteManager | None:
+    """Install a non-owning compatibility binding and return the previous manager."""
+    global _REMOTE_MANAGER
+    previous = _REMOTE_MANAGER
+    _REMOTE_MANAGER = manager
+    return previous
 
 
 def remote_manager() -> RemoteManager:
-    """Return the process-wide remote manager used by HTTP endpoints and MCP tools."""
-    return REMOTE_MANAGER
+    """Return the controller-owned manager through the compatibility seam."""
+    if _REMOTE_MANAGER is None:
+        raise RuntimeError(
+            "remote manager is not configured; start ControllerRuntime"
+        )
+    return _REMOTE_MANAGER

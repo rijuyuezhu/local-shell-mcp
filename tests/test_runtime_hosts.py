@@ -72,7 +72,7 @@ def test_rest_http_host_owns_controller_runtime_lifespan(tmp_path):
 
 
 @pytest.mark.parametrize("mode", ["default", "catalog", "runtime"])
-def test_run_http_preserves_legacy_and_runtime_build_paths(
+def test_run_http_owns_runtime_for_compatibility_and_explicit_paths(
     tmp_path, monkeypatch, mode
 ):
     settings = Settings(
@@ -90,10 +90,15 @@ def test_run_http_preserves_legacy_and_runtime_build_paths(
     app = object()
     calls = []
 
+    def build_runtime(configured_settings):
+        calls.append(("runtime", configured_settings))
+        return runtime
+
     def build(**kwargs):
         calls.append(("build", kwargs))
         return app
 
+    monkeypatch.setattr(http_app, "build_controller_runtime", build_runtime)
     monkeypatch.setattr(http_app, "build_http_app", build)
     monkeypatch.setattr(
         http_app.uvicorn,
@@ -105,16 +110,24 @@ def test_run_http_preserves_legacy_and_runtime_build_paths(
 
     if mode == "default":
         http_app.run_http()
-        expected_build_kwargs = {}
+        expected_calls = [
+            ("runtime", settings),
+            ("build", {"tool_catalog": None, "runtime": runtime}),
+        ]
     elif mode == "catalog":
         http_app.run_http(tool_catalog=catalog)
-        expected_build_kwargs = {"tool_catalog": catalog}
+        expected_calls = [
+            ("runtime", settings),
+            ("build", {"tool_catalog": catalog, "runtime": runtime}),
+        ]
     else:
         http_app.run_http(runtime=runtime)
-        expected_build_kwargs = {"tool_catalog": None, "runtime": runtime}
+        expected_calls = [
+            ("build", {"tool_catalog": None, "runtime": runtime}),
+        ]
 
     assert calls == [
-        ("build", expected_build_kwargs),
+        *expected_calls,
         ("uvicorn", app, "127.0.0.1", 8765),
     ]
 

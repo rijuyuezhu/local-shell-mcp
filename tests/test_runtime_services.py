@@ -17,6 +17,11 @@ from local_shell_mcp.persistence import (
     configure_state_store,
     get_state_store,
 )
+from local_shell_mcp.remote.manager import (
+    RemoteManager,
+    configure_remote_manager,
+    remote_manager,
+)
 from local_shell_mcp.remote_worker.runtime_composition import (
     build_worker_runtime,
 )
@@ -234,6 +239,47 @@ async def test_controller_runtime_startup_failure_closes_started_bindings(
 
 
 @pytest.mark.asyncio
+async def test_controller_runtime_remote_binding_failure_closes_remote_manager(
+    tmp_path, monkeypatch
+):
+    outer_settings = Settings(
+        workspace_root=tmp_path,
+        state_dir=tmp_path / "outer-state",
+    )
+    outer_state_store = FileStateStore(lambda: outer_settings.state_dir)
+    outer_session_store = ToolSessionStore(
+        state_store=outer_state_store,
+        settings_provider=lambda: outer_settings,
+    )
+    configure_state_store(outer_state_store)
+    configure_tool_session_store(outer_session_store)
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-state",
+        )
+    )
+
+    def fail_remote_binding(_manager):
+        raise RuntimeError("remote binding failed")
+
+    monkeypatch.setattr(
+        "local_shell_mcp.executors.runtime.configure_remote_manager",
+        fail_remote_binding,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="remote binding failed"):
+            await runtime.start()
+
+        assert runtime.remote_manager._closed is True
+        assert get_state_store() is outer_state_store
+        assert get_tool_session_store() is outer_session_store
+    finally:
+        configure_tool_session_store(None)
+        configure_state_store(None)
+
+
+@pytest.mark.asyncio
 async def test_worker_runtime_cancellation_closes_bindings(tmp_path):
     outer_settings = Settings(
         workspace_root=tmp_path,
@@ -274,3 +320,35 @@ async def test_worker_runtime_cancellation_closes_bindings(tmp_path):
     finally:
         configure_tool_session_store(None)
         configure_state_store(None)
+
+
+@pytest.mark.asyncio
+async def test_controller_runtime_owns_and_restores_remote_manager_binding(
+    tmp_path,
+):
+    outer_settings = Settings(
+        workspace_root=tmp_path,
+        state_dir=tmp_path / "outer-state",
+    )
+    outer_state_store = FileStateStore(lambda: outer_settings.state_dir)
+    outer_manager = RemoteManager(
+        lambda: outer_settings,
+        state_store=outer_state_store,
+    )
+    configure_remote_manager(outer_manager)
+    runtime = build_controller_runtime(
+        Settings(
+            workspace_root=tmp_path,
+            state_dir=tmp_path / "controller-state",
+        )
+    )
+    try:
+        assert remote_manager() is outer_manager
+        async with runtime.lifespan():
+            assert remote_manager() is runtime.remote_manager
+            assert runtime.remote_manager._loop is asyncio.get_running_loop()
+
+        assert remote_manager() is outer_manager
+        assert runtime.remote_manager._closed is True
+    finally:
+        configure_remote_manager(None)

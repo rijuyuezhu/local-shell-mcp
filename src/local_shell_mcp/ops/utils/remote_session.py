@@ -1,5 +1,6 @@
 """Session-bound remote worker dispatch helpers."""
 
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from ...errors import exception_from_tool_error
@@ -9,6 +10,10 @@ from ...remote.tool_specs import (
 )
 from ...tool_session.bindings import RemoteSessionBinding
 from ...tool_session.store import AgentSession
+
+type RemoteWorkerCall = Callable[
+    [str, str, dict[str, Any], int | None], Awaitable[dict[str, Any]]
+]
 
 
 async def call_remote_worker_tool(
@@ -94,13 +99,15 @@ async def call_remote_session_tool(
     timeout_s: int | None = None,
     *,
     audit_origin: str = REMOTE_WORKER_ORIGIN_MODEL,
+    call_worker: RemoteWorkerCall | None = None,
 ) -> dict[str, Any]:
     """Call a worker-side tool for a control-server remote session."""
     machine, worker_session_id = _remote_binding(session)
     payload = {**args, "session_id": worker_session_id}
     if audit_origin != REMOTE_WORKER_ORIGIN_MODEL:
         payload[REMOTE_WORKER_ORIGIN_ARG] = audit_origin
-    result = await call_remote_worker_tool(machine, tool, payload, timeout_s)
+    worker_call = call_worker or call_remote_worker_tool
+    result = await worker_call(machine, tool, payload, timeout_s)
     data = _remote_result_data(result, tool=tool, machine=machine)
     return cast(
         dict[str, Any],

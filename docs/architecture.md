@@ -84,9 +84,9 @@ internal in help rather than parsed by a separate code path.
 | `composition/__init__.py` | Marks the dependency-neutral package for construction helpers shared by long-lived controller and worker processes. | Shared composition cannot live under an executor because worker code must not reverse-depend on controller execution surfaces. |
 | `composition/services.py` | Constructs the filesystem state store and authoritative tool-session store from one resolved `Settings` object and provides a reversible compatibility-installation scope. | Controller and worker runtimes need the same concrete dependency leaves while lifecycle owners, not domain code, control temporary global compatibility bindings. |
 | `executors/runtime_services.py` | Re-exports the shared runtime-service composition API for existing executor callers. | Keeping this compatibility facade preserves the Phase 2 server composition seam while the implementation remains dependency-neutral. |
-| `executors/runtime.py` | Owns controller settings, explicitly constructed shared stores, the Search-bound tool catalog, and the controller compatibility lifecycle. | The controller runtime is a composition-only owner; domain services receive narrow dependencies rather than the runtime object. |
+| `executors/runtime.py` | Owns controller settings, explicitly constructed shared stores, the live `RemoteManager`, the Search-bound tool catalog, and deterministic controller cleanup. | The controller runtime is the long-lived composition owner; it starts remote loop-bound state, closes remote calls/poll waiters before restoring compatibility bindings, and still passes only narrow dependencies into domain services. |
 | `remote_worker/runtime_composition.py` | Owns worker settings, explicitly constructed shared stores, the Search-bound dispatcher, and the worker compatibility lifecycle. | The source-only worker needs an independent long-lived graph without importing controller runtime code. |
-| `executors/search_composition.py` | Builds the controller Search service and binds it into the explicit tool catalog through the Phase 2 registry-factory seam. | Search is the first vertical experiment; controller-specific assembly belongs at the executor composition edge, not inside domain operations. |
+| `executors/search_composition.py` | Builds the controller Search service and binds it into the explicit tool catalog through the Phase 2 registry-factory seam, including the owned `RemoteManager.call` wire dependency. | Search remains independent of ambient remote-manager lookup; controller-specific assembly belongs at the executor composition edge, not inside domain operations. |
 | `ui/cli.py` | Registers `tui`, its settings, and loopback API override, then launches the native UI runtime. | Native-client arguments and defaults belong to the UI domain rather than the process entry point. |
 | `agent_bridge/cli.py` | Registers `mcp auth` and `mcp secret` administration and executes credential/OAuth workflows. | Agent Bridge owns both the nested command contract and its security-sensitive handlers. |
 | `remote_worker/cli.py` | Registers the worker command tree and executes enrollment, foreground runtime, service, log, and update actions. | Worker lifecycle commands are an independent product surface and remain reusable by the source-only worker launcher. |
@@ -104,9 +104,21 @@ The controller runtime is entered by the transport host, not by domain code.
 REST HTTP owns it through the FastAPI application lifespan. MCP-over-HTTP owns
 it through the outer Starlette lifespan that also owns the SDK session manager.
 MCP stdio instead uses FastMCP's low-level server lifespan because stdio has one
-`Server.run()` for the process lifetime. The process runtime must not be attached
-to that low-level lifespan for MCP-over-HTTP: the SDK enters it once per MCP
-session, which is a narrower lifecycle than the controller process.
+`Server.run()` for the process lifetime. Compatibility calls to `run_http()` or
+`run_mcp()` that do not supply a runtime construct one before building the host,
+so those public runner paths retain the same ownership invariant. The process
+runtime must not be attached to FastMCP's low-level lifespan for MCP-over-HTTP:
+the SDK enters it once per MCP session, which is a narrower lifecycle than the
+controller process.
+
+`RemoteManager` follows the same ownership rule. The module no longer constructs
+a process singleton at import time. `ControllerRuntime` constructs one manager,
+starts its loop-owned enrollment lock and durable worker queues in the controller
+lifespan, stops admission during close, and cancels pending remote calls and
+long-poll waiters before the shared store bindings are restored. A reversible
+non-owning compatibility pointer remains temporarily for controller domains that
+will move to explicit dependencies in Phase 6; already-migrated Search does not
+use that pointer.
 
 Rejected alternatives:
 

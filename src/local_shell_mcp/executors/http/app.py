@@ -18,7 +18,7 @@ from ...remote.http import remote_routes
 from ...remote.transfer_gateway import build_transfer_gateway_router
 from ...tools.catalog import ToolCatalog, build_tool_catalog
 from ...ui.http.routes import human_ui_routes
-from ..runtime import ControllerRuntime
+from ..runtime import ControllerRuntime, build_controller_runtime
 from .errors import install_error_handlers
 from .tool_routes import (
     install_tool_cache_control_middleware,
@@ -116,13 +116,12 @@ def run_http(
     tool_catalog: ToolCatalog | None = None,
     runtime: ControllerRuntime | None = None,
 ) -> None:
-    """Run the REST HTTP server."""
+    """Run the REST HTTP server with one controller runtime owner."""
     settings = runtime.settings if runtime is not None else get_settings()
     validate_public_oauth_configuration(settings)
-    if runtime is not None:
-        app = build_http_app(tool_catalog=tool_catalog, runtime=runtime)
-    elif tool_catalog is None:
-        app = build_http_app()
-    else:
-        app = build_http_app(tool_catalog=tool_catalog)
+    active_runtime = runtime or build_controller_runtime(settings)
+    app = build_http_app(
+        tool_catalog=tool_catalog,
+        runtime=active_runtime,
+    )
     uvicorn.run(app, host=settings.host, port=settings.port)

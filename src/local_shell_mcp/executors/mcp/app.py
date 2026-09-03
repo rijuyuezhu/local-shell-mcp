@@ -23,7 +23,7 @@ from ...tools.catalog import ToolCatalog, build_tool_catalog
 from ...tools.contracts import McpToolContext
 from ...tools.metadata import install_tool_safety_annotations
 from ...ui.http.routes import human_ui_routes
-from ..runtime import ControllerRuntime
+from ..runtime import ControllerRuntime, build_controller_runtime
 from .instructions import SERVER_INSTRUCTIONS
 from .session_limits import McpSessionLimitMiddleware
 from .transport_security import transport_security_settings
@@ -191,24 +191,20 @@ def run_mcp(
     tool_catalog: ToolCatalog | None = None,
     runtime: ControllerRuntime | None = None,
 ) -> None:
-    """Start the configured MCP server, over stdio or HTTP."""
+    """Start MCP with one controller runtime owner over stdio or HTTP."""
     settings = runtime.settings if runtime is not None else get_settings()
     if settings.mode != "stdio":
         validate_public_oauth_configuration(settings)
-    if runtime is not None:
-        mcp = build_mcp(
-            tool_catalog=tool_catalog,
-            runtime=runtime,
-            own_runtime_lifespan=settings.mode == "stdio",
-        )
-    elif tool_catalog is None:
-        mcp = build_mcp()
-    else:
-        mcp = build_mcp(tool_catalog=tool_catalog)
+    active_runtime = runtime or build_controller_runtime(settings)
+    mcp = build_mcp(
+        tool_catalog=tool_catalog,
+        runtime=active_runtime,
+        own_runtime_lifespan=settings.mode == "stdio",
+    )
 
     if settings.mode == "stdio":
         # stdio mode talks directly to the parent process; no HTTP app is needed.
         mcp.run(transport="stdio")
     else:
-        app = build_mcp_http_app(mcp, runtime=runtime)
+        app = build_mcp_http_app(mcp, runtime=active_runtime)
         uvicorn.run(app, host=settings.host, port=settings.port)
