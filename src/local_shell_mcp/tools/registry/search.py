@@ -79,7 +79,11 @@ class SearchToolRegistry(DeclarativeToolRegistry):
         if self._search_service is None:
             return tools
         return tuple(
-            replace(tool, func=self._bound_search)
+            replace(
+                tool,
+                func=self._bound_search,
+                session_admission="handler",
+            )
             if tool.name == "search"
             else tool
             for tool in tools

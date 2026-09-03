@@ -40,7 +40,14 @@ class ReadToolRegistry(DeclarativeToolRegistry):
         tools = super()._enabled_tools()
         if self._files_service is None:
             return tools
-        return tuple(replace(tool, func=self._bound_read) for tool in tools)
+        return tuple(
+            replace(
+                tool,
+                func=self._bound_read,
+                session_admission="handler",
+            )
+            for tool in tools
+        )
 
 
 read_tool = ReadToolRegistry.get_tool_decorator()

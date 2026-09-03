@@ -88,6 +88,11 @@ async def test_controller_files_and_read_use_explicit_service_without_ambient_fa
     assert inspect.signature(
         _tool(read_registry, "read").func
     ) == inspect.signature(read_registry_module.read.func)
+    assert all(
+        tool.session_admission == "handler"
+        for tool in file_registry._enabled_tools()
+    )
+    assert _tool(read_registry, "read").session_admission == "handler"
 
     import local_shell_mcp.ops.files as files_ops
     import local_shell_mcp.ops.read as read_ops

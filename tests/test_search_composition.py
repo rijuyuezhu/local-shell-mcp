@@ -73,6 +73,15 @@ async def test_controller_catalog_binds_search_without_changing_tool_signature(
     assert inspect.signature(bound_search.func) == inspect.signature(
         search_registry_module.search.func
     )
+    assert bound_search.session_admission == "handler"
+    assert (
+        next(
+            tool
+            for tool in registry._enabled_tools()
+            if tool.name == "tree_view"
+        ).session_admission
+        == "wrapper"
+    )
     result = await bound_search.func(
         session.session_id,
         "needle",
