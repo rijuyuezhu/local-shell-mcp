@@ -124,7 +124,14 @@ class FileToolRegistry(DeclarativeToolRegistry):
             "hashline_edit": self._bound_hashline_edit,
             "delete_file_or_dir": self._bound_delete_file_or_dir,
         }
-        return tuple(replace(tool, func=bound[tool.name]) for tool in tools)
+        return tuple(
+            replace(
+                tool,
+                func=bound[tool.name],
+                session_admission="handler",
+            )
+            for tool in tools
+        )
 
 
 file_tool = FileToolRegistry.get_tool_decorator()

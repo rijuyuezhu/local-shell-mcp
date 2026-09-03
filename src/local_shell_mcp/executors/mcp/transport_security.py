@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 from mcp.server.transport_security import TransportSecuritySettings
 
-from ...config.settings import get_settings
+from ...config.settings import Settings, get_settings
 
 
 def _host_header_name(hostname: str) -> str:
@@ -51,9 +51,11 @@ def _add_base_url_transport_allowlist(
         allowed_origins.add(f"{scheme}://{host}:{port}")
 
 
-def transport_security_settings() -> TransportSecuritySettings:
+def transport_security_settings(
+    settings: Settings | None = None,
+) -> TransportSecuritySettings:
     """Derive MCP transport security settings from the active server settings."""
-    settings = get_settings()
+    active_settings = settings if settings is not None else get_settings()
     allowed_hosts = {
         "127.0.0.1",
         "127.0.0.1:*",
@@ -70,9 +72,9 @@ def transport_security_settings() -> TransportSecuritySettings:
         "https://chat.openai.com",
     }
 
-    if settings.base_url:
+    if active_settings.base_url:
         _add_base_url_transport_allowlist(
-            allowed_hosts, allowed_origins, settings.base_url
+            allowed_hosts, allowed_origins, active_settings.base_url
         )
 
     return TransportSecuritySettings(

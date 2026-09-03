@@ -8,6 +8,10 @@ from starlette.testclient import TestClient
 
 import local_shell_mcp.executors.mcp.app as mcp_app
 from local_shell_mcp.config.settings import Settings, configure_settings
+from local_shell_mcp.executors.mcp.session_limits import (
+    McpSessionLimitMiddleware,
+)
+from local_shell_mcp.http.request_limits import RequestBodyLimitMiddleware
 from local_shell_mcp.oauth.http.middleware import AuthMiddleware
 from local_shell_mcp.ui.security import (
     UI_LOCAL_TOKEN_HEADER,
@@ -22,6 +26,8 @@ async def _ok(request):
 class _DummyMcp:
     def __init__(self):
         self.transports = []
+        self._session_manager: Any = None
+        self.settings: Any = SimpleNamespace(streamable_http_path="/mcp")
 
     def streamable_http_app(self):
         return Starlette(routes=[Route("/mcp", _ok)])
@@ -33,6 +39,11 @@ class _DummyMcp:
 class _DummySseMcp:
     def sse_app(self):
         return Starlette(routes=[Route("/sse", _ok)])
+
+
+class _EmptyCatalog:
+    def register_mcp(self, mcp, context) -> None:
+        del mcp, context
 
 
 def _route_paths(app: Starlette) -> list[str]:
@@ -115,6 +126,89 @@ def test_build_mcp_http_app_includes_remote_routes_when_enabled():
     assert "/join" in paths
     assert "/remote/register" in paths
     assert "/remote/poll" in paths
+
+
+def test_build_mcp_http_app_uses_explicit_runtime_settings_not_ambient():
+    configure_settings(
+        Settings(
+            mode="mcp",
+            auth_mode="none",
+            remote_enabled=False,
+            mcp_max_sessions=2,
+            max_http_request_bytes=100,
+            mcp_session_idle_timeout_s=60,
+        )
+    )
+    runtime_settings = Settings(
+        mode="mcp",
+        auth_mode="oauth",
+        remote_enabled=True,
+        remote_http_transfer_enabled=False,
+        base_url="https://runtime.example",
+        mcp_max_sessions=17,
+        max_http_request_bytes=4321,
+        mcp_session_idle_timeout_s=987,
+    )
+    runtime = cast(Any, SimpleNamespace(settings=runtime_settings))
+    session_manager = SimpleNamespace(
+        stateless=False,
+        session_idle_timeout=1,
+    )
+    dummy = _DummyMcp()
+    dummy._session_manager = session_manager
+    dummy.settings = SimpleNamespace(streamable_http_path="/mcp")
+
+    app = mcp_app.build_mcp_http_app(cast(Any, dummy), runtime=runtime)
+
+    paths = _route_paths(app)
+    assert "/join" in paths
+    assert "/remote/register" in paths
+    assert session_manager.session_idle_timeout == 987
+
+    assert any(entry.cls is AuthMiddleware for entry in app.user_middleware)
+    session_limit = next(
+        entry
+        for entry in app.user_middleware
+        if entry.cls is McpSessionLimitMiddleware
+    )
+    request_limit = next(
+        entry
+        for entry in app.user_middleware
+        if entry.cls is RequestBodyLimitMiddleware
+    )
+    assert session_limit.kwargs["max_sessions"] == 17
+    assert request_limit.kwargs["max_bytes"] == 4321
+
+
+def test_build_mcp_uses_runtime_settings_for_transport_security():
+    configure_settings(
+        Settings(
+            mode="mcp",
+            auth_mode="none",
+            base_url="https://ambient.example",
+        )
+    )
+    runtime_settings = Settings(
+        mode="mcp",
+        auth_mode="none",
+        base_url="https://runtime.example",
+    )
+    runtime = cast(
+        Any,
+        SimpleNamespace(
+            settings=runtime_settings,
+            tool_catalog=_EmptyCatalog(),
+        ),
+    )
+
+    mcp = mcp_app.build_mcp(runtime=runtime)
+
+    security = mcp.settings.transport_security
+    assert security is not None
+    assert "runtime.example" in security.allowed_hosts
+    assert "https://runtime.example" in security.allowed_origins
+    assert "ambient.example" not in security.allowed_hosts
+    assert "https://ambient.example" not in security.allowed_origins
 
 
 def test_run_mcp_uses_runtime_owned_stdio_transport(monkeypatch):

@@ -10,7 +10,7 @@ from starlette.applications import Starlette
 from starlette.routing import BaseRoute, Mount
 
 from ...audit import audit
-from ...config.settings import get_settings
+from ...config.settings import Settings, get_settings
 from ...http.public_routes import public_http_routes
 from ...http.request_limits import install_request_body_limit
 from ...oauth.core.security import validate_public_oauth_configuration
@@ -65,7 +65,7 @@ def build_mcp(
     mcp = FastMCP(
         "local-shell-mcp",
         instructions=SERVER_INSTRUCTIONS,
-        transport_security=transport_security_settings(),
+        transport_security=transport_security_settings(settings),
         lifespan=(
             runtime_lifespan
             if runtime is not None and own_runtime_lifespan
@@ -85,10 +85,17 @@ def build_mcp(
 def _add_public_routes_to_mcp_http_app(
     mcp_app: Starlette,
     *,
+    settings: Settings | None = None,
     runtime: ControllerRuntime | None = None,
 ) -> tuple[Starlette, list[BaseRoute]]:
     """Serve health/OAuth routes directly and send everything else to MCP."""
-    settings = get_settings()
+    active_settings = (
+        settings
+        if settings is not None
+        else runtime.settings
+        if runtime is not None
+        else get_settings()
+    )
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:
@@ -104,18 +111,19 @@ def _add_public_routes_to_mcp_http_app(
 
     public_routes: list[BaseRoute] = [
         *public_http_routes(
-            settings,
+            active_settings,
             readyz_include_workspace_root=False,
         ),
-        *(remote_routes() if settings.remote_enabled else ()),
+        *(remote_routes() if active_settings.remote_enabled else ()),
         *(
             build_transfer_gateway_router()
-            if settings.remote_enabled and settings.remote_http_transfer_enabled
+            if active_settings.remote_enabled
+            and active_settings.remote_http_transfer_enabled
             else ()
         ),
         *oauth_public_routes(),
     ]
-    ui_routes, ui_public_routes = human_ui_routes(settings)
+    ui_routes, ui_public_routes = human_ui_routes(active_settings)
     routes = [*public_routes, *ui_routes, Mount("/", app=mcp_app)]
     public_routes.extend(ui_public_routes)
     return Starlette(routes=routes, lifespan=lifespan), public_routes
@@ -126,12 +134,20 @@ def _build_authenticated_mcp_http_app(
     *,
     session_manager: object | None = None,
     mcp_path: str = "/mcp",
+    settings: Settings | None = None,
     runtime: ControllerRuntime | None = None,
 ) -> Starlette:
     """Add resource limits and OAuth protection around the MCP HTTP app."""
-    settings = get_settings()
+    active_settings = (
+        settings
+        if settings is not None
+        else runtime.settings
+        if runtime is not None
+        else get_settings()
+    )
     app, public_routes = _add_public_routes_to_mcp_http_app(
         mcp_app,
+        settings=active_settings,
         runtime=runtime,
     )
     if session_manager is not None and not bool(
@@ -140,11 +156,13 @@ def _build_authenticated_mcp_http_app(
         app.add_middleware(
             McpSessionLimitMiddleware,
             session_manager=session_manager,
-            max_sessions=settings.mcp_max_sessions,
+            max_sessions=active_settings.mcp_max_sessions,
             mcp_path=mcp_path,
         )
-    install_request_body_limit(app, max_bytes=settings.max_http_request_bytes)
-    if settings.auth_mode != "none":
+    install_request_body_limit(
+        app, max_bytes=active_settings.max_http_request_bytes
+    )
+    if active_settings.auth_mode != "none":
         app.add_middleware(AuthMiddleware, public_routes=public_routes)
     return app
 
@@ -155,13 +173,13 @@ def build_mcp_http_app(
     runtime: ControllerRuntime | None = None,
 ) -> Starlette:
     """Use the MCP SDK's HTTP app and add local public routes/auth."""
+    settings = runtime.settings if runtime is not None else get_settings()
     if hasattr(mcp, "streamable_http_app"):
         inner: Starlette = mcp.streamable_http_app()
         session_manager = getattr(mcp, "_session_manager", None)
         if session_manager is not None and not bool(
             getattr(session_manager, "stateless", False)
         ):
-            settings = get_settings()
             idle_timeout_s = max(1, settings.mcp_session_idle_timeout_s)
             session_manager.session_idle_timeout = idle_timeout_s
             maximum_tool_watchdog_s = tool_timeout_s("bash")
@@ -176,11 +194,16 @@ def build_mcp_http_app(
             inner,
             session_manager=session_manager,
             mcp_path=str(getattr(mcp_settings, "streamable_http_path", "/mcp")),
+            settings=settings,
             runtime=runtime,
         )
     if hasattr(mcp, "sse_app"):
         inner = mcp.sse_app()
-        return _build_authenticated_mcp_http_app(inner, runtime=runtime)
+        return _build_authenticated_mcp_http_app(
+            inner,
+            settings=settings,
+            runtime=runtime,
+        )
     raise RuntimeError(
         "MCP HTTP ASGI app not available since both streamable_http_app and sse_app are not available"
     )

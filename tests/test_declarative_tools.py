@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 from mcp.types import ToolAnnotations
 
+import local_shell_mcp.tools.declarative as declarative_module
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.oauth.core.context import (
     bind_oauth_claims,
@@ -89,6 +90,40 @@ async def test_tool_definition_call_from_mapping_ignores_varargs_and_kwargs():
         "keyword": 5,
         "kwargs": {},
     }
+
+
+@pytest.mark.asyncio
+async def test_handler_owned_session_admission_skips_generic_wrapper(
+    monkeypatch,
+) -> None:
+    admissions: list[dict[str, Any]] = []
+
+    async def sample_tool(session_id: str) -> dict[str, str]:
+        return {"session_id": session_id}
+
+    monkeypatch.setattr(
+        declarative_module,
+        "enforce_tool_session_control",
+        lambda args, **_kwargs: admissions.append(args),
+    )
+    definition = ToolDefinition(
+        func=sample_tool,
+        name="sample_tool",
+        http_method="POST",
+        http_path="/tools/sample_tool",
+        session_admission="handler",
+    )
+
+    assert await definition.call_from_mapping({"session_id": "SESSION01"}) == {
+        "session_id": "SESSION01"
+    }
+    assert admissions == []
+
+    mcp = _FakeMcp()
+    definition.register_mcp(cast(Any, mcp), _sample_context())
+    handler = cast(Callable[[str], Awaitable[dict[str, str]]], mcp.handler)
+    assert await handler("SESSION02") == {"session_id": "SESSION02"}
+    assert admissions == []
 
 
 def _sample_context():
