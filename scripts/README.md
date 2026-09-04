@@ -7,20 +7,18 @@ provenance, test, and documentation references in the same change.
 
 ## Root deployment interfaces
 
-Only three tracked files may live directly under `scripts/`:
+Only two tracked files may live directly under `scripts/`:
 
 | File | Responsibility | Why it remains at the root |
 | --- | --- | --- |
 | `README.md` | Records the ownership, lifecycle, and compatibility contract for repository automation. | The ownership map describes the complete `scripts` tree rather than one automation lifecycle. |
-| `docker-entrypoint.sh` | Prepares the container workspace, agent identity, and persistent credential links before executing the image command. | `Dockerfile` copies this exact path into `/usr/local/bin/docker-entrypoint.sh`, makes it executable, and selects it as the image `ENTRYPOINT`; moving it would break the container build/startup ABI. |
 | `run-with-cloudflare-tunnel.sh` | Loads checkout configuration, starts the MCP process, runs the named Cloudflare tunnel, and cleans up the background server. | Quickstart, tunnel setup, and the documented systemd service invoke this exact checkout path, so it is a stable user-facing deployment interface rather than internal automation. |
 
 The root allowlist is enforced by tests. New repository automation must be placed
 in `generation`, `release`, `testing`, or `validation`; adding another root script
 requires an explicit public deployment compatibility rationale and matching
-consumer-contract tests. Both shell interfaces must remain valid Bash programs.
-The Cloudflare helper is executable in a source checkout, while the Dockerfile
-owns installation and executable permissions for the container entrypoint.
+consumer-contract tests. The Cloudflare helper must remain a valid executable
+Bash program in a source checkout.
 
 ## `release`
 
@@ -29,8 +27,6 @@ owns installation and executable permissions for the container entrypoint.
 | `release/build-platform-wheel.py` | Thin installed-project entrypoint for building one verified platform wheel with the embedded native OpenTUI payload. | It invokes release-owned platform-wheel assembly and is consumed only by CI/release packaging workflows. |
 | `release/smoke-platform-wheel.py` | Verifies an installed platform wheel without Bun or a sidecar, including private payload materialization, stable executable resolution, and native `--version` execution. | It is an artifact acceptance test coupled to platform-wheel publishing rather than a general repository validator. |
 | `release/pyinstaller-entry.py` | Minimal PyInstaller startup shim that forwards command-line arguments to the packaged application entrypoint. | It exists only as an input to standalone release artifact construction and is not a runtime library or development command. |
-| `release/build-tmux-helper.sh` | Builds the locked static tmux helper for Linux amd64 or arm64 through Docker Buildx, with a native-platform Docker fallback. | It is the release-owned producer for bundled tmux binaries and must stay coupled to its Dockerfile, provenance lock, and multi-architecture workflow coverage. |
-| `release/tmux-helper.Dockerfile` | Downloads the pinned tmux source, verifies its SHA-256 digest, and builds a stripped static helper in an Alpine builder stage. | It is a release build recipe consumed only by the tmux helper builder, not an application container or development environment. |
 
 ## `testing`
 
@@ -45,8 +41,8 @@ owns installation and executable permissions for the container entrypoint.
 | `validation/check-coverage.py` | Reads Coverage.py JSON reports, writes cross-environment baselines, and enforces aggregate plus risk-weighted per-module coverage floors. It must run with the standard library alone before the project is installed. | Coverage is a repository quality gate rather than runtime or release behavior. Keeping the checker beside its policy data makes the zero-install validation boundary explicit. |
 | `validation/coverage-baseline.json` | Stores aggregate minima, per-source observations, and the serialized risk classification consumed by the coverage checker. | The file is policy input for the checker, not generated package data or application configuration, so both validation artifacts move together. |
 | `validation/check-doc-reference-assets.py` | Validates that generated-reference widgets in a built MkDocs site resolve to local JSON assets without escaping the site root. | It is a post-build documentation validator and has no runtime or generation ownership. |
-| `validation/check-native-provenance.py` | Verifies locked OpenTUI/tmux source hashes, license notices, and required release/source-package wiring. | Native provenance is a repository validation policy; the checker must remain zero-install and separate from the builders whose inputs it audits. |
-| `validation/check-release-matrix.py` | Audits the project/release Python baseline, CI/release matrices, package-smoke fragments, Docker platforms, platform-wheel tags, native sidecars, and bundled tmux coverage. | It validates repository workflow completeness before installation and therefore belongs beside other zero-install validation gates rather than release builders. |
+| `validation/check-native-provenance.py` | Verifies locked OpenTUI source hashes, license notices, and required release/source-package wiring. | Native provenance is a repository validation policy; the checker must remain zero-install and separate from the builders whose inputs it audits. |
+| `validation/check-release-matrix.py` | Audits the project/release Python baseline, CI/release matrices, package-smoke fragments, platform-wheel tags, and native sidecar coverage. | It validates repository workflow completeness before installation and therefore belongs beside other zero-install validation gates rather than release builders. |
 
 ## `generation`
 

@@ -42,4 +42,4 @@ body:
     id: environment
     attributes:
       label: Environment
-      placeholder: OS, architecture, Python version, Docker version, MCP client, browser, tunnel provider
+      placeholder: OS, architecture, Python version, MCP client, browser, tunnel provider

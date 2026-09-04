@@ -230,7 +230,7 @@ agent_dynamic_skill_tools: true
 # Tool executables.
 # Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows.
 shell_executable: "/bin/bash"
-# tmux executable.
+# tmux executable required for persistent shells on POSIX systems.
 tmux_bin: "tmux"
 # ripgrep executable.
 rg_bin: "rg"

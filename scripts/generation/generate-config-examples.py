@@ -16,44 +16,11 @@ from local_shell_mcp.config.surface import (
     yaml_default,
 )
 
-DOCKER_ENTRYPOINT_SPECS: tuple[tuple[str, str, str], ...] = (
-    (
-        "DOCKER_RUN_AS_ROOT",
-        "false",
-        "Run the Dockerized MCP server itself as root. Prefer explicit sudo inside commands instead.",
-    ),
-    (
-        "DOCKER_PERSISTENT_CREDENTIALS",
-        "true",
-        "Persist GitHub CLI, Git HTTPS credentials, GitCode credentials, SSH keys, .netrc, and GPG state across container rebuilds.",
-    ),
-    (
-        "DOCKER_CREDENTIALS_DIR",
-        "/persist/credentials",
-        "Root directory for persisted credentials. The Docker Compose example stores it in the local-shell-mcp-credentials volume.",
-    ),
-    (
-        "DOCKER_AGENT_UID",
-        "",
-        "Optional UID for the agent user at container startup. Leave empty to auto-detect the mounted workspace owner; set explicitly to override.",
-    ),
-    (
-        "DOCKER_AGENT_GID",
-        "",
-        "Optional GID for the agent user at container startup. Leave empty to auto-detect the mounted workspace owner; set explicitly to override.",
-    ),
-    (
-        "DOCKER_CHOWN_WORKSPACE",
-        "true",
-        "chown the mounted workspace to the agent user before starting the server.",
-    ),
-)
-
-SIDECAR_SPECS: tuple[tuple[str, str, str], ...] = (
+TUNNEL_HELPER_SPECS: tuple[tuple[str, str, str], ...] = (
     (
         "CLOUDFLARE_TUNNEL_TOKEN",
         "",
-        "Optional token for the cloudflared tunnel sidecar profile. This uses Cloudflare Tunnel only, not Cloudflare Access.",
+        "Optional token consumed by scripts/run-with-cloudflare-tunnel.sh. This uses Cloudflare Tunnel only, not Cloudflare Access.",
     ),
 )
 
@@ -103,7 +70,6 @@ def generate_env_example() -> str:
     lines: list[str] = [
         "# shellcheck shell=sh",
         "# shellcheck disable=SC2034",
-        "# Docker Compose uses this file as the main container environment via `env_file: .env`.",
         "# Copy it with: cp .env.example .env",
     ]
     specs_by_section: dict[str, list[SettingSpec]] = {
@@ -119,19 +85,8 @@ def generate_env_example() -> str:
                 lines.append(f"# {comment}")
             lines.append(_env_line(spec.env_var, spec.default))
 
-    lines.extend(
-        [
-            "",
-            "# Docker entrypoint settings. These are read before local-shell-mcp starts.",
-        ]
-    )
-    for name, default, help_text in DOCKER_ENTRYPOINT_SPECS:
-        for comment in _wrap_comment(help_text):
-            lines.append(f"# {comment}")
-        lines.append(f"{name}={default}")
-
-    lines.extend(["", "# Optional sidecar settings."])
-    for name, default, help_text in SIDECAR_SPECS:
+    lines.extend(["", "# Optional Cloudflare tunnel helper settings."])
+    for name, default, help_text in TUNNEL_HELPER_SPECS:
         for comment in _wrap_comment(help_text):
             lines.append(f"# {comment}")
         lines.append(f"{name}={default}")
@@ -286,23 +241,11 @@ def _settings_sections() -> list[dict[str, Any]]:
     sections.append(
         {
             "kind": "table",
-            "heading": "Docker entrypoint settings",
-            "body": "These variables are consumed by the Docker entrypoint before the Python application starts.",
+            "heading": "Cloudflare tunnel helper settings",
             "headers": ["Environment", "Default", "Description"],
             "rows": [
                 [_code(name), _code(default or "unset"), help_text]
-                for name, default, help_text in DOCKER_ENTRYPOINT_SPECS
-            ],
-        }
-    )
-    sections.append(
-        {
-            "kind": "table",
-            "heading": "Optional sidecar settings",
-            "headers": ["Environment", "Default", "Description"],
-            "rows": [
-                [_code(name), _code(default or "unset"), help_text]
-                for name, default, help_text in SIDECAR_SPECS
+                for name, default, help_text in TUNNEL_HELPER_SPECS
             ],
         }
     )
@@ -321,13 +264,9 @@ def generate_config_reference_json() -> str:
         ],
         "section_order": list(SECTION_ORDER),
         "settings": [_setting_doc(spec) for spec in SETTING_SPECS],
-        "docker_entrypoint_settings": [
+        "tunnel_helper_settings": [
             {"env": name, "default": default, "description": help_text}
-            for name, default, help_text in DOCKER_ENTRYPOINT_SPECS
-        ],
-        "sidecar_settings": [
-            {"env": name, "default": default, "description": help_text}
-            for name, default, help_text in SIDECAR_SPECS
+            for name, default, help_text in TUNNEL_HELPER_SPECS
         ],
         "sections": _settings_sections(),
     }

@@ -1,9 +1,7 @@
-# Bundled helpers
+# Bundled helper notices
 
-Linux standalone releases generate a statically linked tmux helper below this
-directory before PyInstaller builds the executable. Generated helper binaries
-are intentionally excluded from Git, wheels, and source distributions.
+This directory contains third-party notices that accompany packaged native UI
+artifacts. Generated native executables are not checked into the source tree.
 
-At runtime, local-shell-mcp prefers an explicitly configured or system tmux and
-uses the matching bundled helper only when the default `tmux` command is absent.
-Docker images continue to use the distribution-provided tmux package.
+Persistent POSIX shells use a host-provided tmux executable. The default is
+`tmux` from `PATH`; set `LOCAL_SHELL_MCP_TMUX_BIN` to use another executable.

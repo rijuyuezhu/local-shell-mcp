@@ -105,7 +105,7 @@ The important mappings and actual gaps are:
 | File/download safety | Immutable private download snapshots, no-follow identity checks, bounded previews, symlink-aware serialized writes, snapshot-grounded hashline edits, and tokenized file links are composed with sessions. |
 | Audit safety | Uniform redaction, bounded records, private payload objects, paired tool lifecycle events, scope-sensitive full recovery, and machine-aware views preserve forensic detail without unbounded raw retention. |
 | Minimal MCP surface | Unregistered names use the SDK-standard unknown-tool path; the fork carries no aliases, hidden mappings, or custom removed-name behavior. |
-| CI and release enforcement | The branch runs Linux/macOS/Windows tests, Windows ConPTY, OpenTUI on three OSes, verified platform-wheel build/install smoke on five native runners, VS Code packages on Linux/Windows, universal package/sdist smoke, Docker checks, release-matrix validation, branch-coverage ratchets, and bundled static tmux smoke on x86_64/aarch64. |
+| CI and release enforcement | The branch runs Linux/macOS/Windows tests, Windows ConPTY, OpenTUI on three OSes, verified platform-wheel build/install smoke on five native runners, VS Code packages on Linux/Windows, universal package/sdist smoke, release-matrix validation, branch-coverage ratchets, and native bundled static tmux smoke on x86_64/aarch64. |
 
 ## What this migration branch added
 
@@ -145,8 +145,10 @@ change the product or trust model and should be explicitly accepted:
    session ownership.
 4. **Three UI clients.** Native browser UI, native OpenTUI, and browser OpenTUI
    Console share APIs but still multiply visual and E2E maintenance.
-5. **Bundled tmux binaries.** This improves frozen Linux usability but creates
-   binary provenance, architecture, CVE, license, and rebuild responsibilities.
+5. **Bundled tmux binaries.** This was removed. POSIX persistent shells now use
+   host-provided tmux consistently across source, package, and standalone
+   installations, avoiding binary provenance, architecture, CVE, license, and
+   rebuild responsibilities for a second-party tmux distribution.
 
 Everything else in the branch is primarily correctness, compatibility, security,
 or a coherent implementation of those accepted product directions.

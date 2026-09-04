@@ -38,29 +38,7 @@ Best for a self-contained installation without managing a Python environment. Do
 LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project   ./local-shell-mcp server --mode mcp
 ```
 
-Host commands such as Git, compilers, package managers, and shells still need to be installed on the machine where the server runs.
-
-## Docker Compose
-
-Best for a more disposable and isolated tool environment. Published images support Linux `amd64` and `arm64`:
-
-```bash
-cp .env.example .env
-mkdir -p workspaces/default/agent/workspace
-docker compose --profile tunnel up -d
-```
-
-See [Docker Compose](docker-compose.md) for workspace mounts, permissions, and reset steps.
-
-## Docker without Compose
-
-```bash
-docker pull rijuyuezhu/local-shell-mcp:latest
-mkdir -p "$PWD/workspace"
-docker run --rm -it   -p 127.0.0.1:8765:8765   --env-file .env   -v "$PWD/workspace:/workspace"   rijuyuezhu/local-shell-mcp:latest
-```
-
-Run an HTTPS tunnel separately and make sure the mounted workspace is writable by the container user.
+Host commands such as Git, compilers, package managers, and shells still need to be installed on the machine where the server runs. POSIX persistent shells also require tmux.
 
 ## VS Code
 

@@ -320,5 +320,5 @@ platform, rebuild, and checksum ownership is recorded in
 [Native artifact provenance](maintenance/native-artifact-provenance.md). Run
 `uv run python scripts/validation/check-native-provenance.py` whenever those inputs change.
 
-Also test the Docker image or binary artifact and at least one real MCP connection path before publishing.
+Also test the binary artifact and at least one real MCP connection path before publishing.
 

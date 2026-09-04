@@ -7,6 +7,12 @@ with the user-facing [Comparison with upstream](../comparison.md); detailed
 migration and architecture evidence is retained in
 [Fork and upstream differences](fork-upstream-differences.md).
 
+!!! note "Historical packaging references"
+    This review records implementation decisions at the time each upstream
+    commit was assessed. References below to Docker images, Docker/Compose CI,
+    or container packaging describe that historical state; the fork later
+    removed its maintained Docker deployment and image-publishing path.
+
 Status values:
 
 - **Implemented**: the upstream behavior is directly available.
@@ -198,8 +204,8 @@ Rows for previously reviewed upstream refs are retained even when later upstream
 | 169 | 2026-07-14 | `1bfaba5` | fix: allow shell timeout cleanup before watchdog | **Implemented (adapted)** | MCP and REST watchdogs now resolve timeouts per tool. `bash` and `run_python_code` receive a bounded cleanup allowance beyond the configured shell timeout cap for SIGTERM, SIGKILL, reader draining, and scheduling margin, while unrelated tools retain the exact configured watchdog. Regression coverage verifies both transports return structured `timed_out=true` results with partial stdout/stderr instead of cancelling shell cleanup. |
 | 170 | 2026-07-14 | `eac80f6` | Remove unused dynamic agent bridge | **Not adopted** | The fork's dynamic Agent Bridge is active, tested, and part of its product direction, so upstream removal is intentionally not ported. |
 | 171 | 2026-07-14 | `bbd5c67` | Fix Windows cleanup regressions | **Implemented (adapted)** | The fork covers the maintenance outcome through its current cross-platform subprocess, ConPTY/tmux, normalized settings, outbound remote-worker, and generated configuration architecture with regression coverage. |
-| 172 | 2026-07-14 | `d3bd5be` | Bundle tmux for Linux persistent shells | **Implemented (adapted)** | Linux x86_64 and aarch64 standalone releases build a checksum-pinned, statically linked tmux 3.5a helper and embed only the matching architecture in the PyInstaller executable. Runtime resolution preserves explicit configuration, prefers system tmux, and falls back to the bundled helper consistently for persistent-shell tools and raw browser terminal attachments. Wheels, sdists, Docker images, and Python-only remote-worker bundles do not carry generated helper binaries. |
-| 173 | 2026-07-14 | `a59fce6` | Fix bundled tmux tests on Windows | **Implemented (adapted)** | The fork covers the maintenance outcome through its current cross-platform subprocess, ConPTY/tmux, normalized settings, outbound remote-worker, and generated configuration architecture with regression coverage. |
+| 172 | 2026-07-14 | `d3bd5be` | Bundle tmux for Linux persistent shells | **Not adopted** | Bundled tmux was later removed to avoid maintaining a second-party native binary, provenance lock, architecture matrix, and CVE/license lifecycle. POSIX persistent shells still support system tmux or an explicit `tmux_bin`; Windows uses ConPTY. |
+| 173 | 2026-07-14 | `a59fce6` | Fix bundled tmux tests on Windows | **Not adopted** | The bundled-helper path no longer exists. Cross-platform persistent-shell behavior remains covered through POSIX tmux and Windows ConPTY tests. |
 | 174 | 2026-07-15 | `a512008` | security: harden MCP sessions and remote results | **Implemented (adapted)** | All MCP HTTP methods remain behind the fork's route-aware OAuth middleware, the SDK binds stateful sessions to the credential that created them, remote results are accepted only from their assigned worker, and cancellation tombstones plus per-worker remaining queues are bounded. Stateful MCP sessions now additionally have a configurable hard capacity and idle timeout. |
 | 175 | 2026-07-15 | `0b043d7` | fix: serialize job and shell lifecycle transitions | **Implemented (adapted)** | Start, stop, and retry use persisted transitional states plus operation ids, with rollback and stale-transition recovery around the fork's explicit session and shell APIs. |
 | 176 | 2026-07-15 | `7f9daf1` | fix: handle remote paths and file action types | **Implemented (adapted)** | The adapted OpenTUI Files screen uses the fork workspace-confined local and remote APIs, mutation capability flags, SHA-256 editor revision guards, bounded RGBA previews, portable path normalization, mouse navigation, and responsive layouts. Unsupported remote mutations remain visibly disabled rather than shell-emulated. |

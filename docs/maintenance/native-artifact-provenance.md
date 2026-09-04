@@ -94,38 +94,3 @@ Use the platform tag matching the native runner. Release workflow artifacts are
 covered by the top-level `SHA256SUMS.txt`; executable archives and the VSIX also
 have per-artifact `.sha256` files. Do not treat a digest from one OS, architecture,
 or release as valid for another.
-
-## Bundled tmux helper
-
-Frozen Linux executable archives bundle a static tmux helper so persistent shells
-work without a host tmux installation. Python wheels and source distributions do
-not carry generated tmux binaries.
-
-| Input | Version or SHA-256 |
-|---|---|
-| Alpine builder image | `3.22` |
-| tmux source release | `3.5a` |
-| tmux source archive SHA-256 | `16216bd0877170dfcc64157085ba9013610b12b082548c7c9542cc0103198951` |
-| `scripts/release/tmux-helper.Dockerfile` | `b544bc5199834db5d7df4a6471a0237950223f9c4b392e53acb7658d87bac693` |
-| `scripts/release/build-tmux-helper.sh` | `a1a6e46a1f284cb17050055690a63df5df0e89d0e0a037f969e3b88a00d42cbf` |
-| `src/local_shell_mcp/helpers/tmux.LICENSE` | `c031bd37f464c534277814f6aa38686fa023d094261d57fd2545ad592bb53ccd` |
-
-The Docker build downloads the exact tmux release archive and verifies the pinned
-source digest before extraction. It statically links the Alpine-provided libevent
-and ncurses libraries, strips the result, and executes `tmux -V` before export.
-CI then starts a detached session, captures expected output, and kills the server.
-The helper is built only for Linux amd64 and arm64. tmux's ISC notice is shipped
-inside Linux executable archives as `TMUX-LICENSE.txt`.
-
-Rebuild on a matching Linux host, or use Docker Buildx for cross-architecture
-output:
-
-```bash
-scripts/release/build-tmux-helper.sh /tmp/local-shell-mcp-tmux linux/amd64
-/tmp/local-shell-mcp-tmux -V
-scripts/release/build-tmux-helper.sh /tmp/local-shell-mcp-tmux-arm64 linux/arm64
-```
-
-Release checksums are the authority for generated helper and archive bytes.
-Changing any source version, checksum, toolchain pin, supported platform, or
-license notice requires updating this page and `scripts/validation/check-native-provenance.py`.

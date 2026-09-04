@@ -21,12 +21,6 @@ For the [local source setup](quickstart.md#3-smoke-test-locally), set the publis
 http://127.0.0.1:8765
 ```
 
-For the repository's [Docker Compose setup](docker-compose.md#start), set it to:
-
-```text
-http://local-shell-mcp:8765
-```
-
 Add the public origin and copied token to `.env`:
 
 ```env
@@ -34,7 +28,7 @@ CLOUDFLARE_TUNNEL_TOKEN=eyJ...
 LOCAL_SHELL_MCP_BASE_URL=https://mcp.example.com
 ```
 
-`LOCAL_SHELL_MCP_BASE_URL` is the origin only. Do not append `/mcp`. Return to [Quickstart](quickstart.md#4-create-and-start-the-tunnel) or [Docker Compose](docker-compose.md#start) to start the selected deployment.
+`LOCAL_SHELL_MCP_BASE_URL` is the origin only. Do not append `/mcp`. Return to [Quickstart](quickstart.md#4-create-and-start-the-tunnel) to start the service and tunnel.
 
 ## Verify
 
@@ -54,7 +48,7 @@ https://mcp.example.com/mcp
 
 - The connector URL does not end in `/mcp`.
 - `LOCAL_SHELL_MCP_BASE_URL` incorrectly includes `/mcp`.
-- The tunnel target uses the wrong hostname for local versus Compose deployment.
+- The tunnel target does not point to the local server address and port.
 - The public hostname changed but `.env` still contains the old origin.
 - OAuth is disabled on a public hostname.
 

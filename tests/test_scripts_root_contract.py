@@ -7,7 +7,6 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS_ROOT = _REPO_ROOT / "scripts"
-_DOCKER_ENTRYPOINT = _SCRIPTS_ROOT / "docker-entrypoint.sh"
 _CLOUDFLARE_HELPER = _SCRIPTS_ROOT / "run-with-cloudflare-tunnel.sh"
 
 
@@ -25,7 +24,6 @@ def test_scripts_root_has_one_explicit_owner_set() -> None:
 
     assert root_files == {
         "README.md",
-        "docker-entrypoint.sh",
         "run-with-cloudflare-tunnel.sh",
     }
     assert root_directories == {
@@ -34,10 +32,7 @@ def test_scripts_root_has_one_explicit_owner_set() -> None:
         "testing",
         "validation",
     }
-    assert all(
-        path.is_file() and not path.is_symlink()
-        for path in (_DOCKER_ENTRYPOINT, _CLOUDFLARE_HELPER)
-    )
+    assert _CLOUDFLARE_HELPER.is_file() and not _CLOUDFLARE_HELPER.is_symlink()
 
 
 @pytest.mark.skipif(
@@ -45,27 +40,15 @@ def test_scripts_root_has_one_explicit_owner_set() -> None:
     reason="POSIX bash is unavailable",
 )
 def test_root_deployment_shell_interfaces_parse() -> None:
-    for path in (_DOCKER_ENTRYPOINT, _CLOUDFLARE_HELPER):
-        completed = subprocess.run(
-            ["bash", "-n", str(path)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert completed.returncode == 0, completed.stderr
-        content = path.read_text(encoding="utf-8")
-        assert content.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
-
-
-def test_docker_entrypoint_path_is_an_image_build_and_startup_abi() -> None:
-    dockerfile = (_REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
-
-    assert (
-        "COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh"
-    ) in dockerfile
-    assert "chmod +x /usr/local/bin/docker-entrypoint.sh" in dockerfile
-    assert 'ENTRYPOINT ["docker-entrypoint.sh"]' in dockerfile
-    assert 'CMD ["local-shell-mcp", "server", "--mode", "mcp"]' in dockerfile
+    completed = subprocess.run(
+        ["bash", "-n", str(_CLOUDFLARE_HELPER)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    content = _CLOUDFLARE_HELPER.read_text(encoding="utf-8")
+    assert content.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
 
 
 def test_cloudflare_helper_path_is_a_documented_executable_interface() -> None:
@@ -96,7 +79,6 @@ def test_cloudflare_helper_path_is_a_documented_executable_interface() -> None:
     assert quickstart.count(invocation) == 2
     assert f"ExecStart=/usr/bin/env bash {invocation}" in quickstart
     assert "[Quickstart](quickstart.md#4-create-and-start-the-tunnel)" in tunnel
-    assert "[Docker Compose](docker-compose.md#start)" in tunnel
     assert "create-remote-tunnel/" in tunnel
     assert "remote-tunnel-permissions/#get-the-tunnel-token" in tunnel
     assert "local_shell_mcp.main server --mode mcp" in helper
@@ -107,10 +89,19 @@ def test_scripts_readme_documents_the_root_compatibility_contract() -> None:
 
     assert "## Root deployment interfaces" in ownership
     assert (
-        "Only three tracked files may live directly under `scripts/`"
-        in ownership
+        "Only two tracked files may live directly under `scripts/`" in ownership
     )
-    assert "`docker-entrypoint.sh`" in ownership
     assert "`run-with-cloudflare-tunnel.sh`" in ownership
-    assert "container build/startup ABI" in ownership
     assert "stable user-facing deployment interface" in ownership
+
+
+def test_repository_does_not_ship_docker_deployment_files() -> None:
+    for relative in (
+        ".dockerignore",
+        "Dockerfile",
+        "docker-compose.yml",
+        "docs/getting-started/docker-compose.md",
+        "scripts/docker-entrypoint.sh",
+        "scripts/release/tmux-helper.Dockerfile",
+    ):
+        assert not (_REPO_ROOT / relative).exists()

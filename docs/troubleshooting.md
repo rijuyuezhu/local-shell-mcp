@@ -42,22 +42,6 @@ Then check the tunnel or reverse proxy:
 - It must preserve HTTPS externally for ChatGPT.
 - The public hostname must match `LOCAL_SHELL_MCP_BASE_URL`.
 
-## Container cannot write state
-
-If the container cannot write `/workspace/.local-shell-mcp`, check the host owner of the mounted workspace:
-
-```bash
-mkdir -p workspaces/default/agent/workspace
-stat -c '%u:%g %n' workspaces/default/agent/workspace
-```
-
-The Docker entrypoint normally creates the runtime `agent` user from that owner. If the owner is not the host user you expect, fix the host-side ownership or set `DOCKER_AGENT_UID` and `DOCKER_AGENT_GID` in `.env` to override detection, then restart:
-
-```bash
-docker compose restart local-shell-mcp
-```
-
-
 ## Tool call times out
 
 Public tool calls are bounded by strict watchdogs and shell timeouts. Check these settings:
@@ -107,11 +91,7 @@ Every routed MCP or REST debug tool call should produce a `tool_call_start` and 
 ## Release binary lacks system tools
 
 The standalone binary includes the Python server and default OAuth
-dependencies. Linux `x86_64` and `aarch64` release binaries additionally bundle
-a statically linked tmux helper, but an explicitly configured
-`LOCAL_SHELL_MCP_TMUX_BIN` remains authoritative and must exist. Source and
-Python-package installs still require host tmux for persistent shells. Git,
-shells, compilers, LibreOffice, and other host tools are not bundled. The Docker
-image includes a minimal Ubuntu runtime with core tools such as Git, SSH client,
-ripgrep, and distribution-provided tmux, while Python dependencies are
-installed with `uv`.
+dependencies. On POSIX systems, persistent shells require a host tmux executable;
+the default is `tmux` from `PATH`, and `LOCAL_SHELL_MCP_TMUX_BIN` may point to a
+different executable. Git, shells, compilers, LibreOffice, and other host tools
+are not bundled.

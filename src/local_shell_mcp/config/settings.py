@@ -319,7 +319,7 @@ class Settings(BaseSettings):
     shell_executable: str = "/bin/bash"
     """Shell executable for bounded and persistent sessions; the POSIX default maps to COMSPEC on Windows."""
     tmux_bin: str = "tmux"
-    """tmux executable."""
+    """tmux executable required for persistent shells on POSIX systems."""
     rg_bin: str = "rg"
     """ripgrep executable."""
     git_bin: str = "git"
