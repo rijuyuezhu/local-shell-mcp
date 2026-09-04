@@ -429,7 +429,6 @@ def test_remaining_top_level_ops_families_have_shared_consumers() -> None:
     assert {
         (f"{_PACKAGE_NAME}.remote.manager", remote_result),
         (f"{_PACKAGE_NAME}.remote.service", remote_result),
-        (f"{_PACKAGE_NAME}.remote.transfer", remote_result),
     } <= imports
 
 

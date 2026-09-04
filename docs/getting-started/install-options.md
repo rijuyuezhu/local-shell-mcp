@@ -39,7 +39,3 @@ LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project   ./local-shell-mcp server --mod
 ```
 
 Host commands such as Git, compilers, package managers, and shells still need to be installed on the machine where the server runs. POSIX persistent shells also require tmux.
-
-## VS Code
-
-The VS Code extension starts the server for the current workspace and can copy the MCP URL and setup prompt. See [VS Code](vscode.md).

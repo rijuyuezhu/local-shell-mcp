@@ -97,7 +97,7 @@ The important mappings and actual gaps are:
 | Transactional cross-session copies | `session_copy` supports local/local, local/remote, remote/local, and remote/remote files and directories, same-worker fast paths, measured large-copy HTTP streaming, capability/RPC fallback, durable cursor/spool resume, transactional commit/abort, background managed jobs, and cancellation cleanup. |
 | Worker upgrade security | Upgrade authority is the actual deterministic bundle digest. The worker enforces authenticated same-origin manifest/archive downloads and redirects, cache bypass, size/version/SHA validation, safe extraction, downgrade protection, atomic replacement/rollback, credential-free argv, and bounded retry. |
 | Worker lifecycle robustness | Cross-platform single-instance locks cover enrollment, polling, jobs, and re-exec. POSIX inherits the lock descriptor; Windows adopts and reacquires the native handle. Poll deadlines are continuously negotiated. |
-| Windows support | Native shell execution, ConPTY persistent terminals, Windows transfer identities and path behavior, process-detachment fixes, and full Windows pytest/VS Code/OpenTUI coverage are maintained as first-class behavior. |
+| Windows support | Native shell execution, ConPTY persistent terminals, Windows transfer identities and path behavior, process-detachment fixes, and full Windows pytest/OpenTUI coverage are maintained as first-class behavior. |
 | Browser-native Human UI | The default `/ui` is independent of terminal rendering and provides OAuth PKCE login, dashboard, remotes, local/remote files, copy/move/rename, todos, audit, and terminals with machine isolation and stale-response guards. |
 | Multiple terminal clients | The fork supports tmux, Windows ConPTY, raw browser PTY streaming, resize, snapshots, optional native OpenTUI, and an authenticated browser OpenTUI console without changing the underlying shell identity. |
 | Image handling | `view_image` is session-bound and remote-capable. Human UI/OpenTUI audit previews are bounded, and terminal image protocols can render inline images without unbounded decode or layout behavior. |
@@ -105,7 +105,7 @@ The important mappings and actual gaps are:
 | File/download safety | Immutable private download snapshots, no-follow identity checks, bounded previews, symlink-aware serialized writes, snapshot-grounded hashline edits, and tokenized file links are composed with sessions. |
 | Audit safety | Uniform redaction, bounded records, private payload objects, paired tool lifecycle events, scope-sensitive full recovery, and machine-aware views preserve forensic detail without unbounded raw retention. |
 | Minimal MCP surface | Unregistered names use the SDK-standard unknown-tool path; the fork carries no aliases, hidden mappings, or custom removed-name behavior. |
-| CI and release enforcement | The branch runs Linux/macOS/Windows tests, Windows ConPTY, OpenTUI on three OSes, verified platform-wheel build/install smoke on five native runners, VS Code packages on Linux/Windows, universal package/sdist smoke, release-matrix validation, branch-coverage ratchets, and native bundled static tmux smoke on x86_64/aarch64. |
+| CI and release enforcement | The branch runs Linux/macOS/Windows tests, Windows ConPTY, OpenTUI on three OSes, verified platform-wheel build/install smoke on five native runners, universal package/sdist smoke, release-matrix validation, branch-coverage ratchets, and native bundled static tmux smoke on x86_64/aarch64. |
 
 ## What this migration branch added
 

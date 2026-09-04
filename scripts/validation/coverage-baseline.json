@@ -440,11 +440,6 @@
       "num_statements": 15,
       "percent_covered": 100.0
     },
-    "src/local_shell_mcp/remote/transfer.py": {
-      "num_branches": 24,
-      "num_statements": 129,
-      "percent_covered": 55.555556
-    },
     "src/local_shell_mcp/remote_worker/__init__.py": {
       "num_branches": 0,
       "num_statements": 0,
@@ -558,11 +553,6 @@
     "src/local_shell_mcp/schemas/input_models/transfer.py": {
       "num_branches": 0,
       "num_statements": 16,
-      "percent_covered": 100.0
-    },
-    "src/local_shell_mcp/tools/schemas/input_models/version.py": {
-      "num_branches": 0,
-      "num_statements": 0,
       "percent_covered": 100.0
     },
     "src/local_shell_mcp/tools/schemas/input_models/workspace_connector.py": {
@@ -699,11 +689,6 @@
       "num_branches": 32,
       "num_statements": 170,
       "percent_covered": 96.039604
-    },
-    "src/local_shell_mcp/tools/discovery.py": {
-      "num_branches": 8,
-      "num_statements": 20,
-      "percent_covered": 100.0
     },
     "src/local_shell_mcp/tools/local_handlers.py": {
       "num_branches": 6,
@@ -913,7 +898,6 @@
       "src/local_shell_mcp/ops/shell.py",
       "src/local_shell_mcp/ops/transfer.py",
       "src/local_shell_mcp/remote/manager.py",
-      "src/local_shell_mcp/remote/transfer.py",
       "src/local_shell_mcp/remote/transfer_gateway.py",
       "src/local_shell_mcp/tool_session/store.py",
       "src/local_shell_mcp/ui/security.py",

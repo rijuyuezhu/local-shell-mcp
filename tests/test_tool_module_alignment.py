@@ -1,6 +1,7 @@
 from pathlib import Path
 
 _NON_REGISTRY_OPERATION_MODULES = {"bash", "files_service"}
+_REGISTRY_MODULES_WITHOUT_INPUT_SCHEMA = {"version"}
 
 
 def _module_names(
@@ -57,7 +58,7 @@ def test_tool_family_modules_are_aligned() -> None:
 
     assert ops - _NON_REGISTRY_OPERATION_MODULES == registry
     assert ops >= _NON_REGISTRY_OPERATION_MODULES
-    assert input_models == registry
+    assert input_models == registry - _REGISTRY_MODULES_WITHOUT_INPUT_SCHEMA
     assert result_models == registry
 
 

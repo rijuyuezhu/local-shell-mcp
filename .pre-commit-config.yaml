@@ -19,24 +19,6 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/local_shell_mcp/(agent_bridge|config|ops|remote|schemas|server|tools|utils)/.*\.py|scripts/generation/export-tools-json\.py|docs/reference/generated/(tools|server-instructions)\.json)$
-      - id: vscode-extension-format
-        name: vscode-extension format
-        entry: bash -c 'cd vscode-extension && npm ci && npm run format:check'
-        language: system
-        pass_filenames: false
-        files: ^vscode-extension/(src/.*\.ts|.*\.(json|md|mjs)|package-lock\.json)$
-      - id: vscode-extension-lint
-        name: vscode-extension lint
-        entry: bash -c 'cd vscode-extension && npm ci && npm run lint'
-        language: system
-        pass_filenames: false
-        files: ^vscode-extension/(src/.*\.ts|eslint\.config\.mjs|package(-lock)?\.json|tsconfig\.json)$
-      - id: vscode-extension-compile
-        name: vscode-extension compile
-        entry: bash -c 'cd vscode-extension && npm ci && npm run compile'
-        language: system
-        pass_filenames: false
-        files: ^vscode-extension/(src/.*\.ts|package(-lock)?\.json|tsconfig\.json)$
       - id: terminal-ui-build
         name: terminal UI generated assets
         entry: bash -c 'cd ui-terminal && npm ci && npm run check'

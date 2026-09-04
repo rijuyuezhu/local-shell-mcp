@@ -132,7 +132,7 @@ def test_catalog_rejects_duplicate_local_handler_names() -> None:
 
 
 def test_builtin_catalog_no_longer_uses_runtime_module_introspection() -> None:
-    source = Path("src/local_shell_mcp/tools/discovery.py").read_text(
+    source = Path("src/local_shell_mcp/tools/catalog.py").read_text(
         encoding="utf-8"
     )
 

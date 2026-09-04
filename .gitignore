@@ -18,10 +18,6 @@ playwright-report/
 test-results/
 /browser-artifacts*/
 node_modules/
-# VS Code extension local build outputs
-vscode-extension/node_modules/
-vscode-extension/out/
-
 # MkDocs build output
 site/
 # OpenTUI build outputs

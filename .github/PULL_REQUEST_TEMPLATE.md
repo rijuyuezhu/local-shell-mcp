@@ -9,7 +9,6 @@
 - [ ] `uv run pytest -q`
 - [ ] Branch-coverage ratchet passes if Python source changed
 - [ ] `uv run mkdocs build --strict` if docs changed
-- [ ] VS Code extension compile if extension files changed
 
 ## Safety checklist
 

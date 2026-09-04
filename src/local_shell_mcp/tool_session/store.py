@@ -27,7 +27,6 @@ from .records import (
     new_snapshot_id,
     session_from_payload,
     snapshot_from_payload,
-    valid_session_id,
 )
 from .records import (
     generate_session_id as _generate_session_id,
@@ -82,11 +81,6 @@ SESSION_TERMINATION_PROMPT = (
 def generate_session_id() -> str:
     """Compatibility facade for opaque session-id allocation."""
     return _generate_session_id()
-
-
-def _valid_session_id(value: Any) -> str | None:
-    """Compatibility facade for durable session-id validation."""
-    return valid_session_id(value)
 
 
 def _new_snapshot_id() -> str:

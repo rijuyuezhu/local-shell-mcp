@@ -25,7 +25,6 @@ from local_shell_mcp.tools.declarative import (
     DeclarativeToolRegistry,
     _normalize_description,
 )
-from local_shell_mcp.tools.discovery import discover_tool_registries
 from local_shell_mcp.tools.local_handlers import (
     UnknownLocalToolError,
     call_local_tool,
@@ -248,7 +247,7 @@ def test_remote_registry_declares_only_remote_admin(monkeypatch):
         DeclarativeToolRegistry,
         next(
             registry
-            for registry in discover_tool_registries()
+            for registry in build_tool_catalog().registries
             if registry.name == "remote"
         ),
     )
@@ -290,7 +289,7 @@ def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):
     worker_tools = {spec.worker_tool for spec in REMOTE_WORKER_TOOL_SPECS}
     route_by_name = {
         route.tool_name: route
-        for registry in discover_tool_registries()
+        for registry in build_tool_catalog().registries
         for route in registry.http_routes()
     }
     handler_names = set(local_tool_handlers())

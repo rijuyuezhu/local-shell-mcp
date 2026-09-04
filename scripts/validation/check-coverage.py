@@ -43,7 +43,6 @@ CRITICAL_FILES = frozenset(
         f"{SOURCE_PREFIX}ops/shell.py",
         f"{SOURCE_PREFIX}ops/transfer.py",
         f"{SOURCE_PREFIX}remote/manager.py",
-        f"{SOURCE_PREFIX}remote/transfer.py",
         f"{SOURCE_PREFIX}remote/transfer_gateway.py",
         f"{SOURCE_PREFIX}tool_session/store.py",
         f"{SOURCE_PREFIX}ui/security.py",

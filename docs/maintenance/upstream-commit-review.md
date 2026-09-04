@@ -10,8 +10,9 @@ migration and architecture evidence is retained in
 !!! note "Historical packaging references"
     This review records implementation decisions at the time each upstream
     commit was assessed. References below to Docker images, Docker/Compose CI,
-    or container packaging describe that historical state; the fork later
-    removed its maintained Docker deployment and image-publishing path.
+    container packaging, the VS Code extension, or VSIX packaging describe
+    that historical state; the fork later removed both its maintained Docker
+    deployment/image-publishing path and its VS Code extension/package path.
 
 Status values:
 

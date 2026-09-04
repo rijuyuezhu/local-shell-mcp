@@ -52,7 +52,7 @@ The projects still share the same broad purpose and many operational outcomes:
 - remote workers that connect outbound to a controller;
 - OAuth-protected MCP and HTTP operation;
 - file links, Audit, Todos, Skills, and human interfaces;
-- standalone, Python, and VS Code deployment paths.
+- standalone and Python deployment paths.
 
 A feature may therefore exist in both projects while using different public tool
 names, state ownership, modules, security checks, and recovery rules.

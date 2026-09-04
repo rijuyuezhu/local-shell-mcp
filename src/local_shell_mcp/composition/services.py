@@ -66,10 +66,3 @@ def install_runtime_services(
         previous_state_store=previous_state_store,
         previous_tool_session_store=previous_tool_session_store,
     )
-
-
-def configure_runtime_services(settings: Settings) -> RuntimeServices:
-    """Compatibility facade that constructs and permanently installs services."""
-    services = build_runtime_services(settings)
-    install_runtime_services(services)
-    return services

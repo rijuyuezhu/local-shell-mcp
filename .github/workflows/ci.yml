@@ -29,9 +29,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: |
-            vscode-extension/package-lock.json
-            ui-terminal/package-lock.json
+          cache-dependency-path: ui-terminal/package-lock.json
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -350,24 +348,3 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: python scripts/validation/check-release-matrix.py
-
-  vscode-extension:
-    name: VS Code extension (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: vscode-extension/package-lock.json
-      - working-directory: vscode-extension
-        run: npm ci
-      - working-directory: vscode-extension
-        run: npm run compile
-      - working-directory: vscode-extension
-        run: npm run package:vsix

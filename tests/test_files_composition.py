@@ -2,10 +2,11 @@ import inspect
 
 import pytest
 
-from local_shell_mcp.config.settings import Settings, clear_settings_cache
-from local_shell_mcp.executors.runtime_services import (
-    configure_runtime_services,
+from local_shell_mcp.composition.services import (
+    build_runtime_services,
+    install_runtime_services,
 )
+from local_shell_mcp.config.settings import Settings, clear_settings_cache
 from local_shell_mcp.executors.search_composition import (
     build_controller_tool_catalog,
 )
@@ -41,6 +42,12 @@ def _settings(tmp_path, monkeypatch) -> Settings:
     return Settings()
 
 
+def _configure_runtime_services(settings: Settings):
+    services = build_runtime_services(settings)
+    install_runtime_services(services)
+    return services
+
+
 def _registry(catalog, registry_type):
     return next(
         registry
@@ -58,7 +65,7 @@ async def test_controller_files_and_read_use_explicit_service_without_ambient_fa
     tmp_path, monkeypatch
 ):
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     (tmp_path / "demo.txt").write_text("alpha\nbeta\n", encoding="utf-8")
     session = services.tool_session_store.create_session(workdir=tmp_path)
     catalog = build_controller_tool_catalog(
@@ -129,7 +136,7 @@ async def test_controller_files_remote_wire_uses_owned_manager(
     tmp_path, monkeypatch
 ):
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     session = services.tool_session_store.create_session(
         target="remote",
         workdir="/remote/work",
@@ -182,7 +189,7 @@ async def test_worker_dispatcher_uses_composed_files_and_read_overrides(
     tmp_path, monkeypatch
 ):
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     dispatcher = build_worker_dispatcher_with_search(
         settings, services.tool_session_store
     )
@@ -237,7 +244,7 @@ async def test_files_compatibility_facades_preserve_sessionless_local_calls(
     tmp_path, monkeypatch
 ):
     settings = _settings(tmp_path, monkeypatch)
-    configure_runtime_services(settings)
+    _configure_runtime_services(settings)
 
     import local_shell_mcp.ops.files as files_ops
 
@@ -340,7 +347,7 @@ async def test_files_compatibility_facades_preserve_local_session_routing(
     tmp_path, monkeypatch
 ):
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     session = services.tool_session_store.create_session(workdir=tmp_path)
 
     import local_shell_mcp.ops.files as files_ops
@@ -399,7 +406,7 @@ async def test_files_compatibility_facades_preserve_remote_session_routing(
     tmp_path, monkeypatch
 ):
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     session = services.tool_session_store.create_session(
         target="remote",
         workdir="/remote/work",
@@ -576,7 +583,7 @@ async def test_bound_file_registry_handlers_delegate_to_injected_service(
     tmp_path, monkeypatch
 ):
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     catalog = build_controller_tool_catalog(
         settings,
         services.tool_session_store,

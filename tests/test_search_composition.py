@@ -3,10 +3,11 @@ import shutil
 
 import pytest
 
-from local_shell_mcp.config.settings import Settings, clear_settings_cache
-from local_shell_mcp.executors.runtime_services import (
-    configure_runtime_services,
+from local_shell_mcp.composition.services import (
+    build_runtime_services,
+    install_runtime_services,
 )
+from local_shell_mcp.config.settings import Settings, clear_settings_cache
 from local_shell_mcp.executors.search_composition import (
     build_controller_tool_catalog,
 )
@@ -45,6 +46,12 @@ def _settings(tmp_path, monkeypatch) -> Settings:
     return Settings()
 
 
+def _configure_runtime_services(settings: Settings):
+    services = build_runtime_services(settings)
+    install_runtime_services(services)
+    return services
+
+
 @pytest.mark.asyncio
 async def test_controller_catalog_binds_search_without_changing_tool_signature(
     tmp_path, monkeypatch
@@ -52,7 +59,7 @@ async def test_controller_catalog_binds_search_without_changing_tool_signature(
     if not shutil.which("rg"):
         pytest.skip("missing rg")
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     (tmp_path / "demo.txt").write_text("needle\n", encoding="utf-8")
     session = services.tool_session_store.create_session(workdir=tmp_path)
 
@@ -98,7 +105,7 @@ async def test_controller_search_remote_wire_uses_owned_manager(
     tmp_path, monkeypatch
 ):
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     session = services.tool_session_store.create_session(
         target="remote",
         workdir="/remote/work",
@@ -168,7 +175,7 @@ async def test_worker_dispatcher_uses_composed_search_override(
     if not shutil.which("rg"):
         pytest.skip("missing rg")
     settings = _settings(tmp_path, monkeypatch)
-    services = configure_runtime_services(settings)
+    services = _configure_runtime_services(settings)
     dispatcher = build_worker_dispatcher_with_search(
         settings, services.tool_session_store
     )

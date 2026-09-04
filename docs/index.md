@@ -14,7 +14,7 @@ functional differences.
 ## Start here
 
 - Follow the [Quickstart](getting-started/quickstart.md) for a local service exposed through HTTPS.
-- Add the service to [ChatGPT](getting-started/chatgpt-connector.md) or [VS Code](getting-started/vscode.md).
+- Add the service to [ChatGPT](getting-started/chatgpt-connector.md).
 - Review [Security](security.md) before exposing the service outside localhost.
 
 ## What users can do
