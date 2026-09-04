@@ -177,12 +177,9 @@ def start_worker_process(
         ),
         encoding="utf-8",
     )
-    env = worker_env(remote_workspace)
     dependency_paths = sorted(
         {sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]}
     )
-    env["PYTHONPATH"] = os.pathsep.join([str(runtime_dir), *dependency_paths])
-    env["LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"] = digest
 
     isolated_venv = state_dir / "e2e-venv"
     venv.EnvBuilder(with_pip=False, clear=True).create(isolated_venv)
@@ -191,13 +188,43 @@ def start_worker_process(
         if os.name == "nt"
         else isolated_venv / "bin" / "python"
     )
+    isolated_site_probe = subprocess.run(
+        [
+            str(worker_python),
+            "-c",
+            "import sysconfig; print(sysconfig.get_path('purelib'))",
+        ],
+        cwd=remote_workspace,
+        env=worker_env(remote_workspace),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert isolated_site_probe.returncode == 0, isolated_site_probe.stderr
+    isolated_site = Path(isolated_site_probe.stdout.strip())
+    (isolated_site / "local-shell-mcp-e2e-deps.pth").write_text(
+        "\n".join(
+            [
+                *dependency_paths,
+                (
+                    "import os; (os.getenv('COVERAGE_PROCESS_START') or "
+                    "os.getenv('COVERAGE_PROCESS_CONFIG')) and "
+                    "__import__('coverage').process_startup(slug='pth')"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     isolation_probe = subprocess.run(
         [
             str(worker_python),
             "-c",
             (
                 "import importlib.util; "
-                "print(importlib.util.find_spec('local_shell_mcp'))"
+                "print(importlib.util.find_spec('local_shell_mcp')); "
+                "print(bool(importlib.util.find_spec('coverage')))"
             ),
         ],
         cwd=remote_workspace,
@@ -207,7 +234,11 @@ def start_worker_process(
         check=False,
     )
     assert isolation_probe.returncode == 0, isolation_probe.stderr
-    assert isolation_probe.stdout.strip() == "None"
+    assert isolation_probe.stdout.splitlines() == ["None", "True"]
+
+    env = worker_env(remote_workspace)
+    env["PYTHONPATH"] = str(runtime_dir)
+    env["LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"] = digest
     return start_logged_process(
         [
             str(worker_python),
