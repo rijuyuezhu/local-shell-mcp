@@ -3,6 +3,7 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -101,12 +102,10 @@ def test_lifecycle_helpers_cover_platform_and_bounded_log_paths(
     assert argv[:2] == [job_lifecycle.sys.executable, "job-runner"]
     monkeypatch.setattr(job_lifecycle.sys, "frozen", False, raising=False)
     argv = job_lifecycle._runner_argv(paths, tmp_path)
-    assert argv[:4] == [
-        job_lifecycle.sys.executable,
-        "-m",
-        "local_shell_mcp.jobs.runner",
-        "--command-file",
-    ]
+    assert argv[0] == job_lifecycle.sys.executable
+    assert Path(argv[1]).name == "runner_bootstrap.py"
+    assert Path(argv[1]).is_absolute()
+    assert argv[2] == "--command-file"
     assert job_lifecycle._runner_command(
         ["echo", "hello world"], "cmd.exe"
     ) == ('echo "hello world"')

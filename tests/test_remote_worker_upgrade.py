@@ -489,6 +489,7 @@ def test_worker_bundle_keeps_strict_runtime_allowlist():
     assert "local_shell_mcp/agent_bridge/sources.py" in names
     assert "local_shell_mcp/agent_bridge/models.py" in names
     assert "local_shell_mcp/jobs/reconciliation.py" in names
+    assert "local_shell_mcp/jobs/runner_bootstrap.py" in names
     assert "local_shell_mcp/jobs/runtime.py" in names
     assert "local_shell_mcp/persistence/__init__.py" in names
     assert "local_shell_mcp/persistence/store.py" in names
@@ -599,14 +600,14 @@ def test_worker_bundle_job_runner_executes_without_checkout_or_site(tmp_path):
     command_path.write_text(command, encoding="utf-8")
 
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(runtime)
+    env.pop("PYTHONPATH", None)
     env["PYTHONNOUSERSITE"] = "1"
+    bootstrap = runtime / "local_shell_mcp" / "jobs" / "runner_bootstrap.py"
     completed = subprocess.run(
         [
             sys.executable,
             "-S",
-            "-m",
-            "local_shell_mcp.jobs.runner",
+            str(bootstrap),
             "--command-file",
             str(command_path),
             "--log-file",

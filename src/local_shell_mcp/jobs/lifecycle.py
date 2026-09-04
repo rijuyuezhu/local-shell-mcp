@@ -82,8 +82,7 @@ def _runner_argv(paths: JobAttemptPaths, cwd: Path) -> list[str]:
         return [sys.executable, "job-runner", *arguments]
     return [
         sys.executable,
-        "-m",
-        "local_shell_mcp.jobs.runner",
+        str(Path(__file__).resolve().with_name("runner_bootstrap.py")),
         *arguments,
     ]
 

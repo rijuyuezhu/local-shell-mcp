@@ -5,7 +5,9 @@ import json
 import os
 import subprocess
 import sys
+import sysconfig
 import tarfile
+import venv
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -144,6 +146,7 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
             "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
             "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S": "15",
             "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES": "1",
+            "PYTHONNOUSERSITE": "1",
         }
     )
     return env
@@ -175,11 +178,39 @@ def start_worker_process(
         encoding="utf-8",
     )
     env = worker_env(remote_workspace)
-    env["PYTHONPATH"] = str(runtime_dir)
+    dependency_paths = sorted(
+        {sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]}
+    )
+    env["PYTHONPATH"] = os.pathsep.join([str(runtime_dir), *dependency_paths])
     env["LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"] = digest
+
+    isolated_venv = state_dir / "e2e-venv"
+    venv.EnvBuilder(with_pip=False, clear=True).create(isolated_venv)
+    worker_python = (
+        isolated_venv / "Scripts" / "python.exe"
+        if os.name == "nt"
+        else isolated_venv / "bin" / "python"
+    )
+    isolation_probe = subprocess.run(
+        [
+            str(worker_python),
+            "-c",
+            (
+                "import importlib.util; "
+                "print(importlib.util.find_spec('local_shell_mcp'))"
+            ),
+        ],
+        cwd=remote_workspace,
+        env=worker_env(remote_workspace),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert isolation_probe.returncode == 0, isolation_probe.stderr
+    assert isolation_probe.stdout.strip() == "None"
     return start_logged_process(
         [
-            sys.executable,
+            str(worker_python),
             "-m",
             "local_shell_mcp.remote_worker",
             "connect",
