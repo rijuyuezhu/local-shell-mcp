@@ -5,7 +5,9 @@ import json
 import os
 import subprocess
 import sys
+import sysconfig
 import tarfile
+import venv
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,7 +20,6 @@ from mcp.types import ImageContent
 from local_shell_mcp import __version__
 from tests.e2e_helpers import (
     PROJECT_ROOT,
-    SRC_ROOT,
     ToolClient,
     assert_required_tools,
     free_tcp_port,
@@ -129,12 +130,9 @@ async def run_remote_enabled_mcp_process(
 
 def worker_env(remote_workspace: Path) -> dict[str, str]:
     env = os.environ.copy()
-    pythonpath = str(SRC_ROOT)
-    if env.get("PYTHONPATH"):
-        pythonpath = f"{pythonpath}{os.pathsep}{env['PYTHONPATH']}"
+    env.pop("PYTHONPATH", None)
     env.update(
         {
-            "PYTHONPATH": pythonpath,
             "LOCAL_SHELL_MCP_WORKSPACE_ROOT": str(remote_workspace),
             "LOCAL_SHELL_MCP_STATE_DIR": str(
                 remote_workspace / ".local-shell-mcp"
@@ -148,6 +146,7 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
             "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
             "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S": "15",
             "LOCAL_SHELL_MCP_MAX_READ_MANY_FILES": "1",
+            "PYTHONNOUSERSITE": "1",
         }
     )
     return env
@@ -178,12 +177,71 @@ def start_worker_process(
         ),
         encoding="utf-8",
     )
+    dependency_paths = sorted(
+        {sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]}
+    )
+
+    isolated_venv = state_dir / "e2e-venv"
+    venv.EnvBuilder(with_pip=False, clear=True).create(isolated_venv)
+    worker_python = (
+        isolated_venv / "Scripts" / "python.exe"
+        if os.name == "nt"
+        else isolated_venv / "bin" / "python"
+    )
+    isolated_site_probe = subprocess.run(
+        [
+            str(worker_python),
+            "-c",
+            "import sysconfig; print(sysconfig.get_path('purelib'))",
+        ],
+        cwd=remote_workspace,
+        env=worker_env(remote_workspace),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert isolated_site_probe.returncode == 0, isolated_site_probe.stderr
+    isolated_site = Path(isolated_site_probe.stdout.strip())
+    (isolated_site / "local-shell-mcp-e2e-deps.pth").write_text(
+        "\n".join(
+            [
+                *dependency_paths,
+                (
+                    "import os; (os.getenv('COVERAGE_PROCESS_START') or "
+                    "os.getenv('COVERAGE_PROCESS_CONFIG')) and "
+                    "__import__('coverage').process_startup(slug='pth')"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    isolation_probe = subprocess.run(
+        [
+            str(worker_python),
+            "-c",
+            (
+                "import importlib.util; "
+                "print(importlib.util.find_spec('local_shell_mcp')); "
+                "print(bool(importlib.util.find_spec('coverage')))"
+            ),
+        ],
+        cwd=remote_workspace,
+        env=worker_env(remote_workspace),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert isolation_probe.returncode == 0, isolation_probe.stderr
+    assert isolation_probe.stdout.splitlines() == ["None", "True"]
+
     env = worker_env(remote_workspace)
-    env["PYTHONPATH"] = os.pathsep.join((str(runtime_dir), env["PYTHONPATH"]))
+    env["PYTHONPATH"] = str(runtime_dir)
     env["LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"] = digest
     return start_logged_process(
         [
-            sys.executable,
+            str(worker_python),
             "-m",
             "local_shell_mcp.remote_worker",
             "connect",
@@ -669,13 +727,29 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                     and item["session_id"] == first_class_session_id
                     for item in first_class_jobs["jobs"]
                 )
-                await client.call_tool(
-                    "job",
-                    {
-                        "session_id": first_class_session_id,
-                        "cancel": [first_class_job_id],
-                    },
-                )
+                first_class_poll = None
+                for _ in range(40):
+                    first_class_poll = await client.call_tool(
+                        "job",
+                        {
+                            "session_id": first_class_session_id,
+                            "poll": [first_class_job_id],
+                            "lines": 20,
+                        },
+                    )
+                    first_class_output = first_class_poll["outputs"][0]
+                    if first_class_output["job"]["status"] in {
+                        "succeeded",
+                        "failed",
+                        "lost",
+                    }:
+                        break
+                    await asyncio.sleep(0.25)
+                assert first_class_poll is not None
+                first_class_output = first_class_poll["outputs"][0]
+                assert first_class_output["job"]["status"] == "succeeded"
+                assert first_class_output["job"]["exit_code"] == 0
+                assert "first-class-job" in first_class_output["output"]
 
             delete_result = await client.call_tool(
                 "bash",

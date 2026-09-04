@@ -42,6 +42,7 @@ _WORKER_BUNDLE_INCLUDE_PATTERNS = (
     "jobs/persistence.py",
     "jobs/recovery.py",
     "jobs/runner.py",
+    "jobs/runner_bootstrap.py",
     "jobs/runtime.py",
     "jobs/shell.py",
     "jobs/state.py",

@@ -3,6 +3,7 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,8 @@ import pytest
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import lifecycle as job_lifecycle
 from local_shell_mcp.jobs import managed as job_managed
+from local_shell_mcp.jobs import runner as job_runner
+from local_shell_mcp.jobs import runner_bootstrap
 from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.jobs import shell as job_shell
 from local_shell_mcp.jobs import state as job_state
@@ -99,12 +102,32 @@ def test_lifecycle_helpers_cover_platform_and_bounded_log_paths(
     }
     argv = job_lifecycle._runner_argv(paths, tmp_path)
     assert argv[:2] == [job_lifecycle.sys.executable, "job-runner"]
+    monkeypatch.setattr(job_lifecycle.sys, "frozen", False, raising=False)
+    argv = job_lifecycle._runner_argv(paths, tmp_path)
+    assert argv[0] == job_lifecycle.sys.executable
+    assert Path(argv[1]).name == "runner_bootstrap.py"
+    assert Path(argv[1]).is_absolute()
+    assert argv[2] == "--command-file"
     assert job_lifecycle._runner_command(
         ["echo", "hello world"], "cmd.exe"
     ) == ('echo "hello world"')
 
     paths["log"].write_bytes(b"abcdef\n")
     assert job_lifecycle._read_log_tail(str(paths["log"]), 1) == "def\n"
+
+
+def test_runner_bootstrap_anchors_runtime_and_delegates(monkeypatch):
+    delegated: list[bool] = []
+    isolated_path = ["sentinel"]
+    monkeypatch.setattr(runner_bootstrap.sys, "path", isolated_path)
+    monkeypatch.setattr(job_runner, "main", lambda: delegated.append(True))
+
+    runner_bootstrap.main()
+
+    assert runner_bootstrap.sys.path[0] == str(
+        Path(runner_bootstrap.__file__).resolve().parents[2]
+    )
+    assert delegated == [True]
 
 
 def test_shell_backend_helper_contracts(tmp_path):

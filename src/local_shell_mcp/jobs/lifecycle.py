@@ -65,7 +65,6 @@ def _active_shell_ids(shells: Any) -> set[str]:
 def _runner_argv(paths: JobAttemptPaths, cwd: Path) -> list[str]:
     """Build the internal durable runner invocation for one attempt."""
     arguments = [
-        "job-runner",
         "--command-file",
         str(paths["command"]),
         "--log-file",
@@ -80,8 +79,12 @@ def _runner_argv(paths: JobAttemptPaths, cwd: Path) -> list[str]:
         str(max(1, get_settings().max_job_log_bytes)),
     ]
     if getattr(sys, "frozen", False):
-        return [sys.executable, *arguments]
-    return [sys.executable, "-m", "local_shell_mcp.main", *arguments]
+        return [sys.executable, "job-runner", *arguments]
+    return [
+        sys.executable,
+        str(Path(__file__).resolve().with_name("runner_bootstrap.py")),
+        *arguments,
+    ]
 
 
 def _powershell_quote(value: str) -> str:

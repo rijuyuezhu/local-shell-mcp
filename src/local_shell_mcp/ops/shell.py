@@ -43,7 +43,7 @@ from ..tool_session.lifecycle import cross_process_lock
 from ..tool_session.store import (
     get_tool_session_store,
 )
-from ..utils.processes import new_process_group_kwargs
+from ..utils.processes import new_process_group_kwargs, user_subprocess_env
 from .utils.bounded_runner import bounded_runner_argv
 from .utils.path import (
     relative_display,
@@ -79,30 +79,9 @@ class PersistentShellCleanupUncertainError(RuntimeError):
     """A failed persistent-shell start may still have a live backend process."""
 
 
-def _env_name(*parts: str) -> str:
-    return "".join(parts)
-
-
-FROZEN_LOADER_ENV_VARS = (
-    _env_name("LD", "_", "LIBRARY", "_", "PATH"),
-    _env_name("LD", "_", "PRE", "LOAD"),
-    _env_name("DYLD", "_", "LIBRARY", "_", "PATH"),
-    _env_name("DYLD", "_", "INSERT", "_", "LIBRARIES"),
-)
-
-
 def _is_frozen_app() -> bool:
     """Return whether this process is running from a frozen app bundle."""
     return bool(getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None))
-
-
-def _restore_or_remove_loader_var(env: dict[str, str], name: str) -> None:
-    original_name = f"{name}_ORIG"
-    original_value = env.pop(original_name, None)
-    if original_value:
-        env[name] = original_value
-    else:
-        env.pop(name, None)
 
 
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -271,21 +250,7 @@ async def _persistent_shell_admission_lock():
 
 def _subprocess_env() -> dict[str, str]:
     """Return the environment exposed to user shell commands."""
-    blocked_names = {
-        "CLOUDFLARE_TUNNEL_TOKEN",
-        "PYTHONPATH",
-    }
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if key not in blocked_names
-        and not key.startswith("LOCAL_SHELL_MCP_")
-        and not key.startswith("DOCKER_")
-    }
-    if _is_frozen_app():
-        for name in FROZEN_LOADER_ENV_VARS:
-            _restore_or_remove_loader_var(env, name)
-    return env
+    return user_subprocess_env(frozen=_is_frozen_app())
 
 
 def _effective_shell_executable() -> str:

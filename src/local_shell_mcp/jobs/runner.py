@@ -1,5 +1,6 @@
 """Internal durable shell-attempt runner."""
 
+import argparse
 import contextlib
 import json
 import subprocess
@@ -8,8 +9,8 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from ..errors import public_error_type
-from ..ops.shell import _subprocess_env
 from ..utils.private_files import atomic_write_private_text
+from ..utils.processes import user_subprocess_env
 
 
 def _utc() -> float:
@@ -42,6 +43,19 @@ def compact_log(handle: BinaryIO, max_bytes: int) -> bool:
     return True
 
 
+def configure_job_runner_parser(
+    parser: argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
+    """Register the private durable-runner arguments on one parser."""
+    parser.add_argument("--command-file", required=True)
+    parser.add_argument("--log-file", required=True)
+    parser.add_argument("--status-file", required=True)
+    parser.add_argument("--cwd", required=True)
+    parser.add_argument("--shell", required=True)
+    parser.add_argument("--max-log-bytes", type=int, required=True)
+    return parser
+
+
 def run_job_runner_from_args(args: Any) -> None:
     """Run one internal durable job attempt and write its terminal status."""
     command_path = Path(args.command_file)
@@ -69,7 +83,7 @@ def run_job_runner_from_args(args: Any) -> None:
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                env=_subprocess_env(),
+                env=user_subprocess_env(),
             )
             if process.stdout is None:
                 raise RuntimeError(
@@ -117,3 +131,17 @@ def run_job_runner_from_args(args: Any) -> None:
     if error is not None:
         raise SystemExit(1)
     raise SystemExit(exit_code or 0)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run one durable job attempt without importing the controller CLI."""
+    parser = configure_job_runner_parser(
+        argparse.ArgumentParser(
+            description="Run one durable tracked-job attempt. Internal interface."
+        )
+    )
+    run_job_runner_from_args(parser.parse_args(argv))
+
+
+if __name__ == "__main__":
+    main()
