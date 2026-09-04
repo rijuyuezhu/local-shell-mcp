@@ -4,7 +4,7 @@ import argparse
 from typing import Any
 
 from ..ops.utils.bounded_runner import register_bounded_runner_cli
-from .runner import run_job_runner_from_args
+from .runner import configure_job_runner_parser, run_job_runner_from_args
 
 
 def register_job_runner_cli(subparsers: Any) -> argparse.ArgumentParser:
@@ -15,11 +15,6 @@ def register_job_runner_cli(subparsers: Any) -> argparse.ArgumentParser:
         help="Run one durable job attempt (internal)",
         description="Run one durable tracked-job attempt. Internal interface.",
     )
-    parser.add_argument("--command-file", required=True)
-    parser.add_argument("--log-file", required=True)
-    parser.add_argument("--status-file", required=True)
-    parser.add_argument("--cwd", required=True)
-    parser.add_argument("--shell", required=True)
-    parser.add_argument("--max-log-bytes", type=int, required=True)
+    configure_job_runner_parser(parser)
     parser.set_defaults(handler=run_job_runner_from_args)
     return parser

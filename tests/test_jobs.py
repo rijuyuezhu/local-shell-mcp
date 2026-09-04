@@ -99,6 +99,14 @@ def test_lifecycle_helpers_cover_platform_and_bounded_log_paths(
     }
     argv = job_lifecycle._runner_argv(paths, tmp_path)
     assert argv[:2] == [job_lifecycle.sys.executable, "job-runner"]
+    monkeypatch.setattr(job_lifecycle.sys, "frozen", False, raising=False)
+    argv = job_lifecycle._runner_argv(paths, tmp_path)
+    assert argv[:4] == [
+        job_lifecycle.sys.executable,
+        "-m",
+        "local_shell_mcp.jobs.runner",
+        "--command-file",
+    ]
     assert job_lifecycle._runner_command(
         ["echo", "hello world"], "cmd.exe"
     ) == ('echo "hello world"')

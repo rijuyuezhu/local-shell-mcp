@@ -578,6 +578,65 @@ print("worker-bundle-imports-ok")
     assert completed.stdout.strip() == "worker-bundle-imports-ok"
 
 
+def test_worker_bundle_job_runner_executes_without_checkout_or_site(tmp_path):
+    from local_shell_mcp.remote.bundle import worker_bundle_bytes
+
+    archive = tmp_path / "worker.tgz"
+    runtime = tmp_path / "runtime"
+    archive.write_bytes(worker_bundle_bytes())
+    with tarfile.open(archive, mode="r:gz") as tar:
+        tar.extractall(runtime, filter="data")
+
+    command_path = tmp_path / "command.txt"
+    log_path = tmp_path / "job.log"
+    status_path = tmp_path / "status.json"
+    if os.name == "nt":
+        shell = os.environ.get("COMSPEC") or "cmd.exe"
+        command = "echo worker-bundle-runner-ok"
+    else:
+        shell = "/bin/sh"
+        command = "printf 'worker-bundle-runner-ok\\n'"
+    command_path.write_text(command, encoding="utf-8")
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(runtime)
+    env["PYTHONNOUSERSITE"] = "1"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            "-m",
+            "local_shell_mcp.jobs.runner",
+            "--command-file",
+            str(command_path),
+            "--log-file",
+            str(log_path),
+            "--status-file",
+            str(status_path),
+            "--cwd",
+            str(tmp_path),
+            "--shell",
+            shell,
+            "--max-log-bytes",
+            "1024",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert log_path.read_text(encoding="utf-8").strip() == (
+        "worker-bundle-runner-ok"
+    )
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert status["exit_code"] == 0
+    assert status["error"] is None
+    assert status["output_bytes"] > 0
+
+
 def _runtime_archive_bytes(
     *,
     extra_members: list[tarfile.TarInfo] | None = None,

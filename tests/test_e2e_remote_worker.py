@@ -18,7 +18,6 @@ from mcp.types import ImageContent
 from local_shell_mcp import __version__
 from tests.e2e_helpers import (
     PROJECT_ROOT,
-    SRC_ROOT,
     ToolClient,
     assert_required_tools,
     free_tcp_port,
@@ -129,12 +128,9 @@ async def run_remote_enabled_mcp_process(
 
 def worker_env(remote_workspace: Path) -> dict[str, str]:
     env = os.environ.copy()
-    pythonpath = str(SRC_ROOT)
-    if env.get("PYTHONPATH"):
-        pythonpath = f"{pythonpath}{os.pathsep}{env['PYTHONPATH']}"
+    env.pop("PYTHONPATH", None)
     env.update(
         {
-            "PYTHONPATH": pythonpath,
             "LOCAL_SHELL_MCP_WORKSPACE_ROOT": str(remote_workspace),
             "LOCAL_SHELL_MCP_STATE_DIR": str(
                 remote_workspace / ".local-shell-mcp"
@@ -179,7 +175,7 @@ def start_worker_process(
         encoding="utf-8",
     )
     env = worker_env(remote_workspace)
-    env["PYTHONPATH"] = os.pathsep.join((str(runtime_dir), env["PYTHONPATH"]))
+    env["PYTHONPATH"] = str(runtime_dir)
     env["LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"] = digest
     return start_logged_process(
         [
@@ -669,13 +665,29 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
                     and item["session_id"] == first_class_session_id
                     for item in first_class_jobs["jobs"]
                 )
-                await client.call_tool(
-                    "job",
-                    {
-                        "session_id": first_class_session_id,
-                        "cancel": [first_class_job_id],
-                    },
-                )
+                first_class_poll = None
+                for _ in range(40):
+                    first_class_poll = await client.call_tool(
+                        "job",
+                        {
+                            "session_id": first_class_session_id,
+                            "poll": [first_class_job_id],
+                            "lines": 20,
+                        },
+                    )
+                    first_class_output = first_class_poll["outputs"][0]
+                    if first_class_output["job"]["status"] in {
+                        "succeeded",
+                        "failed",
+                        "lost",
+                    }:
+                        break
+                    await asyncio.sleep(0.25)
+                assert first_class_poll is not None
+                first_class_output = first_class_poll["outputs"][0]
+                assert first_class_output["job"]["status"] == "succeeded"
+                assert first_class_output["job"]["exit_code"] == 0
+                assert "first-class-job" in first_class_output["output"]
 
             delete_result = await client.call_tool(
                 "bash",
