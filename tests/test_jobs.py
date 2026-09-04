@@ -11,6 +11,8 @@ import pytest
 from local_shell_mcp.config.settings import clear_settings_cache
 from local_shell_mcp.jobs import lifecycle as job_lifecycle
 from local_shell_mcp.jobs import managed as job_managed
+from local_shell_mcp.jobs import runner as job_runner
+from local_shell_mcp.jobs import runner_bootstrap
 from local_shell_mcp.jobs import runtime as jobs_ops
 from local_shell_mcp.jobs import shell as job_shell
 from local_shell_mcp.jobs import state as job_state
@@ -112,6 +114,20 @@ def test_lifecycle_helpers_cover_platform_and_bounded_log_paths(
 
     paths["log"].write_bytes(b"abcdef\n")
     assert job_lifecycle._read_log_tail(str(paths["log"]), 1) == "def\n"
+
+
+def test_runner_bootstrap_anchors_runtime_and_delegates(monkeypatch):
+    delegated: list[bool] = []
+    isolated_path = ["sentinel"]
+    monkeypatch.setattr(runner_bootstrap.sys, "path", isolated_path)
+    monkeypatch.setattr(job_runner, "main", lambda: delegated.append(True))
+
+    runner_bootstrap.main()
+
+    assert runner_bootstrap.sys.path[0] == str(
+        Path(runner_bootstrap.__file__).resolve().parents[2]
+    )
+    assert delegated == [True]
 
 
 def test_shell_backend_helper_contracts(tmp_path):
