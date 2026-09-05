@@ -530,7 +530,7 @@ def staged_payload(
             ):
                 raise PlatformWheelError("invalid OpenTUI executable SHA-256")
             digest_path = staging / f"{target.executable_name}.gz.sha256"
-            digest_path.write_text(executable_sha256 + "\n", encoding="ascii")
+            digest_path.write_bytes((executable_sha256 + "\n").encode("ascii"))
         yield payload_path
     finally:
         if lock_fd is not None:

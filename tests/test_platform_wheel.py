@@ -331,9 +331,9 @@ def test_staged_payload_is_private_and_always_cleaned(tmp_path: Path) -> None:
         ) as path,
     ):
         assert path.read_bytes() == payload
-        assert Path(f"{path}.sha256").read_text(encoding="ascii") == (
+        assert Path(f"{path}.sha256").read_bytes() == (
             executable_sha256 + "\n"
-        )
+        ).encode("ascii")
         if os.name != "nt":
             assert stat.S_IMODE(path.stat().st_mode) == 0o644
             assert stat.S_IMODE(path.parent.stat().st_mode) == 0o755

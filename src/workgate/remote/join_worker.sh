@@ -8,7 +8,7 @@ NAME=""
 WORKDIR=""
 PROFILE_ID=""
 BACKGROUND=0
-SYSTEM_TMPDIR="${TMPDIR:-/tmp}"
+SYSTEM_TMPDIR="${TMPDIR:-}"
 TMPDIR=""
 PYTHON_BIN=""
 UV_BIN=""
@@ -82,9 +82,11 @@ configure_app_dirs() {
     fi
     default_state="$local_appdata/workgate/state/worker"
     default_data="$local_appdata/workgate/data/worker"
-    windows_tmp="$(windows_absolute_env_or_empty "${TEMP:-${TMP:-}}")"
-    if [ -n "$windows_tmp" ]; then
-      SYSTEM_TMPDIR="$windows_tmp"
+    if [ -z "$SYSTEM_TMPDIR" ]; then
+      windows_tmp="$(windows_absolute_env_or_empty "${TEMP:-${TMP:-}}")"
+      if [ -n "$windows_tmp" ]; then
+        SYSTEM_TMPDIR="$windows_tmp"
+      fi
     fi
   else
     xdg_state="$(absolute_env_or_empty "${XDG_STATE_HOME:-}")"
@@ -104,20 +106,50 @@ configure_app_dirs() {
   fi
 }
 
-normalize_system_tmpdir() {
-  local platform
-  platform="$(uname -s 2>/dev/null || true)"
+normalize_tmp_candidate() {
+  local platform="$1" value="${2:-}"
+  [ -n "$value" ] || return 0
   if is_windows_shell "$platform"; then
-    case "$SYSTEM_TMPDIR" in
-      [A-Za-z]:[\\/]*|/*) ;;
-      *) SYSTEM_TMPDIR="$PWD/$SYSTEM_TMPDIR" ;;
+    case "$value" in
+      [A-Za-z]:[\\/]*|/*) windows_absolute_env_or_empty "$value" ;;
+      *) printf '%s\n' "$PWD/$value" ;;
     esac
   else
-    case "$SYSTEM_TMPDIR" in
-      /*) ;;
-      *) SYSTEM_TMPDIR="$PWD/$SYSTEM_TMPDIR" ;;
+    case "$value" in
+      /*) printf '%s\n' "$value" ;;
+      *) printf '%s\n' "$PWD/$value" ;;
     esac
   fi
+}
+
+system_tmpdir_is_suitable() {
+  [ -n "${1:-}" ] && [ -d "$1" ] && [ -w "$1" ] && [ -x "$1" ]
+}
+
+normalize_system_tmpdir() {
+  local platform raw candidate system_drive
+  local -a candidates
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    system_drive="${SYSTEMDRIVE:-C:}"
+    candidates=(
+      "$SYSTEM_TMPDIR" "${TEMP:-}" "${TMP:-}"
+      "$system_drive/Temp" "$system_drive/Tmp" "/tmp" "$PWD"
+    )
+  else
+    candidates=(
+      "$SYSTEM_TMPDIR" "${TEMP:-}" "${TMP:-}"
+      "/tmp" "/var/tmp" "/usr/tmp" "$PWD"
+    )
+  fi
+  for raw in "${candidates[@]}"; do
+    candidate="$(normalize_tmp_candidate "$platform" "$raw")"
+    if system_tmpdir_is_suitable "$candidate"; then
+      SYSTEM_TMPDIR="$candidate"
+      return 0
+    fi
+  done
+  die "cannot determine a usable system temporary directory"
 }
 
 private_dir_is_suitable() {

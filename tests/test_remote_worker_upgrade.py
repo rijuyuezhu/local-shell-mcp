@@ -1537,6 +1537,9 @@ printf '%s\\n%s\\n%s\\n' "$STATE_DIR" "$DATA_DIR" "$SYSTEM_TMPDIR"
         "USERPROFILE",
         "WORKGATE_WORKER_STATE_DIR",
         "WORKGATE_WORKER_DATA_DIR",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
     ):
         env.pop(name, None)
     env.update(windows_env)
@@ -1593,6 +1596,71 @@ def test_join_script_normalizes_relative_system_tmpdir(tmp_path: Path) -> None:
 
     assert completed.returncode == 0, completed.stderr
     assert Path(completed.stdout.strip()) == relative_tmp.resolve()
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="exercises POSIX temp fallback semantics"
+)
+def test_join_script_falls_back_from_unsuitable_tmpdir_like_python(
+    tmp_path: Path,
+) -> None:
+    from importlib import resources
+
+    script = (
+        resources.files("workgate.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace(
+            "__REMOTE_WORKER_BUNDLE_PATH__",
+            "/remote/worker-bundle.tgz",
+        )
+    )
+    prefix = script.split("parse_args() {", maxsplit=1)[0]
+    invalid = tmp_path / "does-not-exist"
+    env = os.environ.copy()
+    env.update(
+        {
+            "TMPDIR": str(invalid),
+            "XDG_RUNTIME_DIR": str(invalid),
+        }
+    )
+    env.pop("TEMP", None)
+    env.pop("TMP", None)
+    probe = (
+        prefix
+        + """\
+normalize_system_tmpdir
+create_bootstrap_tmpdir
+printf '%s\\n%s\\n' "$SYSTEM_TMPDIR" "$TMPDIR"
+rm -rf "$TMPDIR"
+"""
+    )
+
+    shell = subprocess.run(
+        ["bash", "-c", probe],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    python = subprocess.run(
+        [sys.executable, "-c", "import tempfile; print(tempfile.gettempdir())"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=20,
+    )
+
+    assert shell.returncode == 0, shell.stderr
+    system_tmp, bootstrap_tmp = shell.stdout.splitlines()
+    expected_tmp = Path(python.stdout.strip()).resolve()
+    assert Path(system_tmp).resolve() == expected_tmp
+    assert Path(bootstrap_tmp).parent.resolve() == expected_tmp
 
 
 @pytest.mark.skipif(
