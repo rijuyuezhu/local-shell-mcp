@@ -1,0 +1,82 @@
+from pathlib import Path
+
+from workgate.app_paths import resolve_app_paths
+
+
+def test_linux_paths_follow_absolute_xdg_roots(tmp_path: Path) -> None:
+    env = {
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_STATE_HOME": str(tmp_path / "state"),
+        "XDG_DATA_HOME": str(tmp_path / "data"),
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+    }
+
+    paths = resolve_app_paths(
+        env=env,
+        home=tmp_path / "home",
+        platform="linux",
+        temp_root=tmp_path / "tmp",
+    )
+
+    assert paths.config_dir == tmp_path / "config" / "workgate"
+    assert paths.state_dir == tmp_path / "state" / "workgate"
+    assert paths.data_dir == tmp_path / "data" / "workgate"
+    assert paths.cache_dir == tmp_path / "cache" / "workgate"
+    assert paths.worker_state_dir == paths.state_dir / "worker"
+    assert paths.worker_data_dir == paths.data_dir / "worker"
+
+
+def test_linux_relative_xdg_roots_fall_back(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    paths = resolve_app_paths(
+        env={
+            "XDG_CONFIG_HOME": "relative-config",
+            "XDG_STATE_HOME": "relative-state",
+            "XDG_DATA_HOME": "relative-data",
+            "XDG_CACHE_HOME": "relative-cache",
+            "XDG_RUNTIME_DIR": "relative-runtime",
+        },
+        home=home,
+        platform="linux",
+        temp_root=tmp_path / "tmp",
+    )
+
+    assert paths.config_dir == home / ".config" / "workgate"
+    assert paths.state_dir == home / ".local" / "state" / "workgate"
+    assert paths.data_dir == home / ".local" / "share" / "workgate"
+    assert paths.cache_dir == home / ".cache" / "workgate"
+    assert paths.runtime_dir.parent == tmp_path / "tmp"
+    assert paths.runtime_dir.name.startswith("workgate-")
+
+
+def test_linux_uses_suitable_runtime_dir(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    paths = resolve_app_paths(
+        env={"XDG_RUNTIME_DIR": str(runtime)},
+        home=tmp_path / "home",
+        platform="linux",
+        temp_root=tmp_path / "tmp",
+    )
+
+    assert paths.runtime_dir == runtime / "workgate"
+    assert paths.temp_dir == runtime / "workgate" / "tmp"
+
+
+def test_macos_lifetime_namespaces_do_not_overlap(tmp_path: Path) -> None:
+    paths = resolve_app_paths(
+        env={},
+        home=tmp_path / "home",
+        platform="darwin",
+        temp_root=tmp_path / "tmp",
+    )
+
+    assert (
+        paths.config_dir.parent
+        == paths.state_dir.parent
+        == paths.data_dir.parent
+    )
+    assert len({paths.config_dir, paths.state_dir, paths.data_dir}) == 3
+    assert paths.config_dir.name == "config"
+    assert paths.state_dir.name == "state"
+    assert paths.data_dir.name == "data"

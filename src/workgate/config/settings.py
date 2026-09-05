@@ -9,16 +9,15 @@ import yaml
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from ..app_paths import app_paths
 from ..persistence import StateLayout
 
-DEFAULT_WORKSPACE_ROOT = Path("/workspace")
-DEFAULT_STATE_DIR = DEFAULT_WORKSPACE_ROOT / ".workgate"
 AUDIT_LOG_STATE_DIR_NAME = "audit_log"
 AUDIT_PAYLOAD_STATE_DIR_NAME = "payloads"
-AGENT_CONFIG_STATE_DIR_NAME = "agent_config"
 AGENT_AUTH_STATE_DIR_NAME = "agent_auth"
 REMOTE_TRANSFER_STATE_DIR_NAME = "remote_transfers"
 ENV_PREFIX = "WORKGATE_"
+_CONFIG_PATH_FIELDS = frozenset({"workspace_root", "state_dir"})
 _RESERVED_UI_PATHS = (
     "/api",
     "/downloads",
@@ -103,10 +102,10 @@ class Settings(BaseSettings):
     """Browser Human UI background treatment; no external network image is fetched."""
 
     # Paths and state.
-    workspace_root: Path = DEFAULT_WORKSPACE_ROOT
-    """Root directory for workspace."""
-    state_dir: Path = DEFAULT_STATE_DIR
-    """Directory for runtime state. Including audit logs, temporary files, and config"""
+    workspace_root: Path = Field(default_factory=Path.cwd)
+    """Workspace filesystem boundary; defaults to the directory Workgate was started from."""
+    state_dir: Path = Field(default_factory=lambda: app_paths().state_dir)
+    """Directory for durable Workgate runtime state."""
 
     # Authentication and OAuth.
     auth_mode: Literal["none", "oauth"] = "oauth"
@@ -335,8 +334,8 @@ class Settings(BaseSettings):
 
     @property
     def agent_config_dir(self) -> Path:
-        """Read-only capability config directory, derived from state_dir."""
-        return StateLayout(self.state_dir).agent_config_dir
+        """Declarative Agent Bridge configuration directory."""
+        return app_paths().agent_config_dir
 
     @property
     def agent_auth_dir(self) -> Path:
@@ -347,6 +346,26 @@ class Settings(BaseSettings):
     def remote_transfer_dir(self) -> Path:
         """Private durable ticket and spool directory for HTTP transfers."""
         return StateLayout(self.state_dir).remote_transfers_dir
+
+    @property
+    def config_dir(self) -> Path:
+        """Platform-native Workgate configuration namespace."""
+        return app_paths().config_dir
+
+    @property
+    def data_dir(self) -> Path:
+        """Platform-native Workgate persistent-data namespace."""
+        return app_paths().data_dir
+
+    @property
+    def cache_dir(self) -> Path:
+        """Platform-native Workgate regenerable-cache namespace."""
+        return app_paths().cache_dir
+
+    @property
+    def runtime_dir(self) -> Path:
+        """Private safely disposable Workgate runtime namespace."""
+        return app_paths().runtime_dir
 
     @property
     def resolved_base_url(self) -> str:
@@ -462,6 +481,16 @@ def read_config_file(path: str | Path | None) -> dict[str, Any]:
         return {}
     if not isinstance(loaded, dict):
         raise ValueError(f"Config file must contain a mapping: {config_path}")
+    for name in _CONFIG_PATH_FIELDS.intersection(loaded):
+        value = loaded[name]
+        if value is None:
+            continue
+        expanded = os.path.expandvars(os.path.expanduser(str(value)))
+        if not Path(expanded).is_absolute():
+            raise ValueError(
+                f"Config setting {name} must be an absolute path after "
+                f"user/environment expansion: {value!r}"
+            )
     return loaded
 
 
@@ -493,8 +522,13 @@ def load_settings(
     overrides: dict[str, Any] | None = None,
 ) -> Settings:
     """Load settings without mutating the runtime filesystem."""
-    config_path = config_path or os.getenv("WORKGATE_CONFIG")
-    values = read_config_file(config_path)
+    selected_config: str | Path | None = config_path
+    if selected_config is None:
+        selected_config = os.getenv("WORKGATE_CONFIG")
+    if selected_config is None:
+        default_config = app_paths().config_file
+        selected_config = default_config if default_config.is_file() else None
+    values = read_config_file(selected_config)
     values.update(env_overrides())
     if overrides:
         values.update(overrides)

@@ -255,9 +255,9 @@
           },
           "path",
           {
-            "code": "/workspace"
+            "code": "invocation CWD"
           },
-          "Root directory for workspace."
+          "Workspace filesystem boundary; defaults to the directory Workgate was started from."
         ],
         [
           {
@@ -275,9 +275,9 @@
           },
           "path",
           {
-            "code": "/workspace/.workgate"
+            "code": "platform user-state directory"
           },
-          "Directory for runtime state. Including audit logs, temporary files, and config"
+          "Directory for durable Workgate runtime state."
         ]
       ]
     },
@@ -2177,9 +2177,9 @@
     {
       "choices": [],
       "cli": "--workspace-root",
-      "default": "/workspace",
-      "default_display": "/workspace",
-      "description": "Root directory for workspace.",
+      "default": "invocation CWD",
+      "default_display": "invocation CWD",
+      "description": "Workspace filesystem boundary; defaults to the directory Workgate was started from.",
       "env": "WORKGATE_WORKSPACE_ROOT",
       "name": "workspace_root",
       "nullable": false,
@@ -2190,9 +2190,9 @@
     {
       "choices": [],
       "cli": "--state-dir",
-      "default": "/workspace/.workgate",
-      "default_display": "/workspace/.workgate",
-      "description": "Directory for runtime state. Including audit logs, temporary files, and config",
+      "default": "platform user-state directory",
+      "default_display": "platform user-state directory",
+      "description": "Directory for durable Workgate runtime state.",
       "env": "WORKGATE_STATE_DIR",
       "name": "state_dir",
       "nullable": false,
