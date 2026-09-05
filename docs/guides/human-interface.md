@@ -7,7 +7,7 @@ The HTTP server includes a browser interface for managing the local server and e
 Run the HTTP server:
 
 ```bash
-local-shell-mcp server --mode http
+workgate server --mode http
 ```
 
 Open:
@@ -18,14 +18,14 @@ http://127.0.0.1:8765/ui
 
 When the service is exposed through a public hostname, use the corresponding public `/ui` URL and sign in through OAuth. Do not expose an unauthenticated HTTP service to a shared or public network.
 
-The UI path and enablement can be changed through `LOCAL_SHELL_MCP_UI_PATH` and `LOCAL_SHELL_MCP_UI_ENABLED`. See [Configuration](../reference/configuration.md).
+The UI path and enablement can be changed through `WORKGATE_UI_PATH` and `WORKGATE_UI_ENABLED`. See [Configuration](../reference/configuration.md).
 
 ## Start OpenTUI
 
 Keep the HTTP server running, then start the terminal client in another terminal:
 
 ```bash
-local-shell-mcp tui
+workgate tui
 ```
 
 By default it connects to the loopback Human UI API on the configured server port. Use `--api-base` only when the local API is listening at another loopback URL.

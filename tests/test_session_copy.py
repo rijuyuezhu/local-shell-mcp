@@ -5,30 +5,28 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.ops.utils.remote_session as remote_session_utils
-import local_shell_mcp.ops.utils.session_copy as session_copy_ops
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.jobs import runtime as jobs_ops
-from local_shell_mcp.ops.session import (
+import workgate.ops.utils.remote_session as remote_session_utils
+import workgate.ops.utils.session_copy as session_copy_ops
+from workgate.config.settings import clear_settings_cache
+from workgate.jobs import runtime as jobs_ops
+from workgate.ops.session import (
     session_change_cwd_execute,
     session_copy_execute,
 )
-from local_shell_mcp.tool_session.lifecycle import session_lifecycle_lock
-from local_shell_mcp.tool_session.store import get_tool_session_store
-from local_shell_mcp.tools.local_handlers import (
+from workgate.tool_session.lifecycle import session_lifecycle_lock
+from workgate.tool_session.store import get_tool_session_store
+from workgate.tools.local_handlers import (
     call_local_tool,
 )
-from local_shell_mcp.utils.serialization import to_jsonable
+from workgate.utils.serialization import to_jsonable
 
 pytestmark = pytest.mark.usefixtures("managed_jobs_runtime_owner")
 
 
 def _workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp")
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".workgate"))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -175,7 +173,7 @@ async def test_session_copy_local_directory_packs_unpacks_and_cleans_temp(
         encoding="utf-8"
     ) == "hello"
     assert (root / "dst" / "tree-copy" / "data.bin").read_bytes() == b"\x00\x01"
-    tmp_files = list((root / ".local-shell-mcp" / "tmp").glob("*"))
+    tmp_files = list((root / ".workgate" / "tmp").glob("*"))
     assert tmp_files == []
 
 
@@ -790,7 +788,7 @@ async def test_session_copy_background_pins_endpoint_workdirs_across_cwd_changes
         root / "dst-original" / "copied.bin"
     ).read_bytes() == original_payload
     assert not (root / "dst-new" / "copied.bin").exists()
-    assert not list((root / "dst-new").glob(".*local-shell-mcp-transfer*"))
+    assert not list((root / "dst-new").glob(".*workgate-transfer*"))
 
 
 @pytest.mark.asyncio

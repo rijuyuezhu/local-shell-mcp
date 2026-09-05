@@ -10,9 +10,9 @@ from typing import Any, cast
 
 import pytest
 
-import local_shell_mcp.terminal.bridge as bridge_module
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.terminal.bridge import (
+import workgate.terminal.bridge as bridge_module
+from workgate.config.settings import clear_settings_cache
+from workgate.terminal.bridge import (
     TERMINAL_BRIDGE_BACKEND,
     TerminalBridgeBusyError,
     TerminalBridgeNotFoundError,
@@ -22,14 +22,14 @@ from local_shell_mcp.terminal.bridge import (
     resize_terminal_bridge_execute,
     write_terminal_bridge_execute,
 )
-from local_shell_mcp.terminal.runtime import build_terminal_runtime
+from workgate.terminal.runtime import build_terminal_runtime
 
 
 @pytest.fixture(autouse=True)
 async def _terminal_runtime(monkeypatch, tmp_path):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S", "60")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_UI_TERMINAL_IDLE_TIMEOUT_S", "60")
     clear_settings_cache()
     runtime = build_terminal_runtime()
     await runtime.start()
@@ -41,11 +41,11 @@ async def _terminal_runtime(monkeypatch, tmp_path):
 
 
 def test_terminal_bridge_orphan_lease_is_bounded(monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S", "0")
+    monkeypatch.setenv("WORKGATE_UI_TERMINAL_IDLE_TIMEOUT_S", "0")
     clear_settings_cache()
     assert bridge_module._idle_timeout_s() == 300
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S", "1200")
+    monkeypatch.setenv("WORKGATE_UI_TERMINAL_IDLE_TIMEOUT_S", "1200")
     clear_settings_cache()
     assert bridge_module._idle_timeout_s() == 300
 
@@ -268,7 +268,7 @@ async def test_real_terminal_bridge_streams_raw_bytes_and_preserves_tmux_session
     monkeypatch,
     tmp_path,
 ):
-    shell_id = f"lsm-bridge-{uuid.uuid4().hex[:10]}"
+    shell_id = f"workgate-bridge-{uuid.uuid4().hex[:10]}"
     tmux = shutil.which("tmux") or "tmux"
     bash = shutil.which("bash") or "bash"
     ready_marker = b"BRIDGE_READY> "
@@ -277,7 +277,7 @@ async def test_real_terminal_bridge_streams_raw_bytes_and_preserves_tmux_session
         "unset PROMPT_COMMAND\nPS1='BRIDGE_READY> '\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_TMUX_BIN", tmux)
+    monkeypatch.setenv("WORKGATE_TMUX_BIN", tmux)
     clear_settings_cache()
     subprocess.run(
         [

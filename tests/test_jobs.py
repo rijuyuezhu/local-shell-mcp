@@ -9,16 +9,17 @@ from typing import Any, cast
 
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.jobs import lifecycle as job_lifecycle
-from local_shell_mcp.jobs import managed as job_managed
-from local_shell_mcp.jobs import persistence as job_persistence
-from local_shell_mcp.jobs import runner as job_runner
-from local_shell_mcp.jobs import runner_bootstrap
-from local_shell_mcp.jobs import runtime as jobs_ops
-from local_shell_mcp.jobs import shell as job_shell
-from local_shell_mcp.jobs import state as job_state
-from local_shell_mcp.schemas.result_models.jobs import (
+from tests.helpers import python_shell_command
+from workgate.config.settings import clear_settings_cache
+from workgate.jobs import lifecycle as job_lifecycle
+from workgate.jobs import managed as job_managed
+from workgate.jobs import persistence as job_persistence
+from workgate.jobs import runner as job_runner
+from workgate.jobs import runner_bootstrap
+from workgate.jobs import runtime as jobs_ops
+from workgate.jobs import shell as job_shell
+from workgate.jobs import state as job_state
+from workgate.schemas.result_models.jobs import (
     JobInfo,
     JobListOutput,
     JobOutput,
@@ -26,14 +27,13 @@ from local_shell_mcp.schemas.result_models.jobs import (
     JobStopOutput,
     JobTailOutput,
 )
-from local_shell_mcp.schemas.result_models.shell import (
+from workgate.schemas.result_models.shell import (
     KillPersistentShellOutput,
     ReadPersistentShellOutput,
     StartPersistentShellOutput,
 )
-from local_shell_mcp.tool_session.store import get_tool_session_store
-from local_shell_mcp.tools.ops import jobs as job_tool_ops
-from tests.helpers import python_shell_command
+from workgate.tool_session.store import get_tool_session_store
+from workgate.tools.ops import jobs as job_tool_ops
 
 pytestmark = pytest.mark.usefixtures("managed_jobs_runtime_owner")
 
@@ -67,7 +67,7 @@ def test_runner_command_quotes_powershell_arguments():
         [
             r"C:\Program Files\Python\python.exe",
             "-m",
-            "local_shell_mcp.main",
+            "workgate.main",
             "--status-file",
             r"C:\state dir\job's-status.json",
         ],
@@ -76,7 +76,7 @@ def test_runner_command_quotes_powershell_arguments():
 
     assert command == (
         "& 'C:\\Program Files\\Python\\python.exe' '-m' "
-        "'local_shell_mcp.main' '--status-file' "
+        "'workgate.main' '--status-file' "
         "'C:\\state dir\\job''s-status.json'"
     )
 
@@ -238,8 +238,8 @@ async def test_job_execute_rejects_combined_actions():
 
 @pytest.mark.asyncio
 async def test_tracked_job_lifecycle_with_backing_shells(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -347,8 +347,8 @@ async def test_tracked_job_lifecycle_with_backing_shells(tmp_path, monkeypatch):
 async def test_tracked_jobs_are_isolated_by_agent_session(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -397,8 +397,8 @@ async def test_tracked_jobs_are_isolated_by_agent_session(
 async def test_tracked_job_is_lost_when_shell_disappears_without_status(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -445,10 +445,10 @@ async def test_tracked_job_is_lost_when_shell_disappears_without_status(
 
 
 def _configure_job_state(tmp_path, monkeypatch, **overrides):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     for name, value in overrides.items():
-        monkeypatch.setenv(f"LOCAL_SHELL_MCP_{name.upper()}", str(value))
+        monkeypatch.setenv(f"WORKGATE_{name.upper()}", str(value))
     clear_settings_cache()
     get_tool_session_store().clear()
 

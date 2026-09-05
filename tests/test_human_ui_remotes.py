@@ -4,13 +4,13 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.ui.http.remotes as remotes_module
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.executors.runtime import build_controller_runtime
-from local_shell_mcp.oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ
-from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
-from local_shell_mcp.schemas.result_models.remote import (
+import workgate.ui.http.remotes as remotes_module
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.executors.http.app import build_http_app
+from workgate.executors.runtime import build_controller_runtime
+from workgate.oauth.core.scopes import SCOPE_REMOTE_USE, SCOPE_SHELL_READ
+from workgate.oauth.protocol.token_codec import issue_access_token
+from workgate.schemas.result_models.remote import (
     RemoteInviteOutput,
     RemoteListMachinesOutput,
     RemoteMachineInfo,
@@ -18,7 +18,7 @@ from local_shell_mcp.schemas.result_models.remote import (
     RemoteRevokeMachineOutput,
 )
 
-BASE_URL = "https://local-shell-mcp.example"
+BASE_URL = "https://workgate.example"
 
 
 @pytest.fixture(autouse=True)
@@ -36,13 +36,13 @@ def _configure(
     remote_enabled: bool = True,
 ) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(workspace / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(workspace / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_ENABLED",
+        "WORKGATE_REMOTE_ENABLED",
         "true" if remote_enabled else "false",
     )
     clear_settings_cache()
@@ -119,7 +119,7 @@ def _inventory() -> RemoteListMachinesOutput:
                 queue_depth=3,
                 capabilities=["shell", "files", "shell"],
                 info={
-                    "lsm_version": "3.9.1",
+                    "workgate_version": "3.9.1",
                     "hostname": "edge-host",
                     "user": "worker",
                     "python": "3.14.0",
@@ -227,7 +227,7 @@ def test_remote_inventory_is_normalized_and_strips_private_info(
         "queue_depth": 3,
         "capabilities": ["shell", "files"],
         "info": {
-            "lsm_version": "3.9.1",
+            "workgate_version": "3.9.1",
             "hostname": "edge-host",
             "user": "worker",
             "python": "3.14.0",
@@ -320,7 +320,7 @@ def test_remote_invite_is_bounded_ephemeral_and_audited_without_secret(
             expires_at=1_000.0,
             ttl_s=ttl_s or 600,
             join_url="https://secret.invalid/join?code=one-time-code",
-            command="uvx local-shell-mcp remote-worker --invite one-time-code",
+            command="uvx workgate remote-worker --invite one-time-code",
         )
 
     monkeypatch.setattr(remotes_module, "create_remote_invite", fake_invite)
@@ -344,7 +344,7 @@ def test_remote_invite_is_bounded_ephemeral_and_audited_without_secret(
         "workdir": "/srv/work",
         "expires_at": 1_000.0,
         "ttl_s": 600,
-        "command": "uvx local-shell-mcp remote-worker --invite one-time-code",
+        "command": "uvx workgate remote-worker --invite one-time-code",
     }
     assert "code" not in payload
     assert "join_url" not in payload

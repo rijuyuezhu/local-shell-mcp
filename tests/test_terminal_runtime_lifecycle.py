@@ -4,12 +4,12 @@ from typing import Any, cast
 
 import pytest
 
-import local_shell_mcp.terminal.bridge as bridge_module
-import local_shell_mcp.terminal.conpty as conpty_module
-import local_shell_mcp.terminal.runtime as terminal_runtime_module
-from local_shell_mcp.terminal.bridge import TerminalBridgeError, _Bridge
-from local_shell_mcp.terminal.conpty import _ConPtySession
-from local_shell_mcp.terminal.runtime import (
+import workgate.terminal.bridge as bridge_module
+import workgate.terminal.conpty as conpty_module
+import workgate.terminal.runtime as terminal_runtime_module
+from workgate.terminal.bridge import TerminalBridgeError, _Bridge
+from workgate.terminal.conpty import _ConPtySession
+from workgate.terminal.runtime import (
     build_terminal_runtime,
 )
 

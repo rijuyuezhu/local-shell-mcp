@@ -8,17 +8,17 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
-import local_shell_mcp.ui.http.common as ui_common_module
-import local_shell_mcp.ui.http.terminals as terminal_module
-from local_shell_mcp.config.settings import Settings, clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.oauth.core.scopes import (
+import workgate.ui.http.common as ui_common_module
+import workgate.ui.http.terminals as terminal_module
+from workgate.config.settings import Settings, clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.oauth.core.scopes import (
     SCOPE_REMOTE_USE,
     SCOPE_SHELL_EXECUTE,
     SCOPE_SHELL_READ,
 )
-from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
-from local_shell_mcp.schemas.result_models.shell import (
+from workgate.oauth.protocol.token_codec import issue_access_token
+from workgate.schemas.result_models.shell import (
     KillPersistentShellOutput,
     ListPersistentShellsOutput,
     PersistentShellInfo,
@@ -27,18 +27,18 @@ from local_shell_mcp.schemas.result_models.shell import (
     SendPersistentShellInputOutput,
     StartPersistentShellOutput,
 )
-from local_shell_mcp.ui.http.live_state import (
+from workgate.ui.http.live_state import (
     build_human_ui_runtime,
     configure_human_ui_runtime,
     human_ui_runtime,
 )
-from local_shell_mcp.ui.session import (
+from workgate.ui.session import (
     UI_SESSION_BINDING_HEADER,
     UI_SESSION_BINDING_PROTOCOL_PREFIX,
     ui_session_cookie_name,
 )
 
-BASE_URL = "https://local-shell-mcp.example"
+BASE_URL = "https://workgate.example"
 UI_SESSION_BINDING = "b" * 43
 
 
@@ -65,16 +65,14 @@ def _reset_settings_and_connections():
 
 
 def _configure(monkeypatch, tmp_path, *, auth_mode="none", **values):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "false")
     for name, value in values.items():
-        monkeypatch.setenv(
-            f"LOCAL_SHELL_MCP_{name.upper()}", str(value).lower()
-        )
+        monkeypatch.setenv(f"WORKGATE_{name.upper()}", str(value).lower())
     clear_settings_cache()
 
 
@@ -313,7 +311,7 @@ def test_terminal_websocket_requires_oauth_and_execute_scope(
     with (
         pytest.raises(WebSocketDisconnect) as missing,
         client.websocket_connect(
-            "/ui/ws/terminals/demo", subprotocols=["lsm-ui-terminal"]
+            "/ui/ws/terminals/demo", subprotocols=["workgate-ui-terminal"]
         ),
     ):
         pass
@@ -324,7 +322,7 @@ def test_terminal_websocket_requires_oauth_and_execute_scope(
         pytest.raises(WebSocketDisconnect) as insufficient,
         client.websocket_connect(
             "/ui/ws/terminals/demo",
-            subprotocols=["lsm-ui-terminal", read_only],
+            subprotocols=["workgate-ui-terminal", read_only],
         ),
     ):
         pass
@@ -384,7 +382,7 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_request_origin(
                 "Cookie": cookie_header,
             },
             subprotocols=[
-                "lsm-ui-terminal",
+                "workgate-ui-terminal",
                 f"{UI_SESSION_BINDING_PROTOCOL_PREFIX}{UI_SESSION_BINDING}",
             ],
         ),
@@ -397,7 +395,7 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_request_origin(
         client.websocket_connect(
             f"{websocket_base}/ui/ws/terminals/demo",
             headers={"Origin": BASE_URL, "Cookie": cookie_header},
-            subprotocols=["lsm-ui-terminal"],
+            subprotocols=["workgate-ui-terminal"],
         ),
     ):
         pass
@@ -407,11 +405,11 @@ def test_terminal_websocket_accepts_ui_cookie_only_from_request_origin(
         f"{websocket_base}/ui/ws/terminals/demo?lines=1000",
         headers={"Origin": BASE_URL, "Cookie": cookie_header},
         subprotocols=[
-            "lsm-ui-terminal",
+            "workgate-ui-terminal",
             f"{UI_SESSION_BINDING_PROTOCOL_PREFIX}{UI_SESSION_BINDING}",
         ],
     ) as websocket:
-        assert websocket.accepted_subprotocol == "lsm-ui-terminal"
+        assert websocket.accepted_subprotocol == "workgate-ui-terminal"
         assert websocket.receive_json() == {
             "type": "snapshot",
             "machine": "local",
@@ -434,7 +432,7 @@ def test_terminal_websocket_reports_shell_inventory_failure(
     with (
         pytest.raises(WebSocketDisconnect) as failure,
         client.websocket_connect(
-            "/ui/ws/terminals/demo", subprotocols=["lsm-ui-terminal"]
+            "/ui/ws/terminals/demo", subprotocols=["workgate-ui-terminal"]
         ),
     ):
         pass
@@ -495,9 +493,9 @@ def test_terminal_websocket_streams_snapshot_and_orders_controls(
 
     with client.websocket_connect(
         "/ui/ws/terminals/demo?lines=1000",
-        subprotocols=["lsm-ui-terminal", bearer],
+        subprotocols=["workgate-ui-terminal", bearer],
     ) as websocket:
-        assert websocket.accepted_subprotocol == "lsm-ui-terminal"
+        assert websocket.accepted_subprotocol == "workgate-ui-terminal"
         assert websocket.receive_json() == {
             "type": "snapshot",
             "machine": "local",
@@ -665,7 +663,7 @@ def test_terminal_websocket_raw_pty_streams_binary_and_closes_bridge(
 
     with client.websocket_connect(
         "/ui/ws/terminals/demo?mode=auto&cols=90&rows=28",
-        subprotocols=["lsm-ui-terminal", bearer],
+        subprotocols=["workgate-ui-terminal", bearer],
     ) as websocket:
         assert websocket.receive_json() == {
             "type": "ready",
@@ -725,7 +723,7 @@ def test_terminal_websocket_auto_falls_back_to_snapshot(monkeypatch, tmp_path):
 
     with client.websocket_connect(
         "/ui/ws/terminals/demo?mode=auto",
-        subprotocols=["lsm-ui-terminal", bearer],
+        subprotocols=["workgate-ui-terminal", bearer],
     ) as websocket:
         assert websocket.receive_json()["mode"] == "snapshot"
         assert websocket.receive_json()["output"] == "fallback$ "
@@ -1062,7 +1060,7 @@ def test_remote_terminal_websocket_uses_selected_machine(monkeypatch, tmp_path):
 
     with client.websocket_connect(
         "/ui/ws/terminals/shared?machine=edge&lines=50",
-        subprotocols=["lsm-ui-terminal", bearer],
+        subprotocols=["workgate-ui-terminal", bearer],
     ) as websocket:
         assert websocket.receive_json() == {
             "type": "snapshot",
@@ -1163,7 +1161,7 @@ def test_remote_terminal_websocket_raw_bridge_is_sessionless(
 
     with client.websocket_connect(
         "/ui/ws/terminals/shared?machine=edge&mode=auto&cols=100&rows=30",
-        subprotocols=["lsm-ui-terminal", bearer],
+        subprotocols=["workgate-ui-terminal", bearer],
     ) as websocket:
         ready = websocket.receive_json()
         assert ready == {
@@ -1235,7 +1233,7 @@ def test_remote_terminal_auto_falls_back_for_older_worker(
 
     with client.websocket_connect(
         "/ui/ws/terminals/shared?machine=edge&mode=auto",
-        subprotocols=["lsm-ui-terminal", bearer],
+        subprotocols=["workgate-ui-terminal", bearer],
     ) as websocket:
         assert websocket.receive_json()["mode"] == "snapshot"
         assert websocket.receive_json()["output"] == "legacy edge$ "
@@ -1261,7 +1259,7 @@ def test_remote_terminal_websocket_requires_remote_scope(monkeypatch, tmp_path):
         pytest.raises(WebSocketDisconnect) as exc_info,
         client.websocket_connect(
             "/ui/ws/terminals/shared?machine=edge",
-            subprotocols=["lsm-ui-terminal", bearer],
+            subprotocols=["workgate-ui-terminal", bearer],
         ),
     ):
         pass

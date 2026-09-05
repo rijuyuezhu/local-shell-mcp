@@ -7,20 +7,20 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.jobs import managed as jobs_managed
-from local_shell_mcp.jobs import persistence as job_persistence
-from local_shell_mcp.jobs import recovery as jobs_recovery
-from local_shell_mcp.jobs import runtime as jobs_ops
-from local_shell_mcp.tool_session.store import get_tool_session_store
-from local_shell_mcp.utils import private_files
+from workgate.config.settings import clear_settings_cache
+from workgate.jobs import managed as jobs_managed
+from workgate.jobs import persistence as job_persistence
+from workgate.jobs import recovery as jobs_recovery
+from workgate.jobs import runtime as jobs_ops
+from workgate.tool_session.store import get_tool_session_store
+from workgate.utils import private_files
 
 pytestmark = pytest.mark.usefixtures("managed_jobs_runtime_owner")
 
 
 def _configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()

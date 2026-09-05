@@ -11,12 +11,12 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.remote_worker.cli as worker_cli
-import local_shell_mcp.remote_worker.runtime as runtime
-import local_shell_mcp.remote_worker.service as service
-import local_shell_mcp.remote_worker.worker as worker
-from local_shell_mcp.main import _build_parser
-from local_shell_mcp.remote_worker.profiles import (
+import workgate.remote_worker.cli as worker_cli
+import workgate.remote_worker.runtime as runtime
+import workgate.remote_worker.service as service
+import workgate.remote_worker.worker as worker
+from workgate.main import _build_parser
+from workgate.remote_worker.profiles import (
     read_worker_profile,
     update_worker_profile,
 )
@@ -27,10 +27,10 @@ def _worker_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path / "worker-state")
+        "WORKGATE_WORKER_STATE_DIR", str(tmp_path / "worker-state")
     )
-    monkeypatch.delenv("LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME", raising=False)
-    monkeypatch.delenv("LOCAL_SHELL_MCP_WORKER_MANAGED", raising=False)
+    monkeypatch.delenv("WORKGATE_REMOTE_WORKER_RUNTIME", raising=False)
+    monkeypatch.delenv("WORKGATE_WORKER_MANAGED", raising=False)
     yield
 
 
@@ -188,7 +188,7 @@ def test_systemd_service_binds_one_profile_and_runtime(
     launcher = service.launcher_path().read_text(encoding="utf-8")
     assert f"runtime_digest = {digest!r}" in launcher
     assert (
-        "os.environ['LOCAL_SHELL_MCP_WORKER_PROFILE_ID'] = 'p_abcdefgh'"
+        "os.environ['WORKGATE_WORKER_PROFILE_ID'] = 'p_abcdefgh'"
     ) in launcher
     assert 'main(["run", "p_abcdefgh"])' in launcher
     assert identity["access"] not in launcher
@@ -323,7 +323,7 @@ def test_launchd_plist_lifecycle_and_private_log(
     ]
     assert plist["WorkingDirectory"] == identity["workdir"]
     environment = plist["EnvironmentVariables"]
-    assert environment["LOCAL_SHELL_MCP_WORKER_MANAGED"] == "1"
+    assert environment["WORKGATE_WORKER_MANAGED"] == "1"
     path_entries = environment["PATH"].split(":")
     for required in (
         "/opt/homebrew/bin",
@@ -417,7 +417,7 @@ def test_prepare_launchd_environment_repairs_running_worker_and_plist(
     payload = plistlib.loads(path.read_bytes())
     payload["EnvironmentVariables"].pop("PATH")
     path.write_bytes(plistlib.dumps(payload))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    monkeypatch.setenv("WORKGATE_WORKER_MANAGED", "1")
     monkeypatch.setattr(
         service, "_launchd_session_path_entries", lambda: ("/opt/local/bin",)
     )
@@ -439,7 +439,7 @@ def test_prepare_launchd_environment_preserves_profile_launcher(
     service.install_service(identity, start=False)
     launcher = service.launcher_path()
     original = launcher.read_text(encoding="utf-8")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    monkeypatch.setenv("WORKGATE_WORKER_MANAGED", "1")
 
     assert service.prepare_worker_service_environment({}) == (
         service.launchd_plist_path()
@@ -461,7 +461,7 @@ def test_prepare_launchd_environment_rejects_symlinked_plist(
         path.symlink_to(target)
     except OSError:
         pytest.skip("symlink unavailable")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    monkeypatch.setenv("WORKGATE_WORKER_MANAGED", "1")
     environment = {"PATH": "/unchanged"}
 
     assert service.prepare_worker_service_environment(environment) is None
@@ -939,7 +939,7 @@ def test_service_handler_returns_safe_error_json_and_interrupt(
 def test_worker_connect_and_run_handlers_mark_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME", raising=False)
+    monkeypatch.delenv("WORKGATE_REMOTE_WORKER_RUNTIME", raising=False)
     connect_calls: list[tuple[Any, ...]] = []
 
     async def connect(*args):
@@ -958,7 +958,7 @@ def test_worker_connect_and_run_handlers_mark_runtime(
     )
     args.handler(args)
     assert connect_calls == [("https://controller.test", "invite", None, None)]
-    assert os.environ["LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME"] == "1"
+    assert os.environ["WORKGATE_REMOTE_WORKER_RUNTIME"] == "1"
 
     run_calls: list[bool] = []
 
@@ -1166,7 +1166,7 @@ def test_managed_launcher_binds_content_addressed_runtime(
     launcher = service.launcher_path().read_text(encoding="utf-8")
     assert f"runtime_digest = {digest!r}" in launcher
     assert 'runtime_dir = state_dir / "runtimes" / runtime_digest' in launcher
-    assert "LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256" in launcher
+    assert "WORKGATE_WORKER_RUNTIME_SHA256" in launcher
     assert 'runtime_dir = state_dir / "runtime"' not in launcher
     with pytest.raises(ValueError, match="runtime digest"):
         service._launcher_text("invalid")

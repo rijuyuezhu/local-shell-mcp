@@ -5,32 +5,32 @@ import pytest
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
-import local_shell_mcp.executors.http.tool_routes as http_tool_routes_module
-from local_shell_mcp import __version__
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.remote.tool_specs import (
+import workgate.executors.http.tool_routes as http_tool_routes_module
+from tests.helpers import mcp_text
+from workgate import __version__
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.executors.mcp.app import build_mcp
+from workgate.remote.tool_specs import (
     REMOTE_WORKER_TOOL_NAMES,
     REMOTE_WORKER_TOOL_SPECS,
 )
-from local_shell_mcp.remote_worker.worker import WORKER_TOOL_NAMES
-from local_shell_mcp.tools.catalog import ToolCatalog, build_tool_catalog
-from local_shell_mcp.tools.contracts import (
+from workgate.remote_worker.worker import WORKER_TOOL_NAMES
+from workgate.tools.catalog import ToolCatalog, build_tool_catalog
+from workgate.tools.contracts import (
     HttpMethod,
     HttpToolRoute,
     ToolRegistry,
 )
-from local_shell_mcp.tools.declarative import (
+from workgate.tools.declarative import (
     DeclarativeToolRegistry,
     _normalize_description,
 )
-from local_shell_mcp.tools.local_handlers import (
+from workgate.tools.local_handlers import (
     UnknownLocalToolError,
     call_local_tool,
     local_tool_handlers,
 )
-from tests.helpers import mcp_text
 
 LOCAL_MCP_TOOL_NAMES = {
     "audit_tail",
@@ -94,9 +94,9 @@ REMOTE_MCP_TOOL_NAMES = {
 async def test_mcp_local_and_remote_tool_surface_is_stable(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_MODE", "mcp")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     names = {tool.name for tool in await build_mcp().list_tools()}
@@ -106,9 +106,9 @@ async def test_mcp_local_and_remote_tool_surface_is_stable(
 
 @pytest.mark.asyncio
 async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "stdio")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_MODE", "stdio")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     names = {tool.name for tool in await build_mcp().list_tools()}
@@ -125,8 +125,8 @@ async def test_stdio_mcp_hides_http_server_backed_tools(tmp_path, monkeypatch):
 async def test_model_facing_tools_require_session_id_by_default(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tools = {tool.name: tool for tool in await build_mcp().list_tools()}
@@ -165,8 +165,8 @@ async def test_model_facing_tools_require_session_id_by_default(
 
 @pytest.mark.asyncio
 async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     mcp = build_mcp()
@@ -205,8 +205,8 @@ async def test_hashline_edit_is_model_facing_default(tmp_path, monkeypatch):
 
 
 def test_remote_registry_declares_only_remote_admin(monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("WORKGATE_MODE", "mcp")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "true")
     clear_settings_cache()
 
     registry = cast(
@@ -244,8 +244,8 @@ def test_remote_registry_declares_only_remote_admin(monkeypatch):
 
 
 def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("WORKGATE_MODE", "mcp")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "true")
     clear_settings_cache()
 
     exposed_specs = [
@@ -272,9 +272,9 @@ def test_remote_worker_specs_drive_http_and_worker_allowlist(monkeypatch):
 
 
 def test_http_openapi_version_matches_package_version(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     response = TestClient(build_http_app()).get("/openapi.json")
@@ -286,9 +286,9 @@ def test_http_openapi_version_matches_package_version(tmp_path, monkeypatch):
 def test_http_public_version_endpoint_reports_package_version(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     response = TestClient(build_http_app()).get("/version")
@@ -300,9 +300,9 @@ def test_http_public_version_endpoint_reports_package_version(
 
 @pytest.mark.asyncio
 async def test_http_version_matches_mcp_tool_payload(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     http_payload = TestClient(build_http_app()).get("/tools/version").json()
@@ -323,9 +323,9 @@ def _mcp_payload_data(response):
 @pytest.mark.asyncio
 async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
     (tmp_path / "alpha.txt").write_text("hello", encoding="utf-8")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -338,10 +338,10 @@ async def test_http_list_files_matches_mcp_tool_payload(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_http_read_todos_matches_mcp_tool_payload(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -356,9 +356,9 @@ async def test_http_read_todos_matches_mcp_tool_payload(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_http_secret_scan_matches_mcp_tool_payload(tmp_path, monkeypatch):
     (tmp_path / "safe.txt").write_text("hello\n", encoding="utf-8")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -371,9 +371,9 @@ async def test_http_secret_scan_matches_mcp_tool_payload(tmp_path, monkeypatch):
 
 
 def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -391,9 +391,9 @@ def test_http_tool_name_is_not_request_overridable(tmp_path, monkeypatch):
 
 
 def test_get_http_tools_disable_response_caching(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -408,9 +408,9 @@ def test_get_http_tools_disable_response_caching(tmp_path, monkeypatch):
 def test_http_tool_missing_required_arg_returns_validation_error(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -430,14 +430,14 @@ def test_http_tool_missing_required_arg_returns_validation_error(
 
 def test_http_get_query_params_are_type_coerced(tmp_path, monkeypatch):
     (tmp_path / "artifact.txt").write_text("hello", encoding="utf-8")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_MODE", "http")
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
-    from local_shell_mcp.ops import downloads as download_ops
+    from workgate.ops import downloads as download_ops
 
     clock = {"now": 1_000.0}
     monkeypatch.setattr(download_ops, "now_s", lambda: clock["now"])
@@ -477,12 +477,12 @@ def test_http_get_query_params_are_type_coerced(tmp_path, monkeypatch):
 
 
 def test_todos_are_session_scoped(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
-    from local_shell_mcp.ops.todo import read_todos_execute, write_todos_execute
-    from local_shell_mcp.tool_session.store import get_tool_session_store
+    from workgate.ops.todo import read_todos_execute, write_todos_execute
+    from workgate.tool_session.store import get_tool_session_store
 
     store = get_tool_session_store()
     store.clear()
@@ -501,9 +501,9 @@ def test_todos_are_session_scoped(tmp_path, monkeypatch):
 
 
 def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -521,9 +521,9 @@ def test_http_tool_file_not_found_returns_json_error(tmp_path, monkeypatch):
 
 
 def test_http_tool_unexpected_error_returns_json_error(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     async def broken_call_local_tool(*args, **kwargs):
@@ -545,10 +545,10 @@ def test_http_tool_unexpected_error_returns_json_error(tmp_path, monkeypatch):
 
 
 def test_http_mode_hides_remote_worker_routes(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_MODE", "http")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     response = TestClient(build_http_app()).post(
@@ -563,8 +563,8 @@ def test_http_mode_hides_remote_worker_routes(tmp_path, monkeypatch):
 async def test_mcp_tool_missing_required_arg_uses_fastmcp_tool_error(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     with pytest.raises(ToolError, match="validation errors for readArguments"):
@@ -573,8 +573,8 @@ async def test_mcp_tool_missing_required_arg_uses_fastmcp_tool_error(
 
 @pytest.mark.asyncio
 async def test_mcp_remote_facade_is_absent(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     tools = {tool.name for tool in await build_mcp().list_tools()}
@@ -593,8 +593,8 @@ async def test_mcp_remote_facade_is_absent(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mcp_unknown_tool_uses_fastmcp_tool_error(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     with pytest.raises(ToolError, match="Unknown tool: no_such_tool"):
@@ -650,11 +650,9 @@ async def test_local_handlers_are_collected_from_explicit_catalog():
 async def test_mcp_tools_have_matching_http_routes_and_handlers(
     tmp_path, monkeypatch, agent_bridge_enabled
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / "agents"))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", agent_bridge_enabled
-    )
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / "agents"))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", agent_bridge_enabled)
     clear_settings_cache()
     catalog = build_tool_catalog()
 
@@ -682,10 +680,10 @@ async def test_mcp_tools_have_matching_http_routes_and_handlers(
 
 @pytest.mark.asyncio
 async def test_run_python_code_creates_temp_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     session = await call_local_tool("session_start", {"workdir": "."})

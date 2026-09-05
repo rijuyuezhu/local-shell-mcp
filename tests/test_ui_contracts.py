@@ -2,15 +2,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-from local_shell_mcp.ui import contracts
+from workgate.ui import contracts
 
 _REPO = Path(__file__).parents[1]
 
 
 def test_tui_executable_names_are_stable_for_both_platform_families() -> None:
-    assert contracts.TUI_EXECUTABLE_BASENAME == "local-shell-mcp-tui"
-    assert contracts.POSIX_TUI_EXECUTABLE_NAME == "local-shell-mcp-tui"
-    assert contracts.WINDOWS_TUI_EXECUTABLE_NAME == "local-shell-mcp-tui.exe"
+    assert contracts.TUI_EXECUTABLE_BASENAME == "workgate-tui"
+    assert contracts.POSIX_TUI_EXECUTABLE_NAME == "workgate-tui"
+    assert contracts.WINDOWS_TUI_EXECUTABLE_NAME == "workgate-tui.exe"
     assert (
         contracts.tui_executable_name(windows=False)
         == contracts.POSIX_TUI_EXECUTABLE_NAME

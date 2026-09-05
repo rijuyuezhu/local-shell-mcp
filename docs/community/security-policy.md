@@ -1,6 +1,6 @@
 # Security Policy
 
-`local-shell-mcp` exposes shell, filesystem, remote-worker, and optional public HTTP surfaces.
+`workgate` exposes shell, filesystem, remote-worker, and optional public HTTP surfaces.
 
 ## Reporting vulnerabilities
 

@@ -1,5 +1,5 @@
 {
-  "name": "local-shell-mcp-opentui",
+  "name": "workgate-opentui",
   "private": true,
   "type": "module",
   "scripts": {

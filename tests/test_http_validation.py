@@ -1,15 +1,15 @@
 from fastapi.testclient import TestClient
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.http.app import build_http_app
 
 
 def test_http_missing_required_argument_returns_validation_error(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     response = TestClient(build_http_app()).post("/tools/read", json={})
@@ -22,9 +22,9 @@ def test_http_missing_required_argument_returns_validation_error(
 
 
 def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -44,9 +44,9 @@ def test_http_exception_uses_consistent_error_envelope(tmp_path, monkeypatch):
 
 
 def test_http_unknown_session_returns_validation_error(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     response = TestClient(build_http_app()).post(
@@ -62,11 +62,11 @@ def test_http_unknown_session_returns_validation_error(tmp_path, monkeypatch):
 
 
 def test_http_app_exposes_oauth_public_routes(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://example.com")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_MODE", "http")
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "oauth")
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://example.com")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -84,11 +84,11 @@ def test_http_app_exposes_oauth_public_routes(tmp_path, monkeypatch):
 
 
 def test_http_localhost_bypass_is_opt_in(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "http")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://example.com")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_MODE", "http")
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "oauth")
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://example.com")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
     protected = TestClient(build_http_app(), client=("127.0.0.1", 50000)).post(
@@ -96,7 +96,7 @@ def test_http_localhost_bypass_is_opt_in(tmp_path, monkeypatch):
     )
     assert protected.status_code == 401
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST", "true")
+    monkeypatch.setenv("WORKGATE_AUTH_BYPASS_LOCALHOST", "true")
     clear_settings_cache()
     bypassed = TestClient(build_http_app(), client=("127.0.0.1", 50000)).post(
         "/tools/read", json={}

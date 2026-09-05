@@ -15,9 +15,9 @@ Enable Developer Mode for the full coding-agent surface, then refresh the connec
 Check:
 
 ```env
-LOCAL_SHELL_MCP_BASE_URL=https://your-public-host.example.com
-LOCAL_SHELL_MCP_AUTH_MODE=oauth
-LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=...
+WORKGATE_BASE_URL=https://your-public-host.example.com
+WORKGATE_AUTH_MODE=oauth
+WORKGATE_OAUTH_ADMIN_PIN=...
 ```
 
 Make sure the connector URL is exactly:
@@ -40,16 +40,16 @@ Then check the tunnel or reverse proxy:
 
 - It must forward to the server port, usually `8765`.
 - It must preserve HTTPS externally for ChatGPT.
-- The public hostname must match `LOCAL_SHELL_MCP_BASE_URL`.
+- The public hostname must match `WORKGATE_BASE_URL`.
 
 ## Tool call times out
 
 Public tool calls are bounded by strict watchdogs and shell timeouts. Check these settings:
 
 ```env
-LOCAL_SHELL_MCP_TOOL_TIMEOUT_S=60
-LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S=10
-LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S=120
+WORKGATE_TOOL_TIMEOUT_S=60
+WORKGATE_RUN_SHELL_DEFAULT_TIMEOUT_S=10
+WORKGATE_RUN_SHELL_MAX_TIMEOUT_S=120
 ```
 
 Use persistent shells for long-running dev servers, REPLs, or interactive commands.
@@ -60,15 +60,15 @@ Check:
 
 - The invite has not expired.
 - The remote machine can reach the public control server over outbound HTTPS.
-- `LOCAL_SHELL_MCP_REMOTE_ENABLED=true` on the control server.
+- `WORKGATE_REMOTE_ENABLED=true` on the control server.
 - The pasted command or `worker connect` invocation includes the correct `--server`, invite, `--name`, and `--workdir` values.
 
 
 For an installed worker, inspect the native service without exposing identity credentials:
 
 ```bash
-local-shell-mcp worker status
-local-shell-mcp worker logs --lines 100
+workgate worker status
+workgate worker logs --lines 100
 ```
 
 A `not_installed` status means enrollment may exist but no user service is installed. `unavailable` means systemd/launchd is supported on the platform but not reachable for the current user session. Windows returns `unsupported`. Use `worker run` to diagnose the stored identity in the foreground; use `worker install-service` only after foreground connection succeeds.
@@ -76,7 +76,7 @@ A `not_installed` status means enrollment may exist but no user service is insta
 Then ask the MCP client to run:
 
 ```text
-Use local-shell-mcp `remote_admin(action="list", args={})`.
+Use workgate `remote_admin(action="list", args={})`.
 ```
 
 ## Audit log is missing expected calls
@@ -92,6 +92,6 @@ Every routed MCP or REST debug tool call should produce a `tool_call_start` and 
 
 The standalone binary includes the Python server and default OAuth
 dependencies. On POSIX systems, persistent shells require a host tmux executable;
-the default is `tmux` from `PATH`, and `LOCAL_SHELL_MCP_TMUX_BIN` may point to a
+the default is `tmux` from `PATH`, and `WORKGATE_TMUX_BIN` may point to a
 different executable. Git, shells, compilers, LibreOffice, and other host tools
 are not bundled.

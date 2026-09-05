@@ -16,8 +16,8 @@ import type {
   TodoPayload,
 } from "./types"
 
-const configuredBase = process.env.LOCAL_SHELL_MCP_UI_API_BASE || "http://127.0.0.1:8765/api/ui"
-const localToken = process.env.LOCAL_SHELL_MCP_UI_LOCAL_TOKEN || ""
+const configuredBase = process.env.WORKGATE_UI_API_BASE || "http://127.0.0.1:8765/api/ui"
+const localToken = process.env.WORKGATE_UI_LOCAL_TOKEN || ""
 export const API_BASE = configuredBase.replace(/\/$/, "")
 
 function queryString(params: Record<string, string | number | boolean | null | undefined>): string {
@@ -46,7 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        ...(localToken ? { "X-Local-Shell-MCP-UI-Token": localToken } : {}),
+        ...(localToken ? { "X-Workgate-UI-Token": localToken } : {}),
         ...init?.headers,
       },
     })

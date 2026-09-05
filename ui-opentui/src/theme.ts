@@ -1,6 +1,6 @@
 const baseBackground = "#080b14"
 
-export function canvasBackground(mode = process.env.LOCAL_SHELL_MCP_UI_MODE): string {
+export function canvasBackground(mode = process.env.WORKGATE_UI_MODE): string {
   return mode === "web" ? "transparent" : baseBackground
 }
 

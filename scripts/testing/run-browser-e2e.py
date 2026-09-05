@@ -20,8 +20,8 @@ def main() -> int:
     artifacts.mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
-    env["LOCAL_SHELL_MCP_BROWSER_E2E"] = "1"
-    env["LOCAL_SHELL_MCP_BROWSER_ARTIFACTS"] = str(artifacts)
+    env["WORKGATE_BROWSER_E2E"] = "1"
+    env["WORKGATE_BROWSER_ARTIFACTS"] = str(artifacts)
     command = [
         sys.executable,
         "-m",

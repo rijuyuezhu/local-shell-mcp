@@ -1,12 +1,12 @@
 # Development
 
-This page is for contributors working on `local-shell-mcp` itself. It focuses on how to run, debug, test, and regenerate docs without relying on stale code walkthroughs.
+This page is for contributors working on `workgate` itself. It focuses on how to run, debug, test, and regenerate docs without relying on stale code walkthroughs.
 
 ## Local environment
 
 ```bash
-git clone https://github.com/rijuyuezhu/local-shell-mcp.git
-cd local-shell-mcp
+git clone https://github.com/rijuyuezhu/workgate.git
+cd workgate
 uv sync --group dev
 uv run pre-commit install
 ```
@@ -16,28 +16,28 @@ uv run pre-commit install
 Run MCP-over-HTTP locally without OAuth:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp server --mode mcp --port 13444
+WORKGATE_AUTH_MODE=none uv run workgate server --mode mcp --port 13444
 ```
 
 Run the REST debug API locally without OAuth:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none uv run local-shell-mcp server --mode http --port 13444
+WORKGATE_AUTH_MODE=none uv run workgate server --mode http --port 13444
 ```
 
 Use an explicit workspace when needed:
 
 ```bash
-LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/project \
-LOCAL_SHELL_MCP_AUTH_MODE=none \
-uv run local-shell-mcp server --mode http --port 13444
+WORKGATE_WORKSPACE_ROOT=/path/to/project \
+WORKGATE_AUTH_MODE=none \
+uv run workgate server --mode http --port 13444
 ```
 
 Use full-control mode only for disposable test workspaces:
 
 ```bash
-LOCAL_SHELL_MCP_AUTH_MODE=none \
-uv run local-shell-mcp server --mode http --port 13444 --allow-full-control true
+WORKGATE_AUTH_MODE=none \
+uv run workgate server --mode http --port 13444 --allow-full-control true
 ```
 
 ## Smoke-test with curl
@@ -75,8 +75,8 @@ curl -s -X POST http://127.0.0.1:13444/tools/list_files \
 Export the MCP tool surface:
 
 ```bash
-uv run python scripts/generation/export-tools-json.py --wrapped > /tmp/local-shell-mcp-tools.json
-jq '.count, [.tools[].name]' /tmp/local-shell-mcp-tools.json
+uv run python scripts/generation/export-tools-json.py --wrapped > /tmp/workgate-tools.json
+jq '.count, [.tools[].name]' /tmp/workgate-tools.json
 ```
 
 ## Watch logs and audit output
@@ -86,13 +86,13 @@ For a foreground dev process, read the terminal output first.
 For a user systemd service:
 
 ```bash
-journalctl --user -u local-shell-mcp.service -f -n 200
+journalctl --user -u workgate.service -f -n 200
 ```
 
 Audit log:
 
 ```bash
-tail -F /workspace/.local-shell-mcp/audit_log/audit.jsonl | jq -C --unbuffered .
+tail -F /workspace/.workgate/audit_log/audit.jsonl | jq -C --unbuffered .
 ```
 
 Audit state can contain prompts, tool inputs, tool outputs, file contents, bounded JSONL previews, and recoverable sanitized payload objects. Credential-like values are redacted on a best-effort basis before storage, but both JSONL and the payload directory must still be treated as sensitive.
@@ -126,14 +126,14 @@ When behavior changes:
 
 Useful implementation entry points are:
 
-- Human UI HTTP/WebSocket adapters: `src/local_shell_mcp/ui/http/`
-- Browser assets: `src/local_shell_mcp/ui/static/`
+- Human UI HTTP/WebSocket adapters: `src/workgate/ui/http/`
+- Browser assets: `src/workgate/ui/static/`
 - OpenTUI client: `ui-opentui/`
 - Terminal asset build: `ui-terminal/`
-- Remote controller and worker domains: `src/local_shell_mcp/remote/` and
-  `src/local_shell_mcp/remote_worker/`
-- Agent Bridge: `src/local_shell_mcp/agent_bridge/`
-- Audit storage and queries: `src/local_shell_mcp/audit/` (principally `core.py`
+- Remote controller and worker domains: `src/workgate/remote/` and
+  `src/workgate/remote_worker/`
+- Agent Bridge: `src/workgate/agent_bridge/`
+- Audit storage and queries: `src/workgate/audit/` (principally `core.py`
   and `payloads.py`) and the corresponding tool/UI adapters
 
 Use nearby tests as the canonical executable description. For native UI packaging

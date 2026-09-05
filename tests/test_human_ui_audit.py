@@ -6,38 +6,38 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-import local_shell_mcp.tools.registry.remote as remote_registry_module
-import local_shell_mcp.ui.http.audit as ui_audit_module
-import local_shell_mcp.ui.http.common as ui_common_module
-import local_shell_mcp.ui.http.session_snapshot as ui_session_snapshot_module
-from local_shell_mcp.audit import (
+import workgate.tools.registry.remote as remote_registry_module
+import workgate.ui.http.audit as ui_audit_module
+import workgate.ui.http.common as ui_common_module
+import workgate.ui.http.session_snapshot as ui_session_snapshot_module
+from workgate.audit import (
     audit,
     audit_tool_call_end,
     audit_tool_call_start,
 )
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.oauth.core.scopes import (
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.http.app import build_http_app
+from workgate.oauth.core.scopes import (
     SCOPE_AUDIT_FULL,
     SCOPE_AUDIT_READ,
     SCOPE_REMOTE_USE,
     SCOPE_SHELL_EXECUTE,
     SCOPE_SHELL_WRITE,
 )
-from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
-from local_shell_mcp.ops.todo import write_todos_execute
-from local_shell_mcp.remote.tool_specs import (
+from workgate.oauth.protocol.token_codec import issue_access_token
+from workgate.ops.todo import write_todos_execute
+from workgate.remote.tool_specs import (
     REMOTE_WORKER_ORIGIN_ARG,
     REMOTE_WORKER_ORIGIN_HUMAN_UI,
 )
-from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
-from local_shell_mcp.schemas.result_models.remote import (
+from workgate.remote_worker.dispatch import execute_worker_tool
+from workgate.schemas.result_models.remote import (
     RemoteListMachinesOutput,
     RemoteMachineInfo,
 )
-from local_shell_mcp.tool_session.store import get_tool_session_store
+from workgate.tool_session.store import get_tool_session_store
 
-BASE_URL = "https://local-shell-mcp.example"
+BASE_URL = "https://workgate.example"
 
 
 @pytest.fixture(autouse=True)
@@ -55,13 +55,13 @@ def _configure(
     remote_enabled: bool = False,
 ) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(workspace / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", auth_mode)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(workspace / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", auth_mode)
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_REMOTE_ENABLED", "true" if remote_enabled else "false"
+        "WORKGATE_REMOTE_ENABLED", "true" if remote_enabled else "false"
     )
     clear_settings_cache()
 
@@ -1254,7 +1254,7 @@ def test_audit_detail_rejects_invalid_inline_image(monkeypatch, tmp_path):
 
 def test_audit_static_ui_avoids_html_injection_for_untrusted_details():
     static_root = (
-        Path(__file__).parents[1] / "src" / "local_shell_mcp" / "ui" / "static"
+        Path(__file__).parents[1] / "src" / "workgate" / "ui" / "static"
     )
     audit_script = (static_root / "audit.js").read_text(encoding="utf-8")
     audit_view = (static_root / "audit_view.js").read_text(encoding="utf-8")

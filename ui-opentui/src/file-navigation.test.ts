@@ -36,21 +36,21 @@ describe("file pointer navigation", () => {
 
 describe("file path breadcrumbs", () => {
   test("builds workspace-relative breadcrumbs", () => {
-    expect(pathBreadcrumbs("src/local_shell_mcp/ui/static")).toEqual([
+    expect(pathBreadcrumbs("src/workgate/ui/static")).toEqual([
       { label: ".", path: "." },
       { label: "src", path: "src" },
-      { label: "local_shell_mcp", path: "src/local_shell_mcp" },
-      { label: "ui", path: "src/local_shell_mcp/ui" },
-      { label: "static", path: "src/local_shell_mcp/ui/static" },
+      { label: "workgate", path: "src/workgate" },
+      { label: "ui", path: "src/workgate/ui" },
+      { label: "static", path: "src/workgate/ui/static" },
     ])
   })
 
   test("builds absolute POSIX breadcrumbs", () => {
-    expect(pathBreadcrumbs("/var/lib/lsm")).toEqual([
+    expect(pathBreadcrumbs("/var/lib/workgate")).toEqual([
       { label: "/", path: "/" },
       { label: "var", path: "/var" },
       { label: "lib", path: "/var/lib" },
-      { label: "lsm", path: "/var/lib/lsm" },
+      { label: "workgate", path: "/var/lib/workgate" },
     ])
   })
 

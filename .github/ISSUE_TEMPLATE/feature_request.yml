@@ -14,7 +14,7 @@ body:
     id: proposal
     attributes:
       label: Proposed solution
-      description: What should local-shell-mcp do differently?
+      description: What should Workgate do differently?
     validations:
       required: true
   - type: textarea

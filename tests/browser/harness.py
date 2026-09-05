@@ -24,9 +24,10 @@ from playwright.sync_api import (
     expect,
 )
 
-from local_shell_mcp.oauth.core.scopes import default_scope
-from local_shell_mcp.ui.contracts import POSIX_TUI_EXECUTABLE_NAME
-from local_shell_mcp.ui.session import (
+from tests.e2e_helpers import PROJECT_ROOT, SRC_ROOT, free_tcp_port, server_env
+from workgate.oauth.core.scopes import default_scope
+from workgate.ui.contracts import POSIX_TUI_EXECUTABLE_NAME
+from workgate.ui.session import (
     UI_CSRF_HEADER,
     UI_SESSION_BINDING_HEADER,
     UI_SESSION_BINDING_STORAGE_KEY,
@@ -34,9 +35,8 @@ from local_shell_mcp.ui.session import (
     ui_csrf_cookie_name,
     ui_session_cookie_name,
 )
-from tests.e2e_helpers import PROJECT_ROOT, SRC_ROOT, free_tcp_port, server_env
 
-LEGACY_TOKEN_STORAGE_KEY = "local-shell-mcp-ui-access-token"
+LEGACY_TOKEN_STORAGE_KEY = "workgate-ui-access-token"
 
 
 def _start_logged_process(
@@ -99,16 +99,14 @@ def _worker_env(workspace: Path, tmux_tmpdir: Path) -> dict[str, str]:
         {
             "PYTHONPATH": pythonpath,
             "TMUX_TMPDIR": str(tmux_tmpdir),
-            "LOCAL_SHELL_MCP_WORKSPACE_ROOT": str(workspace),
-            "LOCAL_SHELL_MCP_STATE_DIR": str(workspace / ".local-shell-mcp"),
-            "LOCAL_SHELL_MCP_WORKER_STATE_DIR": str(
-                workspace / ".local-shell-mcp-worker"
-            ),
-            "LOCAL_SHELL_MCP_AUTH_MODE": "none",
-            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
-            "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
-            "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
-            "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S": "20",
+            "WORKGATE_WORKSPACE_ROOT": str(workspace),
+            "WORKGATE_STATE_DIR": str(workspace / ".workgate"),
+            "WORKGATE_WORKER_STATE_DIR": str(workspace / ".workgate-worker"),
+            "WORKGATE_AUTH_MODE": "none",
+            "WORKGATE_AGENT_BRIDGE_ENABLED": "false",
+            "WORKGATE_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
+            "WORKGATE_RUN_SHELL_MAX_TIMEOUT_S": "10",
+            "WORKGATE_TOOL_TIMEOUT_S": "20",
         }
     )
     return env
@@ -151,8 +149,8 @@ class BrowserHarness:
         remote_workspace = root / "workspace-remote"
         control_workspace.mkdir(parents=True)
         remote_workspace.mkdir(parents=True)
-        control_tmux_tmpdir = Path(tempfile.mkdtemp(prefix="lsm-b-ctl-"))
-        remote_tmux_tmpdir = Path(tempfile.mkdtemp(prefix="lsm-b-rem-"))
+        control_tmux_tmpdir = Path(tempfile.mkdtemp(prefix="workgate-b-ctl-"))
+        remote_tmux_tmpdir = Path(tempfile.mkdtemp(prefix="workgate-b-rem-"))
         (control_workspace / "notes.txt").write_text(
             "local browser fixture\n", encoding="utf-8"
         )
@@ -192,22 +190,22 @@ class BrowserHarness:
         env.update(
             {
                 "TMUX_TMPDIR": str(control_tmux_tmpdir),
-                "LOCAL_SHELL_MCP_AUTH_MODE": "oauth",
-                "LOCAL_SHELL_MCP_BASE_URL": base_url,
-                "LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN": admin_pin,
-                "LOCAL_SHELL_MCP_REMOTE_ENABLED": "true",
-                "LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S": "1",
-                "LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S": "20",
-                "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "false",
-                "LOCAL_SHELL_MCP_UI_TERMINAL_IDLE_TIMEOUT_S": "120",
-                "LOCAL_SHELL_MCP_UI_TUI_COMMAND": str(opentui_wrapper),
+                "WORKGATE_AUTH_MODE": "oauth",
+                "WORKGATE_BASE_URL": base_url,
+                "WORKGATE_OAUTH_ADMIN_PIN": admin_pin,
+                "WORKGATE_REMOTE_ENABLED": "true",
+                "WORKGATE_REMOTE_POLL_TIMEOUT_S": "1",
+                "WORKGATE_REMOTE_JOB_TIMEOUT_S": "20",
+                "WORKGATE_AGENT_BRIDGE_ENABLED": "false",
+                "WORKGATE_UI_TERMINAL_IDLE_TIMEOUT_S": "120",
+                "WORKGATE_UI_TUI_COMMAND": str(opentui_wrapper),
             }
         )
         server = _start_logged_process(
             [
                 sys.executable,
                 "-m",
-                "local_shell_mcp.main",
+                "workgate.main",
                 "server",
                 "--mode",
                 "http",
@@ -644,8 +642,8 @@ class BrowserHarness:
         self.page.locator("#remote-invite-done").click()
 
         worker_env = _worker_env(self.remote_workspace, self.remote_tmux_tmpdir)
-        worker_env["LOCAL_SHELL_MCP_WORKER_STATE_DIR"] = str(
-            self.remote_workspace / ".local-shell-mcp-worker"
+        worker_env["WORKGATE_WORKER_STATE_DIR"] = str(
+            self.remote_workspace / ".workgate-worker"
         )
         self.worker = _start_logged_process(
             ["bash", "-c", command],

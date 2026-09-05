@@ -5,18 +5,18 @@ import pytest
 from fastapi import HTTPException
 from mcp.types import ToolAnnotations
 
-import local_shell_mcp.tools.declarative as declarative_module
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.oauth.core.context import (
+import workgate.tools.declarative as declarative_module
+from workgate.config.settings import clear_settings_cache
+from workgate.oauth.core.context import (
     bind_oauth_claims,
     reset_oauth_claims,
 )
-from local_shell_mcp.tool_session import (
+from workgate.tool_session import (
     SESSION_TERMINATION_PROMPT,
     SessionTerminationRequestedError,
     get_tool_session_store,
 )
-from local_shell_mcp.tools.declarative import ToolDefinition
+from workgate.tools.declarative import ToolDefinition
 
 
 @pytest.mark.asyncio
@@ -127,8 +127,8 @@ async def test_handler_owned_session_admission_skips_generic_wrapper(
 
 
 def _sample_context():
-    from local_shell_mcp.config.settings import Settings
-    from local_shell_mcp.tools.contracts import McpToolContext
+    from workgate.config.settings import Settings
+    from workgate.tools.contracts import McpToolContext
 
     return McpToolContext(
         settings=Settings(),
@@ -224,8 +224,8 @@ def test_tool_definition_rejects_unknown_annotations():
 async def test_http_style_tool_dispatch_stops_terminated_sessions(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -255,8 +255,8 @@ async def test_http_style_tool_dispatch_stops_terminated_sessions(
 async def test_tool_dispatch_ignores_session_like_values_in_free_form_data(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -292,8 +292,8 @@ async def test_tool_dispatch_ignores_session_like_values_in_free_form_data(
 async def test_mcp_tool_dispatch_stops_terminated_sessions(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()

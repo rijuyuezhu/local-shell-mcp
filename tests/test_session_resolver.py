@@ -2,22 +2,22 @@ import time
 
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.tool_session import store as store_module
-from local_shell_mcp.tool_session.bindings import (
+from workgate.config.settings import clear_settings_cache
+from workgate.tool_session import store as store_module
+from workgate.tool_session.bindings import (
     LocalSessionBinding,
     RemoteSessionBinding,
 )
-from local_shell_mcp.tool_session.resolver import SessionResolver
-from local_shell_mcp.tool_session.store import (
+from workgate.tool_session.resolver import SessionResolver
+from workgate.tool_session.store import (
     ExpiredAgentSessionError,
     SessionTerminationRequestedError,
 )
 
 
 def _store(tmp_path, monkeypatch) -> store_module.ToolSessionStore:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     store = store_module.ToolSessionStore()
     store.clear()

@@ -2,19 +2,19 @@ import asyncio
 
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.tools.registry import (
+from tests.helpers import mcp_structured
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import build_mcp
+from workgate.tools.registry import (
     workspace_connector as workspace_connector_tools,
 )
-from tests.helpers import mcp_structured
 
 
 @pytest.mark.asyncio
 async def test_connector_tools_use_custom_mcp_error_handler(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
     clear_settings_cache()
 
     async def failing_search(query: str):
@@ -50,8 +50,8 @@ async def test_connector_tools_use_custom_mcp_error_handler(
 async def test_connector_tool_timeout_uses_custom_mcp_error_handler(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_TOOL_TIMEOUT_S", "0.01")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_TOOL_TIMEOUT_S", "0.01")
     clear_settings_cache()
 
     async def hanging_search(query: str):

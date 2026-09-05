@@ -1,8 +1,8 @@
-site_name: local-shell-mcp
-site_description: ChatGPT-compatible OAuth MCP server for controlled local shell and filesystem access
-site_url: https://project.rijuyuezhu.top/local-shell-mcp/
-repo_url: https://github.com/rijuyuezhu/local-shell-mcp
-repo_name: rijuyuezhu/local-shell-mcp
+site_name: Workgate
+site_description: Self-hosted workspace control plane for coding agents
+site_url: https://project.rijuyuezhu.top/workgate/
+repo_url: https://github.com/rijuyuezhu/workgate
+repo_name: rijuyuezhu/workgate
 edit_uri: edit/main/docs/
 
 theme:

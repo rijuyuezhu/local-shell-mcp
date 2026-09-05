@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 from mcp.server.fastmcp.exceptions import ToolError
 
-import local_shell_mcp.ops.shell as shell_ops
-import local_shell_mcp.terminal.conpty as conpty
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.errors import (
+import workgate.ops.shell as shell_ops
+import workgate.terminal.conpty as conpty
+from workgate.config.settings import clear_settings_cache
+from workgate.errors import (
     PathNotFoundError,
     ShellExecutableNotFoundError,
     exception_from_tool_error,
@@ -18,28 +18,28 @@ from local_shell_mcp.errors import (
     tool_error_payload,
     workspace_path_not_found_error,
 )
-from local_shell_mcp.executors.http.app import build_http_app
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.ops.session import session_start_execute
-from local_shell_mcp.ops.utils.path import resolve_path
-from local_shell_mcp.ops.utils.remote_session import _remote_result_data
-from local_shell_mcp.remote.bundle import worker_bundle_bytes
-from local_shell_mcp.remote.manager import RemoteManager, RemoteWorker, _utc
-from local_shell_mcp.remote_worker.worker import _handled_remote_exception
-from local_shell_mcp.schemas.result_models.shell import (
+from workgate.executors.http.app import build_http_app
+from workgate.executors.mcp.app import build_mcp
+from workgate.ops.session import session_start_execute
+from workgate.ops.utils.path import resolve_path
+from workgate.ops.utils.remote_session import _remote_result_data
+from workgate.remote.bundle import worker_bundle_bytes
+from workgate.remote.manager import RemoteManager, RemoteWorker, _utc
+from workgate.remote_worker.worker import _handled_remote_exception
+from workgate.schemas.result_models.shell import (
     CommandResult,
 )
-from local_shell_mcp.terminal.runtime import build_terminal_runtime
-from local_shell_mcp.terminal.tmux import TmuxSelection
-from local_shell_mcp.tool_session.store import get_tool_session_store
+from workgate.terminal.runtime import build_terminal_runtime
+from workgate.terminal.tmux import TmuxSelection
+from workgate.tool_session.store import get_tool_session_store
 
 
 def _configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "false")
     clear_settings_cache()
     get_tool_session_store().clear()
 
@@ -104,8 +104,8 @@ async def test_bounded_shell_reports_missing_executable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _configure(tmp_path, monkeypatch)
-    executable = "local-shell-mcp-missing-shell-issue-106"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", executable)
+    executable = "workgate-missing-shell-issue-106"
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", executable)
     clear_settings_cache()
 
     with pytest.raises(ShellExecutableNotFoundError) as raised:
@@ -147,7 +147,7 @@ async def test_conpty_reports_missing_shell_executable(
 ) -> None:
     _configure(tmp_path, monkeypatch)
     executable = "missing-conpty-shell"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", executable)
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", executable)
     clear_settings_cache()
     monkeypatch.setattr(conpty, "is_available", lambda: True)
 
@@ -198,7 +198,7 @@ async def test_posix_persistent_shell_preflights_default_executable(
 ) -> None:
     _configure(tmp_path, monkeypatch)
     executable = "missing-tmux-shell"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", executable)
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", executable)
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
@@ -240,7 +240,7 @@ async def test_tmux_exec_uses_configured_shell_environment(
     shell.parent.mkdir()
     shell.write_text("#!/bin/sh\n", encoding="utf-8")
     shell.chmod(0o700)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", "bin/custom-shell")
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", "bin/custom-shell")
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops,
@@ -284,7 +284,7 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
     shell = tmp_path / "custom-shell"
     shell.write_text("#!/bin/sh\n", encoding="utf-8")
     shell.chmod(0o700)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", str(shell))
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
@@ -328,7 +328,7 @@ async def test_persistent_tmux_default_shell_is_verified_alive(
                 "set-option",
                 "-t",
                 "configured-shell",
-                "@local-shell-mcp-session-id",
+                "@workgate-session-id",
                 owner_session_id,
             ],
             10,
@@ -345,7 +345,7 @@ async def test_persistent_tmux_rejects_default_shell_that_exits(
     shell = tmp_path / "exiting-shell"
     shell.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     shell.chmod(0o700)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", str(shell))
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
@@ -386,7 +386,7 @@ async def test_manager_preserves_structured_worker_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "true")
     clear_settings_cache()
     manager = RemoteManager()
     manager._load_registry_unlocked()
@@ -451,7 +451,7 @@ def test_source_only_bundle_contains_shared_error_module() -> None:
     ) as archive:
         names = set(archive.getnames())
 
-    assert "local_shell_mcp/errors.py" in names
+    assert "workgate/errors.py" in names
 
 
 def test_http_shell_error_is_not_misreported_as_workspace_path(
@@ -459,7 +459,7 @@ def test_http_shell_error_is_not_misreported_as_workspace_path(
 ) -> None:
     _configure(tmp_path, monkeypatch)
     executable = "missing-http-shell"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", executable)
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", executable)
     clear_settings_cache()
 
     client = TestClient(build_http_app())
@@ -486,7 +486,7 @@ async def test_mcp_shell_error_uses_standard_tool_error(
 ) -> None:
     _configure(tmp_path, monkeypatch)
     executable = "missing-mcp-shell"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", executable)
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", executable)
     clear_settings_cache()
     session = await session_start_execute(".", "local", None, None)
 
@@ -591,7 +591,7 @@ def test_tmux_cwd_and_absolute_shell_fallback(
 ) -> None:
     _configure(tmp_path, monkeypatch)
     absolute = str(tmp_path / "missing-absolute-shell")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", absolute)
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", absolute)
     clear_settings_cache()
     monkeypatch.setattr(shell_ops.shutil, "which", lambda *args, **kwargs: None)
 
@@ -605,7 +605,7 @@ async def test_persistent_shell_enforces_capacity_and_conpty_availability(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _configure(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TMUX_SESSIONS", "1")
+    monkeypatch.setenv("WORKGATE_MAX_TMUX_SESSIONS", "1")
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops,
@@ -663,7 +663,7 @@ async def test_persistent_shell_accepts_missing_tmux_socket_as_empty_inventory(
     shell = tmp_path / "shell"
     shell.write_text("#!/bin/sh\n", encoding="utf-8")
     shell.chmod(0o700)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", str(shell))
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: False
@@ -710,7 +710,7 @@ async def test_persistent_tmux_creation_and_send_errors_are_reported(
     shell = tmp_path / "shell"
     shell.write_text("#!/bin/sh\n", encoding="utf-8")
     shell.chmod(0o700)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_SHELL_EXECUTABLE", str(shell))
+    monkeypatch.setenv("WORKGATE_SHELL_EXECUTABLE", str(shell))
     clear_settings_cache()
     monkeypatch.setattr(
         shell_ops, "_use_conpty_persistent_shell_backend", lambda: False

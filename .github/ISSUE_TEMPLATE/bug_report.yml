@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible local-shell-mcp problem
+description: Report a reproducible Workgate problem
 title: "bug: "
 labels: [bug]
 body:

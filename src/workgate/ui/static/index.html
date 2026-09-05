@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Workgate Human UI</title>
+  <link rel="stylesheet" href="__WORKGATE_UI_PATH__/assets/xterm.css?v=__WORKGATE_UI_ASSET_REV__">
+  <link rel="stylesheet" href="__WORKGATE_UI_PATH__/assets/web.css?v=__WORKGATE_UI_ASSET_REV__">
+</head>
+<body data-workgate-config="__WORKGATE_UI_CONFIG_JSON__">
+  <div class="app-shell">
+    <aside class="app-sidebar" aria-label="Application navigation">
+      <div class="brand-block">
+        <span class="brand-mark" aria-hidden="true">&gt;_</span>
+        <span>
+          <strong>Workgate</strong>
+          <small>Control plane</small>
+        </span>
+      </div>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <button class="nav-item active" type="button" data-view="overview" aria-current="page">
+          <span class="nav-index" aria-hidden="true">01</span><span>Overview</span>
+        </button>
+        <button class="nav-item" type="button" data-view="machines">
+          <span class="nav-index" aria-hidden="true">02</span><span>Machines</span>
+        </button>
+        <button class="nav-item" type="button" data-view="remotes">
+          <span class="nav-index" aria-hidden="true">03</span><span>Remotes</span>
+        </button>
+        <button class="nav-item" type="button" data-view="sessions">
+          <span class="nav-index" aria-hidden="true">04</span><span>Sessions</span>
+        </button>
+        <button class="nav-item" type="button" data-view="terminals">
+          <span class="nav-index" aria-hidden="true">05</span><span>Terminals</span>
+        </button>
+        <button class="nav-item" type="button" data-view="files">
+          <span class="nav-index" aria-hidden="true">06</span><span>Files</span>
+        </button>
+        <button class="nav-item" type="button" data-view="audit">
+          <span class="nav-index" aria-hidden="true">07</span><span>Audit</span>
+        </button>
+        <button class="nav-item" type="button" data-view="console">
+          <span class="nav-index" aria-hidden="true">08</span><span>OpenTUI</span>
+        </button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <p class="sidebar-note">One control surface for local sessions, remote workers, files, and terminals.</p>
+    </aside>
+  <main id="app-main" class="shell app-main">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Control plane</p>
+        <h1 id="page-title">Overview</h1>
+        <p id="page-description" class="subtitle">System health across local and remote coding environments.</p>
+      </div>
+      <div class="actions">
+        <span id="connection-state" class="status status-idle">Connecting</span>
+        <button id="sign-out" type="button" hidden>Sign out</button>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <section id="auth-panel" class="panel auth-panel" hidden>
+      <div>
+        <h2>Authentication required</h2>
+        <p id="auth-detail">Sign in through the Workgate OAuth approval page.</p>
+      </div>
+      <div class="auth-controls">
+        <button id="oauth-login" class="primary-action" type="button">Sign in with OAuth</button>
+        <details class="manual-token">
+          <summary>Use an existing access token</summary>
+          <form id="auth-form">
+            <label for="access-token">Access token</label>
+            <div class="token-row">
+              <input id="access-token" name="access-token" type="password" autocomplete="off" spellcheck="false">
+              <button type="submit">Connect</button>
+            </div>
+          </form>
+        </details>
+      </div>
+    </section>
+
+    <section id="dashboard-panel" class="panel dashboard-panel app-view" data-app-view="overview">
+      <div class="section-heading dashboard-heading">
+        <div>
+          <p class="eyebrow">Process telemetry</p>
+          <h2>Dashboard</h2>
+        </div>
+        <div class="dashboard-actions">
+          <label class="dashboard-machine-control" for="dashboard-machine">
+            <span>Machine</span>
+            <select id="dashboard-machine" name="dashboard-machine">
+              <option value="local">local</option>
+            </select>
+          </label>
+          <button id="dashboard-refresh" type="button">Refresh telemetry</button>
+          <span id="dashboard-state" class="muted">Not loaded</span>
+        </div>
+      </div>
+      <div class="dashboard-summary" aria-live="polite">
+        <article id="dashboard-health-card" class="dashboard-card dashboard-health-card">
+          <span>System health</span>
+          <strong id="dashboard-health">—</strong>
+          <small id="dashboard-health-detail">Waiting for telemetry</small>
+        </article>
+        <article class="dashboard-card">
+          <span>CPU</span>
+          <strong id="dashboard-cpu">—</strong>
+          <svg id="dashboard-cpu-trend" class="dashboard-sparkline" viewBox="0 0 100 32" role="img" aria-label="Recent CPU trend"></svg>
+        </article>
+        <article class="dashboard-card">
+          <span>Memory</span>
+          <strong id="dashboard-memory">—</strong>
+          <svg id="dashboard-memory-trend" class="dashboard-sparkline" viewBox="0 0 100 32" role="img" aria-label="Recent memory trend"></svg>
+        </article>
+        <article class="dashboard-card">
+          <span>Disk</span>
+          <strong id="dashboard-disk">—</strong>
+          <svg id="dashboard-disk-trend" class="dashboard-sparkline" viewBox="0 0 100 32" role="img" aria-label="Recent disk trend"></svg>
+        </article>
+        <article class="dashboard-card">
+          <span>Network</span>
+          <strong id="dashboard-network">—</strong>
+          <svg id="dashboard-network-trend" class="dashboard-sparkline" viewBox="0 0 100 32" role="img" aria-label="Recent network trend"></svg>
+        </article>
+        <article class="dashboard-card">
+          <span>Audit · 24h</span>
+          <strong id="dashboard-audit-total">—</strong>
+          <small id="dashboard-audit-detail">No activity loaded</small>
+        </article>
+      </div>
+      <div class="dashboard-layout">
+        <article class="dashboard-section dashboard-system">
+          <div class="dashboard-section-heading">
+            <h3>System snapshot</h3>
+            <span id="dashboard-generated" class="muted">—</span>
+          </div>
+          <div class="dashboard-resource-list">
+            <div class="dashboard-resource-row">
+              <span>CPU utilization</span>
+              <div class="dashboard-resource-track"><i id="dashboard-cpu-bar"></i></div>
+              <strong id="dashboard-cpu-value">—</strong>
+            </div>
+            <div class="dashboard-resource-row">
+              <span>Memory pressure</span>
+              <div class="dashboard-resource-track"><i id="dashboard-memory-bar"></i></div>
+              <strong id="dashboard-memory-value">—</strong>
+            </div>
+            <div class="dashboard-resource-row">
+              <span>Workspace disk</span>
+              <div class="dashboard-resource-track"><i id="dashboard-disk-bar"></i></div>
+              <strong id="dashboard-disk-value">—</strong>
+            </div>
+          </div>
+          <dl class="dashboard-details">
+            <div><dt>Version</dt><dd id="dashboard-version">—</dd></div>
+            <div><dt>Platform</dt><dd id="dashboard-platform">—</dd></div>
+            <div><dt>Python</dt><dd id="dashboard-python">—</dd></div>
+            <div><dt>CPUs</dt><dd id="dashboard-cpu-count">—</dd></div>
+            <div><dt>Load · 1m</dt><dd id="dashboard-load">—</dd></div>
+            <div><dt>Uptime</dt><dd id="dashboard-uptime">—</dd></div>
+            <div><dt>Memory used</dt><dd id="dashboard-memory-used">—</dd></div>
+            <div><dt>Disk used</dt><dd id="dashboard-disk-used">—</dd></div>
+            <div><dt>Network RX</dt><dd id="dashboard-network-rx">—</dd></div>
+            <div><dt>Network TX</dt><dd id="dashboard-network-tx">—</dd></div>
+          </dl>
+        </article>
+        <article class="dashboard-section dashboard-alerts-section">
+          <div class="dashboard-section-heading">
+            <h3>Needs attention</h3>
+            <span id="dashboard-alert-count" class="muted">0</span>
+          </div>
+          <div id="dashboard-alerts" class="dashboard-list" aria-live="polite">
+            <div class="empty-state">No telemetry loaded.</div>
+          </div>
+        </article>
+        <article class="dashboard-section dashboard-activity-section">
+          <div class="dashboard-section-heading">
+            <h3>Recent activity</h3>
+            <span id="dashboard-source-state" class="muted">—</span>
+          </div>
+          <div id="dashboard-activity" class="dashboard-list" aria-live="polite">
+            <div class="empty-state">No telemetry loaded.</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="metric-grid app-view" data-app-view="overview" aria-label="Service summary">
+      <article class="metric">
+        <span>Version</span>
+        <strong id="version">—</strong>
+      </article>
+      <article class="metric">
+        <span>Machines</span>
+        <strong id="machine-total">—</strong>
+      </article>
+      <article class="metric">
+        <span>Online</span>
+        <strong id="machine-online">—</strong>
+      </article>
+      <article class="metric">
+        <span>Authentication</span>
+        <strong id="auth-mode">—</strong>
+      </article>
+    </section>
+
+    <section id="machines-panel" class="panel app-view" data-app-view="machines" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Targets</p>
+          <h2>Machines</h2>
+        </div>
+        <p id="last-updated" class="muted">Not loaded</p>
+      </div>
+      <div id="machine-list" class="machine-list" aria-live="polite">
+        <div class="empty-state">Loading machine inventory…</div>
+      </div>
+    </section>
+
+    <section id="remotes-panel" class="panel remotes-panel app-view" data-app-view="remotes" hidden>
+      <div class="section-heading remotes-heading">
+        <div>
+          <p class="eyebrow">Worker control plane</p>
+          <h2>Remotes</h2>
+        </div>
+        <div class="remotes-actions">
+          <button id="remote-invite-open" class="primary-action" type="button">New invite</button>
+          <button id="remote-refresh" type="button">Refresh</button>
+          <span id="remote-state" class="muted">Not loaded</span>
+        </div>
+      </div>
+      <div class="remote-summary" aria-live="polite">
+        <article class="remote-metric"><span>Online</span><strong id="remote-online">—</strong></article>
+        <article class="remote-metric"><span>Offline</span><strong id="remote-offline">—</strong></article>
+        <article class="remote-metric"><span>Total</span><strong id="remote-total">—</strong></article>
+        <article class="remote-metric"><span>Controller</span><strong id="remote-controller">—</strong></article>
+      </div>
+      <div class="remotes-layout">
+        <nav id="remote-list" class="remote-list" aria-label="Registered remote workers" aria-live="polite">
+          <div class="empty-state">Loading remote workers…</div>
+        </nav>
+        <article class="remote-details">
+          <div class="remote-details-header">
+            <div>
+              <strong id="remote-detail-name">No remote selected</strong>
+              <span id="remote-detail-status" class="muted">Select a worker to inspect it</span>
+            </div>
+            <div class="remote-detail-actions">
+              <button id="remote-reconnect-copy" type="button" disabled>Copy reconnect</button>
+              <button id="remote-rename-open" type="button" disabled>Rename</button>
+              <button id="remote-revoke-open" class="danger-action" type="button" disabled>Revoke</button>
+            </div>
+          </div>
+          <dl id="remote-detail-grid" class="remote-detail-grid">
+            <div><dt>Workgate version</dt><dd id="remote-detail-version">—</dd></div>
+            <div><dt>Last seen</dt><dd id="remote-detail-last-seen">—</dd></div>
+            <div><dt>Workdir</dt><dd id="remote-detail-workdir">—</dd></div>
+            <div><dt>Queue</dt><dd id="remote-detail-queue">—</dd></div>
+            <div><dt>Hostname</dt><dd id="remote-detail-hostname">—</dd></div>
+            <div><dt>User</dt><dd id="remote-detail-user">—</dd></div>
+            <div><dt>Platform</dt><dd id="remote-detail-platform">—</dd></div>
+            <div><dt>Python</dt><dd id="remote-detail-python">—</dd></div>
+            <div><dt>Profile</dt><dd id="remote-detail-profile">—</dd></div>
+          </dl>
+          <div class="remote-capabilities">
+            <span>Capabilities</span>
+            <div id="remote-detail-capabilities" class="remote-capability-list"><span class="muted">—</span></div>
+          </div>
+          <div class="remote-reconnect">
+            <span>Reconnect command</span>
+            <pre id="remote-detail-reconnect" tabindex="0">Unavailable for this worker</pre>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <dialog id="remote-invite-dialog" class="remote-dialog">
+      <form id="remote-invite-form">
+        <div class="dialog-heading"><div><p class="eyebrow">One-time enrollment</p><h2>Create remote invite</h2></div><button class="dialog-close" type="button" data-close-dialog="remote-invite-dialog" aria-label="Close">×</button></div>
+        <label>Machine name <input id="remote-invite-name" name="name" maxlength="128" autocomplete="off" spellcheck="false" placeholder="Optional"></label>
+        <label>Starting workdir <input id="remote-invite-workdir" name="workdir" maxlength="4096" autocomplete="off" spellcheck="false" placeholder="Optional"></label>
+        <label>Lifetime <select id="remote-invite-ttl" name="ttl"><option value="600">10 minutes</option><option value="1800">30 minutes</option><option value="3600">1 hour</option><option value="86400">24 hours</option></select></label>
+        <p class="muted">The returned command grants one enrollment and is not saved by this page.</p>
+        <div class="dialog-actions"><button type="button" data-close-dialog="remote-invite-dialog">Cancel</button><button class="primary-action" type="submit">Create invite</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="remote-invite-result-dialog" class="remote-dialog remote-invite-result-dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">Sensitive one-time command</p><h2>Remote invite ready</h2></div><button class="dialog-close" id="remote-invite-result-close" type="button" aria-label="Close">×</button></div>
+      <p>Run this command on the remote worker:</p>
+      <pre id="remote-invite-command" class="remote-invite-command" tabindex="0"></pre>
+      <p id="remote-invite-expiry" class="muted">—</p>
+      <div class="dialog-actions"><button id="remote-invite-copy" type="button">Copy command</button><button id="remote-invite-done" class="primary-action" type="button">Done</button></div>
+    </dialog>
+
+    <dialog id="remote-rename-dialog" class="remote-dialog">
+      <form id="remote-rename-form">
+        <div class="dialog-heading"><div><p class="eyebrow">Persistent identity</p><h2>Rename remote</h2></div><button class="dialog-close" type="button" data-close-dialog="remote-rename-dialog" aria-label="Close">×</button></div>
+        <label>New machine name <input id="remote-rename-name" name="new-name" maxlength="128" required autocomplete="off" spellcheck="false"></label>
+        <p class="muted">Pending jobs and future connections will follow the new name.</p>
+        <div class="dialog-actions"><button type="button" data-close-dialog="remote-rename-dialog">Cancel</button><button class="primary-action" type="submit">Rename</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="remote-revoke-dialog" class="remote-dialog">
+      <form id="remote-revoke-form">
+        <div class="dialog-heading"><div><p class="eyebrow">Destructive action</p><h2>Revoke remote</h2></div><button class="dialog-close" type="button" data-close-dialog="remote-revoke-dialog" aria-label="Close">×</button></div>
+        <p>Revoke <strong id="remote-revoke-name">this worker</strong>?</p>
+        <p class="muted">Its persisted worker credential will no longer reconnect, and outstanding jobs for this machine are cancelled.</p>
+        <div class="dialog-actions"><button type="button" data-close-dialog="remote-revoke-dialog">Cancel</button><button class="danger-action" type="submit">Revoke worker</button></div>
+      </form>
+    </dialog>
+
+    <section id="terminal-panel" class="panel terminal-panel app-view" data-app-view="terminals" hidden>
+      <div class="section-heading terminal-heading">
+        <div>
+          <p class="eyebrow">Machine-isolated tmux</p>
+          <h2>Terminals</h2>
+        </div>
+        <div class="terminal-actions">
+          <label class="machine-select" for="terminal-machine">
+            <span>Machine</span>
+            <select id="terminal-machine" name="terminal-machine" aria-label="Terminal machine">
+              <option value="local">local</option>
+            </select>
+          </label>
+          <form id="terminal-start-form" class="terminal-start-form">
+            <input id="terminal-name" name="terminal-name" type="text" maxlength="64" placeholder="Optional shell name" autocomplete="off" spellcheck="false">
+            <button type="submit">New terminal</button>
+          </form>
+          <button id="terminal-kill" type="button" disabled>Kill selected</button>
+        </div>
+      </div>
+      <div class="terminal-layout">
+        <nav id="terminal-list" class="terminal-list" aria-label="Persistent terminals">
+          <div class="empty-state">Loading terminal sessions…</div>
+        </nav>
+        <div class="terminal-console">
+          <div class="terminal-console-header">
+            <div class="terminal-console-title">
+              <strong id="terminal-title">No terminal selected</strong>
+              <span id="terminal-state" class="muted">Disconnected</span>
+            </div>
+            <button id="terminal-latest" class="terminal-latest" type="button" hidden>
+              Jump to latest <span id="terminal-pending-count" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div id="terminal-xterm" class="terminal-xterm" role="application" aria-label="Interactive terminal" hidden></div>
+          <pre id="terminal-output" tabindex="0" aria-live="off" aria-label="Terminal output">Select or create a terminal session.</pre>
+          <div id="terminal-keyboard" class="terminal-keyboard" aria-label="Terminal special keys">
+            <button type="button" data-terminal-key="escape" disabled>Esc</button>
+            <button type="button" data-terminal-key="tab" disabled>Tab</button>
+            <button type="button" data-terminal-key="up" aria-label="Arrow up" disabled>↑</button>
+            <button type="button" data-terminal-key="down" aria-label="Arrow down" disabled>↓</button>
+            <button type="button" data-terminal-key="ctrl-c" disabled>Ctrl-C</button>
+            <button type="button" data-terminal-key="ctrl-d" disabled>Ctrl-D</button>
+          </div>
+          <form id="terminal-input-form" class="terminal-input-form">
+            <input id="terminal-input" name="terminal-input" type="text" placeholder="Type a command and press Enter" autocomplete="off" spellcheck="false" disabled>
+            <button type="submit" disabled>Send</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section id="file-panel" class="panel file-panel app-view" data-app-view="files" hidden>
+      <div class="section-heading file-heading">
+        <div>
+          <p class="eyebrow">Machine workspace</p>
+          <h2>Files</h2>
+        </div>
+        <span id="file-state" class="muted">Not loaded</span>
+      </div>
+      <div class="file-toolbar">
+        <label class="file-machine-control" for="file-machine">
+          <span>Machine</span>
+          <select id="file-machine" name="file-machine">
+            <option value="local">local</option>
+          </select>
+        </label>
+        <form id="file-path-form" class="file-path-form">
+          <label class="visually-hidden" for="file-path">Workspace path</label>
+          <input id="file-path" name="file-path" type="text" value="." maxlength="4096" autocomplete="off" spellcheck="false">
+          <button type="submit">Go</button>
+        </form>
+        <div class="file-actions">
+          <button id="file-up" type="button">Up</button>
+          <button id="file-refresh" type="button">Refresh</button>
+          <label class="file-hidden-toggle"><input id="file-show-hidden" type="checkbox"> Hidden</label>
+          <button id="file-new" type="button">New file</button>
+          <button id="file-open" type="button" disabled>Open</button>
+          <button id="file-edit" type="button" disabled>Edit</button>
+          <button id="file-copy" type="button" disabled>Copy</button>
+          <button id="file-move" type="button" disabled>Move</button>
+          <button id="file-rename" type="button" disabled>Rename</button>
+          <button id="file-delete" type="button" disabled>Delete</button>
+        </div>
+      </div>
+      <div class="file-layout">
+        <nav id="file-list" class="file-list" aria-label="Workspace files" aria-live="polite">
+          <div class="empty-state">Loading workspace files…</div>
+        </nav>
+        <article class="file-preview">
+          <div class="file-preview-header">
+            <strong id="file-preview-title">No file selected</strong>
+            <span id="file-preview-meta" class="muted">Select an entry to preview</span>
+          </div>
+          <div id="file-preview-body" class="file-preview-body" aria-live="polite">
+            <div class="empty-state">Select a file or directory.</div>
+          </div>
+          <form id="file-editor-form" class="file-editor" hidden>
+            <textarea id="file-editor" name="file-editor" spellcheck="false" aria-label="File content"></textarea>
+            <div class="file-editor-actions">
+              <button id="file-editor-cancel" type="button">Cancel</button>
+              <button type="submit">Save file</button>
+            </div>
+          </form>
+        </article>
+      </div>
+    </section>
+
+    <section id="session-panel" class="panel session-panel app-view" data-app-view="sessions" hidden>
+      <div class="section-heading session-heading">
+        <div>
+          <p class="eyebrow">Agent control plane</p>
+          <h2>Sessions</h2>
+        </div>
+        <div class="session-toolbar">
+          <label class="session-control" for="session-machine">
+            <span>Machine</span>
+            <select id="session-machine" name="session-machine">
+              <option value="local">local</option>
+            </select>
+          </label>
+          <label class="session-active-toggle"><input id="session-include-inactive" type="checkbox"> Show all sessions</label>
+          <button id="session-refresh" type="button">Refresh</button>
+          <span id="session-state" class="muted">Not loaded</span>
+        </div>
+      </div>
+      <div class="session-layout">
+        <nav id="session-list" class="session-list" aria-label="Agent sessions" aria-live="polite">
+          <div class="empty-state">Loading active sessions…</div>
+        </nav>
+        <article class="session-workspace">
+          <div class="session-detail-header">
+            <div>
+              <strong id="session-detail-title">No session selected</strong>
+              <span id="session-detail-status" class="muted">Select a session to inspect its state</span>
+            </div>
+            <button id="session-terminate" class="danger-action" type="button" disabled>Terminate immediately</button>
+          </div>
+          <dl class="session-detail-grid">
+            <div><dt>Session ID</dt><dd id="session-detail-id">—</dd></div>
+            <div><dt>Target</dt><dd id="session-detail-target">—</dd></div>
+            <div><dt>Machine</dt><dd id="session-detail-machine">—</dd></div>
+            <div><dt>Workdir</dt><dd id="session-detail-workdir">—</dd></div>
+            <div><dt>Created</dt><dd id="session-detail-created">—</dd></div>
+            <div><dt>Last activity</dt><dd id="session-detail-updated">—</dd></div>
+          </dl>
+
+          <section class="session-resource session-todos">
+            <div class="session-resource-heading">
+              <div><p class="eyebrow">Session state</p><h3>Todos</h3></div>
+              <span id="todo-state" class="muted">Select a session</span>
+            </div>
+            <div class="todo-toolbar">
+              <label class="todo-control" for="todo-filter">
+                <span>Filter</span>
+                <select id="todo-filter" name="todo-filter">
+                  <option value="all">All</option>
+                  <option value="open">Open</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </label>
+              <div class="todo-actions">
+                <button id="todo-refresh" type="button">Reload</button>
+                <button id="todo-add" type="button">Add todo</button>
+                <button id="todo-save" class="primary-action" type="button" disabled>Save changes</button>
+              </div>
+            </div>
+            <div id="todo-summary" class="todo-summary" aria-live="polite">
+              <span>0 total</span><span>0 open</span><span>0 completed</span><span>revision 0</span>
+            </div>
+            <div id="todo-list" class="todo-list" aria-live="polite">
+              <div class="empty-state">Select a session to load its todo list.</div>
+            </div>
+          </section>
+
+          <section class="session-resource session-audit">
+            <div class="session-resource-heading">
+              <div><p class="eyebrow">Session-local activity</p><h3>Audit</h3></div>
+              <span id="session-audit-state" class="muted">Select a session</span>
+            </div>
+            <form id="session-audit-filter-form" class="audit-toolbar session-audit-toolbar">
+              <label class="audit-control" for="session-audit-operation">
+                <span>Operation</span>
+                <select id="session-audit-operation" name="session-audit-operation">
+                  <option value="">All</option>
+                  <option value="files">Files</option>
+                  <option value="shell">Shell</option>
+                  <option value="jobs">Jobs</option>
+                  <option value="transfer">Transfer</option>
+                  <option value="remote">Remote</option>
+                  <option value="agent">Agent</option>
+                  <option value="security">Security</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label class="audit-control audit-search-control" for="session-audit-search">
+                <span>Search</span>
+                <input id="session-audit-search" type="search" maxlength="4096" placeholder="Search this session" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="audit-control" for="session-audit-sort">
+                <span>Order</span>
+                <select id="session-audit-sort"><option value="desc">Newest first</option><option value="asc">Oldest first</option></select>
+              </label>
+              <label class="audit-control" for="session-audit-limit">
+                <span>Limit</span>
+                <select id="session-audit-limit"><option value="100">100</option><option value="300" selected>300</option><option value="1000">1000</option></select>
+              </label>
+              <button id="session-audit-refresh" type="submit">Refresh</button>
+            </form>
+            <div id="session-audit-summary" class="audit-summary" aria-live="polite">0 entries</div>
+            <div class="audit-layout session-audit-layout">
+              <nav id="session-audit-list" class="audit-list" aria-label="Session Audit records" aria-live="polite">
+                <div class="empty-state">Select a session to load its Audit records.</div>
+              </nav>
+              <article class="audit-detail">
+                <div class="audit-detail-header">
+                  <strong id="session-audit-detail-title">No record selected</strong>
+                  <span id="session-audit-detail-meta" class="muted">Select a session Audit record</span>
+                </div>
+                <div id="session-audit-detail-body" class="audit-detail-body">Select a session Audit record.</div>
+              </article>
+            </div>
+          </section>
+        </article>
+      </div>
+    </section>
+
+    <section id="audit-panel" class="panel audit-panel app-view" data-app-view="audit" hidden>
+      <div class="section-heading audit-heading">
+        <div>
+          <p class="eyebrow">Machine-wide activity and control events</p>
+          <h2>Global Audit</h2>
+        </div>
+        <span id="audit-state" class="muted">Not loaded</span>
+      </div>
+      <form id="audit-filter-form" class="audit-toolbar">
+        <label class="audit-control" for="audit-machine">
+          <span>Machine</span>
+          <select id="audit-machine" name="audit-machine">
+            <option value="local">local</option>
+          </select>
+        </label>
+        <label class="audit-control" for="audit-operation">
+          <span>Operation</span>
+          <select id="audit-operation" name="audit-operation">
+            <option value="">All</option>
+            <option value="files">Files</option>
+            <option value="shell">Shell</option>
+            <option value="jobs">Jobs</option>
+            <option value="transfer">Transfer</option>
+            <option value="remote">Remote</option>
+            <option value="agent">Agent</option>
+            <option value="security">Security</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label class="audit-control" for="audit-event">
+          <span>Event</span>
+          <input id="audit-event" name="audit-event" type="text" maxlength="1024" placeholder="tool_call" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="audit-control audit-search-control" for="audit-search">
+          <span>Search</span>
+          <input id="audit-search" name="audit-search" type="search" maxlength="4096" placeholder="Search redacted records" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="audit-control" for="audit-sort">
+          <span>Order</span>
+          <select id="audit-sort" name="audit-sort">
+            <option value="desc">Newest first</option>
+            <option value="asc">Oldest first</option>
+          </select>
+        </label>
+        <label class="audit-control" for="audit-limit">
+          <span>Limit</span>
+          <select id="audit-limit" name="audit-limit">
+            <option value="100">100</option>
+            <option value="300" selected>300</option>
+            <option value="1000">1000</option>
+          </select>
+        </label>
+        <button id="audit-refresh" type="submit">Refresh</button>
+      </form>
+      <div id="audit-summary" class="audit-summary" aria-live="polite">0 entries</div>
+      <div class="audit-layout">
+        <nav id="audit-list" class="audit-list" aria-label="Audit records" aria-live="polite">
+          <div class="empty-state">Loading Audit records…</div>
+        </nav>
+        <article class="audit-detail">
+          <div class="audit-detail-header">
+            <strong id="audit-detail-title">No record selected</strong>
+            <span id="audit-detail-meta" class="muted">Select an Audit record</span>
+          </div>
+          <div id="audit-detail-body" class="audit-detail-body">Select an Audit record.</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="opentui-panel" class="panel opentui-panel app-view" data-app-view="console" hidden>
+      <div class="section-heading opentui-heading">
+        <div>
+          <p class="eyebrow">Optional terminal interface</p>
+          <h2>OpenTUI Console</h2>
+        </div>
+        <div class="opentui-actions">
+          <span id="opentui-state" class="muted">Stopped</span>
+          <button id="opentui-stop" type="button" disabled>Stop</button>
+          <button id="opentui-start" class="primary-action" type="button">Open console</button>
+        </div>
+      </div>
+      <p class="muted">Runs the same optional OpenTUI client available through <code>workgate tui</code>. The native browser panels above remain the default interface.</p>
+      <div id="opentui-terminal" class="opentui-terminal" aria-label="OpenTUI terminal console"></div>
+      <div class="terminal-keyboard" aria-label="OpenTUI shortcut keys">
+        <button type="button" data-opentui-key="\u001b">Esc</button>
+        <button type="button" data-opentui-key="\t">Tab</button>
+        <button type="button" data-opentui-key="\u001b[1;3P">Alt+1</button>
+        <button type="button" data-opentui-key="\u001b[1;3Q">Alt+2</button>
+        <button type="button" data-opentui-key="\r">Enter</button>
+        <button type="button" data-opentui-key="\u001bOP">F1</button>
+      </div>
+    </section>
+
+  </main>
+  </div>
+  <script src="__WORKGATE_UI_PATH__/assets/xterm_bundle.js?v=__WORKGATE_UI_ASSET_REV__" defer></script>
+  <script src="__WORKGATE_UI_PATH__/assets/terminal_renderer.js?v=__WORKGATE_UI_ASSET_REV__" defer></script>
+  <script src="__WORKGATE_UI_PATH__/assets/syntax_highlight.js?v=__WORKGATE_UI_ASSET_REV__" defer></script>
+  <script src="__WORKGATE_UI_PATH__/assets/web.js?v=__WORKGATE_UI_ASSET_REV__" defer></script>
+  <script src="__WORKGATE_UI_PATH__/assets/opentui_console.js?v=__WORKGATE_UI_ASSET_REV__" defer></script>
+</body>
+</html>

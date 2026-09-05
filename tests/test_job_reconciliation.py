@@ -2,13 +2,13 @@ from typing import Any, cast
 
 import pytest
 
-from local_shell_mcp.jobs import lifecycle as job_lifecycle
-from local_shell_mcp.jobs.reconciliation import (
+from workgate.jobs import lifecycle as job_lifecycle
+from workgate.jobs.reconciliation import (
     JobObservation,
     JobTransition,
     reconcile_job,
 )
-from local_shell_mcp.jobs.state import JobStatusPayload
+from workgate.jobs.state import JobStatusPayload
 
 
 def _status_payload(

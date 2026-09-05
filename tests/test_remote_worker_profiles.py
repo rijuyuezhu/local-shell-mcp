@@ -8,10 +8,10 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.remote_worker.cli as worker_cli
-import local_shell_mcp.remote_worker.profiles as worker_profiles
-import local_shell_mcp.remote_worker.worker as worker
-from local_shell_mcp.remote_worker.state import (
+import workgate.remote_worker.cli as worker_cli
+import workgate.remote_worker.profiles as worker_profiles
+import workgate.remote_worker.worker as worker
+from workgate.remote_worker.state import (
     WORKER_PROFILE_ID_ENV,
     WORKER_RUNTIME_DIGEST_ENV,
     activate_worker_profile,
@@ -26,9 +26,9 @@ from local_shell_mcp.remote_worker.state import (
 def _clear_profile_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(WORKER_PROFILE_ID_ENV, "")
     monkeypatch.setenv(WORKER_RUNTIME_DIGEST_ENV, "")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", "")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", "")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL", "")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", "")
+    monkeypatch.setenv("WORKGATE_STATE_DIR", "")
+    monkeypatch.setenv("WORKGATE_ALLOW_FULL_CONTROL", "")
 
 
 def _identity(name: str, workdir: str) -> dict[str, str]:
@@ -44,7 +44,7 @@ def test_profile_identities_are_isolated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_profile_environment(monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     first = "p_abcdefgh"
     second = "p_ijklmnop"
 
@@ -63,7 +63,7 @@ async def test_profile_resume_persists_canonical_renamed_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_profile_environment(monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     profile_id = "p_abcdefgh"
     workdir = tmp_path / "workspace"
     workdir.mkdir()
@@ -71,7 +71,6 @@ async def test_profile_resume_persists_canonical_renamed_identity(
     original = {
         **_identity("worker-old", str(workdir)),
         "profile_id": profile_id,
-        "migration_source": "legacy-single-worker",
     }
     worker._write_worker_identity(original, profile_id)
     captured: dict[str, Any] = {}
@@ -115,7 +114,6 @@ async def test_profile_resume_persists_canonical_renamed_identity(
         "name": "worker-renamed",
         "access": "access-worker-old",
         "workdir": str(workdir),
-        "migration_source": "legacy-single-worker",
         "profile_id": profile_id,
     }
     assert worker.load_worker_identity(profile_id) == stored
@@ -132,7 +130,6 @@ async def test_run_worker_locked_does_not_rewrite_enrollment_identity(
     identity = {
         **_identity("worker-renamed", str(tmp_path)),
         "profile_id": profile_id,
-        "migration_source": "legacy-single-worker",
     }
 
     async def enroll_or_resume(*_args: Any, **_kwargs: Any):
@@ -172,7 +169,7 @@ def test_active_profile_survives_credential_free_reexec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_profile_environment(monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     profile_id = "p_abcdefgh"
     identity = _identity("worker-a", "/work/a")
 
@@ -188,14 +185,14 @@ def test_profile_runtime_state_is_isolated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_profile_environment(monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     profile_id = "p_abcdefgh"
     workdir = str(tmp_path / "workspace")
 
     worker._configure_worker_runtime_env(workdir, profile_id)
 
-    assert os.environ["LOCAL_SHELL_MCP_WORKSPACE_ROOT"] == workdir
-    assert os.environ["LOCAL_SHELL_MCP_STATE_DIR"] == str(
+    assert os.environ["WORKGATE_WORKSPACE_ROOT"] == workdir
+    assert os.environ["WORKGATE_STATE_DIR"] == str(
         tmp_path / "profiles" / profile_id / "state"
     )
 
@@ -204,7 +201,7 @@ def test_reconnect_command_is_credential_free_and_shell_safe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state_dir = tmp_path / "worker state"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(state_dir))
 
     command = worker.worker_reconnect_command("p_abcdefgh")
 
@@ -227,7 +224,7 @@ def test_reconnect_command_formatter_uses_windows_cmd_quoting() -> None:
 def test_worker_info_reports_profile_launcher(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
 
     info = worker.worker_info("/work/a", "p_abcdefgh")
 
@@ -239,7 +236,7 @@ def test_active_runtime_selects_content_addressed_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_profile_environment(monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     digest = "a" * 64
     monkeypatch.setenv(WORKER_RUNTIME_DIGEST_ENV, digest)
 
@@ -253,7 +250,7 @@ def test_active_runtime_selects_content_addressed_paths(
 def test_profile_metadata_is_atomic_validated_and_credential_free(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     profile_id = "p_abcdefgh"
     digest = "a" * 64
 
@@ -285,7 +282,7 @@ def test_profile_metadata_rejects_invalid_fields(
     digest: str,
     name: str,
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
 
     with pytest.raises(ValueError, match="runtime|control"):
         worker_profiles.update_worker_profile(
@@ -309,7 +306,7 @@ def test_profile_metadata_rejects_invalid_text_values(
     value: object,
     message: str,
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     data: dict[str, Any] = {
         "schema_version": 1,
         "profile_id": "p_abcdefgh",
@@ -354,7 +351,7 @@ def test_profile_reader_rejects_invalid_documents(
     payload: object,
     message: str,
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     path = worker_profile_metadata_path("p_abcdefgh")
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -366,7 +363,7 @@ def test_profile_reader_rejects_invalid_documents(
 def test_profile_reader_rejects_unreadable_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     path = worker_profile_metadata_path("p_abcdefgh")
     path.parent.mkdir(parents=True)
     path.write_text("{", encoding="utf-8")
@@ -380,7 +377,7 @@ async def test_required_upgrade_switches_profile_runtime_before_reexec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _clear_profile_environment(monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     profile_id = "p_abcdefgh"
     old_digest = "a" * 64
     new_digest = "b" * 64
@@ -428,11 +425,11 @@ async def test_required_upgrade_switches_profile_runtime_before_reexec(
 async def test_required_upgrade_refreshes_managed_service_launcher(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import local_shell_mcp.remote_worker.service as worker_service
+    import workgate.remote_worker.service as worker_service
 
     _clear_profile_environment(monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_MANAGED", "1")
     new_digest = "b" * 64
     monkeypatch.setattr(
         worker.worker_runtime,
@@ -478,11 +475,11 @@ async def test_required_upgrade_refreshes_managed_service_launcher(
 async def test_required_upgrade_preserves_managed_profile_binding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import local_shell_mcp.remote_worker.service as worker_service
+    import workgate.remote_worker.service as worker_service
 
     _clear_profile_environment(monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_MANAGED", "1")
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_MANAGED", "1")
     profile_id = "p_abcdefgh"
     activate_worker_profile(profile_id)
     worker._write_worker_identity(_identity("worker-a", "/work/a"), profile_id)
@@ -575,7 +572,7 @@ def test_run_cli_selects_stored_profile(
 
     monkeypatch.setattr(worker, "run_stored_worker", run)
     monkeypatch.setattr(
-        "local_shell_mcp.remote_worker.service.prepare_worker_service_environment",
+        "workgate.remote_worker.service.prepare_worker_service_environment",
         lambda: None,
     )
     args = _parser().parse_args(["run", "p_abcdefgh"])

@@ -1,13 +1,13 @@
 from pathlib import Path
 
-import local_shell_mcp.utils.path_locks as path_lock_module
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.utils.path_locks import path_lock, path_locks
+import workgate.utils.path_locks as path_lock_module
+from workgate.config.settings import clear_settings_cache
+from workgate.utils.path_locks import path_lock, path_locks
 
 
 def _configure(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
 
 

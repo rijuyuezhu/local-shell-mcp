@@ -7,18 +7,18 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.applications import Starlette
 
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import _add_public_routes_to_mcp_http_app
-from local_shell_mcp.oauth.core import service as oauth_service
-from local_shell_mcp.oauth.core.models import OAuthClient
-from local_shell_mcp.oauth.core.requests import RegistrationRequest
-from local_shell_mcp.oauth.core.state import (
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import _add_public_routes_to_mcp_http_app
+from workgate.oauth.core import service as oauth_service
+from workgate.oauth.core.models import OAuthClient
+from workgate.oauth.core.requests import RegistrationRequest
+from workgate.oauth.core.state import (
     build_oauth_state,
     configure_oauth_state,
     oauth_state,
 )
 
-BASE_URL = "https://local-shell-mcp.example.com"
+BASE_URL = "https://workgate.example.com"
 REDIRECT_A = "https://client.example/callback-a"
 REDIRECT_B = "https://client.example/callback-b"
 CLIENT_NAME = "Reusable public client"
@@ -38,9 +38,9 @@ def _reset_oauth_state(tmp_path):
 
 @pytest.fixture
 def oauth_client(tmp_path, monkeypatch) -> TestClient:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", BASE_URL)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_BASE_URL", BASE_URL)
     clear_settings_cache()
     return TestClient(_add_public_routes_to_mcp_http_app(Starlette())[0])
 
@@ -82,7 +82,7 @@ def test_registration_reuses_matching_client_ignoring_uri_order_and_duplicates(
 def test_registration_reuse_does_not_consume_pending_capacity(
     oauth_client, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
+    monkeypatch.setenv("WORKGATE_OAUTH_MAX_DYNAMIC_CLIENTS", "1")
     clear_settings_cache()
 
     first = oauth_client.post("/oauth/register", json=_registration_body())
@@ -141,9 +141,9 @@ def test_registration_keeps_distinct_names_and_uri_sets_separate(oauth_client):
 def test_registration_prefers_approved_then_oldest_matching_client(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_CLIENT_TTL_S", "0")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_OAUTH_CLIENT_TTL_S", "0")
     clear_settings_cache()
     request = RegistrationRequest(
         redirect_uris=(REDIRECT_B, REDIRECT_A),
@@ -210,8 +210,8 @@ def test_registration_reuses_approved_client_after_memory_reload(
 def test_concurrent_matching_registrations_create_exactly_one_client(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     request = RegistrationRequest(
         redirect_uris=(REDIRECT_A, REDIRECT_B),
@@ -245,8 +245,8 @@ def test_concurrent_matching_registrations_create_exactly_one_client(
 def test_reuse_audit_records_only_bounded_registration_metadata(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
     events: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(

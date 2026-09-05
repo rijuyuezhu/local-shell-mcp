@@ -1,17 +1,17 @@
 import pytest
 
-import local_shell_mcp.ops.bash as shell_ops
-import local_shell_mcp.ops.files as file_ops
-import local_shell_mcp.ops.read as read_ops
-import local_shell_mcp.ops.remote as remote_ops
-import local_shell_mcp.ops.search as search_ops
-import local_shell_mcp.ops.session as session_ops
-import local_shell_mcp.remote.service as remote_service
-import local_shell_mcp.tools.ops.jobs as job_ops
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.tool_session.store import get_tool_session_store
+import workgate.ops.bash as shell_ops
+import workgate.ops.files as file_ops
+import workgate.ops.read as read_ops
+import workgate.ops.remote as remote_ops
+import workgate.ops.search as search_ops
+import workgate.ops.session as session_ops
+import workgate.remote.service as remote_service
+import workgate.tools.ops.jobs as job_ops
 from tests.helpers import mcp_structured
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import build_mcp
+from workgate.tool_session.store import get_tool_session_store
 
 
 @pytest.mark.asyncio
@@ -83,10 +83,10 @@ def test_remote_service_delegates_reconnect_and_rename(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_remote_admin_is_exposed_in_mcp(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_MODE", "mcp")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     monkeypatch.setattr(
         remote_ops,
@@ -110,10 +110,10 @@ async def test_remote_admin_is_exposed_in_mcp(tmp_path, monkeypatch):
 async def test_remote_reconnect_command_is_exposed_in_mcp(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MODE", "mcp")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_ENABLED", "true")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_MODE", "mcp")
+    monkeypatch.setenv("WORKGATE_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     monkeypatch.setattr(
         remote_ops,
@@ -242,7 +242,7 @@ async def test_session_start_creates_remote_control_session(
     remote_root = tmp_path / "remote"
     remote_project = remote_root / "project"
     remote_project.mkdir(parents=True)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(remote_root))
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(remote_root))
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()
@@ -341,7 +341,7 @@ async def test_remote_session_dispatches_read_search_edit_bash_job(monkeypatch):
         return {"ok": True, "data": data_by_tool[tool]}
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.utils.remote_session.call_remote_worker_tool",
+        "workgate.ops.utils.remote_session.call_remote_worker_tool",
         fake_call,
     )
 
@@ -468,7 +468,7 @@ async def test_remote_session_dispatch_surfaces_worker_error(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "local_shell_mcp.ops.utils.remote_session.call_remote_worker_tool",
+        "workgate.ops.utils.remote_session.call_remote_worker_tool",
         fake_call,
     )
 
@@ -480,7 +480,7 @@ async def test_remote_session_dispatch_surfaces_worker_error(monkeypatch):
 async def test_remote_session_change_cwd_preserves_worker_orientation(
     monkeypatch, tmp_path
 ):
-    from local_shell_mcp.ops.utils import remote_session as remote_session_ops
+    from workgate.ops.utils import remote_session as remote_session_ops
 
     remote_root = tmp_path / "worker-root"
     first = remote_root / "first"
@@ -488,8 +488,8 @@ async def test_remote_session_change_cwd_preserves_worker_orientation(
     first.mkdir(parents=True)
     second.mkdir()
     (second / "AGENTS.md").write_text("worker instructions\n", encoding="utf-8")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(remote_root))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_REMOTE_WORKER_RUNTIME", "1")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(remote_root))
+    monkeypatch.setenv("WORKGATE_REMOTE_WORKER_RUNTIME", "1")
     clear_settings_cache()
     store = get_tool_session_store()
     store.clear()

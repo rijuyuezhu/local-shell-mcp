@@ -4,15 +4,15 @@ from threading import Event
 
 import pytest
 
-from local_shell_mcp.oauth.core import service as oauth_service
-from local_shell_mcp.oauth.core.client_store import (
+from workgate.oauth.core import service as oauth_service
+from workgate.oauth.core.client_store import (
     CLIENT_STORE_VERSION,
     client_store_path,
     persist_approved_clients,
 )
-from local_shell_mcp.oauth.core.models import AuthCode, OAuthClient
-from local_shell_mcp.oauth.core.requests import RegistrationRequest
-from local_shell_mcp.oauth.core.state import (
+from workgate.oauth.core.models import AuthCode, OAuthClient
+from workgate.oauth.core.requests import RegistrationRequest
+from workgate.oauth.core.state import (
     OAuthState,
     configure_oauth_state,
     oauth_state,
@@ -42,7 +42,7 @@ async def test_oauth_state_loads_closes_and_rejects_restart(tmp_path) -> None:
         client_id="approved",
         redirect_uri="https://client.example/callback",
         scope="shell:read",
-        resource="https://local-shell-mcp.example/mcp",
+        resource="https://workgate.example/mcp",
         code_challenge="challenge",
         code_challenge_method="S256",
     )

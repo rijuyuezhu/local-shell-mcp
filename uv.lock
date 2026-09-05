@@ -527,7 +527,7 @@ wheels = [
 ]
 
 [[package]]
-name = "local-shell-mcp"
+name = "workgate"
 version = "4.3.1"
 source = { editable = "." }
 dependencies = [

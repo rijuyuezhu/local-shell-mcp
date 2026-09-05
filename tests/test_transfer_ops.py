@@ -11,12 +11,12 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.ops.transfer as transfer_ops
-import local_shell_mcp.remote_worker.http_transfer as worker_http_transfer
-import local_shell_mcp.tools.registry.transfer as transfer_registry
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.ops.transfer import (
+import workgate.ops.transfer as transfer_ops
+import workgate.remote_worker.http_transfer as worker_http_transfer
+import workgate.tools.registry.transfer as transfer_registry
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import build_mcp
+from workgate.ops.transfer import (
     transfer_abort_write,
     transfer_alloc_temp_path,
     transfer_begin_write,
@@ -30,11 +30,9 @@ from local_shell_mcp.ops.transfer import (
 
 
 def _workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".local-shell-mcp")
-    )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".workgate"))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     return tmp_path
 
@@ -222,7 +220,7 @@ def test_transfer_rejects_bad_chunk_checksum_and_abort_removes_temp(
 
     abort = transfer_abort_write("dest.txt", begin.transfer_id)
     assert abort.deleted is True
-    assert not any(root.glob(".dest.txt.local-shell-mcp-transfer-*.tmp"))
+    assert not any(root.glob(".dest.txt.workgate-transfer-*.tmp"))
     assert not (root / "dest.txt").exists()
 
 
@@ -490,12 +488,10 @@ def test_finish_replaces_final_symlink_not_its_target(tmp_path, monkeypatch):
 
 def test_begin_prunes_only_stale_destination_transfers(tmp_path, monkeypatch):
     root = _workspace(tmp_path, monkeypatch)
-    stale = root / ".dest.bin.local-shell-mcp-transfer-stale.tmp"
+    stale = root / ".dest.bin.workgate-transfer-stale.tmp"
     stale_metadata = stale.with_name(stale.name + ".json")
-    orphan_metadata = root / (
-        ".dest.bin.local-shell-mcp-transfer-orphan.tmp.json"
-    )
-    recent = root / ".dest.bin.local-shell-mcp-transfer-recent.tmp"
+    orphan_metadata = root / (".dest.bin.workgate-transfer-orphan.tmp.json")
+    recent = root / ".dest.bin.workgate-transfer-recent.tmp"
     stale.write_bytes(b"stale")
     stale_metadata.write_text("{}", encoding="utf-8")
     orphan_metadata.write_text("{}", encoding="utf-8")
@@ -530,7 +526,7 @@ def test_unpack_limits_preserve_existing_destination(tmp_path, monkeypatch):
     (destination / "important.txt").write_text("keep", encoding="utf-8")
     archive = root / "large.tar"
     _archive_with_files(archive, {"payload.bin": b"1234"})
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TRANSFER_UNPACKED_BYTES", "3")
+    monkeypatch.setenv("WORKGATE_MAX_TRANSFER_UNPACKED_BYTES", "3")
     clear_settings_cache()
 
     with pytest.raises(ValueError, match="expands to more than 3 bytes"):
@@ -552,7 +548,7 @@ def test_unpack_entry_limit_preserves_existing_destination(
     (destination / "important.txt").write_text("keep", encoding="utf-8")
     archive = root / "many.tar"
     _archive_with_files(archive, {"one.txt": b"1", "two.txt": b"2"})
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TRANSFER_ARCHIVE_ENTRIES", "1")
+    monkeypatch.setenv("WORKGATE_MAX_TRANSFER_ARCHIVE_ENTRIES", "1")
     clear_settings_cache()
 
     with pytest.raises(ValueError, match="more than 1 entries"):
@@ -604,10 +600,10 @@ def test_transfer_temp_pruning_preserves_recent_active_files(
     tmp_path, monkeypatch
 ):
     root = _workspace(tmp_path, monkeypatch)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TMP_FILES", "0")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_TMP_BYTES", "0")
+    monkeypatch.setenv("WORKGATE_MAX_TMP_FILES", "0")
+    monkeypatch.setenv("WORKGATE_MAX_TMP_BYTES", "0")
     clear_settings_cache()
-    directory = root / ".local-shell-mcp" / "tmp"
+    directory = root / ".workgate" / "tmp"
     directory.mkdir(parents=True)
     stale = directory / "stale.bin"
     recent = directory / "recent.bin"

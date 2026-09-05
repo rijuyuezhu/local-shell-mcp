@@ -11,11 +11,11 @@ const root = resolve(import.meta.dir, "..")
 const repository = resolve(root, "..")
 const executableName =
   process.platform === "win32" ? WINDOWS_TUI_EXECUTABLE_NAME : POSIX_TUI_EXECUTABLE_NAME
-const outdir = process.env.LSM_UI_BINARY_OUTDIR
-  ? resolve(process.env.LSM_UI_BINARY_OUTDIR)
+const outdir = process.env.WORKGATE_UI_BINARY_OUTDIR
+  ? resolve(process.env.WORKGATE_UI_BINARY_OUTDIR)
   : resolve(root, "dist")
 const outfile = resolve(outdir, executableName)
-if (!process.env.LSM_UI_BINARY_OUTDIR) await rm(outdir, { recursive: true, force: true })
+if (!process.env.WORKGATE_UI_BINARY_OUTDIR) await rm(outdir, { recursive: true, force: true })
 await mkdir(outdir, { recursive: true })
 
 const result = await Bun.build({
@@ -33,8 +33,8 @@ if (!result.success) {
 }
 if (process.platform !== "win32") await chmod(outfile, 0o755)
 
-if (process.env.LSM_UI_EMBED_RUNTIME === "1") {
-  const embeddedDir = resolve(repository, "src/local_shell_mcp/ui_runtime")
+if (process.env.WORKGATE_UI_EMBED_RUNTIME === "1") {
+  const embeddedDir = resolve(repository, "src/workgate/ui_runtime")
   await rm(embeddedDir, { recursive: true, force: true })
   await mkdir(embeddedDir, { recursive: true })
   const executable = new Uint8Array(await Bun.file(outfile).arrayBuffer())

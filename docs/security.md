@@ -1,22 +1,22 @@
 # Security
 
-`local-shell-mcp` exposes shell execution to an AI client. Treat it as a high-risk administrative interface.
+`workgate` exposes shell execution to an AI client. Treat it as a high-risk administrative interface.
 
 ## Recommended deployment
 
 - Run under a dedicated OS account or inside a disposable VM when stronger isolation is needed.
-- Expose public deployments through HTTPS with `LOCAL_SHELL_MCP_AUTH_MODE=oauth`.
+- Expose public deployments through HTTPS with `WORKGATE_AUTH_MODE=oauth`.
 - Do not expose container-runtime control sockets or unrestricted host roots to the service account.
 - Do not mount unrestricted SSH keys or all of `~/.ssh`.
 - Use single-repository deploy keys or short-lived GitHub App installation tokens.
-- Leave `LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=false` by default.
+- Leave `WORKGATE_ALLOW_FULL_CONTROL=false` by default.
 - Review audit logs after each session, then rotate or discard them with the rest of the short-lived state.
 
 Cloudflare Tunnel is a convenient public transport. Cloudflare Access is optional and is not the built-in authentication layer.
 
 ## OAuth security
 
-The built-in OAuth implementation is designed for a single local operator connecting an MCP client, such as ChatGPT, to a high-risk shell server. It is not a general-purpose multi-user identity provider. Keep `LOCAL_SHELL_MCP_AUTH_MODE=oauth` for public HTTP deployments and use `LOCAL_SHELL_MCP_AUTH_MODE=none` only for trusted local testing.
+The built-in OAuth implementation is designed for a single local operator connecting an MCP client, such as ChatGPT, to a high-risk shell server. It is not a general-purpose multi-user identity provider. Keep `WORKGATE_AUTH_MODE=oauth` for public HTTP deployments and use `WORKGATE_AUTH_MODE=none` only for trusted local testing.
 
 ### Standards alignment
 
@@ -38,15 +38,15 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 - The authorization request must include `response_type=code`, `client_id`, `redirect_uri`, and `resource`; the `resource` must match this server.
 - Dynamically registered clients bind authorization codes to registered redirect URIs. Token exchange must present the same `client_id`, `redirect_uri`, `resource`, and PKCE verifier.
 - Authorization codes are short-lived, one-time-use in-memory records. Reusing a code returns `invalid_grant`.
-- Access tokens are signed locally with a randomly generated secret stored in `state_dir/oauth-jwt-secret` with mode `0600`. Initialization is serialized across processes, and existing non-placeholder secrets shorter than 32 UTF-8 bytes are rejected rather than silently reused. Token lifetime is controlled by `LOCAL_SHELL_MCP_OAUTH_ACCESS_TOKEN_TTL_S`.
-- The local approval form escapes reflected fields before rendering HTML and can require `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` before issuing authorization codes.
+- Access tokens are signed locally with a randomly generated secret stored in `state_dir/oauth-jwt-secret` with mode `0600`. Initialization is serialized across processes, and existing non-placeholder secrets shorter than 32 UTF-8 bytes are rejected rather than silently reused. Token lifetime is controlled by `WORKGATE_OAUTH_ACCESS_TOKEN_TTL_S`.
+- The local approval form escapes reflected fields before rendering HTML and can require `WORKGATE_OAUTH_ADMIN_PIN` before issuing authorization codes.
 - Failed PIN attempts, client registration, code issuance, token issuance, invalid bearer tokens, and successful authenticated requests are audited.
 
 ### Operational requirements
 
-- Serve public deployments over HTTPS and set `LOCAL_SHELL_MCP_BASE_URL` to the externally visible origin. This keeps metadata, issuer, resource, redirect, and transport allowlist calculations stable behind a tunnel or reverse proxy.
-- When OAuth and `LOCAL_SHELL_MCP_BASE_URL` are configured together, startup requires `LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN` to be a non-placeholder value of at least 8 characters. Use a substantially longer random value in production and treat it as an approval secret, not as a user account password.
-- Keep `LOCAL_SHELL_MCP_AUTH_BYPASS_LOCALHOST=false` for shared hosts or any environment where local processes are not fully trusted.
+- Serve public deployments over HTTPS and set `WORKGATE_BASE_URL` to the externally visible origin. This keeps metadata, issuer, resource, redirect, and transport allowlist calculations stable behind a tunnel or reverse proxy.
+- When OAuth and `WORKGATE_BASE_URL` are configured together, startup requires `WORKGATE_OAUTH_ADMIN_PIN` to be a non-placeholder value of at least 8 characters. Use a substantially longer random value in production and treat it as an approval secret, not as a user account password.
+- Keep `WORKGATE_AUTH_BYPASS_LOCALHOST=false` for shared hosts or any environment where local processes are not fully trusted.
 - Keep the state directory private. It contains the JWT signing secret and may coexist with audit logs that include sensitive request context.
 - Prefer short access-token lifetimes for public deployments. There is no refresh-token flow and no server-side token revocation list, so token expiry is the primary recovery mechanism after bearer-token disclosure.
 - Review audit logs and rotate the state directory when moving a server between trust domains.
@@ -62,11 +62,11 @@ The HTTP OAuth flow follows the security boundaries required by the [MCP authori
 
 ## Agent Bridge credentials and upstream OAuth
 
-Agent Bridge authentication is separate from the built-in OAuth server that protects this `local-shell-mcp` deployment. It authenticates the control server as a client of configured upstream MCP servers.
+Agent Bridge authentication is separate from the built-in OAuth server that protects this `workgate` deployment. It authenticates the control server as a client of configured upstream MCP servers.
 
 - Public manifest files may contain literal `env` and `headers` for compatibility, but new credentials should use structured secret references and `auth.mode="secret"`. Secret references are resolved only immediately before transport startup.
 - Private values, OAuth tokens, dynamic client information, absolute expiry timestamps, and discovered authorization-server metadata are stored under `state_dir/agent_auth`. The store is versioned and size-bounded, uses a cross-process lock and atomic replacement, and is owner-only (`0700` directory and `0600` files on POSIX). Corrupt or unsupported data fails explicitly and is not reset automatically.
-- `local-shell-mcp mcp secret set ... --stdin` is the only secret-value input surface. Values are not accepted as command arguments, printed by list/status commands, serialized into the public manifest, or returned through MCP tools.
+- `workgate mcp secret set ... --stdin` is the only secret-value input surface. Values are not accepted as command arguments, printed by list/status commands, serialized into the public manifest, or returned through MCP tools.
 - Upstream OAuth uses the MCP SDK's protected-resource and authorization-server discovery, PKCE, state validation, dynamic client registration, refresh, and HTTP authentication. The interactive CLI binds a one-shot callback to a random `127.0.0.1` port. Normal server operation is noninteractive: it may refresh stored credentials, but a new authorization requirement fails immediately with instructions to run the CLI.
 - OAuth logout attempts the advertised revocation endpoint before deleting local credentials. The command distinguishes successful, unsupported, and failed remote revocation; local state is cleared even when revocation is unsupported or fails.
 - Agent Bridge status exposes only mode, authorization state, expiry/status metadata, counts, and redacted errors. Administrative secret names are available only to the local `mcp secret list` command. Credential-store changes participate in the dynamic registry fingerprint so updates become visible without restart.
@@ -92,7 +92,7 @@ When OAuth authentication is enabled, protected MCP and REST routes authenticate
 
 ## Full-control mode
 
-`LOCAL_SHELL_MCP_ALLOW_FULL_CONTROL=true` is an explicit full-control mode. It disables built-in command and path denylists, but MCP safety annotations remain conservative and continue to identify destructive or open-world tools.
+`WORKGATE_ALLOW_FULL_CONTROL=true` is an explicit full-control mode. It disables built-in command and path denylists, but MCP safety annotations remain conservative and continue to identify destructive or open-world tools.
 
 ## Bounded command containment
 
@@ -157,12 +157,12 @@ Treat generated URLs as bearer secrets: anyone with the URL can read the snapsho
 
 Operational guidance:
 
-- Set `LOCAL_SHELL_MCP_BASE_URL` for public deployments so generated links use the externally reachable HTTPS origin.
+- Set `WORKGATE_BASE_URL` for public deployments so generated links use the externally reachable HTTPS origin.
 - Use short TTLs for sensitive artifacts and prefer `max_downloads=1` for one-time handoff.
 - Keep `inline=false` unless the user explicitly needs in-browser rendering.
-- Set `LOCAL_SHELL_MCP_FILE_DOWNLOAD_MAX_FILE_BYTES` to bound both local copies and remote transfers.
+- Set `WORKGATE_FILE_DOWNLOAD_MAX_FILE_BYTES` to bound both local copies and remote transfers.
 - Keep `state_dir` private because it contains the snapshot bytes as well as link metadata.
-- Disable the feature with `LOCAL_SHELL_MCP_FILE_DOWNLOAD_ENABLED=false` when public artifact URLs are not needed.
+- Disable the feature with `WORKGATE_FILE_DOWNLOAD_ENABLED=false` when public artifact URLs are not needed.
 - Remember that audit logs record link creation, revocation, and serving events, but the tokenized URL itself should still be treated as sensitive until expiry.
 
 ## Session-to-session transfers
@@ -239,7 +239,7 @@ Payload objects use private atomic replacement and are read through no-follow re
 
 The session-bound `audit_tail` tool and Human UI lists require `audit:read`. Resolving one retained reference additionally requires `audit:full` and a stable entry id; Human UI detail retains operation-sensitive shell/file/share/Git/remote checks. The current `audit_tail` call is excluded by exact lifecycle id rather than hiding all audit-query history.
 
-Treat `/workspace/.local-shell-mcp/audit_log/` as sensitive session state, not as a sanitized telemetry stream. Best-effort redaction does not prove that unknown secret formats or application-sensitive data are absent. Keep JSONL and payload objects in the controlled state directory, use the event/log/payload/retention limits for short-term retention, and avoid uploading either to third-party systems unless they are trusted for the same data.
+Treat `/workspace/.workgate/audit_log/` as sensitive session state, not as a sanitized telemetry stream. Best-effort redaction does not prove that unknown secret formats or application-sensitive data are absent. Keep JSONL and payload objects in the controlled state directory, use the event/log/payload/retention limits for short-term retention, and avoid uploading either to third-party systems unless they are trusted for the same data.
 
 ## Threats considered
 

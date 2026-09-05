@@ -5,10 +5,10 @@ from typing import Any, cast
 import pytest
 from mcp.types import CallToolResult, ImageContent, TextContent
 
-import local_shell_mcp.ops.image as image_ops
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.executors.mcp.app import build_mcp
-from local_shell_mcp.tool_session.store import get_tool_session_store
+import workgate.ops.image as image_ops
+from workgate.config.settings import clear_settings_cache
+from workgate.executors.mcp.app import build_mcp
+from workgate.tool_session.store import get_tool_session_store
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lP7LAAAAAElFTkSuQmCC"
@@ -16,13 +16,11 @@ PNG_BYTES = base64.b64decode(
 
 
 def _configure(tmp_path, monkeypatch, *, max_bytes: int | None = None) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     if max_bytes is not None:
-        monkeypatch.setenv(
-            "LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES", str(max_bytes)
-        )
+        monkeypatch.setenv("WORKGATE_MAX_VIEW_IMAGE_BYTES", str(max_bytes))
     clear_settings_cache()
     get_tool_session_store().clear()
 
@@ -81,7 +79,7 @@ async def test_local_image_rejects_empty_oversized_and_unsupported(
     with pytest.raises(ValueError, match="max is"):
         await image_ops.read_image_dispatch_execute("large.png", session_id)
 
-    monkeypatch.setenv("LOCAL_SHELL_MCP_MAX_VIEW_IMAGE_BYTES", "1024")
+    monkeypatch.setenv("WORKGATE_MAX_VIEW_IMAGE_BYTES", "1024")
     clear_settings_cache()
     with pytest.raises(ValueError, match="empty"):
         await image_ops.read_image_dispatch_execute("empty.png", session_id)

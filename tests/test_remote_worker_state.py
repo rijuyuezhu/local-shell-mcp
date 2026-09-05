@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.remote_worker import state
+from workgate.remote_worker import state
 
 
 def _clear_state_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", raising=False)
+    monkeypatch.delenv("WORKGATE_WORKER_STATE_DIR", raising=False)
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
 
 
@@ -14,7 +14,7 @@ def test_worker_state_dir_prefers_explicit_configuration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     configured = tmp_path / "configured"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(configured))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(configured))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg"))
 
     assert state.worker_state_dir() == configured
@@ -24,7 +24,7 @@ def test_worker_state_dir_resolves_relative_configuration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", "worker-state")
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", "worker-state")
 
     expected = tmp_path / "worker-state"
     assert state.worker_state_dir() == expected
@@ -38,9 +38,7 @@ def test_worker_state_dir_uses_xdg_state_home(
     _clear_state_environment(monkeypatch)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg"))
 
-    assert (
-        state.worker_state_dir() == tmp_path / "xdg" / "local-shell-mcp-worker"
-    )
+    assert state.worker_state_dir() == tmp_path / "xdg" / "workgate-worker"
 
 
 def test_worker_state_dir_uses_home_fallback(
@@ -50,14 +48,14 @@ def test_worker_state_dir_uses_home_fallback(
     monkeypatch.setattr(state.Path, "home", classmethod(lambda _cls: tmp_path))
 
     assert state.worker_state_dir() == (
-        tmp_path / ".local" / "state" / "local-shell-mcp-worker"
+        tmp_path / ".local" / "state" / "workgate-worker"
     )
 
 
 def test_worker_state_paths_share_one_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
 
     assert state.worker_runtime_dir() == tmp_path / "runtime"
     assert state.runtime_metadata_path() == tmp_path / "runtime.json"
@@ -68,17 +66,13 @@ def test_worker_state_paths_share_one_root(
     assert state.worker_launcher_path() == tmp_path / launcher_name
     assert state.worker_launcher_runner_path() == tmp_path / "run.py"
     assert state.worker_python_path() == tmp_path / "python"
-    assert (
-        state.worker_legacy_migration_path() == tmp_path / "legacy-profile.json"
-    )
-    assert state.worker_migration_lock_path() == tmp_path / "migration.lock"
     assert state.worker_install_lock_path() == tmp_path / "install.lock"
 
 
 def test_worker_profile_paths_are_isolated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     profile_id = "p_abcdefgh"
     profile = tmp_path / "profiles" / profile_id
 
@@ -104,7 +98,7 @@ def test_worker_profile_paths_reject_unsafe_ids(profile_id: str) -> None:
 def test_worker_runtime_paths_are_content_addressed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKER_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_WORKER_STATE_DIR", str(tmp_path))
     digest = "a" * 64
     runtime = tmp_path / "runtimes" / digest
 

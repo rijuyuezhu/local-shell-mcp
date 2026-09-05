@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from local_shell_mcp.config.settings import Settings
-from local_shell_mcp.persistence import FileStateStore
-from local_shell_mcp.remote.bundle import worker_bundle_manifest
-from local_shell_mcp.remote.manager import (
+from workgate.config.settings import Settings
+from workgate.persistence import FileStateStore
+from workgate.remote.bundle import worker_bundle_manifest
+from workgate.remote.manager import (
     RemoteManager,
     RemoteManagerClosedError,
     RemoteWorker,

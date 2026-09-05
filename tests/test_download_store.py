@@ -7,20 +7,20 @@ from pathlib import Path
 
 import pytest
 
-from local_shell_mcp.config.settings import clear_settings_cache, get_settings
-from local_shell_mcp.ops.downloads import (
+from workgate.config.settings import clear_settings_cache, get_settings
+from workgate.ops.downloads import (
     create_file_link_dispatch_execute,
     list_file_links_execute,
 )
-from local_shell_mcp.ops.utils.download_snapshot import snapshot_directory
-from local_shell_mcp.ops.utils.download_store import backup_path, store_path
+from workgate.ops.utils.download_snapshot import snapshot_directory
+from workgate.ops.utils.download_store import backup_path, store_path
 
 
 def _configure(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", "https://files.example.test")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_BASE_URL", "https://files.example.test")
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
 
 
@@ -38,8 +38,8 @@ def test_concurrent_processes_do_not_lose_links(tmp_path, monkeypatch):
 
     script = """
 import sys
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.ops.downloads import create_file_link_dispatch_execute
+from workgate.config.settings import clear_settings_cache
+from workgate.ops.downloads import create_file_link_dispatch_execute
 clear_settings_cache()
 __import__("asyncio").run(create_file_link_dispatch_execute(sys.argv[1], ttl_s=60))
 """

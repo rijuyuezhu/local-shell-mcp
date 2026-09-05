@@ -70,7 +70,7 @@ function StatusLine({
       <text fg={theme.faint} content={narrow ? "  " : "  │  "} />
       <text fg={theme.muted} content={visibleStatus} />
       <box style={{ flexGrow: 1 }} />
-      {!compact && <text fg={theme.cyan} content="local-shell-mcp" />}
+      {!compact && <text fg={theme.cyan} content="workgate" />}
     </box>
   )
 }
@@ -81,7 +81,7 @@ function App() {
   const [screen, setScreen] = useState<ScreenName>("Dashboard")
   const [bootstrap, setBootstrap] = useState<BootstrapPayload | null>(null)
   const [machine, setMachine] = useState("local")
-  const [status, setStatus] = useState("Connecting to local-shell-mcp…")
+  const [status, setStatus] = useState("Connecting to workgate…")
   const [help, setHelp] = useState(false)
   const [terminalRawMode, setTerminalRawMode] = useState(false)
   const [interactionLocked, setInteractionLocked] = useState(false)
@@ -232,11 +232,11 @@ function App() {
 }
 
 if (process.argv.includes("--version") || process.argv.includes("-V")) {
-  console.log("local-shell-mcp OpenTUI")
+  console.log("workgate OpenTUI")
   process.exit(0)
 }
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  console.log("Usage: local-shell-mcp-tui [--help] [--version]")
+  console.log("Usage: workgate-tui [--help] [--version]")
   process.exit(0)
 }
 

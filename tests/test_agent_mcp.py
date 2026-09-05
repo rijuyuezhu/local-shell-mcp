@@ -13,18 +13,18 @@ from typing import Any
 import pytest
 from mcp.types import Tool
 
-import local_shell_mcp.agent_bridge.mcp as agent_mcp_module
-import local_shell_mcp.agent_bridge.service as agent_service
-from local_shell_mcp.agent_bridge.mcp import (
+import workgate.agent_bridge.mcp as agent_mcp_module
+import workgate.agent_bridge.service as agent_service
+from workgate.agent_bridge.mcp import (
     AgentMcpClientManager,
     AgentMcpTool,
     normalize_mcp_tool,
     normalize_tool_result,
 )
-from local_shell_mcp.agent_bridge.models import AgentMcpServerConfig
-from local_shell_mcp.agent_bridge.registry import build_agent_registry
-from local_shell_mcp.agent_bridge.status import registry_config_status
-from local_shell_mcp.config.settings import Settings
+from workgate.agent_bridge.models import AgentMcpServerConfig
+from workgate.agent_bridge.registry import build_agent_registry
+from workgate.agent_bridge.status import registry_config_status
+from workgate.config.settings import Settings
 
 
 def test_normalize_mcp_tool_preserves_schema():

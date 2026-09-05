@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from local_shell_mcp.config.settings import get_settings
-from local_shell_mcp.ops.utils import session_copy as session_copy_module
-from local_shell_mcp.remote.transfer_gateway import TransferGatewayStore
-from local_shell_mcp.tool_session.store import AgentSession
+from workgate.config.settings import get_settings
+from workgate.ops.utils import session_copy as session_copy_module
+from workgate.remote.transfer_gateway import TransferGatewayStore
+from workgate.tool_session.store import AgentSession
 
 
 def _endpoint(

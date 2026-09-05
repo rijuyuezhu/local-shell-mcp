@@ -15,7 +15,7 @@ executors, shared HTTP infrastructure, Human UI behavior, transport-neutral
 operations, and domain services:
 
 ```text
-local_shell_mcp/
+workgate/
   main.py                 argparse root and command registration
   executors/
     mcp/                   MCP executor and MCP-only middleware
@@ -76,11 +76,11 @@ private durable-job runner is also a normal argparse subcommand and is labeled
 internal in help rather than parsed by a separate code path.
 
 Runtime commands are explicit: `server`, `tui`, `mcp`, `worker`, `version`, and
-the labeled internal `job-runner`. Running `local-shell-mcp` without a command is
+the labeled internal `job-runner`. Running `workgate` without a command is
 an argparse error.
 Global `--version` remains an argparse version action. Settings flags follow the
-command that consumes them, for example `local-shell-mcp server --mode mcp` and
-`local-shell-mcp tui --port 8765`.
+command that consumes them, for example `workgate server --mode mcp` and
+`workgate tui --port 8765`.
 
 The controller runtime is entered by the transport host, not by domain code.
 REST HTTP owns it through the FastAPI application lifespan. MCP-over-HTTP owns

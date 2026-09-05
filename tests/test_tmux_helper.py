@@ -1,6 +1,6 @@
 import pytest
 
-from local_shell_mcp.terminal import tmux as tmux_helper
+from workgate.terminal import tmux as tmux_helper
 
 
 def test_detached_tmux_env_removes_enclosing_client_markers(
@@ -65,7 +65,7 @@ def test_resolve_tmux_reads_settings(
 async def test_shell_tmux_uses_resolved_executable(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    from local_shell_mcp.ops import shell
+    from workgate.ops import shell
 
     expected = object()
     calls: list[tuple[list[str], str, int | None, dict[str, str] | None]] = []
@@ -104,7 +104,7 @@ async def test_shell_tmux_uses_resolved_executable(
 async def test_list_persistent_shells_is_empty_when_default_tmux_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    from local_shell_mcp.ops import shell
+    from workgate.ops import shell
 
     monkeypatch.setattr(
         shell, "_use_conpty_persistent_shell_backend", lambda: False

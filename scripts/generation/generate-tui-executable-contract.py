@@ -4,7 +4,7 @@
 import argparse
 from pathlib import Path
 
-from local_shell_mcp.ui.contracts import (
+from workgate.ui.contracts import (
     POSIX_TUI_EXECUTABLE_NAME,
     WINDOWS_TUI_EXECUTABLE_NAME,
 )

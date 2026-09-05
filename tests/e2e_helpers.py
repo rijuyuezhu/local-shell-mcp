@@ -48,25 +48,21 @@ def server_env(
     env.update(
         {
             "PYTHONPATH": pythonpath,
-            "LOCAL_SHELL_MCP_WORKSPACE_ROOT": str(workspace_root),
-            "LOCAL_SHELL_MCP_STATE_DIR": str(
-                workspace_root / ".local-shell-mcp"
-            ),
-            "LOCAL_SHELL_MCP_MODE": mode,
-            "LOCAL_SHELL_MCP_HOST": "127.0.0.1",
-            "LOCAL_SHELL_MCP_AUTH_MODE": "none",
-            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": str(
-                agent_bridge_enabled
-            ).lower(),
-            "LOCAL_SHELL_MCP_REMOTE_ENABLED": "false",
-            "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
-            "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
-            "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S": "15",
+            "WORKGATE_WORKSPACE_ROOT": str(workspace_root),
+            "WORKGATE_STATE_DIR": str(workspace_root / ".workgate"),
+            "WORKGATE_MODE": mode,
+            "WORKGATE_HOST": "127.0.0.1",
+            "WORKGATE_AUTH_MODE": "none",
+            "WORKGATE_AGENT_BRIDGE_ENABLED": str(agent_bridge_enabled).lower(),
+            "WORKGATE_REMOTE_ENABLED": "false",
+            "WORKGATE_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
+            "WORKGATE_RUN_SHELL_MAX_TIMEOUT_S": "10",
+            "WORKGATE_TOOL_TIMEOUT_S": "15",
         }
     )
     if port is not None:
-        env["LOCAL_SHELL_MCP_PORT"] = str(port)
-        env["LOCAL_SHELL_MCP_BASE_URL"] = f"http://127.0.0.1:{port}"
+        env["WORKGATE_PORT"] = str(port)
+        env["WORKGATE_BASE_URL"] = f"http://127.0.0.1:{port}"
     return env
 
 
@@ -119,7 +115,7 @@ async def run_http_process(
         [
             sys.executable,
             "-m",
-            "local_shell_mcp.main",
+            "workgate.main",
             "server",
             "--mode",
             mode,
@@ -305,7 +301,7 @@ async def stdio_tool_client(
         command=sys.executable,
         args=[
             "-m",
-            "local_shell_mcp.main",
+            "workgate.main",
             "server",
             "--mode",
             "stdio",

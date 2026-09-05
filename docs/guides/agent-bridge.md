@@ -1,13 +1,13 @@
 # Agent capability bridge
 
-The Agent Bridge makes reusable Skills and selected upstream MCP servers available through `local-shell-mcp`. Use it when several clients should share the same server-managed capabilities.
+The Agent Bridge makes reusable Skills and selected upstream MCP servers available through `workgate`. Use it when several clients should share the same server-managed capabilities.
 
 ## Configuration directory
 
 Public configuration lives under the service state directory:
 
 ```text
-/workspace/.local-shell-mcp/agent_config/
+/workspace/.workgate/agent_config/
   config.json
   skills/
     debugging/
@@ -101,17 +101,17 @@ Secret references are valid only when the same server uses `auth.mode="secret"`.
 Set the referenced value through standard input so it does not appear in the command arguments. The server name in the secret command must match the `mcpServers` key:
 
 ```bash
-printf '%s\n' "$GITHUB_TOKEN" | local-shell-mcp mcp secret set github github_token --stdin
-local-shell-mcp mcp secret list github
-local-shell-mcp mcp secret delete github github_token
+printf '%s\n' "$GITHUB_TOKEN" | workgate mcp secret set github github_token --stdin
+workgate mcp secret list github
+workgate mcp secret delete github github_token
 ```
 
 ## Authorize an OAuth server
 
 ```bash
-local-shell-mcp mcp auth docs
-local-shell-mcp mcp auth docs --status
-local-shell-mcp mcp auth docs --logout
+workgate mcp auth docs
+workgate mcp auth docs --status
+workgate mcp auth docs --logout
 ```
 
 Use `--no-open` when the CLI should print the authorization URL instead of opening a browser.
@@ -121,7 +121,7 @@ Use `--no-open` when the CLI should print the authorization URL instead of openi
 Start by asking the client to show what is available:
 
 ```text
-Use local-shell-mcp to check Agent Bridge status, list available Skills and upstream MCP servers, and summarize the extra capabilities.
+Use workgate to check Agent Bridge status, list available Skills and upstream MCP servers, and summarize the extra capabilities.
 ```
 
 Before calling an upstream tool, list that server's tools and review the selected tool name and description.
@@ -130,7 +130,7 @@ Dynamic tools are convenient, but they make the exposed tool list change with co
 
 ## Security notes
 
-- Stdio servers run in the `local-shell-mcp` server environment.
+- Stdio servers run in the `workgate` server environment.
 - HTTP and SSE servers use the server's network access, not the MCP client's.
 - An upstream server can use any secret or OAuth scope granted to it. Configure only trusted servers and use the narrowest credentials possible.
 - Keep the entire service state directory private and back it up only through a secure process.

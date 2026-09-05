@@ -1,13 +1,13 @@
 import pytest
 
-from local_shell_mcp.config.settings import Settings
-from local_shell_mcp.tools.catalog import (
+from workgate.config.settings import Settings
+from workgate.tools.catalog import (
     BUILTIN_TOOL_REGISTRY_FACTORIES,
     ToolCatalog,
     build_tool_catalog,
 )
-from local_shell_mcp.tools.contracts import ToolRegistry
-from local_shell_mcp.tools.declarative import DeclarativeToolRegistry
+from workgate.tools.contracts import ToolRegistry
+from workgate.tools.declarative import DeclarativeToolRegistry
 
 EXPECTED_BUILTIN_REGISTRIES = (
     "agent",

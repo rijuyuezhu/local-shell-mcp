@@ -4,11 +4,11 @@ from fastapi import FastAPI
 from starlette.applications import Starlette
 from starlette.routing import BaseRoute, Route
 
-import local_shell_mcp.executors.http.app as http_app
-import local_shell_mcp.executors.mcp.app as mcp_app
-from local_shell_mcp.config.settings import Settings, configure_settings
-from local_shell_mcp.http.public_routes import public_http_routes
-from local_shell_mcp.ui.http.routes import human_ui_routes
+import workgate.executors.http.app as http_app
+import workgate.executors.mcp.app as mcp_app
+from workgate.config.settings import Settings, configure_settings
+from workgate.http.public_routes import public_http_routes
+from workgate.ui.http.routes import human_ui_routes
 
 _SHARED_PUBLIC_ROUTE_SIGNATURES = (
     ("/healthz", ("GET", "HEAD")),

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from local_shell_mcp.ops.utils import bounded_runner
+from workgate.ops.utils import bounded_runner
 
 
 def _install_fake_kqueue_capabilities(monkeypatch, queue_factory):
@@ -1250,7 +1250,7 @@ def test_macos_launchd_reaps_setsid_escape(tmp_path):
         [
             sys.executable,
             "-m",
-            "local_shell_mcp.ops.utils.bounded_runner",
+            "workgate.ops.utils.bounded_runner",
             "--shell",
             "/bin/sh",
             "--command",
@@ -1565,9 +1565,7 @@ def test_launchctl_operations_reserve_outer_cleanup_headroom(monkeypatch):
 
 
 def test_bounded_runner_argv_uses_frozen_cli_subcommand(monkeypatch):
-    monkeypatch.setattr(
-        bounded_runner.sys, "executable", "/app/local-shell-mcp"
-    )
+    monkeypatch.setattr(bounded_runner.sys, "executable", "/app/workgate")
 
     assert bounded_runner.bounded_runner_argv(
         "/bin/sh",
@@ -1576,7 +1574,7 @@ def test_bounded_runner_argv_uses_frozen_cli_subcommand(monkeypatch):
         "/tmp/status.json",
         frozen=True,
     ) == [
-        "/app/local-shell-mcp",
+        "/app/workgate",
         "bounded-runner",
         "--shell",
         "/bin/sh",
@@ -1615,9 +1613,7 @@ def test_bounded_runner_argv_uses_platform_native_absolute_script(monkeypatch):
 def test_launchd_plist_uses_frozen_cli_subcommand(monkeypatch):
     _install_fake_launchd_coalitions(monkeypatch)
     program_arguments: list[str] = []
-    monkeypatch.setattr(
-        bounded_runner.sys, "executable", "/app/local-shell-mcp"
-    )
+    monkeypatch.setattr(bounded_runner.sys, "executable", "/app/workgate")
     monkeypatch.setattr(bounded_runner.sys, "frozen", True, raising=False)
 
     def fake_launchctl(args):
@@ -1636,7 +1632,7 @@ def test_launchd_plist_uses_frozen_cli_subcommand(monkeypatch):
 
     assert bounded_runner._run_launchd_bounded_command("/bin/sh", "true") == 125
     assert program_arguments[:6] == [
-        "/app/local-shell-mcp",
+        "/app/workgate",
         "bounded-runner",
         "--shell",
         "/bin/sh",
@@ -1808,7 +1804,7 @@ def test_launchd_parent_falls_back_to_user_domain(monkeypatch):
     assert calls[0][:2] == ("bootstrap", "gui/1000")
     assert calls[1][:2] == ("bootstrap", "user/1000")
     assert calls[2][0] == "bootout"
-    assert calls[2][1].startswith("user/1000/local-shell-mcp.bounded.")
+    assert calls[2][1].startswith("user/1000/workgate.bounded.")
 
 
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX FIFOs")

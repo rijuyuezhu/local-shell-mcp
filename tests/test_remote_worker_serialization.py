@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 from pathlib import Path
 
-from local_shell_mcp.remote_worker.serialization import to_jsonable
+from workgate.remote_worker.serialization import to_jsonable
 
 
 class _Mode(enum.Enum):

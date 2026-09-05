@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from local_shell_mcp.config.surface import (
+from workgate.config.surface import (
     SECTION_ORDER,
     SETTING_SPECS,
     SettingSpec,
@@ -124,7 +124,7 @@ def generate_yaml_example() -> str:
     validate_setting_specs()
     lines: list[str] = [
         "# Full YAML config example.",
-        "# Effective precedence: defaults < config file < LOCAL_SHELL_MCP_* environment variables < CLI arguments.",
+        "# Effective precedence: defaults < config file < WORKGATE_* environment variables < CLI arguments.",
     ]
     specs_by_section = {section: [] for section in SECTION_ORDER}
     for spec in SETTING_SPECS:
@@ -259,7 +259,7 @@ def generate_config_reference_json() -> str:
         "precedence": [
             "defaults",
             "config file",
-            "LOCAL_SHELL_MCP_* environment variables",
+            "WORKGATE_* environment variables",
             "CLI arguments",
         ],
         "section_order": list(SECTION_ORDER),

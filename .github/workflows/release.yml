@@ -90,7 +90,7 @@ jobs:
           uv run python - <<'PY'
           from pathlib import Path
 
-          from local_shell_mcp.release.platform_wheel import inspect_sdist, inspect_wheel
+          from workgate.release.platform_wheel import inspect_sdist, inspect_wheel
 
           wheels = list(Path("dist").glob("*.whl"))
           sdists = list(Path("dist").glob("*.tar.gz"))
@@ -182,8 +182,8 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/release/smoke-platform-wheel.py" \
             --state-dir "$state" \
             --work-dir "$work"
-          test ! -e src/local_shell_mcp/ui_runtime
-          test ! -e src/local_shell_mcp/.platform-wheel-build.lock
+          test ! -e src/workgate/ui_runtime
+          test ! -e src/workgate/.platform-wheel-build.lock
 
       - uses: actions/upload-artifact@v7
         with:
@@ -200,23 +200,23 @@ jobs:
         include:
           - artifact: linux-x86_64
             runner: ubuntu-latest
-            binary: local-shell-mcp
+            binary: workgate
             archive: tar.gz
           - artifact: linux-aarch64
             runner: ubuntu-24.04-arm
-            binary: local-shell-mcp
+            binary: workgate
             archive: tar.gz
           - artifact: macos-x86_64
             runner: macos-15-intel
-            binary: local-shell-mcp
+            binary: workgate
             archive: tar.gz
           - artifact: macos-aarch64
             runner: macos-15
-            binary: local-shell-mcp
+            binary: workgate
             archive: tar.gz
           - artifact: windows-x86_64
             runner: windows-latest
-            binary: local-shell-mcp.exe
+            binary: workgate.exe
             archive: zip
     runs-on: ${{ matrix.runner }}
     steps:
@@ -246,8 +246,8 @@ jobs:
           PYINSTALLER_ARGS=(
             --clean
             --onefile
-            --name local-shell-mcp
-            --collect-all local_shell_mcp
+            --name workgate
+            --collect-all workgate
             --collect-all mcp
             --collect-all uvicorn
             --collect-all fastapi
@@ -266,53 +266,53 @@ jobs:
         run: |
           ./dist/${{ matrix.binary }} --help
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            ./ui-opentui/dist/local-shell-mcp-tui.exe --version
+            ./ui-opentui/dist/workgate-tui.exe --version
           else
-            ./ui-opentui/dist/local-shell-mcp-tui --version
+            ./ui-opentui/dist/workgate-tui --version
           fi
 
       - name: Package executable
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p release/local-shell-mcp-${{ matrix.artifact }}
-          cp dist/${{ matrix.binary }} release/local-shell-mcp-${{ matrix.artifact }}/
+          mkdir -p release/workgate-${{ matrix.artifact }}
+          cp dist/${{ matrix.binary }} release/workgate-${{ matrix.artifact }}/
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            cp ui-opentui/dist/local-shell-mcp-tui.exe release/local-shell-mcp-${{ matrix.artifact }}/
+            cp ui-opentui/dist/workgate-tui.exe release/workgate-${{ matrix.artifact }}/
           else
-            cp ui-opentui/dist/local-shell-mcp-tui release/local-shell-mcp-${{ matrix.artifact }}/
+            cp ui-opentui/dist/workgate-tui release/workgate-${{ matrix.artifact }}/
           fi
-          cp README.md LICENSE release/local-shell-mcp-${{ matrix.artifact }}/
-          cp src/local_shell_mcp/helpers/opentui.NOTICES \
-            release/local-shell-mcp-${{ matrix.artifact }}/OPENTUI-NOTICES.txt
-          cp src/local_shell_mcp/helpers/bun-1.3.14.LICENSE.md \
-            release/local-shell-mcp-${{ matrix.artifact }}/BUN-1.3.14-LICENSE.md
-          cat > release/local-shell-mcp-${{ matrix.artifact }}/QUICKSTART.txt <<'EOF'
-          Start local-shell-mcp:
+          cp README.md LICENSE release/workgate-${{ matrix.artifact }}/
+          cp src/workgate/helpers/opentui.NOTICES \
+            release/workgate-${{ matrix.artifact }}/OPENTUI-NOTICES.txt
+          cp src/workgate/helpers/bun-1.3.14.LICENSE.md \
+            release/workgate-${{ matrix.artifact }}/BUN-1.3.14-LICENSE.md
+          cat > release/workgate-${{ matrix.artifact }}/QUICKSTART.txt <<'EOF'
+          Start Workgate:
 
-            ./local-shell-mcp server --mode mcp
+            ./workgate server --mode mcp
 
           POSIX persistent shells require tmux to be installed on the host.
 
           In another terminal, open the native terminal UI:
 
-            ./local-shell-mcp tui
+            ./workgate tui
 
           Useful environment variables:
 
-            LOCAL_SHELL_MCP_HOST=0.0.0.0
-            LOCAL_SHELL_MCP_PORT=8765
-            LOCAL_SHELL_MCP_WORKSPACE_ROOT=/path/to/workspace
-            LOCAL_SHELL_MCP_AUTH_MODE=oauth
-            LOCAL_SHELL_MCP_PUBLIC_BASE_URL=https://your-public-host.example.com
-            LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN=change-me
-            LOCAL_SHELL_MCP_OAUTH_JWT_SECRET=change-me-64-hex-random-secret
+            WORKGATE_HOST=0.0.0.0
+            WORKGATE_PORT=8765
+            WORKGATE_WORKSPACE_ROOT=/path/to/workspace
+            WORKGATE_AUTH_MODE=oauth
+            WORKGATE_PUBLIC_BASE_URL=https://your-public-host.example.com
+            WORKGATE_OAUTH_ADMIN_PIN=change-me
+            WORKGATE_OAUTH_JWT_SECRET=change-me-64-hex-random-secret
           EOF
           cd release
           if [[ "${{ matrix.archive }}" == "zip" ]]; then
-            7z a local-shell-mcp-${{ matrix.artifact }}.zip local-shell-mcp-${{ matrix.artifact }} >/dev/null
+            7z a workgate-${{ matrix.artifact }}.zip workgate-${{ matrix.artifact }} >/dev/null
           else
-            tar -czf local-shell-mcp-${{ matrix.artifact }}.tar.gz local-shell-mcp-${{ matrix.artifact }}
+            tar -czf workgate-${{ matrix.artifact }}.tar.gz workgate-${{ matrix.artifact }}
           fi
 
       - name: Generate binary checksums
@@ -320,16 +320,16 @@ jobs:
         run: |
           cd release
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum local-shell-mcp-${{ matrix.artifact }}.* > local-shell-mcp-${{ matrix.artifact }}.sha256
+            sha256sum workgate-${{ matrix.artifact }}.* > workgate-${{ matrix.artifact }}.sha256
           else
-            shasum -a 256 local-shell-mcp-${{ matrix.artifact }}.* > local-shell-mcp-${{ matrix.artifact }}.sha256
+            shasum -a 256 workgate-${{ matrix.artifact }}.* > workgate-${{ matrix.artifact }}.sha256
           fi
 
       - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.artifact }}
           path: |
-            release/local-shell-mcp-${{ matrix.artifact }}.*
+            release/workgate-${{ matrix.artifact }}.*
           if-no-files-found: error
   github-release:
     name: Publish GitHub release
@@ -396,7 +396,7 @@ jobs:
           Start the standalone executable:
 
           \`\`\`bash
-          ./local-shell-mcp server --mode mcp
+          ./workgate server --mode mcp
           \`\`\`
 
           Universal and platform Python package artifacts, executable archives, and SHA256 checksums are attached below.

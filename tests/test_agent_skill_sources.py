@@ -3,22 +3,22 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.agent_bridge.sources as source_module
-import local_shell_mcp.ops.agent as agent_ops
-from local_shell_mcp.agent_bridge.models import SkillSource as ModelSkillSource
-from local_shell_mcp.agent_bridge.registry import build_agent_registry
-from local_shell_mcp.agent_bridge.sources import (
+import workgate.agent_bridge.sources as source_module
+import workgate.ops.agent as agent_ops
+from workgate.agent_bridge.models import SkillSource as ModelSkillSource
+from workgate.agent_bridge.registry import build_agent_registry
+from workgate.agent_bridge.sources import (
     SkillSource,
     scan_skill_sources,
     skill_sources,
 )
-from local_shell_mcp.agent_bridge.state import (
+from workgate.agent_bridge.state import (
     agent_config_fingerprint,
     agent_registry_fingerprint,
 )
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.remote_worker.dispatch import execute_worker_tool
-from local_shell_mcp.tool_session.store import get_tool_session_store
+from workgate.config.settings import clear_settings_cache
+from workgate.remote_worker.dispatch import execute_worker_tool
+from workgate.tool_session.store import get_tool_session_store
 
 
 class _NoopClientManager:
@@ -44,10 +44,10 @@ def _configure(
     config_dir: Path,
     xdg_config_home: Path,
 ) -> None:
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(state_dir))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_CONFIG_DIR", str(config_dir))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("WORKGATE_AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config_home))
     clear_settings_cache()
     get_tool_session_store().clear()

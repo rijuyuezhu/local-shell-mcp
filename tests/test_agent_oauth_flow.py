@@ -11,12 +11,12 @@ from mcp.shared.auth import (
     OAuthToken,
 )
 
-import local_shell_mcp.agent_bridge.cli as agent_cli
-from local_shell_mcp.agent_bridge.auth import build_stored_oauth_provider
-from local_shell_mcp.agent_bridge.auth_store import AgentAuthStore
-from local_shell_mcp.agent_bridge.cli import revoke_stored_oauth
-from local_shell_mcp.agent_bridge.models import AgentMcpServerConfig
-from local_shell_mcp.utils.private_files import atomic_write_private_text
+import workgate.agent_bridge.cli as agent_cli
+from workgate.agent_bridge.auth import build_stored_oauth_provider
+from workgate.agent_bridge.auth_store import AgentAuthStore
+from workgate.agent_bridge.cli import revoke_stored_oauth
+from workgate.agent_bridge.models import AgentMcpServerConfig
+from workgate.utils.private_files import atomic_write_private_text
 
 _SERVER_URL = "https://mcp.test/mcp"
 _AUTH_URL = "https://auth.test"
@@ -311,7 +311,7 @@ async def test_noninteractive_runtime_fails_fast_when_reauthorization_is_require
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(handler), auth=provider
     ) as client:
-        with pytest.raises(RuntimeError, match="local-shell-mcp mcp auth docs"):
+        with pytest.raises(RuntimeError, match="workgate mcp auth docs"):
             await client.get(_SERVER_URL)
 
 
@@ -346,7 +346,7 @@ async def test_failed_refresh_clears_stale_tokens_and_requires_cli_auth(
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(handler), auth=provider
     ) as client:
-        with pytest.raises(RuntimeError, match="local-shell-mcp mcp auth docs"):
+        with pytest.raises(RuntimeError, match="workgate mcp auth docs"):
             await client.get(_SERVER_URL)
 
     assert store.get_tokens("docs") is None

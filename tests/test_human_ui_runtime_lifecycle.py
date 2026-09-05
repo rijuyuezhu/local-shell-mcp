@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from local_shell_mcp.ui.http.live_state import (
+from workgate.ui.http.live_state import (
     _RemoteFileSession,
     build_human_ui_runtime,
     human_ui_runtime,

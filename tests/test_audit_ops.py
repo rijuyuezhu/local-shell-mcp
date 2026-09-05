@@ -2,23 +2,23 @@ from typing import Any
 
 import pytest
 
-import local_shell_mcp.tools.ops.audit as audit_ops
-from local_shell_mcp.audit import (
+import workgate.tools.ops.audit as audit_ops
+from workgate.audit import (
     audit,
     audit_call_context,
     audit_tool_call_end,
     audit_tool_call_start,
 )
-from local_shell_mcp.config.settings import clear_settings_cache
-from local_shell_mcp.tool_session.store import get_tool_session_store
-from local_shell_mcp.tools.ops.audit import audit_tail_execute
+from workgate.config.settings import clear_settings_cache
+from workgate.tool_session.store import get_tool_session_store
+from workgate.tools.ops.audit import audit_tail_execute
 
 
 @pytest.fixture(autouse=True)
 def _reset_state(monkeypatch, tmp_path):
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED", "false")
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AGENT_BRIDGE_ENABLED", "false")
     clear_settings_cache()
     get_tool_session_store().clear()
     yield
@@ -167,18 +167,18 @@ async def test_audit_tail_remote_maps_session_filter_and_forwards_detail(
 def test_http_audit_tail_enforces_read_and_full_scopes(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
-    from local_shell_mcp.executors.http.app import build_http_app
-    from local_shell_mcp.oauth.core.scopes import (
+    from workgate.executors.http.app import build_http_app
+    from workgate.oauth.core.scopes import (
         SCOPE_AUDIT_FULL,
         SCOPE_AUDIT_READ,
     )
-    from local_shell_mcp.oauth.protocol.token_codec import issue_access_token
+    from workgate.oauth.protocol.token_codec import issue_access_token
 
     base_url = "https://audit-tool.example"
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "oauth")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_BASE_URL", base_url)
-    monkeypatch.setenv("LOCAL_SHELL_MCP_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("LOCAL_SHELL_MCP_STATE_DIR", str(tmp_path / ".state"))
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "oauth")
+    monkeypatch.setenv("WORKGATE_BASE_URL", base_url)
+    monkeypatch.setenv("WORKGATE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("WORKGATE_STATE_DIR", str(tmp_path / ".state"))
     clear_settings_cache()
 
     def headers(scope: str) -> dict[str, str]:

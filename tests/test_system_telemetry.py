@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import local_shell_mcp.telemetry.system as telemetry_module
+import workgate.telemetry.system as telemetry_module
 
 
 @pytest.fixture(autouse=True)

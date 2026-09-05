@@ -10,9 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from local_shell_mcp import __version__
-from local_shell_mcp.config.settings import Settings
-from local_shell_mcp.ui.runtime import (
+from workgate import __version__
+from workgate.config.settings import Settings
+from workgate.ui.runtime import (
     embedded_tui_payload,
     resolve_tui_command,
 )

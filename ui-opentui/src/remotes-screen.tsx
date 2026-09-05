@@ -321,7 +321,7 @@ export function RemotesScreen({
             >
               <text fg={current.status === "online" ? theme.green : theme.orange} attributes={1} content={current.name} />
               <text fg={theme.faint} content={`Status       ${current.status}`} />
-              <text fg={theme.faint} content={`LSM version  ${remoteVersion(current)}`} />
+              <text fg={theme.faint} content={`Workgate version  ${remoteVersion(current)}`} />
               <text fg={theme.faint} content={`Last seen    ${formatAge(current.last_seen)}`} />
               <text fg={theme.faint} content={`Workdir      ${current.workdir || "—"}`} />
               <text fg={theme.faint} content={`Capabilities ${(current.capabilities || []).join(", ") || "—"}`} />

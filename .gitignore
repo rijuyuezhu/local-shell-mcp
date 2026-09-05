@@ -13,7 +13,7 @@ build/
 !.env.example
 workspaces/
 .audit/
-.local-shell-mcp/
+.workgate/
 playwright-report/
 test-results/
 /browser-artifacts*/
@@ -24,7 +24,7 @@ site/
 /ui-opentui/node_modules/
 /ui-opentui/dist/
 /ui-opentui/coverage/
-/src/local_shell_mcp/ui_runtime/
+/src/workgate/ui_runtime/
 
 # Python coverage outputs
 /.coverage
@@ -34,5 +34,5 @@ site/
 /htmlcov/
 
 # Generated platform helpers (release builds only)
-/src/local_shell_mcp/helpers/linux-x86_64/tmux
-/src/local_shell_mcp/helpers/linux-aarch64/tmux
+/src/workgate/helpers/linux-x86_64/tmux
+/src/workgate/helpers/linux-aarch64/tmux

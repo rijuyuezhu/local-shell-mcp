@@ -1,4 +1,4 @@
-from local_shell_mcp.config.settings import (
+from workgate.config.settings import (
     initialize_runtime_directories,
     load_settings,
 )
@@ -15,8 +15,8 @@ workspace_root: config-workspace
 auth_mode: oauth
 """.strip()
     )
-    monkeypatch.setenv("LOCAL_SHELL_MCP_PORT", "2222")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_AUTH_MODE", "none")
+    monkeypatch.setenv("WORKGATE_PORT", "2222")
+    monkeypatch.setenv("WORKGATE_AUTH_MODE", "none")
 
     settings = load_settings(
         config,
@@ -73,7 +73,7 @@ auth:
   mode: none
 """.strip()
     )
-    monkeypatch.delenv("LOCAL_SHELL_MCP_AUTH_MODE", raising=False)
+    monkeypatch.delenv("WORKGATE_AUTH_MODE", raising=False)
 
     settings = load_settings(config)
 
@@ -84,7 +84,7 @@ auth:
 def test_none_overrides_clear_config_and_env_values(monkeypatch, tmp_path):
     config = tmp_path / "config.yaml"
     config.write_text("base_url: https://example.com\n")
-    monkeypatch.setenv("LOCAL_SHELL_MCP_OAUTH_ADMIN_PIN", "test-pin")
+    monkeypatch.setenv("WORKGATE_OAUTH_ADMIN_PIN", "test-pin")
 
     settings = load_settings(
         config,

@@ -17,7 +17,6 @@ import httpx
 import pytest
 from mcp.types import ImageContent
 
-from local_shell_mcp import __version__
 from tests.e2e_helpers import (
     PROJECT_ROOT,
     ToolClient,
@@ -27,6 +26,7 @@ from tests.e2e_helpers import (
     streamable_http_tool_client,
     wait_for_http_ready,
 )
+from workgate import __version__
 
 pytestmark = pytest.mark.integration
 
@@ -86,16 +86,16 @@ async def run_remote_enabled_mcp_process(
     env = server_env(control_workspace, mode="mcp", port=port)
     env.update(
         {
-            "LOCAL_SHELL_MCP_REMOTE_ENABLED": "true",
-            "LOCAL_SHELL_MCP_REMOTE_POLL_TIMEOUT_S": "1",
-            "LOCAL_SHELL_MCP_REMOTE_JOB_TIMEOUT_S": "15",
+            "WORKGATE_REMOTE_ENABLED": "true",
+            "WORKGATE_REMOTE_POLL_TIMEOUT_S": "1",
+            "WORKGATE_REMOTE_JOB_TIMEOUT_S": "15",
         }
     )
     process = start_logged_process(
         [
             sys.executable,
             "-m",
-            "local_shell_mcp.main",
+            "workgate.main",
             "server",
             "--mode",
             "mcp",
@@ -133,18 +133,16 @@ def worker_env(remote_workspace: Path) -> dict[str, str]:
     env.pop("PYTHONPATH", None)
     env.update(
         {
-            "LOCAL_SHELL_MCP_WORKSPACE_ROOT": str(remote_workspace),
-            "LOCAL_SHELL_MCP_STATE_DIR": str(
-                remote_workspace / ".local-shell-mcp"
+            "WORKGATE_WORKSPACE_ROOT": str(remote_workspace),
+            "WORKGATE_STATE_DIR": str(remote_workspace / ".workgate"),
+            "WORKGATE_WORKER_STATE_DIR": str(
+                remote_workspace / ".workgate-worker"
             ),
-            "LOCAL_SHELL_MCP_WORKER_STATE_DIR": str(
-                remote_workspace / ".local-shell-mcp-worker"
-            ),
-            "LOCAL_SHELL_MCP_AUTH_MODE": "none",
-            "LOCAL_SHELL_MCP_AGENT_BRIDGE_ENABLED": "true",
-            "LOCAL_SHELL_MCP_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
-            "LOCAL_SHELL_MCP_RUN_SHELL_MAX_TIMEOUT_S": "10",
-            "LOCAL_SHELL_MCP_TOOL_TIMEOUT_S": "15",
+            "WORKGATE_AUTH_MODE": "none",
+            "WORKGATE_AGENT_BRIDGE_ENABLED": "true",
+            "WORKGATE_RUN_SHELL_DEFAULT_TIMEOUT_S": "5",
+            "WORKGATE_RUN_SHELL_MAX_TIMEOUT_S": "10",
+            "WORKGATE_TOOL_TIMEOUT_S": "15",
             "PYTHONNOUSERSITE": "1",
         }
     )
@@ -158,7 +156,7 @@ def start_worker_process(
     remote_workspace: Path,
     bundle_path: Path,
 ) -> subprocess.Popen[Any]:
-    state_dir = remote_workspace / ".local-shell-mcp-worker"
+    state_dir = remote_workspace / ".workgate-worker"
     digest = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
     runtime_dir = state_dir / "runtimes" / digest
     runtime_dir.mkdir(parents=True)
@@ -201,7 +199,7 @@ def start_worker_process(
     )
     assert isolated_site_probe.returncode == 0, isolated_site_probe.stderr
     isolated_site = Path(isolated_site_probe.stdout.strip())
-    (isolated_site / "local-shell-mcp-e2e-deps.pth").write_text(
+    (isolated_site / "workgate-e2e-deps.pth").write_text(
         "\n".join(
             [
                 *dependency_paths,
@@ -222,7 +220,7 @@ def start_worker_process(
             "-c",
             (
                 "import importlib.util; "
-                "print(importlib.util.find_spec('local_shell_mcp')); "
+                "print(importlib.util.find_spec('workgate')); "
                 "print(bool(importlib.util.find_spec('coverage')))"
             ),
         ],
@@ -237,12 +235,12 @@ def start_worker_process(
 
     env = worker_env(remote_workspace)
     env["PYTHONPATH"] = str(runtime_dir)
-    env["LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256"] = digest
+    env["WORKGATE_WORKER_RUNTIME_SHA256"] = digest
     return start_logged_process(
         [
             str(worker_python),
             "-m",
-            "local_shell_mcp.remote_worker",
+            "workgate.remote_worker",
             "connect",
             "--server",
             base_url,
@@ -348,7 +346,7 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "runtime_is_installed" in join_script
         assert "Reusing worker runtime" in join_script
         assert (
-            'export LOCAL_SHELL_MCP_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"'
+            'export WORKGATE_WORKER_RUNTIME_SHA256="$RUNTIME_DIGEST"'
             in join_script
         )
         assert (
@@ -364,8 +362,8 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         assert "os.replace(staging, runtime)" in join_script
         assert "member.isreg()" in join_script
         assert "curl -fSs" in join_script
-        assert "-m local_shell_mcp.remote_worker" in join_script
-        assert "python3 -m local_shell_mcp.main worker" not in join_script
+        assert "-m workgate.remote_worker" in join_script
+        assert "python3 -m workgate.main worker" not in join_script
 
         async with httpx.AsyncClient(
             timeout=20, trust_env=False
@@ -378,20 +376,19 @@ async def test_mcp_remote_worker_process_exercises_remote_tool_categories(
         bundle_path.write_bytes(bundle_response.content)
         with tarfile.open(bundle_path) as bundle:
             names = bundle.getnames()
-            assert "local_shell_mcp/remote_worker/__main__.py" in names
-            assert "local_shell_mcp/remote_worker/worker.py" in names
-            assert "local_shell_mcp/remote_worker/compat.py" in names
-            assert "local_shell_mcp/remote_worker/profiles.py" in names
-            assert "local_shell_mcp/remote_worker/runtime.py" in names
-            assert "local_shell_mcp/remote_worker/cli.py" in names
-            assert "local_shell_mcp/remote_worker/service.py" in names
-            assert "local_shell_mcp/remote/join_worker.sh" not in names
-            assert "local_shell_mcp/remote/manager.py" not in names
-            assert "local_shell_mcp/remote/http.py" not in names
+            assert "workgate/remote_worker/__main__.py" in names
+            assert "workgate/remote_worker/worker.py" in names
+            assert "workgate/remote_worker/compat.py" in names
+            assert "workgate/remote_worker/profiles.py" in names
+            assert "workgate/remote_worker/runtime.py" in names
+            assert "workgate/remote_worker/cli.py" in names
+            assert "workgate/remote_worker/service.py" in names
+            assert "workgate/remote/join_worker.sh" not in names
+            assert "workgate/remote/manager.py" not in names
+            assert "workgate/remote/http.py" not in names
             assert not any(name.startswith("vendor/") for name in names)
             assert not any(
-                name.startswith("local_shell_mcp/ui/static/")
-                or "ui_static" in name
+                name.startswith("workgate/ui/static/") or "ui_static" in name
                 for name in names
             )
             assert all(name.endswith(".py") for name in names)
