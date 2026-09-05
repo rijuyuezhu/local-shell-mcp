@@ -2,6 +2,7 @@
 
 import contextlib
 import gzip
+import hashlib
 import os
 import shlex
 import shutil
@@ -53,6 +54,47 @@ def _copy_bounded_gzip(source: Path, destination: Path) -> None:
         raise ValueError("Embedded OpenTUI runtime is empty")
 
 
+def _packaged_tui_executable_sha256(payload: Path) -> str | None:
+    """Read the build-generated trusted executable digest beside a payload."""
+    digest_path = Path(f"{payload}.sha256")
+    try:
+        info = digest_path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 65:
+            return None
+        digest = digest_path.read_text(encoding="ascii").strip()
+    except OSError, UnicodeError:
+        return None
+    if len(digest) != 64 or any(
+        character not in "0123456789abcdef" for character in digest
+    ):
+        return None
+    return digest
+
+
+def _regular_file_matches_sha256(path: Path, expected_sha256: str) -> bool:
+    """Validate one cached executable by type, ownership/mode, and digest."""
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    if not stat.S_ISREG(info.st_mode):
+        return False
+    if os.name != "nt":
+        geteuid = getattr(os, "geteuid", None)
+        if geteuid is not None and info.st_uid != geteuid():
+            return False
+        if stat.S_IMODE(info.st_mode) != 0o700:
+            return False
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return False
+    return digest.hexdigest() == expected_sha256
+
+
 def _same_regular_file_content(left: Path, right: Path) -> bool:
     """Compare two regular non-symlink files without trusting cache metadata."""
     try:
@@ -90,6 +132,11 @@ def materialize_embedded_tui(
     cache_dir = ensure_private_directory(cache_dir)
     target_dir = ensure_private_directory(cache_dir / __version__)
     target = target_dir / payload.name.removesuffix(".gz")
+    expected_sha256 = _packaged_tui_executable_sha256(payload)
+    if expected_sha256 is not None and _regular_file_matches_sha256(
+        target, expected_sha256
+    ):
+        return target
 
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{target.name}.", suffix=".tmp", dir=target_dir
@@ -100,6 +147,12 @@ def materialize_embedded_tui(
         _copy_bounded_gzip(payload, temporary)
         if os.name != "nt":
             temporary.chmod(temporary.stat().st_mode | stat.S_IXUSR)
+        if expected_sha256 is not None and not _regular_file_matches_sha256(
+            temporary, expected_sha256
+        ):
+            raise ValueError(
+                "Embedded OpenTUI runtime digest does not match payload metadata"
+            )
         try:
             os.replace(temporary, target)
         except PermissionError:

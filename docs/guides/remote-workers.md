@@ -8,6 +8,8 @@ The control server needs a public `WORKGATE_BASE_URL` reachable from the remote 
 
 The remote machine needs `curl`; the generated enrollment command bootstraps `uv` when necessary and uses it to obtain Python 3.14. Each content-addressed managed worker runtime owns its own `.venv`, populated from the `worker` dependency group in the bundled `pyproject.toml` and the bundled project `uv.lock`. Workgate does not maintain a separate worker requirements file. The selected workdir must be accessible to the user running the worker. Tools such as Git, compilers, CUDA, and package managers come from that remote machine.
 
+Installing a managed runtime can require outbound HTTPS access beyond the Workgate controller. Even when Python 3.14 is already installed, `uv` must populate a new runtime `.venv`; unless every locked artifact is already present in the local uv cache, that means reaching a Python package registry. The default public registry is PyPI. Operators can use normal uv configuration such as `UV_INDEX_URL` to point workers at an approved private mirror. A worker that is allowed to reach only the Workgate controller cannot enroll a fresh uncached runtime, or upgrade to a new uncached runtime digest, with the current packaging model. If `uv` or a suitable Python is also absent, bootstrap may additionally need network access to obtain those tools.
+
 ## Enroll a worker
 
 The easiest path is the browser UI:

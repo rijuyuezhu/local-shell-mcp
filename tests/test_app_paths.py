@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from workgate.app_paths import resolve_app_paths
+from workgate.app_paths import ensure_private_directory, resolve_app_paths
 
 
 def test_linux_paths_follow_absolute_xdg_roots(tmp_path: Path) -> None:
@@ -111,6 +111,27 @@ def test_macos_lifetime_namespaces_do_not_overlap(tmp_path: Path) -> None:
     assert paths.config_dir.name == "config"
     assert paths.state_dir.name == "state"
     assert paths.data_dir.name == "data"
+
+
+def test_private_directory_tolerates_racing_creator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    private = tmp_path / "private"
+    original_mkdir = Path.mkdir
+    raced = False
+
+    def racing_mkdir(path: Path, *args, **kwargs) -> None:
+        nonlocal raced
+        if path == private and not raced:
+            raced = True
+            original_mkdir(path, parents=True, exist_ok=False, mode=0o700)
+            raise FileExistsError(path)
+        original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", racing_mkdir)
+
+    assert ensure_private_directory(private) == private
+    assert private.is_dir()
 
 
 def test_windows_uses_native_roaming_and_local_namespaces(

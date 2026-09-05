@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import secrets
 import stat
@@ -179,7 +180,10 @@ def ensure_private_directory(path: Path) -> Path:
     try:
         info = path.lstat()
     except FileNotFoundError:
-        path.mkdir(parents=True, exist_ok=False, mode=0o700)
+        # Another process may create the leaf after our lstat(). Never trust the
+        # winner: always re-inspect it under the same strict policy below.
+        with contextlib.suppress(FileExistsError):
+            path.mkdir(parents=True, exist_ok=False, mode=0o700)
         info = path.lstat()
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
         raise OSError(

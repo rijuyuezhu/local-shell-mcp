@@ -104,6 +104,22 @@ configure_app_dirs() {
   fi
 }
 
+normalize_system_tmpdir() {
+  local platform
+  platform="$(uname -s 2>/dev/null || true)"
+  if is_windows_shell "$platform"; then
+    case "$SYSTEM_TMPDIR" in
+      [A-Za-z]:[\\/]*|/*) ;;
+      *) SYSTEM_TMPDIR="$PWD/$SYSTEM_TMPDIR" ;;
+    esac
+  else
+    case "$SYSTEM_TMPDIR" in
+      /*) ;;
+      *) SYSTEM_TMPDIR="$PWD/$SYSTEM_TMPDIR" ;;
+    esac
+  fi
+}
+
 private_dir_is_suitable() {
   local mode
   [ -n "${1:-}" ] && [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] && [ -w "$1" ] && [ -x "$1" ] || return 1
@@ -781,6 +797,7 @@ main() {
   parse_args "$@"
   require_basic_tools
   configure_app_dirs
+  normalize_system_tmpdir
   STATE_DIR="$(prepare_private_persistent_dir "$STATE_DIR" "worker state")"
   DATA_DIR="$(prepare_private_persistent_dir "$DATA_DIR" "worker data")"
   create_bootstrap_tmpdir

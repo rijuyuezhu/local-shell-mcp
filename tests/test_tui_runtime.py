@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -79,15 +80,27 @@ def test_same_regular_file_content_compares_bytes(tmp_path: Path) -> None:
 
 
 def test_materialize_embedded_tui_is_atomic_executable_and_idempotent(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     payload = tmp_path / f"{runtime.TUI_EXECUTABLE_NAME}.gz"
     expected = b"#!/bin/sh\necho tui\n"
     with gzip.open(payload, "wb") as handle:
         handle.write(expected)
+    Path(f"{payload}.sha256").write_text(
+        hashlib.sha256(expected).hexdigest() + "\n", encoding="ascii"
+    )
 
     first = runtime.materialize_embedded_tui(
         tmp_path / "state", payload=payload
+    )
+
+    def extraction_should_not_run(_source: Path, _destination: Path) -> None:
+        raise AssertionError(
+            "validated TUI cache should use the digest fast path"
+        )
+
+    monkeypatch.setattr(
+        runtime, "_copy_bounded_gzip", extraction_should_not_run
     )
     second = runtime.materialize_embedded_tui(
         tmp_path / "state", payload=payload
@@ -117,12 +130,17 @@ def test_materialize_embedded_tui_replaces_tampered_cache(
     expected = b"#!/bin/sh\necho trusted\n"
     with gzip.open(payload, "wb") as handle:
         handle.write(expected)
+    Path(f"{payload}.sha256").write_text(
+        hashlib.sha256(expected).hexdigest() + "\n", encoding="ascii"
+    )
 
     cache = tmp_path / "cache" / "ui-runtime"
     target_dir = cache / runtime.__version__
     target_dir.mkdir(parents=True)
     target = target_dir / runtime.TUI_EXECUTABLE_NAME
     target.write_bytes(b"#!/bin/sh\necho attacker\n")
+    if os.name != "nt":
+        target.chmod(0o700)
 
     resolved = runtime.materialize_embedded_tui(cache, payload=payload)
 

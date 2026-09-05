@@ -1559,6 +1559,42 @@ printf '%s\\n%s\\n%s\\n' "$STATE_DIR" "$DATA_DIR" "$SYSTEM_TMPDIR"
     ]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="exercises POSIX TMPDIR semantics")
+def test_join_script_normalizes_relative_system_tmpdir(tmp_path: Path) -> None:
+    from importlib import resources
+
+    script = (
+        resources.files("workgate.remote")
+        .joinpath("join_worker.sh")
+        .read_text(encoding="utf-8")
+        .replace("__REMOTE_SERVER__", "https://controller.test")
+        .replace(
+            "__REMOTE_WORKER_BUNDLE_PATH__",
+            "/remote/worker-bundle.tgz",
+        )
+    )
+    prefix = script.split("parse_args() {", maxsplit=1)[0]
+    relative_tmp = tmp_path / "relative-tmp"
+    relative_tmp.mkdir()
+    probe = (
+        prefix
+        + "\nnormalize_system_tmpdir\nprintf '%s\\n' \"$SYSTEM_TMPDIR\"\n"
+    )
+
+    completed = subprocess.run(
+        ["bash", "-c", probe],
+        cwd=tmp_path,
+        env={**os.environ, "TMPDIR": "relative-tmp"},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert Path(completed.stdout.strip()) == relative_tmp.resolve()
+
+
 @pytest.mark.skipif(
     os.name == "nt",
     reason="executes the POSIX curl-to-bash bootstrap under a real shell",
